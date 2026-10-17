@@ -132,6 +132,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 9: CLI, Agent Lab, and web fixes
 
+**Taken 2026-10-16 22:05 CDT** by a Claude Code subagent working #11935, #11934 (code only; lane 0 deploys it), and #11929 if time allows. It works in `~/work/openagents-lane9`. #11925, #11928, and #11727 are still free.
+
 - **Owns:** `crates/openagents-cli`, `crates/openagents-login`, `crates/openagents-sdk/src/agents*`, `crates/openagents-web/src/{agents_door,attribution,pages/contact,pages/affiliates}.rs`, the web main and gateway startup paths for #11925 and #11928, and `apps/openagents/crates/engine/src/doc_host/agent_lab.rs` for #11929.
 - **Order:** #11935, then #11934 (one patch covers both), then #11929, #11925, #11928, and #11727.
 - **Known baseline failures:** these `openagents-web` tests already fail on `main` and aren't yours to fix: copy_guard (OpenAPI wording), route_owners, screens, api_docs guides, environments::computers (6), cad_web::world_physics (1), and work_runs::computers (1).
