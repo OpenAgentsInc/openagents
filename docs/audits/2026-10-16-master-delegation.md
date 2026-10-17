@@ -117,6 +117,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 5: Labs kinds and app views
 
+**Taken 2026-10-16 22:41 CDT** by a Claude Code subagent working #11881, then #11882 in `~/work/openagents-lane5`.
+
 - **Owns:** `crates/game-lab`, `crates/ship-lab`, `crates/robot-lab`, `crates/video-lab`, their web adapters, and the Lab rows in `apps/openagents` (GPUI `crates/ui/src/lab_card.rs`, mobile layout, iOS cells).
 - **Order:** #11881 and #11882 as soon as #11878 lands. #11880 after #11877 and #11878. The app views #11883, #11884, and #11886 after #11876 and #11877. Each view renders `lab-ui`'s Rust Native card; don't write a card per shell.
 
