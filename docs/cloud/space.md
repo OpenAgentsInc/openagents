@@ -135,10 +135,12 @@ resume uses `:wake`. Snapshot and Fork return unsupported: this version's
 public API has no create-from-snapshot or fork operation. Files are bounded
 to 16 MiB, and command output to 16 MiB. HTTP calls and command streams have
 deadlines. Interrupted requests return Unknown; callers observe the
-computer before repeating an effect. Suspend and wake wait for their
+computer before repeating an effect. Suspend, wake, and delete wait for their
 operation to succeed, with a ten-minute deadline. A sandbox can report its
 new state while earlier teardown work still runs, so state alone cannot
-complete these operations. The reconciler also observes readiness.
+complete these operations. The exact terminal snapshot-upload delete conflict
+permits another saved attempt; a missing operation lookup does not. The
+reconciler also observes readiness.
 
 SPACE template references differ from GCE image names. A create that names
 an unavailable template fails at SPACE. The lifecycle service enforces its
