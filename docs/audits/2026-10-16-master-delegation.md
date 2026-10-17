@@ -83,9 +83,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 1: harness and chats (critical path)
 
-**Done 2026-10-17 04:27 CDT** by Codex in `~/work/openagents-labs-finish`: #11896 is code-complete and closing after its six children closed. #11823 stays with its owner; #11871 stays claimed pending #11948.
+**Done 2026-10-17 04:27 CDT** by Codex in `~/work/openagents-labs-finish`: #11896 is closed after its six children closed. #11823 stays with its owner; #11871 is released and blocked on #11948.
 
-**#11896 source complete:** its six children are closed, their checked source is on `main`, and cross-device runs are queued below.
+**#11896 closed:** its six children are closed, their checked source is on `main`, and cross-device runs are queued below.
 
 **Taken 2026-10-17 00:48 CDT** by a Claude Code subagent working #11823 in ~/work/openagents-11823.
 
@@ -110,7 +110,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
-**Done 2026-10-17 04:25 CDT** by Codex in `~/work/openagents-labs-finish`: #11958 is source-complete in `761ad950ed` and `c04314b54c`, with all 1,786 UI tests passing serially, and closed. #11933 and #11951 stay with their owners; #11871 stays claimed pending #11948.
+**Done 2026-10-17 04:25 CDT** by Codex in `~/work/openagents-labs-finish`: #11958 is source-complete in `761ad950ed` and `c04314b54c`, with all 1,786 UI tests passing serially, and closed. #11933 and #11951 stay with their owners; #11871 is released and blocked on #11948.
 
 **#11958 source complete:** fixtures enter Chat explicitly, popup geometry comparisons disable motion, and the settings key preserves both earlier spellings.
 
@@ -134,7 +134,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 4: Labs platform
 
-**Taken 2026-10-17 04:05 CDT** by Codex working #11871 in `~/work/openagents-labs-finish`.
+**Released 2026-10-17 04:29 CDT** by Codex after the #11871 closure audit (`8c8b105226`, `011dbb7200`). Still left: #11871, blocked on the existing owner of #11948. All original children are closed. `~/work/openagents-labs-finish` is removed after this update; targets `~/work/openagents-target-9` and `~/work/openagents-target-3-app` stay warm, as do both lane 1 targets.
 
 **Released 2026-10-17 CDT** by a Claude Code subagent. Worker reads of referenced versions and files, the Game, Ship, Video and Robot registrations, and #11882 are on main (`2f7acc29fd`, `4e8463ddff`, `2c6be74847`); #11882 is closed. Production checks are in [After-close checks](#after-close-checks). The worktree `~/work/openagents-lane4b` is removed; target `~/work/openagents-target-agent2` stays warm.
 
@@ -204,7 +204,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 9: CLI, Agent Lab, and web fixes
 
-**Done 2026-10-17 04:13 CDT** by Codex in `~/work/openagents-labs-finish`: #11952 is closed in `2a796565b7`. The #11871 claim stays held pending #11948; target `~/work/openagents-target-9` stays warm.
+**Done 2026-10-17 04:13 CDT** by Codex in `~/work/openagents-labs-finish`: #11952 is closed in `2a796565b7`. The #11871 claim is released pending #11948; target `~/work/openagents-target-9` stays warm.
 
 **#11952 source complete:** both provider fixtures run in separate test processes through the normal library test target. No production code changed.
 
@@ -291,7 +291,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 ### Labs platform (#11871 epic)
 
 **#11871 Epic: Labs platform.** Lane 4.
-- **Status:** all 15 original children (#11872–#11886) are closed, with their source checks recorded on the child issues. The remaining source work is #11948 (typed Lab rows in live sessions, version lists, and Model3d orbit), held by its existing lane 5 agent. #11871 stays claimed and blocked on that source; deploy and device checks are in After-close checks.
+- **Status:** all 15 original children (#11872–#11886) are closed, with their source checks recorded on the child issues. The remaining source work is #11948 (typed Lab rows in live sessions, version lists, and Model3d orbit), held by its existing lane 5 agent. #11871 is released and blocked on that source; deploy and device checks are in After-close checks.
 - **Decided (owner, 2026-10-16):** renders that show MetaHuman or Fab content are never committed to GitHub. They live in the space's private platform storage and stream to users. The plan's other decisions stand as recommended: new hosted Labs start with owner and test accounts, and AVPlayer comes first on Apple platforms. The 1.0 bridge decision is moot.
 
 **#11875 Labs L4: CAD Lab as the first kind on the Labs platform.** Lane 4, closed.
@@ -354,7 +354,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ### Chats, sessions, and moving agents (#11896 epic)
 
-**#11896 Epic: OpenAgents chats are normal, resumable chats.** Lane 1, code-complete.
+**#11896 Epic: OpenAgents chats are normal, resumable chats.** Lane 1, closed.
 - **Status:** all six children are closed. Saved transcripts (`cf2ff29e53`), cloud replies (`362d0f4f01`), the shared terminal harness and Loro publisher (`f3267187d5`, `0b84201f39`), the web session index (`f00ff8f121`, `59251e460b`), and linked home changes (`cc9f2bc14c`) are on `main` with their own checks recorded. The UI follow-up #11958 passed all 1,786 tests serially.
 - **After-close:** lane 0 runs the deployed round trip and device checks below.
 
