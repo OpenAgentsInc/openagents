@@ -69,6 +69,18 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<crate::app_rpc::Answer, Code> {
         Err(Code::Unsupported)
     }
+    fn enrolled(
+        &mut self,
+        _device: &str,
+        _grant: &str,
+        _epoch: u64,
+        _expires_at: u64,
+        _scope: &crate::enrolled::Scope,
+        _computer: &crate::enrolled::Call,
+    ) -> std::result::Result<crate::enrolled::Answer, Code> {
+        Err(Code::Unsupported)
+    }
+
     fn cloud(
         &mut self,
         _request: &str,
@@ -516,6 +528,7 @@ impl Book {
 
 /// The admitted signer of one request.
 struct Principal {
+    scope: Option<crate::enrolled::Scope>,
     key: String,
     rights: Rights,
     grant: Option<String>,
@@ -761,8 +774,9 @@ impl Host {
             return Ok(None);
         }
         let renewed = Grant {
+            scope: record.grant.scope.clone(),
             v: GRANT.into(),
-            requires: vec![],
+            requires: record.grant.requires.clone(),
             grant: random_id(),
             host: book.host.clone(),
             owner: book.owner.clone(),
@@ -945,7 +959,24 @@ impl Host {
                     if let Some(record) = p.grant.as_ref().and_then(|id| book.grants.get_mut(id)) {
                         record.seen_at = Some(now);
                     }
-                    if let Some(right) = request.op.required().filter(|r| !p.rights.contains(*r)) {
+                    let scope_admitted = match (&p.scope, &request.op) {
+                        (Some(scope), Operation::Enrolled { computer }) => {
+                            computer.account == scope.account
+                        }
+                        (Some(_), _) | (None, Operation::Enrolled { .. }) => false,
+                        (None, _) => true,
+                    };
+                    if !scope_admitted {
+                        (
+                            refused(Error::new(
+                                Code::Forbidden,
+                                "This request is outside the workspace permission.",
+                            )),
+                            false,
+                        )
+                    } else if let Some(right) =
+                        request.op.required().filter(|r| !p.rights.contains(*r))
+                    {
                         (refused(Error::missing(right)), true)
                     } else if let Some(Retained {
                         reply: Some(reply), ..
@@ -1096,6 +1127,7 @@ impl Host {
         let principal = Principal {
             key: owner.clone(),
             rights: Rights::all(),
+            scope: None,
             grant: None,
             expires_at: u64::MAX,
         };
@@ -1128,6 +1160,7 @@ impl Host {
             .values()
             .filter(|record| {
                 record.revoked_at.is_none()
+                    && record.grant.scope.is_none()
                     && record.grant.expires_at > now
                     && record.grant.epoch == book.epoch(&record.grant.device)
                     && record.grant.rights.contains(Right::Operate)
@@ -1141,6 +1174,34 @@ impl Host {
             .collect();
         dispatch.operate_snapshot(&book.owner, standing);
         Ok(match &request.op {
+            Operation::Enrolled { computer } => {
+                let scope = p.scope.as_ref().ok_or_else(|| {
+                    Error::new(Code::Forbidden, "Workspace permission is required.")
+                })?;
+                let grant = p.grant.as_deref().ok_or_else(|| {
+                    Error::new(Code::Forbidden, "Workspace permission is required.")
+                })?;
+                match dispatch.enrolled(
+                    &p.key,
+                    grant,
+                    request.epoch.unwrap_or(u64::MAX),
+                    p.expires_at,
+                    scope,
+                    computer,
+                ) {
+                    Ok(answer) if answer.validate().is_ok() && answer.answers(computer) => {
+                        Ok(Outcome::Enrolled { computer: answer })
+                    }
+                    Ok(_) => Err(Error::new(
+                        Code::Unavailable,
+                        "The computer reply could not be read.",
+                    )),
+                    Err(code) => Err(Error::new(
+                        code,
+                        "The computer could not complete this request.",
+                    )),
+                }
+            }
             Operation::Redeem { .. } => Err(Error::new(Code::Malformed, "redeem has no grant")),
             Operation::Approve { .. } | Operation::Deny { .. } => {
                 enroll::decide(book, secret, request, p, now)?
@@ -1948,6 +2009,7 @@ fn principal(
             return Ok(Principal {
                 key: signer.into(),
                 rights: Rights::all(),
+                scope: None,
                 grant: None,
                 expires_at: u64::MAX,
             });
@@ -1984,6 +2046,7 @@ fn principal(
     Ok(Principal {
         key: signer.into(),
         rights: record.grant.rights.clone(),
+        scope: record.grant.scope.clone(),
         grant: Some(id.clone()),
         expires_at: record.grant.expires_at,
     })
@@ -1993,6 +2056,7 @@ fn devices(book: &Book, now: u64) -> Vec<DeviceEntry> {
     book.grants
         .values()
         .map(|r| DeviceEntry {
+            scope: r.grant.scope.clone(),
             device: r.grant.device.clone(),
             grant: r.grant.grant.clone(),
             rights: r.grant.rights.clone(),
@@ -2061,6 +2125,23 @@ fn issue(
     now: u64,
     expires_at: u64,
 ) -> Result<Event> {
+    issue_scoped(
+        book, secret, device, relay, rights, origin, now, expires_at, None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn issue_scoped(
+    book: &mut Book,
+    secret: &SecretKey,
+    device: &str,
+    relay: &str,
+    rights: Rights,
+    origin: Origin,
+    now: u64,
+    expires_at: u64,
+    scope: Option<crate::enrolled::Scope>,
+) -> Result<Event> {
     book.prune(now);
     // Only a grant live until now hands on its delegations; a grant that
     // was already revoked keeps its invitations refused.
@@ -2078,13 +2159,17 @@ fn issue(
     make_room(book, device, now)?;
     let grant = Grant {
         v: GRANT.into(),
-        requires: vec![],
+        requires: scope
+            .as_ref()
+            .map(|_| vec![crate::enrolled::FEATURE.into()])
+            .unwrap_or_default(),
         grant: random_id(),
         host: book.host.clone(),
         owner: book.owner.clone(),
         device: device.into(),
         relay: relay.into(),
         rights,
+        scope,
         epoch: book.epoch(device),
         origin,
         issued_at: now,

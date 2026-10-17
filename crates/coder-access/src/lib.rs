@@ -15,6 +15,7 @@ pub mod cloud;
 pub mod computer;
 pub mod crew;
 pub mod day_plan;
+pub mod enrolled;
 pub mod environment;
 #[cfg(feature = "host")]
 pub mod host;

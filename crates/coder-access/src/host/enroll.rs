@@ -10,6 +10,8 @@ const MAX_ENROLLMENT_RECIPIENTS: usize = 16;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct InvitationRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scope: Option<crate::enrolled::Scope>,
     capability_digest: String,
     relay: String,
     issued_at: u64,
@@ -130,6 +132,30 @@ impl Host {
         store.save(&book)?;
         Ok(issued)
     }
+    /// Issue a workspace-scoped invitation selected by the local operator.
+    /// Scope and invitation commit together before the code can be displayed.
+    pub fn invite_scoped(
+        &self,
+        relay: &str,
+        rights: Rights,
+        scope: crate::enrolled::Scope,
+        now: u64,
+        grant_expires_at: u64,
+    ) -> Result<IssuedInvitation> {
+        scope.validate(&rights)?;
+        self.policy.validate(relay).map_err(Error::from)?;
+        let (mut store, _, mut book) = self.open()?;
+        let host = book.host.clone();
+        let issued =
+            create_invitation(&mut book, relay, rights, grant_expires_at, now, &host, None)?;
+        book.invitations
+            .get_mut(&issued.id)
+            .expect("new invitation")
+            .scope = Some(scope);
+        store.save(&book)?;
+        Ok(issued)
+    }
+
     /// The IDs of invitations a device could still redeem: not redeemed,
     /// not cancelled, and not expired at `now`.
     pub fn outstanding_invitations(&self, now: u64) -> Result<Vec<String>> {
@@ -354,7 +380,7 @@ impl Host {
                     id: id.clone(),
                     issuer: record.issuer.clone(),
                 };
-                match issue(
+                match issue_scoped(
                     book,
                     secret,
                     signer,
@@ -363,6 +389,7 @@ impl Host {
                     origin,
                     now,
                     record.grant_expires_at,
+                    record.scope.clone(),
                 ) {
                     Ok(authorization) => authorization,
                     Err(error) => return Ok(Step::Reply(refused(error), false)),
@@ -408,6 +435,7 @@ fn create_invitation(
     book.invitations.insert(
         invitation.id.clone(),
         InvitationRecord {
+            scope: None,
             capability_digest: digest_bytes(invitation.capability().as_bytes()),
             relay: relay.into(),
             issued_at: now,

@@ -14,6 +14,8 @@ use tokio::sync::mpsc;
 
 mod app_rpc;
 mod cloud;
+#[cfg(unix)]
+mod enrolled;
 mod flows;
 #[path = "../../../coder-control/src/tests/relay.rs"]
 mod relay;

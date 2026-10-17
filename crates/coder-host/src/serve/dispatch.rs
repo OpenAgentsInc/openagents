@@ -273,6 +273,25 @@ impl Dispatch for Dispatcher {
             .call(request, device, grant, app)
     }
 
+    fn enrolled(
+        &mut self,
+        device: &str,
+        _grant: &str,
+        epoch: u64,
+        _expires_at: u64,
+        scope: &coder_access::enrolled::Scope,
+        computer: &coder_access::enrolled::Call,
+    ) -> Result<coder_access::enrolled::Answer, Code> {
+        #[cfg(unix)]
+        {
+            self.shared.enrolled.call(device, epoch, scope, computer)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (device, epoch, scope, computer);
+            Err(Code::Unsupported)
+        }
+    }
     fn cloud(
         &mut self,
         request: &str,

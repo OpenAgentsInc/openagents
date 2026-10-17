@@ -95,6 +95,38 @@ policy.
 
 ## Host invitations
 
+### Workspace-scoped computer access
+
+An optional grant `scope` uses `openagents.workspace-scope.v1` in `requires`.
+It binds one account ID and up to 16 workspace roots to the grant's device.
+Each root has a label, an absolute host path, and a host-derived identity for
+that directory. Only a local host operator issues these invitations; they
+cannot contain `access_read`, `access_admin`, `world`, or `terminal` rights.
+Older readers refuse the required feature. An unscoped grant keeps its existing
+meaning and cannot stand in for a scoped grant at the enrolled-computer API.
+
+Scoped grants admit only `computer.enrolled`. Every call includes the bound
+account and needs its action's current `observe` or `operate` right. All other
+HOST operations and raw TERM requests refuse, including cached replies and
+host-wide summaries. Scoped grants cannot delegate. The scope survives renewal.
+Host-root replacement invalidates attachment rather than selecting a new root.
+
+`computer.enrolled` has `{account, action}`. Its actions are `attach` (workspace
+label and logical computer ID), `observe`, `detach`, `file` (a bounded computer
+file request), `start` (a stable command ID, shell text, relative directory,
+non-secret environment, timeout, and exact content hash), `read` (command ID,
+stdout/stderr cursors, and byte limit), and `stop`. Every action other than
+`attach` names the logical computer. A computer binds to the original grant,
+device, account, and root identity; another grant cannot take it over.
+
+Attach and detach change only logical access. Detach does not remove files,
+stop the host or machine, revoke other grants, or cancel commands. Stop cancels
+one owned command. Commands have enforced filesystem, time, memory, output, and
+concurrency bounds. New command identities are recorded before execution;
+uncertain commands are never replayed after restart. Output reattachment checks
+the current grant again. The initial implementation is Core-only, with offline
+commands and no credential injection, Suspend, Snapshot, Fork, or shape promises.
+
 A host invitation lets the host show a code that one device redeems. The
 host's operator, or a device with `access_admin`, creates it.
 

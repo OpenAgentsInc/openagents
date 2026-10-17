@@ -24,6 +24,15 @@ pub(crate) fn run(
 ) -> TerminalResult {
     let id = request.request().to_owned();
     let now = unix_time().unwrap_or(0);
+    if shared.authority.workspace_scoped(principal, now) {
+        return TerminalResult::from_outcome(
+            id,
+            Err(Refusal::new(
+                Reason::NotAdmitted,
+                "This permission does not include interactive terminals.",
+            )),
+        );
+    }
     match shared.authority.standing(principal, now) {
         Standing::Active(_) => {}
         Standing::Revoked => {

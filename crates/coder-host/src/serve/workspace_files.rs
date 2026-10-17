@@ -49,6 +49,14 @@ impl WorkspaceFiles {
         &self.root
     }
 
+    /// Identity of the opened directory, independent of its current pathname.
+    pub fn identity(&self) -> Result<String, Code> {
+        let metadata = self.directory.metadata().map_err(io_code)?;
+        Ok(coder_access::enrolled::hash(
+            &[metadata.dev().to_be_bytes(), metadata.ino().to_be_bytes()].concat(),
+        ))
+    }
+
     /// Answer a bounded file request within this root. Screen capture and
     /// window listing are outside a workspace and always refuse here.
     ///

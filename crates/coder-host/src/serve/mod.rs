@@ -38,6 +38,8 @@ pub(crate) mod activity;
 mod cj;
 mod direct;
 pub(crate) mod dispatch;
+#[cfg(unix)]
+mod enrolled;
 pub(crate) mod iroh;
 pub mod keys;
 pub(crate) mod nearby;
@@ -93,6 +95,8 @@ pub mod app_rpc;
 /// State every serving task shares.
 pub(crate) struct Shared {
     pub(crate) app_rpc: std::sync::Mutex<Option<Arc<dyn app_rpc::Handler>>>,
+    #[cfg(unix)]
+    enrolled: Arc<enrolled::Manager>,
     /// The shell-integration files terminals start with, kept while the
     /// host runs.
     pub(crate) _shell_hooks: Option<terminal_core::integration::Hooks>,
@@ -222,6 +226,10 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     let secret = authority.signing_key()?;
     let host_key = coder_reach::pubkey(&secret);
     let owner = authority.owner()?;
+    #[cfg(unix)]
+    let enrolled =
+        enrolled::Manager::new(&config.access, config.workspaces.clone(), authority.clone())
+            .map_err(|_| Error::Config("The computer command records cannot be opened.".into()))?;
 
     let mut terminals = coder_pty::host::Config::new();
     let shell_hooks = terminal_shell(&mut terminals, config.terminal_shell.as_deref());
@@ -277,6 +285,8 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     let sessions = crate::terminal_sessions::Book::beside(&config.access);
     let shared = Arc::new(Shared {
         app_rpc: std::sync::Mutex::new(None),
+        #[cfg(unix)]
+        enrolled,
         _shell_hooks: shell_hooks,
         local_handoffs: tokio::sync::Mutex::new(()),
         local_tasks: std::sync::Mutex::new(()),
@@ -597,6 +607,8 @@ impl Running {
     }
 
     async fn stop(self, keep_socket: bool) {
+        #[cfg(unix)]
+        self.shared.enrolled.shutdown().await;
         for task in self.tasks.iter().chain(&self.control) {
             task.abort();
         }

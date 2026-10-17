@@ -114,6 +114,8 @@ pub struct Grant {
     pub device: String,
     pub relay: String,
     pub rights: Rights,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<crate::enrolled::Scope>,
     pub epoch: u64,
     pub origin: Origin,
     pub issued_at: u64,
@@ -121,7 +123,14 @@ pub struct Grant {
 }
 impl Grant {
     pub fn validate(&self, policy: RelayPolicy) -> Result<()> {
-        schema(&self.v, GRANT, &self.requires)?;
+        match &self.scope {
+            Some(scope) if self.requires == [crate::enrolled::FEATURE] => {
+                schema(&self.v, GRANT, &[])?;
+                scope.validate(&self.rights)?;
+            }
+            Some(_) => return fail(Code::Unsupported, "Workspace access needs a newer host."),
+            None => schema(&self.v, GRANT, &self.requires)?,
+        }
         identity(&self.grant).map_err(Error::from)?;
         identity(&self.origin.id).map_err(Error::from)?;
         for key in [&self.host, &self.owner, &self.device, &self.origin.issuer] {
@@ -186,6 +195,7 @@ impl Access {
             || new.owner != old.owner
             || new.relay != old.relay
             || new.rights != old.rights
+            || new.scope != old.scope
             || new.epoch != old.epoch
             || new.origin != old.origin
             || new.issued_at < old.issued_at
@@ -555,6 +565,8 @@ pub struct TaskQueue {
 pub enum Operation {
     #[serde(rename = "app.rpc")]
     AppRpc { app: crate::app_rpc::Request },
+    #[serde(rename = "computer.enrolled")]
+    Enrolled { computer: crate::enrolled::Call },
     #[serde(rename = "robot.lab")]
     RobotLab { robot: robot_lab::remote::Request },
     #[serde(rename = "cloud.projects")]
@@ -1029,6 +1041,9 @@ impl Operation {
         if let Self::AppRpc { app } = self {
             return app.method.reads_only();
         }
+        if let Self::Enrolled { computer } = self {
+            return computer.reads_only();
+        }
         if let Self::RobotLab { robot } = self {
             return robot.reads_only();
         }
@@ -1195,6 +1210,9 @@ impl Operation {
     /// otherwise fill the reply store.
     #[must_use]
     pub fn retains_reply(&self) -> bool {
+        if matches!(self, Self::Enrolled { .. }) {
+            return false;
+        }
         !self.reads_only()
             && !matches!(
                 self,
@@ -1232,6 +1250,7 @@ impl Operation {
     pub fn name(&self) -> &'static str {
         match self {
             Self::AppRpc { .. } => "app.rpc",
+            Self::Enrolled { .. } => "computer.enrolled",
             Self::CloudProjects { .. } => "cloud.projects",
             Self::ProjectList { .. } => "project.list",
             Self::ProjectRead { .. } => "project.read",
@@ -1338,6 +1357,7 @@ impl Operation {
     pub fn required(&self) -> Option<Right> {
         match self {
             Self::AppRpc { app } => Some(app.method.right()),
+            Self::Enrolled { computer } => Some(computer.required()),
             Self::RobotLab { robot } => Some(if robot.reads_only() {
                 Right::Observe
             } else {
@@ -1446,6 +1466,7 @@ impl Operation {
     pub fn validate(&self) -> Result<()> {
         match self {
             Self::AppRpc { app } => app.validate()?,
+            Self::Enrolled { computer } => computer.validate()?,
             Self::CloudProjects { workspace } => crate::cloud::alias(workspace)?,
             Self::ProjectList { workspace } => crate::cloud::alias(workspace)?,
             Self::ProjectRead { query } => query.validate()?,
@@ -1847,6 +1868,8 @@ pub enum DeviceState {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeviceEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<crate::enrolled::Scope>,
     pub device: String,
     pub grant: String,
     pub rights: Rights,
@@ -1875,6 +1898,9 @@ pub struct Receipt {
 pub enum Outcome {
     AppRpc {
         app: crate::app_rpc::Answer,
+    },
+    Enrolled {
+        computer: crate::enrolled::Answer,
     },
     RobotLab {
         robot: robot_lab::remote::Answer,
@@ -2105,6 +2131,7 @@ impl Outcome {
         }
         match self {
             Self::AppRpc { app } => app.validate()?,
+            Self::Enrolled { computer } => computer.validate()?,
             Self::CloudProjects { projects } => projects.validate()?,
             Self::ProjectList { projects } => projects.validate()?,
             Self::ProjectRead { project } => project.validate()?,
@@ -2318,6 +2345,9 @@ impl Outcome {
     pub fn answers(&self, op: &Operation) -> bool {
         match (op, self) {
             (Operation::AppRpc { app: request }, Self::AppRpc { app }) => app.answers(request),
+            (Operation::Enrolled { computer }, Self::Enrolled { computer: answer }) => {
+                answer.answers(computer)
+            }
             (Operation::CloudProjects { workspace }, Self::CloudProjects { projects }) => {
                 *workspace == projects.workspace
             }

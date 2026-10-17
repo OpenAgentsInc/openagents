@@ -284,7 +284,27 @@ impl Authority {
 
     /// Whether a device holds a right now.
     pub fn holds(&self, device: &str, right: Right, now: u64) -> bool {
-        matches!(self.standing(device, now), Standing::Active(rights) if rights.contains(right))
+        self.devices().is_some_and(|devices| {
+            devices.iter().any(|entry| {
+                entry.device == device
+                    && entry.scope.is_none()
+                    && entry.state == DeviceState::Active
+                    && entry.expires_at > now
+                    && entry.rights.contains(right)
+            })
+        })
+    }
+
+    /// Whether this device's current access is confined to workspace operations.
+    pub fn workspace_scoped(&self, device: &str, now: u64) -> bool {
+        self.devices().is_some_and(|devices| {
+            devices.iter().any(|entry| {
+                entry.device == device
+                    && entry.scope.is_some()
+                    && entry.state == DeviceState::Active
+                    && entry.expires_at > now
+            })
+        })
     }
 
     /// Every device with a current grant, and with `right` when one is named.
@@ -294,7 +314,7 @@ impl Authority {
             .unwrap_or_default()
             .into_iter()
             .filter(|e| e.state == DeviceState::Active && e.expires_at > now)
-            .filter(|e| right.is_none_or(|r| e.rights.contains(r)))
+            .filter(|e| right.is_none_or(|r| e.scope.is_none() && e.rights.contains(r)))
             .map(|e| e.device)
             .collect();
         devices.sort();
