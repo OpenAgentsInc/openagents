@@ -207,7 +207,7 @@
     "owner_decisions": "../../NEEDS_OWNER.md#sdk-publication-and-commercial-activation"
   },
   "cleanup": {
-    "observed_at": "2026-10-17T06:00:11.012753+00:00",
+    "observed_at": "2026-10-17T08:05:21.720762+00:00",
     "project": "openagentsgemini",
     "scope": "Only disposable resources created by session 01a14134 for #11800 and #11813; maintained SPACE infrastructure is excluded.",
     "instances": 0,
@@ -217,29 +217,9 @@
     "ca_pools": 0,
     "firewalls": 0,
     "routers": 0,
-    "pending_network_cleanup": [
-      {
-        "network": "oa-sdk-build-11800",
-        "reservations": [
-          {
-            "addressType": "INTERNAL",
-            "name": "serverless-ipv4-cloudrun-1792204802249859935",
-            "purpose": "SERVERLESS",
-            "subnetwork": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/regions/us-central1/subnetworks/oa-sdk-build-11800"
-          }
-        ]
-      }
-    ],
-    "remaining_subnets": [
-      {
-        "name": "oa-sdk-build-11800"
-      }
-    ],
-    "remaining_networks": [
-      {
-        "name": "oa-sdk-build-11800"
-      }
-    ],
+    "pending_network_cleanup": [],
+    "remaining_subnets": [],
+    "remaining_networks": [],
     "credential_infrastructure_deletion": {
       "removed": [
         "oa-cred-native-11813",
@@ -269,7 +249,9 @@
     "builder_infrastructure_deletion": {
       "removed": [
         "builder",
-        "oa-sdk-build-11800-iap-firewall"
+        "oa-sdk-build-11800-iap-firewall",
+        "oa-sdk-build-11800-subnet",
+        "oa-sdk-build-11800-network"
       ],
       "inventory": {
         "vm": "oa-sdk-build-11800",
@@ -298,24 +280,33 @@
         ]
       },
       "observed_at": "2026-10-17T05:56:56.622775+00:00",
-      "pending_serverless_reservations": [
-        "serverless-ipv4-cloudrun-1792204802249859935"
-      ],
-      "complete": false
+      "pending_serverless_reservations": [],
+      "complete": true
     },
-    "remaining_action": {
-      "owner": "Lane 0 After-close checks",
-      "subnet": "oa-sdk-build-11800",
+    "remaining_action": null,
+    "cloud_run_jobs": 0,
+    "lane0_network_cleanup": {
+      "schema": "openagents.computers.builder-cleanup.v1",
+      "checked_at": "2026-10-17T08:05:21.720762+00:00",
       "network": "oa-sdk-build-11800",
+      "subnet": "oa-sdk-build-11800",
       "region": "us-central1",
-      "reservation": "serverless-ipv4-cloudrun-1792204802249859935",
-      "condition": "Wait until compute addresses list for this exact subnetwork returns no reservations, then delete the subnet and VPC. Do not force deletion of a Google-managed in-use reservation.",
-      "commands": [
-        "gcloud compute addresses list --project=openagentsgemini --filter=subnetwork:oa-sdk-build-11800 --format=json",
-        "gcloud compute networks subnets delete oa-sdk-build-11800 --project=openagentsgemini --region=us-central1",
-        "gcloud compute networks delete oa-sdk-build-11800 --project=openagentsgemini"
-      ]
-    },
-    "cloud_run_jobs": 0
+      "reservations_before": [],
+      "scoped_resources": {
+        "instances": 0,
+        "disks": 0,
+        "firewalls": 0,
+        "routers": 0,
+        "cloud_run_service_attachments": 0
+      },
+      "connector_inventory": "Automation cannot list VPC connectors; ordinary deletion succeeded without force. Google refuses deletion while a subnet or VPC is in use.",
+      "removed": [
+        "oa-sdk-build-11800 subnet",
+        "oa-sdk-build-11800 VPC"
+      ],
+      "subnet_not_found": true,
+      "network_not_found": true,
+      "maintained_space_infrastructure_touched": false
+    }
   }
 }

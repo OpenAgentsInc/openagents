@@ -28,5 +28,30 @@
     "synthetic_chat_cleanup": "passed"
   },
   "test_account": "dedicated production test account; no owner data",
-  "publication": "not authorized or performed"
+  "publication": "not authorized or performed",
+  "lane0_session_summary_api_20261017": {
+    "schema": "openagents.sessions.summary-live.v1",
+    "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+    "checked_at": "2026-10-17T08:06:29.103111+00:00",
+    "api": "https://api.openagents.com",
+    "accounts": [
+      "acct_83d16a35955ef908",
+      "acct_37ff290acc17e7b3"
+    ],
+    "checks": [
+      "summary discoverable without a transcript",
+      "transcript upload refused before opt-in",
+      "second account cannot list, read, or enable the transcript",
+      "website summary omits transcript",
+      "opted-in transcript returned by API and website",
+      "turning transcript off removes the readable copy"
+    ],
+    "cleanup": [
+      "synthetic computer rows and transcript removed"
+    ],
+    "failure": null,
+    "test_header": true,
+    "owner_account": false,
+    "native_publisher_exercised": false
+  }
 }

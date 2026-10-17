@@ -112,5 +112,20 @@
     "anonymous_device_grants": "Two unapproved grants from the auth probes; expire after 600 seconds. No app session was issued.",
     "cloud_builds": "One successful image build; two superseded builds cancelled. No running build worker or test infrastructure remains.",
     "scratch_source_export": "Removed after successful build; build recipe, immutable source commit, scrubbed probes and logs retained in agent scratch."
+  },
+  "session_controls_followup_11957": {
+    "source_commit": "84014b7396",
+    "deployed_source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+    "checked_at": "2026-10-17T08:09:33.118759+00:00",
+    "reference_regressions": 10,
+    "systemone_consumer_tests": 4,
+    "local_app_operations": 162,
+    "deployed_operations": {
+      "https://staging.openagents.com": 220,
+      "https://api.openagents.com": 220
+    },
+    "source_inventory": "regenerated and checked",
+    "resources_created": 0,
+    "owner_data_used": false
   }
 }
