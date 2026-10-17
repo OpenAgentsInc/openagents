@@ -93,7 +93,15 @@ def main():
     parser.add_argument('--worker', required=True)
     parser.add_argument('--evidence', type=Path, required=True)
     parser.add_argument('--commit', required=True)
+    parser.add_argument('--sizes', nargs='+', choices=['medium', 'large'],
+                        default=['medium', 'large'])
+    parser.add_argument('--cycles', type=int, default=2)
+    parser.add_argument('--revisit-seconds', type=int, default=30)
+    parser.add_argument('--lease-seconds', type=int, default=60)
+    parser.add_argument('--stopped-observation-seconds', type=int, default=90)
     args = parser.parse_args()
+    assert args.cycles > 0 and args.revisit_seconds > 0 and args.lease_seconds >= 3
+    assert args.stopped_observation_seconds > args.lease_seconds + args.revisit_seconds
     assert args.binary.is_file() and not args.evidence.exists()
     assert args.worker.startswith('space-local-worker') and all(
         char.isalnum() or char == '-' for char in args.worker)
@@ -105,6 +113,8 @@ def main():
               'binary_sha256': hashlib.sha256(args.binary.read_bytes()).hexdigest(),
               'upstream_commit': 'de87b436c35dac056564bdd5b2a113c9046e189b',
               'buffer_bytes': 1024**3, 'samples': [], 'cleanup_errors': [],
+              'revisit_seconds': args.revisit_seconds, 'lease_seconds': args.lease_seconds,
+              'stopped_observation_seconds': args.stopped_observation_seconds,
               'conditions': 'Isolated loopback Computers API, one guest at a time; no model or customer data'}
     token = secrets.token_urlsafe(32)
     container = process = log = None
@@ -136,6 +146,8 @@ def main():
         env = dict(os.environ, OA_COMPUTERS_REGISTRY_FILE=str(registry), OA_COMPUTERS_TOKEN=token,
             OA_COMPUTERS_DATABASE_URL=f'host=127.0.0.1 port={dbport} user=postgres',
             OA_COMPUTERS_LISTEN=f'127.0.0.1:{port}', OA_COMPUTERS_POLL_MS='50',
+            OA_COMPUTERS_REVISIT_SECONDS=str(args.revisit_seconds),
+            OA_COMPUTERS_LEASE_SECONDS=str(args.lease_seconds),
             OA_COMPUTERS_DRIVER_POLL_MS='50')
         base = f'http://127.0.0.1:{port}'
         log = args.evidence.with_suffix('.service.log').open('wb')
@@ -153,9 +165,19 @@ def main():
             raise RuntimeError('The isolated Computers service did not become ready')
 
         process = start_service()
+
+        def next_attempt(computer):
+            assert all(c.isalnum() or c in '_-' for c in computer)
+            query = ("SELECT extract(epoch from next_attempt_at) FROM computers.computers "
+                     f"WHERE id='{computer}'")
+            return float(subprocess.check_output(['docker', 'exec', container, 'psql',
+                '-U', 'postgres', '-Atc', query], text=True).strip())
+
         report['capabilities'] = call(base, token, '/v1/capabilities')[1]
         save(args.evidence, report)
         for size, memory_mib in [('medium', 4096), ('large', 8192)]:
+            if size not in args.sizes:
+                continue
             row = {'size': size, 'memory_mib': memory_mib, 'cycles': [], 'passed': False}
             report['samples'].append(row)
             key = 'memory-11812-' + secrets.token_hex(16)
@@ -209,15 +231,18 @@ print(s.recv(4096).decode())
                 row['stopped_after_turn'] = True
                 assert private_storage(args.worker, row['resource'])
                 row['private_storage_observed_while_stopped'] = True
-                for cycle in range(2):
+                for cycle in range(args.cycles):
                     # Rebuild the API/worker process against its same durable store.
                     # Reconciliation must leave the stopped policy effective.
+                    attempt_before = next_attempt(row['computer'])
                     process.kill()
                     process.wait(timeout=15)
                     process = start_service()
-                    time.sleep(15)
+                    time.sleep(args.stopped_observation_seconds)
                     stopped = call(base, token, path)[1]
                     assert stopped['state'] == 'stopped' and stopped['resource'] == row['resource']
+                    attempt_after = next_attempt(row['computer'])
+                    assert attempt_after > attempt_before, 'No reconciliation visit occurred after restart'
                     started = time.perf_counter()
                     assert call(base, token, path + '/wake', 'POST', {})[0] == 202
                     awake = wait(base, token, path, lambda item: item.get('state') == 'awake')
@@ -229,6 +254,9 @@ print(s.recv(4096).decode())
                         'same_computer_process_memory': True, 'after': after,
                         'guest_clock_skew_ms': clock_skew_ms,
                         'api_process_restarted': True, 'stopped_policy_survived_restart': True})
+                    row['cycles'][-1]['reconciled_after_restart'] = True
+                    row['cycles'][-1]['next_attempt_before'] = attempt_before
+                    row['cycles'][-1]['next_attempt_after'] = attempt_after
                     wait(base, token, path, lambda item: item.get('state') == 'stopped')
                     save(args.evidence, report)
                 row['passed'] = True
@@ -263,7 +291,8 @@ print(s.recv(4096).decode())
                            stdout=subprocess.DEVNULL)
         save(args.evidence, report)
     assert report.get('passed'), 'Memory qualification did not complete'
-    print(json.dumps({'passed': True, 'memory_sizes_mib': [4096, 8192], 'bytes': 1024**3}))
+    print(json.dumps({'passed': True,
+        'memory_sizes_mib': [row['memory_mib'] for row in report['samples']], 'bytes': 1024**3}))
 
 
 if __name__ == '__main__':
