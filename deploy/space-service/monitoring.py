@@ -3,22 +3,26 @@
 import http.client
 import json
 import subprocess
-from broker import cloud,PROJECT,PREFIX
+from urllib.parse import quote
+from broker import cloud,PROJECT,PREFIX,MARKER
 
 BASE='/v3/projects/'+PROJECT
 METRICS='custom.googleapis.com/openagents/space/'
 LABELS={'openagents_issue':'11814','openagents_service':'space'}
 
 
-def api(method,path,body=None):
+def api(method,path,body=None,missing=False):
     token=subprocess.check_output(['gcloud','auth','print-access-token'],stderr=subprocess.DEVNULL).decode().strip()
     connection=http.client.HTTPSConnection('monitoring.googleapis.com',timeout=20)
     try:
         connection.request(method,path,body=json.dumps(body) if body is not None else None,
             headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
         response=connection.getresponse();raw=response.read(1048577)
+        if missing and response.status==404: return None
         if len(raw)>1048576 or not 200<=response.status<300:
-            raise RuntimeError(f'Monitoring configuration returned HTTP {response.status}.')
+            # These requests contain public metric and policy definitions only.
+            message=json.loads(raw).get('error',{}).get('message','')[:512] if len(raw)<=1048576 else ''
+            raise RuntimeError(f'Monitoring configuration returned HTTP {response.status}: {message}')
         return json.loads(raw) if raw else {}
     finally: connection.close()
 
@@ -26,12 +30,24 @@ def api(method,path,body=None):
 def configure():
     cloud('projects','add-iam-policy-binding',PROJECT,'--member=serviceAccount:'+PREFIX+'-control@'+PROJECT+'.iam.gserviceaccount.com',
         '--role=roles/monitoring.metricWriter','--condition=None')
+    for metric in ('nodes_ready','services_ready_ratio','collector_errors','oldest_operation_seconds',
+        'oldest_transition_seconds','worker_disk_free_bytes','sandbox_count'):
+        path=BASE+'/metricDescriptors/'+METRICS+metric
+        descriptor=api('GET',path,missing=True)
+        if descriptor is None:
+            descriptor=api('POST',BASE+'/metricDescriptors',{'type':METRICS+metric,'description':MARKER,
+                'displayName':'SPACE '+metric,'metricKind':'GAUGE','valueType':'DOUBLE',
+                'unit':'s' if metric.endswith('_seconds') else 'By' if metric.endswith('_bytes') else '1',
+                'labels':[{'key':'deployment','valueType':'STRING','description':'Owned deployment name.'}]})
+        # The owned collector can create these descriptors on first publication.
+        if (descriptor.get('description') not in (None,'',MARKER) or descriptor.get('metricKind')!='GAUGE'
+            or descriptor.get('valueType')!='DOUBLE' or [label['key'] for label in descriptor.get('labels',[])]!=['deployment']):
+            raise RuntimeError('A metric with this name has different ownership or type.')
     existing=[];path=BASE+'/alertPolicies?pageSize=100'
     for _ in range(20):
         page=api('GET',path);existing.extend(page.get('alertPolicies',[]))
         token=page.get('nextPageToken')
         if not token: break
-        from urllib.parse import quote
         path=BASE+'/alertPolicies?pageSize=100&pageToken='+quote(token,safe='')
     else: raise RuntimeError('The alert inventory exceeded its page bound.')
     specs=[('nodes_ready','COMPARISON_LT',2,120),('services_ready_ratio','COMPARISON_LT',1,120),
