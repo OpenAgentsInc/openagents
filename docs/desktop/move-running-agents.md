@@ -1,6 +1,6 @@
 # Move running agents without stopping them
 
-Status: spec, 2026-10-17. Owner request: updating or restarting the desktop app
+Status: built on code, 2026-10-17 (see [As built](#as-built)). Owner request: updating or restarting the desktop app
 must not kill every running agent. Running agents can be moved, all at once, to
 the background on this computer or to a cloud computer through the Computers SDK.
 Delivery: [#11930](https://github.com/OpenAgentsInc/openagents/issues/11930)–[#11933](https://github.com/OpenAgentsInc/openagents/issues/11933).
@@ -130,3 +130,30 @@ and do it on request.
 
 Until the keepers ship, restarting still interrupts agents, but the existing
 auto-resume picks each one back up from its last message.
+
+## As built
+
+#11930–#11933 are on `main`. Where the build differs from the design above:
+
+- **Where the agent runs.** The move starts the harness on the cloud computer
+  as one Computers API command (Claude Code `--resume`, `codex exec resume`, or
+  the seeded prompt), not through a headless engine there. The chat's linked
+  continuation is an account chat (home `Cloud`) made from the chat's seed.
+  It doesn't show the cloud agent's output yet.
+- **Logins.** The engine reads which registered credential source and rule
+  each agent uses from `<data>/moves/logins.json` (`claude_code`, `codex`,
+  `git`, each `{ "source": "<uuid>", "rule": "<rule>" }`). The API has no
+  list of sources. Without an entry the chat stays here and says why.
+- **Waiting chats.** A chat waiting for an answer has its turn stopped before
+  it moves, because a pending question can't be continued elsewhere. It
+  resumes with "Continue where you left off", and the agent asks again.
+- **Codex.** It resumes with `--dangerously-bypass-approvals-and-sandbox`, as
+  the local driver runs it with full access and the cloud computer is the
+  sandbox. Claude Code resumes in its default permission mode.
+- **Bring back.** The cloud computer's work, committed or not, comes back as
+  `openagents/cloud-<chat>`. The chat continues in a new local chat linked to
+  the account part, with a first message that names that branch.
+- **UI.** Move all is in the macOS menu-bar item, and one chat moves from the
+  chat menu. The Move sheet shows the destination, the estimated paid time,
+  each chat's state and reason, Try again, Bring back with stop, delete, or
+  keep, and the approval for anything an agent asked for.
