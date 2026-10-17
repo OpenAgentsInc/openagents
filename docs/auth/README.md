@@ -1,108 +1,179 @@
 # OpenAgents authentication
 
-Status: implementation and specification, updated 2026-10-15. GitHub website
-sign-in, device/app sessions, app OAuth, and sign-in keys are built; later
-provider/linking/renewal phases remain design where marked. GitHub sign-in is
-open as described in [GitHub sign-in](github.md#invite-only-sign-in).
+Status: implementation and specification, updated 2026-10-17. Your Nostr key
+is your account: an app makes 12 words on first launch, derives its key from
+them, and signs in with that key. GitHub, Google, and other providers are
+connections, not ways to sign in from the apps. Much of this is still
+planned: the table says which parts are built, and each section below says
+the same, with its issue. The plan and its evidence are in the
+[Nostr-only identity audit](../audits/2026-10-17-nostr-only-identity.md);
+the tracking epic is
+[#12006](https://github.com/OpenAgentsInc/openagents/issues/12006).
 
-Coder Desktop's first SDK milestone is sign-in followed by existing chat lists
-and complete saved-history reads, tracked in
-[#11824](https://github.com/OpenAgentsInc/openagents/issues/11824) and the
-[SDK delivery plan](../sdk/delivery-plan.md#first-desktop-delivery-authentication-and-history).
-Reuse the built device flow through the public Rust SDK; the proposed
-`/auth/app` loopback flow below is not a prerequisite. App API calls use
-`https://api.openagents.com/v1`; browser approval stays on `openagents.com`.
-The SDK must keep those deployment addresses explicit and must not expose the
-account service's internal session/approval endpoints. Desktop credentials
-belong to that app's own OS storage, not the CLI's saved account file.
+| Part | State |
+| --- | --- |
+| NIP-06 key from 12 or 24 words (`crates/nostr/src/nip06.rs`) | Built ([#11992](https://github.com/OpenAgentsInc/openagents/issues/11992)) |
+| Phone first launch: a short tutorial, no sign-in screen | Built ([#11996](https://github.com/OpenAgentsInc/openagents/issues/11996)); backup and restore rows wait for #11995 |
+| Sign in with a Nostr key (`/v1/sessions/nostr`) | Planned ([#11993](https://github.com/OpenAgentsInc/openagents/issues/11993)) |
+| Link and unlink keys (`/v1/account/keys`) | Planned ([#11993](https://github.com/OpenAgentsInc/openagents/issues/11993)) |
+| The app's identity from 12 words, silent sign-in | Planned: shared Rust [#11995](https://github.com/OpenAgentsInc/openagents/issues/11995), desktop [#11997](https://github.com/OpenAgentsInc/openagents/issues/11997) |
+| Link a computer by scanning its QR code | Planned: desktop [#11998](https://github.com/OpenAgentsInc/openagents/issues/11998), phone [#12000](https://github.com/OpenAgentsInc/openagents/issues/12000); wire in [NIP-HOST](../../nips/openagents/NIP-HOST.md#account-key-link-by-qr-planned) |
+| Website sign-in by phone scan and NIP-07 | Planned ([#12001](https://github.com/OpenAgentsInc/openagents/issues/12001)) |
+| Limits for key-only accounts | Planned ([#11994](https://github.com/OpenAgentsInc/openagents/issues/11994)) |
+| Account deletion | Planned ([#12002](https://github.com/OpenAgentsInc/openagents/issues/12002)) |
+| Admin and allowlists by account, not GitHub ID or email | Planned ([#12003](https://github.com/OpenAgentsInc/openagents/issues/12003)) |
+| Remove Sign in with Apple; GitHub becomes a connection | Planned ([#12005](https://github.com/OpenAgentsInc/openagents/issues/12005)); the phone's Apple button is already gone (#11996) |
+| GitHub website sign-in, device-code sign-in, app OAuth, sign-in keys | Built; they keep working, and the device-code flow stays for Coder 1.0.0 |
+
+App API calls use `https://api.openagents.com/v1`; browser approval stays on
+`openagents.com`. The SDK keeps those deployment addresses explicit and does
+not expose the account service's internal session and approval endpoints. An
+app keeps its credentials in its own OS storage, not in the CLI's saved
+account file.
 
 OpenAgents owns its sign-in. There is no third-party auth service in the path:
 the account service (the `tenancy` stores behind the gateway's account
 routes) is the only thing that decides who an account is, and the web server
 is one of its clients. Owner direction (2026-10-08): own it ourselves, in
-Rust; GitHub first, collecting everything GitHub will tell us; one button on
-the website signs you in; people can stay Nostr-only and link an account
-later; passkeys later.
+Rust. Owner direction (2026-10-17): open the app and use it right away, with
+no sign-in; the 12 words are the one backup, for the account and the wallet;
+GitHub and other providers are connections only; computers pair by QR code.
 
 Related: [GitHub sign-in details](github.md), the account store
 (`crates/tenancy/src/accounts.rs`), the session store
 (`crates/tenancy/src/sessions.rs`), the account HTTP routes
 (`crates/gateway/src/accounts.rs`), the web Cloud session
-(`crates/openagents-web/src/cloud/session.rs`), and the auth crate
-(`crates/oa-auth`).
+(`crates/openagents-web/src/cloud/session.rs`), the auth crate
+(`crates/oa-auth`), and NIP-06 (`crates/nostr/src/nip06.rs`,
+[the NIP](../../nips/official/06.md)).
 
 ## Goals
 
-1. One click from any page: "Log in" or "Sign up" in the top right, then
-   "Continue with GitHub", then you are signed in where you were.
-2. Sign up is just the first sign-in. No separate registration form.
-3. One account, many ways in. GitHub today; Google, email codes, passkeys,
-   Nostr keys, and enterprise SSO attach to the same account later.
-4. Nostr-only accounts are first-class. Nobody is forced to give us a GitHub,
-   Google, or email identity.
+1. No sign-in. Opening an app for the first time makes an account in the
+   background, and the person starts using it at once.
+2. One backup. The 12 words restore the account's key and the wallet. The
+   nsec is an optional extra for people who use the key in other Nostr apps.
+3. One account, many keys. Every phone and computer has its own key, linked
+   to the same account, so losing a device means removing one key, not
+   replacing the account.
+4. Providers are connections. GitHub, Google, Gmail, and Drive attach to the
+   account for what they do (repositories, mail, files); none is needed to
+   get in.
 5. The account service is the authority. The web server never asserts who
-   someone is; it forwards proof (a GitHub authorization code, a signed Nostr
-   event, a key) and receives a session.
+   someone is; it forwards proof (a signed Nostr event, a GitHub
+   authorization code, a key) and receives a session.
 6. Every secret is stored as a digest or encrypted at rest, is never logged,
    and never appears in a URL we control.
-7. Local testing needs no real third party: a fake GitHub runs in-process for
-   tests and the local fixture. Real GitHub works locally too.
+7. Released clients keep working. Coder 1.0.0's device-code flow, `sess_`
+   and `oa_sk_` tokens, routes, and error codes are unchanged
+   ([Coder 1.0 freeze](../coder/1.0-freeze.md)); every change here is
+   additive.
+8. Local testing needs no real third party: a fake GitHub runs in-process for
+   tests and the local fixture, and tests sign with throwaway keys.
 
-Non-goals for now: passwords (never), SMS, social sign-in beyond GitHub and
-Google, and federated login *into other sites* with an OpenAgents account.
-Apps acting for a person on OpenAgents itself (MCP clients) do sign in with
-OAuth: see "Apps signing in with OAuth" below.
+Non-goals for now: passwords (never), SMS, email codes, and federated login
+*into other sites* with an OpenAgents account. Apps acting for a person on
+OpenAgents itself (MCP clients) do sign in with OAuth: see "Apps signing in
+with OAuth" below.
 
 ## Identity model
 
-**Account.** `acct_<hex>`, stable, created on first sign-in. It has a display
-label (the GitHub name, else the login), a creation time, and a set of
-*principals*: the credentials that resolve to it.
+### The 12 words and the identity key
+
+On first launch an app makes a 12-word BIP-39 phrase (16 bytes of entropy).
+From it:
+
+- The **identity key** is NIP-06: the words become a 64-byte BIP-39 seed
+  with an empty passphrase, and BIP-32 derives the secp256k1 key at
+  `m/44'/1237'/0'/0/0`. Its npub is the person's ID wherever a person sees
+  one. Built: `nostr::nip06::Mnemonic` parses or makes the words (12 or 24,
+  English list, checksum checked) and `Mnemonic::identity` derives the key;
+  the tests include the NIP-06 and BIP-32 vectors (`nip06_vectors`,
+  `bip32_vector_one` in `crates/nostr/src/nip06.rs`).
+- The **wallet** opens from the same words: `crates/spark-wallet` hands them
+  to Breez Spark (`Seed::Mnemonic`, no passphrase), and Spark derives its own
+  keys on its own paths. The Nostr key and the wallet keys are different keys
+  from one backup.
+
+Where a phone already holds a wallet seed (Keychain service
+`com.openagents.app.spark`, account `seed-v1`, from the earlier app), those
+words are the identity's words too; the app reuses them and never makes new
+ones in their place. The rules are in
+[INVARIANTS.md](../../INVARIANTS.md#device-identity-key) and the
+[Phone wallet rows](../../INVARIANTS.md#phone-wallet). Planned in #11995 and
+#11999.
+
+Each device's pairing and push keys stay random and separate from the words,
+so removing a lost device never means changing the words.
+
+**Back up and restore** (planned, #11995 and #11996). Settings > **Back up
+your account** shows the 12 words after Face ID, with **Reveal nsec** as an
+optional extra. **Restore from 12 words** derives the same key on a new
+device, signs in, and brings back the account and the wallet. The app asks
+for the backup once the account holds something worth keeping, not at first
+launch.
+
+### Accounts and principals
+
+**Account.** `acct_<hex>`, stable, created on first sign-in. People never see
+it. It has a display label, a creation time, and a set of *principals*: the
+credentials that resolve to it. Every store, cache, and room keys on the
+account ID, so adding or removing a key moves no data.
 
 **Principal (linked credential).** A typed, unique reference. One principal
-names exactly one account, enforced by the store's validation.
+names exactly one account, enforced by the store's validation
+(`valid_principal` in `crates/tenancy/src/accounts.rs`).
 
-| Kind | Reference | Proof | Phase |
-| --- | --- | --- | --- |
-| API key | `key:<16 hex>` | `oak_` bearer key | exists |
-| Nostr key | `nostr:<64 hex pubkey>` | signed event (NIP-98 style challenge) | exists in the store; web sign-in P2 |
-| Enterprise SSO | `sso:<64 hex>` | OIDC token (REV-50) | exists |
-| GitHub | `github:<numeric user id>` | OAuth code + PKCE | **P1** |
-| Apple | `apple:<Apple sub>` | Sign in with Apple identity token (RS256, Apple's keys) + nonce | built for the phone (#11980) |
-| Google | `google:<sub>` | OIDC code + PKCE | P2 |
-| Email | `email:<sha256 of normalized address>` | one-time code or link | P2 |
-| Passkey | `passkey:<credential id digest>` | WebAuthn assertion | P3 |
+| Kind | Reference | Proof | Role | State |
+| --- | --- | --- | --- | --- |
+| Nostr key | `nostr:<64 hex pubkey>` | NIP-98 event over a server challenge | How the apps sign in; one per device, several per account | The store accepts it; the route is planned (#11993) |
+| API key | `key:<16 hex>` | `oak_` bearer key | Scripts and the decision API | Built |
+| Enterprise SSO | `sso:<64 hex>` | OIDC token (REV-50) | Organizations | Built |
+| GitHub | `github:<numeric user id>` | OAuth code + PKCE | A connection (repositories, issues, pull requests); still signs in existing accounts on the website | Built; becomes connection-only for new apps (#12005) |
+| Apple | `apple:<Apple sub>` | Sign in with Apple identity token + nonce | Retired from the apps | The route keeps answering for build 1012 (#12005) |
+| Passkey | `passkey:<credential id digest>` | WebAuthn assertion | Later | Not built |
 
 The GitHub reference is the numeric user id, never the login: logins can be
 renamed and reused, ids cannot.
 
-**Identity record.** Beside the principal, the store keeps what the provider
-told us (for GitHub, see [github.md](github.md#what-we-store)), refreshed on
-every sign-in. Principals live on the account; identity records live in the
-account store's `identities` book keyed by provider id, and validation
-requires the two to agree.
+**Connections.** Gmail, Drive, Calendar, and GitHub's repository access are
+connections on the account (`crates/openagents-web/src/cloud/connections.rs`
+and [GitHub repository access](github.md#repository-access)). They keep their
+own tokens, encrypted at rest, and are never a way in. Their email
+allowlists move to account IDs in
+[#12003](https://github.com/OpenAgentsInc/openagents/issues/12003).
+
+**Identity record.** Beside a provider principal, the store keeps what the
+provider told us (for GitHub, see [github.md](github.md#what-we-store)),
+refreshed on every sign-in or link. Principals live on the account; identity
+records live in the account store's `identities` book keyed by provider id,
+and validation requires the two to agree. A Nostr key has no identity record.
 
 **Workspace.** Each new account gets a personal workspace bound to the
 deployment's sign-up tenant, exactly as `POST /v1/accounts` does today.
 Cloud, billing, keys, and bring-your-own credentials hang off workspaces and
-accounts, not off the GitHub identity, so unlinking GitHub never strands work.
+accounts, not off any key or provider identity, so removing a key or a
+connection never strands work.
 
 ### Linking
 
 - Linking adds a principal to the signed-in account. It always requires a
-  fresh proof of the new credential (a new GitHub consent, a new Nostr
-  signature) *and* an active session for the account.
-- One identity per provider per account (one GitHub, one Google). Several
-  Nostr keys and passkeys may be linked.
-- A Nostr-only account links GitHub later from Settings; nothing about the
-  account changes except the new principal and identity record.
+  fresh proof of the new credential (a signature by the new Nostr key, a new
+  GitHub consent) *and* an active session for the account.
+- Several Nostr keys may be linked: one for each phone and computer. One
+  identity per provider per account (one GitHub, one Google).
+- A computer's key is linked by a phone scanning the computer's QR code:
+  see [Link a computer by QR code](#link-a-computer-by-qr-code-planned).
+- An account that predates key sign-in (GitHub, Apple, or device code) gets
+  a key the same way: the new app signs in with its old session, then adds
+  its key with `POST /v1/account/keys`. We never link by email.
 
 ### Conflicts
 
 If the credential being linked already belongs to a different account, the
-link is refused with "That GitHub account is already used by another
-OpenAgents account." Nothing moves. The person can sign in with that GitHub
-account instead, or unlink it there first.
+link is refused ("That GitHub account is already used by another OpenAgents
+account."). Nothing moves. The person can sign in to that account instead,
+or remove the credential there first.
 
 We never auto-link by email. Two accounts with the same verified email are two
 accounts until a person links them with proofs for both.
@@ -111,10 +182,10 @@ accounts until a person links them with proofs for both.
 
 - Unlinking removes a principal and its identity record. It requires an active
   session, and is refused if it would leave the account with no way to sign
-  in ("Add another way to sign in first.").
+  in ("Add another way to sign in first."). The last Nostr key can't be
+  removed.
 - Unlinking ends every session that the removed credential minted (sessions
-  record the credential reference that created them, P2; in P1 unlinking is
-  not exposed in the UI).
+  record the credential reference that created them).
 
 ### Merge
 
@@ -123,12 +194,75 @@ effect. Policy: the surviving account is the one the person is signed in to;
 the other must also be proven (sign in to it in the same flow); principals,
 personal-workspace contents, and organization memberships move; billing
 balances and keys move only with an explicit confirmation; the merged account
-is tombstoned with a pointer for audit. Not built before P3.
+is tombstoned with a pointer for audit. Not built.
 
 ## Flows
 
 All browser flows run on the web origin (`openagents.com`, staging, or
 `127.0.0.1:4301` locally). The callback is always `/auth/<provider>/callback`.
+
+### Sign in with a Nostr key (planned)
+
+Planned in [#11993](https://github.com/OpenAgentsInc/openagents/issues/11993).
+A signed event becomes the same 30-day `sess_` app session a device sign-in
+issues, so every route, room, and cache that takes a session takes it
+unchanged.
+
+| Where | Route | What |
+| --- | --- | --- |
+| Account service | `GET /v1/sessions/nostr/challenge` | A random challenge with a short expiry |
+| Account service | `POST /v1/sessions/nostr`, `Authorization: Nostr <base64 event>` | Finds or creates the account holding `nostr:<hex>` and answers a 30-day app session |
+| Website forwarder | `GET /v1/device/nostr/challenge`, `POST /v1/device/nostr` `{app, computer}` | The same on the API host, forwarded byte for byte |
+
+1. The app gets a challenge.
+2. It signs a [NIP-98](../../nips/official/98.md) event (kind 27235) over
+   the exact URL and `POST`, with a `challenge` tag and a `payload` tag
+   holding the SHA-256 of the exact body.
+3. The account service checks the signature, the URL, the method, the
+   60-second time window, the challenge, and the body hash. It burns the event
+   ID and the challenge, so each works once. It finds or creates the account
+   holding `nostr:<hex>` (a new one gets a personal workspace on
+   `signup_tenant`) and answers the app session. No invite list applies: the
+   key is the account.
+4. The app stores the session in its own OS storage and, before it expires,
+   signs in again. There is no refresh token, password, or browser.
+
+The relay keeps NIP-42 for relay admission; this route doesn't replace it.
+
+### Linking keys (planned)
+
+Planned in #11993. A signed-in app manages the account's Nostr keys:
+
+| Route | What |
+| --- | --- |
+| `GET /v1/account/keys/challenge` | A challenge bound to this account |
+| `POST /v1/account/keys` `{proof}` | Adds the key that signed `proof`: a kind 27235 event over `POST /v1/account/keys` with that challenge |
+| `GET /v1/account/keys` | Lists the account's keys |
+| `DELETE /v1/account/keys/{pubkey}` | Removes one key, never the last |
+
+The website forwards the same routes under `/v1/device/keys`. A challenge
+made for one account can't add a key to another.
+
+### Link a computer by QR code (planned)
+
+Planned in #11998 (desktop) and #12000 (phone). The computer shows its
+NIP-HOST connect code as a QR code; the phone scans it. One scan pairs the
+computer with a host grant and links the computer's own key to the phone's
+account, so the computer then signs in as the same person with its own key.
+The wire is in
+[NIP-HOST, Account key link by QR](../../nips/openagents/NIP-HOST.md#account-key-link-by-qr-planned).
+A headless computer uses reverse enrollment or `openagents connect invite`,
+as today. A second phone joins the same way, or restores from the 12 words.
+
+### Website sign-in without a provider (planned)
+
+Planned in [#12001](https://github.com/OpenAgentsInc/openagents/issues/12001).
+The website still needs a signed-in browser for `/device` (Coder 1.0.0's
+approval page), `/oauth/authorize`, Settings, and billing. Two ways in need
+no provider: **scan with your phone** (the page shows a QR code, the phone
+signs the page's challenge, and the browser gets its session) and a
+[NIP-07](../../nips/official/07.md) browser extension. GitHub sign-in stays
+for existing accounts.
 
 ### Apps signing in with OAuth (#11084)
 
@@ -147,7 +281,13 @@ key derived from the CSRF secret). `POST /oauth/token` checks the verifier
 and redeems the device code once, answering the app session (30 days, no
 refresh token). The app shows in Settings' Computers as "<app> on <host>".
 
-### Sign up and sign in (same flow)
+### GitHub on the website (built)
+
+Built, and it keeps working for accounts that have GitHub linked. The apps
+never ask for it, and after
+[#12005](https://github.com/OpenAgentsInc/openagents/issues/12005) the website
+offers it as "Sign in with a connected account" beside the provider-free ways
+in. GitHub stays the connection for repositories, issues, and pull requests.
 
 1. The visitor clicks **Log in** or **Sign up** (top right, signed out only),
    lands on `/login` (or `/signup`), and clicks **Continue with GitHub**. Any
@@ -194,23 +334,25 @@ ends the session at the account service and clears the cookies. Unchanged.
   Cloud page share one read of the account service
   (`cloud::session::shared`).
 
-### Apps and the command line (P2)
+### Apps and the command line
 
-Desktop, phone, and `openagents` CLI sign in through the website, never with
-their own GitHub app:
-
-- **Loopback redirect** (desktop, CLI on a machine with a browser): the app
+- **Nostr key** (phone, desktop, and the next Coder): the app signs in with
+  its own key, with nothing to approve. Planned; see
+  [Sign in with a Nostr key](#sign-in-with-a-nostr-key-planned). The phone
+  already opens with no sign-in screen (#11996).
+- **Loopback redirect** (not built, and no longer planned for the apps): the app
   listens on `127.0.0.1:<random port>`, opens
   `https://openagents.com/auth/app?redirect=http://127.0.0.1:<port>/cb&challenge=<S256>`,
   the person signs in on the website as usual and approves "Sign in to
   OpenAgents Desktop", and the site redirects to the loopback with a one-time
   code the app redeems with its verifier for its own session.
-- **Device code** (SSH sessions, headless): the app shows a short code and
-  `openagents.com/device`; the person enters it while signed in and approves;
-  the app polls and receives its session.
-  Built (#11045); see [Device sign-in](#device-sign-in-built) below.
-- **Phone**: the app opens the same `/auth/app` URL in the system browser
-  session and receives the code through its registered universal link.
+- **Device code** (Coder 1.0.0, SSH sessions, headless): the app shows a
+  short code and `openagents.com/device`; the person enters it while signed
+  in and approves; the app polls and receives its session. Built (#11045), and
+  kept unchanged for Coder 1.0.0; see [Device sign-in](#device-sign-in-built)
+  below. A person with only a key approves it after signing in to the website
+  by phone scan (#12001). The next Coder signs in with a key instead
+  ([next release](../coder/next-release.md)).
 
 - **Sign-in key** (agents, scripts, sandboxes; no code to approve): the
   person makes a key in Settings, Sign-in keys for agents, and the agent
@@ -362,9 +504,11 @@ OPENAGENTS_ORIGIN=https://<staging host> OPENAGENTS_TOKEN=oa_sk_... openagents k
 - We store what the provider gives us under the scopes we request, so we can
   show who you are, reach you, and keep sign-in working when you rename your
   GitHub login. See [github.md](github.md#what-we-store).
-- Shown to others: nothing by default. Shown to you: your name, avatar, login,
-  and linked sign-in methods in Settings.
-- Deletion: deleting an account removes its principals, identity records, and
+- Shown to others: nothing by default. Shown to you: your npub, linked devices, and connected
+  accounts in Settings.
+- Deletion (in the app, planned in
+  [#12002](https://github.com/OpenAgentsInc/openagents/issues/12002)):
+  deleting an account removes its principals, identity records, and
   personal workspace data, keeps the access log entries (references only) for
   their retention period, and frees the GitHub id to sign up again.
 - The privacy policy page lists GitHub as a sign-in provider and the fields
@@ -407,22 +551,25 @@ browser signs in by pasting an `oak_` key. With P1:
 
 ## Phases
 
-- **P1 GitHub** (now): `oa-auth` crate (OAuth client, PKCE, profile reader,
-  fake GitHub), the `github:` principal and identities book in `tenancy`,
-  `POST /v1/sessions/github` and `POST /v1/account/identities/github` in the
-  account service, `/login`, `/signup`, `/auth/github`,
-  `/auth/github/callback` on the web, the Log in and Sign up buttons, and a
-  local fixture.
-- **P2 Google and email codes**: Google OIDC (same flow shape); email one-time
-  codes (6 digits, 10 minutes, 5 attempts, digest stored); Nostr sign-in on
-  the web (NIP-07 extension signs a challenge event; NIP-46 remote signer
-  later); Settings: linked methods, link and unlink, sessions list, sign out
-  everywhere; app and CLI sign-in (loopback and device code); sliding
-  sessions; rate limits.
-- **P3 Passkeys**: WebAuthn registration and sign-in, passkey-only accounts,
-  account merge.
-- **P4 Enterprise SSO**: SAML and broader OIDC on top of the existing REV-50
-  provider book, domain verification, SCIM later.
+- **P1 GitHub** (built): `oa-auth` crate (OAuth client, PKCE, profile
+  reader, fake GitHub), the `github:` principal and identities book in
+  `tenancy`, `POST /v1/sessions/github` and
+  `POST /v1/account/identities/github` in the account service, `/login`,
+  `/signup`, `/auth/github`, `/auth/github/callback` on the web, and a local
+  fixture. Device-code sign-in (#11045) and sign-in keys (#11305) followed.
+- **Nostr identity** (now, epic
+  [#12006](https://github.com/OpenAgentsInc/openagents/issues/12006)): NIP-06
+  (#11992, built); key sign-in and key linking (#11993); limits for key-only
+  accounts (#11994); the identity from 12 words and silent sign-in in the
+  apps (#11995, #11997); the phone tutorial, backup, and restore (#11996,
+  tutorial built); QR linking (#11998, #12000); website sign-in by phone scan
+  and NIP-07 (#12001); account deletion (#12002); admin and allowlists by
+  account (#12003); Apple removed and GitHub as a connection (#12005); the
+  wallet from the same words (#11999).
+- **Later**: per-request NIP-98 as a third bearer kind, a NIP-46 remote
+  signer, the per-feature device keys consolidated under each device's key,
+  the vault's recovery slot derived from the same 12 words, passkeys, and
+  SAML and broader OIDC on the REV-50 provider book.
 
 ## Public app authentication contract
 
@@ -457,10 +604,16 @@ transient service failure is not a successful check or proof of logout.
 For staging/local use the matching explicit API and website origins. Keep the
 app credential in its own OS storage; never adopt CLI or Zeron credentials.
 
-## Sign in with Apple on the phone (#11980)
+## Sign in with Apple (retired from the apps)
 
-The phone's **Sign in with Apple** button shows Apple's native sheet with a
-random nonce (its SHA-256 goes to Apple). The app sends the identity token
+The phone no longer shows a Sign in with Apple button (#11996); its removal
+from the server's advertised options is
+[#12005](https://github.com/OpenAgentsInc/openagents/issues/12005). The route
+keeps answering, as described below, while build 1012 calls it. An account
+made this way gets a key added on its first launch of a newer build.
+
+Built in #11980 and still in build 1012: the phone's **Sign in with Apple**
+button shows Apple's native sheet with a random nonce (its SHA-256 goes to Apple). The app sends the identity token
 and the raw nonce to `POST /v1/device/apple` on the API host, which forwards
 to the account service's `POST /v1/sessions/apple`
 (`oa_auth::apple`). That checks the token's RS256 signature against Apple's
@@ -475,7 +628,7 @@ session a device sign-in issues, so the phone stores it unchanged. Without
 invite list it answers `403 invite_only`, since the list names GitHub
 people.
 
-The device-code flow stays, and the phone opens its approval page in an
+The device-code flow stays, and build 1012 opens its approval page in an
 in-app sheet (`ASWebAuthenticationSession`) with `return=app`: the page
 then lets its form land on `openagents:`, and Approve or Deny sends the
 sheet to `openagents://signed-in` (`?denied=1`), which closes it. Without

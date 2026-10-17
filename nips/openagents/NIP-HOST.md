@@ -7,7 +7,8 @@ the [local operator socket](#local-operator-socket), and
 [QR pairing design](../../docs/coder/design/2026-09-29-auto-pairing.md), and
 2026-09-30 with the [thread operations](#operations) (`thread.list`,
 `thread.read`, `thread.send`, `thread.stop`, `thread.run`) that carry the
-host's chat threads to a phone and start Coder from an offer on one. The
+host's chat threads to a phone and start Coder from an offer on one, and
+2026-10-17 with the planned [account key link by QR](#account-key-link-by-qr-planned). The
 [shared contracts](contracts.md)
 are normative. This profile lets one host admit a device with host-wide,
 scoped rights. It defines enrollment by host invitation, reverse enrollment
@@ -468,6 +469,89 @@ for the same device returns the same grant. An approval for another device
 refuses as `conflict`. Denial is terminal: later approvals refuse as
 `denied`. Only the host's own records decide the outcome; the request's
 public tags reveal a relationship between keys, not its state.
+
+## Account key link by QR (planned)
+
+`planned` — 2026-10-17, for the
+[Nostr-only identity plan](../../docs/audits/2026-10-17-nostr-only-identity.md#multi-device);
+desktop [#11998](https://github.com/OpenAgentsInc/openagents/issues/11998),
+phone [#12000](https://github.com/OpenAgentsInc/openagents/issues/12000), and
+the account routes in
+[#11993](https://github.com/OpenAgentsInc/openagents/issues/11993). Nothing in
+this section is implemented yet; update it to match those issues when they
+land.
+
+One scan of a [connect code](#connect-codes) does two things: it pairs the
+phone with the computer's host, as above, and it links the computer's
+**account key** to the phone's OpenAgents account. The account key is the
+Nostr key the computer signs in to OpenAgents with
+([key sign-in](../../docs/auth/README.md#sign-in-with-a-nostr-key-planned)).
+It is distinct from the host key, the owner key, and every device key in
+this profile, and it holds no HOST right. Linking it adds a `nostr:`
+principal to the account, so the computer's own key then signs in to the
+same account. No secret key leaves either machine.
+
+This profile changes no HOST right, grant, or invitation. A HOST grant never
+implies account membership, and an account key never implies a HOST grant.
+
+### Carriage
+
+The connect code's byte layout is unchanged, and it carries no link field.
+The link request travels after pairing, over the device channel the new
+grant admits, so a code shown on a screen discloses nothing about the
+account.
+
+### Flow
+
+1. The computer shows its connect code as a QR code, under
+   [Showing a connect code](#showing-a-connect-code).
+2. The phone scans it and redeems it ([Enrollment over iroh](#enrollment-over-iroh)
+   or [Redemption](#redemption)), and keeps the grant.
+3. The phone, signed in to its account, gets a link challenge from
+   `GET /v1/account/keys/challenge`. The account service binds the
+   challenge to that account.
+4. Over the device channel, under the new grant, the phone asks the host
+   for a link proof, sending the challenge and the account key URL
+   (`https://api.openagents.com/v1/account/keys` or the website forwarder's
+   `/v1/device/keys`).
+5. The computer signs a [NIP-98](../official/98.md) event (kind 27235) with
+   its account key: `u` is that URL, `method` is `POST`, and a `challenge`
+   tag holds the challenge. It returns the signed event in the reply. It
+   signs nothing else for this request.
+6. The phone sends `POST /v1/account/keys` with `{proof: <event>}` and its
+   own session. That request is the phone's approval: a session of the
+   account says to add the key that signed `proof`.
+7. The account service checks the event's signature, URL, method, time
+   window, and challenge, burns the event ID and the challenge, and adds
+   `nostr:<account key>` to the account. The computer then signs in with
+   its account key and receives its own session on that account.
+
+### Host rules
+
+- The host answers a link-proof request only from the device whose
+  redemption of a connect code made its current grant, only within 300
+  seconds of that redemption, and only once per redemption. Any other
+  request gets `forbidden`. A delegated or older grant can't relink the
+  computer.
+- A computer already signed in to a different account doesn't sign a proof
+  until the person confirms on the computer's own screen; otherwise it
+  answers `forbidden`.
+- The host never logs or stores the challenge or the proof.
+
+### Server rules
+
+- A challenge made for one account can't add a key to another, and a
+  challenge works once.
+- A key that already belongs to another account is refused; nothing moves.
+- Removing the key (`DELETE /v1/account/keys/{pubkey}`) ends its sessions on
+  the account. It doesn't revoke the HOST grant; the person removes the
+  device under [Grants, epochs, and revocation](#grants-epochs-and-revocation)
+  for that.
+
+A headless computer links the same way after
+[reverse enrollment](#reverse-enrollment-for-a-headless-host) or a code
+from `openagents connect invite`. A second phone links when an already
+linked phone scans its code, or restores from the account's 12 words.
 
 ## Nearby approval (planned)
 
