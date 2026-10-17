@@ -12,6 +12,8 @@ pub mod command_credentials;
 pub mod commands;
 pub mod db;
 pub mod files;
+#[cfg(feature = "space")]
+pub mod lifecycle_operations;
 pub mod reconcile;
 pub mod registry;
 pub mod storage;
