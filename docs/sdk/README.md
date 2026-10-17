@@ -180,7 +180,7 @@ internal; they must not become developer credentials or bypass account checks.
 | Coder Desktop | First external reference client, in a separate Zeron fork; consume the exported Rust SDK without monorepo-only access; [desktop plan](../coder-desktop/README.md) |
 | Web chat | Qualified public Rust client adoption in #11806, with saved requests/output readers, chat/task identities, per-turn authority, and confirmed cancellation |
 | Solver | Implemented account-scoped allocation, saved commands, recovery, and original-job cleanup behind explicit account admission ([#11807](https://github.com/OpenAgentsInc/openagents/issues/11807), [inventory](solver-computers.md), [evidence](solver-computers-evidence.json)). The GitHub-connected staging job remains unqualified. |
-| Environments | Shared setup, builder, and fresh-verifier implementation under verification, with explicit account enrollment ([#11808](https://github.com/OpenAgentsInc/openagents/issues/11808), [inventory and rollout](environment-computers.md)). |
+| Environments | Shared setup, builder, and fresh verification deployed and qualified on Boat, with explicit account enrollment ([#11808](https://github.com/OpenAgentsInc/openagents/issues/11808), [inventory and rollout](environment-computers.md)). |
 | Existing OpenAgents desktop/mobile | Adopt supported public operations incrementally without pulling server/provider internals into clients |
 | Frozen Coder/CLI | Keep compatible server behavior; compiled changes wait for [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) |
 | External developers/agents | Use HTTP/OpenAPI and the Rust client with their own authorized account credentials |
