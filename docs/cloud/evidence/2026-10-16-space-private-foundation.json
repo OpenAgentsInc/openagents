@@ -312,7 +312,7 @@
     "synthetic_owner": "space-qualification-11814",
     "first_create": "initial QA quota rejected pause container resource requests; no native sandbox or pod. Failed CWC fixture preserved before isolated DB reset. Fresh run underway with corrected pods-only quota."
   },
-  "progress_updated_at": "2026-10-17T03:03:49.979170+00:00",
+  "progress_updated_at": "2026-10-17T03:11:10.524399+00:00",
   "runtime_qualification": {
     "clean_lifecycle_complete": false,
     "first_computer": "cmp_b8f7afec9373c5144126",
@@ -346,7 +346,17 @@
       "candidate_build_status": "working"
     },
     "synthetic_org_encryption_enabled": true,
-    "encrypted_lifecycle_complete": false
+    "encrypted_lifecycle_complete": false,
+    "encrypted_create": {
+      "computer": "cmp_ef8caf1babae3b48ed87",
+      "sandbox": "sbx_01a147d2-3f36-73c3-9094-f675567c2de4",
+      "computers_state": "awake",
+      "native_lifecycle": "started",
+      "volume_encryption": true,
+      "organization_key_provider": "external-branching",
+      "operator_create_recovery_required": false,
+      "memory_or_durable_checkpoint_recovery_proved": false
+    }
   },
   "resource_inventory": {
     "observed_at": "2026-10-17T02:57:31.325551+00:00",
@@ -430,6 +440,8 @@
       ],
       "notifications": "Cloud Monitoring incidents; existing channel assignments are preserved"
     },
-    "notification_delivery_tested": false
+    "notification_delivery_tested": false,
+    "received_series": 7,
+    "minimum_received_points_per_series": 3
   }
 }
