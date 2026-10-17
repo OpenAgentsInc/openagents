@@ -14,8 +14,8 @@ the tracking epic is
 | --- | --- |
 | NIP-06 key from 12 or 24 words (`crates/nostr/src/nip06.rs`) | Built ([#11992](https://github.com/OpenAgentsInc/openagents/issues/11992)) |
 | Phone first launch: a short tutorial, no sign-in screen | Built ([#11996](https://github.com/OpenAgentsInc/openagents/issues/11996)); backup and restore rows wait for #11995 |
-| Sign in with a Nostr key (`/v1/sessions/nostr`) | Planned ([#11993](https://github.com/OpenAgentsInc/openagents/issues/11993)) |
-| Link and unlink keys (`/v1/account/keys`) | Planned ([#11993](https://github.com/OpenAgentsInc/openagents/issues/11993)) |
+| Sign in with a Nostr key (`/v1/sessions/nostr`) | Built ([#11993](https://github.com/OpenAgentsInc/openagents/issues/11993)) |
+| Link and unlink keys (`/v1/account/keys`) | Built ([#11993](https://github.com/OpenAgentsInc/openagents/issues/11993)) |
 | The app's identity from 12 words, silent sign-in | Planned: shared Rust [#11995](https://github.com/OpenAgentsInc/openagents/issues/11995), desktop [#11997](https://github.com/OpenAgentsInc/openagents/issues/11997) |
 | Link a computer by scanning its QR code | Planned: desktop [#11998](https://github.com/OpenAgentsInc/openagents/issues/11998), phone [#12000](https://github.com/OpenAgentsInc/openagents/issues/12000); wire in [NIP-HOST](../../nips/openagents/NIP-HOST.md#account-key-link-by-qr-planned) |
 | Website sign-in by phone scan and NIP-07 | Planned ([#12001](https://github.com/OpenAgentsInc/openagents/issues/12001)) |
@@ -201,9 +201,9 @@ is tombstoned with a pointer for audit. Not built.
 All browser flows run on the web origin (`openagents.com`, staging, or
 `127.0.0.1:4301` locally). The callback is always `/auth/<provider>/callback`.
 
-### Sign in with a Nostr key (planned)
+### Sign in with a Nostr key
 
-Planned in [#11993](https://github.com/OpenAgentsInc/openagents/issues/11993).
+Built in [#11993](https://github.com/OpenAgentsInc/openagents/issues/11993) (`oa_auth::nostr`).
 A signed event becomes the same 30-day `sess_` app session a device sign-in
 issues, so every route, room, and cache that takes a session takes it
 unchanged.
@@ -229,9 +229,9 @@ unchanged.
 
 The relay keeps NIP-42 for relay admission; this route doesn't replace it.
 
-### Linking keys (planned)
+### Linking keys
 
-Planned in #11993. A signed-in app manages the account's Nostr keys:
+Built in #11993. A signed-in app manages the account's Nostr keys:
 
 | Route | What |
 | --- | --- |
@@ -633,23 +633,3 @@ in-app sheet (`ASWebAuthenticationSession`) with `return=app`: the page
 then lets its form land on `openagents:`, and Approve or Deny sends the
 sheet to `openagents://signed-in` (`?denied=1`), which closes it. Without
 `return=app` the page is unchanged.
-
-## Sign in with a Nostr key (#11993)
-
-The app gets a challenge from `GET /v1/device/nostr/challenge`, then sends
-`POST /v1/device/nostr` with `{"app", "computer"}` and
-`Authorization: Nostr <base64 event>`. The event is NIP-98 (kind 27235)
-over that URL and `POST`, signed within 60 seconds, with a `challenge` tag
-and a `payload` tag holding the SHA-256 of the exact body. The website
-forwards both, byte for byte, to the account service's
-`POST /v1/sessions/nostr` (`oa_auth::nostr`), which checks the event,
-burns its id and the challenge in the session store, finds or creates the
-account holding `nostr:<hex>` (a new one gets a personal workspace on
-`signup_tenant`), and answers the same 30-day app session a device sign-in
-issues. No invite list applies: the key is the account.
-
-A signed-in app manages its keys at `/v1/device/keys`: `GET` lists them,
-`POST {"proof"}` adds the key that signed `proof` (kind 27235 over
-`POST /v1/device/keys` with a challenge from
-`GET /v1/device/keys/challenge`, which is bound to this account), and
-`DELETE /v1/device/keys/{pubkey}` removes one, never the last.
