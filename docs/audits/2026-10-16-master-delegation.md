@@ -89,7 +89,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Released 2026-10-17 01:00 CDT** by Codex (GPT-6) after #11945 landed in `92662ccae4`. Both reported unit failures are fixed; `coder-new` unit checks passed 1,055/0/24. The broader run found the separate attribution failures tracked in #11947.
 
-**Taken 2026-10-16 22:21 CDT** by Codex working #11894, #11898, #11823 in `~/work/openagents-chat-bridge`.
+**Taken 2026-10-16 22:21 CDT** by Codex working #11898 in `~/work/openagents-chat-bridge`. #11894 is closed; #11823 stays with its active Claude Code owner.
 
 **Released 2026-10-16 22:16 CDT** by Codex after landing #11894 prerequisites `d944461951` and `b2ac4a07c6`. #11894, #11898, and #11823 remain open and free; see their handoff comments. The `~/work/openagents-push-lane` worktree is removed; targets `~/work/openagents-target-1` and `~/work/openagents-target-1-app` stay warm.
 
@@ -363,8 +363,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Remains:** a summary-only session index per account, rows mixed into the web list with an "On <computer>" badge and offline state, a summary page with app and continue actions, a per-chat and per-project transcript opt-in (off by default), `source: "session"` rows in `/v1/history`, and access and revocation checks.
 
 **#11898 "Where it runs" is a property of the chat.** Lane 1, after #11894.
-- **Status:** the foundations are in `cca7f94ebe`.
-- **Remains:** the "Runs on" control, computer-to-cloud continuation through the #11893 path, paired and cloud computer choice, one conversation row across web, terminal, desktop, and phone, and the web, Mac, then cloud round trip on a test account. The cloud computer choice needs #11852.
+- **Status:** shared controls and transfer requests landed in `ac0c9386e1`, native continuation references and read-only documents in `d653d6979a`, SDK transfers and expiring move requests in `9ddc0a0ec9`, signed observe-plus-operate checks in `b6d657fad4`, and destination preparation admission in `16c0fc6875`.
+- **Checks:** shared chat-home tests 4, SDK continuation and session fixtures 3, document tests 149, protocol tests 83, and access tests 126 passed for those commits.
+- **Remains:** finish the server, computer host, desktop, and phone controls and their own checks. The web, Mac, then cloud round trip belongs to lane 0 after source completion.
 
 **#11911 Computer sharing: owner-approved project-scoped access over NIP-HOST.** Lane 7, closed.
 - **Status:** `72a0bc730c` adds device-pinned project invitations, absolute expiry, separate scopes, and scoped revocation. `28994246be` requires `project.redeem` and `project-sharing-v2` so an older host cannot accept a project invitation as broad enrollment. `0d5bca7a54` adds the account-bound client and shared Rust Native form. `f2b101f35b` mounts that form in Settings, cancels work on account changes, and stores device keys and grants separately for each account. It offers only implemented project files and commands; broad HOST tasks, raw terminals, and general app RPC remain unavailable to guests.

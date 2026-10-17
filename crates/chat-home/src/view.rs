@@ -31,7 +31,10 @@ pub fn parts(
         ),
         (
             "latest-part",
-            "Open the latest part",
+            match links.continued_by.as_ref().map(|p| &p.home) {
+                Some(Home::Cloud) => "Next part on OpenAgents",
+                _ => "Next part on a computer",
+            },
             links.continued_by.as_ref(),
         ),
     ] {
