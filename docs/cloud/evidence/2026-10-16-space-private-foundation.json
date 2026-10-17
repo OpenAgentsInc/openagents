@@ -659,5 +659,80 @@
       "sha256": "ff47754dafb23ce436e112942a71f586a37c7b36bb6e7fdde223b0474181bbba"
     },
     "fixture_custody": "Lane 0 retains the stopped fixture and memory witness for worker-replacement qualification and final cleanup."
+  },
+  "after_close_recoverable_object_inventory": {
+    "issue": 11944,
+    "scope": "Read-only generation metadata in the two owned private buckets.",
+    "buckets": [
+      {
+        "bucket": "openagentsgemini-oa-space-service-templates",
+        "active_objects": 6,
+        "active_bytes": 1182053577,
+        "noncurrent_objects": 0,
+        "noncurrent_bytes": 0,
+        "soft_deleted_objects": 3,
+        "soft_deleted_bytes": 14680128,
+        "top_level_prefixes": [
+          "templates"
+        ],
+        "metadata_sha256": "6bc5d303669ce6281f199ce3e91a17b1ec8b280ee5829509cc19fd365356998b",
+        "listing_started_at": "2026-10-17T05:24:19.770284+00:00",
+        "listing_finished_at": "2026-10-17T05:24:22.627042+00:00",
+        "listing_pages": 2,
+        "object_metadata_complete": true,
+        "latest_soft_delete_expiry": "2026-10-23T22:27:00.654000+00:00",
+        "includes_noncurrent_versions": true,
+        "includes_soft_deleted_objects": true,
+        "includes_unfinished_uploads": false,
+        "storage_cleanup_proof": false,
+        "soft_delete": {
+          "retentionDurationSeconds": "604800",
+          "effectiveTime": "2026-10-16T22:21:03.687Z"
+        },
+        "ip_filter_enabled": true
+      },
+      {
+        "bucket": "openagentsgemini-oa-space-service-snapshots",
+        "active_objects": 21,
+        "active_bytes": 642870306,
+        "noncurrent_objects": 0,
+        "noncurrent_bytes": 0,
+        "soft_deleted_objects": 6,
+        "soft_deleted_bytes": 95731858,
+        "top_level_prefixes": [
+          "suspend_snapshots"
+        ],
+        "metadata_sha256": "12c0c8cbcd6ffc97bf0a2df0a4c2fbab04c0465318d87064504be469ae8d8c3f",
+        "listing_started_at": "2026-10-17T05:24:24.058748+00:00",
+        "listing_finished_at": "2026-10-17T05:24:26.969258+00:00",
+        "listing_pages": 2,
+        "object_metadata_complete": true,
+        "latest_soft_delete_expiry": "2026-10-24T04:59:51.717000+00:00",
+        "includes_noncurrent_versions": true,
+        "includes_soft_deleted_objects": true,
+        "includes_unfinished_uploads": false,
+        "storage_cleanup_proof": false,
+        "soft_delete": {
+          "retentionDurationSeconds": "604800",
+          "effectiveTime": "2026-10-16T22:22:40.452Z"
+        },
+        "ip_filter_enabled": true
+      }
+    ],
+    "mutations_performed": 0,
+    "credentials_output": false,
+    "storage_allowances_released": 0,
+    "source_files_sha256": {
+      "deploy/space-service/inventory.py": "88924f95f3ad6a5c806c08904eb9c37cd83a13ea317b3615aaa636fb86d4fb44",
+      "deploy/space-service/object_inventory.py": "a6aa62901cab35892d454685770c775bcf5f11adaeb34d7b8a2ae4620ff2daad",
+      "deploy/space-service/test_object_inventory.py": "907db57e5746ec982e344079de22a60588552dbe8f464553aa6e3a7c17ab4e7c"
+    },
+    "synthetic_checks_passed": 11,
+    "observation_limits": [
+      "Generation metadata only; contents were not read.",
+      "Multipart uploads require the separate control-node inventory.",
+      "Listings were not taken under a write fence and do not establish cleanup.",
+      "No retention or allowance was changed; soft-deleted generations remain recoverable."
+    ]
   }
 }

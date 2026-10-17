@@ -175,9 +175,19 @@ its original record; a new run uses a new outer idempotency key.
 
 Run `inventory.py --objects` from the operator machine and save its JSON under
 scratch. It inventories owned resources, flags names whose ownership is
-unconfirmed and unattached owned disks, and counts active objects through the
-private connection. It performs no deletion and omits secret values. Soft-deleted
-objects and unfinished multipart uploads need separate checks.
+unconfirmed and unattached owned disks, and counts live, noncurrent, and
+soft-deleted object generations through the private connection. It performs no
+deletion and omits secret values. The object counts and bytes have separate
+categories, bounded pagination, a metadata hash, and observation times. GCS
+requires [separate listings for versions and soft-deleted objects](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/list).
+Run `python3 -m unittest discover -s deploy/space-service -p test_object_inventory.py`
+for the synthetic response checks.
+
+These listings are not an atomic snapshot or a cleanup proof. Stop writes before
+collecting cleanup evidence, match it to the exact computer's objects and
+resources, and inspect unfinished multipart uploads separately. Recoverable
+generations still consume storage; keep their allowance until they disappear.
+The inventory does not change retention, restore objects, or release allowances.
 
 Install `monitor.py` beside the protected control tools and the monitor service
 and timer under `/etc/systemd/system`. Run `monitoring.py` before enabling
