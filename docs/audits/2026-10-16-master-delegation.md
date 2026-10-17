@@ -266,8 +266,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Simplification:** the freeze is lifted, so Coder can call the platform directly. Keep loopback mode only where the local web chat or `openagents lab` still needs it.
 - **Owner-only:** importing `~/work/film-out/lab/films/*` runs on the owner's Mac.
 
-**#11881 Labs G1: Game Lab and Ship Lab as platform kinds.** Lane 5, not started.
-- **Remains:** `impl LabKind` for both, the playtest job, the playable and report cards, same versions and wording before and after, and a production test-account run.
+**#11881 Labs G1: Game Lab and Ship Lab as platform kinds.** Lane 5, closed.
+- **Done:** `game_lab::kind::Game` and `ship_lab::kind::Ship` on `main` (`e37d66493e`, `ade5341924`), with the `game-lab playtest-job` worker handler. Parity tests run the same tool edits through the local services and the kinds. The loopback routes are unchanged.
+- **Waiting on lane 4:** registering both kinds in `crates/openagents-web/src/labs_api.rs`, next to CAD, and the `/labs/game/{doc}` page. #11877's patch edits that file, so lane 5 left it alone. The rest is in [After-close checks](#after-close-checks).
 
 **#11882 Labs R1: Robot Lab documents and runs on the platform.** Lane 5, not started.
 - **Depends on:** #11878 for the simulate job.
@@ -416,6 +417,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11878 | Deploy the account-service worker routes before the web worker routes. Run dedicated-account Echo on server, disposable enrolled, and cloud placements; prove private input bytes and paths stay local, retire scoped keys, and observe cloud computer deletion. The cloud environment needs the pinned `labs-worker` and trusted handlers installed. | to do; owner Mac installation is in `NEEDS_OWNER.md` |
 | #11852 | Deploy `4a796e8ff8` or newer. Run `OurCloudLiveTests/testStartRunAndStopOurCloud` with the dedicated test account, check `GET /v1/computer-usage`, delete the computer with `DELETE /v1/cloud-host`, and remove its test registry rows. Validate TestFlight 1011 or the next free build. | to do; phone source `d37ed99d0c`, local control acceptance `a67ec60b44` passed |
 | #11894 | A test account's terminal chat continued on the desktop: the first turn knows the history, and the phone steers it. | to do |
+| #11881 | Register `game_lab::kind::Game` and `ship_lab::kind::Ship` in `labs_api.rs` after #11877 lands, host `/labs/game/{doc}`, and install `game-lab playtest-job` as the `playtest` handler. Then, with the dedicated test account on production: a Game Lab edit plays in the web card and appears through `/v1/history`, and a Ship Lab refusal and an accepted edit. Clean up after. | to do |
 | #11815 | Read usage with the configured dedicated production test account and explain the earlier 403. | passed with `acct_83d16a35955ef908`: HTTP 200, pricing off, no charge; the earlier account remains outside the rollout. [Evidence](../sdk/computers-usage-evidence.json). |
 
 ## Shared rules
