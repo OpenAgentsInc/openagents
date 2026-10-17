@@ -214,8 +214,14 @@ Durable cross-worker checkpoint recovery, credential-reference renewal, and full
 private-checkpoint cleanup still need their separate SPACE qualification; memory
 preservation currently describes same-worker suspend and resume only.
 
-A computer stopped for `OA_COMPUTERS_KEEP_STOPPED_DAYS` (7) with nothing
-asked of it is deleted (its disk bills while stopped: about $0.027 an hour
+New computers save `lifecycle_policy.stopped_retention_ms` as a seven-day
+maximum after an observed stop. The service uses the shortest of this saved
+ceiling, `OA_COMPUTERS_KEEP_STOPPED_DAYS` (7 by default), and account/service
+retention limits. Increasing a later default cannot extend an existing saved
+ceiling. Meter and storage observations do not reset the stopped timer. Legacy
+rows report `null` for the saved ceiling and keep their previous operator policy.
+
+A stopped computer whose retention period expires is deleted (its disk bills while stopped: about $0.027 an hour
 for a 200 GB `oa-coder-host` disk).
 
 ## Chats on their own computers (web)

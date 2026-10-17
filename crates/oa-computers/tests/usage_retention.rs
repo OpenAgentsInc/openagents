@@ -172,3 +172,64 @@ async fn retention_uses_the_shortest_limit_and_keeps_uncertain_cleanup_held() {
         assert_eq!(store.usage("unknown-stop", 0, 200).await.unwrap()["allocation_allowance"]["unresolved_allowances"], 1);
     }).await;
 }
+
+#[tokio::test]
+async fn a_saved_retention_ceiling_survives_later_meter_reads_and_a_longer_default() {
+    use coder_working_computer::{Command, driver::Held};
+    use computer_driver::{Meter, Outcome};
+    let Ok(admin) = std::env::var("OA_COMPUTERS_TEST_DATABASE_URL") else {
+        return;
+    };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    tokio::task::LocalSet::new()
+        .run_until(async move {
+            let store = Store::new(db.clone());
+            let root = tempfile::tempdir().unwrap();
+            let fake = FakeDriver::new(root.path()).boot_observations(0);
+            fake.inject("meter", Inject::LoseRequest);
+            let (id, _) = stopped(&db, &store, &fake, "saved-retention", 8 * 86400, false).await;
+            let entry = claim(&db, &store, &id).await;
+            assert_eq!(entry.stopped_retention_ms, Some(7 * 86400 * 1000));
+            let lease = PgLease {
+                store: store.clone(),
+                id: id.clone(),
+                holder: HOLDER.into(),
+                lease: LEASE,
+            };
+            let updated = lease
+                .apply(
+                    &Command::ObserveMeter {
+                        boot: entry.record.boot().unwrap().number,
+                        outcome: Outcome::done(Meter {
+                            running: false,
+                            evidence: "later meter read".into(),
+                            seconds: None,
+                        }),
+                    },
+                    oa_computers::reconcile::now_ms(),
+                )
+                .await
+                .unwrap();
+            assert!(updated.updated_ms > entry.record.updated_ms);
+            store
+                .release(&id, HOLDER, Duration::ZERO, 0, None, false)
+                .await
+                .unwrap();
+            assert!(
+                db.client()
+                    .await
+                    .unwrap()
+                    .execute(
+                        "UPDATE computers.computers SET stopped_retention_ms=864000000 WHERE id=$1",
+                        &[&id],
+                    )
+                    .await
+                    .is_err()
+            );
+            visit(&db, &store, &fake, &id, 10 * 86400).await;
+            let deleted = store.get("saved-retention", &id).await.unwrap().unwrap();
+            assert_eq!(deleted.phase, "deleted");
+            assert!(fake.live().is_empty());
+        })
+        .await;
+}

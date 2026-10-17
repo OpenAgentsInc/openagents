@@ -61,10 +61,11 @@ pub struct Entry {
     pub created_unix: i64,
     pub updated_unix: i64,
     pub binding: Option<crate::registry::Binding>,
+    pub stopped_retention_ms: Option<u64>,
 }
 
 pub(crate) const COLUMNS: &str = "id, owner, chat, driver, image, size, desired, phase, record, attempts, \
-     last_error, extract(epoch from created_at)::bigint, extract(epoch from updated_at)::bigint, binding, intent_generation";
+     last_error, extract(epoch from created_at)::bigint, extract(epoch from updated_at)::bigint, binding, intent_generation, stopped_retention_ms";
 
 pub(crate) fn entry(row: &Row) -> Result<Entry, DbError> {
     let record: serde_json::Value = row.get(8);
@@ -79,6 +80,11 @@ pub(crate) fn entry(row: &Row) -> Result<Entry, DbError> {
         size: row.get(5),
         desired: Desired::parse(row.get(6)).unwrap_or(Desired::Stopped),
         intent_generation: row.get(14),
+        stopped_retention_ms: row
+            .get::<_, Option<i64>>(15)
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|_| DbError("The computer retention period is invalid.".into()))?,
         phase: row.get(7),
         record,
         attempts: row.get(9),
