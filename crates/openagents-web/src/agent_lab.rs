@@ -1071,7 +1071,7 @@ mod tests {
             version: 1,
         });
         // Saved source policy applies even when the experiment content is otherwise valid.
-        let owner = &a.account().id;
+        let owner = &crate::chat_store::account_owner(&a.account().id);
         let key = Store::owner_key(owner, "labs-agent.json").unwrap();
         for class in [
             lab_kit::AssetClass::PrivateLocal,
