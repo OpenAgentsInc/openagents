@@ -1,40 +1,32 @@
 # Design Lab
 
-A Figma-style board with every version of every OpenAgents mobile app
-screen, so you can zoom around the whole app's history in one place.
+A Figma-style board with every screen of the current OpenAgents phone app
+(`apps/openagents/`), so you can zoom around the whole app in one place.
+Nothing on it is an old screenshot: every picture is captured from the app's
+code.
 
 ```sh
-cargo run -p design-lab -- serve          # http://127.0.0.1:8798
-cargo run -p design-lab -- export /tmp/board   # static index.html + board.json + img/
+apps/openagents/scripts/design-lab-capture.sh   # capture every screen (simulator)
+cargo run -p design-lab -- serve                 # http://127.0.0.1:8798
+cargo run -p design-lab -- export /tmp/board     # static index.html + board.json + img/
 ```
 
-- **Where the screens come from.** Every commit on the current branch that
-  added or changed a phone screenshot (`.png`/`.jpg` under a path with
-  `mobile`, `ios`, `iphone`, `phone`, `android` or `appshots` in it) is a
-  version of that screen. Screens deleted from the tree keep their past
-  versions. Icons and images under 200 px are skipped.
-- **Current mobile app (the default view).** The board opens on the phone
-  screens of the app in `apps/openagents/`: images committed under that
-  folder, plus the history it was imported with (a merge parent without the
-  folder is an import, and its commits count). Only paths that name the
-  phone (`mobile`, `ios`, `iphone`, `phone`, `android`) count, since the
-  folder also holds desktop captures. **Show → All phone captures** (or
-  `#show=all`) brings back every older and prototype phone capture.
-- **Screens and areas.** A screen is the file name without a date, an order
-  number or a trailing width (`appshots-chat-light-390.png` and `-1100.png`
-  are two versions of one screen). Its area is the capture folder, without a
-  date.
-- **The board.** Areas are sections, screens sit in them with their versions
-  side by side, oldest first. Drag or scroll to move; pinch or ⌘/Ctrl +
-  scroll to zoom; `/` searches; `0` fits everything. Click a screen to open
-  it and step through its versions with the arrow keys. `#q=words` in the
-  address opens the board already searched.
+- **Capturing.** `design-lab-capture.sh` runs `DesignLabTourTests` (in
+  `apps/openagents/apps/ios/OpenAgentsUITests`) on the offline demo, so
+  nothing signs in: welcome and sign-in, Home, the drawer, search, Settings,
+  the new-session sheet, the cloud chat, every demo session and the voice
+  stage. Each run is saved in `~/work/design-lab/captures/<time>-<commit>/`
+  as `<area>--<screen>.png` (set `DESIGN_LAB_CAPTURES` to move it). Add a
+  screen by adding a `shot` to the tour.
+- **Versions.** Each capture run is a version of every screen it took. A
+  screen that looks exactly as it did in the run before keeps its earlier
+  version, so a screen's versions are the commits that changed it.
+- **The board.** Areas are sections, and screens sit in them with their
+  versions side by side, oldest first. Drag or scroll to move; pinch or
+  ⌘/Ctrl + scroll to zoom; `/` searches; `0` fits everything. Click a screen
+  to open it and step through its versions with the arrow keys. `#q=words`
+  in the address opens the board already searched.
 - **A Lab kind.** The board is a `board.v1` document and `design` is a Labs
   platform kind (`src/kind.rs`): `design_rename` and `design_move` are checked
   changes, and the card shows the newest version of each screen. See
   [the Labs plan](../../docs/labs/README.md).
-
-Next: a capture job that renders every screen state from the mobile app's
-demo fixtures (so every screen has a version per commit, not only the ones
-someone screenshotted), notes pinned to a screen version, and the board hosted
-on openagents.com behind the Labs API.

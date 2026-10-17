@@ -1,6 +1,8 @@
-//! `design-lab serve [--port 8798] [--repo DIR]`: the board on 127.0.0.1.
-//! `design-lab export DIR [--repo DIR]`: the same board as static files
-//! (`index.html`, `board.json`, `img/{blob}`) for any file host.
+//! `design-lab serve [--port 8798] [--captures DIR]`: the board on 127.0.0.1.
+//! `design-lab export DIR [--captures DIR]`: the same board as static files
+//! (`index.html`, `board.json`, `img/<run>/<file>`) for any file host.
+//!
+//! Capture runs come from `apps/openagents/scripts/design-lab-capture.sh`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,8 +14,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use design_lab::Board;
 
-const USAGE: &str =
-    "usage: design-lab serve [--port PORT] [--repo DIR] | design-lab export DIR [--repo DIR]";
+const USAGE: &str = "usage: design-lab serve [--port PORT] [--captures DIR] | design-lab export DIR [--captures DIR]";
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -33,7 +34,7 @@ fn main() -> std::process::ExitCode {
 
 struct Options {
     port: u16,
-    repo: PathBuf,
+    captures: PathBuf,
 }
 
 fn options(args: &[String]) -> Result<Options, String> {
@@ -42,22 +43,22 @@ fn options(args: &[String]) -> Result<Options, String> {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(8798),
-        repo: PathBuf::from("."),
+        captures: design_lab::default_captures(),
     };
     let mut words = args.iter();
     while let Some(word) = words.next() {
         let mut value = || words.next().cloned().ok_or(format!("{word} needs a value"));
         match word.as_str() {
             "--port" => options.port = value()?.parse().map_err(|_| "--port needs a number")?,
-            "--repo" => options.repo = PathBuf::from(value()?),
+            "--captures" => options.captures = PathBuf::from(value()?),
             _ => return Err(USAGE.into()),
         }
     }
     Ok(options)
 }
 
-fn scanned(repo: &Path) -> Result<Board, String> {
-    let board = design_lab::scan(repo)?;
+fn scanned(captures: &Path) -> Result<Board, String> {
+    let board = design_lab::scan(captures)?;
     eprintln!(
         "design-lab: {} screens, {} versions",
         board.screens.len(),
@@ -68,14 +69,18 @@ fn scanned(repo: &Path) -> Result<Board, String> {
 
 fn export(dir: &str, args: &[String]) -> Result<(), String> {
     let options = options(args)?;
-    let board = scanned(&options.repo)?;
+    let board = scanned(&options.captures)?;
     let dir = PathBuf::from(dir);
     let img = dir.join("img");
     std::fs::create_dir_all(&img).map_err(|e| format!("can't make {} ({e})", img.display()))?;
     for version in board.screens.iter().flat_map(|s| &s.versions) {
-        let bytes = design_lab::image(&options.repo, &board, &version.blob)
-            .ok_or(format!("can't read {}", version.path))?;
-        std::fs::write(img.join(&version.blob), bytes).map_err(|e| e.to_string())?;
+        let bytes = design_lab::image(&options.captures, &board, &version.image)
+            .ok_or(format!("can't read {}", version.image))?;
+        let path = img.join(&version.image);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(path, bytes).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_vec(&board).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("board.json"), json).map_err(|e| e.to_string())?;
@@ -85,15 +90,15 @@ fn export(dir: &str, args: &[String]) -> Result<(), String> {
 }
 
 struct Lab {
-    repo: PathBuf,
+    captures: PathBuf,
     board: Board,
 }
 
 fn serve(args: &[String]) -> Result<(), String> {
     let options = options(args)?;
     let lab = Arc::new(Lab {
-        board: scanned(&options.repo)?,
-        repo: options.repo,
+        board: scanned(&options.captures)?,
+        captures: options.captures,
     });
     let port = options.port;
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
@@ -102,7 +107,7 @@ fn serve(args: &[String]) -> Result<(), String> {
             .route("/", get(|| async { Html(design_lab::PAGE) }))
             .route("/healthz", get(|| async { "ok" }))
             .route("/board.json", get(board))
-            .route("/img/{blob}", get(image))
+            .route("/img/{run}/{file}", get(image))
             .with_state(lab);
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
             .await
@@ -116,9 +121,13 @@ async fn board(State(lab): State<Arc<Lab>>) -> Json<Board> {
     Json(lab.board.clone())
 }
 
-async fn image(State(lab): State<Arc<Lab>>, UrlPath(blob): UrlPath<String>) -> Response {
+async fn image(
+    State(lab): State<Arc<Lab>>,
+    UrlPath((run, file)): UrlPath<(String, String)>,
+) -> Response {
+    let picture = format!("{run}/{file}");
     let found =
-        tokio::task::spawn_blocking(move || design_lab::image(&lab.repo, &lab.board, &blob))
+        tokio::task::spawn_blocking(move || design_lab::image(&lab.captures, &lab.board, &picture))
             .await
             .ok()
             .flatten();
@@ -132,7 +141,7 @@ async fn image(State(lab): State<Arc<Lab>>, UrlPath(blob): UrlPath<String>) -> R
             (
                 [
                     (header::CONTENT_TYPE, kind),
-                    // A blob id names its bytes forever.
+                    // A run never changes its pictures.
                     (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
                 ],
                 bytes,

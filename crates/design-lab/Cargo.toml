@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Design Lab: a zoomable board of every version of every mobile app screen, read from the screenshots in git history, and the board.v1 Lab kind"
+description = "Design Lab: a zoomable board of every screen of the current phone app, captured from apps/openagents by its demo tour, and the board.v1 Lab kind"
 
 [dependencies]
 lab-kit = { path = "../lab-kit" }
 axum = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 
 [lints]

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Captures every screen of the current phone app for Design Lab.
+#
+# Runs DesignLabTourTests on the offline demo in the simulator and saves the
+# shots in $DESIGN_LAB_CAPTURES/<time>-<commit>/ (default
+# ~/work/design-lab/captures). Each run is one version of every screen;
+# `cargo run -p design-lab -- serve` shows them all.
+#
+#   apps/openagents/scripts/design-lab-capture.sh [simulator name or id]
+# The default simulator is made once with:
+#   xcrun simctl create "Design Lab iPhone" "iPhone 17 Pro Max"
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SIM="${1:-Design Lab iPhone}"
+CAPTURES="${DESIGN_LAB_CAPTURES:-$HOME/work/design-lab/captures}"
+COMMIT="$(git -C "$ROOT" rev-parse --short=10 HEAD)"
+DIRTY=""
+git -C "$ROOT" diff --quiet HEAD -- . || DIRTY="-dirty"
+DEST="platform=iOS Simulator,name=$SIM"
+[[ "$SIM" =~ ^[0-9A-F-]{36}$ ]] && DEST="platform=iOS Simulator,id=$SIM"
+RUN="$CAPTURES/$(date +%Y%m%d-%H%M%S)-$COMMIT$DIRTY"
+mkdir -p "$RUN"
+
+cd "$ROOT"
+RUSTUP_TOOLCHAIN=1.98.1 TEST_RUNNER_DESIGN_LAB_DIR="$RUN" \
+  xcodebuild -project apps/ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -destination "$DEST" ARCHS=arm64 \
+  CODE_SIGNING_ALLOWED=NO -only-testing:OpenAgentsUITests/DesignLabTourTests test \
+  || echo "design-lab-capture: some screens failed; keeping the ones taken" >&2
+
+COUNT="$(find "$RUN" -name '*.png' | wc -l | tr -d ' ')"
+if [ "$COUNT" = 0 ]; then
+  rmdir "$RUN"
+  echo "design-lab-capture: no screens were captured" >&2
+  exit 1
+fi
+echo "design-lab-capture: $COUNT screens in $RUN"

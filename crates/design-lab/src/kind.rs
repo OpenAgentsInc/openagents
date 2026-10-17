@@ -1,7 +1,7 @@
 //! Design Lab as a Labs platform kind: `board.v1` documents whose screens
 //! are renamed or moved between areas only through checked changes. The
-//! screenshots themselves come from git history, so no change edits an
-//! image. The card is the newest version of each screen.
+//! screenshots themselves come from capture runs of the app, so no change
+//! edits a picture. The card is the newest version of each screen.
 
 use lab_kit::{
     Artifact, Card, Change, Draft, JobSpec, JobState, KindManifest, LabKind, Limits, Measurements,
@@ -109,9 +109,14 @@ impl LabKind for Design {
                     format!("The screen {} has no versions.", screen.id),
                 ));
             }
-            let blob =
-                |b: &str| (40..=64).contains(&b.len()) && b.bytes().all(|c| c.is_ascii_hexdigit());
-            if screen.versions.iter().any(|v| !blob(&v.blob)) {
+            // A picture is `<run>/<file>.png` inside the captures folder.
+            let picture = |p: &str| {
+                p.ends_with(".png")
+                    && p.split('/').count() == 2
+                    && p.split('/')
+                        .all(|part| !part.is_empty() && part != ".." && part != ".")
+            };
+            if screen.versions.iter().any(|v| !picture(&v.image)) {
                 return Err(Refusal::new(
                     "board_check",
                     format!("A version of {} doesn't name its picture.", screen.id),
@@ -182,7 +187,7 @@ impl LabKind for Design {
         let latest: Vec<String> = board
             .iter()
             .flat_map(|b| &b.screens)
-            .filter_map(|s| s.versions.last().map(|v| v.blob.clone()))
+            .filter_map(|s| s.versions.last().map(|v| v.image.clone()))
             .collect();
         Card {
             schema: lab_kit::card::SCHEMA.into(),
@@ -226,16 +231,15 @@ mod tests {
             screens: vec![Screen {
                 id: "home".into(),
                 title: "Home".into(),
-                area: "mobile-polish".into(),
+                area: "home".into(),
                 versions: vec![ScreenVersion {
-                    blob: "a".repeat(40),
-                    path: "x/mobile-polish/home.png".into(),
-                    commit: "c".repeat(40),
+                    image: "20261017-100000-aaaa/home--home.png".into(),
+                    sha256: "a".repeat(64),
+                    run: "20261017-100000-aaaa".into(),
+                    commit: "aaaa".into(),
                     unix: 1,
-                    subject: "Add home".into(),
-                    width: 1179,
-                    height: 2556,
-                    app: true,
+                    width: 1206,
+                    height: 2622,
                 }],
             }],
         };
@@ -311,6 +315,12 @@ mod tests {
         );
         let mut empty = base.content.clone();
         empty["screens"][0]["versions"] = json!([]);
+        let mut escape = base.content.clone();
+        escape["screens"][0]["versions"][0]["image"] = json!("../../etc/passwd.png");
+        assert_eq!(
+            Design::check(&escape, &Value::Null).unwrap_err().code,
+            "board_check"
+        );
         assert_eq!(
             Design::check(&empty, &Value::Null).unwrap_err().code,
             "board_check"

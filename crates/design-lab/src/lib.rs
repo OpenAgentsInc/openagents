@@ -1,9 +1,11 @@
-//! Design Lab: every version of every mobile app screen on one board.
+//! Design Lab: every screen of the current phone app on one board.
 //!
-//! The board is read from git history. Every commit that added or changed a
-//! phone screenshot is a version of that screen, so screens removed from the
-//! tree keep their past versions. A screen is the image's file name without
-//! dates or widths; its area is the folder it was captured into.
+//! The screens are captured from the app in `apps/openagents/` by
+//! `apps/openagents/scripts/design-lab-capture.sh`, which drives the offline
+//! demo through every screen. Each capture run is a folder named
+//! `<YYYYmmdd-HHMMSS>-<commit>[-dirty]` of `<area>--<screen>.png` files; a
+//! run is one version of every screen it holds, and a screen that looks the
+//! same as in the run before keeps its earlier version.
 //!
 //! The board is a `board.v1` document, so it is also a Lab kind
 //! ([`kind::Design`]): renames and areas are checked changes, and the card
@@ -12,15 +14,11 @@
 pub mod kind;
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
-use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
-use std::process::{Command, Stdio};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 pub const SCHEMA: &str = "board.v1";
-
-/// Words in a path that mark a phone screenshot.
-const PHONE_WORDS: &[&str] = &["mobile", "ios", "iphone", "phone", "android", "appshots"];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -43,20 +41,19 @@ pub struct Screen {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScreenVersion {
-    /// The image's git blob id.
-    pub blob: String,
-    pub path: String,
+    /// `<run>/<file>` inside the captures folder.
+    pub image: String,
+    /// SHA-256 of the picture.
+    pub sha256: String,
+    /// The capture run's folder name.
+    pub run: String,
+    /// The app commit it was captured from.
     pub commit: String,
     pub unix: u64,
-    pub subject: String,
     #[serde(default)]
     pub width: u32,
     #[serde(default)]
     pub height: u32,
-    /// Part of the current mobile app: committed under its folder, or in the
-    /// history it was imported with.
-    #[serde(default)]
-    pub app: bool,
 }
 
 impl Board {
@@ -65,204 +62,59 @@ impl Board {
     }
 }
 
-/// True when a repository path looks like a phone screenshot.
-pub fn is_phone_screenshot(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    let image = [".png", ".jpg", ".jpeg"].iter().any(|e| lower.ends_with(e));
-    if !image || lower.contains(".xcassets/") || lower.contains("icon") {
-        return false;
+/// Where capture runs go unless `DESIGN_LAB_CAPTURES` says otherwise.
+pub fn default_captures() -> PathBuf {
+    if let Ok(dir) = std::env::var("DESIGN_LAB_CAPTURES") {
+        return PathBuf::from(dir);
     }
-    let words = lower.split(['/', '-', '_', '.', ' ']);
-    words
-        .into_iter()
-        .any(|w| PHONE_WORDS.contains(&w) || w.starts_with("iphone"))
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home).join("work/design-lab/captures")
 }
 
-fn strip_date(word: &str) -> &str {
-    let b = word.as_bytes();
-    let dated = b.len() >= 11
-        && b[..4].iter().all(u8::is_ascii_digit)
-        && b[4] == b'-'
-        && b[5..7].iter().all(u8::is_ascii_digit)
-        && b[7] == b'-'
-        && b[8..10].iter().all(u8::is_ascii_digit)
-        && b[10] == b'-';
-    if dated { &word[11..] } else { word }
+/// A run folder's time and commit: `20261017-141500-cb54dccbc2[-dirty]`.
+pub fn run_info(name: &str) -> Option<(u64, String)> {
+    let mut parts = name.splitn(3, '-');
+    let (day, time, commit) = (parts.next()?, parts.next()?, parts.next()?);
+    if day.len() != 8 || time.len() != 6 || commit.is_empty() {
+        return None;
+    }
+    let num = |s: &str| s.parse::<u64>().ok();
+    let (y, m, d) = (num(&day[..4])?, num(&day[4..6])?, num(&day[6..])?);
+    let (hh, mm, ss) = (num(&time[..2])?, num(&time[2..4])?, num(&time[4..])?);
+    Some((
+        days_from_civil(y, m, d) * 86_400 + hh * 3600 + mm * 60 + ss,
+        commit.to_string(),
+    ))
 }
 
-/// True when a path names the phone itself, not only a screenshot set.
-pub fn names_the_phone(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower
-        .split(['/', '-', '_', '.', ' '])
-        .any(|w| ["mobile", "ios", "iphone", "phone", "android"].contains(&w))
+/// Days since 1970-01-01 (Howard Hinnant's algorithm), for local run times.
+fn days_from_civil(y: u64, m: u64, d: u64) -> u64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
 }
 
-/// The screen a path belongs to: its file name without a date, an order
-/// number or a trailing width.
-pub fn screen_id(path: &str) -> String {
-    let name = path.rsplit('/').next().unwrap_or(path);
-    let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
-    let stem = strip_date(&stem.to_ascii_lowercase()).to_string();
-    let mut words: Vec<&str> = stem
-        .split(['-', '_', ' '])
-        .filter(|w| !w.is_empty())
-        .collect();
-    while words.len() > 1 && words[0].chars().all(|c| c.is_ascii_digit()) {
-        words.remove(0);
-    }
-    while words.len() > 1
-        && words
-            .last()
-            .is_some_and(|w| w.chars().all(|c| c.is_ascii_digit()))
-    {
-        words.pop();
-    }
-    words.join("-")
-}
-
-/// The area a path was captured into: its folder, without a date.
-pub fn area(path: &str) -> String {
-    let mut dirs = path.rsplit('/').skip(1);
-    let folder = dirs.next().unwrap_or("");
-    let folder = strip_date(folder);
-    // Dated capture folders say little alone; name the area by what holds them.
-    let generic = folder.is_empty()
-        || ["verification", "screenshots", "attachments"].contains(&folder)
-        || folder.starts_with("native-");
-    if generic {
-        dirs.next().map(strip_date).unwrap_or(folder).to_string()
-    } else {
-        folder.to_string()
-    }
+/// A capture's area and screen: `drawer--sessions.png`.
+pub fn screen_of(file: &str) -> Option<(String, String)> {
+    let stem = file.strip_suffix(".png")?;
+    let (area, screen) = stem.split_once("--")?;
+    (!area.is_empty() && !screen.is_empty()).then(|| (area.to_string(), screen.to_string()))
 }
 
 fn title(id: &str) -> String {
-    let mut words = id.split('-');
-    let first = words.next().unwrap_or_default();
-    let mut out = String::new();
-    let mut chars = first.chars();
-    if let Some(c) = chars.next() {
-        out.extend(c.to_uppercase());
-        out.push_str(chars.as_str());
-    }
-    for w in words {
-        out.push(' ');
-        out.push_str(w);
-    }
-    out
+    let words = id.replace('-', " ");
+    let mut chars = words.chars();
+    chars
+        .next()
+        .map(|c| c.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }
 
-/// One image change found in history.
-#[derive(Clone, Debug)]
-struct Change {
-    blob: String,
-    path: String,
-    commit: String,
-    unix: u64,
-    subject: String,
-    app: bool,
-}
-
-/// Where the current mobile app lives in the repository.
-pub const APP_DIR: &str = "apps/openagents";
-
-fn git(repo: &Path) -> Command {
-    let mut command = Command::new("git");
-    command.arg("-C").arg(repo);
-    command
-}
-
-/// Commits of histories imported into `dir` by a merge: a merge parent
-/// whose tree has no `dir` brought the folder in with its own history.
-fn imported(repo: &Path, dir: &str) -> Result<BTreeSet<String>, String> {
-    let out = git(repo)
-        .args(["log", "--merges", "--format=%P", "--", dir])
-        .output()
-        .map_err(|e| format!("can't run git ({e})"))?;
-    let mut commits = BTreeSet::new();
-    for line in String::from_utf8_lossy(&out.stdout).lines() {
-        for parent in line.split(' ').skip(1) {
-            let has_dir = git(repo)
-                .args(["cat-file", "-e", &format!("{parent}:{dir}")])
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|s| s.success());
-            if has_dir {
-                continue;
-            }
-            let list = git(repo)
-                .args(["rev-list", parent])
-                .output()
-                .map_err(|e| format!("can't run git ({e})"))?;
-            commits.extend(
-                String::from_utf8_lossy(&list.stdout)
-                    .lines()
-                    .map(str::to_string),
-            );
-        }
-    }
-    Ok(commits)
-}
-
-/// Every added or changed phone screenshot on the current branch's history.
-fn changes(repo: &Path) -> Result<Vec<Change>, String> {
-    let app_commits = imported(repo, APP_DIR)?;
-    let app_prefix = format!("{APP_DIR}/");
-    let out = git(repo)
-        .args([
-            "log",
-            "--format=%x01%H%x09%ct%x09%s",
-            "--raw",
-            "--no-abbrev",
-            "--no-renames",
-            "--diff-filter=AM",
-            "--",
-            "*.png",
-            "*.jpg",
-            "*.jpeg",
-        ])
-        .output()
-        .map_err(|e| format!("can't run git ({e})"))?;
-    if !out.status.success() {
-        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let mut found = Vec::new();
-    let (mut commit, mut unix, mut subject) = (String::new(), 0, String::new());
-    for line in text.lines() {
-        if let Some(head) = line.strip_prefix('\u{1}') {
-            let mut parts = head.splitn(3, '\t');
-            commit = parts.next().unwrap_or_default().to_string();
-            unix = parts.next().and_then(|t| t.parse().ok()).unwrap_or(0);
-            subject = parts.next().unwrap_or_default().to_string();
-        } else if let Some(raw) = line.strip_prefix(':') {
-            // ":100644 100644 <old> <new> M\tpath"
-            let Some((meta, path)) = raw.split_once('\t') else {
-                continue;
-            };
-            let blob = meta.split(' ').nth(3).unwrap_or_default();
-            // The app's own folder holds desktop captures too; only paths that
-            // name the phone are its phone screens.
-            let app = (path.starts_with(&app_prefix) || app_commits.contains(&commit))
-                && names_the_phone(path);
-            if blob.is_empty() || !is_phone_screenshot(path) {
-                continue;
-            }
-            found.push(Change {
-                blob: blob.to_string(),
-                path: path.to_string(),
-                commit: commit.clone(),
-                unix,
-                subject: subject.clone(),
-                app,
-            });
-        }
-    }
-    Ok(found)
-}
-
-/// Width and height from a PNG's header, or zero for other images.
+/// Width and height from a PNG's header.
 fn png_size(bytes: &[u8]) -> (u32, u32) {
     if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
         return (0, 0);
@@ -272,72 +124,60 @@ fn png_size(bytes: &[u8]) -> (u32, u32) {
     (w, h)
 }
 
-/// Reads each blob's image size with one `git cat-file --batch`.
-fn sizes(repo: &Path, blobs: &[String]) -> Result<BTreeMap<String, (u32, u32)>, String> {
-    let mut child = git(repo)
-        .args(["cat-file", "--batch"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("can't run git ({e})"))?;
-    let mut stdin = child.stdin.take().ok_or("git has no input")?;
-    let input = blobs.join("\n") + "\n";
-    let writer = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
-    let mut reader = BufReader::new(child.stdout.take().ok_or("git has no output")?);
-    let mut found = BTreeMap::new();
-    for blob in blobs {
-        let mut header = String::new();
-        reader.read_line(&mut header).map_err(|e| e.to_string())?;
-        let size: usize = match header.trim_end().rsplit(' ').next() {
-            Some(n) if !header.contains("missing") => n.parse().unwrap_or(0),
-            _ => continue,
-        };
-        let mut body = vec![0; size + 1];
-        reader.read_exact(&mut body).map_err(|e| e.to_string())?;
-        found.insert(blob.clone(), png_size(&body));
-    }
-    let _ = writer.join();
-    let _ = child.wait();
-    Ok(found)
-}
-
-/// Builds the board from the repository's history.
-pub fn scan(repo: &Path) -> Result<Board, String> {
-    let mut changes = changes(repo)?;
-    changes.sort_by_key(|c| c.unix);
-    let mut blobs: Vec<String> = changes.iter().map(|c| c.blob.clone()).collect();
-    blobs.sort();
-    blobs.dedup();
-    let sizes = sizes(repo, &blobs)?;
+/// Builds the board from every capture run, oldest run first.
+pub fn scan(captures: &Path) -> Result<Board, String> {
+    let entries = std::fs::read_dir(captures).map_err(|e| {
+        format!(
+            "can't read {} ({e}); run design-lab-capture.sh first",
+            captures.display()
+        )
+    })?;
+    let mut runs: Vec<(String, u64, String)> = entries
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            run_info(&name).map(|(unix, commit)| (name, unix, commit))
+        })
+        .collect();
+    runs.sort();
     let mut screens: BTreeMap<String, Screen> = BTreeMap::new();
-    for change in changes {
-        let (width, height) = sizes.get(&change.blob).copied().unwrap_or((0, 0));
-        // Icons and thumbnails aren't screens.
-        if width != 0 && width.min(height) < 200 {
-            continue;
+    for (run, unix, commit) in runs {
+        let mut files: Vec<String> = std::fs::read_dir(captures.join(&run))
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        files.sort();
+        for file in files {
+            let Some((area, name)) = screen_of(&file) else {
+                continue;
+            };
+            let bytes =
+                std::fs::read(captures.join(&run).join(&file)).map_err(|e| e.to_string())?;
+            let sha256 = format!("{:x}", Sha256::digest(&bytes));
+            let id = format!("{area}--{name}");
+            let screen = screens.entry(id.clone()).or_insert_with(|| Screen {
+                title: title(&name),
+                area,
+                id,
+                versions: Vec::new(),
+            });
+            // Unchanged since the last run: still the same version.
+            if screen.versions.last().is_some_and(|v| v.sha256 == sha256) {
+                continue;
+            }
+            let (width, height) = png_size(&bytes);
+            screen.versions.push(ScreenVersion {
+                image: format!("{run}/{file}"),
+                sha256,
+                run: run.clone(),
+                commit: commit.clone(),
+                unix,
+                width,
+                height,
+            });
         }
-        let id = screen_id(&change.path);
-        let screen = screens.entry(id.clone()).or_insert_with(|| Screen {
-            title: title(&id),
-            area: area(&change.path),
-            id,
-            versions: Vec::new(),
-        });
-        // The same picture copied to a second place is one version.
-        if let Some(same) = screen.versions.iter_mut().find(|v| v.blob == change.blob) {
-            same.app |= change.app;
-            continue;
-        }
-        screen.versions.push(ScreenVersion {
-            blob: change.blob,
-            path: change.path,
-            commit: change.commit,
-            unix: change.unix,
-            subject: change.subject,
-            width,
-            height,
-            app: change.app,
-        });
     }
     let mut screens: Vec<Screen> = screens.into_values().collect();
     screens.sort_by(|a, b| (&a.area, &a.id).cmp(&(&b.area, &b.id)));
@@ -348,22 +188,21 @@ pub fn scan(repo: &Path) -> Result<Board, String> {
     })
 }
 
-/// A blob's bytes, only if the board holds it.
-pub fn image(repo: &Path, board: &Board, blob: &str) -> Option<Vec<u8>> {
+/// A picture's bytes, only if the board holds it.
+pub fn image(captures: &Path, board: &Board, image: &str) -> Option<Vec<u8>> {
     let known = board
         .screens
         .iter()
         .flat_map(|s| &s.versions)
-        .any(|v| v.blob == blob);
+        .any(|v| v.image == image);
     if !known {
         return None;
     }
-    let out = git(repo).args(["cat-file", "blob", blob]).output().ok()?;
-    out.status.success().then_some(out.stdout)
+    std::fs::read(captures.join(image)).ok()
 }
 
-/// The board page. It fetches `board.json` and images from `img/{blob}`, so
-/// the served and exported boards are the same file.
+/// The board page. It fetches `board.json` and pictures from `img/{image}`,
+/// so the served and exported boards are the same file.
 pub const PAGE: &str = include_str!("board.html");
 
 #[cfg(test)]
@@ -371,71 +210,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn phone_screenshots_are_found_by_folder_words() {
-        assert!(is_phone_screenshot(
-            "apps/openagents/docs/screenshots/mobile-polish/home-glass.png"
-        ));
-        assert!(is_phone_screenshot(
-            "bins/coder-ios/verification/2026-09-27-computer-hud/a.png"
-        ));
-        assert!(is_phone_screenshot(
-            "x/appshots/appshots-chat-light-390.png"
-        ));
-        assert!(!is_phone_screenshot(
-            "crates/openagents-desktop/screenshots/a.png"
-        ));
-        assert!(!is_phone_screenshot("docs/scenarios/a.png"));
-        assert!(!is_phone_screenshot(
-            "apps/ios/OpenAgents/Assets.xcassets/AppIcon.appiconset/a.png"
-        ));
-        assert!(!is_phone_screenshot("docs/mobile/notes.md"));
-        assert!(names_the_phone(
-            "docs/screenshots/appshots/appshots-ios-lightbox.png"
-        ));
-        assert!(!names_the_phone(
-            "docs/screenshots/appshots/appshots-chat-light-390.png"
-        ));
+    fn captures_name_their_area_and_screen() {
+        assert_eq!(
+            screen_of("drawer--sessions.png"),
+            Some(("drawer".into(), "sessions".into()))
+        );
+        assert_eq!(screen_of("drawer.png"), None);
+        assert_eq!(screen_of("--x.png"), None);
+        assert_eq!(screen_of("a--b.jpg"), None);
+        assert_eq!(title("sessions-scrolled"), "Sessions scrolled");
     }
 
     #[test]
-    fn a_screen_is_its_name_without_dates_order_or_width() {
-        assert_eq!(
-            screen_id("a/appshots-chat-light-1100.png"),
-            "appshots-chat-light"
-        );
-        assert_eq!(
-            screen_id("a/appshots-chat-light-390.png"),
-            "appshots-chat-light"
-        );
-        assert_eq!(screen_id("a/2026-09-27-01-home.png"), "home");
-        assert_eq!(screen_id("a/CARD-04-worse.png"), "card-04-worse");
-        assert_eq!(screen_id("a/42.png"), "42");
-        assert_eq!(title("card-04-worse"), "Card 04 worse");
+    fn run_folders_give_time_and_commit() {
+        let (unix, commit) = run_info("20261017-141500-cb54dccbc2-dirty").unwrap();
+        assert_eq!(unix, 1_792_246_500);
+        assert_eq!(commit, "cb54dccbc2-dirty");
+        assert_eq!(run_info("notes"), None);
     }
 
     #[test]
-    fn the_area_is_the_capture_folder_without_its_date() {
-        assert_eq!(area("x/mobile-polish/home.png"), "mobile-polish");
-        assert_eq!(
-            area("bins/coder-ios/verification/2026-09-27-forest-zones/a.png"),
-            "forest-zones"
-        );
-        assert_eq!(
-            area("bins/openagents-mockup-ios/verification/a.png"),
-            "openagents-mockup-ios"
-        );
-        assert_eq!(
-            area("x/2026-09-26-world-pairing/native-attachments/a.png"),
-            "world-pairing"
-        );
-    }
-
-    #[test]
-    fn png_headers_give_the_size() {
+    fn a_screen_gets_a_new_version_only_when_it_changes() {
+        let dir = std::env::temp_dir().join(format!("design-lab-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
-        png.extend(1179u32.to_be_bytes());
-        png.extend(2556u32.to_be_bytes());
-        assert_eq!(png_size(&png), (1179, 2556));
-        assert_eq!(png_size(b"GIF89a"), (0, 0));
+        png.extend(1206u32.to_be_bytes());
+        png.extend(2622u32.to_be_bytes());
+        for (run, extra) in [
+            ("20261017-100000-aaaa", 0u8),
+            ("20261017-110000-bbbb", 0),
+            ("20261017-120000-cccc", 1),
+        ] {
+            std::fs::create_dir_all(dir.join(run)).unwrap();
+            let mut bytes = png.clone();
+            bytes.push(extra);
+            std::fs::write(dir.join(run).join("home--home.png"), bytes).unwrap();
+        }
+        let board = scan(&dir).unwrap();
+        assert_eq!(board.screens.len(), 1);
+        let versions = &board.screens[0].versions;
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].commit, "aaaa");
+        assert_eq!(versions[1].commit, "cccc");
+        assert_eq!((versions[0].width, versions[0].height), (1206, 2622));
+        assert!(image(&dir, &board, &versions[1].image).is_some());
+        assert!(image(&dir, &board, "../secret").is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

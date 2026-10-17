@@ -34,7 +34,7 @@
   #search { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
     color: inherit; font: inherit; width: 240px; outline: none; }
   #search:focus { border-color: #0d99ff; }
-  #source, #areas { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 6px 8px;
+  #areas { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 6px 8px;
     color: inherit; font: inherit; max-width: 220px; }
   .spacer { flex: 1; }
   button { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
@@ -62,10 +62,6 @@
 <div id="bar">
   <span class="chip"><span id="title">Design Lab</span> <span id="count"></span></span>
   <input id="search" type="search" placeholder="Find a screen" autocomplete="off">
-  <select id="source">
-    <option value="app">Current mobile app</option>
-    <option value="all">All phone captures</option>
-  </select>
   <select id="areas"><option value="">All areas</option></select>
   <span class="spacer"></span>
   <button id="out" title="Zoom out (-)">−</button>
@@ -80,8 +76,6 @@
   <aside>
     <h2 id="vtitle"></h2>
     <div class="meta" id="vwhen"></div>
-    <div class="meta" id="vsubject"></div>
-    <div class="meta" id="vpath"></div>
     <div class="nav">
       <button id="prev">← Older</button>
       <button id="next">Newer →</button>
@@ -100,8 +94,9 @@ let frames = [];
 let view = { x: 40, y: 80, k: 0.25 };
 let bounds = { w: 1, h: 1 };
 
-const when = (unix) => new Date(unix * 1000).toLocaleDateString(undefined,
-  { year: "numeric", month: "short", day: "numeric" });
+// Run times are the capturing Mac's wall clock, stored as if UTC.
+const when = (unix) => new Date(unix * 1000).toLocaleString(undefined,
+  { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 
 function aspect(v) {
   return v.width && v.height ? v.width / v.height : 0.46;
@@ -137,15 +132,11 @@ function section(area, screens) {
 function layout() {
   const q = document.getElementById("search").value.trim().toLowerCase();
   const only = document.getElementById("areas").value;
-  const appOnly = document.getElementById("source").value === "app";
   world.textContent = "";
   frames = [];
   const byArea = new Map();
   let shown = 0, versions = 0;
-  for (const all of board.screens) {
-    // Showing the current app keeps only its versions, and drops screens with none.
-    const screen = appOnly ? { ...all, versions: all.versions.filter((v) => v.app) } : all;
-    if (!screen.versions.length) continue;
+  for (const screen of board.screens) {
     if (only && screen.area !== only) continue;
     const hay = (screen.title + " " + screen.id + " " + screen.area).toLowerCase();
     if (q && !hay.includes(q)) continue;
@@ -181,7 +172,7 @@ function layout() {
         pic.addEventListener("click", () => { if (!moved) open(it.screen, i); });
         f.appendChild(pic);
         box.appendChild(f);
-        frames.push({ el: pic, src: "img/" + v.blob, x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
+        frames.push({ el: pic, src: "img/" + v.image, x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
         fx += fw + GAP;
       });
     }
@@ -293,15 +284,13 @@ document.getElementById("out").onclick = () => zoomAt(innerWidth / 2, innerHeigh
 document.getElementById("fit").onclick = fit;
 document.getElementById("search").addEventListener("input", () => { layout(); fit(); });
 document.getElementById("areas").addEventListener("change", () => { layout(); fit(); });
-document.getElementById("source").addEventListener("change", () => { areas(); layout(); fit(); });
 
 // The area list follows what the Show choice keeps.
 function areas() {
   const select = document.getElementById("areas");
   const keep = select.value;
-  const appOnly = document.getElementById("source").value === "app";
   select.length = 1;
-  const names = board.screens.filter((s) => !appOnly || s.versions.some((v) => v.app)).map((s) => s.area);
+  const names = board.screens.map((s) => s.area);
   for (const a of [...new Set(names)]) {
     const o = document.createElement("option");
     o.value = a; o.textContent = a;
@@ -320,19 +309,17 @@ function open(screen, i) {
 function show() {
   const { screen, i } = current;
   const v = screen.versions[i];
-  document.getElementById("big").src = "img/" + v.blob;
+  document.getElementById("big").src = "img/" + v.image;
   document.getElementById("vtitle").textContent = screen.title + " · v" + (i + 1) + " of " + screen.versions.length;
-  document.getElementById("vwhen").textContent = when(v.unix) + " · " + v.commit.slice(0, 10) +
+  document.getElementById("vwhen").textContent = when(v.unix) + " · commit " + v.commit +
     (v.width ? " · " + v.width + "×" + v.height : "");
-  document.getElementById("vsubject").textContent = v.subject;
-  document.getElementById("vpath").textContent = v.path;
   document.getElementById("prev").disabled = i === 0;
   document.getElementById("next").disabled = i === screen.versions.length - 1;
   const strip = document.getElementById("vstrip");
   strip.textContent = "";
   screen.versions.forEach((s, j) => {
     const img = document.createElement("img");
-    img.src = "img/" + s.blob;
+    img.src = "img/" + s.image;
     img.loading = "lazy";
     img.title = "v" + (j + 1) + " · " + when(s.unix);
     if (j === i) img.className = "on";
@@ -366,11 +353,9 @@ fetch("board.json").then((r) => r.json()).then((b) => {
   board = b;
   document.getElementById("title").textContent = b.name;
   document.title = b.name + " · Design Lab";
-  // `#q=words` opens the board already searched, `#show=all` with every
-  // phone capture, so a view can be linked.
+  // `#q=words` opens the board already searched, so a view can be linked.
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.get("q")) document.getElementById("search").value = hash.get("q");
-  if (hash.get("show") === "all") document.getElementById("source").value = "all";
   areas();
   layout();
   fit();
