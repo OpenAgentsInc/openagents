@@ -1,0 +1,21 @@
+substitutions:
+  _COMMIT: ''
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q config
+        git -C config fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git '${_COMMIT}'
+        git -C config checkout -q FETCH_HEAD
+        test "$$(git -C config rev-parse HEAD)" = '${_COMMIT}'
+  - name: gcr.io/cloud-builders/docker
+    dir: config/deploy/space-service
+    args: ['build', '-f', 'edge.Dockerfile', '--build-arg', 'OA_COMMIT=${_COMMIT}', '-t', 'us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/edge:${_COMMIT}', '.']
+images: ['us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/edge:${_COMMIT}']
+options:
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 20
+timeout: 600s
