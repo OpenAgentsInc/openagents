@@ -154,6 +154,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 10: signet and LayerTree (mostly waiting)
 
+**Taken 2026-10-16 22:40 CDT** by a Claude Code subagent working #11863, #11770, #11862, #11793, #11794, #11799, #11762, #11779 in `~/work/openagents-lane10`.
+
 - **Owns:** reading the observers on `oa-lnd-builder` and the LayerTree service, writing the final results into the reports, and closing each issue. It changes no live controller.
 - **Schedule** (signet has run about 5–6 blocks an hour; height was 326691 at 02:45 UTC):
 
