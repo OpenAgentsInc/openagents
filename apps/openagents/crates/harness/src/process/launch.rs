@@ -10,6 +10,8 @@ use super::Command;
 #[derive(Clone)]
 pub struct LaunchBroker {
     sender: mpsc::UnboundedSender<LaunchRequest>,
+    pub(crate) options: crate::host::NativeOptions,
+    accounting: std::sync::Arc<std::sync::Mutex<crate::host::AccountingReader>>,
     #[cfg(feature = "supervised")]
     pub(crate) supervision: Option<super::Supervision>,
 }
@@ -30,11 +32,45 @@ impl LaunchBroker {
         (
             Self {
                 sender: tx,
+                options: Default::default(),
+                accounting: Default::default(),
                 #[cfg(feature = "supervised")]
                 supervision: None,
             },
             rx,
         )
+    }
+
+    pub fn with_host_options(mut self, options: crate::host::NativeOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    pub fn accounting(&self) -> crate::host::Accounting {
+        self.accounting
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .snapshot
+            .clone()
+    }
+
+    pub(crate) fn record_claude(&self, line: &str) {
+        self.accounting
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .claude(line);
+    }
+    pub(crate) fn record_codex(&self, line: &str) {
+        self.accounting
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .codex(line);
+    }
+    pub(crate) fn record_opencode(&self, event: &serde_json::Value, session: &str) {
+        self.accounting
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .opencode(event, session);
     }
 
     /// Keep the host's process supervisor around the native protocol driver.

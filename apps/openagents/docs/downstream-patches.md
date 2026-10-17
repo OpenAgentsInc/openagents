@@ -142,3 +142,7 @@ links remain readable. Upstream fixes now require manual ports.
   The shared workbench hides the add control and keeps saved references removable.
   Enabling reads requires a typed source-policy contract; local binding flags
   and arbitrary tool responses cannot authorize evaluation.
+- [OpenAgents #11894](https://github.com/OpenAgentsInc/openagents/issues/11894):
+  terminal callers pass prompt settings and command hooks through `host::NativeOptions`.
+  The launch broker reports bounded provider accounting and process cleanup to the
+  terminal host. Codex hook trust travels in thread configuration, including resume.

@@ -179,6 +179,8 @@ pub struct Supervision {
 
 #[cfg(all(unix, feature = "supervised"))]
 pub enum SupervisedEvent {
+    /// The process started; a matching stop follows after cleanup.
+    Started,
     Output(supervise::Delivery),
     Stopped(supervise::Stopped),
 }
@@ -222,6 +224,7 @@ impl RuntimeChild {
                 supervise::Input::Null
             })
             .map_err(io::Error::other)?;
+        (supervision.observe)(SupervisedEvent::Started);
         let pid = live.pid();
         let stdin = live.take_input().map(|io| Box::new(io) as RuntimeInput);
         let (stdout, out) = tokio::io::duplex(64 * 1024);

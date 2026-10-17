@@ -803,6 +803,10 @@ impl CodexHarness {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        #[cfg(unix)]
+        if !title_only && let Some(broker) = &self.launch_broker {
+            broker.options.codex_command(&mut cmd);
+        }
         let mut child = crate::process::RuntimeChild::launch(
             cmd,
             #[cfg(unix)]
@@ -838,9 +842,17 @@ impl CodexHarness {
             });
         }
 
-        let (client, incoming) = RpcClient::new(stdin, stdout);
+        #[cfg(unix)]
+        let observer = self.launch_broker.clone().map(|broker| {
+            Box::new(move |line: &str| broker.record_codex(line)) as Box<dyn Fn(&str) + Send>
+        });
+        #[cfg(not(unix))]
+        let observer = None;
+        let (client, incoming) = RpcClient::with_frame_observer(stdin, stdout, observer);
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
         tokio::spawn(run_session(Session {
+            #[cfg(unix)]
+            host_options: self.launch_broker.as_ref().map(|b| b.options.clone()),
             title_only,
             idle,
             executable: exe,
@@ -867,6 +879,8 @@ impl CodexHarness {
 // ---------------------------------------------------------------------------
 
 struct Session {
+    #[cfg(unix)]
+    host_options: Option<crate::host::NativeOptions>,
     executable: PathBuf,
     title_only: bool,
     idle: bool,
@@ -1066,6 +1080,8 @@ async fn start_turn(client: &RpcClient, params: Value) -> Result<String, Harness
 /// steering mailbox, the interrupt token, and consumer liveness.
 async fn run_session(session: Session) {
     let Session {
+        #[cfg(unix)]
+        host_options,
         executable,
         title_only,
         idle,
@@ -1148,6 +1164,22 @@ async fn run_session(session: Session) {
                 .as_object_mut()
                 .expect("thread/start config overrides are an object");
             overrides.extend(codex_mcp_overrides(mcp));
+        }
+        #[cfg(unix)]
+        if !title_only && let Some(options) = &host_options {
+            p.entry("config")
+                .or_insert_with(|| json!({}))
+                .as_object_mut()
+                .expect("thread config is an object")
+                .extend(options.codex_thread_config());
+            if let Some(append) = &options.append_instructions {
+                let instructions = p
+                    .get("developerInstructions")
+                    .and_then(Value::as_str)
+                    .map(|current| format!("{current}\n\n{append}"))
+                    .unwrap_or_else(|| append.clone());
+                p.insert("developerInstructions".into(), instructions.into());
+            }
         }
         p.insert("approvalPolicy".into(), approval_policy.into());
         p.insert("sandbox".into(), sandbox_mode(request.sandbox).into());

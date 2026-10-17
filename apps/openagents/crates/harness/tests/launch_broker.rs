@@ -127,25 +127,50 @@ async fn shared_native_protocols_run_inside_the_host_supervisor() {
             .join("tests/fixtures")
             .join(format!("fake-{driver}.sh"));
         let binary = directory.path().join(driver);
-        let source = std::fs::read_to_string(fixture).unwrap();
+        let source = std::fs::read_to_string(fixture)
+            .unwrap()
+            .replace("\"tokenUsage\":{\"last\":", "\"tokenUsage\":{\"total\":");
         let source = source.replace(
             "\"cwd\":\"/tmp\"",
             &format!("\"cwd\":\"{}\"", directory.path().display()),
         );
+        let source = if driver == "codex" {
+            source.replace(
+                "thread_line=\"$line\"",
+                r#"thread_line="$line"
+has "$line" '"bypass_hook_trust":true' || exit 1
+has "$line" '"hooks.PreToolUse"' || exit 1
+has "$line" '"developerInstructions":"host append"' || exit 1
+"#,
+            )
+        } else {
+            source
+        };
         std::fs::write(&binary, source).unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
         let stopped = Arc::new(Mutex::new(None));
         let observed = stopped.clone();
         let (broker, mut launches) = LaunchBroker::channel();
-        let broker = broker.supervised(Supervision {
-            limits: supervise::Limits::within(Duration::from_secs(10)).keeping(1024 * 1024),
-            observe: Arc::new(move |event| {
-                if let SupervisedEvent::Stopped(result) = event {
-                    *observed.lock().unwrap() = Some(result);
-                }
-            }),
-        });
+        let broker = broker
+            .with_host_options(openagents_harness::host::NativeOptions {
+                append_instructions: Some("host append".into()),
+                hooks: Some(openagents_harness::host::HookBridge {
+                    program: "/host-hook".into(),
+                    args: vec![],
+                    socket: "/host-socket".into(),
+                }),
+                ..Default::default()
+            })
+            .supervised(Supervision {
+                limits: supervise::Limits::within(Duration::from_secs(10)).keeping(1024 * 1024),
+                observe: Arc::new(move |event| {
+                    if let SupervisedEvent::Stopped(result) = event {
+                        *observed.lock().unwrap() = Some(result);
+                    }
+                }),
+            });
+        let accounting = broker.clone();
         let harness: Box<dyn Harness> = match driver {
             "claude" => Box::new(
                 ClaudeHarness::new()
@@ -213,6 +238,11 @@ async fn shared_native_protocols_run_inside_the_host_supervisor() {
         })
         .await
         .unwrap();
+        let usage = accounting.accounting();
+        assert!(usage.usage.is_some(), "{driver} must retain provider usage");
+        if driver == "claude" {
+            assert_eq!(usage.total_cost_usd, Some(0.01));
+        }
         let stopped = stopped.lock().unwrap();
         let stopped = stopped.as_ref().expect("supervisor acknowledged cleanup");
         assert!(stopped.group_clear, "{driver}");

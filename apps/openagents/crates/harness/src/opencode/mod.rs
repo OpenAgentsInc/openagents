@@ -511,6 +511,8 @@ impl Harness for OpencodeHarness {
             .await?;
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
         tokio::spawn(run_session(Session {
+            #[cfg(unix)]
+            broker: self.launch_broker.clone(),
             server,
             event_tx,
             controls,
@@ -1398,6 +1400,8 @@ fn unwrap_data(value: Value) -> Value {
 // ---------------------------------------------------------------------------
 
 struct Session {
+    #[cfg(unix)]
+    broker: Option<crate::process::LaunchBroker>,
     server: Server,
     event_tx: mpsc::Sender<Result<AgentEvent, HarnessError>>,
     controls: RunControls,
@@ -1568,6 +1572,8 @@ impl TurnState {
 
 async fn run_session(session: Session) {
     let Session {
+        #[cfg(unix)]
+        broker,
         mut server,
         event_tx,
         controls,
@@ -2325,6 +2331,8 @@ async fn run_session(session: Session) {
                         break 'main;
                     }
                     BusMsg::Event(event) => {
+                        #[cfg(unix)]
+                        if let Some(broker) = &broker { broker.record_opencode(&event, &session_id); }
                         if interrupt_requested || stopping {
                             // Only the terminal idle/interrupt acknowledgement may
                             // affect an aborted turn; discard late content and usage.

@@ -76,6 +76,23 @@ impl RpcClient {
         stdout: impl AsyncRead + Send + Sync + Unpin + 'static,
         observer: Option<StdoutObserver>,
     ) -> (Self, mpsc::Receiver<Incoming>) {
+        Self::with_observers(stdin, stdout, observer, None)
+    }
+
+    pub(crate) fn with_frame_observer(
+        stdin: impl AsyncWrite + Send + Sync + Unpin + 'static,
+        stdout: impl AsyncRead + Send + Sync + Unpin + 'static,
+        observer: Option<StdoutObserver>,
+    ) -> (Self, mpsc::Receiver<Incoming>) {
+        Self::with_observers(stdin, stdout, None, observer)
+    }
+
+    fn with_observers(
+        stdin: impl AsyncWrite + Send + Sync + Unpin + 'static,
+        stdout: impl AsyncRead + Send + Sync + Unpin + 'static,
+        observer: Option<StdoutObserver>,
+        frame_observer: Option<StdoutObserver>,
+    ) -> (Self, mpsc::Receiver<Incoming>) {
         let (writer_tx, writer_rx) = mpsc::unbounded_channel::<String>();
         tokio::spawn(write_loop(Box::new(stdin), writer_rx));
         let pending: Pending = Arc::default();
@@ -88,6 +105,7 @@ impl RpcClient {
             incoming_tx,
             closed.clone(),
             observer,
+            frame_observer,
             Arc::clone(&voice_router),
         ));
         (
@@ -272,6 +290,7 @@ async fn read_loop(
     tx: mpsc::Sender<Incoming>,
     closed: Arc<AtomicBool>,
     observer: Option<StdoutObserver>,
+    frame_observer: Option<StdoutObserver>,
     voice_router: Arc<Mutex<Option<VoiceRouter>>>,
 ) {
     let mut lines = BufReader::new(stdout).lines();
@@ -279,6 +298,9 @@ async fn read_loop(
     // unusable, pending requests must fail, and the session loop must know.
     while let Ok(Some(line)) = lines.next_line().await {
         let line = line.trim();
+        if let Some(observer) = &frame_observer {
+            observer(line);
+        }
         if let Some(url) =
             line.strip_prefix("Open the following link to authenticate the ACP server: ")
         {

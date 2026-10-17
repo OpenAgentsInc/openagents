@@ -254,6 +254,8 @@ impl TurnWire {
             .unwrap()
             .extend(overrides.as_object().unwrap().clone());
         let run = tokio::spawn(run_session(Session {
+            #[cfg(unix)]
+            broker: None,
             server: Server::attached(base),
             event_tx,
             controls: RunControls {

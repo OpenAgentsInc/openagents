@@ -622,6 +622,10 @@ impl ClaudeHarness {
             // config with settings-sourced ones.
             cmd.args(["--mcp-config", &mcp_config_arg(mcp)]);
         }
+        #[cfg(unix)]
+        if !title_only && let Some(broker) = &self.launch_broker {
+            broker.options.claude_command(&mut cmd);
+        }
         let normalizer = if let Some(session_id) = &request.resume {
             let config = crate::model_context::root(
                 "CLAUDE_CONFIG_DIR",
@@ -692,6 +696,8 @@ impl ClaudeHarness {
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
         tokio::spawn(run_session(Session {
             normalizer,
+            #[cfg(unix)]
+            broker: self.launch_broker.clone(),
             title_only,
             child,
             stdout_lines: BufReader::new(stdout).lines(),
@@ -820,6 +826,8 @@ async fn stdin_writer(
 }
 
 struct Session {
+    #[cfg(unix)]
+    broker: Option<crate::process::LaunchBroker>,
     normalizer: Normalizer,
     title_only: bool,
     child: crate::process::RuntimeChild,
@@ -843,6 +851,8 @@ struct Session {
 async fn run_session(session: Session) {
     let Session {
         normalizer: mut norm,
+        #[cfg(unix)]
+        broker,
         title_only,
         mut child,
         mut stdout_lines,
@@ -919,6 +929,8 @@ async fn run_session(session: Session) {
                     if line.is_empty() {
                         continue;
                     }
+                    #[cfg(unix)]
+                    if let Some(broker) = &broker { broker.record_claude(line); }
                     // The CLI is still producing: whatever it is doing is not
                     // the quiet end a held turn end's fallback waits for.
                     last_frame_at = tokio::time::Instant::now();
