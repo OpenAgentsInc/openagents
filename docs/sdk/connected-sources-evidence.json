@@ -2,7 +2,7 @@
   "format": "openagents.sdk.connected-sources.qualification.v1",
   "issue": 11868,
   "parent": 11857,
-  "source_base": "ed574aa32d",
+  "source_base": "7ff99a23bb86fd2aa510d61a71a050bba6597470",
   "scope": {
     "operations": 8,
     "sources": [
@@ -62,20 +62,42 @@
     "passed": [
       "Changed Rust files pass rustfmt",
       "Python scripts pass py_compile",
-      "Source route inventory regenerated and checked",
+      "Source route inventory regenerated and checked against the combined source",
       "Edited documentation links checked",
-      "git diff --check"
+      "git diff --check",
+      "Linux connections::tests: 11 passed",
+      "Linux computers_api: 6 passed",
+      "Linux app_openapi: 5 passed",
+      "Linux cloud::private::tests: 3 passed with private scratch and umask 077",
+      "Both Rust OpenAPI exporters completed on the source commit",
+      "Computers generation and --check: 18 operations",
+      "Python public-reference regression: 7 passed",
+      "Qualified app schema and forwarding rules: 142 operations",
+      "Native app build on 1965ddaccb compiled and linked both SDK consumers",
+      "Linux cargo test -p openagents-sdk: 48 passed, including 13 Computers client and 6 generated wire-contract tests",
+      "Repeated app and Computers exports match the committed bytes exactly",
+      "Final combined-source public-reference regression: 7 passed; app slice: 142 operations"
     ],
-    "pending": [
-      "cargo test -p openagents-web connections::tests --lib",
-      "cargo run -p openagents-web --example app_openapi and deterministic fixture comparison",
-      "cargo test -p openagents-web app_openapi --lib",
-      "Python public-reference regression and schema checks"
-    ],
-    "local_build": "Cold agent2 build stopped with SIGINT to preserve disk at the root agent's request; cache retained. Shared agent3 build also stopped before disk exhaustion. No test verdict was produced."
+    "pending": [],
+    "local_build": "Cold agent2 build stopped with SIGINT to preserve disk at the root agent's request; cache retained. Shared agent3 build also stopped before disk exhaustion. No test verdict was produced. Final checks use the isolated Linux checkout and preserve the local caches.",
+    "sdk_tests": {
+      "total": 48,
+      "failed": 0,
+      "ignored": 0,
+      "library": 2,
+      "auth": 12,
+      "chats": 2,
+      "computers_client": 13,
+      "computers_contract": 6,
+      "copy": 2,
+      "dashboard": 1,
+      "history": 5,
+      "payment_required": 5
+    },
+    "repeat_export_bytes_match": true
   },
   "deployment": {
-    "status": "Pending integration and web deployment; no handler or authorization behavior changed.",
+    "status": "Source and fixtures are integrated on main. Web deployment and signed-out public probes are coordinated by the root agent and recorded separately.",
     "check": "python3 scripts/api/check_connected_sources_public.py --api ORIGIN --output FILE",
     "probes": "Schema and signed-out routing only; no account credentials or resources."
   },
@@ -92,5 +114,61 @@
     "This work does not enable Google for more accounts or complete Google app verification.",
     "Authenticated mutations are qualified through isolated handlers, not live Google accounts.",
     "Photo/video model reads and their costs remain untested; the schema describes their existing optional usage fields."
-  ]
+  ],
+  "generated_commit": "58de696ca67468926ea5c24771675515eedc74a6",
+  "verification_environment": {
+    "platform": "Linux x86_64",
+    "rust": "1.97.1",
+    "cargo_build_jobs": 2,
+    "cargo_incremental": 0,
+    "dev_debug": 0,
+    "test_debug": 0,
+    "umask": "077",
+    "scratch": "Private mode-0700 temporary directory under the disposable test account home",
+    "initial_failure": "The test login umask 002 created mode-0775 fixture roots. Existing private-file checks correctly refused these group-writable directories. Private TMPDIR plus umask 077 fixed the setup; production guards were unchanged. The SDK authentication fixture uses CARGO_TARGET_TMPDIR. Its persistent target-cache ancestor had also been created mode 0775 before the private mask; removing group write on this own cache directory fixed that setup. The full SDK suite then passed.",
+    "upstream_example_fix": "b4f5df67e4, crates/openagents-sdk/examples/foreman.rs only; disambiguate ::agent_lab::templates::foreman() before the full SDK phase.",
+    "target_root_mode": "0755; Cargo temporary root 0700"
+  },
+  "public_computer_contract": {
+    "issue": 11812,
+    "fields": [
+      "capabilities.profiles",
+      "capabilities.sizes",
+      "capabilities.shapes",
+      "capabilities.memory_suspend",
+      "capabilities.command_sessions",
+      "capabilities.workspace_file_bytes",
+      "lifecycle_policy.turn_complete",
+      "lifecycle_policy.idle_ms",
+      "lifecycle_policy.observed_extension_ms",
+      "lifecycle_policy.absolute_ms",
+      "lifecycle_policy.absolute_scope",
+      "lifecycle_policy.uncertain_at_absolute_limit",
+      "lifecycle_policy.stopped_retention_ms"
+    ],
+    "legacy": "Resource capabilities and policy are optional nullable fields. Missing recorded retention remains unknown; a known capability object preserves explicit false and defaults omitted false declarations to false.",
+    "private_fields": "Provider endpoints, driver names, binding keys, deployment/resource keys, and artifact IDs are excluded.",
+    "schema": "docs/sdk/openapi.computers.json",
+    "generated": "crates/openagents-sdk/src/generated/computers.rs",
+    "native_consumer_source": "1965ddaccb319e90c5551911fe034d8900dcdd67",
+    "native_consumer_log_sha256": "12d2dbdcf3e5c99fafe76e152169952c36e33d757f0b1589cc60ede62999e8c9",
+    "sdk_computers_tests": 13,
+    "sdk_wire_contract_tests": 6
+  },
+  "artifact_sha256": {
+    "docs/sdk/openapi.app.json": "0bae5892f4c1eabaceecbe6f7c768ea9dab683d13d6b85ae99f0166fa719e7d6",
+    "docs/sdk/openapi.computers.json": "54ce0866363235441d42f6a4d1748bce2c8b88ca9514906de16d2b45f52dc72c",
+    "crates/openagents-sdk/src/generated/computers.rs": "ec851cca73d03851d9a20442304026961cc069daea37c30632eadaff91f179e9",
+    "docs/sdk/computers-operations.json": "0f4671e689257be3d29d509e419c6cbd08f8db446e934b6487b7c954959479e2",
+    "docs/sdk/route-inventory.json": "24b1083442fb9c9193c64f703125091b92bd4ecce47c9fdec3097eade182bff0"
+  },
+  "qualified_at_utc": "2026-10-17 01:29:41 UTC",
+  "integration_main_commit": "6188505e7dbe2c25546ef0ef192f39e13a5171ce",
+  "public_archive": {
+    "path": "evidence/source-computer-contracts-2026-10-17.tar.gz",
+    "sha256": "9e4eb12584bbedfc001c6d3518521426f360f53fbf7adac06b1684a2631f45d8",
+    "files": 27,
+    "contains": "Exact tested source patch, tool versions, binary and artifact hashes, API and SDK test logs, export logs, setup-failure diagnosis, check scripts, and native app SDK consumer build evidence.",
+    "contains_credentials": false
+  }
 }
