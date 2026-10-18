@@ -307,9 +307,32 @@ impl OpenAgents {
         chat_id: &str,
         device: Option<&str>,
     ) -> anyhow::Result<Vec<SessionMessageEntry>> {
+        self.watch_transcript(chat_id, device, false).await
+    }
+
+    /// The newest messages only (the engine's opening tail, at most 128
+    /// entries), so a very long chat never ships its whole transcript.
+    /// Enough for anything that only looks at the latest turn.
+    pub async fn recent_transcript_on(
+        &self,
+        chat_id: &str,
+        device: Option<&str>,
+    ) -> anyhow::Result<Vec<SessionMessageEntry>> {
+        self.watch_transcript(chat_id, device, true).await
+    }
+
+    async fn watch_transcript(
+        &self,
+        chat_id: &str,
+        device: Option<&str>,
+        opening_tail: bool,
+    ) -> anyhow::Result<Vec<SessionMessageEntry>> {
         let mut params = json!({ "chatId": chat_id });
         if let Some(device) = device {
             params["targetDeviceId"] = json!(device);
+        }
+        if opening_tail {
+            params["openingTail"] = json!(true);
         }
         let mut rx = self.subscribe(methods::WATCH_DOC_MESSAGES, params).await?;
         let mut entries = Vec::new();

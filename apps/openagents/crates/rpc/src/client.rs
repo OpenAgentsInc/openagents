@@ -391,9 +391,21 @@ fn wire_error(error: String) -> RpcError {
 /// stranger on port 27654 would hang the app at boot rather than degrade it.
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Largest frame and message the client accepts. A very long chat's full
+/// transcript arrives as one reset frame; tungstenite's 16 MiB default frame
+/// limit closed the whole connection on it (#12134). This is our own engine
+/// on localhost, so the bound only guards against runaway memory.
+const MAX_MESSAGE_BYTES: usize = 1024 * 1024 * 1024;
+
 /// Dial a WebSocket RPC server (`ws://127.0.0.1:{ipc_port}`).
 pub async fn connect_ws(url: &str) -> Result<RpcClient, RpcError> {
-    let (ws, _) = tokio::time::timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(url))
+    let config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig {
+        max_message_size: Some(MAX_MESSAGE_BYTES),
+        max_frame_size: Some(MAX_MESSAGE_BYTES),
+        ..Default::default()
+    };
+    let dial = tokio_tungstenite::connect_async_with_config(url, Some(config), false);
+    let (ws, _) = tokio::time::timeout(CONNECT_TIMEOUT, dial)
         .await
         .map_err(|_| RpcError::Transport(format!("timed out dialing {url}")))?
         .map_err(|e| RpcError::Transport(e.to_string()))?;

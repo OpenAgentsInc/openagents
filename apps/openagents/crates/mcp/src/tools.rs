@@ -11,17 +11,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use openagents_doc::SessionCommandPayload;
 use openagents_proto::{
     Chat, ChatConfig, HarnessId, ReasoningLevel, RunRequest, SandboxLevel, Session, SessionStatus,
     SidebarPinChange, SidebarPreferencesState, Space, UserInputAnswer,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 use crate::inbox::Inbox;
+use crate::openagents::{HarnessInfo, OpenAgents, TurnOutcome, session_for, short};
 use crate::transcript::{RenderOptions, RenderedMessage, render_entries};
-use crate::openagents::{HarnessInfo, TurnOutcome, OpenAgents, session_for, short};
 
 const MAX_BATCH: usize = 32;
 /// Default and ceiling for every blocking wait (#11969): a chat stuck in one
@@ -1136,7 +1136,8 @@ impl Tools {
     }
 
     async fn list_projects(&self, args: DeviceArgs) -> anyhow::Result<Value> {
-        let (mut spaces, devices) = tokio::try_join!(self.openagents.spaces(), self.openagents.devices())?;
+        let (mut spaces, devices) =
+            tokio::try_join!(self.openagents.spaces(), self.openagents.devices())?;
         if let Some(device) = args.device.as_deref() {
             let device = self.openagents.resolve_device_id(Some(device)).await?;
             spaces.retain(|s| s.device_id == device);
@@ -1179,7 +1180,10 @@ impl Tools {
             Some(key) => Some(self.openagents.resolve_device_id(Some(key)).await?),
             None => None,
         };
-        let models = self.openagents.models_on(harness, device.as_deref()).await?;
+        let models = self
+            .openagents
+            .models_on(harness, device.as_deref())
+            .await?;
         Ok(json!({
             "harness": harness,
             "models": models.iter().map(|m| json!({
@@ -1207,7 +1211,10 @@ impl Tools {
             chats.retain(|c| c.space_id.as_deref() == Some(space.id.as_str()));
         }
         if args.device.is_some() {
-            let device = self.openagents.resolve_device_id(args.device.as_deref()).await?;
+            let device = self
+                .openagents
+                .resolve_device_id(args.device.as_deref())
+                .await?;
             chats.retain(|c| c.device_id == device);
         }
         if !args.include_archived {
@@ -1572,9 +1579,10 @@ impl Tools {
         } else {
             args.mode.as_deref().unwrap_or("auto")
         };
+        // Only the newest ids matter: a reply is a message not seen here.
         let message_ids = self
             .openagents
-            .transcript_on(&chat.id, Some(&chat.device_id))
+            .recent_transcript_on(&chat.id, Some(&chat.device_id))
             .await?
             .into_iter()
             .map(|m| m.id)
@@ -1853,7 +1861,7 @@ impl Tools {
             None => {
                 let entries = self
                     .openagents
-                    .transcript_on(&chat.id, Some(&chat.device_id))
+                    .recent_transcript_on(&chat.id, Some(&chat.device_id))
                     .await?;
                 let rendered = render_entries(&entries, RenderOptions::default());
                 last_pending_input(&rendered)
@@ -2088,7 +2096,8 @@ impl Tools {
             }
             let entries = match tokio::time::timeout(
                 remaining,
-                self.openagents.transcript_on(&chat.id, Some(&chat.device_id)),
+                self.openagents
+                    .recent_transcript_on(&chat.id, Some(&chat.device_id)),
             )
             .await
             {
@@ -2171,8 +2180,8 @@ mod tests {
     use crate::openagents::Origin;
     use async_trait::async_trait;
     use futures::StreamExt;
-    use std::sync::Mutex;
     use openagents_rpc::{RpcError, RpcReply, RpcService, memory_client, methods};
+    use std::sync::Mutex;
 
     /// Two devices with distinct catalogs and repeated project paths, plus
     /// two chats with a two-message transcript. Writes are recorded for assertions.
@@ -2439,7 +2448,10 @@ mod tests {
         let refused = call(json!({ "set": "run-progress", "state": {}, "working": [] })).await;
         assert_eq!(refused["result"]["isError"], true);
         let text = refused["result"]["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("`working`") && text.contains("`set`"), "{text}");
+        assert!(
+            text.contains("`working`") && text.contains("`set`"),
+            "{text}"
+        );
         // Every tool's own declared fields pass the check.
         for tool in tools.list() {
             let declared: serde_json::Map<String, Value> = tool.input_schema["properties"]
@@ -2449,7 +2461,11 @@ mod tests {
                 .map(|(key, _)| (key.clone(), Value::Null))
                 .collect();
             assert_eq!(
-                crate::jsonrpc::unknown_fields(tool.name, &tool.input_schema, &Value::Object(declared)),
+                crate::jsonrpc::unknown_fields(
+                    tool.name,
+                    &tool.input_schema,
+                    &Value::Object(declared)
+                ),
                 None,
                 "{}",
                 tool.name
@@ -2457,7 +2473,10 @@ mod tests {
         }
         // A schema that allows other fields checks none.
         let open = json!({ "type": "object", "properties": {}, "additionalProperties": true });
-        assert_eq!(crate::jsonrpc::unknown_fields("x", &open, &json!({ "y": 1 })), None);
+        assert_eq!(
+            crate::jsonrpc::unknown_fields("x", &open, &json!({ "y": 1 })),
+            None
+        );
     }
 
     /// Runs the stdio server over `input`, returning every line it wrote.
@@ -2480,7 +2499,9 @@ mod tests {
         tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut out)
             .await
             .unwrap();
-        out.lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+        out.lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
     }
 
     #[tokio::test]
@@ -2496,12 +2517,20 @@ mod tests {
         let seen = handed.clone();
         let exec: Box<crate::jsonrpc::Exec> = Box::new(move |binary, resume| {
             let text = std::fs::read_to_string(resume).unwrap();
-            seen.lock().unwrap().push((binary.path().to_path_buf(), text));
+            seen.lock()
+                .unwrap()
+                .push((binary.path().to_path_buf(), text));
             std::io::Error::other("not in a test")
         });
         let call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"whoami","arguments":{}}}"#;
         let ping = r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#;
-        let lines = serve_lines(&format!("{call}\n{ping}\n"), Some(binary), Some(exec), false).await;
+        let lines = serve_lines(
+            &format!("{call}\n{ping}\n"),
+            Some(binary),
+            Some(exec),
+            false,
+        )
+        .await;
         let handed = handed.lock().unwrap();
         // Once, with the new binary, the call, and the ping read with it.
         assert_eq!(handed.len(), 1);
@@ -2509,7 +2538,10 @@ mod tests {
         assert_eq!(handed[0].1, format!("{call}\n{ping}\n"));
         // The exec failed here, so this process answered both.
         let ids: Vec<&Value> = lines.iter().map(|line| &line["id"]).collect();
-        assert!(ids.contains(&&json!(1)) && ids.contains(&&json!(2)), "{lines:?}");
+        assert!(
+            ids.contains(&&json!(1)) && ids.contains(&&json!(2)),
+            "{lines:?}"
+        );
     }
 
     #[tokio::test]
