@@ -760,7 +760,7 @@ mod tests {
         let (address, _) = loopback_address(&path).unwrap();
         let stream = TcpStream::connect(address).unwrap();
         let forged = json!({"format": "codex", "input": codex_pre("make deploy"), "token": "0"});
-        assert_eq!(exchange(&stream, &forged).unwrap(), None);
+        assert_eq!(exchange::<TcpStream>(&stream, &forged).unwrap(), None);
         drop(host);
         assert!(!path.exists());
         assert!(ask(&path, Format::Codex, &codex_pre("ls"), WAIT).is_err());
