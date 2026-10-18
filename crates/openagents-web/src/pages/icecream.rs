@@ -72,6 +72,10 @@ img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
 connect-src 'self' wss://relay.openagents.com; manifest-src 'self'; worker-src 'self'; \
 base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
+/// The service worker's own policy: it reads this site's files and runs
+/// nothing else.
+const SERVICE_WORKER_POLICY: &str = "default-src 'none'; connect-src 'self'";
+
 /// A file whose address carries its version.
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// Always asked again (a `304` when unchanged).
@@ -290,9 +294,17 @@ async fn file(
             );
             // The worker serves the page too, which sits just above its
             // own folder.
-            response.headers_mut().insert(
+            let headers = response.headers_mut();
+            headers.insert(
                 "service-worker-allowed",
                 HeaderValue::from_static(ICECREAM_PATH),
+            );
+            // A worker runs under its own script's policy. The site's
+            // default allows no fetches, so every page load after the first
+            // would fail (#12131).
+            headers.insert(
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static(SERVICE_WORKER_POLICY),
             );
             return response;
         }

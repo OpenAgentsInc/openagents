@@ -1970,6 +1970,13 @@ async fn the_ice_cream_man_page_serves_the_game_build() {
         headers["service-worker-allowed"],
         "/games/the-ice-cream-man"
     );
+    // The worker runs under this policy; without `connect-src` its fetches
+    // fail and every visit after the first is blank (#12131).
+    let worker_policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(
+        worker_policy.contains("connect-src 'self'"),
+        "{worker_policy}"
+    );
     let policy = pages::ICECREAM_POLICY;
     assert!(policy.contains("manifest-src 'self'") && policy.contains("worker-src 'self'"));
     let response = router(config.clone())
