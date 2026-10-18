@@ -688,3 +688,15 @@ links remain readable. Upstream fixes now require manual ports.
   connect the bridge and provide transcript, composer, Markdown, and local
   surface adapters. This baseline has no Gradle app shell; Android compilation,
   device input, TalkBack, deployment, and store checks have not run.
+- [OpenAgents #12094](https://github.com/OpenAgentsInc/openagents/issues/12094):
+  `apps/openagents/apps/android/platform/AndroidVoiceMediaBridge.kt` adds a
+  Kotlin media-driver seam for the existing Rust-owned `VoiceMediaListener`
+  request contract; `apps/openagents/apps/android/voice/src/test` contains
+  offline fake-driver tests. Kotlin receives bounded media operations and
+  returns platform results; Rust retains call, signaling, and session state.
+  No WebRTC artifact is pinned in this source checkpoint. The current
+  `webrtc-sdk/android`
+  publication metadata and repository do not yet establish the exact AAR
+  build provenance and complete bundled third-party license set needed for an
+  app dependency. Permission prompts, peer connections, audio routing,
+  lifecycle handling, Gradle integration, and device checks remain pending.
