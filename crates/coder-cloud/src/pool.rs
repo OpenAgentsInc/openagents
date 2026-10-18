@@ -866,6 +866,11 @@ oa_build() {
     flock -u 8; exec 8>&-; return 0
   fi
   git checkout -q --detach "$rev" || return 2
+  # The build scripts stamp the commit and tree only from the environment
+  # (d765f537cb), and the install below requires a clean stamp of $rev.
+  local dirty=0
+  [ -z "$(git status --porcelain --untracked-files=no)" ] || dirty=1
+  export CODER_BUILD_COMMIT="$rev" CODER_BUILD_DIRTY="$dirty"
   local warm; warm=$(jq -r .warm_target.slot "$HOME/.openagents/coder-host.json" 2>/dev/null)
   [ -n "$warm" ] && [ "$warm" != null ] || warm=$HOME/.openagents/targets/pool-runtime
   echo "pool: building openagents, microcoder, and Coder runtime at ${rev:0:10} on the warm target" >&2

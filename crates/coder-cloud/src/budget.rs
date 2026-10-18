@@ -267,7 +267,8 @@ impl Ledger {
             .iter()
             .filter(|h| agent.is_none() || h.agent.as_deref() == agent)
             .map(|h| h.cost_between(from, at))
-            .sum()
+            // A float sum of nothing is -0.0; spend reads $0.00.
+            .fold(0.0, |total, cost| total + cost)
     }
 
     /// Records what a listing of `pool` showed at `at`: running hosts are
@@ -486,6 +487,8 @@ mod tests {
     fn a_host_costs_from_creation_until_it_was_seen_gone() {
         let start = rfc3339_seconds("2026-10-18T02:00:00Z").unwrap();
         let mut ledger = Ledger::default();
+        // Nothing spent shows as $0.00, not $-0.00.
+        assert_eq!(format!("{:.2}", ledger.spent(start, None)), "0.00");
         ledger.observe("p1", &[host("a", "RUNNING")], start + 600);
         assert_eq!(ledger.hosts[0].started, start);
         // Still running an hour in: an hour of a spot c3-standard-8.
