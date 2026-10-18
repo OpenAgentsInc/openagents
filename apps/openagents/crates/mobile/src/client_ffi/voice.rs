@@ -61,6 +61,41 @@ pub enum VoiceSpeaker {
     User,
     Assistant,
 }
+/// The currently selected Android output route. Other platforms can report
+/// their closest equivalent; this is state, not a command to the audio device.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum VoiceAudioRoute {
+    #[default]
+    Unknown,
+    Earpiece,
+    Speaker,
+    WiredHeadset,
+    Bluetooth,
+}
+/// Audio focus as reported by the platform audio session.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum VoiceAudioFocus {
+    #[default]
+    Gained,
+    Lost,
+    LostTransient,
+    LostTransientCanDuck,
+}
+/// Connectivity relevant to the active voice media session.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum VoiceNetworkState {
+    #[default]
+    Available,
+    Lost,
+}
+/// Ephemeral audio state owned by the active call and reported by the host OS.
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct VoiceAudioState {
+    pub route: VoiceAudioRoute,
+    pub focus: VoiceAudioFocus,
+    pub network: VoiceNetworkState,
+    pub proximity_near: bool,
+}
 /// Everything a call screen shows. Ephemeral: never log or persist captions.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct VoiceCallState {
@@ -283,6 +318,7 @@ pub struct VoiceCall {
     cancel: CancellationToken,
     muted: watch::Sender<bool>,
     context: watch::Sender<Option<VoiceChatContext>>,
+    audio: Mutex<VoiceAudioState>,
 }
 impl Drop for VoiceCall {
     fn drop(&mut self) {
@@ -311,6 +347,26 @@ impl VoiceCall {
         if !self.cancel.is_cancelled() {
             self.muted.send_replace(muted);
         }
+    }
+    /// Record the current platform route while the call is active.
+    pub fn update_audio_route(&self, route: VoiceAudioRoute) {
+        self.update_audio_state(|state| state.route = route);
+    }
+    /// Record focus changes, including interruptions and ducking.
+    pub fn update_audio_focus(&self, focus: VoiceAudioFocus) {
+        self.update_audio_state(|state| state.focus = focus);
+    }
+    /// Record connectivity changes without creating a second reconnect path.
+    pub fn update_network_state(&self, network: VoiceNetworkState) {
+        self.update_audio_state(|state| state.network = network);
+    }
+    /// Record proximity so the platform can select its near/far audio behavior.
+    pub fn update_proximity(&self, near: bool) {
+        self.update_audio_state(|state| state.proximity_near = near);
+    }
+    /// Read the latest platform state for the active call.
+    pub fn audio_state(&self) -> VoiceAudioState {
+        self.audio.lock().unwrap().clone()
     }
     pub fn stop(&self) {
         self.media.close();
@@ -344,6 +400,13 @@ impl VoiceCall {
                 }),
             };
             let _ = tx.send(reply);
+        }
+    }
+}
+impl VoiceCall {
+    fn update_audio_state(&self, update: impl FnOnce(&mut VoiceAudioState)) {
+        if !self.cancel.is_cancelled() && !self.media.closed.load(Ordering::Acquire) {
+            update(&mut self.audio.lock().unwrap());
         }
     }
 }
@@ -410,6 +473,7 @@ impl CoreClient {
             cancel: cancel.clone(),
             muted,
             context,
+            audio: Mutex::new(VoiceAudioState::default()),
         });
         let client = self.client.clone();
         zc::runtime::handle().spawn(async move {
@@ -463,12 +527,41 @@ mod tests {
             cancel: CancellationToken::new(),
             muted: watch::channel(false).0,
             context,
+            audio: Mutex::new(VoiceAudioState::default()),
         };
         call.update_context(Some("chat-x".into()), Some("Chat X".into()));
         assert_eq!(rx.borrow().as_ref().unwrap().chat_id, "chat-x");
         call.stop();
         call.update_context(Some("late-chat".into()), None);
         assert_eq!(rx.borrow().as_ref().unwrap().chat_id, "chat-x");
+    }
+    #[test]
+    fn platform_audio_state_is_typed_and_late_updates_are_ignored() {
+        let listener = Arc::new(Listener(Mutex::new(vec![])));
+        let call = VoiceCall {
+            host_device_id: "host".into(),
+            media: media(listener),
+            cancel: CancellationToken::new(),
+            muted: watch::channel(false).0,
+            context: watch::channel(None).0,
+            audio: Mutex::new(VoiceAudioState::default()),
+        };
+        call.update_audio_route(VoiceAudioRoute::Bluetooth);
+        call.update_audio_focus(VoiceAudioFocus::LostTransient);
+        call.update_network_state(VoiceNetworkState::Lost);
+        call.update_proximity(true);
+        assert_eq!(
+            call.audio_state(),
+            VoiceAudioState {
+                route: VoiceAudioRoute::Bluetooth,
+                focus: VoiceAudioFocus::LostTransient,
+                network: VoiceNetworkState::Lost,
+                proximity_near: true,
+            }
+        );
+        call.stop();
+        call.update_audio_route(VoiceAudioRoute::Speaker);
+        assert_eq!(call.audio_state().route, VoiceAudioRoute::Bluetooth);
     }
     struct Listener(Mutex<Vec<u64>>);
     impl VoiceMediaListener for Listener {
@@ -501,6 +594,7 @@ mod tests {
             cancel: CancellationToken::new(),
             muted,
             context: watch::channel(None).0,
+            audio: Mutex::new(VoiceAudioState::default()),
         };
         call.complete_media(1, None, Some("late SDP".into()), 0, 0);
         assert!(media.offer().await.is_err());
@@ -527,6 +621,7 @@ mod tests {
             cancel: CancellationToken::new(),
             muted,
             context: watch::channel(None).0,
+            audio: Mutex::new(VoiceAudioState::default()),
         };
         let clone = media.clone();
         let task = tokio::spawn(async move { clone.prepare().await });

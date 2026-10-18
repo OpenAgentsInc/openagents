@@ -423,3 +423,19 @@ as `Voice/WebRTC-LICENSE.txt`. The binary also contains WebRTC's own bundled
 third-party components (such as BoringSSL, libsrtp, Opus, libyuv and Abseil)
 under their respective licenses; see the WebRTC source tree's `third_party/`
 for each license.
+
+## WebRTC SDK for Android (candidate)
+
+The Android voice media driver is planned to use the standard package from
+[`webrtc-sdk/android` v150.7871.01](https://github.com/webrtc-sdk/android/tree/v150.7871.01),
+source commit `7b6390f`. Its Maven coordinate is
+`io.github.webrtc-sdk:android:150.7871.01`. The SDK repository's wrapper code
+is MIT licensed; the pinned text is in
+`apps/android/app/src/main/assets/licenses/webrtc-sdk-MIT-LICENSE.txt`.
+The bundled WebRTC and third-party license texts from the same tag's
+`Licenses/WEBRTC.md` are preserved in
+`apps/android/app/src/main/assets/licenses/webrtc-sdk-v150.7871.01-LICENSES.md`.
+That file includes the WebRTC BSD license and the listed bundled component
+licenses, including Apache-2.0 texts. The Maven POM's BSD-3-Clause field
+describes only one license scope and does not replace these notices. The Maven
+package remains a candidate until the coordinator adds its dependency pin.
