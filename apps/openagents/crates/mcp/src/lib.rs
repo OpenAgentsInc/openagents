@@ -36,6 +36,7 @@ mod machine_action;
 pub mod machine_status;
 mod inbox;
 mod jsonrpc;
+mod reexec;
 #[cfg(unix)]
 mod runs;
 mod tools;

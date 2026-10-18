@@ -5,13 +5,20 @@
 //! one writer task so frames never interleave. Notifications from the client
 //! (`notifications/initialized`, `notifications/cancelled`) are accepted and
 //! ignored — there is no server-side state to initialize or cancel.
+//!
+//! A server whose binary an upgrade replaced execs the new one in place
+//! before it answers another tool call (#12110, [`crate::reexec`]), and a
+//! tool call with a field its tool doesn't declare is refused, not dropped.
 
+use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::mpsc;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::sync::{mpsc, oneshot};
 
+use crate::reexec::{Binary, Input};
 use crate::tools::Tools;
 
 /// Protocol revisions this server knows. The client's requested revision
@@ -78,43 +85,133 @@ const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 
+/// What a tool call gets while an upgraded server waits to restart.
+pub(crate) const RESTARTING: &str = "OpenAgents was upgraded, and this tool server is restarting into the new version. Call the tool again in a few seconds.";
+
+/// Replaces this process with the new binary; returns only on failure.
+pub(crate) type Exec = dyn Fn(&Binary, &Path) -> std::io::Error + Send + Sync;
+
+enum Out {
+    Line(String),
+    /// Answered once everything before it is written.
+    Flush(oneshot::Sender<()>),
+}
+
 /// Serve MCP on this process's stdin/stdout until stdin closes.
 pub async fn serve_stdio(tools: Arc<Tools>) -> anyhow::Result<()> {
-    let (out_tx, mut out_rx) = mpsc::channel::<String>(64);
+    let resumed = std::env::var_os(crate::reexec::RESUME_ENV).is_some();
+    let input = Input::stdin(crate::reexec::take_resume());
+    #[cfg(unix)]
+    let exec: Option<Box<Exec>> = Some(Box::new(crate::reexec::exec));
+    #[cfg(not(unix))]
+    let exec: Option<Box<Exec>> = None;
+    let binary = exec.as_ref().and_then(|_| Binary::current());
+    serve(tools, input, tokio::io::stdout(), binary, exec, resumed).await
+}
+
+/// [`serve_stdio`] over any input and output, with the binary to watch and
+/// how to exec it.
+pub(crate) async fn serve<W: AsyncWrite + Unpin + Send + 'static>(
+    tools: Arc<Tools>,
+    mut input: Input,
+    mut output: W,
+    binary: Option<Binary>,
+    exec: Option<Box<Exec>>,
+    resumed: bool,
+) -> anyhow::Result<()> {
+    let (out_tx, mut out_rx) = mpsc::channel::<Out>(64);
     let writer = tokio::spawn(async move {
-        let mut stdout = tokio::io::stdout();
-        while let Some(line) = out_rx.recv().await {
-            if stdout.write_all(line.as_bytes()).await.is_err()
-                || stdout.write_all(b"\n").await.is_err()
-                || stdout.flush().await.is_err()
-            {
-                break;
+        while let Some(out) = out_rx.recv().await {
+            match out {
+                Out::Line(line) => {
+                    if output.write_all(line.as_bytes()).await.is_err()
+                        || output.write_all(b"\n").await.is_err()
+                        || output.flush().await.is_err()
+                    {
+                        break;
+                    }
+                }
+                Out::Flush(done) => {
+                    let _ = output.flush().await;
+                    let _ = done.send(());
+                }
             }
         }
     });
-
-    let mut lines = BufReader::new(tokio::io::stdin()).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        let line = line.trim();
+    let send = |out: &mpsc::Sender<Out>, value: Value| {
+        let out = out.clone();
+        async move {
+            let _ = out.send(Out::Line(value.to_string())).await;
+        }
+    };
+    if resumed {
+        // The tools the client listed came from the old build.
+        send(
+            &out_tx,
+            json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }),
+        )
+        .await;
+    }
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let mut exec_tried = false;
+    while let Some(raw) = input.next_line().await {
+        let text = String::from_utf8_lossy(&raw);
+        let line = text.trim();
         if line.is_empty() {
             continue;
         }
         let message: Value = match serde_json::from_str(line) {
             Ok(value) => value,
             Err(err) => {
-                let _ = out_tx
-                    .send(
-                        error_response(Value::Null, PARSE_ERROR, &format!("parse error: {err}"))
-                            .to_string(),
-                    )
-                    .await;
+                send(
+                    &out_tx,
+                    error_response(Value::Null, PARSE_ERROR, &format!("parse error: {err}")),
+                )
+                .await;
                 continue;
             }
         };
-        let Some(response) = route(&tools, message, &out_tx) else {
+        let tool_call = message.get("method").and_then(Value::as_str) == Some("tools/call")
+            && message.get("id").is_some();
+        if tool_call
+            && let (Some(binary), Some(exec)) = (&binary, &exec)
+            && binary.replaced()
+        {
+            if in_flight.load(Ordering::SeqCst) > 0 {
+                // Its answer would come from the old build; the exec waits
+                // for the calls still running.
+                let id = message.get("id").cloned().unwrap_or(Value::Null);
+                send(
+                    &out_tx,
+                    ok_response(
+                        id,
+                        json!({ "content": [{ "type": "text", "text": RESTARTING }], "isError": true }),
+                    ),
+                )
+                .await;
+                continue;
+            }
+            if !exec_tried {
+                exec_tried = true;
+                let (done, flushed) = oneshot::channel();
+                let _ = out_tx.send(Out::Flush(done)).await;
+                let _ = flushed.await;
+                match crate::reexec::write_resume(&raw, input.rest()) {
+                    Ok(path) => {
+                        let error = exec(binary, &path);
+                        tracing::warn!(%error, "mcp: could not exec the upgraded binary");
+                        let _ = std::fs::remove_file(&path);
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "mcp: could not hand over to the upgraded binary");
+                    }
+                }
+            }
+        }
+        let Some(response) = route(&tools, message, &out_tx, &in_flight) else {
             continue;
         };
-        let _ = out_tx.send(response.to_string()).await;
+        send(&out_tx, response).await;
     }
     drop(out_tx);
     let _ = writer.await;
@@ -123,7 +220,12 @@ pub async fn serve_stdio(tools: Arc<Tools>) -> anyhow::Result<()> {
 
 /// Classify one inbound message. Requests are answered asynchronously via
 /// `out`; an immediate `Some` is a synchronous error reply.
-fn route(tools: &Arc<Tools>, message: Value, out: &mpsc::Sender<String>) -> Option<Value> {
+fn route(
+    tools: &Arc<Tools>,
+    message: Value,
+    out: &mpsc::Sender<Out>,
+    in_flight: &Arc<AtomicUsize>,
+) -> Option<Value> {
     let Some(object) = message.as_object() else {
         return Some(error_response(
             Value::Null,
@@ -141,9 +243,12 @@ fn route(tools: &Arc<Tools>, message: Value, out: &mpsc::Sender<String>) -> Opti
         (Some(id), Some(method)) => {
             let tools = tools.clone();
             let out = out.clone();
+            let in_flight = in_flight.clone();
+            in_flight.fetch_add(1, Ordering::SeqCst);
             tokio::spawn(async move {
                 let response = handle_request(&tools, id, &method, params).await;
-                let _ = out.send(response.to_string()).await;
+                let _ = out.send(Out::Line(response.to_string())).await;
+                in_flight.fetch_sub(1, Ordering::SeqCst);
             });
             None
         }
@@ -179,7 +284,7 @@ pub async fn handle_request(tools: &Tools, id: Value, method: &str, params: Valu
                 id,
                 json!({
                     "protocolVersion": version,
-                    "capabilities": { "tools": { "listChanged": false } },
+                    "capabilities": { "tools": { "listChanged": true } },
                     "serverInfo": {
                         "name": "openagents",
                         "version": env!("CARGO_PKG_VERSION"),
@@ -201,6 +306,19 @@ pub async fn handle_request(tools: &Tools, id: Value, method: &str, params: Valu
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
+            let schema = tools
+                .list()
+                .into_iter()
+                .find(|tool| tool.name == name)
+                .map(|tool| tool.input_schema);
+            if let Some(refused) =
+                schema.and_then(|schema| unknown_fields(name, &schema, &arguments))
+            {
+                return ok_response(
+                    id,
+                    json!({ "content": [{ "type": "text", "text": refused }], "isError": true }),
+                );
+            }
             match tools.call(name, arguments).await {
                 Ok(value) => ok_response(
                     id,
@@ -225,6 +343,43 @@ pub async fn handle_request(tools: &Tools, id: Value, method: &str, params: Valu
         "prompts/list" => ok_response(id, json!({ "prompts": [] })),
         other => error_response(id, METHOD_NOT_FOUND, &format!("unknown method: {other}")),
     }
+}
+
+/// The refusal for arguments naming a field the tool's schema doesn't
+/// declare (#12110): dropping it silently loses what the caller meant.
+/// Only top-level fields of a schema that lists its properties and doesn't
+/// allow others are checked.
+pub(crate) fn unknown_fields(name: &str, schema: &Value, arguments: &Value) -> Option<String> {
+    let declared = schema.get("properties")?.as_object()?;
+    if schema.get("additionalProperties") == Some(&Value::Bool(true)) {
+        return None;
+    }
+    let unknown: Vec<&str> = arguments
+        .as_object()?
+        .keys()
+        .map(String::as_str)
+        .filter(|key| !declared.contains_key(*key))
+        .collect();
+    if unknown.is_empty() {
+        return None;
+    }
+    let mut known: Vec<&str> = declared.keys().map(String::as_str).collect();
+    known.sort_unstable();
+    let quote = |keys: &[&str]| {
+        keys.iter()
+            .map(|key| format!("`{key}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    Some(format!(
+        "`{name}` doesn't take {}. It takes {}. If the field is new, this tool server may be older than the app; it restarts into the new version on its own.",
+        quote(&unknown),
+        if known.is_empty() {
+            "no fields".to_owned()
+        } else {
+            quote(&known)
+        }
+    ))
 }
 
 /// `structuredContent` must be an object; arrays and scalars are wrapped.

@@ -2404,6 +2404,117 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_field_the_tool_does_not_declare_is_refused_not_dropped() {
+        let tools = tools(Arc::new(World::default()), Origin::default());
+        let call = |arguments: Value| {
+            crate::jsonrpc::handle_request(
+                &tools,
+                json!(1),
+                "tools/call",
+                json!({ "name": "judge", "arguments": arguments }),
+            )
+        };
+        let refused = call(json!({ "set": "run-progress", "state": {}, "working": [] })).await;
+        assert_eq!(refused["result"]["isError"], true);
+        let text = refused["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("`working`") && text.contains("`set`"), "{text}");
+        // Every tool's own declared fields pass the check.
+        for tool in tools.list() {
+            let declared: serde_json::Map<String, Value> = tool.input_schema["properties"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(key, _)| (key.clone(), Value::Null))
+                .collect();
+            assert_eq!(
+                crate::jsonrpc::unknown_fields(tool.name, &tool.input_schema, &Value::Object(declared)),
+                None,
+                "{}",
+                tool.name
+            );
+        }
+        // A schema that allows other fields checks none.
+        let open = json!({ "type": "object", "properties": {}, "additionalProperties": true });
+        assert_eq!(crate::jsonrpc::unknown_fields("x", &open, &json!({ "y": 1 })), None);
+    }
+
+    /// Runs the stdio server over `input`, returning every line it wrote.
+    async fn serve_lines(
+        input: &str,
+        binary: Option<crate::reexec::Binary>,
+        exec: Option<Box<crate::jsonrpc::Exec>>,
+        resumed: bool,
+    ) -> Vec<Value> {
+        let tools = Arc::new(tools(Arc::new(World::default()), Origin::default()));
+        let input = crate::reexec::Input::new(
+            Box::new(std::io::Cursor::new(input.as_bytes().to_vec())),
+            Vec::new(),
+        );
+        let (writer, mut reader) = tokio::io::duplex(1 << 20);
+        crate::jsonrpc::serve(tools, input, writer, binary, exec, resumed)
+            .await
+            .unwrap();
+        let mut out = String::new();
+        tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut out)
+            .await
+            .unwrap();
+        out.lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+    }
+
+    #[tokio::test]
+    async fn an_upgraded_binary_is_execed_with_the_call_and_the_rest_of_the_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("openagents");
+        std::fs::write(&path, b"old build").unwrap();
+        let binary = crate::reexec::Binary::at(path.clone());
+        let next = dir.path().join("next");
+        std::fs::write(&next, b"new build after the upgrade").unwrap();
+        std::fs::rename(&next, &path).unwrap();
+        let handed: Arc<std::sync::Mutex<Vec<(std::path::PathBuf, String)>>> = Arc::default();
+        let seen = handed.clone();
+        let exec: Box<crate::jsonrpc::Exec> = Box::new(move |binary, resume| {
+            let text = std::fs::read_to_string(resume).unwrap();
+            seen.lock().unwrap().push((binary.path().to_path_buf(), text));
+            std::io::Error::other("not in a test")
+        });
+        let call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"whoami","arguments":{}}}"#;
+        let ping = r#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#;
+        let lines = serve_lines(&format!("{call}\n{ping}\n"), Some(binary), Some(exec), false).await;
+        let handed = handed.lock().unwrap();
+        // Once, with the new binary, the call, and the ping read with it.
+        assert_eq!(handed.len(), 1);
+        assert_eq!(handed[0].0, path);
+        assert_eq!(handed[0].1, format!("{call}\n{ping}\n"));
+        // The exec failed here, so this process answered both.
+        let ids: Vec<&Value> = lines.iter().map(|line| &line["id"]).collect();
+        assert!(ids.contains(&&json!(1)) && ids.contains(&&json!(2)), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn an_unchanged_binary_is_never_execed_and_a_resumed_one_says_its_tools_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("openagents");
+        std::fs::write(&path, b"build").unwrap();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = calls.clone();
+        let exec: Box<crate::jsonrpc::Exec> = Box::new(move |_, _| {
+            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            std::io::Error::other("no")
+        });
+        let call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"whoami","arguments":{}}}"#;
+        let lines = serve_lines(
+            &format!("{call}\n"),
+            Some(crate::reexec::Binary::at(path)),
+            Some(exec),
+            true,
+        )
+        .await;
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(lines[0]["method"], "notifications/tools/list_changed");
+        assert_eq!(lines[1]["id"], 1);
+    }
+
+    #[tokio::test]
     async fn voice_choice_is_read_again_for_the_next_question() {
         let world = Arc::new(World::default());
         let tools = tools(
