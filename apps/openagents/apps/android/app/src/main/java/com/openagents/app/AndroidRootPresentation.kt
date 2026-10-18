@@ -256,20 +256,32 @@ internal class AndroidRootPresentation(
             AndroidTranscriptSelectionGeometry(application.transcriptFonts),
             object : TranscriptSelectionCallbacks {
                 override fun onSelection(token: TranscriptSelectionToken, range: TranscriptTextSelection?) {
-                    if (!selectionCallbacks || replacingFrame || !restored) return
+                    if (!selectionCallbacks || replacingFrame) return
+                    restored = true
                     val frame = transcript.interactionSnapshot()?.frame ?: return
                     runCatching { owner.saveTextSelection(engine, next.generation, next.contentRevision, frame.revision,
                         range?.let { AndroidHostSelection(AndroidHostTextPoint(it.anchor.rowKey, it.anchor.utf16Offset.toUInt()),
                             AndroidHostTextPoint(it.focus.rowKey, it.focus.utf16Offset.toUInt())) }) }
                 }
                 override fun onHit(token: TranscriptSelectionToken, target: TranscriptHitTarget) {
-                    // Media payloads are supplied by C2's separate Rust-owned viewer boundary.
-                    if (target is TranscriptHitTarget.Widget) when (val kind = target.kind) {
-                        is WidgetKind.Disclosure -> engine.toggle(target.rowKey)
-                        is WidgetKind.Chevron -> engine.toggle(target.rowKey)
-                        is WidgetKind.ToolToggle -> engine.toggleDetail(target.rowKey, kind.detail, kind.open)
-                        else -> Unit
-                    }
+                    if (!selectionCallbacks || replacingFrame) return
+                    val current = transcript.interactionSnapshot() ?: return
+                    try {
+                        when (target) {
+                            is TranscriptHitTarget.Link -> {
+                                val url = owner.transcriptLink(engine, next.generation, next.contentRevision,
+                                    current.frame.revision, current.top, current.height, target.url)
+                                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            }
+                            is TranscriptHitTarget.Widget -> when (val effect = owner.transcriptWidget(engine,
+                                next.generation, next.contentRevision, current.frame.revision, target.rowKey, target.widgetId)) {
+                                AndroidTranscriptEffect.Handled -> Unit
+                                is AndroidTranscriptEffect.Copy -> (activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                                    .setPrimaryClip(ClipData.newPlainText("OpenAgents", effect.text))
+                                AndroidTranscriptEffect.Unavailable -> showFailure()
+                            }
+                        }
+                    } catch (_: Exception) { showFailure() }
                 }
                 override fun onSystemTextAction(intent: Intent) { activity.startActivity(intent) }
             }, 0x553B82F6, activity.getColor(R.color.oa_accent))
@@ -300,6 +312,15 @@ internal class AndroidRootPresentation(
                     restored = host.restore(TranscriptSelectionBookmark(conversation, TranscriptTextSelection(
                         TranscriptTextPoint(saved.anchor.row, saved.anchor.utf16.toInt()),
                         TranscriptTextPoint(saved.focus.row, saved.focus.utf16.toInt()))))
+                }
+                if (restored && selectionCallbacks) {
+                    val frame = transcript.interactionSnapshot()?.frame
+                    if (frame != null) runCatching {
+                        owner.saveTextSelection(engine, next.generation, next.contentRevision, frame.revision,
+                            host.bookmark()?.selection?.let { range -> AndroidHostSelection(
+                                AndroidHostTextPoint(range.anchor.rowKey, range.anchor.utf16Offset.toUInt()),
+                                AndroidHostTextPoint(range.focus.rowKey, range.focus.utf16Offset.toUInt())) })
+                    }
                 }
             }
             override fun beforeFrameClose() { selectionCallbacks = false; observer.beforeFrameClose() }

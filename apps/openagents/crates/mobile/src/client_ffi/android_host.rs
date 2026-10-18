@@ -82,6 +82,12 @@ pub enum AndroidHostContent {
     Saved,
     Indexed,
 }
+#[derive(Clone, uniffi::Enum)]
+pub enum AndroidTranscriptEffect {
+    Handled,
+    Copy { text: String },
+    Unavailable,
+}
 #[derive(Clone, uniffi::Record)]
 pub struct AndroidHostTextPoint {
     pub row: u64,
@@ -441,6 +447,91 @@ impl CoreAndroidHost {
             selection: s.selection.clone(),
         })
     }
+    /// Resolves a widget identity against the current Rust display, never a caller-supplied payload.
+    pub fn transcript_widget(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        row: u64,
+        widget: u32,
+    ) -> CoreResult<AndroidTranscriptEffect> {
+        use crate::layout::display::WidgetKind;
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let frame = view.frame();
+        if state.generation != generation
+            || state.content_revision != content_revision
+            || frame.revision() != frame_revision
+        {
+            return Err(CoreError::Closed);
+        }
+        let display = frame
+            .index_of(row)
+            .and_then(|i| frame.display(i))
+            .ok_or(CoreError::Closed)?;
+        let widget = display
+            .widgets
+            .into_iter()
+            .find(|item| item.id == widget)
+            .ok_or(CoreError::Closed)?;
+        Ok(match widget.kind {
+            WidgetKind::CopyCode => match widget.payload {
+                Some(text) if text.len() <= 64 * 1024 => AndroidTranscriptEffect::Copy { text },
+                _ => AndroidTranscriptEffect::Unavailable,
+            },
+            WidgetKind::Disclosure { .. } | WidgetKind::Chevron { .. } => {
+                view.toggle(row);
+                AndroidTranscriptEffect::Handled
+            }
+            WidgetKind::ToolToggle { detail, open } => {
+                view.toggle_detail(row, detail, open);
+                AndroidTranscriptEffect::Handled
+            }
+            _ => AndroidTranscriptEffect::Unavailable,
+        })
+    }
+    /// Only a link in the current visible Rust rows may reach the platform browser.
+    pub fn transcript_link(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        top: f32,
+        height: f32,
+        url: String,
+    ) -> CoreResult<String> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let frame = view.frame();
+        if state.generation != generation
+            || state.content_revision != content_revision
+            || frame.revision() != frame_revision
+            || !top.is_finite()
+            || top < 0.0
+            || !height.is_finite()
+            || !(0.0..=100_000.0).contains(&height)
+            || !browser_link(&url)
+        {
+            return Err(CoreError::Closed);
+        }
+        let found = frame
+            .rows_in(top, top + height)
+            .into_iter()
+            .take(256)
+            .any(|row| {
+                frame
+                    .display(row.index)
+                    .is_some_and(|display| display.links.iter().any(|link| link.url == url))
+            });
+        if found {
+            Ok(url)
+        } else {
+            Err(CoreError::Closed)
+        }
+    }
     pub fn save_text_selection(
         &self,
         view: Arc<crate::layout::TranscriptView>,
@@ -750,6 +841,12 @@ impl CoreAndroidHost {
     }
 }
 
+fn browser_link(url: &str) -> bool {
+    url.len() <= 8192
+        && (url.starts_with("https://") || url.starts_with("http://"))
+        && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
 fn selection_boundary(text: &str, offset: usize) -> bool {
     let mut at = 0;
     for c in text.chars() {
@@ -770,6 +867,22 @@ mod tests {
     struct Listener;
     impl AndroidHostListener for Listener {
         fn on_android_host_changed(&self) {}
+    }
+    #[test]
+    fn browser_links_are_bounded_and_do_not_launch_platform_commands() {
+        assert!(browser_link("https://example.invalid/path?q=1"));
+        for url in [
+            "intent://example",
+            "javascript:alert(1)",
+            "file:///secret",
+            "https://example.invalid/\n",
+        ] {
+            assert!(!browser_link(url));
+        }
+        assert!(!browser_link(&format!(
+            "https://example.invalid/{}",
+            "x".repeat(8192)
+        )));
     }
     #[test]
     fn selection_offsets_cannot_split_utf16_surrogates() {
