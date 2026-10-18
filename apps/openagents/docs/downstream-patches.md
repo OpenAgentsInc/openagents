@@ -763,6 +763,21 @@ links remain readable. Upstream fixes now require manual ports.
   below the disk floor; bindings, media-player integration, and device validation
   remain pending.
 
+- [OpenAgents #12092](https://github.com/OpenAgentsInc/openagents/issues/12092):
+  Rust checks the current encrypted seed store before reading the retired
+  Android Spark seed or creating a wallet. If the current store is certainly
+  absent, Rust validates and copies the exact legacy entropy with an add-only
+  write; locked, failed, unreadable, corrupt, and competing-seed states fail
+  closed. `AndroidRetiredSparkSeed` reads `spark-v1-key.bin` from
+  `noBackupFilesDir` and decrypts its AES-GCM envelope with the retired
+  Keystore alias as authenticated data. It never changes the legacy file or
+  key. `AndroidWalletSurface` mounts the Rust wallet snapshot with
+  `SemanticViewAdapter` and forwards typed activation and field changes to
+  Rust. The app shell still needs to add a Wallet route. The eight synthetic
+  Rust migration tests passed on checkpoint
+  `75c8fe09e957189824e24d2ba763ac7d1643baae`; rerun them on the integration
+  branch. Regenerated E2 bindings, Android compilation, and device upgrade
+  checks remain pending.
 - [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
   Android push delivery uses the existing Rust push registration and private
   owner-note APIs. `CoreClient::handle_push_wake` receives a typed wake; Rust

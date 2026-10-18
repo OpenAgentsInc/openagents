@@ -63,6 +63,21 @@ internal-testing handoff:
   verified links, push wakes, background/recreated sessions, voice routing
   and ongoing-call controls, and a tablet layout. Authorize any funded
   payment or real call separately. Remove test resources when finished.
+- For #12092, install the signed current app over the retired app without
+  uninstalling it or clearing its data. Open Wallet and confirm the existing
+  balance and activity appear. Lock the device during startup and confirm the
+  app offers a retry without creating another wallet. Do not make a funded
+  payment as part of this upgrade check.
+- For #12092, the source checkpoint at `75c8fe09e957189824e24d2ba763ac7d1643baae`
+  passed 8 focused Rust migration tests. The B1 shell checks passed at
+  `e32f8e736b5ebc79a8a171ced64a1f09776f528a`, but they did not include the E2
+  Kotlin files or regenerated E2 bindings. After the E2 source port lands, run
+  `cd apps/openagents && cargo test --locked -p openagents-mobile client_ffi::android_wallet_migration`,
+  regenerate the Android UniFFI binding with
+  `apps/openagents/scripts/android/build-core.sh`, and run
+  `apps/openagents/scripts/android/app.sh check`. The wallet surface still
+  needs an app-shell route. No E2 binding, Gradle, or device check has run on
+  the integrated source.
 
 Close implementation issues when their code is merged with focused checks
 passing. List remaining deploy/device/store evidence in the handoff and
