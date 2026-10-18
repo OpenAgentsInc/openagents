@@ -5,8 +5,14 @@
 use std::sync::Arc;
 
 use openagents_client as zc;
+use rust_native::view::{Activation, FieldChange};
 
-use super::types::{CoreResult, SendState};
+use super::composer_drafts::ComposerDraftStore;
+use super::semantic_bridge::{
+    NativeActionResult, NativeViewRegistry, SessionViewIntent, answer_input, lock_registry,
+    map_send_outcome,
+};
+use super::types::{CoreError, CoreResult, SendState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum BusyPolicy {
@@ -441,11 +447,17 @@ pub enum QueueEditFinish {
 #[derive(uniffi::Object)]
 pub struct SessionHandle {
     pub(crate) inner: zc::SessionHandle,
+    drafts: Arc<ComposerDraftStore>,
+    native_views: std::sync::Mutex<NativeViewRegistry>,
 }
 
 impl SessionHandle {
-    pub(crate) fn new(inner: zc::SessionHandle) -> Arc<Self> {
-        Arc::new(Self { inner })
+    pub(crate) fn new(inner: zc::SessionHandle, drafts: Arc<ComposerDraftStore>) -> Arc<Self> {
+        Arc::new(Self {
+            inner,
+            drafts,
+            native_views: std::sync::Mutex::new(NativeViewRegistry::default()),
+        })
     }
 
     /// The Rust handle (transcript snapshots + subscription for the layout
@@ -474,6 +486,126 @@ impl SessionHandle {
     /// Composer + status strip state (pull after `ComposerChanged`).
     pub fn composer(&self) -> ComposerState {
         (&*self.inner.composer()).into()
+    }
+
+    /// Save this session's bounded text draft in the signed-in account store.
+    pub fn save_composer_draft(&self, text: String) -> CoreResult<()> {
+        self.drafts.save(self.inner.chat_id(), &text)
+    }
+
+    /// Restore the saved text draft for this session.
+    pub fn restore_composer_draft(&self) -> CoreResult<Option<String>> {
+        self.drafts.restore(self.inner.chat_id())
+    }
+
+    /// Remove this session's saved draft after sending or cancelling it.
+    pub fn clear_composer_draft(&self) -> CoreResult<()> {
+        self.drafts.save(self.inner.chat_id(), "")
+    }
+
+    /// Submit the current Rust Native composer input through the existing
+    /// session send operation. Rust resolves the choice token and busy policy.
+    pub fn submit_native_composer(
+        &self,
+        input_token: String,
+        text: String,
+        attachments: Vec<OutgoingAttachment>,
+    ) -> CoreResult<NativeActionResult> {
+        let busy = lock_registry(&self.native_views)?.composer_busy_policy(&input_token, &text)?;
+        let request = SendRequest {
+            text,
+            attachments,
+            worktree: None,
+            busy,
+        };
+        let outcome = self.inner.send(request.into())?;
+        self.drafts.save(self.inner.chat_id(), "")?;
+        Ok(map_send_outcome(outcome.into()))
+    }
+
+    /// Validate a Rust Native view whose intents use the closed mobile
+    /// session action set. Return its canonical bytes for native mounting.
+    pub fn prepare_native_view(&self, view_json: Vec<u8>) -> CoreResult<Vec<u8>> {
+        lock_registry(&self.native_views)?.prepare(&view_json)
+    }
+
+    /// Mark a mounted view current only after the native adapter applied it.
+    pub fn acknowledge_native_view(&self, instance: String, revision: u64) -> CoreResult<()> {
+        lock_registry(&self.native_views)?.acknowledge(&instance, revision)
+    }
+
+    /// Resolve a field change against the acknowledged Rust Native view.
+    /// Only draft fields may change through this bridge.
+    pub fn change_native_field(
+        &self,
+        instance: String,
+        revision: u64,
+        node: String,
+        value: String,
+    ) -> CoreResult<NativeActionResult> {
+        let event = FieldChange {
+            activation: Activation {
+                instance,
+                revision,
+                node,
+            },
+            value,
+        };
+        let intent = lock_registry(&self.native_views)?.change_field(&event)?;
+        match intent {
+            SessionViewIntent::SaveDraft => {
+                self.drafts.save(self.inner.chat_id(), &event.value)?;
+                Ok(NativeActionResult::DraftSaved)
+            }
+            _ => Err(CoreError::Unsupported {
+                message: "this Rust Native field change is not supported by the mobile session"
+                    .into(),
+            }),
+        }
+    }
+
+    /// Resolve an activation against the acknowledged view, then call an
+    /// existing session operation. Unknown intents fail during view decoding.
+    pub fn activate_native(
+        &self,
+        instance: String,
+        revision: u64,
+        node: String,
+        text: Option<String>,
+        attachments: Vec<OutgoingAttachment>,
+    ) -> CoreResult<NativeActionResult> {
+        let event = Activation {
+            instance,
+            revision,
+            node,
+        };
+        let registry = lock_registry(&self.native_views)?;
+        let intent = registry.activate(&event)?;
+        match intent {
+            SessionViewIntent::Interrupt => {
+                reject_unused_input(text, attachments)?;
+                drop(registry);
+                self.inner.interrupt()?;
+                Ok(NativeActionResult::Interrupted)
+            }
+            SessionViewIntent::RespondInput {
+                request_id,
+                answers,
+            } => {
+                reject_unused_input(text, attachments)?;
+                let (request_id, answers) = answer_input(request_id, answers);
+                drop(registry);
+                self.inner.respond_input(&request_id, answers)?;
+                Ok(NativeActionResult::InputAnswered)
+            }
+            SessionViewIntent::RequestAttachment => {
+                reject_unused_input(text, attachments)?;
+                Ok(NativeActionResult::AttachmentPickerRequested)
+            }
+            SessionViewIntent::SaveDraft => Err(CoreError::Unsupported {
+                message: "this Rust Native action is not supported by the mobile session".into(),
+            }),
+        }
     }
 
     pub fn transcript_status(&self) -> TranscriptStatus {
@@ -641,5 +773,18 @@ impl SessionHandle {
     /// "Not delivered — tap to retry".
     pub fn retry_delivery(&self) -> CoreResult<()> {
         Ok(self.inner.retry_delivery()?)
+    }
+}
+
+fn reject_unused_input(
+    text: Option<String>,
+    attachments: Vec<OutgoingAttachment>,
+) -> CoreResult<()> {
+    if text.is_some() || !attachments.is_empty() {
+        Err(CoreError::InvalidArgument {
+            message: "this action does not accept composer content".into(),
+        })
+    } else {
+        Ok(())
     }
 }
