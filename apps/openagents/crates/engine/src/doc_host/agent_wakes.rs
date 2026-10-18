@@ -255,6 +255,19 @@ impl DocHost {
         Ok(local)
     }
 
+    /// Mark this engine as the headless daemon: Agent Lab then offers the
+    /// computer as one that keeps an agent's chat and wakes running when a
+    /// desktop app restarts (#12050).
+    pub fn set_always_on(&self) {
+        self.inner
+            .always_on
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub(crate) fn is_always_on(&self) -> bool {
+        self.inner.always_on.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub(crate) fn agent_wakes(&self) -> Option<&Arc<AgentWakes>> {
         self.inner.agent_wakes.get()
     }

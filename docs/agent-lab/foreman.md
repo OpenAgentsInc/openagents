@@ -83,6 +83,8 @@ openagents agents bind AGENT_ID --chat CHAT_ID --on COMPUTER --project PROJECT
 
 It creates an assignment that names the chat (the SDK's `assignment_request_for_chat`). The computer adopts the chat only when it's a plain chat in that project on that computer, never another agent's chat, and says so in the chat. From then on every turn runs the agent's current revision, and the computer acts on what the definition declares: check-ins, standing authority, the decision log.
 
+**Run it off your Mac** ([#12050](https://github.com/OpenAgentsInc/openagents/issues/12050)): a computer running the headless engine (`openagents headless`, as on a cloud computer) tells Agent Lab it stays up, and `agents::place` puts an agent that wakes on its own (check-ins, wakes, or standing authority in its definition) on such a computer ahead of the others. The wake engine follows the agent's chat, so it runs on that computer too; restarting the desktop app doesn't touch it. Naming a computer with `--on` still wins. Bind the chat there with `openagents agents bind AGENT_ID --chat CHAT_ID --on CLOUD_COMPUTER --project PROJECT`. The phone and the website see and steer the chat through the same device room as any other chat.
+
 **Publish a new revision only if it passes** ([#12057](https://github.com/OpenAgentsInc/openagents/issues/12057)):
 
 ```sh

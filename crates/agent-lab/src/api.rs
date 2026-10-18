@@ -82,6 +82,10 @@ pub struct Host {
     pub runners: Vec<String>,
     pub tools: Vec<ToolOffer>,
     pub seen_ms: u64,
+    /// A headless engine on a computer that stays up without anyone at its
+    /// screen (#12050), so an agent that wakes on a schedule can run there.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub always_on: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
