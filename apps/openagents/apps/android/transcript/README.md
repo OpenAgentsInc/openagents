@@ -2,7 +2,7 @@
 
 C1 (#12084) paints the shared Rust layout with Android Views. This directory
 uses B1's generated Android binding and existing app setup. The C1 port is
-based on B1 checkpoint `69fa3b1b5082a6e2377ad0142ae8ccb28bfad427`;
+based on final B1 checkpoint `e32f8e736b5ebc79a8a171ced64a1f09776f528a`;
 B1 (#12083) remains the native issue blocker for app integration.
 
 `TranscriptCanvas` is one View, regardless of history length. It asks the
@@ -54,7 +54,7 @@ path and real Android fallback behavior still need the queued device checks.
 ## Check status and handoff
 
 The resumed port passed these focused checks on CoderOS over B1 checkpoint
-`69fa3b1b5082a6e2377ad0142ae8ccb28bfad427` with the actual generated
+`e32f8e736b5ebc79a8a171ced64a1f09776f528a` with the actual generated
 Android binding. Each Gradle operation used at most two workers:
 
 ```sh
@@ -65,9 +65,12 @@ gradle :app:compileDebugAndroidTestKotlin
 
 The JVM result is nine tests, zero failures, errors, or skips. The three
 instrumentation methods compile but have not run. No C1 native rebuild, APK
-assembly, emulator, or performance run took place. The existing B1 exclusion
-for `platform/tests` remains outside this result; C1's explicit transcript
-Android-test root was compiled.
+assembly, emulator, or performance run took place. Final B1 narrows its
+`platform/tests` exclusion to production compilation; Android-test compilation
+processed both `SemanticViewAdapterTest` and C1's explicit transcript test root.
+Offline API 26/35 glyph, wrapping, runtime, and frame-pacing checks are listed
+in the central master-delegation After-close table; physical qualification is
+also in `NEEDS_OWNER.md`.
 
 - `src/test`: nine passing JUnit fixtures for history anchors, tail behavior, width and
   font changes, bounded reuse, empty frames, and UTF-16/scalar handling.

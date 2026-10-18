@@ -2950,3 +2950,11 @@ afterward. No production or live Play check ran during H1 source work.
 Keep rollout off until this qualification passes; code completion does not
 wait for Play Console access, a physical device, or store action. See
 [the contract](docs/auth/README.md#android-play-integrity-12086).
+
+### Qualify Android transcript rendering on a physical device (#12084)
+
+After integrating C1 and passing isolated offline API 26/35 checks, qualify the
+transcript on a physical device using synthetic history and no owner account.
+Check bundled/fallback glyphs, RTL text, font/display scaling, stable history
+anchors, streaming, horizontal overflow, fast scrolling, and Activity recreation.
+Record frame percentiles and missed deadlines; follow the central After-close row.
