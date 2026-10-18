@@ -40,7 +40,10 @@ pub(crate) fn project_invitation_share(link: &str) -> Option<ProjectInvitationSh
 
 #[cfg(test)]
 mod tests {
-    use super::{project_invitation_share, validated_project_invitation_link};
+    use super::{
+        CODE_PREFIX, MAX_CODE_BYTES, PROJECT_INVITATION_PREFIX, project_invitation_share,
+        validated_project_invitation_link,
+    };
 
     const VALID: &str = "https://openagents.com/projects/join/prjinv_Az09_-";
 
