@@ -255,6 +255,14 @@ impl Chat {
                 .is_some_and(|c| c.model_options.contains_key(chat_home::REQUEST_OPTION))
     }
 
+    /// Whether chat lists show this chat: a top-level session, or a device's
+    /// current voice chat (`listed` from
+    /// [`crate::voice::listed_orchestrators`]). Notifications, the command
+    /// palette, moves, and continuations still go by [`Self::is_top_level`].
+    pub fn is_listed(&self, listed: &std::collections::HashSet<&str>) -> bool {
+        self.is_top_level() || listed.contains(self.id.as_str())
+    }
+
     /// True when this chat syncs over the chat2 dumb relay.
     pub fn on_chat2(&self) -> bool {
         self.room_gen.unwrap_or(1) >= 2

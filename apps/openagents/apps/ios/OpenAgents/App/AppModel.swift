@@ -713,6 +713,7 @@ final class AppModel {
             colorIndex: Int(r.project?.colorIndex ?? projectColorIndex(spacePath: "home")),
             harness: r.harness,
             agentName: r.agentName,
+            voice: r.voice,
             branch: r.branch,
             pr: r.pullRequest.map { pr in
                 switch pr.state {

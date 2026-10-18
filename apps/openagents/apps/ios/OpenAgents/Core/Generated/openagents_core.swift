@@ -16361,6 +16361,10 @@ public struct SessionRow: Equatable, Hashable {
      * The page where the saved agent is managed (Agent Lab).
      */
     public var agentUrl: String?
+    /**
+     * A computer's voice chat: draw a microphone instead of the runtime.
+     */
+    public var voice: Bool
     public var model: String?
     public var modelLabel: String?
     /**
@@ -16427,7 +16431,10 @@ public struct SessionRow: Equatable, Hashable {
          */agentLine: String?, 
         /**
          * The page where the saved agent is managed (Agent Lab).
-         */agentUrl: String?, model: String?, modelLabel: String?, 
+         */agentUrl: String?, 
+        /**
+         * A computer's voice chat: draw a microphone instead of the runtime.
+         */voice: Bool, model: String?, modelLabel: String?, 
         /**
          * Wire effort (`xhigh`).
          */reasoning: String?, branch: String?, cwd: String?, 
@@ -16463,6 +16470,7 @@ public struct SessionRow: Equatable, Hashable {
         self.agentName = agentName
         self.agentLine = agentLine
         self.agentUrl = agentUrl
+        self.voice = voice
         self.model = model
         self.modelLabel = modelLabel
         self.reasoning = reasoning
@@ -16514,6 +16522,7 @@ public struct FfiConverterTypeSessionRow: FfiConverterRustBuffer {
                 agentName: FfiConverterOptionString.read(from: &buf), 
                 agentLine: FfiConverterOptionString.read(from: &buf), 
                 agentUrl: FfiConverterOptionString.read(from: &buf), 
+                voice: FfiConverterBool.read(from: &buf), 
                 model: FfiConverterOptionString.read(from: &buf), 
                 modelLabel: FfiConverterOptionString.read(from: &buf), 
                 reasoning: FfiConverterOptionString.read(from: &buf), 
@@ -16551,6 +16560,7 @@ public struct FfiConverterTypeSessionRow: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.agentName, into: &buf)
         FfiConverterOptionString.write(value.agentLine, into: &buf)
         FfiConverterOptionString.write(value.agentUrl, into: &buf)
+        FfiConverterBool.write(value.voice, into: &buf)
         FfiConverterOptionString.write(value.model, into: &buf)
         FfiConverterOptionString.write(value.modelLabel, into: &buf)
         FfiConverterOptionString.write(value.reasoning, into: &buf)

@@ -489,6 +489,8 @@ pub struct SessionRow {
     pub agent_line: Option<String>,
     /// The page where the saved agent is managed (Agent Lab).
     pub agent_url: Option<String>,
+    /// A computer's voice chat: draw a microphone instead of the runtime.
+    pub voice: bool,
     pub model: Option<String>,
     pub model_label: Option<String>,
     /// Wire effort (`xhigh`).
@@ -541,6 +543,7 @@ impl From<&zc::SessionRow> for SessionRow {
                 .agent_name
                 .as_ref()
                 .map(|_| openagents_proto::saved_agent::AGENT_LAB_URL.to_owned()),
+            voice: r.voice,
             model: r.model.clone(),
             model_label: r.model_label.clone(),
             reasoning: r.reasoning.clone(),

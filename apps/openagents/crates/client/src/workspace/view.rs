@@ -15,7 +15,9 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use openagents_doc::WorkspaceState;
-use openagents_proto::view::{attention_rank, display_status, project_key, representative_space, shown_status};
+use openagents_proto::view::{
+    attention_rank, display_status, project_key, representative_space, shown_status,
+};
 use openagents_proto::{
     ChangeRequestState, ChangeRequestSummary, Chat, ChatIndicator, CheckoutChangeRequestStatus,
     Device, Session, SidebarPreferences, Space,
@@ -78,6 +80,8 @@ pub struct SessionRow {
     pub agent_name: Option<String>,
     /// "Foreman · custom agent · Claude Code" for a saved agent's chat (#12027).
     pub agent_line: Option<String>,
+    /// A device's voice chat: rows draw a microphone instead of the runtime.
+    pub voice: bool,
     pub model: Option<String>,
     pub model_label: Option<String>,
     pub reasoning: Option<String>,
@@ -396,6 +400,7 @@ fn hash_row(row: &SessionRow) -> u64 {
     row.harness.hash(&mut h);
     row.agent_name.hash(&mut h);
     row.agent_line.hash(&mut h);
+    row.voice.hash(&mut h);
     row.model.hash(&mut h);
     row.reasoning.hash(&mut h);
     row.branch.hash(&mut h);
@@ -491,6 +496,7 @@ fn build_row(chat: &Chat, rc: &RowContext<'_>, cx: &DeriveContext<'_>) -> Arc<Se
         harness_label: harness.as_deref().map(catalog::harness_label),
         agent_name: openagents_proto::saved_agent::agent_name(config, title),
         agent_line: openagents_proto::saved_agent::chat_identity_line(config, title),
+        voice: openagents_proto::voice::is_orchestrator_chat(&chat.id),
         model_label: match (harness.as_deref(), model.as_deref()) {
             (Some(h), Some(m)) => Some(catalog::model_label(h, m)),
             (None, Some(m)) => Some(m.to_owned()),
@@ -540,7 +546,8 @@ pub(crate) fn derive(
 ) -> WorkspaceSnapshot {
     let now_ms = cx.now.timestamp_millis();
     let pinned_order: &[String] = prefs.map_or(&[], |p| p.pinned_session_ids.as_slice());
-    let sections: &[openagents_proto::SidebarSection] = prefs.map_or(&[], |p| p.sections.as_slice());
+    let sections: &[openagents_proto::SidebarSection] =
+        prefs.map_or(&[], |p| p.sections.as_slice());
     let mut section_of: HashMap<&str, &str> = HashMap::new();
     for section in sections {
         for id in &section.session_ids {
@@ -566,12 +573,20 @@ pub(crate) fn derive(
         .map(|chat| (chat.id.clone(), build_row(chat, &rc, cx)))
         .collect();
 
-    // Active = not archived, top-level, project alive (or projectless).
+    // Active = not archived, listed (top-level or a current voice chat),
+    // project alive (or projectless).
+    let voice = openagents_proto::voice::listed_orchestrators(&state.chats);
     let mut active: Vec<&Chat> = state
         .chats
         .iter()
-        .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none()
-            && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION)))
+        .filter(|c| {
+            !c.archived
+                && c.is_listed(&voice)
+                && c.links.continued_by.is_none()
+                && !c.config.as_ref().is_some_and(|config| {
+                    config.model_options.contains_key(chat_home::REQUEST_OPTION)
+                })
+        })
         .filter(|c| {
             c.space_id
                 .as_deref()
@@ -678,8 +693,14 @@ pub(crate) fn derive(
     let mut archived_chats: Vec<&Chat> = state
         .chats
         .iter()
-        .filter(|c| c.archived && c.is_top_level() && c.links.continued_by.is_none()
-            && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION)))
+        .filter(|c| {
+            c.archived
+                && c.is_top_level()
+                && c.links.continued_by.is_none()
+                && !c.config.as_ref().is_some_and(|config| {
+                    config.model_options.contains_key(chat_home::REQUEST_OPTION)
+                })
+        })
         .collect();
     sort_recency(&mut archived_chats);
     let archived: Vec<Arc<SessionRow>> = archived_chats.iter().map(|c| row(c)).collect();

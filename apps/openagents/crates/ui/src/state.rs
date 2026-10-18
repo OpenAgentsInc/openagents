@@ -34,7 +34,9 @@ use openagents_proto::{
     AuthState, ChangeRequestSummary, Chat, ChatIndicator, CheckoutChangeRequestStatus, Device,
     EngineInfo, HarnessId, Session, SidebarPreferencesState, Space, WorkspaceScope,
 };
-use openagents_rpc::{RpcClient, RpcError, RpcReply, RpcService, connect_ws, memory_client, methods};
+use openagents_rpc::{
+    RpcClient, RpcError, RpcReply, RpcService, connect_ws, memory_client, methods,
+};
 
 use crate::change_requests::{
     ChangeRequestClientState, ChangeRequestWatchKey, desired_watch_targets, watch_params,
@@ -361,18 +363,18 @@ impl EngineHandle {
         //
         // Best-effort — losing the bind race with another engine costs other
         // viewports, not this one.
-        let ipc_task = match openagents_engine::serve_ipc(engine_config.ipc_port, service.clone()).await
-        {
-            Ok(task) => Some(task),
-            Err(err) => {
-                tracing::warn!(
-                    port = engine_config.ipc_port,
-                    error = %err,
-                    "IPC port unavailable; other viewports cannot attach to this window"
-                );
-                None
-            }
-        };
+        let ipc_task =
+            match openagents_engine::serve_ipc(engine_config.ipc_port, service.clone()).await {
+                Ok(task) => Some(task),
+                Err(err) => {
+                    tracing::warn!(
+                        port = engine_config.ipc_port,
+                        error = %err,
+                        "IPC port unavailable; other viewports cannot attach to this window"
+                    );
+                    None
+                }
+            };
         let runtime = Arc::new(tokio::sync::Mutex::new(None));
         let runtime_for_boot = runtime.clone();
         let service_for_boot = assembled_service.clone();
@@ -617,7 +619,8 @@ async fn query_engine_info(client: &RpcClient) -> Result<EngineInfo, RpcError> {
 pub use openagents_proto::view::{
     ChatGroup, ConnectionStatus, GatePhase, Indicator, SESSION_STALE_MS, attention_rank,
     chat_location, display_status, effective_indicator, format_time_ago, gate_phase, group_chats,
-    parse_auth_state, project_label, running_subagents, sort_active, sort_chats, sort_spaces, sort_tabs,
+    parse_auth_state, project_label, running_subagents, sort_active, sort_chats, sort_spaces,
+    sort_tabs,
 };
 
 /// What a session row shows that ticks with the clock rather than with its
@@ -1355,11 +1358,7 @@ impl AppState {
     /// value once the engine applies the LWW write.
     pub fn apply_chat_config(&mut self, chat_id: &str, config: openagents_proto::ChatConfig) {
         // The pending chat's copy is what `apply_chats` re-inserts.
-        if let Some(chat) = self
-            .pending_chat
-            .as_mut()
-            .filter(|chat| chat.id == chat_id)
-        {
+        if let Some(chat) = self.pending_chat.as_mut().filter(|chat| chat.id == chat_id) {
             chat.config = Some(config.clone());
         }
         if let Some(chat) = self.chats.iter_mut().find(|c| c.id == chat_id) {
@@ -1396,8 +1395,7 @@ impl AppState {
         if Some(chat.device_id.as_str()) == self.local_device_id.as_deref() {
             return false;
         }
-        if self.connectivity.state == S::Offline
-            || !self.device_online(&chat.device_id, Utc::now())
+        if self.connectivity.state == S::Offline || !self.device_online(&chat.device_id, Utc::now())
         {
             return true;
         }
@@ -1921,14 +1919,19 @@ impl AppState {
 
     // ---- queries ----
 
-    /// Non-archived, top-level chats in sidebar order. Voice orchestrator
-    /// chats stay hidden; an older build's side chat (`parent_chat_id`)
-    /// lists like any other chat.
+    /// Non-archived, listed chats in sidebar order: top-level chats and each
+    /// device's current voice chat (older voice segments stay hidden). An
+    /// older build's side chat (`parent_chat_id`) lists like any other chat.
     pub fn visible_chats(&self) -> impl Iterator<Item = &Chat> {
-        self.chats
-            .iter()
-            .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none()
-                && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION)))
+        let voice = openagents_proto::voice::listed_orchestrators(&self.chats);
+        self.chats.iter().filter(move |c| {
+            !c.archived
+                && c.is_listed(&voice)
+                && c.links.continued_by.is_none()
+                && !c.config.as_ref().is_some_and(|config| {
+                    config.model_options.contains_key(chat_home::REQUEST_OPTION)
+                })
+        })
     }
 
     pub(crate) fn restore_composer_target(
@@ -2286,7 +2289,8 @@ impl AppState {
             .filter(|session| {
                 matches!(
                     session.status,
-                    openagents_proto::SessionStatus::Working | openagents_proto::SessionStatus::AwaitingInput
+                    openagents_proto::SessionStatus::Working
+                        | openagents_proto::SessionStatus::AwaitingInput
                 )
             })
             // `age_ms > SESSION_STALE_MS` first holds one millisecond past it.
@@ -2671,9 +2675,14 @@ impl AppState {
                 Some("This conversation link belongs to another workspace".into());
             return true;
         }
-        if self.chats.iter().any(|chat| chat.id == link.chat_id) {
+        // The web links a voice chat by its published id.
+        if let Some(chat) = self.chats.iter().find(|chat| {
+            chat.id == link.chat_id
+                || openagents_proto::voice::published_id(&chat.id) == link.chat_id
+        }) {
+            let id = chat.id.clone();
             self.pending_deep_link = None;
-            self.select_chat(Some(link.chat_id), cx);
+            self.select_chat(Some(id), cx);
             true
         } else if self.chats_synced {
             self.pending_deep_link = None;
@@ -2913,7 +2922,10 @@ impl AppState {
         cx.spawn(async move |_, _| {
             if let Err(error) = handle
                 .client()
-                .call(methods::FOCUS_CHAT, serde_json::json!({ "chatId": chat_id }))
+                .call(
+                    methods::FOCUS_CHAT,
+                    serde_json::json!({ "chatId": chat_id }),
+                )
                 .await
             {
                 tracing::debug!(%chat_id, %error, "chat focus sync hint unavailable");
@@ -3935,7 +3947,10 @@ mod tests {
         .unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        tokio::spawn(openagents_rpc::serve_ws_listener(listener, core.rpc_service()));
+        tokio::spawn(openagents_rpc::serve_ws_listener(
+            listener,
+            core.rpc_service(),
+        ));
 
         let ui_dir = tempfile::tempdir().unwrap();
         let handle = EngineHandle::bootstrap(EngineBootConfig {
@@ -5341,6 +5356,39 @@ mod tests {
         assert_eq!(visible, ["b"]);
     }
 
+    /// Each device's current voice chat lists as "Voice transcript"; older
+    /// segments stay hidden, and it is still not a top-level chat, so it
+    /// raises no completion notice and stays out of the command palette.
+    #[test]
+    fn the_current_voice_chat_lists_and_older_segments_stay_hidden() {
+        let now = Utc::now();
+        let prefix = openagents_proto::voice::ORCHESTRATOR_CHAT_PREFIX;
+        let mut state = AppState::new();
+        let mut old = chat(&format!("{prefix}old"), 0, Some(5));
+        let mut new = chat(&format!("{prefix}new"), 1, Some(2));
+        for c in [&mut old, &mut new] {
+            c.title = Some(openagents_proto::voice::ORCHESTRATOR_CHAT_TITLE.into());
+        }
+        state.apply_chats(vec![old, new, chat("b", 2, Some(3))]);
+        let rows: Vec<(&str, Option<&str>)> = state
+            .sidebar_chats(now, None)
+            .into_iter()
+            .map(|(_, c)| (c.id.as_str(), c.title.as_deref()))
+            .collect();
+        let new_id = format!("{prefix}new");
+        assert_eq!(
+            rows,
+            [("b", None), (new_id.as_str(), Some("Voice transcript"))]
+        );
+        assert!(
+            state
+                .visible_chats()
+                .all(|c| c.id == "b" || !c.is_top_level())
+        );
+        // A web link names it by its published id.
+        assert_eq!(openagents_proto::voice::published_id(&new_id), "new");
+    }
+
     /// Side chats are gone (#11961): one an older build made opens and
     /// lists as an ordinary chat.
     #[test]
@@ -5861,8 +5909,12 @@ mod tests {
             },
         ];
 
-        assert!(state.device_supports("personal", openagents_proto::capabilities::MESSAGE_QUEUE_V1));
-        assert!(!state.device_supports("upstream", openagents_proto::capabilities::MESSAGE_QUEUE_V1));
+        assert!(
+            state.device_supports("personal", openagents_proto::capabilities::MESSAGE_QUEUE_V1)
+        );
+        assert!(
+            !state.device_supports("upstream", openagents_proto::capabilities::MESSAGE_QUEUE_V1)
+        );
     }
 
     #[test]

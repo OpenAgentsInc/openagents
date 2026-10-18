@@ -67,9 +67,10 @@ fn status(session: Option<&Session>, now_ms: i64) -> Wire {
     }
 }
 
-/// This device's top-level chats as summary rows, newest first. No
-/// message text: the recap stays empty until there is a summary that
-/// isn't the transcript.
+/// This device's listed chats as summary rows, newest first: its top-level
+/// chats and its current voice chat, which publishes under
+/// [`openagents_proto::voice::published_id`]. No message text: the recap
+/// stays empty until there is a summary that isn't the transcript.
 pub(crate) fn rows(
     device: &str,
     chats: &[Chat],
@@ -80,13 +81,14 @@ pub(crate) fn rows(
     moves: &HashMap<String, chat_home::PartRef>,
     now_ms: i64,
 ) -> Vec<PublishedSession> {
+    let voice = openagents_proto::voice::listed_orchestrators(chats);
     let mut mine: Vec<&Chat> = chats
         .iter()
         .filter(|c| {
             c.device_id == device
                 && (!c.archived || moves.contains_key(&c.id))
-                && c.is_top_level()
-                && chat_home::valid_id(&c.id)
+                && c.is_listed(&voice)
+                && chat_home::valid_id(openagents_proto::voice::published_id(&c.id))
                 && !c.config.as_ref().is_some_and(|config| {
                     config.model_options.contains_key(chat_home::REQUEST_OPTION)
                 })
@@ -111,8 +113,9 @@ pub(crate) fn rows(
                     })
                 });
             PublishedSession {
-                id: chat.id.clone(),
-                home_transfer: true,
+                id: openagents_proto::voice::published_id(&chat.id).to_owned(),
+                // A voice chat stays on its computer.
+                home_transfer: chat.is_top_level(),
                 continues: continuations.get(&chat.id).cloned(),
                 title: chat.title.clone().unwrap_or_default(),
                 project: None,
@@ -183,9 +186,10 @@ impl DocHost {
             .filter(|n| !n.trim().is_empty())
             .unwrap_or_else(|| "This computer".into());
         let now = now_ms();
+        let chats = workspace.read_chats()?;
         let rows = rows(
             &device,
-            &workspace.read_chats()?,
+            &chats,
             &workspace.read_sessions()?,
             &workspace.read_spaces()?,
             locator(auth).as_deref(),
@@ -212,7 +216,13 @@ impl DocHost {
         .await?;
         let mut uploads = Vec::new();
         for id in &on {
-            let messages = copy_of(self.open_local(id)?.doc().read_entries()?);
+            // A voice chat's published id drops its prefix.
+            let local = chats
+                .iter()
+                .find(|c| openagents_proto::voice::published_id(&c.id) == id)
+                .map_or(id.as_str(), |c| c.id.as_str());
+            let handle = self.open_local(local)?;
+            let messages = copy_of(handle.doc().read_entries()?);
             let digest = format!(
                 "{:x}",
                 Sha256::digest(serde_json::to_vec(&messages).unwrap_or_default())
@@ -294,6 +304,32 @@ mod tests {
                 .unwrap()
                 .contains("secret text")
         );
+    }
+
+    #[test]
+    fn the_current_voice_chat_lists_as_a_voice_transcript() {
+        use openagents_proto::voice::{ORCHESTRATOR_CHAT_PREFIX, ORCHESTRATOR_CHAT_TITLE};
+        let old = format!("{ORCHESTRATOR_CHAT_PREFIX}a1000000-0000-4000-8000-000000000001");
+        let new = format!("{ORCHESTRATOR_CHAT_PREFIX}a1000000-0000-4000-8000-000000000002");
+        let mut segments = vec![chat(&old, "mac", 10), chat(&new, "mac", 20)];
+        segments[1].created_at = Utc.timestamp_opt(2, 0).unwrap();
+        for c in &mut segments {
+            c.title = Some(ORCHESTRATOR_CHAT_TITLE.into());
+        }
+        let rows = rows(
+            "mac",
+            &segments,
+            &[],
+            &[],
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            0,
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "a1000000-0000-4000-8000-000000000002");
+        assert_eq!(rows[0].title, "Voice transcript");
+        assert!(!rows[0].home_transfer);
     }
 
     #[test]

@@ -24,6 +24,8 @@ struct SessionRowVM: Hashable {
     /// The saved agent this session runs (#11966): the row wears the
     /// OpenAgents mark instead of the runtime's.
     var agentName: String? = nil
+    /// A computer's voice chat (#12063): the row wears a microphone.
+    var voice: Bool = false
     var branch: String?
     var pr: PR?
     var prNumber: UInt64?
@@ -108,7 +110,9 @@ final class SessionCell: UICollectionViewListCell {
 
     func configure(_ vm: SessionRowVM) {
         self.vm = vm
-        harness.image = BrandMarks.image(for: vm.agentName != nil ? "openagents" : vm.harness ?? "claude-code", side: Self.markSide)
+        harness.image = vm.voice
+            ? UIImage(systemName: "mic", withConfiguration: UIImage.SymbolConfiguration(pointSize: Self.markSide * 0.8))?.withRenderingMode(.alwaysTemplate)
+            : BrandMarks.image(for: vm.agentName != nil ? "openagents" : vm.harness ?? "claude-code", side: Self.markSide)
         title.text = vm.title
         title.font = Fonts.ui(vm.unseen ? .sansSemibold : .sansMedium, TypeScale.size(16.5))
         title.textColor = vm.unseen || vm.status != .idle ? Palette.text : Palette.text.withAlphaComponent(0.88)

@@ -23,6 +23,14 @@ impl Identity {
     /// surface hides runtimes); a saved agent shows its own mark regardless.
     pub(crate) fn of(chat: Option<&Chat>, harness: Option<HarnessId>) -> Self {
         let config = chat.and_then(|c| c.config.as_ref());
+        // A voice chat wears a microphone instead of its runtime (#12063).
+        if chat.is_some_and(|c| openagents_proto::voice::is_orchestrator_chat(&c.id)) {
+            return Self {
+                mark: Some((icons::MICROPHONE, None)),
+                agent: None,
+                line: None,
+            };
+        }
         match saved_agent::agent_name(config, chat.and_then(|c| c.title.as_deref())) {
             Some(name) => Self {
                 mark: Some((icons::OPENAGENTS_LOGO, None)),
@@ -87,5 +95,11 @@ mod tests {
             "Message Foreman"
         );
         assert_eq!(Identity::of(Some(&plain), None).mark, None);
+
+        let mut voice = chat(serde_json::json!({}));
+        voice.id = format!("{}1", openagents_proto::voice::ORCHESTRATOR_CHAT_PREFIX);
+        let id = Identity::of(Some(&voice), Some(HarnessId::Codex));
+        assert_eq!(id.mark.map(|m| m.0), Some(icons::MICROPHONE));
+        assert!(Identity::of(Some(&voice), None).mark.is_some());
     }
 }

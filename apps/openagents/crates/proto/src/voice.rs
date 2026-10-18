@@ -6,12 +6,14 @@ pub const MAX_AUDIO_BYTES: usize = 16_384;
 pub const MEDIA_QUEUE_FRAMES: usize = 8;
 pub const MAX_TRANSCRIPT_BYTES: usize = 32_768;
 
-/// Id prefix of the hidden chat that hosts a voice orchestrator session. It
-/// never takes a sidebar row, and chats it creates are top-level sessions
-/// rather than its side chats.
+/// Id prefix of the chat that hosts a voice orchestrator session. Only each
+/// device's current one takes a chat-list row ([`listed_orchestrators`]),
+/// and chats it creates are top-level sessions rather than its side chats.
 pub const ORCHESTRATOR_CHAT_PREFIX: &str = "voice-orchestrator-";
 /// Title of every orchestrator chat; transcripts never trigger a titler.
-pub const ORCHESTRATOR_CHAT_TITLE: &str = "Voice session";
+pub const ORCHESTRATOR_CHAT_TITLE: &str = "Voice transcript";
+/// Titles earlier builds gave orchestrator chats; a call renames them.
+pub const EARLIER_ORCHESTRATOR_TITLES: &[&str] = &["Voice session"];
 /// Codex voice styles offered before a host reports its own list.
 pub const DEFAULT_VOICES: &[&str] = &[
     "juniper", "maple", "spruce", "ember", "vale", "breeze", "arbor", "sol", "cove",
@@ -19,6 +21,40 @@ pub const DEFAULT_VOICES: &[&str] = &[
 
 pub fn is_orchestrator_chat(chat_id: &str) -> bool {
     chat_id.starts_with(ORCHESTRATOR_CHAT_PREFIX)
+}
+
+/// `device`'s current orchestrator chat: its newest non-archived one. Calls
+/// on that device run in it; older segments stay out of every list.
+pub fn current_orchestrator<'a>(chats: &'a [crate::Chat], device: &str) -> Option<&'a crate::Chat> {
+    chats
+        .iter()
+        .filter(|c| is_orchestrator_chat(&c.id) && c.device_id == device && !c.archived)
+        .max_by_key(|c| c.created_at)
+}
+
+/// Ids of every device's current orchestrator chat, the voice chats the chat
+/// lists show beside top-level sessions (see [`crate::Chat::is_listed`]).
+pub fn listed_orchestrators(chats: &[crate::Chat]) -> std::collections::HashSet<&str> {
+    let mut newest: std::collections::HashMap<&str, &crate::Chat> = Default::default();
+    for chat in chats
+        .iter()
+        .filter(|c| is_orchestrator_chat(&c.id) && !c.archived)
+    {
+        let slot = newest.entry(chat.device_id.as_str()).or_insert(chat);
+        // Ties go to the later row, as `current_orchestrator` picks.
+        if chat.created_at >= slot.created_at {
+            *slot = chat;
+        }
+    }
+    newest.into_values().map(|c| c.id.as_str()).collect()
+}
+
+/// The id a voice chat publishes under in the account's session index,
+/// which takes bare UUIDs: the orchestrator's id without its prefix.
+pub fn published_id(chat_id: &str) -> &str {
+    chat_id
+        .strip_prefix(ORCHESTRATOR_CHAT_PREFIX)
+        .unwrap_or(chat_id)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -257,5 +293,37 @@ mod tests {
         // A side chat from an older build lists as an ordinary chat.
         chat.parent_chat_id = Some("parent".into());
         assert!(chat.is_top_level());
+    }
+
+    fn orchestrator(id: &str, device: &str, created: &str, archived: bool) -> crate::Chat {
+        serde_json::from_value(serde_json::json!({
+            "id": format!("{ORCHESTRATOR_CHAT_PREFIX}{id}"),
+            "deviceId": device,
+            "title": ORCHESTRATOR_CHAT_TITLE,
+            "archived": archived,
+            "createdAt": created,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn only_each_devices_newest_orchestrator_is_listed() {
+        let chats = vec![
+            orchestrator("old", "mac", "2026-10-01T00:00:00Z", false),
+            orchestrator("new", "mac", "2026-10-02T00:00:00Z", false),
+            orchestrator("gone", "mac", "2026-10-03T00:00:00Z", true),
+            orchestrator("other", "pc", "2026-10-01T00:00:00Z", false),
+        ];
+        let listed = listed_orchestrators(&chats);
+        let id = |s: &str| format!("{ORCHESTRATOR_CHAT_PREFIX}{s}");
+        assert_eq!(listed.len(), 2);
+        assert!(listed.contains(id("new").as_str()) && listed.contains(id("other").as_str()));
+        assert_eq!(current_orchestrator(&chats, "mac").unwrap().id, id("new"));
+        assert!(chats[1].is_listed(&listed) && !chats[0].is_listed(&listed));
+        assert!(!chats[2].is_listed(&listed));
+        // Lists show it, but it stays out of everything top-level gates.
+        assert!(!chats[1].is_top_level());
+        assert_eq!(published_id(&id("new")), "new");
+        assert_eq!(published_id("plain"), "plain");
     }
 }
