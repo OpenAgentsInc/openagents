@@ -33,7 +33,10 @@ pub(crate) const DOCS: [(&str, &str); 54] = [
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
     ),
-    ("start-here", include_str!("../../content/docs/start-here.md")),
+    (
+        "start-here",
+        include_str!("../../content/docs/start-here.md"),
+    ),
     ("download", include_str!("../../content/docs/download.md")),
     ("website", include_str!("../../content/docs/website.md")),
     ("mac", include_str!("../../content/docs/mac.md")),

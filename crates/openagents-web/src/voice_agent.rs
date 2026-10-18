@@ -155,8 +155,8 @@ mod tests {
     #[tokio::test]
     async fn any_saved_agent_chat_can_be_selected_without_a_name_check() {
         use openagents_sdk::agents::{
-            AgentSpec, Access,
-            assignments::{CreateAssignment, AssignmentSpec},
+            Access, AgentSpec,
+            assignments::{AssignmentSpec, CreateAssignment},
         };
         let root = tempfile::tempdir().unwrap();
         let store = Store::local(root.path().into());

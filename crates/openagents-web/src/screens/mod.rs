@@ -291,6 +291,10 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "/labs/agent/tasks/{id}",
         "one of the person's Agent Lab runs",
     ),
+    (
+        "/labs/agent/{id}/card",
+        "one of the person's saved agents' autonomy card, read from their account",
+    ),
 ];
 
 pub(crate) const fn state(id: &'static str, label: &'static str, render: Render) -> State {
