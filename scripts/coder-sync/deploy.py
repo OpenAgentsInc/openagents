@@ -187,6 +187,9 @@ def deploy(staging):
         "CODER_SYNC_AUTH": "openagents",
         "CODER_SYNC_BUCKET": f"{PROJECT}-coder-sync{suffix}",
         "CODER_SYNC_REVISION": commit,
+        # One log line per request blocked the runtime on a backed-up stdout
+        # under reconnect floods (#12120); warnings and errors only.
+        "RUST_LOG": "warn",
     }
     public_origin = os.environ.get("CODER_SYNC_PUBLIC_ORIGIN", "").strip().rstrip("/")
     if public_origin:
@@ -196,14 +199,15 @@ def deploy(staging):
                 or "," in public_origin):
             raise RuntimeError("Set CODER_SYNC_PUBLIC_ORIGIN to an HTTPS origin without a path.")
         environment["CODER_SYNC_PUBLIC_ORIGIN"] = public_origin
-    # One instance per revision: rooms and presence live in its memory. The
-    # service allows two so the previous revision's instance can drain its
-    # hour-long sockets without taking the only slot (#12120: with --max=1
-    # the serving revision got "no available instance" for minutes). Every
-    # device holds sockets open (registry, chats, previews), so a request
-    # limit of 80 refused requests once those sockets stopped dropping.
+    # The 2026-10-18 mitigation (#12120), until coder-sync moves to a
+    # single-writer VM (#12122): on Cloud Run a lone instance kept being
+    # declared "no available instance" while idle, so a revision may run up
+    # to three, keeping one warm. Live rooms are per instance, so devices on
+    # different instances miss each other's live updates until they
+    # reconnect; writes stay serialized in Postgres. The service allows six
+    # so earlier revisions' socket-held instances don't take the slots.
     args = ["run", "deploy", service, f"--region={REGION}", f"--image=us-central1-docker.pkg.dev/{PROJECT}/openagents/coder-sync:{commit}",
-            f"--service-account={ACCOUNT}", "--max=2", "--min=0", "--max-instances=1", "--min-instances=0", "--timeout=3600", "--concurrency=1000",
+            f"--service-account={ACCOUNT}", "--max=6", "--min=0", "--max-instances=3", "--min-instances=1", "--timeout=3600", "--concurrency=1000",
             # A frozen process gets restarted, not left answering "no available
             # instance" (#12120). /health reads the database through the pool.
             "--liveness-probe=httpGet.path=/health,httpGet.port=8080,periodSeconds=10,timeoutSeconds=3,failureThreshold=3", "--cpu=1", "--memory=512Mi", "--allow-unauthenticated",
