@@ -29,6 +29,8 @@ pub struct Snapshot {
     pub projects: Vec<HistoryProject>,
     pub project: Option<HistoryProject>,
     pub query: String,
+    pub pin_order: Option<openagents::history::SavedPinOrder>,
+    pub pin_order_state: LoadState,
     pub state: LoadState,
     pub projects_state: LoadState,
     pub has_more: bool,
@@ -43,13 +45,26 @@ impl Snapshot {
             .filter(|r| r.archived_unix.is_some() == archived && r.links.continued_by.is_none())
             .cloned()
             .collect::<Vec<_>>();
+        let positions: std::collections::BTreeMap<_, _> = self
+            .pin_order
+            .as_ref()
+            .filter(|_| self.project.is_none())
+            .into_iter()
+            .flat_map(|order| order.ids().iter().enumerate())
+            .map(|(at, id)| (id.as_str(), at))
+            .collect();
         rows.sort_by(|a, b| {
             a.pinned_unix
                 .is_none()
                 .cmp(&b.pinned_unix.is_none())
                 .then_with(|| {
                     if a.pinned_unix.is_some() && b.pinned_unix.is_some() {
-                        b.pinned_unix.cmp(&a.pinned_unix)
+                        match (positions.get(a.chat.id()), positions.get(b.chat.id())) {
+                            (Some(a), Some(b)) => a.cmp(b),
+                            (None, Some(_)) => std::cmp::Ordering::Less,
+                            (Some(_), None) => std::cmp::Ordering::Greater,
+                            _ => b.pinned_unix.cmp(&a.pinned_unix),
+                        }
                     } else {
                         // Newest first: projects show on each row, not as groups.
                         std::cmp::Ordering::Equal
@@ -339,6 +354,125 @@ impl History {
             this.publish(&s);
         }
     }
+    /// Read the confirmed owner order without discarding last-known ordering on failure.
+    pub fn refresh_pin_order(self: &Arc<Self>) -> impl Future<Output = ()> + Send + 'static {
+        let this = self.clone();
+        let request = {
+            let mut s = self.state.lock().unwrap();
+            let lease = s.lease.clone().filter(Lease::is_current);
+            lease.map(|lease| {
+                s.snapshot.pin_order_state = LoadState::Loading;
+                this.publish(&s);
+                (s.epoch, lease, s.cancel.child_token())
+            })
+        };
+        async move {
+            let Some((epoch, lease, cancel)) = request else {
+                return;
+            };
+            let result = lease
+                .client()
+                .saved_pin_order(lease.session(), &cancel)
+                .await;
+            let mut s = this.state.lock().unwrap();
+            if s.epoch != epoch || !lease.is_current() || cancel.is_cancelled() {
+                return;
+            }
+            match result {
+                Ok(order) => {
+                    if s.snapshot
+                        .pin_order
+                        .as_ref()
+                        .is_none_or(|old| order.revision() >= old.revision())
+                    {
+                        s.snapshot.pin_order = Some(order);
+                    }
+                    s.snapshot.pin_order_state = LoadState::Ready;
+                }
+                Err(_) => {
+                    s.snapshot.pin_order_state = LoadState::Failed {
+                        message: "Couldn't load pinned chats. Try again.".into(),
+                        stale: s.snapshot.pin_order.is_some(),
+                    }
+                }
+            }
+            this.publish(&s);
+        }
+    }
+
+    /// Commit one saved-pin move on the server. A failed or stale request cannot
+    /// change local ordering, pin flags, session selection, or chat content.
+    pub fn move_pin(
+        self: &Arc<Self>,
+        id: String,
+        after: Option<String>,
+        before: Option<String>,
+        revision: u64,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'static {
+        let this = self.clone();
+        async move {
+            let (epoch, lease, order, cancel) = {
+                let s = this.state.lock().unwrap();
+                let lease = s
+                    .lease
+                    .clone()
+                    .filter(Lease::is_current)
+                    .ok_or(Error::Cancelled)?;
+                if s.snapshot.project.is_some()
+                    || s.snapshot.pin_order_state != LoadState::Ready
+                    || !s.snapshot.rows.iter().any(|row| {
+                        row.chat.id() == id
+                            && row.pinned_unix.is_some()
+                            && row.archived_unix.is_none()
+                    })
+                {
+                    return Err(Error::InvalidReference);
+                }
+                let order = s
+                    .snapshot
+                    .pin_order
+                    .clone()
+                    .filter(|order| order.revision() == revision)
+                    .ok_or(Error::Changed)?;
+                (s.epoch, lease, order, s.cancel.child_token())
+            };
+            let chat = lease.client().chat(lease.session(), &id)?;
+            let after = after
+                .as_deref()
+                .map(|id| lease.client().chat(lease.session(), id))
+                .transpose()?;
+            let before = before
+                .as_deref()
+                .map(|id| lease.client().chat(lease.session(), id))
+                .transpose()?;
+            let order = lease
+                .client()
+                .move_saved_pin(
+                    lease.session(),
+                    &order,
+                    &chat,
+                    after.as_ref(),
+                    before.as_ref(),
+                    &cancel,
+                )
+                .await?;
+            let mut s = this.state.lock().unwrap();
+            if s.epoch != epoch || !lease.is_current() || cancel.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            if s.snapshot
+                .pin_order
+                .as_ref()
+                .is_none_or(|old| order.revision() >= old.revision())
+            {
+                s.snapshot.pin_order = Some(order);
+                s.snapshot.pin_order_state = LoadState::Ready;
+                this.publish(&s);
+            }
+            Ok(())
+        }
+    }
+
     pub fn refresh_projects(&self) -> Result<(), Error> {
         let mut s = self.state.lock().unwrap();
         let lease = s

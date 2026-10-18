@@ -24,12 +24,13 @@ class DrawerPresenterTest {
         val intents = mutableListOf<DrawerIntent>()
         val restores = mutableListOf<DrawerKey>()
         var failure: Exception? = null
+        var sendFailure: Exception? = null
         override suspend fun load(request: DrawerRequest): DrawerFrame {
             requests += request
             failure?.let { throw it }
             return answer
         }
-        override suspend fun send(intent: DrawerIntent) { intents += intent }
+        override suspend fun send(intent: DrawerIntent) { intents += intent; sendFailure?.let { throw it } }
         override suspend fun restore(key: DrawerKey) { restores += key }
     }
 
@@ -111,7 +112,25 @@ class DrawerPresenterTest {
         yield()
         old.complete(frame())
         yield()
+        assertEquals(1, frames.size)
         assertTrue(frames.all { it.rows.isEmpty() })
+    }
+
+    @Test fun reorder_intent_uses_rust_neighbours_and_a_failure_never_changes_rows() = runBlocking {
+        val fixture = Fixture(frame())
+        val frames = mutableListOf<DrawerFrame>()
+        val presenter = DrawerPresenter(fixture, this, frames::add)
+        presenter.show(DrawerRequest(DrawerTab.SAVED))
+        yield()
+        fixture.sendFailure = IllegalStateException("synthetic stale revision")
+        val move = DrawerIntent.MovePin(saved, null, DrawerKey(DrawerOrigin.SAVED, "before"), 7uL)
+        presenter.send(move)
+        yield()
+        assertEquals(listOf(move), fixture.intents)
+        assertEquals(1, fixture.requests.size)
+        assertFalse(fixture.answer.rows[0].pinned)
+        assertEquals(listOf(saved, live), fixture.answer.rows.map { it.key })
+        assertTrue(frames.last().rows.isEmpty())
     }
 
     @Test fun oversized_or_ambiguous_frames_are_refused() {

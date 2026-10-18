@@ -178,9 +178,9 @@ pub(crate) fn extend(doc: &mut Value) {
         "/v1/threads/{id}",
         "patch",
         "moveThread",
-        "Owner only. Send at least one of project, pinned, archived; an empty body refuses 400 invalid_request. project: the target requires current project editor/owner role; null removes filing; moving resets the branch. pinned: true pins after every earlier pin, false unpins. archived: true archives the chat and removes the cloud computers that ran it, false restores it. Revision compare-and-swap retries three times; conflicts return 503.",
+        "Owner only. Send at least one of project, pinned, archived, title; an empty body refuses 400 invalid_request. project: the target requires current project editor/owner role; null removes filing; moving resets the branch. pinned: true pins after every earlier pin, false unpins. archived: true archives the chat and removes the cloud computers that ran it, false restores it. title: trimmed, one line, 1..120 characters, using the web rename rules. Revision compare-and-swap retries three times; conflicts return 503.",
         Some(
-            json!({"type":"object","minProperties":1,"properties":{"project":nullable("string"),"pinned":{"type":"boolean"},"archived":{"type":"boolean"}}}),
+            json!({"type":"object","minProperties":1,"properties":{"project":nullable("string"),"pinned":{"type":"boolean"},"archived":{"type":"boolean"},"title":{"type":"string","minLength":1,"maxLength":120}}}),
         ),
         "200",
         Some(r("Object")),

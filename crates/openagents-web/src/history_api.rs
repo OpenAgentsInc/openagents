@@ -18,10 +18,16 @@ use serde_json::{Value, json};
 
 #[path = "history_lab_cards.rs"]
 mod lab_cards;
+#[path = "history_order.rs"]
+mod pin_order;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/v1/history", get(list))
+        .route(
+            "/v1/history/pins",
+            get(pin_order::get).patch(pin_order::patch),
+        )
         .route("/v1/history/projects", get(projects))
         .route("/v1/history/{id}/messages", get(messages))
         .route("/v1/history/{id}/files/{file}", get(file))

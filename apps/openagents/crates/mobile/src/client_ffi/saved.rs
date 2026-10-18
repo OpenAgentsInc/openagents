@@ -45,6 +45,8 @@ pub struct SavedChatRow {
     pub agent_name: Option<String>,
     pub indicator: Option<super::ChatIndicator>,
     pub unseen: Option<bool>,
+    pub move_earlier: Option<SavedPinMove>,
+    pub move_later: Option<SavedPinMove>,
 }
 #[derive(Clone, Debug, uniffi::Enum)]
 pub enum SavedFilingChange {
@@ -109,6 +111,8 @@ pub struct SavedHistorySnapshot {
     pub archived: bool,
     pub project: Option<String>,
     pub query: String,
+    pub pin_order: Option<SavedPinOrder>,
+    pub pin_order_state: SavedLoadState,
     pub rows: Vec<SavedChatRow>,
     pub projects: Vec<SavedProjectRow>,
     pub has_more: bool,
@@ -116,6 +120,17 @@ pub struct SavedHistorySnapshot {
     pub state: SavedLoadState,
     pub projects_state: SavedLoadState,
     pub transcript: SavedTranscript,
+}
+#[derive(Clone, uniffi::Record)]
+pub struct SavedPinMove {
+    pub revision: u64,
+    pub after: Option<String>,
+    pub before: Option<String>,
+}
+#[derive(Clone, uniffi::Record)]
+pub struct SavedPinOrder {
+    pub revision: u64,
+    pub ids: Vec<String>,
 }
 #[derive(Clone, uniffi::Record)]
 pub struct SavedFileBytes {
@@ -280,6 +295,7 @@ impl CoreSavedHistory {
             }
         });
         openagents_client::runtime::shared().spawn(this.history.more());
+        openagents_client::runtime::shared().spawn(this.history.refresh_pin_order());
         openagents_client::runtime::shared().spawn(this.history.more_projects());
         this
     }
@@ -304,6 +320,7 @@ impl CoreSavedHistory {
         self.labs.sync(&self.reader, active);
     }
     fn refresh_lists(&self) {
+        openagents_client::runtime::shared().spawn(self.history.refresh_pin_order());
         let runtime = openagents_client::runtime::shared();
         if self.history.refresh().is_ok() {
             runtime.spawn(self.history.more());
@@ -375,6 +392,29 @@ impl CoreSavedHistory {
             available: capture.download_ref().is_some(),
         }));
         files
+    }
+
+    /// Move an owned saved pin using the last confirmed owner-order revision.
+    pub async fn move_pin(
+        &self,
+        id: String,
+        after: Option<String>,
+        before: Option<String>,
+        revision: u64,
+    ) -> CoreResult<()> {
+        if !self.current() {
+            return Err(unavailable());
+        }
+        let result = openagents_client::runtime::shared()
+            .spawn(self.history.move_pin(id, after, before, revision))
+            .await
+            .map_err(failed)?;
+        if !self.current() {
+            return Err(unavailable());
+        }
+        result.map_err(|_| CoreError::HostError {
+            message: "Couldn't move this chat. Refresh your pinned chats and try again.".into(),
+        })
     }
 
     /// File an already-loaded owned chat. Refresh only after server confirmation;
@@ -474,6 +514,10 @@ impl CoreSavedHistory {
             Default::default()
         };
         let archived = self.archived.load(Ordering::SeqCst);
+        let pin_order = h.pin_order.as_ref().map(|order| SavedPinOrder {
+            revision: order.revision(),
+            ids: order.ids().to_vec(),
+        });
         let rows = h
             .visible_rows(archived)
             .into_iter()
@@ -493,8 +537,16 @@ impl CoreSavedHistory {
                         .map(|p| p.name.clone())
                         .unwrap_or_else(|| "Chats".into())
                 };
+                let (move_earlier, move_later) = pin_moves(
+                    pin_order
+                        .as_ref()
+                        .filter(|_| h.project.is_none() && h.pin_order_state == LoadState::Ready),
+                    row.chat.id(),
+                );
                 SavedChatRow {
                     id: row.chat.id().into(),
+                    move_earlier,
+                    move_later,
                     pinned: row.pinned_unix.is_some(),
                     archived: row.archived_unix.is_some(),
                     can_file: h.project.is_none(),
@@ -522,6 +574,8 @@ impl CoreSavedHistory {
             archived,
             project: h.project.map(|p| p.name),
             query: h.query,
+            pin_order,
+            pin_order_state: h.pin_order_state.into(),
             rows,
             projects: h
                 .projects
@@ -776,6 +830,29 @@ impl Drop for CoreSavedHistory {
     }
 }
 
+fn pin_moves(
+    order: Option<&SavedPinOrder>,
+    id: &str,
+) -> (Option<SavedPinMove>, Option<SavedPinMove>) {
+    let Some(order) = order else {
+        return (None, None);
+    };
+    let Some(at) = order.ids.iter().position(|pin| pin == id) else {
+        return (None, None);
+    };
+    let earlier = at.checked_sub(1).map(|before| SavedPinMove {
+        revision: order.revision,
+        after: before.checked_sub(1).map(|after| order.ids[after].clone()),
+        before: Some(order.ids[before].clone()),
+    });
+    let later = order.ids.get(at + 1).map(|after| SavedPinMove {
+        revision: order.revision,
+        after: Some(after.clone()),
+        before: order.ids.get(at + 2).cloned(),
+    });
+    (earlier, later)
+}
+
 async fn wait_for_filing(
     account_cancel: &CancellationToken,
     view_cancel: &CancellationToken,
@@ -825,6 +902,26 @@ fn transcript_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_pin_controls_use_confirmed_global_neighbours_and_revision() {
+        let order = SavedPinOrder {
+            revision: 7,
+            ids: vec!["a".into(), "b".into(), "c".into()],
+        };
+        let (up, down) = pin_moves(Some(&order), "b");
+        let up = up.unwrap();
+        assert_eq!(up.revision, 7);
+        assert_eq!(up.after, None);
+        assert_eq!(up.before.as_deref(), Some("a"));
+        let down = down.unwrap();
+        assert_eq!(down.after.as_deref(), Some("c"));
+        assert_eq!(down.before, None);
+        assert!(pin_moves(Some(&order), "a").0.is_none());
+        assert!(pin_moves(Some(&order), "c").1.is_none());
+        assert!(pin_moves(None, "b").0.is_none());
+        assert!(pin_moves(Some(&order), "missing").1.is_none());
+    }
 
     #[tokio::test]
     async fn saved_filing_cancellation_fences_requests_and_failed_answers() {
