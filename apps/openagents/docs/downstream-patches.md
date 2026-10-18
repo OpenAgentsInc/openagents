@@ -750,6 +750,14 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+- [OpenAgents #12102](https://github.com/OpenAgentsInc/openagents/issues/12102):
+  derive Android accessibility roles, names, states, action labels, modal scope,
+  and focus order from validated Rust Native views. Focus bookmarks contain
+  only account/screen scope and a node key. Transcript accessibility pages use
+  measured Rust row bounds and bounded text continuations. Kotlin maps those
+  semantics onto native controls without receiving application intents or field
+  values. Binding generation, C2 navigation hookup, and executable validation
+  remain pending.
 - [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
   Android push delivery uses the existing Rust push registration and private
   owner-note APIs. `CoreClient::handle_push_wake` receives a typed wake; Rust

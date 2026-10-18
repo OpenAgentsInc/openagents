@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Looper
 import android.text.Editable
 import android.text.SpannableStringBuilder
@@ -15,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.BaseInputConnection
 import android.widget.*
+import com.openagents.app.accessibility.NativeSemantics
 import org.json.JSONObject
 
 /** Mounts only JSON prepared by the Rust AndroidView bridge. No application intents cross back. */
@@ -25,6 +27,7 @@ class SemanticViewAdapter(
     private val acknowledge: (instance: String, revision: Long) -> Unit,
     // Transcript, composer, Markdown, and local surfaces use their dedicated adapters.
     private val extensions: Map<String, Extension> = emptyMap(),
+    private val semantics: NativeSemantics? = null,
 ) {
     interface Extension {
         fun mount(node: JSONObject, previous: View?): View
@@ -66,6 +69,7 @@ class SemanticViewAdapter(
         }
         require(json.size <= 512 * 1024)
         checkNode(view.getJSONObject("root"), 1)
+        val semanticTree = semantics?.prepare(json)
         updating = true
         try {
             val seen = mutableSetOf<String>()
@@ -80,7 +84,15 @@ class SemanticViewAdapter(
         } finally {
             updating = false
         }
-        acknowledge(instance, revision)
+        try {
+            acknowledge(instance, revision)
+            if (semanticTree != null) semantics?.mounted(semanticTree, controls.mapValues { (_, control) ->
+                if (control.kind == "choice") (control.view as ViewGroup).getChildAt(0) else control.view
+            })
+        } catch (error: Exception) {
+            dispose()
+            throw error
+        }
     }
 
     private fun event(key: String, value: String? = null) {
@@ -132,7 +144,7 @@ class SemanticViewAdapter(
             }
             "choice" -> {
                 val layout = result as LinearLayout
-                val check = (layout.getChildAt(0) as? CheckBox) ?: CheckBox(context)
+                val check = (layout.getChildAt(0) as? RadioButton) ?: RadioButton(context)
                 check.text = props.getString("label")
                 check.isEnabled = props.getBoolean("enabled")
                 check.isChecked = props.getBoolean("selected")
@@ -188,11 +200,16 @@ class SemanticViewAdapter(
                 val value = props.getString(if (kind == "working") "label" else "value")
                 if (text.text.toString() != value) text.text = value
                 text.setTextIsSelectable(kind == "text")
-                text.isAccessibilityHeading = props.optString("role") == "heading"
+                if (Build.VERSION.SDK_INT >= 28) text.isAccessibilityHeading = props.optString("role") == "heading"
+                else text.contentDescription = if (props.optString("role") == "heading") "Heading. $value" else null
                 val terminal = props.optString("role") == "terminal"
                 text.setSingleLine(terminal)
                 text.typeface = if (terminal || props.optString("role") == "code") Typeface.MONOSPACE else Typeface.DEFAULT
-                if (kind == "working") text.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+                text.accessibilityLiveRegion = if (kind == "working" || props.optString("role") == "status") {
+                    View.ACCESSIBILITY_LIVE_REGION_POLITE
+                } else {
+                    View.ACCESSIBILITY_LIVE_REGION_NONE
+                }
             }
             "rich_text" -> {
                 val text = SpannableStringBuilder()
@@ -211,7 +228,13 @@ class SemanticViewAdapter(
                 }
                 (result as TextView).text = text
                 result.setTextIsSelectable(true)
-                result.isAccessibilityHeading = props.optString("role") == "heading"
+                val richTextView = result as TextView
+                if (Build.VERSION.SDK_INT >= 28) richTextView.isAccessibilityHeading = props.optString("role") == "heading"
+                else richTextView.contentDescription = if (props.optString("role") == "heading") {
+                    text.toString().takeIf { it.isNotEmpty() }?.let { "Heading. $it" }
+                } else {
+                    null
+                }
                 result.setSingleLine(props.optString("role") == "terminal")
                 result.typeface = if (props.optString("role") in setOf("code", "terminal")) Typeface.MONOSPACE else Typeface.DEFAULT
             }
@@ -327,5 +350,6 @@ class SemanticViewAdapter(
         controls.keys.toList().forEach { release(it) }
         container?.removeAllViews()
         container = null
+        semantics?.close()
     }
 }
