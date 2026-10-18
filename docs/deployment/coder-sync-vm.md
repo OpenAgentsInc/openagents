@@ -99,3 +99,11 @@ The `dns` command edits the Cloudflare zone with `CLOUDFLARE_API_TOKEN`
    `x-coder-sync-backend: vm`.
 4. `cutover vm`, then `dns lb`.
 5. Check live delivery between two clients through `sync.openagents.com`.
+
+## Logs
+
+The VM ships container logs to Cloud Logging (`resource.type="gce_instance"`)
+once `coder-sync@` holds `roles/logging.logWriter`; the automation account
+can't grant project roles, so that is an owner step. Load balancer request
+logs (`resource.type="http_load_balancer"`, backend `coder-sync-vm`) are
+sampled at 10 percent.
