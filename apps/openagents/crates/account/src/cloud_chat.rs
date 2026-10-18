@@ -189,14 +189,31 @@ impl CloudChat {
     /// Send `text` in the open chat, or start one.
     pub fn send(self: &Arc<Self>, text: String) -> impl Future<Output = ()> + Send + 'static {
         let this = self.clone();
-        async move { this.send_inner(text).await }
+        async move { this.send_inner(text, None).await }
     }
 
-    async fn send_inner(self: Arc<Self>, text: String) {
+    /// Send only under the account lease captured by the caller before scheduling.
+    /// A queued send never waits for a replacement account to sign in.
+    pub fn send_for_lease(
+        self: &Arc<Self>,
+        text: String,
+        lease: Lease,
+    ) -> impl Future<Output = ()> + Send + 'static {
+        let this = self.clone();
+        async move {
+            if !lease.is_current() {
+                return;
+            }
+            this.send_inner(text, Some(lease)).await;
+        }
+    }
+
+    async fn send_inner(self: Arc<Self>, text: String, bound: Option<Lease>) {
         let text = text.trim().to_owned();
-        if text.is_empty() {
+        if text.is_empty() || bound.as_ref().is_some_and(|lease| !lease.is_current()) {
             return;
         }
+        let account_cancel = bound.as_ref().map(|lease| lease.cancel.clone());
         let (generation, cancel, chat) = {
             let mut s = self.state.lock().unwrap();
             if s.snapshot.answering {
@@ -220,8 +237,36 @@ impl CloudChat {
             self.publish(&s);
             (s.generation, s.cancel.clone(), s.snapshot.chat.clone())
         };
-        let Some(lease) = self.lease(&cancel).await else {
-            return self.failed(generation, &text, NOT_READY);
+        let work = self
+            .clone()
+            .send_turn(text, generation, cancel, chat, bound);
+        if let Some(account_cancel) = account_cancel {
+            if !while_current(account_cancel, work).await {
+                let mut state = self.state.lock().unwrap();
+                if retire_send(&mut state, generation) {
+                    self.publish(&state);
+                }
+            }
+        } else {
+            work.await;
+        }
+    }
+
+    async fn send_turn(
+        self: Arc<Self>,
+        text: String,
+        generation: u64,
+        cancel: CancellationToken,
+        chat: Option<String>,
+        bound: Option<Lease>,
+    ) {
+        let lease = match bound {
+            Some(lease) if lease.is_current() => lease,
+            Some(_) => return self.failed(generation, &text, NOT_READY),
+            None => match self.lease(&cancel).await {
+                Some(lease) => lease,
+                None => return self.failed(generation, &text, NOT_READY),
+            },
         };
         let (client, session) = (lease.client(), lease.session());
         let message = match &chat {
@@ -466,9 +511,77 @@ impl CloudChat {
     }
 }
 
+fn retire_send(state: &mut State, generation: u64) -> bool {
+    if state.generation != generation {
+        return false;
+    }
+    state.cancel.cancel();
+    state.generation += 1;
+    state.cancel = CancellationToken::new();
+    state.slots.clear();
+    state.answering = None;
+    state.snapshot = Snapshot::default();
+    true
+}
+
+async fn while_current(cancel: CancellationToken, work: impl Future<Output = ()>) -> bool {
+    tokio::select! { biased;
+        _ = cancel.cancelled() => false,
+        _ = work => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_late_retirement_cannot_clear_a_replacement_turn() {
+        let mut state = State {
+            generation: 2,
+            cancel: CancellationToken::new(),
+            snapshot: Snapshot::default(),
+            slots: BTreeMap::new(),
+            answering: None,
+        };
+        state.snapshot.lines.push(Line {
+            role: Role::User,
+            text: "replacement".into(),
+        });
+        assert!(!retire_send(&mut state, 1));
+        assert_eq!(state.snapshot.lines[0].text, "replacement");
+        assert!(retire_send(&mut state, 2));
+        assert!(state.snapshot.lines.is_empty());
+        assert_eq!(state.generation, 3);
+    }
+
+    #[tokio::test]
+    async fn retired_lease_never_polls_a_queued_send() {
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let called = std::sync::atomic::AtomicBool::new(false);
+        assert!(
+            !while_current(cancel, async {
+                called.store(true, std::sync::atomic::Ordering::SeqCst);
+            })
+            .await
+        );
+        assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn retiring_a_lease_drops_in_flight_work() {
+        let cancel = CancellationToken::new();
+        let retire = cancel.clone();
+        let completed = std::sync::atomic::AtomicBool::new(false);
+        let work = async {
+            retire.cancel();
+            std::future::pending::<()>().await;
+            completed.store(true, std::sync::atomic::Ordering::SeqCst);
+        };
+        assert!(!while_current(cancel, work).await);
+        assert!(!completed.load(std::sync::atomic::Ordering::SeqCst));
+    }
 
     #[test]
     fn refusals_read_as_one_plain_line() {

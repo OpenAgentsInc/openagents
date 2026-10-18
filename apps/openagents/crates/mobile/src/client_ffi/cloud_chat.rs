@@ -143,10 +143,13 @@ impl CoreCloudChat {
     pub(crate) fn send_completion(
         &self,
         text: String,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        lease: Option<openagents_account::Lease>,
+    ) -> super::CoreResult<std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>> {
         match &self.chat {
-            Chat::Live(chat) => Box::pin(chat.send(text)),
-            Chat::Demo(chat) => Box::pin(chat.send(text)),
+            Chat::Live(chat) => Ok(Box::pin(
+                chat.send_for_lease(text, lease.ok_or(super::CoreError::Closed)?),
+            )),
+            Chat::Demo(chat) => Ok(Box::pin(chat.send(text))),
         }
     }
 

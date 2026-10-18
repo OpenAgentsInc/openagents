@@ -34,6 +34,8 @@ struct Model {
     registry: NativeViewRegistry,
     mirror: Mirror,
     pending_send: bool,
+    drafts: Option<Arc<ComposerDraftStore>>,
+    listener: Option<Arc<dyn crate::client_ffi::AndroidHostListener>>,
 }
 #[derive(uniffi::Object)]
 pub struct CoreAndroidComposer {
@@ -54,9 +56,35 @@ impl CoreAndroidComposer {
                 registry: Default::default(),
                 mirror: Default::default(),
                 pending_send: false,
+                drafts: None,
+                listener: None,
             })),
             closed: AtomicBool::new(false),
         })
+    }
+    pub(crate) fn bind_drafts(&self, drafts: Arc<ComposerDraftStore>) -> CoreResult<()> {
+        let mut model = self.model.lock().map_err(|_| CoreError::Closed)?;
+        if model
+            .mirror
+            .state()
+            .is_none_or(|state| state.text.is_empty())
+            && !model.pending_send
+        {
+            if let Some(draft) = drafts.restore("android:cloud-default")? {
+                model.mirror.dispose();
+                model
+                    .mirror
+                    .mount("message", MAX_BYTES, Some(&draft))
+                    .map_err(|_| CoreError::Closed)?;
+            }
+        }
+        model.drafts = Some(drafts);
+        Ok(())
+    }
+    pub(crate) fn bind_listener(&self, listener: Arc<dyn crate::client_ffi::AndroidHostListener>) {
+        if let Ok(mut model) = self.model.lock() {
+            model.listener = Some(listener);
+        }
     }
     fn current(&self) -> CoreResult<()> {
         if self.closed.load(Ordering::Acquire) {
@@ -133,7 +161,14 @@ impl CoreAndroidComposer {
                         .mirror
                         .state()
                         .map(|s| s.text)
-                        .unwrap_or_else(|| snapshot.unsent.unwrap_or_default()),
+                        .or(snapshot.unsent)
+                        .or(model
+                            .drafts
+                            .as_ref()
+                            .map(|d| d.restore("android:cloud-default"))
+                            .transpose()?
+                            .flatten())
+                        .unwrap_or_default(),
                     model.mirror.stamp(),
                 )
             }
@@ -219,7 +254,13 @@ impl CoreAndroidComposer {
         } else {
             return Err(CoreError::Closed);
         }
-        Ok(model.mirror.call_json(&request))
+        let response = model.mirror.call_json(&request);
+        if let Some(drafts) = &model.drafts {
+            if let Some(state) = model.mirror.state() {
+                drafts.save("android:cloud-default", &state.text)?;
+            }
+        }
+        Ok(response)
     }
     pub fn acknowledge(&self, instance: String, revision: u64) -> CoreResult<()> {
         self.current()?;
@@ -271,10 +312,15 @@ impl CoreAndroidComposer {
                 message: "Attachments aren't available in this chat.".into(),
             });
         }
-        if text.trim().is_empty() || text.chars().count() > 4000 {
+        if text.trim().is_empty() || text.trim().chars().count() > 4000 {
             return Ok(false);
         }
-        let Target::Cloud { chat, .. } = &self.target else {
+        let Target::Cloud {
+            chat,
+            account,
+            generation,
+        } = &self.target
+        else {
             unreachable!()
         };
         let mut model = self.model.lock().map_err(|_| CoreError::Closed)?;
@@ -297,6 +343,20 @@ impl CoreAndroidComposer {
         if model.pending_send || chat.snapshot().answering {
             return Ok(false);
         }
+        let lease = account
+            .as_ref()
+            .map(|a| a.controller().lease().ok_or(CoreError::Closed))
+            .transpose()?;
+        if lease
+            .as_ref()
+            .is_some_and(|lease| lease.generation != *generation)
+        {
+            return Err(CoreError::Closed);
+        }
+        let completion = chat.send_completion(text.clone(), lease)?;
+        if let Some(drafts) = &model.drafts {
+            drafts.save("android:cloud-default", "")?;
+        }
         model.pending_send = true;
         model
             .mirror
@@ -305,17 +365,29 @@ impl CoreAndroidComposer {
         let cleared = model.mirror.stamp();
         let owned = self.model.clone();
         let chat = chat.clone();
-        let completion = chat.send_completion(text.clone());
         openagents_client::runtime::shared().spawn(async move {
             completion.await;
             if let Ok(mut model) = owned.lock() {
                 model.pending_send = false;
                 let snapshot = chat.snapshot();
-                if snapshot.unsent.as_deref() == Some(text.as_str()) {
+                if snapshot.unsent.as_deref() == Some(text.trim()) {
                     restore_unsent(&mut model.mirror, cleared.as_ref(), &text);
+                }
+                if let (Some(drafts), Some(state)) = (&model.drafts, model.mirror.state()) {
+                    let _ = drafts.save("android:cloud-default", &state.text);
+                }
+                let listener = model.listener.clone();
+                drop(model);
+                if let Some(listener) = listener {
+                    listener.on_android_host_changed();
                 }
             }
         });
+        let listener = model.listener.clone();
+        drop(model);
+        if let Some(listener) = listener {
+            listener.on_android_host_changed();
+        }
         Ok(true)
     }
     pub fn activate(&self, instance: String, revision: u64, key: String) -> CoreResult<bool> {
