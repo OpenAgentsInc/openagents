@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 pub mod api;
 pub mod components;
+pub mod dashboard;
 pub mod kind;
 pub mod replay;
 pub mod templates;
