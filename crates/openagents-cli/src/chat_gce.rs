@@ -915,7 +915,7 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
         .filter(|r| {
             matches!(
                 r["outcome"].as_str(),
-                Some("landed" | "pull_request" | "queued" | "committed")
+                Some("landed" | "pull_request" | "queued")
             )
         })
         .count();
@@ -935,7 +935,8 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     let good = results.iter().all(|r| {
         matches!(
             r["outcome"].as_str(),
-            Some("landed" | "pull_request" | "queued" | "committed" | "skipped" | "closed")
+            // `committed` means the landing the run asked for was refused.
+            Some("landed" | "pull_request" | "queued" | "skipped" | "closed")
         )
     });
     Ok(if good { 0 } else { crate::EXIT_FAILURE })
