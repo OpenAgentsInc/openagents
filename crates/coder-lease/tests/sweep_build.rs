@@ -191,7 +191,7 @@ fn a_long_build_succeeds_while_idle_artifacts_are_trimmed() {
         floor: 0,
         critical: 0,
         idle: Duration::from_secs(1800),
-        lock_wait: Duration::ZERO,
+        lock_wait: Duration::from_secs(5),
         ..Policy::default()
     };
     let (send, receive) = std::sync::mpsc::channel();
@@ -200,11 +200,14 @@ fn a_long_build_succeeds_while_idle_artifacts_are_trimmed() {
             send.send(report.clone()).unwrap()
         })
     });
-    let first = receive.recv_timeout(Duration::from_secs(15)).unwrap();
-    assert!(
-        !old_release.exists(),
-        "idle release artifacts must go during the debug build: {first:?}"
-    );
+    let until = Instant::now() + Duration::from_secs(4);
+    while old_release.exists() {
+        assert!(
+            Instant::now() < until,
+            "unlocked release artifacts must go first"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
     assert!(
         old_debug.exists(),
         "the active profile must retain pending units"
@@ -230,9 +233,4 @@ fn a_long_build_succeeds_while_idle_artifacts_are_trimmed() {
         .unwrap();
     assert!(output.status.success());
     assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), "12104");
-    assert!(
-        next.actions
-            .iter()
-            .any(|action| action.verb == "lock handoff")
-    );
 }

@@ -335,7 +335,8 @@ minutes (`com.openagents.build-sweep`). Each run, in order:
 
 1. **Worktree state.** Compiler artifacts under `worktrees/<hash>` go when
    the recorded manifest no longer exists, or when the state has been unused
-   for 6 hours (`OPENAGENTS_BUILD_SWEEP_WORKTREE_IDLE_HOURS`). The sweep skips
+   for 6 hours (`OPENAGENTS_BUILD_SWEEP_WORKTREE_IDLE_HOURS`), or 30 minutes
+   when free disk is below the floor. The sweep skips
    state held by a process or Cargo lock, and skips this cleanup when it can't
    read processes. It takes every affected profile's Cargo locks and refreshes
    the process and last-use checks before removal. Empty directories, source
@@ -364,18 +365,20 @@ process holds a target when its `CARGO_TARGET_DIR` (from `ps -E`), its
 working directory (`lsof -a -d cwd -p PIDS`), or an argument lies inside
 it, and so does a build holding one of a profile's cargo locks. If the
 process table can't be read, every target counts as held. The sweep removes
-artifacts only while it holds the profile's Cargo locks itself. It first
-trims idle profiles whose locks are available, then queues a blocking kernel
-waiter for each busy profile instead of giving up after 20 seconds. At the
-next lock handoff it rescans artifacts and their last-use times under the
-lock before trimming. Cargo builds already running finish with their pending
-link and test inputs intact; new builds wait for that cleanup and rebuild
-what is missing. A current `rustc` command alone cannot identify every unit
-that Cargo plans to use later, so the sweep does not guess safe hashes under
-a lock another build still owns (#12104). Progress is logged before waiting
-and after each handoff. A sweep can span several five-minute launchd intervals;
-launchd keeps one instance running, and that instance continues maintenance
-every five minutes while waiting.
+artifacts only while it holds the profile's Cargo locks itself. It visits unlocked targets and profiles
+first. Each target shares a 20-second total lock-wait budget across all its
+profiles, then busy profiles wait for the next scheduled pass. No background
+lock waiter survives the pass, and each pass logs a summary. After obtaining
+a lock, the sweep refreshes file ages before removal.
+
+When every Cargo process on a target uses `worktrees/<hash>` as its build
+directory, the target's old top-level `deps`, `build`, `.fingerprint`, and
+`incremental` entries are eligible after the same idle window. The sweep
+refreshes that process check while holding the intermediate `.cargo-build-lock`;
+a held final-output lock does not block this cleanup. Final executables in
+`debug` or `release` stay. Any Cargo using the old layout, or an unreadable
+process table, requires all profile locks. Source-keyed states always require
+all their own locks and stay while a process uses them (#12106).
 
 Below the floor, the sweep also runs `kache gc` before measuring targets. It
 uses `~/.cargo/bin/kache` even under launchd's limited `PATH`, bounds the

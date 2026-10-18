@@ -191,8 +191,11 @@ existing build lease. Never flatten compiler state onto the shared target:
 Cargo can call another worktree's older source fresh without running rustc
 or kache (#12071), including when a new module isn't in the old dep-info.
 The sweep evicts compiled artifacts for deleted worktrees and idle state
-(default 6 hours), retains Cargo lock files, and counts every state toward
-the shared target's cap. kache still reuses compiled artifacts by source
+(default 6 hours, 30 minutes below the disk floor), retains Cargo lock files,
+and counts every state toward the shared target's cap. Each sweep finishes
+with a summary and a bounded per-target lock wait. Once every Cargo on a
+target uses source-keyed state, idle legacy intermediates can go under their
+build lock while top-level final outputs stay (#12106). kache still reuses compiled artifacts by source
 content. The shared-target regression uses disposable scratch targets and
 removes them afterward. See
 [`leases.md`](docs/coder/runtime/leases.md#agent-chats-in-the-desktop-app).

@@ -243,7 +243,7 @@ fn below_the_floor_cap_cleanup_uses_the_shorter_idle_window() {
 }
 
 #[test]
-fn queued_cleanup_rescans_after_the_build_finishes() {
+fn bounded_cleanup_rescans_after_the_build_finishes() {
     use std::os::unix::io::AsRawFd as _;
     let home = Home::new();
     let target = home.work("openagents-target-1");
@@ -252,6 +252,7 @@ fn queued_cleanup_rescans_after_the_build_finishes() {
     let lock = File::create(target.join("debug/.cargo-lock")).unwrap();
     // SAFETY: the test owns this descriptor until the simulated build ends.
     assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+    let other = home.target("openagents-target-1-app", 800, 10.0);
     let layout = home.layout();
     let build_target = target.clone();
     let (send, receive) = std::sync::mpsc::channel();
@@ -259,26 +260,33 @@ fn queued_cleanup_rescans_after_the_build_finishes() {
         let held = cargo(1, Some(&build_target), None, &["cargo", "build"]);
         sweep_waiting(
             &layout,
-            &policy(500, 0, 0),
+            &Policy {
+                lock_wait: Duration::from_secs(3),
+                ..policy(500, 0, 0)
+            },
             &fake(u64::MAX / 2, vec![held]),
             false,
             |report| send.send(report.clone()).unwrap(),
         );
     });
-    let initial = receive.recv_timeout(Duration::from_secs(5)).unwrap();
-    assert!(removed(&initial).is_empty());
-    // The queued sweep must discard its stale scan of this now rebuilt unit.
+    let until = std::time::Instant::now() + Duration::from_secs(2);
+    while other
+        .join("debug/deps/libopenagents_target_1_app-0a1b.rlib")
+        .exists()
+    {
+        assert!(
+            std::time::Instant::now() < until,
+            "unlocked target must be swept first"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // The waiting sweep must discard its stale scan of this now rebuilt unit.
     home.unit(&target, "rebuilt-02", 800, 0.1);
     drop(lock);
     let next = receive.recv_timeout(Duration::from_secs(5)).unwrap();
     worker.join().unwrap();
-    assert_eq!(removed(&next), ["libold-01.*"]);
+    assert!(removed(&next).contains(&"libold-01.*".to_owned()));
     assert!(target.join("debug/deps/librebuilt-02.rlib").exists());
-    assert!(
-        next.actions
-            .iter()
-            .any(|action| action.verb == "lock handoff")
-    );
 }
 
 #[test]
@@ -1038,4 +1046,184 @@ fn a_locked_worktree_keeps_its_orphaned_artifacts() {
         false,
     );
     assert!(state.join("debug/deps/libstate-1234.rlib").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn one_long_held_target_cannot_delay_other_targets_or_the_pass_summary() {
+    use std::os::unix::io::AsRawFd as _;
+    let home = Home::new();
+    let held = home.target(SHARED[0], 800, 8.0);
+    let other = home.target(SHARED[1], 800, 8.0);
+    let release = held.join("release");
+    home.file(&release.join("deps/libold-03.rlib"), 800, 8.0);
+    let guards: Vec<_> = [held.join("debug"), release]
+        .into_iter()
+        .map(|profile| {
+            let file = File::create(profile.join(".cargo-lock")).unwrap();
+            // SAFETY: the fixture retains both guards beyond the complete sweep.
+            assert_eq!(unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) }, 0);
+            file
+        })
+        .collect();
+    let layout = home.layout();
+    let active = cargo(1, Some(&held), None, &[]);
+    let (send, receive) = std::sync::mpsc::channel();
+    let started = std::time::Instant::now();
+    let worker = std::thread::spawn(move || {
+        sweep_waiting(
+            &layout,
+            &Policy {
+                lock_wait: Duration::from_millis(150),
+                ..policy(1, 0, 0)
+            },
+            &fake(500 * GIB, vec![active]),
+            false,
+            |report| send.send(report.clone()).unwrap(),
+        );
+    });
+    let report = receive
+        .recv_timeout(Duration::from_secs(2))
+        .expect("the pass must finish with both locks still held");
+    worker.join().unwrap();
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "one shared target wait budget, not one per profile"
+    );
+    assert!(
+        !other
+            .join("debug/deps/libopenagents_target_1_app-0a1b.rlib")
+            .exists()
+    );
+    assert!(
+        held.join("debug/deps/libopenagents_target_1-0a1b.rlib")
+            .exists()
+    );
+    assert_eq!(
+        report
+            .actions
+            .iter()
+            .filter(|a| a.verb == "skipped")
+            .count(),
+        2
+    );
+    assert!(report.lines()[0].contains("sweep"));
+    drop(guards);
+}
+
+#[test]
+fn below_the_floor_idle_states_go_while_recent_and_active_states_stay() {
+    let home = Home::new();
+    let target = home.work(SHARED[0]);
+    let idle = worktree_state(&home, &target, "idle", 0.75, true);
+    let recent = worktree_state(&home, &target, "recent", 0.75, true);
+    age(&recent.join(".openagents-workspace"), 0.1);
+    let active = worktree_state(&home, &target, "active", 8.0, true);
+    let process = Proc {
+        build_dir: Some(active.clone()),
+        ..cargo(1, Some(&target), None, &[])
+    };
+    let report = sweep(
+        &home.layout(),
+        &policy(10000, 1000, 0),
+        &fake(0, vec![process]),
+        false,
+    );
+    assert!(!idle.join("debug/deps/libstate-1234.rlib").exists());
+    assert!(recent.join("debug/deps/libstate-1234.rlib").exists());
+    assert!(active.join("debug/deps/libstate-1234.rlib").exists());
+    assert!(report.freed > 0);
+    assert!(report.targets[0].bytes >= 2 * 32 * KIB);
+}
+
+#[cfg(unix)]
+#[test]
+fn migrated_builds_allow_old_intermediates_beside_held_final_outputs() {
+    use std::os::unix::io::AsRawFd as _;
+    for legacy in [false, true] {
+        let home = Home::new();
+        let target = home.target(SHARED[0], 800, 3.0);
+        let active = worktree_state(&home, &target, "active", 8.0, true);
+        if legacy {
+            age(&active.join(".openagents-workspace"), 0.1);
+        }
+        home.file(&target.join("debug/openagents"), 64, 8.0);
+        home.file(
+            &target.join("debug/build/old-build/out/generated.rs"),
+            64,
+            3.0,
+        );
+        home.file(
+            &target.join("debug/incremental/old-session/graph.bin"),
+            64,
+            3.0,
+        );
+        let lock = File::create(target.join("debug/.cargo-artifact-lock")).unwrap();
+        // SAFETY: retain the final-output lock while cleanup runs.
+        assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+        let process = Proc {
+            build_dir: (!legacy).then_some(active.clone()),
+            ..cargo(1, Some(&target), None, &[])
+        };
+        let report = sweep(
+            &home.layout(),
+            &policy(1, 0, 0),
+            &fake(500 * GIB, vec![process]),
+            false,
+        );
+        assert_eq!(
+            target
+                .join("debug/deps/libopenagents_target_1-0a1b.rlib")
+                .exists(),
+            legacy
+        );
+        assert_eq!(
+            target
+                .join("debug/build/old-build/out/generated.rs")
+                .exists(),
+            legacy
+        );
+        assert_eq!(
+            target
+                .join("debug/incremental/old-session/graph.bin")
+                .exists(),
+            legacy
+        );
+        assert!(
+            target.join("debug/openagents").exists(),
+            "final output stays"
+        );
+        assert!(
+            active.join("debug/deps/libstate-1234.rlib").exists(),
+            "running build state stays"
+        );
+        assert_eq!(report.freed > 0, !legacy);
+    }
+}
+
+#[test]
+fn process_queries_drain_large_output_and_have_a_deadline() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let home = Home::new();
+    let path = home.root.join("probe");
+    std::fs::write(
+        &path,
+        "#!/bin/sh\nexec dd if=/dev/zero bs=1024 count=256 2>/dev/null\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(
+        bounded_output(path.to_str().unwrap(), &[], Duration::from_secs(2))
+            .unwrap()
+            .len(),
+        256 * 1024
+    );
+    std::fs::write(&path, "#!/bin/sh\nexec sleep 5\n").unwrap();
+    let started = std::time::Instant::now();
+    assert!(
+        bounded_output(path.to_str().unwrap(), &[], Duration::from_millis(50))
+            .unwrap_err()
+            .contains("exceeded")
+    );
+    assert!(started.elapsed() < Duration::from_secs(2));
 }
