@@ -423,6 +423,25 @@ impl DocHost {
         let sessions = self
             .sessions()
             .ok_or_else(|| error("This computer is not ready."))?;
+        // An assignment that names an existing plain chat binds it (#12057):
+        // the chat keeps its history and runs the agent from its next turn.
+        if let Some(chat) = workspace.chat(&a.chat)? {
+            if let Some(config) = adopt(&chat, a, &self.inner.config.device_id) {
+                workspace.set_chat_config(&a.chat, &config)?;
+                let bound = openagents_proto::Chat {
+                    config: Some(config),
+                    ..chat
+                };
+                self.runtime_note(
+                    &a.chat,
+                    format!(
+                        "This chat now runs the saved agent {} (definition {}, revision {}).",
+                        a.definition.spec.name, a.spec.agent, a.spec.agent_revision
+                    ),
+                )?;
+                self.foreman_adopt_bound(&bound)?;
+            }
+        }
         // Older chats learn their agent's name (#11966), definition and
         // declared autonomy (#12030) once, before any turn; each turn then
         // refreshes them from the agent's current settings.
@@ -623,6 +642,31 @@ impl DocHost {
         }
         Ok(())
     }
+}
+/// The config that binds an existing chat to assignment `a`, when the chat
+/// is a plain, unarchived chat on this computer in the assignment's project.
+/// `None` for a chat that already runs an agent, so an assignment can never
+/// take over another assignment's chat.
+fn adopt(
+    chat: &openagents_proto::Chat,
+    a: &Assignment,
+    device: &str,
+) -> Option<openagents_proto::ChatConfig> {
+    let mut config = chat.config.clone()?;
+    if chat.archived
+        || chat.device_id != device
+        || a.spec.host != device
+        || chat.space_id != a.spec.project
+        || config.model_options.contains_key(ASSIGNMENT)
+        || config.model_options.contains_key(AGENT)
+    {
+        return None;
+    }
+    config
+        .model_options
+        .insert(ASSIGNMENT.into(), a.id.clone().into());
+    stamp_agent(&mut config.model_options, &a.spec.agent, &a.definition.spec);
+    Some(config)
 }
 /// Record on a chat config which agent it runs: its name for display, its
 /// definition ID, and what the definition declares about running on its own,
@@ -1059,9 +1103,53 @@ mod tests {
         assert_eq!(bind(&a, &mut request, true), a.definition.spec.instructions);
         // An agent that declares nothing hears nothing.
         a.definition.spec.autonomy = None;
-        assert_eq!(bind(&a, &mut request, false), a.definition.spec.instructions);
+        assert_eq!(
+            bind(&a, &mut request, false),
+            a.definition.spec.instructions
+        );
     }
 
+    /// #12057: an assignment naming an existing plain chat in its project on
+    /// this computer binds it and makes it declare the agent's autonomy; a
+    /// chat that runs an agent, an archived chat, or one elsewhere is left.
+    #[test]
+    fn an_assignment_adopts_only_a_plain_chat_of_its_own() {
+        let (mut a, _) = fixture();
+        a.definition.spec.autonomy = Some(openagents_account::openagents::agents::Autonomy {
+            check_ins: true,
+            every_minutes: Some(10),
+            authority: true,
+            stall_minutes: None,
+            shell_timeout_secs: None,
+        });
+        let chat = |options: serde_json::Value| -> openagents_proto::Chat {
+            serde_json::from_value(serde_json::json!({
+                "id": "chat", "deviceId": "host", "spaceId": "project", "title": "Foreman",
+                "archived": false, "createdAt": "2026-10-17T00:00:00Z",
+                "config": {"harness": "claude-code", "modelOptions": options, "sandbox": "danger-full-access"}
+            }))
+            .unwrap()
+        };
+        let plain = chat(serde_json::json!({}));
+        let config = adopt(&plain, &a, "host").expect("a plain chat is adopted");
+        assert_eq!(config.model_options[ASSIGNMENT], a.id.as_str());
+        assert_eq!(config.model_options[AGENT], a.spec.agent.as_str());
+        assert!(openagents_proto::saved_agent::declares_check_ins(Some(
+            &config
+        )));
+        let mut bound = plain.clone();
+        bound.config = Some(config);
+        assert_eq!(adopt(&bound, &a, "host"), None, "already bound");
+        let other = chat(serde_json::json!({ASSIGNMENT: "c".repeat(64)}));
+        assert_eq!(adopt(&other, &a, "host"), None, "another assignment's chat");
+        assert_eq!(adopt(&plain, &a, "other-host"), None);
+        let mut archived = plain.clone();
+        archived.archived = true;
+        assert_eq!(adopt(&archived, &a, "host"), None);
+        let mut elsewhere = plain.clone();
+        elsewhere.space_id = Some("other".into());
+        assert_eq!(adopt(&elsewhere, &a, "host"), None);
+    }
     #[test]
     fn a_chat_config_carries_its_agents_definition_and_declaration() {
         let (mut a, _) = fixture();

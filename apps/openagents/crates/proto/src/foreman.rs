@@ -181,6 +181,61 @@ pub struct RecordDecision {
     pub saw: String,
     pub decided: String,
     pub did: String,
+    /// The agent's whole working state as of this check-in, replacing the
+    /// saved one (#12057). `None` keeps the saved state as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working: Option<Vec<WorkItem>>,
+}
+
+/// The most items a working state keeps, and the longest note.
+pub const MAX_WORK_ITEMS: usize = 64;
+pub const MAX_WORK_NOTE: usize = 400;
+
+/// Where one piece of work the agent tracks stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkStatus {
+    /// A chat is on it.
+    Working,
+    /// It waits on something named in the note.
+    Waiting,
+    /// It was handed to another chat or person, not yet picked up.
+    Handoff,
+    /// It made no progress; the note says what was done about it.
+    Stalled,
+    /// Watched, nobody on it yet.
+    Watching,
+}
+
+/// One piece of work in an agent's working state: which issue, which chat
+/// owns it, and where it stands. The host stamps `since`, the time it first
+/// saw this issue, chat and status together, so stall timers survive
+/// restarts and context resets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItem {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat: Option<String>,
+    pub status: WorkStatus,
+    #[serde(default)]
+    pub note: String,
+    /// Unix ms; set by the host.
+    #[serde(default)]
+    pub since: i64,
+}
+
+/// An agent's saved working state on the host that runs its chat, keyed by
+/// its definition ID when it has one, else by its chat.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WorkingState {
+    pub agent: Option<String>,
+    pub chat: Option<String>,
+    /// Unix ms of the last change.
+    pub at: i64,
+    pub items: Vec<WorkItem>,
 }
 
 #[cfg(test)]

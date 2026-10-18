@@ -23,6 +23,7 @@ mod voice_agent;
 mod foreman;
 mod session_index;
 mod transfer;
+mod working_state;
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -256,6 +257,8 @@ struct DocHostInner {
     custom_agents: OnceLock<custom_agents::AgentHost>,
     /// Foreman's schedule, authority and decision log (#11965).
     foreman: OnceLock<Arc<crate::foreman::Foreman>>,
+    /// Where the checked-in agent's working state is saved (#12057).
+    working: OnceLock<std::path::PathBuf>,
     store: Arc<DocsStore>,
     config: DocHostConfig,
     /// Set-once (first wins), cleared by `shutdown_workers`: sessions and
@@ -996,6 +999,7 @@ impl DocHost {
             inner: Arc::new(DocHostInner {
                 custom_agents: OnceLock::new(),
                 foreman: OnceLock::new(),
+                working: OnceLock::new(),
                 store,
                 config,
                 sessions: Mutex::new(None),

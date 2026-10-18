@@ -788,6 +788,7 @@ async fn synchronize(app: &App, owner: &str, id: &str) -> Result<Run, Response> 
                 }
                 let body = CreateAssignment {
                     request_id: t.assignment.clone(),
+                    chat: None,
                     spec: AssignmentSpec {
                         agent: definition.id.clone(),
                         agent_revision: definition.revision,

@@ -50,6 +50,22 @@ impl AssignmentSpec {
 pub struct CreateAssignment {
     pub request_id: String,
     pub spec: AssignmentSpec,
+    /// An existing chat on the assignment's computer for the agent to run
+    /// in from now on, instead of a new one. The computer adopts it only
+    /// when it isn't another assignment's chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat: Option<String>,
+}
+/// Whether `id` is a chat ID: a hyphenated UUID.
+pub fn valid_chat(id: &str) -> bool {
+    id.len() == 36
+        && id.char_indices().all(|(i, c)| {
+            if matches!(i, 8 | 13 | 18 | 23) {
+                c == '-'
+            } else {
+                c.is_ascii_hexdigit()
+            }
+        })
 }
 /// Where an assignment is in its life.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,7 +140,23 @@ impl Agents<'_> {
         Ok(self.bind(CreateAssignment {
             request_id: request_id()?,
             spec,
+            chat: None,
         }))
+    }
+    /// Like [`Self::assignment_request`], but the agent runs in the existing
+    /// chat `chat` (a UUID) on the spec's computer: it binds that chat to the
+    /// agent's definition, and `spec.task` is the chat's next turn.
+    pub fn assignment_request_for_chat(
+        &self,
+        spec: AssignmentSpec,
+        chat: &str,
+    ) -> Result<AgentRequest<CreateAssignment>, Error> {
+        if !valid_chat(chat) {
+            return Err(Error::InvalidReference);
+        }
+        let mut request = self.assignment_request(spec)?;
+        request.body.chat = Some(chat.to_ascii_lowercase());
+        Ok(request)
     }
     /// Checks `action` and prepares a request that sends it to an assignment.
     pub fn command_request(

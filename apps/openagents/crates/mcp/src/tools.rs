@@ -314,13 +314,28 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: RECORD_DECISION,
-            description: "Foreman only: add one entry to Foreman's decision log, which the owner sees in the app and the next check-in reads. Call it once per check-in with what you saw, what you decided and what you did.",
+            description: "Foreman only: add one entry to Foreman's decision log, which the owner sees in the app and the next check-in reads. Call it once per check-in with what you saw, what you decided and what you did. Pass `working` with every issue you track, the chat that owns it and its status: the host saves it and puts it in every check-in, even after a restart, with how long each item has been in its status.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "saw": { "type": "string", "description": "What you found, briefly." },
                     "decided": { "type": "string", "description": "What you decided and why." },
-                    "did": { "type": "string", "description": "What you changed, or \"nothing\"." }
+                    "did": { "type": "string", "description": "What you changed, or \"nothing\"." },
+                    "working": {
+                        "type": "array",
+                        "maxItems": openagents_proto::foreman::MAX_WORK_ITEMS,
+                        "description": "Your whole working state now, replacing the saved one. Leave it out to keep the saved state.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "issue": { "type": "integer", "description": "The issue number." },
+                                "chat": { "type": "string", "description": "The chat ID that owns it." },
+                                "status": { "type": "string", "enum": ["working", "waiting", "handoff", "stalled", "watching"] },
+                                "note": { "type": "string", "description": "What it waits on or what's next, briefly." }
+                            },
+                            "required": ["status"]
+                        }
+                    }
                 },
                 "required": ["saw", "decided", "did"]
             }),
@@ -604,6 +619,9 @@ struct DecisionArgs {
     decided: String,
     #[serde(default)]
     did: String,
+    /// The whole working state, replacing the saved one (#12057).
+    #[serde(default)]
+    working: Option<Vec<openagents_proto::foreman::WorkItem>>,
 }
 
 #[derive(Deserialize)]
@@ -1525,6 +1543,7 @@ impl Tools {
                     "saw": args.saw,
                     "decided": args.decided,
                     "did": args.did,
+                    "working": args.working,
                 }),
             )
             .await?;
@@ -2313,7 +2332,8 @@ mod tests {
         inside
             .call(
                 "record_decision",
-                json!({ "saw": "Beta idle", "decided": "stop it", "did": "stopped Beta" }),
+                json!({ "saw": "Beta idle", "decided": "stop it", "did": "stopped Beta",
+                        "working": [{ "issue": 12057, "chat": "chat-beta-1", "status": "handoff" }] }),
             )
             .await
             .unwrap();
@@ -2325,6 +2345,7 @@ mod tests {
         assert_eq!(method, methods::RECORD_FOREMAN_DECISION);
         assert_eq!(params["originChatId"], "chat-alpha-1");
         assert_eq!(params["did"], "stopped Beta");
+        assert_eq!(params["working"][0]["status"], "handoff");
     }
 
     #[tokio::test]

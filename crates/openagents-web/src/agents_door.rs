@@ -202,6 +202,7 @@ Open the OpenAgents desktop app on that computer, then ask again.",
     };
     let body = CreateAssignment {
         request_id: assignment_id(&door.request_id, &agent.id),
+        chat: None,
         spec: AssignmentSpec {
             agent: agent.id.clone(),
             agent_revision: agent.revision,

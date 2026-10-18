@@ -127,12 +127,28 @@ impl Book {
                 {
                     return Err(Refusal::Conflict);
                 }
+                // Binding an existing chat (#12057): one live assignment per chat.
+                if let Some(chat) = &body.chat {
+                    if !valid_chat(chat) || chat.bytes().any(|b| b.is_ascii_uppercase()) {
+                        return Err(Refusal::Invalid);
+                    }
+                    if self
+                        .assignments
+                        .values()
+                        .any(|a| !a.archived && &a.chat == chat)
+                    {
+                        return Err(Refusal::Conflict);
+                    }
+                }
                 Assignment {
                     id: body.request_id.clone(),
                     revision: 1,
                     spec: body.spec.clone(),
                     definition: definition.clone(),
-                    chat: chat_id(&body.request_id),
+                    chat: body
+                        .chat
+                        .clone()
+                        .unwrap_or_else(|| chat_id(&body.request_id)),
                     state: AssignmentState::Queued,
                     commands: vec![AssignmentCommand {
                         request_id: body.request_id.clone(),
@@ -349,7 +365,7 @@ async fn create(
     // A keyed replay uses its pinned revision, even if the definition changed later.
     if let Ok((book, _)) = load(&app.config.chat_store, &owner).await {
         if let Some(a) = book.assignments.get(&body.request_id) {
-            if a.spec != body.spec {
+            if a.spec != body.spec || body.chat.as_ref().is_some_and(|c| *c != a.chat) {
                 return Refusal::Conflict.response();
             }
             return answer(StatusCode::OK, json!(a));
@@ -431,6 +447,7 @@ mod tests {
         Change::Create {
             body: CreateAssignment {
                 request_id: format!("{:064x}", 2),
+                chat: None,
                 spec: AssignmentSpec {
                     agent: definition.id.clone(),
                     agent_revision: 1,
@@ -440,6 +457,45 @@ mod tests {
                 },
             },
             definition,
+        }
+    }
+    /// #12057: an assignment may bind an existing chat, one live
+    /// assignment per chat; without one it gets a fresh chat as before.
+    #[tokio::test]
+    async fn an_assignment_binds_an_existing_chat_once() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::local(root.path().into());
+        let owner = crate::chat_store::account_owner("assignment-test");
+        let chat = "9fa93200-c1e1-65b8-9e06-94652a8904a3";
+        let bind = |n: u64, chat: &str| {
+            let Change::Create {
+                mut body,
+                definition,
+            } = create()
+            else {
+                unreachable!()
+            };
+            body.request_id = format!("{n:064x}");
+            body.chat = Some(chat.into());
+            Change::Create { body, definition }
+        };
+        let fresh = mutate(&store, &owner, create()).await.unwrap().unwrap();
+        assert_eq!(fresh.chat, chat_id(&fresh.id));
+        let bound = mutate(&store, &owner, bind(5, chat))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bound.chat, chat);
+        assert_eq!(
+            mutate(&store, &owner, bind(6, chat)).await.unwrap(),
+            Err(Refusal::Conflict),
+            "a chat has one live assignment"
+        );
+        for bad in ["9FA93200-C1E1-65B8-9E06-94652A8904A3", "not-a-chat"] {
+            assert_eq!(
+                mutate(&store, &owner, bind(7, bad)).await.unwrap(),
+                Err(Refusal::Invalid)
+            );
         }
     }
     #[tokio::test]

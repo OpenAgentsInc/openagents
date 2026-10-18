@@ -31,6 +31,7 @@ impl DocHost {
     /// Open Foreman's state under `root` and watch every device's chat
     /// status for the chats it manages. Called once at engine assembly.
     pub fn start_foreman(&self, root: std::path::PathBuf) {
+        self.start_working_state(&root);
         if self
             .inner
             .foreman
@@ -245,7 +246,11 @@ impl DocHost {
         if record.origin_chat_id.is_none() || record.origin_chat_id != foreman.chat() {
             return Err(error("Only Foreman's own chat can write its decision log."));
         }
-        foreman.record(&record.saw, &record.decided, &record.did, now_ms())
+        let now = now_ms();
+        if let (Some(items), Some(chat)) = (record.working, record.origin_chat_id.as_deref()) {
+            self.save_working_state(chat, items, now)?;
+        }
+        foreman.record(&record.saw, &record.decided, &record.did, now)
     }
 
     /// Whether a command `origin` sends to `target` is within Foreman's
@@ -364,6 +369,29 @@ impl DocHost {
         };
         let chats = workspace.watch_chats().borrow().clone();
         let declaring = declaring_chats(&chats, &self.inner.config.device_id);
+        self.foreman_adopt_from(foreman, now, declaring)
+    }
+
+    /// A chat the owner just bound to a saved agent (#12057) is their
+    /// choice: when no chat checks in yet and its agent declares check-ins,
+    /// it's picked, whatever other chats declare.
+    pub(super) fn foreman_adopt_bound(
+        &self,
+        chat: &openagents_proto::Chat,
+    ) -> Result<(), EngineError> {
+        let Some(foreman) = self.foreman().cloned() else {
+            return Ok(());
+        };
+        let declaring = declaring_chats(std::slice::from_ref(chat), &self.inner.config.device_id);
+        self.foreman_adopt_from(&foreman, now_ms(), declaring)
+    }
+
+    fn foreman_adopt_from(
+        &self,
+        foreman: &Foreman,
+        now: i64,
+        declaring: Vec<Declaring>,
+    ) -> Result<(), EngineError> {
         match foreman.adopt(&declaring, now)? {
             Adopt::Nothing => {}
             Adopt::Choose(titles) => foreman.set_problem(Some(format!(
@@ -471,9 +499,12 @@ impl DocHost {
         let Some(foreman) = self.foreman().cloned() else {
             return Ok(None);
         };
-        let Some(wake) = foreman.due(busy, now)? else {
+        let Some(mut wake) = foreman.due(busy, now)? else {
             return Ok(None);
         };
+        // The agent's saved working state rides every check-in (#12057).
+        let working = super::working_state::section(self.working_state(chat).as_ref(), now);
+        wake.text = super::working_state::with_section(&wake.text, &working);
         match self.queue_foreman_wake(chat, &wake, request) {
             Ok(()) => Ok(Some(wake.id)),
             Err(e) => {
@@ -916,6 +947,92 @@ mod tests {
         assert_eq!(issue_numbers("/x/openagents", "main"), Vec::<u64>::new());
     }
 
+    /// #12057: the working state the agent saves with a decision is in
+    /// the first check-in after a restart, with its stall timer still
+    /// counting from when the host first saw it.
+    #[tokio::test]
+    async fn the_first_check_in_after_a_restart_resumes_the_working_state() {
+        use openagents_proto::foreman::{WorkItem, WorkStatus};
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().to_string_lossy().into_owned();
+        let open = || {
+            let store = Arc::new(openagents_sync::DocsStore::open(root.path()).unwrap());
+            let host = DocHost::new(
+                store,
+                DocHostConfig {
+                    device_id: "fixture-mac".into(),
+                    default_harness: HarnessId::Mock,
+                    edge: None,
+                },
+            );
+            host.start_foreman(root.path().join("foreman"));
+            host
+        };
+        let host = open();
+        host.foreman()
+            .unwrap()
+            .set(
+                ForemanSettings {
+                    chat_id: Some(FOREMAN.into()),
+                    every_minutes: 10,
+                    ..ForemanSettings::default()
+                },
+                0,
+            )
+            .unwrap();
+        let first = host
+            .foreman_wake(FOREMAN, false, 10 * MIN, request(&cwd))
+            .unwrap()
+            .expect("a check-in");
+        assert!(
+            runs(&host)
+                .iter()
+                .any(|(id, text)| *id == first && text.contains("no saved working state yet"))
+        );
+        // The record_decision call is stamped at the host's clock.
+        host.record_foreman_decision(RecordDecision {
+            origin_chat_id: Some(FOREMAN.into()),
+            saw: "#12071 is on a chat".into(),
+            decided: "watch it".into(),
+            did: "nothing".into(),
+            working: Some(vec![WorkItem {
+                issue: Some(12071),
+                chat: Some(WORKER.into()),
+                status: WorkStatus::Working,
+                note: "shared-cache fix".into(),
+                since: 0,
+            }]),
+        })
+        .unwrap();
+        drop(host);
+
+        let host = open();
+        let wake = host
+            .foreman_wake(FOREMAN, false, now_ms() + 60 * MIN, request(&cwd))
+            .unwrap()
+            .expect("the scheduled check-in after the restart");
+        let text = runs(&host)
+            .into_iter()
+            .find(|(id, _)| *id == wake)
+            .map(|(_, text)| text)
+            .unwrap();
+        assert!(
+            text.contains("- #12071 · chat f0000000 · working for 60 minutes: shared-cache fix"),
+            "{text}"
+        );
+        assert!(
+            host.record_foreman_decision(RecordDecision {
+                origin_chat_id: Some(WORKER.into()),
+                saw: "x".into(),
+                decided: "x".into(),
+                did: "x".into(),
+                working: Some(vec![]),
+            })
+            .is_err(),
+            "only the checked-in chat writes its working state"
+        );
+    }
+
     fn interrupts(host: &DocHost) -> usize {
         host.open(FOREMAN)
             .unwrap()
@@ -1146,6 +1263,7 @@ mod tests {
             saw: "the build chat finished".into(),
             decided: "nothing else needed".into(),
             did: "nothing".into(),
+            working: None,
         })
         .unwrap();
         assert!(
@@ -1154,6 +1272,7 @@ mod tests {
                 saw: "x".into(),
                 decided: "x".into(),
                 did: "x".into(),
+                working: None,
             })
             .is_err()
         );

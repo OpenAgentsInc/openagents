@@ -73,6 +73,24 @@ Foreman also checks in, at most once every few minutes and never over a turn it'
 
 **Stalls get an action, not an offer** ([#12032](https://github.com/OpenAgentsInc/openagents/issues/12032)). The computer raises, once per stall, a chat Foreman manages that has been working with no output for 20 minutes, and a claimed issue with no commit naming it, no push to its linked branch, no comment, no output from the chat that holds it, and no build running in a worktree named for it, for 20 minutes. Every check-in lists open stalls with the rung that is due, and reaching the next rung starts a check-in of its own: message it at 20 minutes, interrupt it and restart it with a brief at 30, and tell you, first in its status, at 40. Foreman records each rung in the Decision log. Any progress ends the stall. The window is the definition's `autonomy.stall_minutes` (a fork may want 10).
 
+**Bind an existing chat** ([#12057](https://github.com/OpenAgentsInc/openagents/issues/12057)): a chat you started before saving the agent can run it from its next turn, by the agent's definition ID, never its name:
+
+```sh
+openagents agents bind AGENT_ID --chat CHAT_ID --on COMPUTER --project PROJECT
+```
+
+It creates an assignment that names the chat (the SDK's `assignment_request_for_chat`). The computer adopts the chat only when it's a plain chat in that project on that computer, never another agent's chat, and says so in the chat. From then on every turn runs the agent's current revision, and the computer acts on what the definition declares: check-ins, standing authority, the decision log.
+
+**Publish a new revision only if it passes** ([#12057](https://github.com/OpenAgentsInc/openagents/issues/12057)):
+
+```sh
+openagents agents revise AGENT_ID --template foreman --on COMPUTER --project PROJECT --promote
+```
+
+It drafts the revision from the template (keeping the agent's name) or, without `--template`, from the agent's current settings, with `--instructions FILE` if given. It runs the [2026-10-17 replay suite](README.md) (#12034) on that computer, prints each case, and promotes only when every case passed. Anything failed, unfinished or waiting for review leaves the agent where it was.
+
+**Working state across restarts** ([#12057](https://github.com/OpenAgentsInc/openagents/issues/12057)): `record_decision` takes an optional `working` list, the agent's whole working state: each issue it tracks, the chat that owns it, and its status (`working`, `waiting`, `handoff`, `stalled`, `watching`) with a note. The computer saves it next to the decision log (`foreman/working.json`), keyed by the agent's definition ID, stamps each item with when it first saw it in that status, and puts the list with those times in every check-in. The first check-in after a restart, an app upgrade or a context reset resumes from it.
+
 The computer's `gh` reports the issue and claim events. Each check-in asks Foreman to call `record_decision` with what it saw, decided and did. The **Decision log** in the same card lists check-ins, those records, how each check-in ended, and authority changes. The log is a file in the app's data folder (`foreman/decisions.jsonl`), kept across restarts, and the next check-in includes the latest entries.
 
 ## What it is

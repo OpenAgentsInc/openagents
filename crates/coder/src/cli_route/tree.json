@@ -25389,6 +25389,127 @@
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "bind",
+          "leaf": {
+            "path": [
+              "agents",
+              "bind"
+            ],
+            "usage": [
+              "bind AGENT_ID --chat CHAT --on COMPUTER --project PROJECT [--task TEXT]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "bind"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "AGENT_ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "chat",
+                    "value": "CHAT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "on",
+                    "value": "COMPUTER",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "PROJECT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "task",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Bind an existing chat to a saved agent, by its definition ID (never its name): from its next turn the chat runs the agent's current revision with its instructions, and a host acts on what the definition declares (check-ins, standing authority). The chat must be a plain chat in PROJECT on COMPUTER. --task is the chat's next turn (default: a note that it now runs the agent).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "revise",
+          "leaf": {
+            "path": [
+              "agents",
+              "revise"
+            ],
+            "usage": [
+              "revise AGENT_ID --on COMPUTER --project PROJECT [--template NAME] [--instructions FILE] [--promote] [--timeout SECONDS]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "revise"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "AGENT_ID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "on",
+                    "value": "COMPUTER",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "PROJECT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "template",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "instructions",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "promote",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "timeout",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Draft a new revision of a saved agent by its definition ID: its current settings, or Agent Lab template NAME's (keeping the agent's name), with instructions from FILE. Runs the 2026-10-17 replay suite on COMPUTER and prints each case. With --promote, saves the revision only when every case passed. Waits up to --timeout (default 5400).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -25413,6 +25534,44 @@
           "name": "timeout",
           "value": "SECONDS",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "chat",
+          "value": "CHAT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "task",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "template",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "instructions",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "promote",
           "optional": true,
           "repeated": true
         }
