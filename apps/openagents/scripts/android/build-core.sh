@@ -49,6 +49,15 @@ HOST_LIB="$CARGO_TARGET_DIR/mobile/libopenagents_mobile.$([[ "$(uname)" == Darwi
 "$CARGO_TARGET_DIR/mobile/uniffi-bindgen" generate --library "$HOST_LIB" --language kotlin \
   --no-format --out-dir "$OUT/kotlin"
 echo "kotlin bindings: $OUT/kotlin"
+APP_BINDING="$ROOT/apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt"
+SYNC_BINDING="$OUT/kotlin/openagents_core.kt"
+mkdir -p "$(dirname "$APP_BINDING")"
+python3 -c 'import pathlib, sys; source = pathlib.Path(sys.argv[1]).read_text().rstrip(); pathlib.Path(sys.argv[2]).write_text("".join(line.rstrip() + "\n" for line in source.splitlines()))' \
+  "$OUT/kotlin/uniffi/openagents_core/openagents_core.kt" "$SYNC_BINDING"
+if ! cmp -s "$SYNC_BINDING" "$APP_BINDING"; then
+  cp "$SYNC_BINDING" "$APP_BINDING"
+fi
+echo "Android source binding: $APP_BINDING"
 
 cargo ndk -t arm64-v8a -o "$OUT/jniLibs" \
   build --locked -p openagents-mobile --lib --profile mobile

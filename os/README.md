@@ -207,7 +207,7 @@ os/bin/oa-workspace shot /tmp/workspace.png
 os/bin/oa-workspace stop
 ```
 
-Builds go to `~/work/openagents-target-workspace`, never to the host
+Builds go to `~/work/openagents-target-1`, never to the host
 service's `target/release`. The script's header lists its settings.
 
 ## Run the Coder host
@@ -360,19 +360,19 @@ production. The command stops after at most 240 seconds plus 15 seconds for
 forced cleanup. It shuts down its own guest and adb server on exit. Do not
 sign in or install the app during this check.
 
-For the first app cross-build (A1), enter the pinned Android shell and use
-the existing app workspace target. After a fresh `machine_status` reports at
-least 100 GiB free and the coordinator assigns the A1 build slot, run this as
-one serial build sequence:
+To reproduce A1's core cross-build, enter the pinned Android shell and use
+the existing app workspace target. Check that `machine_status` reports at
+least 100 GiB free before starting, then run this as one serial build
+sequence:
 
 ```sh
 nix develop ./os#android --command bash -lc '
   cd apps/openagents
   export CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app"
-  export OPENAGENTS_KEEP_TARGET_DIR=1
   export RUSTUP_TOOLCHAIN=1.98.1
   export CARGO_INCREMENTAL=0
-  scripts/android/build-core.sh
+  unset RUSTC
+  bash scripts/android/build-core.sh
 '
 ```
 
@@ -380,24 +380,36 @@ nix develop ./os#android --command bash -lc '
 workspace, shared target, and Rust 1.98.1. The helper pins the compiler and
 sets `CARGO_INCREMENTAL=0` with a separate intermediate directory for this
 workspace and compiler. Keep this shared app target across worktrees; the root
-workspace uses `~/work/openagents-target-workspace`. The script builds the host
-library and UniFFI generator, generates Kotlin bindings from that library, then
-builds `arm64-v8a` and `x86_64` in order. Its default outputs are
+workspace uses `~/work/openagents-target-1`. The script builds the host library
+and UniFFI generator, generates Kotlin bindings from that library, syncs the
+binding to `apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt`,
+then builds `arm64-v8a` and `x86_64` in order. Its default outputs are
 `$CARGO_TARGET_DIR/android-core/kotlin/` and
-`$CARGO_TARGET_DIR/android-core/jniLibs/{arm64-v8a,x86_64}/`. Commit the
-generated Kotlin bindings under the Android app when its package destination
-is established; keep intermediate libraries and build output in the shared
-target. Rust target names are `aarch64-linux-android` for devices and
+`$CARGO_TARGET_DIR/android-core/jniLibs/{arm64-v8a,x86_64}/`. The generated
+Kotlin source is checked into the Android app; keep intermediate libraries
+and build output in the shared target. Rust target names are
+`aarch64-linux-android` for devices and
 `x86_64-linux-android` for the KVM guest. Both standard libraries are installed
 for Rust 1.98.1.
 
-The first build must measure target growth and free space before scheduling
-another build. Likely Android cross-build issues include native C/C++ build
-scripts and alignment, Luau, tree-sitter, `ring`, Breez's bundled SQLite,
-`iroh`, and `wgpu`; check these in the real output rather than adding duplicate
-domain libraries or speculative workarounds. Record each ABI's library size
-and ELF `LOAD` alignment, including the 16 KiB requirement, under session
-scratch. No A1 build has run yet.
+A1's first cross-build completed on 2026-10-18 from commit `f575cf3b8c`. The
+build used machine status before and after the cross-build; free space changed
+from 179.79 GiB to 143.81 GiB. The post-build reading included a separate H1
+Cargo job. The first arm64 attempt found that the Android shell's generic
+`CC` selected NDK clang for host C build scripts; `build-core.sh` now clears
+generic `CC`, `CXX`, and `AR` before Cargo runs. The retry built arm64 and then
+x86_64 successfully. Rust dependencies including Luau, tree-sitter, `ring`,
+Breez's SQLite, `iroh`, and `wgpu` compiled without additional workarounds.
+
+| ABI | `libopenagents_mobile.so` size | ELF `LOAD` alignment |
+| --- | ---: | --- |
+| `arm64-v8a` | 695,626,344 bytes | `0x4000` for all segments |
+| `x86_64` | 667,602,464 bytes | `0x4000` for all segments |
+
+The Kotlin package and native library name were checked against both generated
+outputs. Each ELF segment meets the 16 KiB alignment requirement. The generated
+Kotlin file is committed at
+`apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt`.
 
 ### CoderOS verification, 2026-10-18 (#12079)
 
@@ -425,17 +437,16 @@ libraries, and checks it was 101.60 GiB. Concurrent host work can also change
 free space. Existing app and root targets measured 4.3 GiB and 86 GiB before
 these checks; A0 does not compile the Rust app.
 
-Keep **100 GiB free**. Before each build, check machine status and `df -h`;
-start no build below the floor or if its expected growth would cross it.
+Keep **100 GiB free**. Before each build, check `machine_status`; start no
+build below the floor or if its expected growth would cross it.
 With only 1.60 GiB above the floor, check capacity before starting A1's cold
 build. Do not delete the Nix store, another agent's targets, or
 `~/openagents/target/release` to make room. Leave both the legacy Coder host
 and `openagents-native-target.service` unchanged.
 
-First build schedule: A1 builds the host bindings, then x86_64, then arm64,
-one Cargo invocation at a time, recording free disk and target size after
-each step. B1's first Gradle app build follows serially. Allow parallel
-builds only after those measurements show enough room above the floor for
+Build schedule: A1 built host bindings, then arm64, then x86_64, one Cargo
+invocation at a time. B1's first Gradle app build follows serially. Allow
+parallel builds only after measurements show enough room above the floor for
 the combined peak growth; until then, keep one cold build on this host.
 Physical-device, app, signing, and store checks belong to later sprint
 issues, not this environment check.

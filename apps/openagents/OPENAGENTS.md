@@ -23,13 +23,14 @@ scripts/run-macos-dev.sh            # build and open the macOS development bundl
 scripts/ios/build-core.sh           # the phone core for the iOS simulator
 ```
 
-Android implementation is planned in the
+Android implementation is tracked in the
 [Android parity sprint](../../docs/audits/2026-10-18-android-parity-sprint.md)
-(epic #12077). It targets `apps/android` over this workspace's shared Rust
-core, with builds and isolated emulator checks on CoderOS. The existing
-`scripts/android/build-core.sh` is not yet exercised; the sprint tracks that
-first build, the Kotlin shell, and the release path. Do not use the retired
-Android app as the current build target.
+(epic #12077). A1 cross-built this workspace's shared Rust core for Android
+and generated the UniFFI Kotlin source at
+`apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt`.
+`scripts/android/build-core.sh` syncs that source and builds both ABIs. B1
+adds the Kotlin shell and release path, with isolated emulator checks on
+CoderOS. Do not use the retired Android app as the current build target.
 
 The iOS core build is arm64 only. For an Xcode simulator build, name an
 Apple-silicon simulator and pass `ARCHS=arm64` (a generic simulator
