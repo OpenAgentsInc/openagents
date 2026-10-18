@@ -206,6 +206,9 @@ def deploy(staging):
     # different instances miss each other's live updates until they
     # reconnect; writes stay serialized in Postgres. The service allows six
     # so earlier revisions' socket-held instances don't take the slots.
+    # #12128 found what had been taking instances out of rotation: answers
+    # to unread multi-MB uploads reset the frontend's connection. The server
+    # now drains refused bodies.
     args = ["run", "deploy", service, f"--region={REGION}", f"--image=us-central1-docker.pkg.dev/{PROJECT}/openagents/coder-sync:{commit}",
             f"--service-account={ACCOUNT}", "--max=6", "--min=0", "--max-instances=3", "--min-instances=1", "--timeout=3600", "--concurrency=1000",
             # A frozen process gets restarted, not left answering "no available
@@ -216,7 +219,16 @@ def deploy(staging):
             "--update-env-vars=" + ",".join(f"{key}={value}" for key, value in environment.items()),
             "--args="]
     g(*args)
-    print(g("run", "services", "describe", service, f"--region={REGION}", "--format=value(status.url)"))
+    # `run deploy` leaves a pinned traffic split alone: on 2026-10-18 traffic
+    # stayed on 00018 through two later revisions and hid both (#12128).
+    g("run", "services", "update-traffic", service, f"--region={REGION}", "--to-latest")
+    status = json.loads(g("run", "services", "describe", service, f"--region={REGION}", "--format=json"))["status"]
+    latest = status.get("latestReadyRevisionName")
+    serving = {t.get("revisionName"): t.get("percent", 0) for t in status.get("traffic", [])}
+    if latest != status.get("latestCreatedRevisionName") or serving.get(latest) != 100:
+        raise RuntimeError(f"The new revision is not serving all traffic: {serving}.")
+    print(f"{latest} serves 100% of traffic.")
+    print(status["url"])
 
 
 def main():
