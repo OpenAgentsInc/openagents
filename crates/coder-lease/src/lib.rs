@@ -15,6 +15,8 @@
 //!   `build` lease's slot and worktree hold ([`DiskUse`]); [`usage`] sums
 //!   them per session.
 //! - `grants/screen.json` is the owner's grant of the real screen.
+//! - `grants/machine.json` is the owner's grants of machine actions to agent
+//!   IDs, and `machine-actions.jsonl` logs each action ([`machine`]).
 //! - `claims/<owner>/<name>/issue-<n>.json` is an issue claim held by an
 //!   agent session, which outlives the command that took it ([`claims`]).
 //! - `artifacts/<name>/` is a single-digest artifact's queue of submitted
@@ -53,6 +55,10 @@
 //! Its [`agent_builds::sweep`] keeps the shared target folders under a cap
 //! and the disk above its floor from a launchd timer.
 //!
+//! [`machine`] holds the owner's grants of machine actions (pruning a build
+//! cache, stopping a process, upgrading the host app) to agent IDs, refuses
+//! an action outside them, and logs every action in `machine-actions.jsonl`.
+//!
 //! [`scratch`] gives each session a durable scratch directory under
 //! `~/.openagents/scratch/<session>/`, which a lease's command and Coder's
 //! delegates get in `OPENAGENTS_SCRATCH`.
@@ -69,6 +75,7 @@ pub mod claims;
 mod grant;
 mod holder;
 mod limits;
+pub mod machine;
 pub mod observe;
 pub mod placement;
 mod resource;
@@ -86,7 +93,7 @@ pub use broker::{
 pub use grant::{DEFAULT_GRANT, GRANT_SCHEMA, Grant, parse_duration};
 pub use holder::{
     AGENT_PROCESSES, AGENT_VARS, Holder, SESSION_VAR, Session, agent_ancestor, ancestors,
-    command_name, grant_refusal,
+    command_name, grant_refusal, grant_refusal_for,
 };
 pub use limits::{
     AGING_VAR, BUILD_DISK_VAR, BUILD_LEASES_VAR, DEFAULT_AGING, DEFAULT_BUILD_DISK_GB,

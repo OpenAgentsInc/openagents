@@ -72,6 +72,7 @@ mod labor;
 mod land;
 mod land_fleet;
 mod lease;
+mod lease_machine;
 mod lease_place;
 mod mac;
 mod mac_serve;

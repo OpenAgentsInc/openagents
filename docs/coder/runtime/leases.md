@@ -335,6 +335,64 @@ The disk janitor (`scripts/dev/disk-janitor.sh`, every 10 minutes) still
 cleans worktrees, scratch, and old caches; the sweep is the part that keeps
 up with builds.
 
+### Machine actions
+
+The sweep runs on its own schedule. When an agent needs space sooner, or
+needs to stop a hung process, it uses a **machine action**
+([`coder_lease::machine`](../../../crates/coder-lease/src/machine.rs),
+#12033). On 2026-10-17 a coordinating agent deleted about 640 GiB of build
+caches and stopped a production deploy script on its own judgment, with no
+scope and no record. Machine actions are scoped and logged instead:
+
+| Scope | Allows |
+| --- | --- |
+| `build.prune` | Removing a build cache: a target folder the sweep knows (in `~/work` or `~/work/agent-targets`), or a folder inside one |
+| `process.stop` | Sending `SIGTERM` to a process |
+| `host.upgrade` | Upgrading the host app from `main` (#12056) |
+
+The owner grants scopes to an **agent ID**: the chat's ID for an app chat,
+or its session (`claude-code:ID`, `codex:ID`) for a terminal agent. A grant
+never goes by a role name such as "Foreman": a fork of an agent holds
+nothing until the owner grants its own ID.
+
+```sh
+openagents lease grant machine CHAT_ID --scope prune,stop [--for 8h]
+openagents lease revoke machine CHAT_ID
+openagents lease actions [--limit 50]
+```
+
+`grant machine` asks the owner to type `yes` and refuses in an agent
+environment, like `grant screen`. Without `--for` it lasts until revoked.
+Granting an agent again replaces its earlier scopes. Grants live in
+`grants/machine.json` in the lease root.
+
+An app chat acts through its `machine_action` tool, which passes its own
+chat ID: the tool has no argument for naming another agent. A terminal
+agent uses `openagents lease prune PATH --reason TEXT` or `openagents
+lease stop PID --reason TEXT`, which act for `OPENAGENTS_CHAT_ID` when set,
+else the session the broker detects. Each action needs a reason. Without
+the grant, it's refused, and the agent hands the job to a chat or asks the
+owner. With the grant, these are still refused:
+
+- **Prune:** a path that isn't a build cache (worktrees and checkouts
+  included), the owner's dev-app target (left to the sweep below 40 GiB),
+  agent scratch and kept paths, links, a relative path or one with `..`, a
+  target a build holds (process or cargo lock, as the sweep reads them),
+  and every target when the process table can't be read.
+- **Stop:** init, the caller and its parents, another user's process, and a
+  process running a deploy (a word of its command line starts with
+  `deploy`, such as `scripts/deploy-production.sh` or `wrangler deploy`).
+  Deploys stay with the owner.
+
+Every action and every refusal is a line in `machine-actions.jsonl` in the
+lease root. Each line records the agent ID, the scope, the outcome (`done`,
+`refused`, or `failed`), the reason given, the path and bytes or the pid and
+command name (never its arguments), the detail, and the Chicago time.
+`openagents lease actions` prints the grants and recent lines, and the
+`machine_action` tool's `log` and `grants` actions return the same record
+to the agent. On one Unix account, as with the screen grant, this stops
+accidents, not a process set on forging a grant.
+
 ## Resources
 
 | Resource | Shape | Capacity | Notes |
@@ -547,7 +605,10 @@ receipts' disk use and the per-session totals, slot records and session
 liveness, first-in-first-out waiters, priority order with first in, first
 out within a priority, aging, a queued `quiet` lease that holds builds at
 every priority, a waiter that times out, the quiet rule with a real process
-that is never signaled, the screen grant, receipts, and nesting. `tests/dead_holder.rs` kills a holder and a waiter with
+that is never signaled, the screen grant, receipts, nesting, and machine
+actions (grants keyed by agent ID, refusals outside them and around builds,
+dev-app, scratch, deploys, and the caller, and the log, all on fixtures that
+never signal a real process). `tests/dead_holder.rs` kills a holder and a waiter with
 `SIGKILL` and shows the lease is free on the next request.
 `tests/shim.rs` runs the `cargo` shim with stand-in programs.
 `cargo test -p openagents-cli --test lease` runs the command end to end,

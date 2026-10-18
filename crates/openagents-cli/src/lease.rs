@@ -1,6 +1,7 @@
 //! `openagents lease`: run a command under a lease from the host resource
-//! broker (`crates/coder-lease`), list holders and waiters, and grant or
-//! revoke the real screen. `docs/coder/runtime/leases.md` is the guide.
+//! broker (`crates/coder-lease`), list holders and waiters, grant or
+//! revoke the real screen, and grant and log machine actions
+//! (`lease_machine`). `docs/coder/runtime/leases.md` is the guide.
 
 use std::io::{BufRead as _, IsTerminal as _, Write as _};
 use std::path::PathBuf;
@@ -48,6 +49,23 @@ pub(crate) const USAGE: &str =
                  terminal, and refuses when standard input is not a terminal
                  or an agent runs the command.
   revoke screen  End the screen grant; new screen leases are refused.
+  grant machine AGENT --scope SCOPES [--for DURATION]
+                 Let the agent AGENT, a chat ID or a session such as
+                 claude-code:ID, use machine actions: build.prune,
+                 process.stop, or host.upgrade, comma separated. Never ends
+                 without --for. Asks you to confirm on this terminal, and
+                 refuses when an agent runs the command.
+  revoke machine AGENT
+                 End AGENT's machine grant.
+  actions [--limit N]
+                 The machine grants and the last N machine actions (default
+                 20): who, what, size or pid, reason, outcome, Chicago time.
+  prune PATH --reason TEXT
+                 Remove a build cache (a target folder no build holds, or a
+                 folder inside one) under this agent's build.prune grant.
+  stop PID --reason TEXT
+                 Send SIGTERM to a process under this agent's process.stop
+                 grant; a deploy is never stopped.
 Run CMD while holding a lease on RESOURCE, and exit with CMD's status.
 RESOURCE is build, memory, disk, quiet, screen, browser, gpu, unreal,
 blender, artifact/NAME, or issue/N. memory (GiB) and disk (GB) need
@@ -82,6 +100,11 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("du", Effect::ReadOnly),
     Declared::computer("grant screen", Effect::Grants),
     Declared::computer("revoke screen", Effect::Grants),
+    Declared::computer("grant machine", Effect::Grants),
+    Declared::computer("revoke machine", Effect::Grants),
+    Declared::computer("actions", Effect::ReadOnly),
+    Declared::computer("prune", Effect::LocalWrite),
+    Declared::computer("stop", Effect::LocalWrite),
 ];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -95,8 +118,16 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         }
         "list" => list(output, &words[1..]),
         "du" => du(output, &words[1..]),
+        "grant" if words.get(1).is_some_and(|word| word == "machine") => {
+            crate::lease_machine::grant(*output, &words[1..])
+        }
+        "revoke" if words.get(1).is_some_and(|word| word == "machine") => {
+            crate::lease_machine::revoke(*output, &words[1..])
+        }
         "grant" => grant(output, &words[1..]),
         "revoke" => revoke(output, &words[1..]),
+        "actions" => crate::lease_machine::actions(*output, &words[1..]),
+        "prune" | "stop" => crate::lease_machine::act(*output, first, &words[1..]),
         "run" => hold(output, &words[1..], true),
         _ => hold(output, words, false),
     }
@@ -285,7 +316,7 @@ fn screen_word(output: &Output, command: &str, words: &[String]) -> Result<(), u
         Some("screen") => Ok(()),
         Some(other) => Err(output.usage(
             "lease",
-            &format!("only the screen takes a grant, not `{other}`; use `openagents lease {command} screen`"),
+            &format!("only the screen and machine actions take a grant, not `{other}`; use `openagents lease {command} screen` or `openagents lease {command} machine AGENT`"),
             USAGE,
         )),
         None => Err(output.usage(

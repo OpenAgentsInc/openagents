@@ -9991,6 +9991,30 @@
               },
               {
                 "kind": "option",
+                "name": "scope",
+                "value": "SCOPES",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "limit",
+                "value": "N",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "reason",
+                "value": "TEXT",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
                 "name": "json",
                 "optional": true,
                 "repeated": true
@@ -10172,6 +10196,53 @@
                 "effect": "grants",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "machine",
+              "leaf": {
+                "path": [
+                  "lease",
+                  "grant",
+                  "machine"
+                ],
+                "usage": [
+                  "grant machine AGENT --scope SCOPES [--for DURATION]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "grant"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "machine"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "AGENT"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "scope",
+                        "value": "SCOPES",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "for",
+                        "value": "DURATION",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Let the agent AGENT, a chat ID or a session such as claude-code:ID, use machine actions: build.prune, process.stop, or host.upgrade, comma separated. Never ends without --for. Asks you to confirm on this terminal, and refuses when an agent runs the command.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
             }
           ]
         },
@@ -10207,8 +10278,144 @@
                 "effect": "grants",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "machine",
+              "leaf": {
+                "path": [
+                  "lease",
+                  "revoke",
+                  "machine"
+                ],
+                "usage": [
+                  "revoke machine AGENT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "revoke"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "machine"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "AGENT"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "End AGENT's machine grant.",
+                "effect": "grants",
+                "runs_on": "connected_computer"
+              }
             }
           ]
+        },
+        {
+          "name": "actions",
+          "leaf": {
+            "path": [
+              "lease",
+              "actions"
+            ],
+            "usage": [
+              "actions [--limit N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "actions"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The machine grants and the last N machine actions (default 20): who, what, size or pid, reason, outcome, Chicago time.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "prune",
+          "leaf": {
+            "path": [
+              "lease",
+              "prune"
+            ],
+            "usage": [
+              "prune PATH --reason TEXT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "prune"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PATH"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reason",
+                    "value": "TEXT",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Remove a build cache (a target folder no build holds, or a folder inside one) under this agent's build.prune grant.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "stop",
+          "leaf": {
+            "path": [
+              "lease",
+              "stop"
+            ],
+            "usage": [
+              "stop PID --reason TEXT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "stop"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "PID"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reason",
+                    "value": "TEXT",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Send SIGTERM to a process under this agent's process.stop grant; a deploy is never stopped.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -10276,6 +10483,30 @@
           "kind": "option",
           "name": "to",
           "value": "SESSION",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "scope",
+          "value": "SCOPES",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "reason",
+          "value": "TEXT",
           "open": true,
           "optional": true,
           "repeated": true

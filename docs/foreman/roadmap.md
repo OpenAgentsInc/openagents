@@ -146,6 +146,19 @@ flowchart TD
 - **Acceptance:** A prune Foreman does shows in the decision log with its
   scope; with the scope off, the host refuses it.
 - **Size:** S.
+- **Status (2026-10-17, #12033): built.** The scopes are
+  `coder_lease::machine::Scope` (`build.prune`, `process.stop`, and
+  `host.upgrade` for #12056), granted by the owner per agent ID with
+  `openagents lease grant machine CHAT_ID --scope prune,stop`, never by
+  the name Foreman. They run through the `machine_action` tool or `openagents
+  lease prune|stop`, are refused without the grant, and are logged with the
+  agent, size or pid, reason, and Chicago time in `machine-actions.jsonl`
+  (`openagents lease actions`). Still to do: showing machine grants beside
+  `Message`/`Create`/`Steer`/`Stop` in the standing-authority UI, and
+  copying log lines into the decision log, both in
+  `proto/src/foreman.rs` and `engine/src/foreman.rs`.
+  [leases.md](../coder/runtime/leases.md) ("Machine actions") is the
+  operator's page.
 
 ### 17. Replay a bad day as a Foreman test
 

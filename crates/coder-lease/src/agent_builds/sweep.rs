@@ -198,7 +198,7 @@ impl Layout {
         }
     }
 
-    fn kind(&self, path: &Path) -> Kind {
+    pub(crate) fn kind(&self, path: &Path) -> Kind {
         if path == self.dev_app {
             Kind::DevApp
         } else if self.shared.iter().any(|shared| shared == path)
@@ -210,7 +210,7 @@ impl Layout {
         }
     }
 
-    fn protected(&self, path: &Path) -> bool {
+    pub(crate) fn protected(&self, path: &Path) -> bool {
         self.never
             .iter()
             .any(|never| path.starts_with(never) || never.starts_with(path))
@@ -1036,7 +1036,7 @@ impl Run<'_> {
 }
 
 /// Whether a build holds a cargo lock in one of `target`'s profiles.
-fn cargo_locked(target: &Path) -> bool {
+pub(crate) fn cargo_locked(target: &Path) -> bool {
     profiles(target)
         .iter()
         .flat_map(|profile| LOCKS.iter().map(|name| profile.join(name)))
@@ -1215,6 +1215,11 @@ fn measure(path: &Path) -> Measured {
         found.used = own;
     }
     found
+}
+
+/// The bytes under `path`, as [`measure`] counts them.
+pub(crate) fn bytes_under(path: &Path) -> u64 {
+    measure(path).bytes
 }
 
 #[cfg(unix)]

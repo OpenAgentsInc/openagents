@@ -464,6 +464,12 @@ links remain readable. Upstream fixes now require manual ports.
   `crates/mcp/src/tools.rs` and one sentence in `crates/mcp/src/jsonrpc.rs`
   `INSTRUCTIONS`. `OPENAGENTS_AGENT_BUILD_GATE=0` turns it off;
   `docs/coder/runtime/leases.md` in the root has the details.
+- #12033 machine actions: our module `crates/mcp/src/machine_action.rs` is
+  the `machine_action` tool, which prunes a build cache or stops a process
+  only under the owner's grant to the calling chat's ID and logs every
+  action and refusal (`coder_lease::machine`). Hooks are one list entry and
+  one call arm in `crates/mcp/src/tools.rs` and one sentence in
+  `crates/mcp/src/jsonrpc.rs` `INSTRUCTIONS`.
 
 ## Phone wallet (#11999)
 

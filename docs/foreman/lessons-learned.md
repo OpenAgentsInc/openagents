@@ -233,7 +233,11 @@ anything outside the standing authority's scopes (`Message`, `Create`,
 `Steer`, `Stop` in `proto/src/foreman.rs`) is either delegated or asked.
 
 **What is missing.** Machine actions (prune, stop a process) as explicit,
-logged scopes, or a rule that they go to a chat (Proposal).
+logged scopes, or a rule that they go to a chat. Built in #12033: the owner
+grants `build.prune` and `process.stop` per agent ID, the host refuses
+them otherwise, and every action and refusal is logged
+([leases.md](../coder/runtime/leases.md), "Machine actions"). Still
+missing: machine log lines in Foreman's decision log.
 
 ## L13. No measurement
 

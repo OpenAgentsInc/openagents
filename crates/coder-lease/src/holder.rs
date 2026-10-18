@@ -166,23 +166,33 @@ pub fn grant_refusal(
     env: &dyn Fn(&str) -> Option<String>,
     ancestors: &dyn Fn() -> Vec<(u32, String)>,
 ) -> Option<String> {
+    grant_refusal_for("a screen grant", stdin_terminal, env, ancestors)
+}
+
+/// [`grant_refusal`] for any grant, named by `what` (such as `a machine
+/// grant`) in the refusal.
+pub fn grant_refusal_for(
+    what: &str,
+    stdin_terminal: bool,
+    env: &dyn Fn(&str) -> Option<String>,
+    ancestors: &dyn Fn() -> Vec<(u32, String)>,
+) -> Option<String> {
     if !stdin_terminal {
-        return Some(
-            "a screen grant needs the owner at an interactive terminal; standard input is not a terminal"
-                .to_owned(),
-        );
+        return Some(format!(
+            "{what} needs the owner at an interactive terminal; standard input is not a terminal"
+        ));
     }
     if let Some(name) = AGENT_VARS
         .iter()
         .find(|name| env(name).is_some_and(|value| !value.is_empty()))
     {
         return Some(format!(
-            "a screen grant needs the owner, and {name} marks an agent environment"
+            "{what} needs the owner, and {name} marks an agent environment"
         ));
     }
     if let Some((pid, name)) = agent_ancestor(&ancestors()) {
         return Some(format!(
-            "a screen grant needs the owner, and this command runs under {name} (pid {pid})"
+            "{what} needs the owner, and this command runs under {name} (pid {pid})"
         ));
     }
     None

@@ -59,6 +59,18 @@ fn build_status_tool() -> Option<ToolDef> {
     }
 }
 
+/// OpenAgents #12033: granted, logged machine actions, on Unix.
+fn machine_action_tool() -> Option<ToolDef> {
+    #[cfg(unix)]
+    {
+        Some(crate::machine_action::tool())
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
 fn chat_key_schema(extra: Value) -> Value {
     let mut properties = json!({
         "chat": {
@@ -815,6 +827,7 @@ impl Tools {
             .filter(|tool| in_chat || (tool.name != SHOW_VISUAL && tool.name != RECORD_DECISION))
             .chain(crate::video_lab::tools().iter().cloned())
             .chain(build_status_tool())
+            .chain(machine_action_tool())
             .collect()
     }
 
@@ -851,6 +864,11 @@ impl Tools {
             RECORD_DECISION => self.record_decision(parse(args)?).await,
             #[cfg(unix)]
             crate::build_status::NAME => return crate::build_status::call(args),
+            #[cfg(unix)]
+            crate::machine_action::NAME => {
+                let chat = self.openagents.origin().chat_id.clone();
+                return crate::machine_action::call(chat.as_deref(), args);
+            }
             lab if crate::video_lab::has(lab) => return self.video_lab(lab, args).await,
             other => return Err(format!("unknown tool: {other}")),
         };

@@ -7,6 +7,8 @@
 //! devices, projects, and the command plane. Two tools work locally:
 //! `changed_paths` runs `git diff` in a chat's folder, and `build_status`
 //! reads this computer's agent builds and writes their limit (#11971).
+//! `machine_action` prunes a build cache or stops a process under the
+//! owner's grant to the calling chat, and logs it (#12033).
 //!
 //! The server is hand-rolled rather than an SDK: the MCP surface a stdio
 //! tool server needs is five methods (`initialize`, `ping`, `tools/list`,
@@ -21,6 +23,8 @@
 mod changed_paths;
 #[cfg(unix)]
 mod build_status;
+#[cfg(unix)]
+mod machine_action;
 mod inbox;
 mod jsonrpc;
 mod tools;
