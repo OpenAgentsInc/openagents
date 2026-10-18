@@ -22,6 +22,8 @@ val platformVerifierAndroidVersion = Regex(
     """name = "rustls-platform-verifier-android"\s+version = "([^"]+)""",
 ).find(cargoLock)?.groupValues?.get(1)
     ?: error("rustls-platform-verifier-android is missing from apps/openagents/Cargo.lock")
+val pushEnabled = file("google-services.json").exists()
+if (pushEnabled) apply(plugin = "com.google.gms.google-services")
 
 android {
     namespace = appId
@@ -36,11 +38,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         resValue("string", "app_name", appName)
+        manifestPlaceholders["openAgentsPushEnabled"] = pushEnabled.toString()
     }
 
     buildFeatures { buildConfig = true }
 
     sourceSets["main"].assets.srcDir("../../ios/OpenAgents/Fonts")
+    sourceSets["main"].java.srcDir("../platform")
+    sourceSets["main"].java.srcDir(if (pushEnabled) "src/push/java" else "src/nopush/java")
     sourceSets["main"].jniLibs.srcDir("$cargoTargetDir/android-core/jniLibs")
 
     buildTypes {
@@ -60,5 +65,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("rustls:rustls-platform-verifier:$platformVerifierAndroidVersion")
+    implementation("com.google.android.play:integrity:1.5.0")
+    if (pushEnabled) implementation("com.google.firebase:firebase-messaging:24.1.0")
     testImplementation("junit:junit:4.13.2")
 }
