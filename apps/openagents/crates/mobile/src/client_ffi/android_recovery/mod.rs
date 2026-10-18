@@ -493,8 +493,7 @@ impl CoreAndroidRecovery {
                 self.backend.start(device_name);
             }
         }
-        let open_chat = s.mode == Mode::Home && !self.backend.should_show();
-        self.frame(&mut s, open_chat, None)
+        self.frame(&mut s, false, None)
     }
     pub fn render(&self) -> Result<RecoveryFrame, CoreError> {
         self.frame(&mut self.state.lock().unwrap(), false, None)
