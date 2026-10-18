@@ -435,6 +435,7 @@ struct ListReader {
     context: Context,
     project: Option<String>,
     projects: bool,
+    query: String,
     after: Option<String>,
     limit: usize,
     done: bool,
@@ -445,6 +446,7 @@ impl ListReader {
             context: Context::of(session),
             project,
             projects,
+            query: String::new(),
             after: None,
             limit: 100,
             done: false,
@@ -464,6 +466,9 @@ impl ListReader {
             return Ok(None);
         }
         let mut query = vec![("limit", self.limit.to_string())];
+        if !self.query.is_empty() {
+            query.push(("query", self.query.clone()));
+        }
         if let Some(after) = &self.after {
             query.push(("after", after.clone()));
         }
@@ -511,6 +516,19 @@ impl ListReader {
 #[derive(Clone, Debug)]
 pub struct ChatReader(ListReader);
 impl ChatReader {
+    /// Search titles across authorized history pages. Empty pages can still have
+    /// a next cursor; continue paging to search the rest of the account.
+    pub fn with_query(mut self, query: &str) -> Result<Self, Error> {
+        let query = query.trim();
+        if query.chars().count() > 200 || query.chars().any(char::is_control) {
+            return Err(Error::InvalidReference);
+        }
+        self.0.query = query.to_owned();
+        self.0.after = None;
+        self.0.done = false;
+        Ok(self)
+    }
+
     /// Sets how many chats each page holds, from 1 to 200.
     pub fn with_page_size(mut self, limit: usize) -> Result<Self, Error> {
         self.0.limit = size(limit)?;
@@ -523,14 +541,26 @@ impl ChatReader {
         session: &Session,
         cancel: &CancellationToken,
     ) -> Result<Option<HistoryPage<ChatSummary>>, Error> {
+        let previous_reader = self.0.clone();
         let Some(page) = self.0.next::<WireSummary>(client, session, cancel).await? else {
             return Ok(None);
         };
-        let data = page
+        let data: Vec<ChatSummary> = page
             .data
             .into_iter()
             .map(|s| s.convert(&self.0.context))
             .collect::<Result<_, _>>()?;
+        // Refuse a server that ignored the query, including an older deployment.
+        // Filtering here would turn an unsupported server into a partial search.
+        let query = self.0.query.to_lowercase();
+        if !query.is_empty()
+            && data
+                .iter()
+                .any(|row| !row.title.to_lowercase().contains(&query))
+        {
+            self.0 = previous_reader;
+            return Err(Error::InvalidResponse);
+        }
         // A row this client can't read is left out rather than failing the list.
         let sessions = page
             .sessions

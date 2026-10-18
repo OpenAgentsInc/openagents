@@ -34,6 +34,7 @@ struct Page {
     limit: Option<usize>,
     project: Option<String>,
     revision: Option<u64>,
+    query: Option<String>,
 }
 impl Page {
     fn limit(&self) -> Result<usize, Response> {
@@ -69,6 +70,15 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
         Ok(n) => n,
         Err(r) => return r,
     };
+    let query = page.query.as_deref().unwrap_or("").trim();
+    if query.chars().count() > 200 || query.chars().any(char::is_control) {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Enter a shorter search.",
+        );
+    }
+    let query = query.to_lowercase();
     let owner = match crate::coder_sync::owner(&app, &headers).await {
         Ok(o) => o,
         Err(r) => return r,
@@ -82,7 +92,7 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
     }
     // Computer sessions (#11897) ride beside the first page: their rows
     // aren't chats in this store, so they never join `data` or its cursor.
-    let sessions = if page.after.is_none() {
+    let sessions = if page.after.is_none() && query.is_empty() {
         match crate::session_index::listed(&app, &headers, &owner, page.project.as_deref()).await {
             Ok(rows) => rows,
             Err(r) => return r,
@@ -118,10 +128,25 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
             .await
     };
     match result {
-        Ok((chats, next)) => answer(
-            StatusCode::OK,
-            json!({"data": chats, "next": next, "sessions": sessions}),
-        ),
+        Ok((chats, next)) => {
+            // Filter one authorized page, retaining its scan cursor even when
+            // no title matches. Paging never requires loading the whole account.
+            let chats: Vec<_> = chats
+                .into_iter()
+                .filter(|chat| {
+                    query.is_empty()
+                        || chat["title"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(&query)
+                })
+                .collect();
+            answer(
+                StatusCode::OK,
+                json!({"data": chats, "next": next, "sessions": sessions}),
+            )
+        }
         Err(e) => stored(&e),
     }
 }

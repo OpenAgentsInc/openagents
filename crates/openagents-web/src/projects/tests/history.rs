@@ -396,3 +396,146 @@ async fn discovery_continues_beyond_legacy_ten_thousand_cap_with_bounded_pages()
     }
     assert_eq!(all.len(), 10_005);
 }
+
+#[tokio::test]
+async fn saved_search_and_rename_use_owned_data_and_confirmed_cas() {
+    let world = world().await;
+    let api = signed_in(&world, "octo-local").await;
+    let owner = crate::chat_store::account_owner(&world.account_of("octo-local"));
+    world
+        .store
+        .create(&chat(CHAT, &owner, "Before", None))
+        .await
+        .unwrap();
+    let (status, renamed) = api
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{CHAT}"),
+            json!({"title":"  🦀 After  "}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{renamed}");
+    assert_eq!(renamed["title"], "🦀 After");
+    let (_, rows) = api
+        .json(&world, "GET", "/v1/history?query=after", Value::Null)
+        .await;
+    assert_eq!(rows["data"][0]["id"], CHAT);
+    let (_, absent) = api
+        .json(&world, "GET", "/v1/history?query=before", Value::Null)
+        .await;
+    assert_eq!(absent["data"], json!([]));
+    let revision = world
+        .store
+        .load(&owner, CHAT)
+        .await
+        .unwrap()
+        .unwrap()
+        .conversation
+        .revision;
+    let (status, _) = api
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{CHAT}"),
+            json!({"title":"🦀 After"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        world
+            .store
+            .load(&owner, CHAT)
+            .await
+            .unwrap()
+            .unwrap()
+            .conversation
+            .revision,
+        revision
+    );
+    for title in [
+        json!(""),
+        json!("x".repeat(121)),
+        json!("one\ntwo"),
+        json!(false),
+    ] {
+        assert_eq!(
+            api.json(
+                &world,
+                "PATCH",
+                &format!("/v1/threads/{CHAT}"),
+                json!({"title":title})
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let other = signed_in(&world, "quiet-local").await;
+    assert_eq!(
+        other
+            .json(
+                &world,
+                "PATCH",
+                &format!("/v1/threads/{CHAT}"),
+                json!({"title":"Stolen"})
+            )
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let (_, rows) = other
+        .json(&world, "GET", "/v1/history?query=after", Value::Null)
+        .await;
+    assert_eq!(rows["data"], json!([]));
+    assert_eq!(
+        world
+            .store
+            .load(&owner, CHAT)
+            .await
+            .unwrap()
+            .unwrap()
+            .conversation
+            .title,
+        "🦀 After"
+    );
+}
+
+#[tokio::test]
+async fn saved_search_retains_a_cursor_for_an_empty_authorized_page() {
+    let world = world().await;
+    let api = signed_in(&world, "octo-local").await;
+    let owner = crate::chat_store::account_owner(&world.account_of("octo-local"));
+    for n in 0..3 {
+        world
+            .store
+            .create(&chat(
+                &format!("{n:08x}-1234-4234-8234-123456789abc"),
+                &owner,
+                if n == 2 { "Needle" } else { "Other" },
+                None,
+            ))
+            .await
+            .unwrap();
+    }
+    let (_, first) = api
+        .json(
+            &world,
+            "GET",
+            "/v1/history?limit=2&query=needle",
+            Value::Null,
+        )
+        .await;
+    assert_eq!(first["data"], json!([]));
+    let cursor = first["next"].as_str().unwrap();
+    let (_, last) = api
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/history?limit=2&query=needle&after={cursor}"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(last["data"][0]["title"], "Needle");
+    assert!(last["next"].is_null());
+}

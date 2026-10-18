@@ -980,13 +980,14 @@ pub(crate) async fn threads_in(
     }
 }
 
-/// `PATCH /v1/threads/{id}` `{project?, pinned?, archived?}`: change the
+/// `PATCH /v1/threads/{id}` `{project?, pinned?, archived?, title?}`: change the
 /// caller's own chat. `project` (#11541) moves the thread into one of the
 /// caller's projects (its id, or `name:NAME`), or out of any project
 /// (`null`); the person's move, so sync no longer files the thread
 /// ([`Conversation::filed`]). `pinned` and `archived` (#12026) pin or
 /// archive it as the web's sidebar does, with the same pin order, archive
-/// stamp, and computer cleanup. Answers the `Thread`.
+/// stamp, and computer cleanup. `title` uses the web rename limits: one line,
+/// trimmed, 1–120 characters. Answers the `Thread`.
 pub(crate) async fn move_thread(
     State(app): State<App>,
     headers: HeaderMap,
@@ -1001,7 +1002,7 @@ pub(crate) async fn move_thread(
         return refused(
             StatusCode::BAD_REQUEST,
             "invalid_request",
-            "Send {\"project\": ID} or {\"project\": null} to file the chat, {\"pinned\": true or false} to pin it, or {\"archived\": true or false} to archive it.",
+            "Send a project, pinned, archived, or title change. Titles must be one line of 1 to 120 characters.",
         );
     };
     let project = match change.project.clone() {
@@ -1056,7 +1057,14 @@ pub(crate) async fn move_thread(
         let archived = change.archived.is_some_and(|archive| {
             crate::pages::chat::sidebar::set_archived(&mut next, archive, archive_stamp)
         });
-        if !moved && !pinned && !archived {
+        let renamed = change.title.as_ref().is_some_and(|title| {
+            if next.title == *title {
+                return false;
+            }
+            next.title.clone_from(title);
+            true
+        });
+        if !moved && !pinned && !archived && !renamed {
             return answer(StatusCode::OK, thread_object(current));
         }
         next.revision += 1;
@@ -1085,6 +1093,7 @@ struct ThreadChange {
     project: Option<Option<String>>,
     pinned: Option<bool>,
     archived: Option<bool>,
+    title: Option<String>,
 }
 
 impl ThreadChange {
@@ -1103,11 +1112,28 @@ impl ThreadChange {
         };
         let pinned = flag("pinned").ok()?;
         let archived = flag("archived").ok()?;
-        (project.is_some() || pinned.is_some() || archived.is_some()).then_some(Self {
-            project,
-            pinned,
-            archived,
-        })
+        let title = match body.get("title") {
+            None => None,
+            Some(Value::String(value)) => {
+                let value = value.trim();
+                if value.is_empty()
+                    || value.chars().count() > 120
+                    || value.chars().any(char::is_control)
+                {
+                    return None;
+                }
+                Some(value.to_owned())
+            }
+            Some(_) => return None,
+        };
+        (project.is_some() || pinned.is_some() || archived.is_some() || title.is_some()).then_some(
+            Self {
+                project,
+                pinned,
+                archived,
+                title,
+            },
+        )
     }
 }
 

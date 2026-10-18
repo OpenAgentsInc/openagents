@@ -28,6 +28,7 @@ pub struct Snapshot {
     pub rows: Vec<ChatSummary>,
     pub projects: Vec<HistoryProject>,
     pub project: Option<HistoryProject>,
+    pub query: String,
     pub state: LoadState,
     pub projects_state: LoadState,
     pub has_more: bool,
@@ -150,6 +151,7 @@ impl History {
                 lease
                     .client()
                     .history(lease.session())
+                    .and_then(|r| r.with_query(&s.snapshot.query))
                     .and_then(|r| r.with_page_size(200)),
                 lease
                     .client()
@@ -202,6 +204,7 @@ impl History {
         s.reader = Some(reader);
         s.index = Some(lease.client().history_index(lease.session())?);
         s.snapshot.rows.clear();
+        s.snapshot.query.clear();
         s.snapshot.project = project.cloned();
         s.snapshot.state = LoadState::Idle;
         s.snapshot.has_more = true;
@@ -209,6 +212,34 @@ impl History {
         self.publish(&s);
         Ok(())
     }
+    /// Start a fresh, account-fenced title search. Results retain server paging.
+    pub fn search(&self, query: &str) -> Result<(), Error> {
+        let mut s = self.state.lock().unwrap();
+        let lease = s
+            .lease
+            .clone()
+            .filter(Lease::is_current)
+            .ok_or(Error::Cancelled)?;
+        let reader = match &s.snapshot.project {
+            Some(p) => lease.client().shared_history(lease.session(), p)?,
+            None => lease.client().history(lease.session())?,
+        }
+        .with_query(query)?
+        .with_page_size(200)?;
+        s.query_cancel.cancel();
+        s.query_cancel = s.cancel.child_token();
+        s.query += 1;
+        s.reader = Some(reader);
+        s.index = Some(lease.client().history_index(lease.session())?);
+        s.snapshot.query = query.trim().to_owned();
+        s.snapshot.rows.clear();
+        s.snapshot.state = LoadState::Idle;
+        s.snapshot.has_more = true;
+        s.replace = false;
+        self.publish(&s);
+        Ok(())
+    }
+
     /// Keep old rows explicitly stale during an outage; replace them on the first fresh page.
     pub fn refresh(&self) -> Result<(), Error> {
         let mut s = self.state.lock().unwrap();
@@ -221,7 +252,7 @@ impl History {
             Some(p) => lease.client().shared_history(lease.session(), p)?,
             None => lease.client().history(lease.session())?,
         };
-        let reader = reader.with_page_size(200)?;
+        let reader = reader.with_query(&s.snapshot.query)?.with_page_size(200)?;
         s.query_cancel.cancel();
         s.query_cancel = s.cancel.child_token();
         s.query += 1;
@@ -244,6 +275,7 @@ impl History {
                     Some(p) => lease.client().shared_history(lease.session(), p),
                     None => lease.client().history(lease.session()),
                 }
+                .and_then(|r| r.with_query(&s.snapshot.query))
                 .and_then(|r| r.with_page_size(200))
                 .ok()
             });
@@ -411,6 +443,7 @@ impl History {
                             s.reader = lease
                                 .client()
                                 .history(lease.session())
+                                .and_then(|r| r.with_query(&s.snapshot.query))
                                 .and_then(|r| r.with_page_size(200))
                                 .ok();
                         }
@@ -501,6 +534,7 @@ impl History {
                         s.reader = lease
                             .client()
                             .history(lease.session())
+                            .and_then(|r| r.with_query(&s.snapshot.query))
                             .and_then(|r| r.with_page_size(200))
                             .ok();
                         s.snapshot.has_more = true;

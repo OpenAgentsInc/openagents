@@ -90,6 +90,16 @@ async fn list(
     let end = (start + limit).min(205);
     let data: Vec<_> = (start..end)
         .map(|n| summary(if mode == 8 { 0 } else { n }, 405))
+        .filter(|row| {
+            mode == 16
+                || q.get("query").is_none_or(|query| {
+                    row["title"]
+                        .as_str()
+                        .unwrap()
+                        .to_lowercase()
+                        .contains(&query.to_lowercase())
+                })
+        })
         .collect();
     let next = if mode == 3 {
         Some(id(99))
@@ -451,4 +461,65 @@ async fn saved_text_above_auth_response_bound_is_not_truncated() {
             .with_page_size(201)
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn saved_title_search_keeps_scan_cursor_through_empty_pages() {
+    let (client, session, control) = fixture().await;
+    let cancel = CancellationToken::new();
+    let mut reader = client
+        .history(&session)
+        .unwrap()
+        .with_page_size(200)
+        .unwrap()
+        .with_query("Absent")
+        .unwrap();
+    let first = reader
+        .next_page(&client, &session, &cancel)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(first.data.is_empty() && first.has_more);
+    let last = reader
+        .next_page(&client, &session, &cancel)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(last.data.is_empty() && !last.has_more);
+    assert_eq!(control.reads.load(Ordering::SeqCst), 2);
+    let mut reader = reader.with_query(" DUPLICATE ").unwrap();
+    assert_eq!(
+        reader
+            .next_page(&client, &session, &cancel)
+            .await
+            .unwrap()
+            .unwrap()
+            .data
+            .len(),
+        200
+    );
+    assert!(
+        client
+            .history(&session)
+            .unwrap()
+            .with_query(&"q".repeat(201))
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn saved_search_refuses_a_server_that_ignored_the_query() {
+    let (client, session, control) = fixture().await;
+    control.mode(16);
+    let mut reader = client
+        .history(&session)
+        .unwrap()
+        .with_query("Absent")
+        .unwrap();
+    assert!(matches!(
+        reader
+            .next_page(&client, &session, &CancellationToken::new())
+            .await,
+        Err(Error::InvalidResponse)
+    ));
 }

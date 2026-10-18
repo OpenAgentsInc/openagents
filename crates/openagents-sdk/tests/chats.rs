@@ -93,7 +93,7 @@ async fn file(
 ) -> Response {
     s.patches.lock().unwrap().push(body.clone());
     let mut filing = s.filing.lock().unwrap();
-    for name in ["pinned", "archived"] {
+    for name in ["pinned", "archived", "title"] {
         if let Some(value) = body.get(name) {
             filing[name] = value.clone();
         }
@@ -103,7 +103,7 @@ async fn file(
     } else {
         id
     };
-    Json(json!({"id": id, "object": "thread", "pinned": filing["pinned"], "archived": filing["archived"]}))
+    Json(json!({"id": id, "object": "thread", "title": if s.mode.load(Ordering::SeqCst) == 3 { json!("Wrong title") } else { filing["title"].clone() }, "pinned": filing["pinned"], "archived": filing["archived"]}))
         .into_response()
 }
 struct Fixture {
@@ -274,6 +274,54 @@ async fn pins_and_archives_the_chat_and_checks_the_answer() {
     f.server.mode.store(2, Ordering::SeqCst);
     assert!(matches!(
         chats::set_pinned(&f.client, &f.session, &chat, true, &cancel).await,
+        Err(Error::InvalidResponse)
+    ));
+}
+
+#[tokio::test]
+async fn saved_rename_checks_title_account_cancel_and_server_confirmation() {
+    let f = fixture().await;
+    let cancel = CancellationToken::new();
+    let chat = f.client.chat(&f.session, CHAT).unwrap();
+    chats::set_title(&f.client, &f.session, &chat, "  🦀 Project  ", &cancel)
+        .await
+        .unwrap();
+    assert_eq!(
+        f.server.patches.lock().unwrap().as_slice(),
+        &[json!({"title":"🦀 Project"})]
+    );
+    for invalid in ["".to_owned(), "x".repeat(121), "one\ntwo".to_owned()] {
+        assert!(matches!(
+            chats::set_title(&f.client, &f.session, &chat, &invalid, &cancel).await,
+            Err(Error::InvalidReference)
+        ));
+    }
+    assert_eq!(f.server.patches.lock().unwrap().len(), 1);
+    let other = f
+        .client
+        .authenticate(&format!("oa_sk_{}", "2".repeat(64)))
+        .await
+        .unwrap();
+    assert!(matches!(
+        chats::set_title(&f.client, &other, &chat, "Other", &cancel).await,
+        Err(Error::WrongAccount)
+    ));
+    cancel.cancel();
+    assert!(matches!(
+        chats::set_title(&f.client, &f.session, &chat, "Cancelled", &cancel).await,
+        Err(Error::Cancelled)
+    ));
+    assert_eq!(f.server.patches.lock().unwrap().len(), 1);
+    f.server.mode.store(3, Ordering::SeqCst);
+    assert!(matches!(
+        chats::set_title(
+            &f.client,
+            &f.session,
+            &chat,
+            "Requested",
+            &CancellationToken::new()
+        )
+        .await,
         Err(Error::InvalidResponse)
     ));
 }

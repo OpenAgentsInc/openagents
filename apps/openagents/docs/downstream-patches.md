@@ -783,3 +783,11 @@ links remain readable. Upstream fixes now require manual ports.
   app_links`) and an end-to-end rerun of `scripts/android/build-core.sh` were
   not run by this chat. Release-certificate verification remains an owner-only
   step in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
+
+- [OpenAgents #12087](https://github.com/OpenAgentsInc/openagents/issues/12087):
+  Add an isolated Android Views drawer and synthetic presenter fixtures over
+  Rust-owned session/history intents. Add bounded saved-title search and owned
+  rename to the server and SDK, with account-fenced UniFFI pin/archive/rename.
+  Saved metadata without a Rust source stays optional. Durable saved pin order,
+  shell wiring, binding regeneration, and executable checks remain open; see
+  `apps/android/drawer/README.md`. No checks requiring a build have passed yet.
