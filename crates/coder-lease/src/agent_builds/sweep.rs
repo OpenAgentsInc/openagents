@@ -451,6 +451,10 @@ impl Host for System {
             // directories. Without it lsof ORs them.
             let lsof = run("lsof", &["-a", "-d", "cwd", "-p", &pids.join(","), "-Fpn"])?;
             add_cwds(&mut procs, &lsof);
+            // lsof returns 1 when one of the short-lived rustc processes has
+            // already exited. Keep valid cwd rows and discard only dead PIDs;
+            // a live process with an unreadable cwd still protects all targets.
+            finish_processes(&mut procs, process_alive)?;
         }
         Ok(procs)
     }
@@ -481,6 +485,29 @@ impl Host for System {
     }
 }
 
+fn finish_processes(procs: &mut Vec<Proc>, alive: impl Fn(u32) -> bool) -> Result<(), String> {
+    procs.retain(|process| process.cwd.is_some() || alive(process.pid));
+    if procs.iter().any(|process| process.cwd.is_none()) {
+        return Err("a live build process has an unreadable working directory".into());
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn process_alive(pid: u32) -> bool {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return true;
+    };
+    // SAFETY: signal zero probes existence without signaling the process.
+    let exists = unsafe { libc::kill(pid, 0) == 0 };
+    exists || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+}
+
+#[cfg(not(unix))]
+fn process_alive(_: u32) -> bool {
+    true
+}
+
 fn bounded_output(program: &str, args: &[&str], timeout: Duration) -> Result<String, String> {
     use std::io::Read as _;
     let mut child = std::process::Command::new(program)
@@ -500,7 +527,12 @@ fn bounded_output(program: &str, args: &[&str], timeout: Duration) -> Result<Str
     let outcome = loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                break if status.success() {
+                break if status.success()
+                    || (Path::new(program)
+                        .file_name()
+                        .is_some_and(|name| name == "lsof")
+                        && status.code() == Some(1))
+                {
                     Ok(())
                 } else {
                     Err(format!("{program} failed: {status}"))

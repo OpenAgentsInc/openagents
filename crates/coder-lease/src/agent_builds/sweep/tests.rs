@@ -1227,3 +1227,27 @@ fn process_queries_drain_large_output_and_have_a_deadline() {
     );
     assert!(started.elapsed() < Duration::from_secs(2));
 }
+
+#[test]
+fn exited_processes_do_not_discard_the_remaining_cwd_snapshot() {
+    let known = cargo(1, None, Some(Path::new("/work")), &[]);
+    let missing = cargo(2, None, None, &[]);
+    let mut processes = vec![known.clone(), missing.clone()];
+    finish_processes(&mut processes, |_| false).unwrap();
+    assert_eq!(processes, vec![known]);
+    processes.push(missing);
+    assert!(finish_processes(&mut processes, |_| true).is_err());
+}
+
+#[test]
+fn lsof_partial_output_survives_an_exited_pid() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let home = Home::new();
+    let path = home.root.join("lsof");
+    std::fs::write(&path, "#!/bin/sh\nprintf 'p1\\nn/work\\n'\nexit 1\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(
+        bounded_output(path.to_str().unwrap(), &[], Duration::from_secs(1)).unwrap(),
+        "p1\nn/work\n"
+    );
+}
