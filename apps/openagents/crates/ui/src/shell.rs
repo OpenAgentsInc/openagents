@@ -1757,6 +1757,24 @@ fn local_work_phrase(chats: usize, spaces: usize) -> Option<String> {
     }
 }
 
+/// What switching gets you and what staying costs, in plain words (#12070).
+fn sync_switch_offer_body(email: Option<&str>, work_phrase: Option<&str>) -> SharedString {
+    let signed_in = email
+        .map(|email| format!("You're signed in as {email}. "))
+        .unwrap_or_default();
+    let choice = match work_phrase {
+        Some(phrase) => format!(" Bring {phrase} from this device along, or start fresh."),
+        None => String::new(),
+    };
+    format!(
+        "{signed_in}Your account's chats are on your synced workspace. Until you switch, you only see the chats on this device.{choice}"
+    )
+    .into()
+}
+
+/// What "Later" does, said before the person picks it.
+const SYNC_SWITCH_LATER_NOTE: &str = "If you choose Later, we'll ask again tomorrow. To switch sooner, choose Finish sync setup in the account menu.";
+
 fn account_menu_action(scope: Option<WorkspaceScope>, flow: SyncFlow) -> Option<AccountMenuAction> {
     match scope {
         Some(WorkspaceScope::Local) => match flow {
@@ -1864,6 +1882,37 @@ fn sync_flow_after_auth(
         Some(WorkspaceScope::Development) => SyncFlow::Idle,
         None => flow,
     }
+}
+
+/// How long "Later" keeps the switch-to-synced-workspace dialog closed
+/// (#12070). It reappears after this, or from the account menu any time.
+const SYNC_SWITCH_LATER: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Keep a newly opened switch offer closed while a recent "Later" holds, so
+/// it doesn't come back on every launch (#12070). A sign-in the person just
+/// started from Enable sync always asks.
+fn remember_switch_later(
+    previous: SyncFlow,
+    next: SyncFlow,
+    later_until_ms: Option<u64>,
+    now_ms: u64,
+) -> SyncFlow {
+    match next {
+        SyncFlow::SwitchOffer { notice_open: true }
+            if previous != SyncFlow::Enabling
+                && !matches!(previous, SyncFlow::SwitchOffer { .. })
+                && later_until_ms.is_some_and(|until| now_ms < until) =>
+        {
+            SyncFlow::SwitchOffer { notice_open: false }
+        }
+        _ => next,
+    }
+}
+
+fn unix_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis() as u64)
 }
 
 /// The "Create your workspace" gate (feature-inventory §1.2 OrgGate).
@@ -2829,7 +2878,7 @@ impl Shell {
         }
         let next_sync_flow = {
             let state = state.read(cx);
-            sync_flow_after_auth(self.sync_flow, state.workspace_scope, state.auth.as_ref())
+            self.next_sync_flow(state.workspace_scope, state.auth.as_ref(), cx)
         };
         if next_sync_flow != self.sync_flow {
             self.sync_flow = next_sync_flow;
@@ -6375,6 +6424,26 @@ impl Shell {
         cx.notify();
     }
 
+    /// The account flow after an auth or scope change, with a recent
+    /// "Later" on the switch offer remembered across launches.
+    fn next_sync_flow(
+        &self,
+        scope: Option<WorkspaceScope>,
+        auth: Option<&AuthState>,
+        cx: &App,
+    ) -> SyncFlow {
+        let next = sync_flow_after_auth(self.sync_flow, scope, auth);
+        if next == self.sync_flow {
+            return next;
+        }
+        remember_switch_later(
+            self.sync_flow,
+            next,
+            settings::sync_switch_later_until_ms(cx),
+            unix_now_ms(),
+        )
+    }
+
     fn postpone_sync_restart(&mut self, cx: &mut Context<Self>) {
         match self.sync_flow {
             SyncFlow::RestartPending { .. } => {
@@ -6382,6 +6451,10 @@ impl Shell {
             }
             SyncFlow::SwitchOffer { .. } => {
                 self.sync_flow = SyncFlow::SwitchOffer { notice_open: false };
+                let until = unix_now_ms() + SYNC_SWITCH_LATER.as_millis() as u64;
+                settings::update(settings::SavePolicy::Immediate, cx, |settings| {
+                    settings.sync_switch_later_until_ms = Some(until);
+                });
             }
             SyncFlow::ImportFailed { .. } => {
                 self.sync_flow = SyncFlow::ImportFailed { notice_open: false };
@@ -10069,21 +10142,7 @@ impl Shell {
             // ── in-place switch wizard ────────────────────────────────────
             SyncFlow::SwitchOffer { notice_open: true } => {
                 let has_local_work = work_phrase.is_some();
-                let body: SharedString = match (&signed_in_email, &work_phrase) {
-                    (Some(email), Some(phrase)) => format!(
-                        "You're signed in as {email}. Bring {phrase} from this device into your synced workspace, or start it fresh."
-                    )
-                    .into(),
-                    (Some(email), None) => format!(
-                        "You're signed in as {email}. OpenAgents can switch to your synced workspace now."
-                    )
-                    .into(),
-                    (None, Some(phrase)) => format!(
-                        "Bring {phrase} from this device into your synced workspace, or start it fresh."
-                    )
-                    .into(),
-                    (None, None) => "OpenAgents can switch to your synced workspace now.".into(),
-                };
+                let body = sync_switch_offer_body(signed_in_email.as_deref(), work_phrase.as_deref());
                 let mut actions = div()
                     .mt(px(16.0))
                     .flex()
@@ -10125,6 +10184,11 @@ impl Shell {
                 popover::dialog_card(&theme)
                     .child(popover::dialog_title(&theme, "Sync is ready"))
                     .child(div().mt(px(6.0)).child(popover::dialog_body(&theme, body)))
+                    .child(
+                        div()
+                            .mt(px(6.0))
+                            .child(popover::dialog_body(&theme, SYNC_SWITCH_LATER_NOTE)),
+                    )
                     .child(actions)
                     .into_any_element()
             }
@@ -13200,7 +13264,7 @@ impl Render for Shell {
             let state = self.state.read(cx);
             (state.workspace_scope, state.auth.clone())
         };
-        self.sync_flow = sync_flow_after_auth(self.sync_flow, workspace_scope, auth.as_ref());
+        self.sync_flow = self.next_sync_flow(workspace_scope, auth.as_ref(), cx);
         let restart_required = self.sync_flow == SyncFlow::SignedOutRestartRequired;
         let gate = self
             .debug_gate
@@ -14763,6 +14827,74 @@ mod tests {
                 "revoked credentials cancel the pending switch"
             );
         }
+    }
+
+    /// #12070: "Later" holds across launches for a day, then the offer asks
+    /// again; a sign-in the person just started always asks.
+    #[test]
+    fn later_on_the_switch_offer_is_remembered_across_launches() {
+        let open = SyncFlow::SwitchOffer { notice_open: true };
+        let closed = SyncFlow::SwitchOffer { notice_open: false };
+        let now = 1_800_000_000_000;
+        let later_until = Some(now + SYNC_SWITCH_LATER.as_millis() as u64);
+        // A new launch restores the session and would open the offer.
+        assert_eq!(
+            remember_switch_later(SyncFlow::Idle, open, later_until, now),
+            closed,
+            "a recent Later keeps the offer closed on the next launch"
+        );
+        assert_eq!(
+            remember_switch_later(SyncFlow::Idle, open, later_until, now + 60 * 60 * 1000),
+            closed,
+            "an hour later it is still closed"
+        );
+        assert_eq!(
+            remember_switch_later(SyncFlow::Idle, open, later_until, later_until.unwrap() + 1),
+            open,
+            "a day later it asks again"
+        );
+        assert_eq!(remember_switch_later(SyncFlow::Idle, open, None, now), open);
+        assert_eq!(
+            remember_switch_later(SyncFlow::Enabling, open, later_until, now),
+            open,
+            "Enable sync always asks"
+        );
+        assert_eq!(
+            remember_switch_later(open, open, later_until, now),
+            open,
+            "an offer reopened from the account menu stays open"
+        );
+        assert_eq!(
+            remember_switch_later(SyncFlow::Idle, SyncFlow::Idle, later_until, now),
+            SyncFlow::Idle
+        );
+        // The choice survives a restart in the saved settings.
+        let dir = tempfile::tempdir().unwrap();
+        let mut saved = crate::settings::UiSettings::default();
+        saved.sync_switch_later_until_ms = later_until;
+        saved.save(dir.path()).unwrap();
+        assert_eq!(
+            crate::settings::UiSettings::load(dir.path()).sync_switch_later_until_ms,
+            later_until
+        );
+    }
+
+    #[test]
+    fn the_switch_offer_says_what_staying_local_costs() {
+        for (email, work) in [
+            (Some("user@example.com"), Some("the 2 sessions")),
+            (Some("user@example.com"), None),
+            (None, Some("the 1 project")),
+            (None, None),
+        ] {
+            let body = sync_switch_offer_body(email, work);
+            assert!(
+                body.contains("Your account's chats are on your synced workspace."),
+                "{body}"
+            );
+            assert!(oa_copy::violations(&body, &[]).is_empty(), "{body}");
+        }
+        assert!(oa_copy::violations(SYNC_SWITCH_LATER_NOTE, &[]).is_empty());
     }
 
     #[test]

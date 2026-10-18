@@ -707,6 +707,11 @@ impl Drop for EngineRuntime {
     }
 }
 
+/// How long startup waits for the account to read its saved login.
+const SIGN_IN_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
+/// How long startup waits for the server to confirm a saved login.
+const SAVED_SIGN_IN_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 impl Engine {
     pub fn new(config: EngineConfig) -> Self {
         Self { config }
@@ -739,18 +744,32 @@ impl Engine {
         if !auth_config.development_requested {
             if let Some(account) = openagents_account::desktop::registered(&config.data_dir) {
                 let mut updates = account.watch();
-                // A saved login may restore quickly; local work never waits on the network.
-                let _ = tokio::time::timeout(std::time::Duration::from_millis(250), async {
-                    while matches!(
-                        account.snapshot().phase,
-                        openagents_account::Phase::Restoring | openagents_account::Phase::Starting
-                    ) {
-                        if updates.changed().await.is_err() {
-                            break;
-                        }
+                // Without a saved login, startup never waits on storage or the
+                // network. Once a saved login is found, give the server time to
+                // confirm it so the app opens on the synced workspace instead of
+                // asking to switch on every launch (#12070).
+                let started = tokio::time::Instant::now();
+                while matches!(
+                    account.snapshot().phase,
+                    openagents_account::Phase::Restoring | openagents_account::Phase::Starting
+                ) {
+                    let limit = if account.checking_saved_sign_in() {
+                        SAVED_SIGN_IN_WAIT
+                    } else {
+                        SIGN_IN_WAIT
+                    };
+                    let Some(left) = limit
+                        .checked_sub(started.elapsed())
+                        .filter(|left| !left.is_zero())
+                    else {
+                        break;
+                    };
+                    // A timeout loops once more: a saved login found just
+                    // now extends the limit.
+                    if let Ok(Err(_)) = tokio::time::timeout(left, updates.changed()).await {
+                        break;
                     }
-                })
-                .await;
+                }
                 return Auth::with_account(auth_config, account);
             }
         }

@@ -154,7 +154,7 @@ impl Controller {
         let marker = self.marker.clone();
         let store = self.store.clone();
         let deployment = self.client.deployment().clone();
-        tokio::task::spawn_blocking(move || {
+        let record = tokio::task::spawn_blocking(move || {
             match std::fs::symlink_metadata(&marker) {
                 Ok(_) => return Ok(None),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -163,7 +163,11 @@ impl Controller {
             store.load(&deployment)
         })
         .await
-        .unwrap_or(Err(StorageError::Unavailable))
+        .unwrap_or(Err(StorageError::Unavailable));
+        if let Ok(Some(_)) = &record {
+            self.mark_checking_saved(t);
+        }
+        record
     }
 
     /// Whether `pubkey` is known to sign in to `account` here.

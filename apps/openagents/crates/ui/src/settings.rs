@@ -376,6 +376,12 @@ pub fn current(cx: &App) -> UiSettings {
         .unwrap_or_default()
 }
 
+/// Until when "Later" keeps the switch-to-synced-workspace dialog closed.
+pub fn sync_switch_later_until_ms(cx: &App) -> Option<u64> {
+    cx.try_global::<SettingsStore>()
+        .and_then(|store| store.current.sync_switch_later_until_ms)
+}
+
 /// Read the picker preference without cloning the full settings for each model row.
 pub fn compact_model_picker(cx: &App) -> bool {
     cx.try_global::<SettingsStore>()
@@ -1015,6 +1021,10 @@ pub struct UiSettings {
     /// Local preference: never transfers an active call or credentials.
     #[serde(default)]
     pub codex_voice_device: Option<String>,
+    /// Until when (Unix ms) "Later" keeps the switch-to-synced-workspace
+    /// dialog closed (#12070).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_switch_later_until_ms: Option<u64>,
     /// Pre-theme settings used `accentColor`. Read it once, migrate to
     /// [`Self::accent`], and never write it again.
     #[serde(default, rename = "accentColor", skip_serializing)]
@@ -1111,6 +1121,7 @@ impl Default for UiSettings {
             pause_animations_in_background: false,
             codex_voice: None,
             codex_voice_device: None,
+            sync_switch_later_until_ms: None,
             legacy_accent_color: None,
         }
     }
@@ -1760,6 +1771,7 @@ impl UiSettings {
             last_pull_request_repository,
             last_pull_request_device,
             pull_request_stars,
+            sync_switch_later_until_ms,
         );
         current
     }
@@ -2725,6 +2737,7 @@ mod tests {
             window_geometry: None,
             codex_voice: Some("ember".into()),
             codex_voice_device: Some("fedora".into()),
+            sync_switch_later_until_ms: Some(1_800_000_000_000),
             sidebar_width: 300.0,
             sidebar_collapsed: true,
             sidebar_grouped: true,

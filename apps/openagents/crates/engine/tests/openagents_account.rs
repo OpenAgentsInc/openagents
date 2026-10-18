@@ -185,3 +185,61 @@ async fn local_boot_does_not_wait_for_a_blocked_credential_restore() {
     );
     restore.await.unwrap();
 }
+
+/// #12070: a saved login that takes longer than a moment to confirm still
+/// opens the synced workspace, instead of the local one plus a switch prompt.
+#[tokio::test]
+async fn a_saved_login_opens_the_synced_workspace_even_when_the_server_is_slow() {
+    let root = tempfile::tempdir().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let slow = Arc::new(AtomicBool::new(false));
+    let api = Router::new()
+        .route(
+            "/v1/account",
+            get(|State(slow): State<Arc<AtomicBool>>| async move {
+                if slow.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(1200)).await;
+                }
+                Json(json!({"account":{"id":"acct_slow","label":"Slow fixture"},"workspaces":[]}))
+            }),
+        )
+        .with_state(slow.clone());
+    let server = tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+    let deployment = Deployment::new(&format!("{origin}/v1"), &origin).unwrap();
+    let store = Arc::new(MemoryStore::default());
+    let saving = Controller::new(
+        Client::new(deployment.clone()).unwrap(),
+        store.clone(),
+        root.path().join("account/signed-out"),
+    );
+    saving
+        .import_credential(format!("sess_{:064x}", 9004))
+        .await;
+    assert!(saving.lease().is_some());
+    slow.store(true, Ordering::SeqCst);
+    // A new launch: a fresh controller restores the saved login.
+    let controller = Controller::new(
+        Client::new(deployment).unwrap(),
+        store,
+        root.path().join("account/signed-out"),
+    );
+    desktop::register(root.path(), &controller);
+    let restore = tokio::spawn(controller.restore());
+    let config = EngineConfig {
+        data_dir: root.path().into(),
+        edge_url: "https://sync.example".into(),
+        edge_token: None,
+        ipc_port: 0,
+        default_harness: HarnessId::Mock,
+        org_id: None,
+        workos_client_id: None,
+    };
+    let auth = Engine::build_auth(&config).await;
+    assert_eq!(
+        Engine::initial_workspace_scope(&auth),
+        WorkspaceScope::Synced
+    );
+    restore.await.unwrap();
+    server.abort();
+}

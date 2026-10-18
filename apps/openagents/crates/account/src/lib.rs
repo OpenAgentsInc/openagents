@@ -48,6 +48,8 @@ struct State {
     generation: u64,
     cancel: CancellationToken,
     session: Option<Session>,
+    /// A saved login was found and is being checked with the server.
+    checking_saved: bool,
 }
 struct Ticket {
     generation: u64,
@@ -150,6 +152,7 @@ impl Controller {
                 generation: 0,
                 cancel: CancellationToken::new(),
                 session: None,
+                checking_saved: false,
             }),
             io: tokio::sync::Mutex::new(()),
             updates,
@@ -194,6 +197,7 @@ impl Controller {
         s.cancel.cancel();
         s.generation += 1;
         s.cancel = CancellationToken::new();
+        s.checking_saved = false;
         let ticket = Ticket {
             generation: s.generation,
             cancel: s.cancel.clone(),
@@ -211,11 +215,26 @@ impl Controller {
             return false;
         }
         s.session = session;
+        s.checking_saved = false;
         self.updates.send_replace(Snapshot {
             generation: t.generation,
             phase,
         });
         true
+    }
+    /// Whether the current restore found a saved login and is now asking the
+    /// server about it, so a caller can wait for it instead of starting
+    /// signed out (#12070). Watchers are woken when this turns on.
+    pub fn checking_saved_sign_in(&self) -> bool {
+        self.state.lock().unwrap().checking_saved
+    }
+    fn mark_checking_saved(&self, t: &Ticket) {
+        let mut s = self.state.lock().unwrap();
+        if s.generation != t.generation {
+            return;
+        }
+        s.checking_saved = true;
+        self.updates.send_modify(|_| {});
     }
     /// Stop callbacks and reads when the owning app view or deployment is replaced.
     /// Stored credentials stay available for an explicit restore of that deployment.
@@ -253,7 +272,10 @@ impl Controller {
             .unwrap_or(Err(StorageError::Unavailable))
         };
         let record = match record {
-            Ok(Some(r)) => r,
+            Ok(Some(r)) => {
+                self.mark_checking_saved(&t);
+                r
+            }
             Ok(None) => {
                 self.publish(&t, Phase::SignedOut { notice: None }, None);
                 return;
