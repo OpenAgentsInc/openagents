@@ -38,19 +38,16 @@ Keep fork-specific changes here so upstream updates can review each integration.
   The offline API 35 emulator cold-started the debug Activity successfully:
   `am start -W -n com.openagents.app.debug/com.openagents.app.MainActivity`
   returned `Status: ok` and `LaunchState: COLD`; the window showed “OpenAgents”
-  and “A private demo, ready to explore.” The first direct AndroidJUnitRunner
-  run executed 11 tests, with 10 passing and one fixture expectation error:
-  permission denial clears the active session, so a late scan returns
-  `STALE_SESSION`. The fixture now checks `NOT_SCANNING` before denial,
-  `STALE_SESSION` after denial, and no classifier call. AndroidTest compilation
-  passed. The first rerun did not start because separately produced app and
-  test APKs had different signing certificates. Reassembling both together
-  produced matching SHA-256 certificate
-  `b6079759ae547682eb90cd4c520c8b61ce6786ac6a9545916114bb731c3eeb90`; direct
-  instrumentation rerun is pending. The connected Gradle task cannot resolve
-  its uncached offline UTP host artifact. Activity recreation, live camera
-  permission flow, and API 26 launch remain unverified. Evidence is in the
-  isolated scratch directory `android-runtime-12083/evidence`.
+  and “A private demo, ready to explore.” The direct AndroidJUnitRunner passed
+  all 11 tests (2 SemanticViewAdapter and 9 scanner tests), including denial,
+  cancellation, retry, ZXing frame, and callback-fencing fixtures. The
+  permission-denial fixture checks `NOT_SCANNING` before denial, then
+  `STALE_SESSION` and no classifier call after denial. Debug and AndroidTest
+  APK certificates match. The connected Gradle task could not resolve its
+  uncached offline UTP host artifact, but direct instrumentation ran the same
+  test APK successfully. Activity recreation, live camera permission flow,
+  and API 26 launch remain unverified. Evidence is in the isolated scratch
+  directory `android-runtime-12083/evidence`.
 
 - OpenAgents #12081: Android startup initializes the JVM context and platform
   certificate verifier before any live Rust client can start. Kotlin retries
