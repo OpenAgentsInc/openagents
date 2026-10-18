@@ -2,6 +2,12 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12084: add an isolated Kotlin Views transcript renderer over
+  Rust row placements and display lists, with shared fallback shaping,
+  bounded row caches, and stable viewport anchors. Recorded synthetic Rust
+  geometry backs stub-core tests; B1 integration, Kotlin execution, Android
+  glyph checks, and emulator performance evidence remain queued.
+
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
   UniFFI callback on the existing key sign-in controller. Rust binds its
   digest to the challenge and identity, sends the token through the SDK,
