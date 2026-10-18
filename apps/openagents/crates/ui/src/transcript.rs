@@ -3290,6 +3290,7 @@ pub struct Transcript {
     bottom_clearance: f32,
     /// Hovered rail tick (grows + shows the preview card).
     rail_hover: Option<usize>,
+    pub(crate) rail_cache: Option<crate::rail::RailCache>,
     /// `(row id, entry id)` under the pointer — reveals the entry's timestamp
     /// strip (openagents chat-view.tsx `group-hover`; the rows report hover
     /// themselves). Keyed by ROW so a row→row move within one entry can't
@@ -3613,6 +3614,7 @@ impl Transcript {
             rail_enabled,
             bottom_clearance: 0.0,
             rail_hover: None,
+            rail_cache: None,
             hovered_entry: None,
             copied_code: None,
             copied_clear: None,

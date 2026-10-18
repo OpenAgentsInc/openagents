@@ -2,6 +2,12 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- [OpenAgents #12127](https://github.com/OpenAgentsInc/openagents/issues/12127):
+  The desktop transcript rail caches prompt ticks between changes, limits
+  long prompt previews before attachment parsing, and builds reply previews
+  and row lookups in linear time. Attachment headers match without copying
+  and lowercasing entire messages.
+
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
   UniFFI callback on the existing key sign-in controller. Rust binds its
   digest to the challenge and identity, sends the token through the SDK,

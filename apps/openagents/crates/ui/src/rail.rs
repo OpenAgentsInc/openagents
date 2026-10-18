@@ -8,6 +8,8 @@
 //! extension since the rail shares the transcript's rows and `ListState`.
 
 use gpui::{AnyElement, Context, ListOffset, SharedString, div, prelude::*, px};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use openagents_doc::{MessagePart, MessageRole, SessionMessageEntry};
@@ -37,7 +39,62 @@ pub struct RailTick {
     pub reply: Option<String>,
 }
 
+#[derive(Debug, PartialEq)]
+pub(crate) struct RailKey {
+    chat: Option<String>,
+    revision: u64,
+    count: usize,
+    last: Option<(String, Vec<usize>)>,
+    echoes: Vec<String>,
+}
+
+impl RailKey {
+    fn new(
+        chat: Option<String>,
+        revision: u64,
+        entries: &[SessionMessageEntry],
+        echoes: &[SessionMessageEntry],
+    ) -> Self {
+        Self {
+            chat,
+            revision,
+            count: entries.len(),
+            last: entries.last().map(|entry| {
+                (
+                    entry.id.clone(),
+                    entry
+                        .parts
+                        .iter()
+                        .map(|part| match part {
+                            MessagePart::Text { text, .. } => text.len(),
+                            _ => 0,
+                        })
+                        .collect(),
+                )
+            }),
+            echoes: echoes.iter().map(|entry| entry.id.clone()).collect(),
+        }
+    }
+}
+
+pub(crate) type RailCache = (RailKey, Arc<Vec<(RailTick, usize)>>);
+
 fn user_text(entry: &SessionMessageEntry) -> String {
+    // Ordinary long prompts need only their opening; attachment-only messages
+    // and context blocks still use the complete attachment parser.
+    if let Some(MessagePart::Text { text, .. }) = entry.parts.first() {
+        let prefix: String = text.chars().take(1024).collect();
+        if crate::transcript::single_line(&prefix).chars().count() > PREVIEW_PROMPT_CHARS
+            && !prefix
+                .as_bytes()
+                .windows(b"attached images (local files".len())
+                .any(|bytes| bytes.eq_ignore_ascii_case(b"attached images (local files"))
+            && !prefix.contains(crate::appshots::CONTEXT_MARKER)
+            && !prefix.contains('<')
+        {
+            return truncate_preview(&prefix, PREVIEW_PROMPT_CHARS);
+        }
+    }
     let raw = entry
         .parts
         .iter()
@@ -60,7 +117,7 @@ fn first_reply_text(entries: &[SessionMessageEntry]) -> Option<String> {
         .and_then(|entry| {
             entry.parts.iter().find_map(|part| match part {
                 MessagePart::Text { text, .. } if !text.trim().is_empty() => {
-                    Some(text.trim().to_string())
+                    Some(truncate_preview(text.trim(), PREVIEW_REPLY_CHARS))
                 }
                 _ => None,
             })
@@ -76,18 +133,24 @@ pub fn rail_ticks(
     echoes: &[SessionMessageEntry],
 ) -> Vec<RailTick> {
     let mut ticks: Vec<RailTick> = Vec::new();
-    for (ix, entry) in entries.iter().enumerate() {
+    let mut reply = None;
+    for entry in entries.iter().rev() {
+        if entry.role == MessageRole::Assistant {
+            reply = first_reply_text(std::slice::from_ref(entry));
+        }
         if entry.role != MessageRole::User {
             continue;
         }
         ticks.push(RailTick {
             message_id: entry.id.clone(),
             prompt: user_text(entry),
-            reply: first_reply_text(&entries[ix + 1..]),
+            reply: reply.clone(),
         });
     }
+    ticks.reverse();
+    let mut ids: HashSet<String> = ticks.iter().map(|tick| tick.message_id.clone()).collect();
     for echo in echoes {
-        if echo.role == MessageRole::User && !ticks.iter().any(|t| t.message_id == echo.id) {
+        if echo.role == MessageRole::User && ids.insert(echo.id.clone()) {
             ticks.push(RailTick {
                 message_id: echo.id.clone(),
                 prompt: user_text(echo),
@@ -223,7 +286,8 @@ impl GlideTimeline {
 fn scroll_trace_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| {
-        openagents_brand::env_var("OPENAGENTS_SCROLL_TRACE").is_ok_and(|v| !v.is_empty() && v != "0")
+        openagents_brand::env_var("OPENAGENTS_SCROLL_TRACE")
+            .is_ok_and(|v| !v.is_empty() && v != "0")
     })
 }
 
@@ -412,22 +476,28 @@ impl Transcript {
         if !self.rail_enabled() {
             return gpui::Empty.into_any_element();
         }
-        let (entries, echoes) = {
-            let state = self.state_entity().read(cx);
-            (state.transcript.clone(), state.pending_echoes().to_vec())
-        };
-        let ticks = rail_ticks(&entries, &echoes);
-        // Map each tick to its transcript row (user rows share the entry id).
-        let pairs: Vec<(RailTick, usize)> = ticks
-            .into_iter()
-            .filter_map(|tick| {
-                let row = self
-                    .rows()
-                    .iter()
-                    .position(|r| r.id.as_ref() == tick.message_id.as_str())?;
-                Some((tick, row))
-            })
-            .collect();
+        let entity = self.state_entity().clone();
+        let state = entity.read(cx);
+        let key = RailKey::new(
+            state.selected_chat.clone(),
+            state.transcript_revision,
+            &state.transcript,
+            state.pending_echoes(),
+        );
+        if self.rail_cache.as_ref().map(|(cached, _)| cached) != Some(&key) {
+            let rows: HashMap<&str, usize> = self
+                .rows()
+                .iter()
+                .enumerate()
+                .map(|(ix, row)| (row.id.as_ref(), ix))
+                .collect();
+            let pairs = rail_ticks(&state.transcript, state.pending_echoes())
+                .into_iter()
+                .filter_map(|tick| rows.get(tick.message_id.as_str()).map(|&row| (tick, row)))
+                .collect();
+            self.rail_cache = Some((key, Arc::new(pairs)));
+        }
+        let pairs = self.rail_cache.as_ref().unwrap().1.clone();
         // A minimap of one exchange is noise, not navigation — the original
         // rail hides below two marks (message-rail.tsx `marks.length < 2`).
         if pairs.len() < 2 {
@@ -647,6 +717,61 @@ mod tests {
         // Degenerate inputs.
         assert!(tick_buckets(0, 8).is_empty());
         assert_eq!(tick_buckets(3, 0), vec![(0, 3)]);
+    }
+
+    #[test]
+    fn rail_key_tracks_streaming_echoes_and_resets() {
+        let mut entries = vec![entry("u1", MessageRole::User, "question")];
+        let key = RailKey::new(Some("chat".into()), 1, &entries, &[]);
+        assert_eq!(key, RailKey::new(Some("chat".into()), 1, &entries, &[]));
+        entries.push(entry("a1", MessageRole::Assistant, "answer"));
+        let appended = RailKey::new(Some("chat".into()), 1, &entries, &[]);
+        assert_ne!(key, appended);
+        entries[1] = entry("a1", MessageRole::Assistant, "answer grows");
+        assert_ne!(
+            appended,
+            RailKey::new(Some("chat".into()), 1, &entries, &[])
+        );
+        assert_ne!(
+            key,
+            RailKey::new(Some("chat".into()), 2, &entries[..1], &[])
+        );
+        assert_ne!(
+            key,
+            RailKey::new(Some("chat".into()), 1, &entries[..1], &entries[..1])
+        );
+    }
+
+    #[test]
+    fn rail_long_prompts_have_bounded_previews() {
+        let text = "x".repeat(200_000);
+        let entries: Vec<_> = (0..50)
+            .map(|ix| entry(&format!("u{ix}"), MessageRole::User, &text))
+            .collect();
+        let start = Instant::now();
+        let ticks = rail_ticks(&entries, &[]);
+        assert!(start.elapsed() < Duration::from_millis(5));
+        assert_eq!(ticks.len(), 50);
+        for (ix, tick) in ticks.iter().enumerate() {
+            assert_eq!(tick.message_id, format!("u{ix}"));
+            assert_eq!(tick.prompt, truncate_preview(&text, PREVIEW_PROMPT_CHARS));
+            assert_eq!(tick.reply, None);
+        }
+    }
+
+    #[test]
+    fn rail_reply_uses_first_assistant_even_when_empty() {
+        let entries = vec![
+            entry("u1", MessageRole::User, "question"),
+            entry("u2", MessageRole::User, "another"),
+            entry("a1", MessageRole::Assistant, ""),
+            entry("a2", MessageRole::Assistant, "later"),
+        ];
+        assert!(
+            rail_ticks(&entries, &[])
+                .iter()
+                .all(|tick| tick.reply.is_none())
+        );
     }
 
     #[test]

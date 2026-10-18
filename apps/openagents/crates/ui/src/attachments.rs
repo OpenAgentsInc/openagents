@@ -159,12 +159,18 @@ fn name_from_path(path: &str) -> String {
 /// `(body_end, refs_start)` byte offsets — the tolerant equivalent of openagents's
 /// `ATTACHED_IMAGES_RE`.
 fn find_refs_marker(content: &str) -> Option<(usize, usize)> {
-    let lower = content.to_ascii_lowercase();
-    let needle = "\n\nattached images (local files";
+    let needle = b"attached images (local files";
     let mut from = 0usize;
-    while let Some(rel) = lower[from..].find(needle) {
+    while let Some(rel) = content[from..].find("\n\n") {
         let gap = from + rel;
         let line_start = gap + 2;
+        if !content.as_bytes()[line_start..]
+            .get(..needle.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(needle))
+        {
+            from = line_start;
+            continue;
+        }
         let line_end = content[line_start..]
             .find('\n')
             .map(|p| line_start + p)
@@ -1265,6 +1271,16 @@ pub(crate) fn lightbox_with_size(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refs_marker_is_case_insensitive_and_skips_invalid_headers() {
+        let text =
+            "é\n\nAttached images (local files invalid\n\nATTACHED IMAGES (LOCAL FILES):\n- /a.png";
+        let parsed = parse_user_message_images(text);
+        assert_eq!(parsed.attachments.len(), 1);
+        assert_eq!(parsed.attachments[0].path, "/a.png");
+        assert_eq!(parsed.text, "é\n\nAttached images (local files invalid");
+    }
 
     #[test]
     fn appshot_cards_follow_their_exact_image_reference() {
