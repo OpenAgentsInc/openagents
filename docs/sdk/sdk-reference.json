@@ -2559,6 +2559,97 @@
       "reexports": []
     },
     {
+      "path": "issues",
+      "doc": "Issue claims linked to account runs, and GitHub project board status.",
+      "items": [
+        {
+          "kind": "enum",
+          "name": "BoardStatus",
+          "doc": "The status to set on each of an issue's GitHub projects.",
+          "declaration": "pub enum BoardStatus {\n    Ready,\n    InProgress,\n    Blocked,\n    Done,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Claim",
+          "doc": "A GitHub issue's latest unreleased claim.",
+          "declaration": "pub struct Claim {\n    pub repo: String,\n    pub issue: u64,\n    pub holder: String,\n    pub run: Option<String>,\n    pub claimed_at: i64,\n    pub last_progress_at: Option<i64>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ClaimRequest",
+          "doc": "Options for taking an issue claim. A chat holds one issue or an explicit batch of at most three.",
+          "declaration": "pub struct ClaimRequest {\n    pub holder: String,\n    pub run: Option<String>,\n    pub batch: Vec<u64>,\n    pub force: bool,\n}",
+          "methods": [
+            {
+              "name": "valid_for",
+              "doc": "Checks identifiers and the named batch before sending an issue claim.",
+              "declaration": "pub fn valid_for(&self, issue: u64) -> bool",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Issues",
+          "doc": "Issue coordination using the signed-in account's GitHub connection.",
+          "declaration": "pub struct Issues<'a> {}",
+          "methods": [
+            {
+              "name": "claims",
+              "doc": "Read the repository's unreleased claims and join them to this account's run progress.",
+              "declaration": "pub async fn claims(\n    &self,\n    repo: &str,\n    cancel: &CancellationToken,\n) -> Result<Vec<Claim>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/repos/*/*/claims"
+                }
+              ]
+            },
+            {
+              "name": "claim",
+              "doc": "Claim an issue for a holder with one matching live run. Use `claim_with` to name a run or batch.",
+              "declaration": "pub async fn claim(\n    &self,\n    repo: &str,\n    issue: u64,\n    holder: &str,\n    cancel: &CancellationToken,\n) -> Result<Claim, Error>",
+              "calls": []
+            },
+            {
+              "name": "claim_with",
+              "doc": "Claim an issue for a live run, optionally naming a batch or replacing another holder.\nAn exact retry keeps the existing claim. Force never bypasses the batch limit.",
+              "declaration": "pub async fn claim_with(\n    &self,\n    repo: &str,\n    issue: u64,\n    request: &ClaimRequest,\n    cancel: &CancellationToken,\n) -> Result<Claim, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/repos/*/*/issues/*/claim"
+                }
+              ]
+            },
+            {
+              "name": "release",
+              "doc": "Release an issue claim, remove the GitHub assignee, and move its projects to Ready or Todo.",
+              "declaration": "pub async fn release(\n    &self,\n    repo: &str,\n    issue: u64,\n    note: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/repos/*/*/issues/*/claim"
+                }
+              ]
+            },
+            {
+              "name": "board",
+              "doc": "Set each project's Status option. This does not close the GitHub issue.",
+              "declaration": "pub async fn board(\n    &self,\n    repo: &str,\n    issue: u64,\n    status: BoardStatus,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/repos/*/*/issues/*/board"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "reexports": []
+    },
+    {
       "path": "labs",
       "doc": "Account-bound Labs, checked edits, and cancellable job and event readers.\nSave a job request before sending it; response loss reuses its exact key.",
       "items": [
@@ -2892,6 +2983,12 @@
               "name": "history_index",
               "doc": "Creates an empty history index for the signed-in account.",
               "declaration": "pub fn history_index(&self, session: &Session) -> Result<HistoryIndex, Error>",
+              "calls": []
+            },
+            {
+              "name": "issues",
+              "doc": "Access issue claims and project board status for this signed-in session.",
+              "declaration": "pub fn issues<'a>(&'a self, session: &'a Session) -> Result<Issues<'a>, Error>",
               "calls": []
             },
             {

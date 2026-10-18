@@ -75,6 +75,8 @@ mod door_route;
 mod environments;
 mod attention;
 mod attention_openapi;
+mod issue_claims;
+mod issue_claims_openapi;
 mod runs;
 mod runs_openapi;
 mod owner_notifications;
@@ -655,6 +657,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(session_index::routes())
         .merge(runs::routes())
         .merge(attention::routes())
+        .merge(issue_claims::routes())
         .merge(labs_api::routes(&app))
         .merge(lab_card_view::routes())
         .merge(custom_agents::routes())

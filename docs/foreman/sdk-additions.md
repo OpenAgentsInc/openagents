@@ -254,11 +254,13 @@ session=HARNESS:ID -->`, the assignee, and the board status
 claims"). `scripts/dev/issue-board.sh` moves boards 19 and 22. Foreman reads
 claims with one GraphQL search (`CLAIMS_QUERY` in `engine/src/foreman.rs`).
 
-**Gap.** A claim's liveness ("its agent process still runs") is only
-checkable on the claiming computer, so another computer sees only the
-comment and its age. There is no SDK call.
-
-**Proposal.**
+**Implemented in #12035.** `Client::issues(&session)` provides the methods
+below. Claiming requires a matching live S1 run in the signed-in account.
+`claim_with` accepts `ClaimRequest` to select a run, name a batch of at most
+three issues, or replace another holder. Runs for the same native harness
+session share the limit. Force does not expand it. GitHub comments, the
+assignee, and project status still change together; retry a failed request
+to finish any remaining GitHub changes.
 
 ```rust
 pub struct Claim {

@@ -157,6 +157,12 @@ publish.",
         tags: &["Landing queue"],
     },
     Area {
+        slug: "issues",
+        title: "Issue claims and boards",
+        lead: "Claim issue work for a live run, release it, and update its GitHub projects.",
+        tags: &["Issue claims"],
+    },
+    Area {
         slug: "computers",
         title: "Computers",
         lead: "Create cloud computers, run commands on them, move files, and read usage.",

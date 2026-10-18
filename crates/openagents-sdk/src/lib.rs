@@ -12,6 +12,7 @@ pub mod continuations;
 pub mod dashboard;
 pub mod generated;
 pub mod history;
+pub mod issues;
 pub mod labs;
 pub mod land;
 pub mod owner_notifications;

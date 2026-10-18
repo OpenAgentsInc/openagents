@@ -15603,6 +15603,644 @@
         }
       }
     },
+    "/v1/repos/{owner}/{name}/claims": {
+      "get": {
+        "operationId": "listIssueClaims",
+        "summary": "List issue claims",
+        "tags": [
+          "Issue claims"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Uses the signed-in account's GitHub connection and repository access. Claims remain GitHub comment markers that the CLI reads. A claim must name one of this account's live runs by run ID, chat:run-ID, native harness session, or harness:session; name run explicitly if several live runs match. Runs with the same native session share one claim or a named batch of at most three issues in one repository, including across run IDs. Heartbeat receipt time determines liveness, not progress. An exact retry keeps the claim; a concurrent save returns 409. Closed or released issues free the holder's slots on its next claim. PUT claim posts the marker, adds the GitHub viewer as assignee, and moves each project to In Progress. DELETE posts a release marker, removes that assignee, and moves each project to Ready or Todo. Board Done changes status only; it does not close the issue. A GitHub failure can leave an earlier comment, assignee, or project change completed; retry to finish the remaining changes. Missing GitHub access returns 403. List includes other holders but joins run IDs only from this account. Reads inspect at most 1,000 open issue and pull request records, and the latest 1,000 comments per issue, stopping at the latest claim/release marker; longer histories return 422. At most 2,048 saved claims per account; dead run entries expire after 24 hours and unfinished saves after five minutes. Bodies are limited to 8 KiB. Responses are private and no-store.",
+        "responses": {
+          "200": {
+            "description": "Claims or a completed change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueClaimList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/repos/{owner}/{name}/issues/{n}/claim": {
+      "put": {
+        "operationId": "claimIssue",
+        "summary": "Claim an issue",
+        "tags": [
+          "Issue claims"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            }
+          }
+        ],
+        "description": "Uses the signed-in account's GitHub connection and repository access. Claims remain GitHub comment markers that the CLI reads. A claim must name one of this account's live runs by run ID, chat:run-ID, native harness session, or harness:session; name run explicitly if several live runs match. Runs with the same native session share one claim or a named batch of at most three issues in one repository, including across run IDs. Heartbeat receipt time determines liveness, not progress. An exact retry keeps the claim; a concurrent save returns 409. Closed or released issues free the holder's slots on its next claim. PUT claim posts the marker, adds the GitHub viewer as assignee, and moves each project to In Progress. DELETE posts a release marker, removes that assignee, and moves each project to Ready or Todo. Board Done changes status only; it does not close the issue. A GitHub failure can leave an earlier comment, assignee, or project change completed; retry to finish the remaining changes. Missing GitHub access returns 403. List includes other holders but joins run IDs only from this account. Reads inspect at most 1,000 open issue and pull request records, and the latest 1,000 comments per issue, stopping at the latest claim/release marker; longer histories return 422. At most 2,048 saved claims per account; dead run entries expire after 24 hours and unfinished saves after five minutes. Bodies are limited to 8 KiB. Responses are private and no-store.",
+        "responses": {
+          "200": {
+            "description": "Claims or a completed change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueClaim"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueClaimRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "releaseIssueClaim",
+        "summary": "Release an issue claim",
+        "tags": [
+          "Issue claims"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            }
+          }
+        ],
+        "description": "Uses the signed-in account's GitHub connection and repository access. Claims remain GitHub comment markers that the CLI reads. A claim must name one of this account's live runs by run ID, chat:run-ID, native harness session, or harness:session; name run explicitly if several live runs match. Runs with the same native session share one claim or a named batch of at most three issues in one repository, including across run IDs. Heartbeat receipt time determines liveness, not progress. An exact retry keeps the claim; a concurrent save returns 409. Closed or released issues free the holder's slots on its next claim. PUT claim posts the marker, adds the GitHub viewer as assignee, and moves each project to In Progress. DELETE posts a release marker, removes that assignee, and moves each project to Ready or Todo. Board Done changes status only; it does not close the issue. A GitHub failure can leave an earlier comment, assignee, or project change completed; retry to finish the remaining changes. Missing GitHub access returns 403. List includes other holders but joins run IDs only from this account. Reads inspect at most 1,000 open issue and pull request records, and the latest 1,000 comments per issue, stopping at the latest claim/release marker; longer histories return 422. At most 2,048 saved claims per account; dead run entries expire after 24 hours and unfinished saves after five minutes. Bodies are limited to 8 KiB. Responses are private and no-store.",
+        "responses": {
+          "200": {
+            "description": "Claims or a completed change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueOk"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueRelease"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/repos/{owner}/{name}/issues/{n}/board": {
+      "put": {
+        "operationId": "setIssueBoard",
+        "summary": "Set an issue's project status",
+        "tags": [
+          "Issue claims"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            }
+          }
+        ],
+        "description": "Uses the signed-in account's GitHub connection and repository access. Claims remain GitHub comment markers that the CLI reads. A claim must name one of this account's live runs by run ID, chat:run-ID, native harness session, or harness:session; name run explicitly if several live runs match. Runs with the same native session share one claim or a named batch of at most three issues in one repository, including across run IDs. Heartbeat receipt time determines liveness, not progress. An exact retry keeps the claim; a concurrent save returns 409. Closed or released issues free the holder's slots on its next claim. PUT claim posts the marker, adds the GitHub viewer as assignee, and moves each project to In Progress. DELETE posts a release marker, removes that assignee, and moves each project to Ready or Todo. Board Done changes status only; it does not close the issue. A GitHub failure can leave an earlier comment, assignee, or project change completed; retry to finish the remaining changes. Missing GitHub access returns 403. List includes other holders but joins run IDs only from this account. Reads inspect at most 1,000 open issue and pull request records, and the latest 1,000 comments per issue, stopping at the latest claim/release marker; longer histories return 422. At most 2,048 saved claims per account; dead run entries expire after 24 hours and unfinished saves after five minutes. Bodies are limited to 8 KiB. Responses are private and no-store.",
+        "responses": {
+          "200": {
+            "description": "Claims or a completed change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueOk"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, GitHub access denied, missing issue, claim conflict, oversized request, unsupported history or board, request limit, GitHub failure, or unavailable storage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueBoard"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/keys": {
       "get": {
         "operationId": "listAccountKeys",
@@ -34077,6 +34715,187 @@
         "required": [
           "integrator"
         ]
+      },
+      "IssueClaim": {
+        "type": "object",
+        "required": [
+          "repo",
+          "issue",
+          "holder",
+          "run",
+          "claimed_at",
+          "last_progress_at"
+        ],
+        "properties": {
+          "repo": {
+            "type": "string",
+            "description": "GitHub owner/name."
+          },
+          "issue": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 18446744073709551615
+          },
+          "holder": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "The session in the GitHub marker, or an agent for older unnamed claims."
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "not": {
+                  "enum": [
+                    ".",
+                    ".."
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A matching run in this account, or null when none is known."
+          },
+          "claimed_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Unix milliseconds."
+          },
+          "last_progress_at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0,
+                "description": "Unix milliseconds."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest known comment, output, or progress time. A heartbeat alone is not progress."
+          }
+        }
+      },
+      "IssueClaimRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "holder"
+        ],
+        "properties": {
+          "holder": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "not": {
+              "enum": [
+                ".",
+                ".."
+              ]
+            }
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "not": {
+                  "enum": [
+                    ".",
+                    ".."
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "batch": {
+            "type": "array",
+            "maxItems": 3,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            },
+            "default": [],
+            "description": "Name every issue in the active batch, including this one. Omit for one issue or to keep the current named batch."
+          },
+          "force": {
+            "type": "boolean",
+            "default": false,
+            "description": "Replace another holder; never bypasses the batch limit."
+          }
+        }
+      },
+      "IssueClaimList": {
+        "type": "object",
+        "required": [
+          "claims"
+        ],
+        "properties": {
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueClaim"
+            }
+          }
+        }
+      },
+      "IssueRelease": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000,
+            "description": "At most 2,000 UTF-8 bytes."
+          }
+        }
+      },
+      "IssueBoard": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "in_progress",
+              "blocked",
+              "done"
+            ]
+          }
+        }
+      },
+      "IssueOk": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          }
+        }
       },
       "AppManagedKeySignin": {
         "type": "object",

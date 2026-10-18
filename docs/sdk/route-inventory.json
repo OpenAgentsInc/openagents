@@ -323,9 +323,34 @@
       "line": 28
     },
     {
+      "path": "/v1/repos/{owner}/{name}/claims",
+      "source": "crates/openagents-web/src/issue_claims.rs",
+      "line": 265
+    },
+    {
+      "path": "/v1/repos/{owner}/{name}/issues/{n}/claim",
+      "source": "crates/openagents-web/src/issue_claims.rs",
+      "line": 266
+    },
+    {
+      "path": "/v1/repos/{owner}/{name}/issues/{n}/board",
+      "source": "crates/openagents-web/src/issue_claims.rs",
+      "line": 270
+    },
+    {
       "path": "/v1/labs/documents/{document}/versions/{version}/timeline",
       "source": "crates/openagents-web/src/lab_card_view.rs",
       "line": 21
+    },
+    {
+      "path": "/v1/land",
+      "source": "crates/openagents-web/src/landing.rs",
+      "line": 366
+    },
+    {
+      "path": "/v1/land/{id}",
+      "source": "crates/openagents-web/src/landing.rs",
+      "line": 367
     },
     {
       "path": "/v1/computers/{name}/mac-jobs",
@@ -626,6 +651,16 @@
       "path": "/v1/projects/invitations/accept",
       "source": "crates/openagents-web/src/projects/members.rs",
       "line": 49
+    },
+    {
+      "path": "/v1/published-agents",
+      "source": "crates/openagents-web/src/published_agents.rs",
+      "line": 213
+    },
+    {
+      "path": "/v1/published-agents/{id}",
+      "source": "crates/openagents-web/src/published_agents.rs",
+      "line": 214
     },
     {
       "path": "/v1/runs",

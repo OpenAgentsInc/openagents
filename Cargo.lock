@@ -12839,6 +12839,7 @@ dependencies = [
  "coder-environment-setup",
  "coder-environment-verify",
  "coder-host",
+ "coder-lease",
  "coder-project",
  "coder-pty",
  "coder-scheduler",

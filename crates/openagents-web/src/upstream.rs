@@ -223,6 +223,7 @@ pub fn owned(path: &str) -> bool {
         || crate::account_schedules::owns(path)
         || crate::runs::owns(path)
         || crate::attention::owns(path)
+        || crate::issue_claims::owns(path)
         || crate::vault::owns(path)
         || crate::connections::owns(path)
         || crate::sign_in_keys::owns(path)

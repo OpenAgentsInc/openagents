@@ -49,6 +49,7 @@ openui-lang = { path = "../openui-lang" }
 axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }
+coder-lease = { path = "../coder-lease" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-cloud = { path = "../coder-cloud" }
 coder-engine-status = { path = "../coder-engine-status" }
