@@ -139,6 +139,10 @@ pub fn router(state: StateData) -> Router {
             "/chat2/{id}/checkpoint",
             get(chat::checkpoint).post(chat::publish_checkpoint),
         )
+        .route(
+            "/chat2/{id}/checkpoint/part",
+            axum::routing::post(chat::publish_checkpoint_part),
+        )
         // Retired edge sidecar: shipped apps still PUT multi-MB tails here.
         .route("/chat2/{id}/tail", axum::routing::put(retired_tail))
         .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))

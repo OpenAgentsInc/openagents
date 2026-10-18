@@ -712,6 +712,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "coder-access",
+ "http-body",
  "nostr",
  "openagents-doc",
  "openagents-proto",

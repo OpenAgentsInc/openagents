@@ -19,7 +19,12 @@ use tokio_postgres::Transaction;
 use uuid::Uuid;
 
 const ROW_LIMIT: usize = 1024 * 1024;
-const CHECKPOINT_LIMIT: usize = 32 * 1024 * 1024;
+/// Cloud Run refuses HTTP/1 requests over 32 MiB at its frontend (413), so a
+/// larger checkpoint arrives in parts of at most this size (#12137).
+const CHECKPOINT_PART_LIMIT: usize = 16 * 1024 * 1024;
+/// The largest checkpoint assembled from parts; it is held in memory once.
+const CHECKPOINT_TOTAL_LIMIT: usize = 96 * 1024 * 1024;
+const CHECKPOINT_PARTS_MAX: usize = CHECKPOINT_TOTAL_LIMIT / CHECKPOINT_PART_LIMIT;
 type Result<T> = std::result::Result<T, Failure>;
 #[derive(Debug)]
 pub struct Failure(pub(crate) StatusCode, pub(crate) &'static str);
@@ -400,7 +405,7 @@ pub async fn checkpoint(
         } else {
             StatusCode::OK
         },
-        object.bytes.slice(start..),
+        axum::body::Body::new(Chunks(object.bytes.slice(start..))),
     )
         .into_response();
     let h = response.headers_mut();
@@ -420,14 +425,104 @@ pub async fn checkpoint(
     }
     Ok(response)
 }
+/// A body sent in 1 MiB chunks without a length. Cloud Run refuses an
+/// HTTP/1 response over 32 MiB unless it streams (#12137).
+struct Chunks(Bytes);
+impl http_body::Body for Chunks {
+    type Data = Bytes;
+    type Error = std::convert::Infallible;
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<std::result::Result<http_body::Frame<Bytes>, Self::Error>>> {
+        if self.0.is_empty() {
+            return std::task::Poll::Ready(None);
+        }
+        let n = self.0.len().min(1024 * 1024);
+        std::task::Poll::Ready(Some(Ok(http_body::Frame::data(self.0.split_to(n)))))
+    }
+    fn is_end_stream(&self) -> bool {
+        self.0.is_empty()
+    }
+}
 pub async fn publish_checkpoint(
-    State(state): State<Arc<StateData>>,
-    Path(id): Path<String>,
+    state: State<Arc<StateData>>,
+    id: Path<String>,
+    Query(mut q): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<Value>> {
+    q.remove("upload");
+    accept_checkpoint(state, id, q, headers, body).await
+}
+/// One part of a checkpoint too large for one request. Its own path, so a
+/// server without parts refuses it instead of publishing a fragment.
+pub async fn publish_checkpoint_part(
+    state: State<Arc<StateData>>,
+    id: Path<String>,
     Query(q): Query<HashMap<String, String>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<Value>> {
+    if !q.contains_key("upload") {
+        return Err(bad("bad_part"));
+    }
+    accept_checkpoint(state, id, q, headers, body).await
+}
+async fn accept_checkpoint(
+    State(state): State<Arc<StateData>>,
+    Path(id): Path<String>,
+    q: HashMap<String, String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<Value>> {
     let who = identity(&state, &headers, &q, &id)?;
+    let body = match upload_part(&q)? {
+        None => body,
+        Some((upload, part, parts)) => {
+            if body.is_empty() || body.len() > CHECKPOINT_PART_LIMIT {
+                return Err(Failure(StatusCode::PAYLOAD_TOO_LARGE, "too_large"));
+            }
+            // Parts wait under orphan/, which the bucket lifecycle deletes
+            // after 7 days, so an abandoned upload leaves nothing behind.
+            let staged = |n: usize| format!("orphan/chat2-checkpoint/{id}/{upload}/{n}");
+            if part + 1 < parts {
+                let key = staged(part);
+                let s = state.clone();
+                let chat = id.clone();
+                in_room(&state, &id, async move {
+                    let mut db = s.database.connect().await?;
+                    let tx = db.transaction().await?;
+                    claim(&tx, &chat, &who.account).await?;
+                    tx.commit().await?;
+                    s.bucket
+                        .put(&key, body, "application/octet-stream")
+                        .await
+                        .map_err(|_| Failure(StatusCode::SERVICE_UNAVAILABLE, "unavailable"))
+                })
+                .await?;
+                return Ok(Json(json!({"ok":true,"part":part})));
+            }
+            let mut whole = Vec::with_capacity(CHECKPOINT_PART_LIMIT * parts);
+            for n in 0..part {
+                let piece = state
+                    .bucket
+                    .get(&staged(n))
+                    .await
+                    .map_err(|_| Failure(StatusCode::SERVICE_UNAVAILABLE, "unavailable"))?
+                    .ok_or(Failure(StatusCode::CONFLICT, "missing_part"))?;
+                whole.extend_from_slice(&piece.bytes);
+            }
+            whole.extend_from_slice(&body);
+            if whole.len() > CHECKPOINT_TOTAL_LIMIT {
+                return Err(Failure(StatusCode::PAYLOAD_TOO_LARGE, "too_large"));
+            }
+            for n in 0..part {
+                let _ = state.bucket.delete(&staged(n)).await;
+            }
+            Bytes::from(whole)
+        }
+    };
     let covered = q
         .get("seqCovered")
         .and_then(|s| s.parse::<i64>().ok())
@@ -445,7 +540,7 @@ pub async fn publish_checkpoint(
     if body.is_empty() {
         return Err(bad("empty"));
     }
-    if body.len() > CHECKPOINT_LIMIT {
+    if body.len() > CHECKPOINT_TOTAL_LIMIT {
         return Err(Failure(StatusCode::PAYLOAD_TOO_LARGE, "too_large"));
     }
     let s = state.clone();
@@ -467,6 +562,29 @@ pub async fn publish_checkpoint(
         tx.commit().await?;
         Ok(Json(json!({"ok":true,"seqFloor":covered,"pruned":pruned})))
     }).await
+}
+
+/// `upload`, `part` and `parts` of a checkpoint sent in parts, in order;
+/// `None` for a checkpoint sent whole.
+fn upload_part(q: &HashMap<String, String>) -> Result<Option<(String, usize, usize)>> {
+    let Some(upload) = q.get("upload") else {
+        return Ok(None);
+    };
+    let number = |key: &str| q.get(key).and_then(|v| v.parse::<usize>().ok());
+    match (number("part"), number("parts")) {
+        (Some(part), Some(parts))
+            if !upload.is_empty()
+                && upload.len() <= 64
+                && upload
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                && part < parts
+                && parts <= CHECKPOINT_PARTS_MAX =>
+        {
+            Ok(Some((upload.clone(), part, parts)))
+        }
+        _ => Err(bad("bad_part")),
+    }
 }
 
 pub async fn websocket(
@@ -585,5 +703,47 @@ async fn session(
                 match responses {Ok(frames)=>{for f in frames{if !send(&mut socket,f).await{return;}}},Err(_)=>break}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http_body::Body as _;
+
+    fn query(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn checkpoint_parts_are_bounded() {
+        assert!(upload_part(&query(&[])).unwrap().is_none());
+        let ok = query(&[("upload", "u-1"), ("part", "2"), ("parts", "3")]);
+        assert_eq!(upload_part(&ok).unwrap(), Some(("u-1".into(), 2, 3)));
+        for bad in [
+            query(&[("upload", "u-1"), ("part", "3"), ("parts", "3")]),
+            query(&[("upload", "u-1"), ("part", "0"), ("parts", "7")]),
+            query(&[("upload", "../x"), ("part", "0"), ("parts", "2")]),
+            query(&[("upload", ""), ("part", "0"), ("parts", "2")]),
+            query(&[("upload", "u-1"), ("part", "0")]),
+        ] {
+            assert!(upload_part(&bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn large_checkpoints_stream_without_a_length() {
+        let bytes = Bytes::from(vec![7u8; 3 * 1024 * 1024 + 5]);
+        let body = Chunks(bytes.clone());
+        assert_eq!(body.size_hint().exact(), None);
+        let mut body = std::pin::pin!(body);
+        let mut out = Vec::new();
+        while let Some(frame) = std::future::poll_fn(|cx| body.as_mut().poll_frame(cx)).await {
+            out.extend_from_slice(frame.unwrap().data_ref().unwrap());
+        }
+        assert_eq!(out, bytes);
     }
 }
