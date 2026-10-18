@@ -223,6 +223,9 @@ fn token(c: char) -> String {
 }
 impl Fixture {
     async fn start() -> Self {
+        Self::start_with_grace(coder_sync::server::auth::OUTAGE_GRACE).await
+    }
+    async fn start_with_grace(grace: Duration) -> Self {
         let revoke = Arc::new(AtomicBool::new(false));
         let unavailable = Arc::new(AtomicBool::new(false));
         let calls = Arc::new(AtomicUsize::new(0));
@@ -248,8 +251,11 @@ impl Fixture {
             devices: Default::default(),
             auth: AuthMode::OpenAgents,
             accounts: Some(
-                Accounts::new(openagents::Deployment::new(&format!("{api}/v1"), &api).unwrap())
-                    .unwrap(),
+                Accounts::with_grace(
+                    openagents::Deployment::new(&format!("{api}/v1"), &api).unwrap(),
+                    grace,
+                )
+                .unwrap(),
             ),
             revision: "auth-fixture".into(),
             push: None,
@@ -347,35 +353,35 @@ async fn every_request_verifies_authority_and_ignores_forged_account_headers() {
     );
 }
 #[tokio::test]
-async fn outages_refuse_access_without_accepting_a_cached_identity() {
+async fn outages_accept_a_token_confirmed_within_the_grace_and_refuse_an_older_one() {
+    let f = Fixture::start_with_grace(Duration::from_secs(2)).await;
+    let path = format!("/chat2/{}/rows", uuid::Uuid::new_v4());
+    let status = |t: String| {
+        let request = f.get(&path, Some(t));
+        async move { request.send().await.unwrap().status() }
+    };
+    assert_eq!(status(token('a')).await, 200);
+    f.unavailable.store(true, Ordering::SeqCst);
+    assert_eq!(status(token('a')).await, 200, "within the grace");
+    assert_eq!(status(token('c')).await, 503, "never confirmed");
+    tokio::time::sleep(Duration::from_millis(2200)).await;
+    assert_eq!(status(token('a')).await, 503, "confirmed too long ago");
+    f.unavailable.store(false, Ordering::SeqCst);
+    assert_eq!(status(token('a')).await, 200);
+}
+#[tokio::test]
+async fn an_explicit_refusal_is_never_overridden_by_the_cache() {
     let f = Fixture::start().await;
     let path = format!("/chat2/{}/rows", uuid::Uuid::new_v4());
-    assert_eq!(
-        f.get(&path, Some(token('a')))
-            .send()
-            .await
-            .unwrap()
-            .status(),
-        200
-    );
+    let status = |t: String| {
+        let request = f.get(&path, Some(t));
+        async move { request.send().await.unwrap().status() }
+    };
+    assert_eq!(status(token('a')).await, 200);
+    f.revoke.store(true, Ordering::SeqCst);
+    assert_eq!(status(token('a')).await, 401);
     f.unavailable.store(true, Ordering::SeqCst);
-    assert_eq!(
-        f.get(&path, Some(token('a')))
-            .send()
-            .await
-            .unwrap()
-            .status(),
-        503
-    );
-    f.unavailable.store(false, Ordering::SeqCst);
-    assert_eq!(
-        f.get(&path, Some(token('a')))
-            .send()
-            .await
-            .unwrap()
-            .status(),
-        200
-    );
+    assert_eq!(status(token('a')).await, 503, "the refusal evicted the entry");
 }
 #[tokio::test]
 async fn websocket_connects_are_account_scoped_and_revocation_closes_all_room_types() {

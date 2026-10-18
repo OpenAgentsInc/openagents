@@ -160,7 +160,7 @@ async fn health(State(state): State<Arc<StateData>>) -> Response {
         )
             .into_response();
     }
-    Json(serde_json::json!({"ok":true, "service":"coder-sync", "auth": match state.auth { AuthMode::Disabled=>"disabled", AuthMode::Dev=>"dev", AuthMode::OpenAgents=>"openagents" }, "revision":state.revision})).into_response()
+    Json(serde_json::json!({"ok":true, "service":"coder-sync", "auth": match state.auth { AuthMode::Disabled=>"disabled", AuthMode::Dev=>"dev", AuthMode::OpenAgents=>"openagents" }, "revision":state.revision, "cached_admissions":auth::cached_admissions()})).into_response()
 }
 
 /// Upper bound on bytes read from a body we are about to refuse. Cloud Run
