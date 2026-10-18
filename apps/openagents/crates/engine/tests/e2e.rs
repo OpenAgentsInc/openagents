@@ -697,13 +697,14 @@ async fn session_status_transitions_idle_working_idle() {
 #[tokio::test]
 async fn interrupt_stamps_streaming_entry_aborted() {
     let dir = tempfile::tempdir().unwrap();
+    let step_delay = Duration::from_millis(5);
     let core = assemble(
         dir.path(),
         Arc::new(ScriptedHarness {
             script: vec![AgentEvent::TextDelta {
                 text: "partial output".into(),
             }],
-            step_delay: Duration::from_millis(5),
+            step_delay,
             hang_until_interrupt: true,
         }),
     );
@@ -728,19 +729,30 @@ async fn interrupt_stamps_streaming_entry_aborted() {
         "streaming entry",
     )
     .await;
+    // Finish the harness's scripted delay, then keep the interrupt settle
+    // timer frozen while the run actor publishes its terminal state.
+    tokio::time::pause();
+    tokio::time::advance(step_delay).await;
     queue_as_viewer(
         handle.doc(),
         "cmd-int-1",
         SessionCommandPayload::Interrupt {},
     );
 
+    // Yield without advancing the paused clock. The run can finish before
+    // the separate interrupt-command acknowledgement becomes visible.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while core.sessions.session_status(CHAT).map(|s| s.status) != Some(SessionStatus::Idle) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for interrupted run to settle"
+        );
+        tokio::task::yield_now().await;
+    }
+    tokio::time::resume();
     wait_for(
-        || {
-            entries(&core)
-                .iter()
-                .any(|e| e.status == Some(MessageStatus::Aborted))
-        },
-        "aborted stamp",
+        || command_status(&core, "cmd-int-1") == Some((SessionCommandStatus::Applied, None)),
+        "interrupt acknowledgement",
     )
     .await;
 
@@ -765,6 +777,7 @@ async fn interrupt_stamps_streaming_entry_aborted() {
         core.sessions.session_status(CHAT).map(|s| s.status),
         Some(SessionStatus::Idle)
     );
+    core.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
