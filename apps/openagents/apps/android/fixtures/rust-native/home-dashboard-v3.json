@@ -1,0 +1,35 @@
+{
+  "schema": "rust-native.view.v3",
+  "instance": "home-dashboard-demo",
+  "revision": 1,
+  "root": {
+    "key": "home",
+    "style": {"gap": "md", "padding_points": [20, 20, 20, 20]},
+    "element": {
+      "kind": "stack",
+      "props": {
+        "axis": "vertical",
+        "children": [
+          {"key": "home-title", "style": {"text_size": 26, "weight": "bold"}, "element": {"kind": "text", "props": {"value": "Home", "role": "heading"}}},
+          {"key": "welcome", "style": {}, "element": {"kind": "text", "props": {"value": "Pick up where you left off", "role": "body"}}},
+          {
+            "key": "chat-homes",
+            "style": {"gap_points": 10},
+            "element": {
+              "kind": "list",
+              "props": {
+                "label": "Your chats",
+                "children": [
+                  {"key": "home-chat-one", "style": {"background": {"red": 34, "green": 39, "blue": 46, "alpha": 255}, "radius": 12, "padding_points": [16, 16, 16, 16]}, "element": {"kind": "button", "props": {"label": "Planning a weekend trip", "enabled": true, "intent": {"action": "open_chat", "chat": "fixture-one"}}}},
+                  {"key": "home-chat-two", "style": {"background": {"red": 34, "green": 39, "blue": 46, "alpha": 255}, "radius": 12, "padding_points": [16, 16, 16, 16]}, "element": {"kind": "button", "props": {"label": "Ideas for a new project", "enabled": true, "intent": {"action": "open_chat", "chat": "fixture-two"}}}}
+                ]
+              }
+            }
+          },
+          {"key": "new-chat", "style": {}, "element": {"kind": "button", "props": {"label": "New chat", "enabled": true, "intent": {"action": "new_chat"}}}},
+          {"key": "open-dashboard", "style": {}, "element": {"kind": "button", "props": {"label": "Open dashboard", "enabled": true, "intent": {"action": "open_dashboard"}}}}
+        ]
+      }
+    }
+  }
+}

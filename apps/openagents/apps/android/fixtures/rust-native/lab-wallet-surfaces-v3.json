@@ -1,0 +1,21 @@
+{
+  "schema": "rust-native.view.v3",
+  "instance": "lab-wallet-demo",
+  "revision": 1,
+  "root": {
+    "key": "feature-cards",
+    "style": {"gap_points": 16},
+    "element": {
+      "kind": "stack",
+      "props": {
+        "axis": "vertical",
+        "children": [
+          {"key": "lab-card", "style": {"min_height": 160}, "element": {"kind": "surface", "props": {"resource": "lab:comparison", "label": "Lab comparison"}}},
+          {"key": "wallet-card", "style": {"min_height": 120}, "element": {"kind": "surface", "props": {"resource": "wallet:activity", "label": "Wallet activity"}}},
+          {"key": "inspect-lab", "style": {}, "element": {"kind": "button", "props": {"label": "Inspect result", "enabled": true, "intent": {"action": "inspect_lab"}}}},
+          {"key": "wallet-details", "style": {}, "element": {"kind": "button", "props": {"label": "Wallet details", "enabled": true, "intent": {"action": "wallet_details"}}}}
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "rust-native.view.v3",
+  "instance": "approval-settings-demo",
+  "revision": 4,
+  "root": {
+    "key": "approval-sheet",
+    "style": {},
+    "element": {
+      "kind": "dialog",
+      "props": {
+        "label": "Review access",
+        "open": true,
+        "on_close": {"action": "dismiss"},
+        "children": [
+          {"key": "approval-copy", "style": {}, "element": {"kind": "text", "props": {"value": "Choose what this connection can do.", "role": "body"}}},
+          {"key": "project-choice", "style": {}, "element": {"kind": "choice", "props": {"label": "Read project files", "selected": true, "enabled": true, "intent": {"action": "set_permission", "value": "read"}, "children": []}}},
+          {"key": "edit-choice", "style": {}, "element": {"kind": "choice", "props": {"label": "Edit project files", "selected": false, "enabled": true, "intent": {"action": "set_permission", "value": "edit"}, "children": []}}},
+          {"key": "approval-confirmation", "style": {}, "element": {"kind": "field", "props": {"label": "Connection name", "value": "", "placeholder": "Name this connection", "secret": false, "multiline": false, "enabled": true, "max_bytes": 120, "on_change": {"action": "rename_connection"}}}},
+          {"key": "approve-access", "style": {}, "element": {"kind": "button", "props": {"label": "Approve", "enabled": true, "intent": {"action": "approve"}}}}
+        ]
+      }
+    }
+  }
+}

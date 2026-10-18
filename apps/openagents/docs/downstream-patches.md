@@ -679,3 +679,9 @@ links remain readable. Upstream fixes now require manual ports.
   `engine/src/rpc/run_commands.rs` maps the RPC body. `host_rpc` checks account,
   native rights, and definition-based command grants; the device-channel adapter
   preserves the request ID when delivery is uncertain.
+- [OpenAgents #12088](https://github.com/OpenAgentsInc/openagents/issues/12088):
+  The Android shell adapter renders validated Rust Native views with Android
+  framework Views, sends stable-key activations and bounded field edits to
+  Rust, and reuses keyed controls across revisions. Bounded fixtures cover
+  Agent Lab, Home dashboards, approval and settings forms, and Lab and wallet
+  surfaces.
