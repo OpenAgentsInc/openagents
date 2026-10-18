@@ -58,6 +58,7 @@ internal class AndroidRootPresentation(
     private var sessions: AndroidSessionsHost? = null
     private var settings: SettingsHost? = null
     private var recovery: RecoveryHost? = null
+    private var linkReview: AndroidLinkReviewMount? = null
     private var microphoneRequest: AutoCloseable? = null
     private var voiceCapsule: SemanticViewAdapter? = null
     private var voiceScreen: SemanticViewAdapter? = null
@@ -168,6 +169,7 @@ internal class AndroidRootPresentation(
             // Saved-history updates also feed the existing Rust layout, without native message rows.
             owner.refreshTranscript(requireNotNull(layout), next.generation, next.contentRevision)
         }
+        if (next.route != AndroidHostRoute.LINK_REVIEW) { linkReview?.close(); linkReview = null }
         val composerFrame = next.composer?.frame()
         composerFrame?.let { composer?.render(AndroidComposerFeature.frame(it)) }
         when (next.route) {
@@ -200,6 +202,21 @@ internal class AndroidRootPresentation(
                         { guarded { owner.selectDefaultChat(); panes.showSession() } },
                         { semantics(AndroidHostSurface.RECOVERY) },
                     ).also { it.start(android.os.Build.MODEL) }
+                }
+            }
+            AndroidHostRoute.LINK_REVIEW -> {
+                recovery?.close(); recovery = null
+                sessions?.close(); sessions = null
+                settings?.close(); settings = null
+                settingsActions?.close(); settingsActions = null
+                chatContainer.visibility = View.GONE; routeContainer.visibility = View.VISIBLE
+                next.linkReview?.let { core ->
+                    if (linkReview?.id != core.id()) {
+                        linkReview?.close()
+                        linkReview = AndroidLinkReviewMount(activity, routeContainer, core, application.presentationWork,
+                            semantics(AndroidHostSurface.LINK_REVIEW),
+                            { guarded { owner.dismissLinkReview(core) } }, ::showFailure).also { it.start() }
+                    } else linkReview?.render()
                 }
             }
             AndroidHostRoute.VOICE -> {
@@ -463,6 +480,11 @@ internal class AndroidRootPresentation(
         }
     }
 
+    fun offerAppLink(raw: String) {
+        if (closed) return
+        guarded { owner.offerAppLink(raw); panes.showSession() }
+    }
+
     fun handleBack(): Boolean {
         ui()
         if (snapshot?.route != AndroidHostRoute.CHAT) { guarded { owner.navigate(AndroidHostRoute.CHAT) }; return true }
@@ -472,6 +494,8 @@ internal class AndroidRootPresentation(
         if (closed) return
         foreground = false
         microphoneRequest?.close(); microphoneRequest = null
+        snapshot?.linkReview?.let { runCatching { owner.dismissLinkReview(it) } }
+        linkReview?.close(); linkReview = null
         recovery?.background()
         settings?.close(); settings = null
         sessions?.retire()
@@ -504,6 +528,7 @@ internal class AndroidRootPresentation(
     }
     private fun showFailure() { notice.text = "Couldn't open this screen. Try again."; notice.visibility = View.VISIBLE }
     private fun closeRoutes() {
+        linkReview?.close(); linkReview = null
         recovery?.close(); recovery = null
         sessions?.close(); sessions = null
         settings?.close(); settings = null

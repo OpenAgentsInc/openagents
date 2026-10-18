@@ -1045,3 +1045,11 @@ links remain readable. Upstream fixes now require manual ports.
   and Android clock origins. The C2 unchanged-prefix producer correction and
   matching binding generation remain pending. New sample-cache fixtures are
   authored but unrun.
+
+- #12100: Route verified HTTPS entry intents through E3's existing Rust link
+  classifier into an account-fenced Rust Native review. Pairing, website sign-in,
+  and project invitation mutations require a current acknowledged confirmation;
+  preview alone never approves them. Rust retains one bounded cold-start link,
+  retires old review actions on account/navigation changes, and fences late
+  results. Android mounts the review and forwards identity-only events. New
+  confirmation/replacement fixtures, bindings, and integrated checks are unrun.

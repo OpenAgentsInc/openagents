@@ -13,6 +13,7 @@ import uniffi.openagents_core.PushPrefs
 private const val MAX_PENDING_OWNER_NOTES = 16
 
 class OpenAgentsApplication : Application(), AndroidPushClientProvider {
+    internal val presentationWork = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     private val stateLock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val pendingOwnerNotes = ArrayDeque<OwnerNoteView>()

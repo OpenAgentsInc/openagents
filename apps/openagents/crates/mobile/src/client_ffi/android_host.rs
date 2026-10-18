@@ -1,5 +1,7 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
+mod links;
 use super::*;
+pub use links::CoreAndroidLinkReview;
 use openagents_account::openagents::Deployment;
 use std::collections::BTreeMap;
 use std::sync::{
@@ -64,6 +66,7 @@ pub enum AndroidHostRoute {
     Settings,
     Recovery,
     Voice,
+    LinkReview,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -118,6 +121,7 @@ pub struct AndroidHostSnapshot {
     pub selection: Option<AndroidHostSelection>,
     pub active_voice: Option<Arc<VoiceCall>>,
     pub can_start_voice: bool,
+    pub link_review: Option<Arc<CoreAndroidLinkReview>>,
 }
 enum Content {
     Cloud(Arc<CoreCloudChat>),
@@ -137,6 +141,8 @@ enum Content {
     },
 }
 struct State {
+    pending_link: Option<(Option<u64>, String)>,
+    link_review: Option<Arc<CoreAndroidLinkReview>>,
     voice_notice: Option<String>,
     active_voice: Option<Arc<VoiceCall>>,
     selection: Option<AndroidHostSelection>,
@@ -223,6 +229,16 @@ impl CoreAndroidHost {
         };
         let snapshot = account.snapshot();
         if snapshot.generation != state.generation {
+            if let Some(review) = state.link_review.take() {
+                review.retire();
+            }
+            if state
+                .pending_link
+                .as_ref()
+                .is_some_and(|(expected, _)| expected.is_some())
+            {
+                state.pending_link = None;
+            }
             if let Some(call) = state.active_voice.take() {
                 call.stop();
             }
@@ -275,6 +291,24 @@ impl CoreAndroidHost {
             }
             state.client = Some(core);
         }
+        if state.route != AndroidHostRoute::Recovery
+            && matches!(snapshot.state, AccountState::SignedIn { .. })
+        {
+            if let Some(client) = state.client.clone() {
+                if let Some((expected, raw)) = state.pending_link.take() {
+                    if expected.is_none_or(|generation| generation == state.generation) {
+                        state.link_review = Some(CoreAndroidLinkReview::new(
+                            account.clone(),
+                            client,
+                            raw,
+                            self.events.0.clone(),
+                        )?);
+                        state.route = AndroidHostRoute::LinkReview;
+                        state.apply_visibility();
+                    }
+                }
+            }
+        }
         Ok(())
     }
     fn replace(
@@ -297,6 +331,9 @@ impl CoreAndroidHost {
         }
         if let Some(previous) = state.composer.take() {
             previous.dispose();
+        }
+        if let Some(review) = state.link_review.take() {
+            review.retire();
         }
         state.retire_content();
         state.content = content;
@@ -354,6 +391,8 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                pending_link: None,
+                link_review: None,
                 voice_notice: None,
                 active_voice: None,
                 selection: None,
@@ -393,6 +432,8 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                pending_link: None,
+                link_review: None,
                 voice_notice: None,
                 active_voice: None,
                 selection: None,
@@ -471,7 +512,49 @@ impl CoreAndroidHost {
             selection: s.selection.clone(),
             active_voice: s.active_voice.clone(),
             can_start_voice: s.active_voice.is_none() && s.voice_target().is_some(),
+            link_review: s.link_review.clone(),
         })
+    }
+    /// One bounded pending link can survive initial sign-in, without moving codes into Kotlin state.
+    pub fn offer_app_link(&self, raw: String) -> CoreResult<bool> {
+        let Some(account) = &self.account else {
+            return Ok(false);
+        };
+        if dispatch_android_app_link(raw.clone()).is_none() {
+            return Ok(false);
+        }
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        state.begin_navigation()?;
+        if let Some(review) = state.link_review.take() {
+            review.retire();
+        }
+        let expected = matches!(account.snapshot().state, AccountState::SignedIn { .. })
+            .then_some(state.generation);
+        state.pending_link = Some((expected, raw));
+        drop(state);
+        self.events.0.on_android_host_changed();
+        Ok(true)
+    }
+    pub fn dismiss_link_review(&self, review: Arc<CoreAndroidLinkReview>) -> CoreResult<bool> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if !state
+            .link_review
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, &review))
+        {
+            return Ok(false);
+        }
+        review.retire();
+        state.link_review = None;
+        if state.route == AndroidHostRoute::LinkReview {
+            state.route = AndroidHostRoute::Chat;
+        }
+        state.apply_visibility();
+        drop(state);
+        self.events.0.on_android_host_changed();
+        Ok(true)
     }
     /// Permission callbacks carry the account/content that requested the microphone.
     pub fn start_host_voice(
@@ -491,6 +574,10 @@ impl CoreAndroidHost {
             return Err(CoreError::Closed);
         }
         let (client, device) = state.voice_target().ok_or(CoreError::Closed)?;
+        state.begin_navigation()?;
+        if let Some(review) = state.link_review.take() {
+            review.retire();
+        }
         let call = client.start_voice(device, None, media, listener);
         state.voice_notice = None;
         state.active_voice = Some(call.clone());
@@ -787,6 +874,14 @@ impl CoreAndroidHost {
         }
         if route == AndroidHostRoute::Voice && s.active_voice.is_none() {
             return Err(CoreError::Closed);
+        }
+        if route == AndroidHostRoute::LinkReview && s.link_review.is_none() {
+            return Err(CoreError::Closed);
+        }
+        if route != AndroidHostRoute::LinkReview {
+            if let Some(review) = s.link_review.take() {
+                review.retire();
+            }
         }
         s.route = route;
         s.apply_visibility();
