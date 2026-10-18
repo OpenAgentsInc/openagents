@@ -808,3 +808,10 @@ links remain readable. Upstream fixes now require manual ports.
   app_links`) and an end-to-end rerun of `scripts/android/build-core.sh` were
   not run by this chat. Release-certificate verification remains an owner-only
   step in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
+
+- OpenAgents #12085 C2 validation starts from final C1 docs checkpoint
+  `065446b4ce00676bc916666a56cc402d5f80ace6` and ports only the C2 transcript
+  interaction delta. It preserves the C1 Canvas renderer and adds the borrowed
+  viewport snapshot/observer hook and ordering fixture. B1's Gradle source roots
+  include the C2 main, JVM, and Android-test sources. The focused compile, JVM,
+  and Android-test source checks are pending coordinator admission.
