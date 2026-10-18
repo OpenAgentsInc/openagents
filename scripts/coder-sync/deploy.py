@@ -128,6 +128,7 @@ BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "nips/openagents/schemas", "deploy/co
         'model-access',
         'nostr',
         'nostr-transport',
+        'oa-copy',
         'openagents-chat',
         'openagents-connect',
         'openagents-dashboard',
