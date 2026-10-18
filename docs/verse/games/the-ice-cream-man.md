@@ -9,7 +9,9 @@ MVP is built (`crates/icecream-rules`,
 [Grow Little Bunny](grow-little-bunny.md) was. The designer's second round
 (#11667: touch sprint and item switching, no zoom, fresh builds, the
 jumpscare, the speedrun timer, install as a web app) is live; see
-[The second round](#the-second-round). The game has no studio: it is
+[The second round](#the-second-round). The multiplayer, practice, and admin
+IAP release is specified in [Multiplayer](#multiplayer) and is not yet
+implemented. The game has no studio: it is
 published by OpenAgents, Inc., on its own pages beside the game. A Roblox version follows the
 Verse one, so controls, camera and feel copy Roblox from the start. Numbers
 marked *tunable* are starting values for playtests, not measured results.
@@ -211,9 +213,241 @@ squelchy fudge shots; comic fart sounds; a "bloop" for sprinkles.
 
 ## Multiplayer
 
-MVP is single player. Next, 1–4 players in one Airbnb over NIP-MV presence
-(the same path as Grow Little Bunny's meadow), with the Ice Cream Man's
-state run by the host and mirrored to the others.
+Specification: 2026-10-18, based on the designer's next round of feedback.
+This section specifies the next release; it does not describe shipped
+multiplayer or purchases. The browser MVP remains single player. The next
+release adds 1–4 player co-op, a lobby browser, votes for mode and difficulty,
+free map exploration, and an optional **Admin commands** in-app purchase
+(IAP). There is no premium membership or subscription. Multiplayer, voting,
+and practice are free.
+
+### Lobbies and joining games
+
+The start screen offers **Play solo**, **Find a game**, and **Create a game**.
+Solo keeps working offline. Online players share one generated Airbnb and
+work together against the Ice Cream Man; nobody plays as him in this release.
+
+- The creator chooses a player limit of 1, 2, 3, or 4, and **Public** or
+  **Invite only**. Public lobbies appear in the browser; invite-only lobbies
+  require their join code or link. The limit includes the creator.
+- Each browser row shows the lobby name, occupied slots and limit (for
+  example, **2/4 players**), and status. Only waiting lobbies accept new
+  players. A full, started, or closed lobby explains why joining failed and
+  offers **Find another game**.
+- A lobby shows its roster, player limit, both ballots, vote counts, and
+  each player's **Ready** state. Players can change their votes until the
+  creator starts the game. The creator can start below the player limit
+  when every connected player is ready, including a one-player lobby.
+- Joining, leaving, or changing a ballot clears everyone's ready state.
+  Changing the player limit also clears readiness; the creator cannot
+  lower the limit below the current player count. Starting locks the roster,
+  votes, and player limit together, so a simultaneous join cannot overfill it.
+- There is no admission of new players during a run. Reconnecting players
+  reclaim their own reserved slot. **Play again** returns the group to its
+  lobby, clears readiness, and opens fresh votes; it never restarts a run
+  with the previous run's practice or admin state.
+
+### Voting for mode and difficulty
+
+Every connected player, including the creator, has one vote on each ballot:
+
+| Ballot | Choices | Default if nobody votes |
+|---|---|---|
+| Game mode | **Normal match**, **Practice match** | Normal match |
+| Difficulty | **Easy**, **Normal**, **Hard** | Normal |
+
+The option with the most votes wins; it does not need more than half of all
+players. The creator and purchasers have no extra votes or override. When
+options tie, the host randomly chooses among only the tied leaders and
+broadcasts the result before loading. Disconnected players' votes are removed
+before start. Abstaining players can still mark themselves ready.
+
+Difficulty uses the existing version 5 presets above and applies to the
+whole group. In practice it selects the map size, layout, keys, and puzzle
+rules; enemy settings remain inactive. For example, two Hard votes, one
+Normal vote, and one Easy vote select Hard. A 2–2 mode vote uses the tie
+rule. Show both final choices before the countdown. Players cannot change
+difficulty from their pause menu during a shared run.
+
+### Shared normal match
+
+The host runs the rules and mirrors the world to the other players over the
+existing NIP-MV path, following Grow Little Bunny's multiplayer model. All
+players receive the same seed, rules version, selected difficulty, and world
+state. Clients send inputs; the host resolves hits, pickups, enemy behavior,
+puzzle presses, health, keys, the exit, and the result.
+
+- Keys, puzzle progress, open doors, and enemy health are shared. A key
+  collected by one player counts for the team. Simultaneous pickup requests
+  consume an item once. Health, ammo, inventory, hiding, and damage remain
+  per player; normal pickups go to the player who collects them.
+- Keep the selected difficulty's enemy tuning for the first multiplayer
+  release; do not silently multiply enemy health or spawns by player count.
+  Measure co-op balance before introducing separate published presets.
+- Players cannot damage teammates. Enemies choose among living, visible
+  players using the existing sight, noise, hiding, and search rules.
+- Scooped players spectate surviving teammates. There are no revives in
+  this release. All players scooped ends the run in a loss.
+- One living player completing the three-key door escape, or the team
+  melting the Ice Cream Man, wins the run for everyone still participating,
+  including scooped spectators. Leaving forfeits that player's result.
+- Record multiplayer best times separately by difficulty and starting player
+  count; never replace solo best times. A disconnected participant who
+  misses the finish receives no win. The run card shows the team result
+  and each player's own statistics. The Sprinkle Staff free-roam option
+  follows a normal victory, but adds no further wins.
+
+A client disconnect reserves its slot for 60 seconds. Its avatar stays in
+the world, stops moving, and remains vulnerable; the world does not pause.
+Reconnect restores the current authoritative state, not an earlier save.
+After 60 seconds the player leaves the run. A creator leaving a waiting
+lobby transfers ownership to the earliest remaining player. Losing the
+simulation host during a run ends it with **Connection lost**, no win, and
+an option to regroup in a lobby; host migration is outside this release.
+A connection failure must never appear as a gameplay loss or practice
+completion. All timing values in this section are playtest defaults.
+
+### Practice matches
+
+Practice has two explicit variants so map exploration and fighting with
+admin commands both behave as requested:
+
+| Variant | Entry | Enemies | Finish | Counts as a win or best time |
+|---|---|---|---|---|
+| Map exploration | Practice match wins the mode vote | No Ice Cream Man or hostile minions | Collect the keys, solve the puzzle, and leave through the front door | No |
+| Admin-assisted | A purchased command is accepted during a normal match | Existing enemies and normal spawning continue unless a command changes them | Normal escape or melting objective | No |
+
+Map exploration uses the same generated map, movement, tools, pickups, keys,
+puzzle, and door interaction as a normal match. Disable the Ice Cream Man,
+all hostile minions, and every scheduled or triggered hostile spawn for the
+entire run. Disable the door's nearby-enemy guard check, but keep its unlock
+hold. Enemy-dependent weapon unlocks are not required to explore or escape.
+Players can leave early with **Return to lobby**, which is not a completion.
+
+Both variants show **Practice match — wins don't count** throughout play.
+Completing the applicable objective shows exactly **Practice completed**,
+with **Play again** and **Return to lobby**. Do not show **You won**, **New
+best!**, grant win-based unlocks, or update wins, best times, achievements,
+or leaderboard submissions. A practice timer can show elapsed time without
+saving a record. Admin-assisted play can still end in a scooped loss;
+map exploration has no enemy-caused loss. Existing post-victory free roam
+remains a separate state and does not become a second practice completion.
+
+### Admin commands in-app purchase
+
+**Admin commands** is a proposed one-time, non-consumable IAP for the native
+iPhone and iPad app. The store supplies the displayed price; the owner sets
+its product ID and price before release. Do not call it premium, sell a
+subscription, or require it to join a game. Browser and Chromebook players
+can join the same games without purchasing. Selling or restoring the IAP
+on the web is outside this release.
+
+The purchase unlocks a small command panel for its owner, not moderation
+powers over other people. Initial commands are **Give myself a weapon**,
+**Refill my ammo**, **Heal myself**, **Freeze the Ice Cream Man** for the
+existing fudge-freeze duration, and **Teleport to the starting room**.
+Use a fixed list of existing weapons. No arbitrary code, kick, ban,
+other-player targeting, or ability to submit a win is included. Buying the
+IAP does not itself change a match's result eligibility.
+
+1. The native store flow supports buying and **Restore purchases**. A
+   canceled, pending, failed, or unverified transaction grants no commands.
+   Validate the purchase before accepting a command; a browser flag or
+   local storage value cannot prove ownership. Refund or revocation removes
+   access when verified, without making an existing practice run eligible.
+2. Before a player readies up, disclose that a normal lobby with an entitled
+   player permits admin use and that use switches the whole run to practice.
+   Joining or restoring access updates this disclosure and clears readiness.
+   The first command in a normal match asks its purchaser: **Use this command?
+   This match will become practice for everyone. Wins won't count.**
+3. After confirmation, the host validates ownership, the command, and its
+   target. In one ordered update it marks the entire match as practice,
+   removes result eligibility for every player, broadcasts the change, and
+   applies the command. Clients show **Admin commands used — practice match**.
+   Unauthorized or invalid commands do not alter the match.
+4. Practice is permanent for that run. Turning commands off, their owner
+   leaving, reconnecting, or restoring a snapshot cannot undo it. A command
+   used in map exploration leaves enemies absent and keeps practice active.
+   A fresh normal match requires returning to the lobby and starting again.
+
+A command racing the finish is resolved in host order: if accepted before
+completion, the result is practice; if completion was already committed,
+reject the command. Never credit a win and then apply an admin effect to
+that completed run. Repeated requests with the same command ID execute once.
+Offline solo commands require a previously verified entitlement and use the
+same practice transition; offline runs cannot publish online records.
+
+### Reliable game and invitation links
+
+The designer reports Safari opening without loading the game, and a school
+Chromebook saying a previously working link moved or was deleted. The exact
+links and root causes are not established. Investigate these as separate
+access defects; this specification does not claim a fix.
+
+- Share the stable public entry URL,
+  `https://openagents.com/games/the-ice-cream-man`, rather than a temporary
+  preview, Game Lab attachment, local app URL, or versioned asset directory.
+  Existing published entry links must continue to reach the game when its
+  build changes.
+- Invite links use that HTTPS entry with an opaque lobby code. On Safari,
+  Chrome, and the native app, resolve the code after the game loads. A closed
+  lobby shows **This game has ended** and **Find another game**; the game
+  page must still open. The code is not a purchase credential.
+- Keep external-link handling separate from lobby joining. The iOS wrapper
+  currently sends site-relative links to Safari and runs its bundled game
+  offline; online lobby access and invitation routing need explicit support
+  in that wrapper, with a usable web fallback.
+- Show a loading failure with **Try again** and **Copy game link** when the
+  build or network fails. Explain unavailable WebGL2 or a failed multiplayer
+  connection without leaving a blank screen. Offline mode offers solo play;
+  it must not show stale lobbies as joinable.
+- Before release, reproduce opening a message link in iOS Safari and the
+  same stable URL on ChromeOS, including an old bookmark, a fresh visit, and
+  a cached visit after a deploy. Check redirects, asset availability,
+  service-worker updates, and invite handling. If a school network blocks
+  the site, state the observed restriction; do not label it a moved page or
+  attempt to bypass school controls.
+
+### Implementation and acceptance
+
+Keep rules, voting, match state, result eligibility, and command validation
+in Rust. Extend `crates/icecream-rules` and `crates/icecream-web`; use the
+existing Verse multiplayer transport rather than adding a second game
+network stack. The iOS store bridge belongs in `bins/icecream-ios/host`;
+purchase verification and its binding to the online player identity must
+be specified and implemented before enabling paid commands. An untrusted
+player host alone cannot establish purchase validity or trustworthy global
+leaderboard results. This release records local co-op best times only;
+global leaderboards remain outside scope.
+
+The shared match state includes a match ID, roster, starting player count,
+rules/build version, seed, votes and locked selections, world tick, player
+states, practice variant/reason, result eligibility, processed command IDs,
+and final result. Reconnect snapshots preserve the practice flag and result.
+Incompatible clients cannot ready together; offer an update before start.
+
+Deliver in three steps: free lobbies, votes, and shared normal play; free
+map exploration and practice result handling; then the verified IAP and
+admin commands. Link reliability is required for the multiplayer release.
+Accept the release only when these scenarios pass:
+
+- Two through four clients share one map, objectives, pickups, enemies,
+  and result; one-player lobbies work, full lobbies reject joins, and solo
+  remains playable offline.
+- Votes handle a clear winner, a tie, abstentions, departures, changed votes,
+  and a join racing start. Every client sees the same selected settings.
+- A whole Hard practice run has no hostile enemies, including delayed
+  spawns, and escaping says **Practice completed** without changing records.
+- An accepted admin command switches all participants to practice before
+  its effect, including on reconnect. Turning it off or leaving cannot
+  restore wins. A new normal run starts without admin effects.
+- Purchases, restoration, cancellation, pending approval, invalid proof,
+  revocation, duplicate commands, and a command racing completion produce
+  the behavior above. Free players can join an IAP owner's game.
+- Scoop, team escape, team melt, client reconnect/timeout, and host loss
+  each produce the specified result without duplicate rewards.
+- Safari and ChromeOS load the stable URL and invitations across a deploy;
+  expired invitations and load failures offer a working next step.
 
 ## The designer's revision
 
@@ -430,7 +664,8 @@ gamepad, a second floor, cosmetics.
 
 ## After the MVP
 
-The Giant Booger, 1–4 player co-op, more room modules and floors, daily
+The [multiplayer release](#multiplayer), the Giant Booger, more room modules
+and floors, daily
 seeds and leaderboards, unlockable avatar hats (a waffle cone, a cherry),
 harder "Double Scoop" nights with two Ice Cream Men.
 
