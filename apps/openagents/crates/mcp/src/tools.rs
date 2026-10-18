@@ -71,6 +71,18 @@ fn machine_status_tool() -> Option<ToolDef> {
     }
 }
 
+/// Terminal agent sessions on this computer, on Unix.
+fn list_runs_tool() -> Option<ToolDef> {
+    #[cfg(unix)]
+    {
+        Some(crate::runs::tool())
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
 /// OpenAgents #12033: granted, logged machine actions, on Unix.
 fn machine_action_tool() -> Option<ToolDef> {
     #[cfg(unix)]
@@ -885,6 +897,7 @@ impl Tools {
             .chain(crate::video_lab::tools().iter().cloned())
             .chain(std::iter::once(crate::work::tool()))
             .chain(build_status_tool())
+            .chain(list_runs_tool())
             .chain(machine_action_tool())
             .chain(upgrade_host_tool().filter(|_| in_chat))
             .chain(machine_status_tool())
@@ -955,6 +968,8 @@ impl Tools {
                 )
                 .await;
             }
+            #[cfg(unix)]
+            crate::runs::NAME => return crate::runs::call(args).await,
             #[cfg(unix)]
             crate::machine_action::NAME => {
                 let chat = self.openagents.origin().chat_id.clone();
@@ -2223,6 +2238,27 @@ mod tests {
             assert_eq!(def.input_schema["type"], "object", "{}", def.name);
             assert!(!def.description.is_empty());
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn terminal_run_tool_is_available_to_every_agent() {
+        let tools = tools(Arc::new(World::default()), Origin::default());
+        let tool = tools
+            .list()
+            .into_iter()
+            .find(|tool| tool.name == "list_runs")
+            .unwrap();
+        assert_eq!(tool.input_schema["type"], "object");
+        assert_eq!(
+            tool.input_schema["properties"]["stall_minutes"]["default"],
+            20
+        );
+        let error = tools
+            .call("list_runs", json!({ "stall_minutes": 0 }))
+            .await
+            .unwrap_err();
+        assert_eq!(error, "stall_minutes must be between 1 and 1440");
     }
 
     #[tokio::test]

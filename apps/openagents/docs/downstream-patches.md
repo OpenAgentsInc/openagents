@@ -8,6 +8,10 @@ Keep fork-specific changes here so upstream updates can review each integration.
   retain WorkOS cases behind its compatibility feature, and check temporary
   image reads and lowercase repository identities.
 
+- OpenAgents #12041: `list_runs` reads local terminal agent runs through
+  `coder_lease::runs` and reports whether a claim's holder is active or its
+  claim should be released. Every agent can use the tool and its stall window.
+
 - OpenAgents #12071: agent builds disable incremental compilation and keep
   Cargo fingerprints under each manifest's path hash within a shared target.
 

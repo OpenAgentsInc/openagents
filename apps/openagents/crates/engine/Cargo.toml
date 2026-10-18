@@ -13,6 +13,7 @@ upstream-workos = []
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 coder-access = { path = "../../../../crates/coder-access", default-features = false }
 coder-host = { path = "../../../../crates/coder-host" }
+coder-lease = { path = "../../../../crates/coder-lease" }
 coder-service = { path = "../../../../crates/coder-service" }
 openagents-connect = { path = "../../../../crates/openagents-connect" }
 chat-home = { path = "../../../../crates/chat-home" }

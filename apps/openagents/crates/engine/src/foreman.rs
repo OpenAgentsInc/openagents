@@ -83,8 +83,8 @@ pub(crate) enum Event {
         since: i64,
     },
     /// A claimed issue has had no comment, no commit naming it, no push to
-    /// its linked branch, and no local progress (its chat's output, a build
-    /// in its worktree) for the stall window (#12032).
+    /// its linked branch, and no local progress (its chat's output, terminal
+    /// run activity, or a build in its worktree) for the stall window.
     ClaimNoProgress {
         number: u64,
         title: String,
@@ -131,7 +131,7 @@ impl Event {
                 session,
                 since,
             } => format!(
-                "The claim on #{number} ({title}) by {session} has shown no progress (no commit, push, comment, chat output or build) since {}.",
+                "The claim on #{number} ({title}) by {session} has shown no progress (no commit, push, comment, chat output, terminal activity, or build) since {}.",
                 clock(*since)
             ),
         }
@@ -191,13 +191,37 @@ impl Stall {
     }
 }
 
-/// What the host sees of claims on this computer (#12032): each app chat's
-/// last output by its harness session (`claude-code:ID`, as claim markers
-/// name it), and the last time a build ran in a worktree named for an issue.
+/// What the host sees of claims on this computer: each app chat's last
+/// output and each live terminal run's last activity by its harness session
+/// (`claude-code:ID`, as claim markers name it), and the last time a build
+/// ran in a worktree named for an issue.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct LocalProgress {
     pub chats: HashMap<String, i64>,
+    pub runs: HashMap<String, i64>,
     pub builds: BTreeMap<u64, i64>,
+}
+
+impl LocalProgress {
+    pub fn with_runs(mut self, runs: &[coder_lease::runs::RunStatus]) -> Self {
+        for run in runs {
+            if !run.alive {
+                continue;
+            }
+            let harness = match run.kind.as_str() {
+                "claude" | "claude-code" => "claude-code",
+                other => other,
+            };
+            let last = run.last_activity.saturating_mul(1000).min(i64::MAX as u64) as i64;
+            for session in &run.sessions {
+                self.runs
+                    .entry(format!("{harness}:{session}"))
+                    .and_modify(|seen| *seen = (*seen).max(last))
+                    .or_insert(last);
+            }
+        }
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -910,9 +934,11 @@ impl Foreman {
                 };
                 claimed.insert(format!("claim:{}", issue.number));
                 let chat = local.chats.get(&claim.session).copied();
+                let run = local.runs.get(&claim.session).copied();
                 let last = claim_progress(issue, &claim)
                     .into_iter()
                     .chain(chat)
+                    .chain(run)
                     .chain(local.builds.get(&issue.number).copied())
                     .max()
                     .unwrap_or(claim.at);
@@ -941,7 +967,7 @@ impl Foreman {
                 } else {
                     s.stalls.remove(&key);
                 }
-                if chat.is_some() {
+                if chat.is_some() || run.is_some() {
                     continue;
                 }
                 let Some((session, since)) = stale_claim(issue, now) else {
@@ -2005,6 +2031,7 @@ mod tests {
                 chats: HashMap::from([("claude-code:chat".to_owned(), now - MIN)]),
                 // A worktree named for #12002 with cargo running in it.
                 builds: BTreeMap::from([(12002, now)]),
+                ..LocalProgress::default()
             };
             f.observe_claims(&issues, &local, now).unwrap();
             if let Some(wake) = f.due(false, now).unwrap() {
@@ -2065,6 +2092,75 @@ mod tests {
         )
         .unwrap();
         assert!(f.state().stalls.is_empty());
+    }
+
+    /// #12041: terminal output counts through the same claim stall clock;
+    /// a live process without output still stalls, and a dead process never
+    /// contributes fresh activity.
+    #[test]
+    fn terminal_run_activity_keeps_a_claim_moving_until_it_goes_silent() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let mut settings = f.state().settings;
+        settings.stall_minutes = 10;
+        f.set(settings, 0).unwrap();
+        let answer = serde_json::json!({"data":{"search":{"nodes":[
+            claim(12041, "Active terminal", "claude-code:active", 0, serde_json::json!({})),
+            claim(12042, "Silent terminal", "codex:silent", 0, serde_json::json!({})),
+            claim(12043, "Dead terminal", "claude-code:dead", 0, serde_json::json!({})),
+        ]}}});
+        let issues = claim_issues(&answer);
+        let run = |kind: &str, session: &str, alive, last_activity| coder_lease::runs::RunStatus {
+            id: format!("run-{session}"),
+            kind: kind.into(),
+            host: "test-computer".into(),
+            sessions: vec![session.into()],
+            root_pid: 1234,
+            root_start: 1.0,
+            alive,
+            created: 0,
+            last_activity,
+        };
+        let mut local = LocalProgress::default();
+        for minute in 1..=20 {
+            local = LocalProgress::default().with_runs(&[
+                run("claude", "active", true, (minute * 60) as u64),
+                run("codex", "silent", true, (minute.min(5) * 60) as u64),
+                run("claude-code", "dead", false, (minute * 60) as u64),
+            ]);
+            f.observe_claims(&issues, &local, minute * MIN).unwrap();
+            let stalls = f.state().stalls;
+            assert!(!stalls.contains_key("claim:12041"), "active at {minute}");
+            assert_eq!(stalls.contains_key("claim:12042"), minute >= 15);
+            assert_eq!(stalls.contains_key("claim:12043"), minute >= 10);
+        }
+        assert_eq!(f.state().stalls["claim:12042"].since, 5 * MIN);
+        assert_eq!(f.state().stalls["claim:12043"].since, 0);
+        assert_eq!(
+            f.state()
+                .pending
+                .iter()
+                .filter(|p| matches!(p.event, Event::ClaimNoProgress { .. }))
+                .count(),
+            2,
+            "one event for each stalled terminal claim"
+        );
+
+        // New terminal output clears an existing stall.
+        local = local.with_runs(&[run("codex", "silent", true, 21 * 60)]);
+        f.observe_claims(&issues, &local, 21 * MIN).unwrap();
+        assert!(!f.state().stalls.contains_key("claim:12042"));
+
+        // A six-hour-old claim with current terminal output is not stale.
+        local = local.with_runs(&[run("claude", "active", true, 361 * 60)]);
+        f.observe_claims(&issues, &local, 361 * MIN).unwrap();
+        assert!(!f.state().stalls.contains_key("claim:12041"));
+        assert!(
+            !f.state()
+                .pending
+                .iter()
+                .any(|p| matches!(p.event, Event::StaleClaim { number: 12041, .. }))
+        );
     }
 
     /// #12032: the last rung tells the owner once per stall, with a request

@@ -446,6 +446,17 @@ fn foreman_template_is_a_valid_claude_code_experiment() {
     ] {
         assert!(text.contains(rung), "{rung}");
     }
+    // Terminal claims use run evidence, without trying to steer a terminal (#12041).
+    for rule in [
+        "call `list_runs`",
+        "**Alive and recent:**",
+        "**Dead or silent:**",
+        "<!-- openagents-coder-release -->",
+        "**Unknown or on another computer:**",
+        "I never type into a terminal",
+    ] {
+        assert!(text.contains(rule), "{rule}");
+    }
 }
 #[cfg(feature = "views")]
 #[test]

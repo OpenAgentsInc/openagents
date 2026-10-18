@@ -82,6 +82,7 @@ pub mod observe;
 pub mod placement;
 mod resource;
 mod root;
+pub mod runs;
 pub mod scratch;
 mod screen;
 pub mod shim;

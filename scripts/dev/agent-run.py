@@ -4,8 +4,8 @@ that stops it all (#11433, docs/audits/2026-10-12-claude-usage-burn).
 
 A run is a directory, ~/.openagents/runs/<id>/ (OA_RUNS_DIR):
 
-    run.json   id, kind, host, created, root pid and its start time, the
-               parent run, the Claude Code session ids, ended
+    run.json   id, kind, host, created, last activity, root pid and its start
+               time, workspace, transcript, parent run, harness sessions, ended
     shells     one line per Bash tool shell: "pid epoch". A tool shell leads
                its own process group, so everything it starts (even with
                nohup or `&`, after the shell exits) keeps that group.
@@ -18,9 +18,9 @@ Claude Code drives it through hooks (.claude/settings.json):
                          per process, so /clear and resume stay in it) and
                          writes CLAUDE_ENV_FILE: every Bash tool shell then
                          exports OA_RUN_ID and appends its pid to `shells`
-    hook bash-post       after a run_in_background Bash call, records the
-                         children of the run's live tool shells that left
-                         their shell's process group (setsid)
+    hook bash-post       records activity after every Bash call; after a
+                         run_in_background call, records children that left
+                         their tool shell's process group (setsid)
     hook session-end     reaps the run (not on /clear): its process groups,
                          recorded pids, child runs, and its VMs (detached)
 
@@ -63,6 +63,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -184,9 +185,14 @@ def load(rid: str) -> dict | None:
 def save(meta: dict) -> None:
     d = run_dir(meta["id"])
     d.mkdir(parents=True, exist_ok=True)
-    tmp = d / "run.json.tmp"
-    tmp.write_text(json.dumps(meta, indent=1) + "\n")
-    tmp.replace(d / "run.json")
+    fd, name = tempfile.mkstemp(prefix=".run-", suffix=".tmp", dir=d)
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(meta, indent=1) + "\n")
+        tmp.replace(d / "run.json")
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def create(kind: str, root: int, rid: str | None = None, parent: str | None = None,
@@ -197,9 +203,10 @@ def create(kind: str, root: int, rid: str | None = None, parent: str | None = No
     if meta:
         return meta
     rp = procs.get(root)
-    meta = {"id": rid, "kind": kind, "host": host(), "created": int(time.time()),
+    now = int(time.time())
+    meta = {"id": rid, "kind": kind, "host": host(), "created": now, "last_activity": now,
             "root_pid": root, "root_start": rp.start if rp else 0, "parent": parent,
-            "sessions": [], "ended": None}
+            "workspace_root": str(Path.cwd()), "sessions": [], "ended": None}
     save(meta)
     for name in ("shells", "pids", "vms"):
         (run_dir(rid) / name).touch()
@@ -439,23 +446,33 @@ def session_run_id(procs: dict[int, Proc], root: int) -> str:
     return f"cc-{time.strftime('%Y%m%d%H%M%S', time.localtime(start))}-{root}"
 
 
+def record_activity(meta: dict, payload: dict) -> None:
+    """Record hook activity without treating later reads as progress."""
+    meta["last_activity"] = int(time.time())
+    workspace = payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR")
+    if isinstance(workspace, str) and workspace:
+        meta["workspace_root"] = workspace
+    transcript = payload.get("transcript_path")
+    if isinstance(transcript, str) and transcript:
+        meta["transcript_path"] = transcript
+    sid = payload.get("session_id")
+    if isinstance(sid, str) and sid and sid not in meta["sessions"]:
+        meta["sessions"].append(sid)
+    save(meta)
+
+
 def hook(event: str) -> int:
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError:
         payload = {}
-    if event == "bash-post" and not (payload.get("tool_input") or {}).get("run_in_background"):
-        return 0
     procs = ps()
     root = claude_pid(procs)
     rid = session_run_id(procs, root)
     if event == "session-start":
         meta = create("claude", root, rid, os.environ.get("OA_RUN_ID") or None, procs)
-        sid = payload.get("session_id")
-        if sid and sid not in meta["sessions"]:
-            meta["sessions"].append(sid)
-            meta["ended"] = None
-            save(meta)
+        meta["ended"] = None
+        record_activity(meta, payload)
         env_file = os.environ.get("CLAUDE_ENV_FILE")
         if env_file:
             shells = run_dir(rid) / "shells"
@@ -463,9 +480,13 @@ def hook(event: str) -> int:
                 fh.write(f"export OA_RUN_ID={rid}\n"
                          f"echo \"$$ $(date +%s)\" >> {shlex.quote(str(shells))} 2>/dev/null || true\n")
         return 0
-    if not load(rid):
+    meta = load(rid)
+    if not meta:
         return 0
+    record_activity(meta, payload)
     if event == "bash-post":
+        if not (payload.get("tool_input") or {}).get("run_in_background"):
+            return 0
         # Children of the run's live tool shells, caught while their shell
         # still holds them (a setsid child leaves the shell's group).
         shells = {int(f[0]) for f in lines(rid, "shells") if f and f[0].isdigit()}

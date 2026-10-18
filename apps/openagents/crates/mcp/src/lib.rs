@@ -4,13 +4,15 @@
 //! and proxies every tool into the engine's localhost IPC — the same
 //! `openagents_rpc` WebSocket the headed app and `openagents sync` dial. Nothing here
 //! talks to the edge: the engine stays the single authority for chats,
-//! devices, projects, and the command plane. Two tools work locally:
+//! devices, projects, and the command plane. Several tools work locally:
 //! `changed_paths` runs `git diff` in a chat's folder, and `build_status`
 //! reads this computer's agent builds and writes their limit (#11971).
 //! `machine_action` prunes a build cache or stops a process under the
 //! owner's grant to the calling chat, and logs it (#12033), and
 //! `upgrade_host` starts an upgrade of this computer's app from `main`
 //! under the same kind of grant (#12056).
+//! `list_runs` reads this computer's terminal agent sessions and identifies
+//! claims whose holder is dead or has stopped producing output (#12041).
 //!
 //! The server is hand-rolled rather than an SDK: the MCP surface a stdio
 //! tool server needs is five methods (`initialize`, `ping`, `tools/list`,
@@ -31,6 +33,8 @@ mod machine_action;
 pub mod machine_status;
 mod inbox;
 mod jsonrpc;
+#[cfg(unix)]
+mod runs;
 mod tools;
 mod transcript;
 #[cfg(unix)]

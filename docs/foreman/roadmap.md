@@ -326,6 +326,12 @@ flowchart TD
   progressing run, a live silent run, and a dead run each give the right
   report and action.
 - **Size:** M.
+- **Status:** built in #12041. The public `coder_lease::runs` reader and
+  `list_runs` app tool report local runs, process start-time checks, and
+  last activity. Terminal activity counts toward `ClaimNoProgress`; the
+  template reports recent live runs and releases dead or silent holders
+  before dispatching. Missing or unreadable local records never prove a
+  remote session dead; off-computer heartbeats remain #12053.
 
 ### 10. System One judgments for the hard calls
 

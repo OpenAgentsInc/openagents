@@ -102,22 +102,30 @@ impl DocHost {
                 }
                 let local = host.local_progress().await;
                 drop(host);
-                look_at_github(&foreman, &local).await;
+                if let Err(e) = &local {
+                    tracing::warn!(error = %e, "agent run look failed");
+                    foreman.set_problem(Some(format!("Couldn't check terminal sessions: {e}")));
+                }
+                look_at_github(&foreman, local.as_ref().ok()).await;
             }
         });
     }
 
-    /// What this computer sees of claims (#12032): each app chat's last
-    /// output by the harness session a claim marker names, and builds
-    /// running in worktrees of the agent's checkout named for an issue.
-    async fn local_progress(&self) -> LocalProgress {
+    /// This computer's app output and terminal activity by the harness
+    /// session a claim marker names, and builds running in worktrees of
+    /// the agent's checkout named for an issue.
+    async fn local_progress(&self) -> Result<LocalProgress, EngineError> {
         let now = now_ms();
+        let runs = tokio::task::spawn_blocking(coder_lease::runs::here)
+            .await
+            .map_err(|e| EngineError::Other(e.to_string()))?
+            .map_err(|e| EngineError::Other(e.to_string()))?;
+        let mut local = LocalProgress::default().with_runs(&runs);
         let (Some(workspace), Some(sessions)) = (self.workspace().cloned(), self.sessions()) else {
-            return LocalProgress::default();
+            return Ok(local);
         };
         let rows = workspace.merged_sessions(&sessions.watch_sessions().borrow());
         let chats = workspace.watch_chats().borrow().clone();
-        let mut local = LocalProgress::default();
         for chat in &chats {
             let (Some(config), Some(id)) = (
                 chat.config.as_ref(),
@@ -160,7 +168,7 @@ impl DocHost {
         if let Some(checkout) = checkout {
             local.builds = builds_here(&checkout, now).await;
         }
-        local
+        Ok(local)
     }
 
     pub(crate) fn foreman(&self) -> Option<&Arc<Foreman>> {
@@ -663,7 +671,7 @@ fn declaring_chats(chats: &[openagents_proto::Chat], device: &str) -> Vec<Declar
 
 /// Ask the host's GitHub CLI what changed. A missing or signed-out `gh`
 /// leaves only chat and schedule wake-ups.
-async fn look_at_github(foreman: &Foreman, local: &LocalProgress) {
+async fn look_at_github(foreman: &Foreman, local: Option<&LocalProgress>) {
     let now = now_ms();
     let listed = gh(&[
         "issue",
@@ -689,6 +697,11 @@ async fn look_at_github(foreman: &Foreman, local: &LocalProgress) {
     if let Err(e) = foreman.observe_issues(&listed, now) {
         tracing::warn!(error = %e, "foreman: issue look failed");
     }
+    // An unreadable run record is not evidence that its session is dead.
+    // Keep the previous claim observations until the next successful read.
+    let Some(local) = local else {
+        return;
+    };
     let query = format!("query={CLAIMS_QUERY}");
     if let Some(answer) = gh(&["api", "graphql", "-f", &query]).await {
         if let Err(e) = foreman.observe_claims(&claim_issues(&answer), local, now) {
