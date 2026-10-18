@@ -63,9 +63,15 @@ android {
 dependencies {
     implementation("net.java.dev.jna:jna:5.14.0@aar")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.activity:activity-ktx:1.13.0")
+    implementation("androidx.camera:camera-camera2:1.6.2")
+    implementation("androidx.camera:camera-lifecycle:1.6.2")
+    implementation("androidx.camera:camera-view:1.6.2")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("rustls:rustls-platform-verifier:$platformVerifierAndroidVersion")
     implementation("com.google.android.play:integrity:1.5.0")
     if (pushEnabled) implementation("com.google.firebase:firebase-messaging:24.1.0")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.7.0")
 }

@@ -17,7 +17,16 @@ Keep fork-specific changes here so upstream updates can review each integration.
   wires the shared push coordinator through its signed-in client provider and
   selects the Firebase or no-push source set from local Firebase configuration.
   Backup rules exclude encrypted account storage from cloud backup and device
-  transfer.
+  transfer. The app owns one encrypted storage adapter and exposes it to the
+  Rust account and wallet integration. The `ComponentActivity` owns typed photo,
+  document, camera, and permission results; QR scanning forwards bounded raw
+  text through a Rust classifier callback. The checked-in UniFFI source still
+  lacks A2/A3's `PushWakeKind`, `CoreClient.handlePushWake`, `AndroidSecretStorage`,
+  `SecretRead`, `SecretMutation`, `CoreAccount.newWithSecureStorage`, and
+  `androidWalletKeyStore` bindings, as well as the app-link classifier binding.
+  The Rust account and wallet call sites remain pending binding generation.
+  `scripts/android/build-core.sh` must regenerate the bindings and both ABI
+  libraries before the app can compile.
 
 - OpenAgents #12081: Android startup initializes the JVM context and platform
   certificate verifier before any live Rust client can start. Kotlin retries
@@ -746,13 +755,18 @@ links remain readable. Upstream fixes now require manual ports.
   `apps/android/app/src/main/java/com/openagents/app/scanner/`, with synthetic
   instrumentation coverage under `apps/android/app/src/androidTest/java/com/openagents/app/scanner/`.
   B1 owns `MainActivity.startQrScanner(previewView, classifyWithRust, onFailure)`,
-  permission-result handling, and the Activity shell wiring. It should call the
-  scanner's Rust classifier callback with raw text only; Kotlin does not
-  classify or authorize links. Neither dependency has been resolved in an
-  Android build.
-  `cargo test --locked -p openagents-mobile app_links` from `apps/openagents`
-  and `scripts/android/build-core.sh` remain unrun below the 100 GiB build
-  floor. The latter generates bindings and builds arm64 then x86_64. The
-  scanner instrumentation test remains unrun pending the capacity gate and
-  B1's Activity shell integration. #12082 and #12091 remain native blockers. Release-certificate
+  permission-result handling, the Activity shell wiring, and pins CameraX 1.6.2
+  with bundled ML Kit 17.3.0. The app manifest requests camera permission.
+  Scanning sends bounded raw text only to the Rust classifier callback; Kotlin
+  does not classify or authorize links. Neither dependency has been resolved in
+  an Android build.
+  `scripts/android/app.sh compile` runs the debug and release Kotlin compile,
+  compiles scanner instrumentation sources, and runs debug JVM tests; it remains
+  unrun below the 100 GiB build floor. The scanner instrumentation test still
+  needs a device run through `:app:connectedDebugAndroidTest`. The release check
+  (`scripts/android/app.sh check`) and API 26 install/run check remain pending. The Rust classifier
+  fixture check (`cargo test --locked -p openagents-mobile app_links`) and
+  `scripts/android/build-core.sh` also remain unrun; the latter generates
+  bindings and builds arm64 then x86_64. #12082 and #12091 remain native blockers.
+  Release-certificate
   verification is an owner-only After-close check in `NEEDS_OWNER.md`.
