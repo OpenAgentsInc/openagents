@@ -1,0 +1,82 @@
+{
+ "boot_after_duplicates": "3d18d2f2-9e42-46dd-83c0-9d9c3675e327",
+ "boot_turn": {
+  "error": null,
+  "exit_code": 0,
+  "id": "trn_b5812522f8dda83d7f66",
+  "state": "done"
+ },
+ "case": "duplicates",
+ "computer": "cmp_718acb4b27f9d3d6809b",
+ "contains_credentials": false,
+ "create_replies": [
+  {
+   "id": "cmp_718acb4b27f9d3d6809b",
+   "status": 202
+  },
+  {
+   "id": "cmp_718acb4b27f9d3d6809b",
+   "status": 200
+  },
+  {
+   "id": "cmp_718acb4b27f9d3d6809b",
+   "status": 200
+  }
+ ],
+ "delete_replies": [
+  202,
+  202
+ ],
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "distinct_computers": 1,
+ "duplicate_turn_executions": 2,
+ "duplicate_turn_ids": [
+  "trn_f7b49a99eb8227aa8d5f",
+  "trn_cfa7551cf7f9a13406f3"
+ ],
+ "finding": "Lifecycle duplicates converge on one computer and sandbox; two identical turn submissions ran twice.",
+ "issue": 12142,
+ "lost_create_drop": {
+  "reply_read": false,
+  "sent_bytes": 422
+ },
+ "lost_create_retry": {
+  "id": "cmp_718acb4b27f9d3d6809b",
+  "status": 200
+ },
+ "natives_after_create": [
+  {
+   "created_at": "2026-10-18T20:41:01.132057Z",
+   "id": "01a150bf-0fa1-72ea-b60d-166a61229b36",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "natives_after_delete": [],
+ "natives_after_lifecycle": [
+  {
+   "created_at": "2026-10-18T20:41:01.132057Z",
+   "id": "01a150bf-0fa1-72ea-b60d-166a61229b36",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "observed_unix": 1792356389,
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "request_key": "q16-dup-82540692",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "failed",
+ "stop_replies": [
+  202,
+  202,
+  202
+ ],
+ "wake_replies": [
+  202,
+  202,
+  202
+ ]
+}

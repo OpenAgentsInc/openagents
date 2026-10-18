@@ -1,0 +1,21 @@
+{
+ "after_15_minutes": "state unknown, 9 attempts, last_error \"no progress on Inspect\"; native sandbox suspended; deletion at 21:13 UTC succeeded",
+ "case": "provider_outage",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "exception": "TimeoutError: cmp_370b9068edfe52b6c9d4 did not reach awake; last 200 {\"id\": \"cmp_370b9068edfe52b6c9d4\", \"state\": \"unknown\", \"desired\": \"running\", \"size\": \"small\", \"image\": \"code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149\", \"last_error\": \"no progress on Inspect\", \"resource\": \"sbx_01a150a2-6ba4-75de-bc6c-603fe6d87d2f\", \"turns\": 29, \"attempts\": 9}",
+ "issue": 12143,
+ "observed_unix": 1792357896,
+ "operation_left_requested": {
+  "action": "wake",
+  "disposition": "requested",
+  "operation": "40bae79628aafb07c0a6811ef037fe4b0fbea2040032184ec5bef13ee42a144c",
+  "provider_operation": null
+ },
+ "owners": "synthetic account digests only; no owner account or host",
+ "passed": false,
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "started_unix": 1792356882,
+ "status": "failed"
+}

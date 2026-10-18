@@ -1,0 +1,9 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "reason": "Needs the public SDK and web flows (#12146). Private-path stages are kept in the trial files: create response, readiness, first verified output. Reconcile, attach, repository, and model stages were not measured and stay null.",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "pending"
+}

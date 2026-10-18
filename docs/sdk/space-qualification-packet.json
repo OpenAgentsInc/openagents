@@ -1,114 +1,207 @@
 {
   "schema": "openagents.computers.space-qualification.v1",
-  "identity": null,
-  "observed_unix": null,
-  "advertised": null,
-  "accounts": [],
+  "identity": {
+    "web_commit": "b4442103d26e9723e90cb63f3002c8a10f462b03",
+    "computers_commit": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
+    "sdk_commit": "a53a9731f996a8d93f22f1af11f5158894288c54",
+    "native_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+    "native_image_sha256": "b03fac6e4f70ff5a34d07023a1ae251d20820d32a788b83529a5461f5f1fafe6",
+    "template": "code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149",
+    "runtime_sha256": "7e8b57e88c459396d4680d83dcdd8c7f72305447cb55b11f4ac98ad70a3f7825",
+    "policy_sha256": "65e6dab85820b6bfe9a51244674520ab5d26f0b64713b37d8426889d790b3c51",
+    "schema_sha256": "11e5b9690f6e3e4aa25727cdcf1e347b9c3e564c171a0c0080022a2f7aec676c",
+    "vcpus": 2,
+    "memory_mib": 1024
+  },
+  "observed_unix": 1792365565,
+  "advertised": {
+    "fork": false,
+    "terminal": false,
+    "preview": false,
+    "cross_host_memory_restore": false
+  },
+  "accounts": [
+    "account:f9b110d34613b1783bcac550f001f45c76f98fd84d76856b928f172a7ec42d75",
+    "account:352cd3cc4183ce192b8efac43c85a20d1750c133f125f3a74560e40957a7ee0d"
+  ],
   "dedicated_test_accounts": true,
-  "private_management": false,
-  "rollback_ready": false,
+  "private_management": true,
+  "rollback_ready": true,
   "pricing_enabled": false,
-  "limits": null,
+  "limits": {
+    "minimum_samples": 20,
+    "required_concurrency": 2,
+    "snapshot_p50_ms": 1500,
+    "snapshot_p90_ms": 2000,
+    "wake_p90_ms": 5000,
+    "maximum_error_permille": 10,
+    "maximum_service_cost_per_useful_task_micros": 50000,
+    "currency": "USD",
+    "maximum_age_seconds": 86400
+  },
   "cases": {
     "public_sdk": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/public_sdk.json",
+        "sha256": "d9efa8a480a6740eb75ff01cdf656ca2e381baedbff15fabc2e83def647ed71a"
+      }
     },
     "web_task_and_followup": {
       "status": "pending",
       "artifact": null
     },
     "account_isolation": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/account_isolation.json",
+        "sha256": "69be14226ab8217b9c5ffd1e7110742f950251ec44ee354db62c9d7707d870cc"
+      }
     },
     "actual_boot_and_shape": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/actual_boot_and_shape.json",
+        "sha256": "dbfb5151235cab00fbf5e76bfa6748e86b528cc476f8eb9c755bd2158697df3b"
+      }
     },
     "stage_timings": {
       "status": "pending",
       "artifact": null
     },
     "memory_and_workspace": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/memory_and_workspace.json",
+        "sha256": "0c8c4090cfeac1aa7f814e1d95dd38ba2f7951bef2af72b988004b4590afac1d"
+      }
     },
     "cancellation_and_children": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/cancellation_and_children.json",
+        "sha256": "e7149024cdbb79ed7524fc525ff698125e437b9c87dcabeadde91b9415d23b1d"
+      }
     },
     "api_restart": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/api_restart.json",
+        "sha256": "6379309936d716287900ce5a120268dff8961a421e3a01f6dd792c393d19941f"
+      }
     },
     "reconciler_restart": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/reconciler_restart.json",
+        "sha256": "6ed8767e54a9665d5902ef1c827ffe02bc6c6c5179633be861960beae2075db4"
+      }
     },
     "lost_create_reply": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/lost_create_reply.json",
+        "sha256": "c0ea508cde3b29796e9389fcf45427199945b5bc0ded43f7e241e9be3cc9d60c"
+      }
     },
     "lost_command_reply": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/lost_command_reply.json",
+        "sha256": "3e2e67b0d8c5b5bd88664604d77406984496b8d28dc39781d96f767108fb76b9"
+      }
     },
     "attach_interruption": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/attach_interruption.json",
+        "sha256": "8637e349e8c2ffb49d219b3e51cf58f915e4c3e87df62a0b87ce3823c61260c1"
+      }
     },
     "duplicate_delivery": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/duplicate_delivery.json",
+        "sha256": "53aaa079e03d3b3cf1307f0ee5ce2392b14413506344a19f3e48c6df3aa35fa8"
+      }
     },
     "delayed_lifecycle": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/delayed_lifecycle.json",
+        "sha256": "57425a62f3235870f7a76b41a69049e659c4426d05145512fa8a01902a6849c4"
+      }
     },
     "worker_loss_and_single_writer": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/worker_loss_and_single_writer.json",
+        "sha256": "54dc542d0b1c04495d3dabd580e10be2d75c5b88c8bd615b47ec9c02e9cb44b1"
+      }
     },
     "cross_host_memory_restore": {
       "status": "pending",
       "artifact": null
     },
     "checkpoint_recovery": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/checkpoint_recovery.json",
+        "sha256": "5bc66013d86f6470fb52e1a99db660fab2aa9e158ae26befa1fe0a7b87444534"
+      }
     },
     "database_restore": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/database_restore.json",
+        "sha256": "8cf43fb1c03b5d5ae84b4e0cb310b86b532c271c9586d002bedee202227d8cf8"
+      }
     },
     "storage_outage": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/storage_outage.json",
+        "sha256": "36190693b48e6d2d61848f5fcc914e428ab04c1e5a7bed6e363df90126a28192"
+      }
     },
     "provider_outage": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/provider_outage.json",
+        "sha256": "28ab878473fd15735b985ea554a840426458ce8d9add1df0b6f84628fef492de"
+      }
     },
     "credential_revocation": {
       "status": "pending",
       "artifact": null
     },
     "egress_bypass": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/egress_bypass.json",
+        "sha256": "fdf700827c408a53f90af405518d2e8539d6bf3d9a14543829ad4ddfcbc1d981"
+      }
     },
     "capacity_exhaustion": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/capacity_exhaustion.json",
+        "sha256": "e294a2ba21984dbc25a3df14338f9c1612e74171edb59acaf367cc97f969dd44"
+      }
     },
     "concurrent_wake": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/concurrent_wake.json",
+        "sha256": "81ff2341bf56c36f4bddb4e705af7aacdd1d9a15c2d165340118dbaacb06e950"
+      }
     },
     "quotas_and_accounting": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/quotas_and_accounting.json",
+        "sha256": "9266c2646dd99937c4c6b0b36975aa9f67d6b199e3bffeced75a41e19daa1267"
+      }
     },
     "retention": {
       "status": "pending",
@@ -123,30 +216,997 @@
       "artifact": null
     },
     "upgrade_and_rollback": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/upgrade_and_rollback.json",
+        "sha256": "697be5410e1c166eb4447b94d25b32b201e3dd122b48ccb8125494d07b7f6b8e"
+      }
     },
     "disabled_placement": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/disabled_placement.json",
+        "sha256": "d39891c77c67b5b239936eb8cfc6c285c90fbc903ce3c7d76a0c4e52d25490bf"
+      }
     },
     "legacy_boat": {
       "status": "pending",
       "artifact": null
     },
     "unsupported_controls": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/unsupported_controls.json",
+        "sha256": "286551495f39fbbbdd4600eb015e4c23c56e4d5163b736613e4db93760891f60"
+      }
     },
     "monitoring": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/monitoring.json",
+        "sha256": "c122eae720dc33b02d3a386ea4aeaa980271c61cde9607c8fd3bd34df1dcee32"
+      }
     },
     "fixture_cleanup": {
       "status": "pending",
       "artifact": null
     }
   },
-  "trials": [],
-  "economics": null
+  "trials": [
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 301,
+        "reconcile_ms": null,
+        "readiness_ms": 11143,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11886
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 163,
+        "reconcile_ms": null,
+        "readiness_ms": 11156,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11638
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 170,
+        "reconcile_ms": null,
+        "readiness_ms": 10919,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11399
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 156,
+        "reconcile_ms": null,
+        "readiness_ms": 11070,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11813
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 185,
+        "reconcile_ms": null,
+        "readiness_ms": 11118,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11852
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 156,
+        "reconcile_ms": null,
+        "readiness_ms": 10908,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11391
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 172,
+        "reconcile_ms": null,
+        "readiness_ms": 11031,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11512
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 162,
+        "reconcile_ms": null,
+        "readiness_ms": 11050,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11795
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 176,
+        "reconcile_ms": null,
+        "readiness_ms": 11031,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11768
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 161,
+        "reconcile_ms": null,
+        "readiness_ms": 11005,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11495
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 159,
+        "reconcile_ms": null,
+        "readiness_ms": 11013,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11493
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 162,
+        "reconcile_ms": null,
+        "readiness_ms": 10893,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11382
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 154,
+        "reconcile_ms": null,
+        "readiness_ms": 10969,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11697
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 151,
+        "reconcile_ms": null,
+        "readiness_ms": 11019,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11777
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 165,
+        "reconcile_ms": null,
+        "readiness_ms": 10990,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11478
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 167,
+        "reconcile_ms": null,
+        "readiness_ms": 10914,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11383
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 174,
+        "reconcile_ms": null,
+        "readiness_ms": 11041,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11537
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 169,
+        "reconcile_ms": null,
+        "readiness_ms": 10960,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11443
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 202,
+        "reconcile_ms": null,
+        "readiness_ms": 11046,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11550
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 157,
+        "reconcile_ms": null,
+        "readiness_ms": 10987,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11720
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 411,
+        "reconcile_ms": null,
+        "readiness_ms": 11256,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11758
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 341,
+        "reconcile_ms": null,
+        "readiness_ms": 11166,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11962
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 276,
+        "reconcile_ms": null,
+        "readiness_ms": 11062,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11827
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 205,
+        "reconcile_ms": null,
+        "readiness_ms": 11119,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11704
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 190,
+        "reconcile_ms": null,
+        "readiness_ms": 11030,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11540
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 261,
+        "reconcile_ms": null,
+        "readiness_ms": 11119,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11637
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 284,
+        "reconcile_ms": null,
+        "readiness_ms": 11142,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11898
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 172,
+        "reconcile_ms": null,
+        "readiness_ms": 10990,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11724
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 177,
+        "reconcile_ms": null,
+        "readiness_ms": 11046,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11803
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 178,
+        "reconcile_ms": null,
+        "readiness_ms": 11009,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11738
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 169,
+        "reconcile_ms": null,
+        "readiness_ms": 11104,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11847
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 147,
+        "reconcile_ms": null,
+        "readiness_ms": 10951,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11444
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 164,
+        "reconcile_ms": null,
+        "readiness_ms": 10919,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11391
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 162,
+        "reconcile_ms": null,
+        "readiness_ms": 10901,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 11395
+      }
+    },
+    {
+      "kind": "snapshot",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 163,
+        "reconcile_ms": null,
+        "readiness_ms": 16246,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 16743
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 158,
+        "reconcile_ms": null,
+        "readiness_ms": 11793,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12546
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 165,
+        "reconcile_ms": null,
+        "readiness_ms": 11833,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12336
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 153,
+        "reconcile_ms": null,
+        "readiness_ms": 17259,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 18012
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 146,
+        "reconcile_ms": null,
+        "readiness_ms": 11903,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12656
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 158,
+        "reconcile_ms": null,
+        "readiness_ms": 11871,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12644
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 142,
+        "reconcile_ms": null,
+        "readiness_ms": 17343,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 18074
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 177,
+        "reconcile_ms": null,
+        "readiness_ms": 11967,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12697
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 163,
+        "reconcile_ms": null,
+        "readiness_ms": 41997,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 42739
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 161,
+        "reconcile_ms": null,
+        "readiness_ms": 41968,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 42701
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 153,
+        "reconcile_ms": null,
+        "readiness_ms": 11802,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12528
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 167,
+        "reconcile_ms": null,
+        "readiness_ms": 17353,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 18110
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 161,
+        "reconcile_ms": null,
+        "readiness_ms": 17537,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 18259
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 157,
+        "reconcile_ms": null,
+        "readiness_ms": 12071,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12839
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 151,
+        "reconcile_ms": null,
+        "readiness_ms": 11977,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12703
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 182,
+        "reconcile_ms": null,
+        "readiness_ms": 11816,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12566
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 155,
+        "reconcile_ms": null,
+        "readiness_ms": 12029,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12515
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 157,
+        "reconcile_ms": null,
+        "readiness_ms": 12045,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12798
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 160,
+        "reconcile_ms": null,
+        "readiness_ms": 12039,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12822
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 191,
+        "reconcile_ms": null,
+        "readiness_ms": 42180,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 42930
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 161,
+        "reconcile_ms": null,
+        "readiness_ms": 28019,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 28769
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 153,
+        "reconcile_ms": null,
+        "readiness_ms": 11897,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12666
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 168,
+        "reconcile_ms": null,
+        "readiness_ms": 12026,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12806
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 159,
+        "reconcile_ms": null,
+        "readiness_ms": 11828,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12596
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 151,
+        "reconcile_ms": null,
+        "readiness_ms": 11999,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12784
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 201,
+        "reconcile_ms": null,
+        "readiness_ms": 42012,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 42817
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 158,
+        "reconcile_ms": null,
+        "readiness_ms": 11873,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12613
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 157,
+        "reconcile_ms": null,
+        "readiness_ms": 11949,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12732
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 155,
+        "reconcile_ms": null,
+        "readiness_ms": 11806,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 12541
+      }
+    }
+  ],
+  "economics": {
+    "duration_ms": 14005000,
+    "worker_vcpus": 8,
+    "guest_vcpu_ms": null,
+    "command_wall_ms": 139906,
+    "task_attempts": 63,
+    "useful_tasks": 51,
+    "provider_cost_micros": null,
+    "currency": "USD"
+  }
 }

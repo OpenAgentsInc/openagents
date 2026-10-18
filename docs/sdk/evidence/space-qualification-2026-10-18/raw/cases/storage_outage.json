@@ -1,0 +1,116 @@
+{
+ "block": [
+  "{\"blocked_at\": 1792359797, \"scope\": \"all non-10/8 IPv4 and all IPv6 TCP 443, host OUTPUT and pod FORWARD\"}",
+  "{\"probe_while_blocked\":\"refused\"}",
+  "{\"restored_at\": 1792359977, \"probe_after\":\"reachable\"}"
+ ],
+ "boundary": "Stop stayed stopping for the full 180 s outage, reached stopped 127 s after storage returned, and the memory canary survived. No data was lost.",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "earlier_attempts": {
+  "host_output_chain_only": {
+   "case": "storage",
+   "computer": "cmp_0a3f361e82af6e8e39db",
+   "observed_unix": 1792359332,
+   "phase": "stop",
+   "started_unix": 1792359181,
+   "states_during_storage_outage": [
+    {
+     "at_ms": 386,
+     "attempts": 0,
+     "desired": "stopped",
+     "last_error": null,
+     "state": "stopping",
+     "status": 200
+    },
+    {
+     "at_ms": 31675,
+     "attempts": 0,
+     "desired": "stopped",
+     "last_error": null,
+     "state": "stopped",
+     "status": 200
+    }
+   ],
+   "stop_status": 202,
+   "stop_unix": 1792359182.0640132,
+   "stopped_during_outage": true
+  },
+  "note": "Both earlier blocks missed the volume manager path, so the upload finished; they are kept and not counted. The counted block refused all non-private HTTPS from host and pods.",
+  "partial_google_ranges": {
+   "case": "storage",
+   "computer": "cmp_0a3f361e82af6e8e39db",
+   "observed_unix": 1792359568,
+   "phase": "stop",
+   "started_unix": 1792359416,
+   "states_during_storage_outage": [
+    {
+     "at_ms": 468,
+     "attempts": 0,
+     "desired": "stopped",
+     "last_error": null,
+     "state": "stopping",
+     "status": 200
+    },
+    {
+     "at_ms": 91702,
+     "attempts": 0,
+     "desired": "stopped",
+     "last_error": null,
+     "state": "stopped",
+     "status": 200
+    }
+   ],
+   "stop_status": 202,
+   "stop_unix": 1792359417.3331695,
+   "stopped_during_outage": true
+  }
+ },
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "recovery": {
+  "case": "storage",
+  "computer": "cmp_0a3f361e82af6e8e39db",
+  "memory": {
+   "error": null,
+   "exit_code": 0,
+   "preserved": true,
+   "turn": "trn_54fd5d22dd9d897ef6dd"
+  },
+  "natives": [
+   {
+    "created_at": "2026-10-18T21:31:51.102637Z",
+    "id": "01a150ed-9983-7703-81f0-9ea2e1818152",
+    "lifecycle": "started",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "started"
+   }
+  ],
+  "observed_unix": 1792360169,
+  "phase": "finish",
+  "started_unix": 1792359985,
+  "stopped_after_restore_s": 127.4
+ },
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "stop_during_outage": {
+  "case": "storage",
+  "computer": "cmp_0a3f361e82af6e8e39db",
+  "observed_unix": 1792359958,
+  "phase": "stop",
+  "started_unix": 1792359807,
+  "states_during_storage_outage": [
+   {
+    "at_ms": 283,
+    "attempts": 0,
+    "desired": "stopped",
+    "last_error": null,
+    "state": "stopping",
+    "status": 200
+   }
+  ],
+  "stop_status": 202,
+  "stop_unix": 1792359807.83365,
+  "stopped_during_outage": false
+ }
+}

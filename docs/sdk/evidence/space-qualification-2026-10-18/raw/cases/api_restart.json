@@ -1,0 +1,80 @@
+{
+ "api_ready": {
+  "args": "rollout status deployment/space-api --timeout=300s",
+  "at_ms": 15459,
+  "err": "",
+  "out": "i\" rollout to finish: 0 of 1 updated replicas are available...\nWaiting for deployment \"space-api\" rollout to finish: 0 of 1 updated replicas are available...\nWaiting for deployment \"space-api\" rollout to finish: 0 of 1 updated replicas are available...\ndeployment \"space-api\" successfully rolled out\n",
+  "rc": 0
+ },
+ "awake_at_ms": 62498,
+ "before": {
+  "at_ms": 173,
+  "attempts": 0,
+  "desired": "stopped",
+  "last_error": null,
+  "state": "stopped",
+  "status": 200
+ },
+ "case": "api_restart",
+ "computer": "cmp_370b9068edfe52b6c9d4",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "fault": "delete the native space-api pod during wake",
+ "memory": {
+  "error": null,
+  "exit_code": 0,
+  "preserved": true,
+  "turn": "trn_8f819813ce3a144cee0e"
+ },
+ "natives": [
+  {
+   "created_at": "2026-10-18T20:09:44.132014Z",
+   "id": "01a150a2-6ba4-75de-bc6c-603fe6d87d2f",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "observed_unix": 1792356574,
+ "owners": "synthetic account digests only; no owner account or host",
+ "passed": true,
+ "qualification": 11816,
+ "restart": {
+  "args": "delete pod -l app.kubernetes.io/name=space-api --wait=false",
+  "at_ms": 558,
+  "err": "",
+  "out": "pod \"space-api-cdb98ddb4-2bhqn\" deleted from space namespace\n",
+  "rc": 0
+ },
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "started_unix": 1792356510,
+ "states": [
+  {
+   "at_ms": 678,
+   "attempts": 0,
+   "desired": "running",
+   "last_error": null,
+   "state": "booting",
+   "status": 200
+  },
+  {
+   "at_ms": 6865,
+   "attempts": 1,
+   "desired": "running",
+   "last_error": "no progress on Inspect",
+   "state": "unknown",
+   "status": 200
+  },
+  {
+   "at_ms": 13045,
+   "attempts": 0,
+   "desired": "running",
+   "last_error": null,
+   "state": "awake",
+   "status": 200
+  }
+ ],
+ "status": "passed",
+ "wake_at_ms": 345,
+ "wake_status": 202
+}

@@ -1,0 +1,26 @@
+{
+ "computer": "cmp_6adadafbc610bbcad4e3",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "memory": {
+  "error": null,
+  "exit_code": 0,
+  "preserved": true,
+  "turn": "trn_1b9b025df966ff5fac2f"
+ },
+ "natives": [
+  {
+   "created_at": "2026-10-18T21:15:05.109669Z",
+   "id": "01a150de-3ff2-7743-a6e0-44bffc7cec94",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "note": "Same boot ID, PID, start ticks, canary, and workspace hash after the hard reset; restored from the durable local and uploaded checkpoint.",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "wake_after_worker_reset_s": 29.4
+}

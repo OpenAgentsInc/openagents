@@ -1,0 +1,28 @@
+{
+ "advertised": {
+  "command_sessions": false,
+  "fork": false,
+  "preview": false,
+  "profiles": [
+   "core",
+   "suspend"
+  ],
+  "terminal": false,
+  "workspace_file_bytes": null
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "private_ingress": "see raw/private-management.json",
+ "qualification": 11816,
+ "refusals": {
+  "commands": 422,
+  "files": 501,
+  "fork": 404,
+  "preview": 404,
+  "snapshots": 404,
+  "terminal": 404
+ },
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed"
+}

@@ -1,0 +1,43 @@
+{
+ "computer_count_limit": "third create refused 429 (capacity_exhaustion); a closed account create refused 429",
+ "contains_credentials": false,
+ "copy_note": "The over-limit turn refusal says \"The computer limit has been reached.\", which names the wrong limit.",
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "provider_meter": "SPACE meter events report measurement unknown and provider_seconds null; the allowances stay held, never free.",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "turn_at_limit": {
+  "command": "sleep 75; echo over-limit",
+  "exit_code": 124,
+  "id": "trn_fa0077075fa68a7f8cf8",
+  "ran_s": 60,
+  "stdout": "",
+  "timeout_seconds": 60
+ },
+ "turn_over_limit": {
+  "error": "quota_exhausted",
+  "request": {
+   "timeout_seconds": 120
+  },
+  "status": 429
+ },
+ "usage_read": {
+  "allocation_allowance": {
+   "held_cpu_ms": 7516800000,
+   "settled_cpu_ms": 0,
+   "unknown_allowances": 0,
+   "unresolved_allowances": 87
+  },
+  "customer_charge": null,
+  "pricing": "not_enabled",
+  "storage_allowance": {
+   "held_allowances": 87,
+   "held_bytes": null,
+   "held_checkpoints": null,
+   "released_allowances": 0,
+   "unknown_allowances": 87
+  }
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "bound": "deployment capacity 2 and service limit 2 computers / 4 vCPUs / 8 GiB",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "third_create_medium": {
+  "error": "quota_exhausted",
+  "status": 429
+ },
+ "third_create_small": {
+  "error": "quota_exhausted",
+  "message": "No computers are free right now. Try again later.",
+  "status": 429
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "reason": "The private candidate registry has no Boat deployment, and no staging registry mixes Boat and SPACE (#12146). Production and staging still default to Boat (our-cloud).",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "pending"
+}

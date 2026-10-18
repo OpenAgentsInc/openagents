@@ -1,0 +1,22 @@
+{
+ "collector": "oa-space-monitor.timer active; 11 measurements every minute; collector_errors 0",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "finding": "No policy has a notification channel; outages under 120 s never open an incident; Computers-layer stuck states (unknown for 15+ minutes, stranded turns) are not measured.",
+ "issue": 12147,
+ "owners": "synthetic account digests only; no owner account or host",
+ "policies": [
+  "nodes_ready channels= 0 cmp= COMPARISON_LT thr= 2.0 dur= 120s",
+  "worker_disk_free_bytes channels= 0 cmp= COMPARISON_LT thr= 64424509440.0 dur= 300s",
+  "oldest_unfinished_upload_seconds channels= 0 cmp= COMPARISON_GT thr= 3600.0 dur= 120s",
+  "oldest_orphan_seconds channels= 0 cmp= COMPARISON_GT thr= 7200.0 dur= 120s",
+  "sandbox_count channels= 0 cmp= COMPARISON_GT thr= 2.0 dur= 120s",
+  "services_ready_ratio channels= 0 cmp= COMPARISON_LT thr= 1.0 dur= 120s",
+  "oldest_operation_seconds channels= 0 cmp= COMPARISON_GT thr= 600.0 dur= 120s",
+  "oldest_transition_seconds channels= 0 cmp= COMPARISON_GT thr= 900.0 dur= 120s",
+  "collector_errors channels= 0 cmp= COMPARISON_GT thr= None dur= 120s"
+ ],
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "failed"
+}

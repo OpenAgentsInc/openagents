@@ -1,0 +1,9 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "reason": "No staging environment binds a dedicated test account to SPACE (#12146), and SPACE placements lack the file and command paths the web task uses.",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "pending"
+}

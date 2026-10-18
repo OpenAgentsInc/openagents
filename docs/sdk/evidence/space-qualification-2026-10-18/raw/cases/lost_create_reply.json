@@ -1,0 +1,37 @@
+{
+ "computer": "cmp_718acb4b27f9d3d6809b",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "drop": {
+  "reply_read": false,
+  "sent_bytes": 422
+ },
+ "natives_after_create": [
+  {
+   "created_at": "2026-10-18T20:41:01.132057Z",
+   "id": "01a150bf-0fa1-72ea-b60d-166a61229b36",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "natives_after_delete": [],
+ "natives_after_lifecycle": [
+  {
+   "created_at": "2026-10-18T20:41:01.132057Z",
+   "id": "01a150bf-0fa1-72ea-b60d-166a61229b36",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "request_key": "q16-dup-82540692",
+ "retry": {
+  "id": "cmp_718acb4b27f9d3d6809b",
+  "status": 200
+ },
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed"
+}
