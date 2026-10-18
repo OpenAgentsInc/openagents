@@ -1,6 +1,7 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
 use super::*;
 use openagents_account::openagents::Deployment;
+use std::collections::BTreeMap;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -31,6 +32,31 @@ impl SavedHistoryListener for Events {
         self.0.on_android_host_changed();
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, uniffi::Enum)]
+pub enum AndroidHostSurface {
+    Sessions,
+    Settings,
+    Recovery,
+    Wallet,
+    VoiceCapsule,
+    VoiceScreen,
+    LinkReview,
+    Composer,
+}
+impl AndroidHostSurface {
+    fn scope(self) -> &'static str {
+        match self {
+            Self::Sessions => "android:sessions",
+            Self::Settings => "android:settings",
+            Self::Recovery => "android:recovery",
+            Self::Wallet => "android:wallet",
+            Self::VoiceCapsule => "android:voice-capsule",
+            Self::VoiceScreen => "android:voice-screen",
+            Self::LinkReview => "android:link-review",
+            Self::Composer => "android:composer",
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum AndroidHostRoute {
     Chat,
@@ -56,6 +82,22 @@ pub enum AndroidHostContent {
     Saved,
     Indexed,
 }
+#[derive(Clone, uniffi::Enum)]
+pub enum AndroidTranscriptEffect {
+    Handled,
+    Copy { text: String },
+    Unavailable,
+}
+#[derive(Clone, uniffi::Record)]
+pub struct AndroidHostTextPoint {
+    pub row: u64,
+    pub utf16: u32,
+}
+#[derive(Clone, uniffi::Record)]
+pub struct AndroidHostSelection {
+    pub anchor: AndroidHostTextPoint,
+    pub focus: AndroidHostTextPoint,
+}
 #[derive(Clone, uniffi::Record)]
 pub struct AndroidHostSnapshot {
     pub generation: u64,
@@ -72,6 +114,7 @@ pub struct AndroidHostSnapshot {
     pub account: Option<Arc<CoreAccount>>,
     pub anchor: Option<AndroidTranscriptAnchor>,
     pub recovery: Option<Arc<CoreAndroidRecovery>>,
+    pub selection: Option<AndroidHostSelection>,
 }
 enum Content {
     Cloud(Arc<CoreCloudChat>),
@@ -91,6 +134,9 @@ enum Content {
     },
 }
 struct State {
+    selection: Option<AndroidHostSelection>,
+    foreground: bool,
+    semantics: BTreeMap<AndroidHostSurface, Arc<CoreAccessibilitySurface>>,
     navigation_revision: u64,
     anchor: Option<AndroidTranscriptAnchor>,
     generation: u64,
@@ -115,6 +161,23 @@ impl NavigationStamp {
     }
 }
 impl State {
+    fn apply_visibility(&self) {
+        let visible = self.foreground && self.route == AndroidHostRoute::Chat;
+        if let Content::Live { session, .. } = &self.content {
+            session.set_view_attached(visible);
+        }
+        if let Some(history) = &self.history {
+            history.follow(visible && matches!(self.content, Content::Saved { .. }));
+        }
+    }
+    fn retire_content(&self) {
+        if let Content::Live { session, .. } = &self.content {
+            session.set_view_attached(false);
+        }
+        if let Content::Saved { history, .. } = &self.content {
+            history.follow(false);
+        }
+    }
     fn begin_navigation(&mut self) -> CoreResult<NavigationStamp> {
         self.navigation_revision = self
             .navigation_revision
@@ -153,6 +216,10 @@ impl CoreAndroidHost {
             if let Some(history) = state.history.take() {
                 history.shutdown();
             }
+            for (_, surface) in std::mem::take(&mut state.semantics) {
+                surface.close();
+            }
+            state.retire_content();
             state.client = None;
             let sessions = CoreAndroidSessions::new(account.clone(), self.events.clone());
             let cloud = sessions.default_chat()?;
@@ -163,6 +230,7 @@ impl CoreAndroidHost {
             }
             state.sessions = Some(sessions);
             state.anchor = None;
+            state.selection = None;
             state.generation = snapshot.generation;
             state.content_revision = state
                 .content_revision
@@ -210,11 +278,14 @@ impl CoreAndroidHost {
         if let Some(previous) = state.composer.take() {
             previous.dispose();
         }
+        state.retire_content();
         state.content = content;
         state.anchor = None;
+        state.selection = None;
         state.composer = composer;
         state.content_revision = revision;
         state.route = AndroidHostRoute::Chat;
+        state.apply_visibility();
         Ok(())
     }
 }
@@ -263,6 +334,9 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                selection: None,
+                foreground: true,
+                semantics: BTreeMap::new(),
                 navigation_revision: 0,
                 anchor: None,
                 generation,
@@ -297,6 +371,9 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                selection: None,
+                foreground: true,
+                semantics: BTreeMap::new(),
                 navigation_revision: 0,
                 anchor: None,
                 generation: 0,
@@ -367,7 +444,124 @@ impl CoreAndroidHost {
             account: self.account.clone(),
             anchor: s.anchor.clone(),
             recovery: self.recovery.clone(),
+            selection: s.selection.clone(),
         })
+    }
+    /// Resolves a widget identity against the current Rust display, never a caller-supplied payload.
+    pub fn transcript_widget(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        row: u64,
+        widget: u32,
+    ) -> CoreResult<AndroidTranscriptEffect> {
+        use crate::layout::display::WidgetKind;
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let frame = view.frame();
+        if state.generation != generation
+            || state.content_revision != content_revision
+            || frame.revision() != frame_revision
+        {
+            return Err(CoreError::Closed);
+        }
+        let display = frame
+            .index_of(row)
+            .and_then(|i| frame.display(i))
+            .ok_or(CoreError::Closed)?;
+        let widget = display
+            .widgets
+            .into_iter()
+            .find(|item| item.id == widget)
+            .ok_or(CoreError::Closed)?;
+        Ok(match widget.kind {
+            WidgetKind::CopyCode => match widget.payload {
+                Some(text) if text.len() <= 64 * 1024 => AndroidTranscriptEffect::Copy { text },
+                _ => AndroidTranscriptEffect::Unavailable,
+            },
+            WidgetKind::Disclosure { .. } | WidgetKind::Chevron { .. } => {
+                view.toggle(row);
+                AndroidTranscriptEffect::Handled
+            }
+            WidgetKind::ToolToggle { detail, open } => {
+                view.toggle_detail(row, detail, open);
+                AndroidTranscriptEffect::Handled
+            }
+            _ => AndroidTranscriptEffect::Unavailable,
+        })
+    }
+    /// Only a link in the current visible Rust rows may reach the platform browser.
+    pub fn transcript_link(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        top: f32,
+        height: f32,
+        url: String,
+    ) -> CoreResult<String> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let frame = view.frame();
+        if state.generation != generation
+            || state.content_revision != content_revision
+            || frame.revision() != frame_revision
+            || !top.is_finite()
+            || top < 0.0
+            || !height.is_finite()
+            || !(0.0..=100_000.0).contains(&height)
+            || !browser_link(&url)
+        {
+            return Err(CoreError::Closed);
+        }
+        let found = frame
+            .rows_in(top, top + height)
+            .into_iter()
+            .take(256)
+            .any(|row| {
+                frame
+                    .display(row.index)
+                    .is_some_and(|display| display.links.iter().any(|link| link.url == url))
+            });
+        if found {
+            Ok(url)
+        } else {
+            Err(CoreError::Closed)
+        }
+    }
+    pub fn save_text_selection(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        selection: Option<AndroidHostSelection>,
+    ) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation || state.content_revision != content_revision {
+            return Err(CoreError::Closed);
+        }
+        let frame = view.frame();
+        if frame.revision() != frame_revision {
+            return Err(CoreError::Closed);
+        }
+        if let Some(selection) = &selection {
+            for point in [&selection.anchor, &selection.focus] {
+                let row = frame
+                    .index_of(point.row)
+                    .and_then(|index| frame.display(index))
+                    .ok_or(CoreError::Closed)?;
+                if !selection_boundary(&row.text, point.utf16 as usize) {
+                    return Err(CoreError::Closed);
+                }
+            }
+        }
+        state.selection = selection;
+        Ok(())
     }
     pub fn save_transcript_anchor(
         &self,
@@ -387,6 +581,39 @@ impl CoreAndroidHost {
         }
         state.anchor = Some(anchor);
         Ok(())
+    }
+    pub fn set_foreground(&self, active: bool) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        state.foreground = active;
+        if let Some(client) = &state.client {
+            if active {
+                client.on_foreground();
+            } else {
+                client.on_background();
+            }
+        }
+        if let Some(history) = &state.history {
+            history.set_foreground(active);
+        }
+        state.apply_visibility();
+        Ok(())
+    }
+    pub fn accessibility_surface(
+        &self,
+        surface: AndroidHostSurface,
+    ) -> CoreResult<Arc<CoreAccessibilitySurface>> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if let Some(existing) = state.semantics.get(&surface) {
+            return Ok(existing.clone());
+        }
+        let semantics = CoreAccessibilitySurface::new(
+            self.account.clone().ok_or(CoreError::Closed)?,
+            surface.scope().into(),
+        )?;
+        state.semantics.insert(surface, semantics.clone());
+        Ok(semantics)
     }
     pub fn account(&self) -> Option<Arc<CoreAccount>> {
         self.account.clone()
@@ -479,6 +706,7 @@ impl CoreAndroidHost {
             return Err(CoreError::Closed);
         }
         s.route = route;
+        s.apply_visibility();
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())
@@ -498,6 +726,7 @@ impl CoreAndroidHost {
             self.replace(&mut s, Content::Cloud(cloud), Some(composer))?;
         }
         s.route = AndroidHostRoute::Chat;
+        s.apply_visibility();
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())
@@ -540,6 +769,7 @@ impl CoreAndroidHost {
             )?;
         }
         s.route = AndroidHostRoute::Chat;
+        s.apply_visibility();
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())
@@ -611,12 +841,55 @@ impl CoreAndroidHost {
     }
 }
 
+fn browser_link(url: &str) -> bool {
+    url.len() <= 8192
+        && (url.starts_with("https://") || url.starts_with("http://"))
+        && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
+fn selection_boundary(text: &str, offset: usize) -> bool {
+    let mut at = 0;
+    for c in text.chars() {
+        if at == offset {
+            return true;
+        }
+        at += c.len_utf16();
+        if at > offset {
+            return false;
+        }
+    }
+    at == offset
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     struct Listener;
     impl AndroidHostListener for Listener {
         fn on_android_host_changed(&self) {}
+    }
+    #[test]
+    fn browser_links_are_bounded_and_do_not_launch_platform_commands() {
+        assert!(browser_link("https://example.invalid/path?q=1"));
+        for url in [
+            "intent://example",
+            "javascript:alert(1)",
+            "file:///secret",
+            "https://example.invalid/\n",
+        ] {
+            assert!(!browser_link(url));
+        }
+        assert!(!browser_link(&format!(
+            "https://example.invalid/{}",
+            "x".repeat(8192)
+        )));
+    }
+    #[test]
+    fn selection_offsets_cannot_split_utf16_surrogates() {
+        assert!(selection_boundary("a🙂z", 1));
+        assert!(!selection_boundary("a🙂z", 2));
+        assert!(selection_boundary("a🙂z", 3));
+        assert!(!selection_boundary("a🙂z", usize::MAX));
     }
     #[test]
     fn remount_borrows_the_same_demo_owner_and_editor() {

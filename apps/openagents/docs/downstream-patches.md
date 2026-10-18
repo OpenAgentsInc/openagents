@@ -1004,3 +1004,11 @@ links remain readable. Upstream fixes now require manual ports.
   live/indexed reads only after rows paint, with the indexed activity revision
   selected by Rust. Legacy drawer callers keep their existing default behavior.
   New source fixtures are authored; compilation and executable checks are unrun.
+
+- #12100: Mount the C2 selection host and Q1 paging actions over C1's borrowed
+  Rust frame. Rust retains bounded selection endpoints across Activity mounts,
+  checks current frame identities for code-copy/disclosure/browser actions, and
+  retains a finite set of semantic focus owners. E1's re-entry fix and Kotlin
+  shutdown renames are merged from the feature batch. Rust/Kotlin checks and
+  binding generation remain unrun; media viewer routing remains a separate C2
+  integration step.
