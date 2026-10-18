@@ -13,6 +13,7 @@ compile_error!("The account fixture is only available for the iOS simulator.");
 
 uniffi::setup_scaffolding!("openagents_core");
 
+mod android_bootstrap;
 pub mod caption;
 mod client_ffi;
 pub mod layout;

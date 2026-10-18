@@ -142,6 +142,7 @@ impl CoreClient {
         credentials: Credentials,
         listener: Arc<dyn ClientListener>,
     ) -> CoreResult<Arc<Self>> {
+        crate::android_bootstrap::ensure_initialized()?;
         let client = zc::Client::new(
             config.into(),
             credentials.into(),
