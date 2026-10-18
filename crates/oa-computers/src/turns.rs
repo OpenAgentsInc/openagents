@@ -766,7 +766,12 @@ pub async fn run_next<D: Driver + Clone + 'static>(
                             .map_or(true, |entry| entry.is_none_or(|current| current.desired != Desired::Running));
                     if stop_requested {
                         break if p.driver.capabilities().memory_suspend {
-                            Outcome::unknown(STOPPED)
+                            // Kill the command's session and wait for its
+                            // exit; only an unconfirmed stop is uncertain.
+                            match p.driver.cancel_exec(&resource).await {
+                                Outcome::Done { .. } => Outcome::failed(STOPPED),
+                                _ => Outcome::unknown(STOPPED),
+                            }
                         } else {
                             Outcome::failed(STOPPED)
                         };
