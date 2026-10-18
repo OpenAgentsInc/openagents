@@ -2034,4 +2034,150 @@ mod tests {
         .unwrap();
         assert!(super::super::plain(&screen("long", &state)).contains("04999"));
     }
+
+    #[test]
+    fn android_semantic_catalog_views_are_bounded_and_revision_bound() {
+        use crate::android::AndroidView;
+        use rust_native::view::View;
+
+        // Exercise the existing shared forms, settings, cards, and dashboards,
+        // rather than constructing a separate Android component catalog.
+        for entry in super::super::entries() {
+            for variant in entry.variants {
+                let state = FixtureState::default_for(&entry.id, &variant.id);
+                let view = super::super::view(&entry.id, &variant.id, &state)
+                    .validate()
+                    .unwrap();
+                let instance = view.view().instance.clone();
+                let mut bridge = AndroidView::new();
+                let bytes = bridge.prepare(view).unwrap();
+                assert!(bytes.len() <= rust_native::view::MAX_VIEW_BYTES);
+                let decoded = View::<CatalogIntent>::from_json(&bytes).unwrap();
+                assert_eq!(decoded.view().instance, instance);
+                bridge.acknowledge(&instance, state.revision).unwrap();
+                bridge.dispose();
+                assert!(bridge.acknowledge(&instance, state.revision).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn android_semantic_callbacks_require_applied_revision_and_live_surface() {
+        use crate::android::AndroidView;
+        use rust_native::view::{Activation, Axis, FieldChange, Node, View, ViewError};
+
+        fn node(key: impl Into<String>, element: Element<CatalogIntent>) -> Node<CatalogIntent> {
+            Node {
+                key: key.into(),
+                style: Default::default(),
+                element,
+            }
+        }
+        fn fixture(
+            revision: u64,
+            open: bool,
+            enabled: bool,
+        ) -> rust_native::view::ValidatedView<CatalogIntent> {
+            let action = |name: &str| CatalogIntent::Action { name: name.into() };
+            let mut children = vec![node(
+                "agent-name",
+                Element::Field {
+                    label: "Agent name".into(),
+                    value: "Foreman".into(),
+                    placeholder: "Name".into(),
+                    secret: false,
+                    multiline: false,
+                    enabled,
+                    max_bytes: 32,
+                    on_change: CatalogIntent::Input {
+                        field: "agent-name".into(),
+                    },
+                },
+            )];
+            for name in [
+                "create", "edit", "save", "run", "inspect", "use", "relaunch", "assign",
+            ] {
+                children.push(node(
+                    format!("agent-{name}"),
+                    Element::Button {
+                        label: name.into(),
+                        enabled,
+                        icon: None,
+                        shortcut: None,
+                        intent: action(name),
+                    },
+                ));
+            }
+            let dialog = node(
+                "agent-sheet",
+                Element::Dialog {
+                    label: "Agent settings".into(),
+                    open,
+                    on_close: action("close"),
+                    children,
+                },
+            );
+            View::new_v3(
+                "android-fixture",
+                revision,
+                node(
+                    "home",
+                    Element::Stack {
+                        axis: Axis::Vertical,
+                        children: vec![dialog],
+                    },
+                ),
+            )
+            .validate()
+            .unwrap()
+        }
+        let event = |revision, node: &str| Activation {
+            instance: "android-fixture".into(),
+            revision,
+            node: node.into(),
+        };
+        let mut bridge = AndroidView::new();
+        bridge.prepare(fixture(1, true, true)).unwrap();
+        assert_eq!(
+            bridge.activate(&event(1, "agent-save")),
+            Err(ViewError::StaleActivation)
+        );
+        bridge.acknowledge("android-fixture", 1).unwrap();
+        for name in [
+            "create", "edit", "save", "run", "inspect", "use", "relaunch", "assign",
+        ] {
+            assert_eq!(
+                bridge.activate(&event(1, &format!("agent-{name}"))),
+                Ok(&CatalogIntent::Action { name: name.into() })
+            );
+        }
+        let mut field = FieldChange {
+            activation: event(1, "agent-name"),
+            value: "New agent".into(),
+        };
+        assert!(bridge.change_field(&field).is_ok());
+        field.value = "x".repeat(33);
+        assert_eq!(bridge.change_field(&field), Err(ViewError::TextLimit));
+        field.value = "two\nlines".into();
+        assert_eq!(bridge.change_field(&field), Err(ViewError::TextLimit));
+        bridge.prepare(fixture(2, true, false)).unwrap();
+        bridge.prepare(fixture(3, false, true)).unwrap();
+        assert!(bridge.acknowledge("android-fixture", 2).is_err());
+        bridge.acknowledge("android-fixture", 3).unwrap();
+        assert_eq!(
+            bridge.activate(&event(1, "agent-save")),
+            Err(ViewError::StaleActivation)
+        );
+        assert!(bridge.activate(&event(3, "agent-save")).is_err());
+        assert!(bridge.prepare(fixture(3, true, true)).is_err());
+        bridge.prepare(fixture(4, true, false)).unwrap();
+        bridge.acknowledge("android-fixture", 4).unwrap();
+        assert_eq!(
+            bridge.activate(&event(4, "agent-save")),
+            Err(ViewError::Disabled)
+        );
+        bridge.dispose();
+        assert!(bridge.activate(&event(4, "agent-save")).is_err());
+        assert!(bridge.prepare(fixture(5, true, true)).is_err());
+    }
 }

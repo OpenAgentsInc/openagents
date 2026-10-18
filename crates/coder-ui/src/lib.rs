@@ -1,4 +1,5 @@
 //! Coder's shared presentation and theme values. The reusable UI framework has no product palette.
+pub mod android;
 pub mod catalog;
 pub mod coder_light;
 pub mod coder_noir;

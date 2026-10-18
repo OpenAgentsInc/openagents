@@ -679,3 +679,12 @@ links remain readable. Upstream fixes now require manual ports.
   `engine/src/rpc/run_commands.rs` maps the RPC body. `host_rpc` checks account,
   native rights, and definition-based command grants; the device-channel adapter
   preserves the request ID when delivery is uncertain.
+
+- [OpenAgents #12088](https://github.com/OpenAgentsInc/openagents/issues/12088):
+  add the shared Android semantic widget adapter in
+  `apps/openagents/apps/android/platform/SemanticViewAdapter.kt`. Rust's `coder-ui::android`
+  bridge validates callback identity and distinguishes prepared and displayed
+  revisions. Cards and domain actions remain Rust views. The app shell must
+  connect the bridge and provide transcript, composer, Markdown, and local
+  surface adapters. This baseline has no Gradle app shell; Android compilation,
+  device input, TalkBack, deployment, and store checks have not run.
