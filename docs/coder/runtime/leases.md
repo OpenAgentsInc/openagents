@@ -253,14 +253,24 @@ shim prepares the build before it runs the real `cargo`:
   set under `agent-targets` (#12104).
 - **Source-path identity.** The shim loads
   [`cargo-build-env.sh`](../../../scripts/dev/cargo-build-env.sh). The helper
-  hashes the physical workspace manifest path with SHA-256 and sets
+  resolves a rustup proxy to its selected compiler, exports its absolute path
+  as `RUSTC`, and hashes that path, full `rustc -vV` output, and physical
+  workspace manifest path with SHA-256. It sets
   `CARGO_BUILD_BUILD_DIR` to `$CARGO_TARGET_DIR/worktrees/<first two hex digits>/<remaining hex digits>`.
   Fingerprints, dependency libraries, and build-script outputs belong to that
-  source path; kache still restores compiled artifacts by source content.
+  source path and compiler; kache still restores compiled artifacts by source content.
   This covers workspace members, excluded path dependencies, and nested
   workspaces. Final binaries stay in the shared target's normal `debug` or
   `release` directory. A `.openagents-workspace` file records the manifest
   and its modification time records each build, including all-fresh builds.
+  `.openagents-compiler` records the compiler path and version. Old path-only
+  state stays unused until the sweep removes it, under the same disk cap.
+  Pinning Cargo alone is insufficient: Cargo probes `rustc` in the workspace,
+  then runs it in each crate's directory. A rustup proxy can choose a different
+  compiler there while Cargo records the probed version in its fingerprints,
+  leaving incompatible dependencies `Fresh` (#12113). Reload the helper after
+  changing `RUSTC`. To switch rustup toolchains, unset `RUSTC`, set
+  `RUSTUP_TOOLCHAIN`, and reload the helper.
 - **No incremental state.** Heavy Cargo subcommands set
   `CARGO_INCREMENTAL=0`, overriding an inherited `1`. Both this and source-path
   identity apply with `OPENAGENTS_KEEP_TARGET_DIR=1`, inside a build lease,
@@ -302,7 +312,7 @@ cargo test -p coder-lease
 
 For `apps/openagents`, use `openagents-target-1-app` instead and load the helper
 from that directory. Keep one shared target per workspace; a source hash
-belongs to its manifest path, never an agent or session.
+belongs to its manifest path and compiler, never an agent or session.
 
 The offline regression uses real Cargo and kache, two Git worktrees with
 different same-version library sources older than every artifact, alternating
@@ -317,6 +327,19 @@ durable scratch and are removed when it finishes:
 OPENAGENTS_SCRATCH="$(openagents scratch)" \
 OPENAGENTS_TEST_KACHE="$(command -v kache)" \
 cargo test -p coder-lease --test shared_target -- --ignored
+```
+
+The compiler regression reproduces E0514 without a cache wrapper, including
+the `Fresh` retry, then checks the helper with two installed toolchains and
+separate cache keys and hits in a disposable kache store:
+
+```sh
+OPENAGENTS_SCRATCH="$(openagents scratch)" \
+OPENAGENTS_TEST_RUSTUP="$(command -v rustup)" \
+OPENAGENTS_TEST_KACHE="$(command -v kache)" \
+OPENAGENTS_TEST_OLD_TOOLCHAIN=stable \
+OPENAGENTS_TEST_NEW_TOOLCHAIN=1.98.1 \
+cargo test -p coder-lease --test compiler_state -- --ignored
 ```
 
 The app's MCP server offers `build_status`: the builds running and waiting,

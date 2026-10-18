@@ -182,10 +182,16 @@ create both sets for the same workspace or delete a shared target at task end.
 Every agent build in a shared target must use `CARGO_INCREMENTAL=0` and
 source-keyed compiler state. After choosing `CARGO_TARGET_DIR`, load
 `. "$(git rev-parse --show-toplevel)/scripts/dev/cargo-build-env.sh"`, then
-run Cargo directly. The helper hashes the physical workspace manifest path
-with SHA-256 and sets `CARGO_BUILD_BUILD_DIR` under the shared target's
+run Cargo directly. The helper pins `RUSTC` to the selected compiler, hashes
+its full `rustc -vV` output and path with the physical workspace manifest path
+using SHA-256, and sets `CARGO_BUILD_BUILD_DIR` under the shared target's
 `worktrees/` folder. It records the manifest for the sweep and refreshes the
-last-use time, including for all-fresh builds. The agent and lease shims use
+last-use time, including for all-fresh builds. Reload the helper after changing
+`RUSTC`. To switch rustup toolchains, unset `RUSTC`, set `RUSTUP_TOOLCHAIN`,
+and reload the helper. Pinning Cargo alone leaves a rustup proxy free
+to select a different compiler in each dependency directory (#12113).
+Old path-only state stays unused until the sweep removes it. The agent and
+lease shims use
 this same helper, including with `OPENAGENTS_KEEP_TARGET_DIR=1` and inside an
 existing build lease. Never flatten compiler state onto the shared target:
 Cargo can call another worktree's older source fresh without running rustc

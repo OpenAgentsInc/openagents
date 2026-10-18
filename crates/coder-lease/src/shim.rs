@@ -76,6 +76,9 @@ if [ -z "$real" ]; then
 fi
 sub=
 skip=
+case ${1:-} in
+  +*) RUSTUP_TOOLCHAIN=${1#+}; export RUSTUP_TOOLCHAIN ;;
+esac
 for arg in "$@"; do
   if [ -n "$skip" ]; then
     skip=

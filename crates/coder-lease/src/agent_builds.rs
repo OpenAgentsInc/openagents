@@ -88,6 +88,10 @@ if [ -z "$real" ]; then
 fi
 sub=
 skip=
+# Resolve an explicit rustup selector before the helper pins rustc.
+case ${1:-} in
+  +*) RUSTUP_TOOLCHAIN=${1#+}; export RUSTUP_TOOLCHAIN ;;
+esac
 for arg in "$@"; do
   if [ -n "$skip" ]; then
     skip=
@@ -105,7 +109,7 @@ case $sub in
 esac
 # Cargo's workspace-relative fingerprints can call another worktree's source
 # Fresh without invoking rustc or kache. Keep compiler state under a manifest-
-# path hash inside the one shared target; kache still keys outputs by content.
+# and compiler hash inside the shared target; kache keys outputs by content.
 CARGO_INCREMENTAL=0
 export CARGO_INCREMENTAL
 manifest=

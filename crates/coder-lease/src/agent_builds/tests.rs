@@ -30,6 +30,10 @@ impl Machine {
             "#!/bin/sh\necho \"real $* incremental=${CARGO_INCREMENTAL:-} build_dir=${CARGO_BUILD_BUILD_DIR:-} target=${CARGO_TARGET_DIR:-}\"\n",
         );
         script(
+            &root.join("real/rustc"),
+            "#!/bin/sh\necho 'rustc 1.97.1 (test)'\n",
+        );
+        script(
             &root.join("bin/openagents"),
             "#!/bin/sh\necho \"lease $* builds=$OPENAGENTS_BUILD_LEASES floor=$OPENAGENTS_SLOT_FREE_GB incremental=${CARGO_INCREMENTAL:-} build_dir=${CARGO_BUILD_BUILD_DIR:-} target=${CARGO_TARGET_DIR:-}\"\n",
         );
@@ -107,6 +111,54 @@ fn light_subcommands_run_cargo_directly() {
         &[("OPENAGENTS_LEASES", "build")],
     );
     assert!(stdout(&output).starts_with("real build incremental=0 build_dir="));
+}
+
+#[test]
+fn compiler_changes_get_new_state_without_new_targets() {
+    let machine = Machine::new();
+    std::fs::write(machine.root().join("Cargo.lock"), "").unwrap();
+    let first = machine.cargo(&machine.root(), &["build"], &[]);
+    assert!(first.status.success(), "{first:?}");
+    script(
+        &machine.root().join("real/rustc"),
+        "#!/bin/sh\necho 'rustc 1.98.1 (test)'\n",
+    );
+    let second = machine.cargo(&machine.root(), &["build"], &[]);
+    assert!(second.status.success(), "{second:?}");
+    assert_ne!(stdout(&first), stdout(&second));
+    assert_eq!(std::fs::read_dir(&machine.gate.targets).unwrap().count(), 1);
+    script(
+        &machine.root().join("real/rustc"),
+        "#!/bin/sh\necho 'rustc 1.97.1 (test)'\n",
+    );
+    assert_eq!(
+        stdout(&first),
+        stdout(&machine.cargo(&machine.root(), &["build"], &[]))
+    );
+}
+
+#[test]
+fn unreadable_compiler_stops_before_cargo_or_admission() {
+    let machine = Machine::new();
+    let output = machine.cargo(&machine.root(), &["build"], &[("RUSTC", "/bin/false")]);
+    assert!(!output.status.success());
+    assert!(stdout(&output).is_empty());
+}
+
+#[test]
+fn explicit_toolchain_selector_reaches_the_compiler_probe() {
+    let machine = Machine::new();
+    script(
+        &machine.root().join("real/rustc"),
+        "#!/bin/sh\necho \"rustc ${RUSTUP_TOOLCHAIN:-default} (test)\"\n",
+    );
+    let default = machine.cargo(&machine.root(), &["build"], &[]);
+    let selected = machine.cargo(&machine.root(), &["+1.98.1", "build"], &[]);
+    assert!(selected.status.success(), "{selected:?}");
+    assert_ne!(
+        stdout(&default).split("build_dir=").nth(1),
+        stdout(&selected).split("build_dir=").nth(1)
+    );
 }
 
 #[test]
