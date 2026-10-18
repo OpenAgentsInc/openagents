@@ -1526,3 +1526,73 @@ async fn argon_streams_its_thoughts_as_reasoning() {
     let body = vertex::body(&ask, &flash.0, flash.1).unwrap();
     assert!(body["generationConfig"]["thinkingConfig"]["thinkingLevel"].is_null());
 }
+
+#[tokio::test]
+async fn google_service_account_scope_changes_do_not_reuse_another_scopes_cached_token() {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    // Generate a disposable signing key in memory; no saved Google
+    // credentials or live token endpoint participate in this fixture.
+    let generated = std::process::Command::new("openssl")
+        .args([
+            "genpkey",
+            "-algorithm",
+            "RSA",
+            "-pkeyopt",
+            "rsa_keygen_bits:2048",
+        ])
+        .output()
+        .expect("openssl generates the synthetic OAuth signing key");
+    assert!(generated.status.success());
+    let pem = String::from_utf8(generated.stdout).unwrap();
+    let stub = stub(vec![
+        Reply::json(
+            200,
+            json!({"access_token":"fixture-cloud-token", "expires_in":3599}),
+        ),
+        Reply::json(
+            200,
+            json!({"access_token":"fixture-play-token", "expires_in":3599}),
+        ),
+    ])
+    .await;
+    let token_uri = format!("{}/token", stub.url);
+    let source = TokenSource::service_account_json(
+        &json!({
+            "client_email":"fixture@example.invalid", "private_key":pem, "token_uri":token_uri
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        source.token().await.unwrap().expose(),
+        "fixture-cloud-token"
+    );
+    let play_scope = "https://www.googleapis.com/auth/playintegrity";
+    let play = source.clone().with_scope(play_scope);
+    assert_eq!(play.token().await.unwrap().expose(), "fixture-play-token");
+    assert_eq!(
+        source.token().await.unwrap().expose(),
+        "fixture-cloud-token"
+    );
+    assert_eq!(play.token().await.unwrap().expose(), "fixture-play-token");
+    let seen = stub.seen();
+    assert_eq!(seen.len(), 2);
+    for (request, expected_scope) in seen
+        .iter()
+        .zip([inference::upstream::google::SCOPE, play_scope])
+    {
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.path, "/token");
+        let form = std::str::from_utf8(&request.body).unwrap();
+        let assertion = form.split("&assertion=").nth(1).unwrap();
+        let claims: Value = serde_json::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(assertion.split('.').nth(1).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(claims["scope"], expected_scope);
+        assert_eq!(claims["aud"], token_uri);
+        assert_eq!(claims["iss"], "fixture@example.invalid");
+    }
+}
