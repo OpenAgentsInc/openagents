@@ -38,6 +38,8 @@ pub use account::*;
 pub use custom_agents::*;
 mod sharing;
 pub use sharing::*;
+mod settings;
+pub use settings::*;
 mod saved;
 pub use saved::*;
 mod session;

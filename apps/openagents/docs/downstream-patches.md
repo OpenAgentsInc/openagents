@@ -688,3 +688,14 @@ links remain readable. Upstream fixes now require manual ports.
   connect the bridge and provide transcript, composer, Markdown, and local
   surface adapters. This baseline has no Gradle app shell; Android compilation,
   device input, TalkBack, deployment, and store checks have not run.
+
+- [OpenAgents #12091](https://github.com/OpenAgentsInc/openagents/issues/12091):
+  add an isolated Android settings presentation directory and a shared Rust
+  Native settings owner. Reuse account deletion, device rename, cloud, and
+  sharing contracts; fence deletion completion and stale confirmations to the
+  account generation that began them. Rust stores presentation preferences;
+  Kotlin reports widget identities and Android picker/chooser results. Source
+  fixtures cover deletion outcomes, account switching, persistence, and surface
+  lifetime. Bindings, lockfile resolution, app wiring, and executable checks are
+  pending the 100 GiB disk floor. Project-invitation Share still needs a typed
+  Rust effect; Android push registration belongs to F1.
