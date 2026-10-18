@@ -268,6 +268,8 @@ the broader shared-platform migrations remain separate issues.
 
 [Foreman](foreman.md) is the first ready-made experiment: **Start from Foreman**
 loads an agent that reasons over every open issue and active agent.
+[Replay a recorded day](replay.md) turns 2026-10-17 into a suite any
+coordinating agent can run, with deterministic checks against deadlines.
 
 Open **Agent Lab** from the mobile agent picker, or visit
 [/labs/agent](https://openagents.com/labs/agent) from a browser or the desktop

@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 pub mod api;
 pub mod components;
 pub mod kind;
+pub mod replay;
 pub mod templates;
 #[cfg(feature = "views")]
 pub mod view;
@@ -143,6 +144,8 @@ pub struct Case {
     pub task: String,
     pub check: Check,
 }
+/// `Replay` scores the reply against a scenario of the 2026-10-17 replay
+/// (`replay::day()`), with the replay's stand-in agent ID as the subject.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Check {
@@ -150,6 +153,7 @@ pub enum Check {
     Exact { expected: String },
     Json { pointer: String, expected: Value },
     Review { criteria: String },
+    Replay { scenario: String },
 }
 impl Check {
     pub fn validate(&self) -> bool {
@@ -161,6 +165,7 @@ impl Check {
                     && serde_json::to_vec(expected).is_ok_and(|v| v.len() <= 4096)
             }
             Self::Review { criteria } => text(criteria, 2048),
+            Self::Replay { scenario } => replay::day().scenario(scenario).is_some(),
         }
     }
     /// None means that explicit human review is still needed, never a passing check.
@@ -176,6 +181,10 @@ impl Check {
                     == Some(expected),
             ),
             Self::Review { .. } => None,
+            Self::Replay { scenario } => {
+                let day = replay::day();
+                Some(day.score(scenario, &day.subject, result).passed)
+            }
         }
     }
 }

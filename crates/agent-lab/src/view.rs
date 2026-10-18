@@ -351,6 +351,7 @@ impl Workbench {
                         Check::Exact { .. } => "Exact reply",
                         Check::Json { .. } => "JSON value",
                         Check::Review { .. } => "Human review",
+                        Check::Replay { .. } => "Replay scenario",
                     }
                 ),
             ));
@@ -386,6 +387,7 @@ impl Workbench {
                     Check::Contains { expected } | Check::Exact { expected } => expected.clone(),
                     Check::Review { criteria } => criteria.clone(),
                     Check::Json { expected, .. } => expected.to_string(),
+                    Check::Replay { scenario } => scenario.clone(),
                 });
             n.push(field(
                 format!("expected:{i}"),
@@ -705,6 +707,7 @@ impl Workbench {
                             *expected = value
                         }
                         Check::Review { criteria } => *criteria = value,
+                        Check::Replay { scenario } => *scenario = value,
                         Check::Json { expected, .. } => {
                             self.inputs.insert(key.into(), value.clone());
                             if let Ok(parsed) = serde_json::from_str(&value) {
