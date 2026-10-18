@@ -30,10 +30,27 @@ pub(super) fn stage_reveal(open: bool, elapsed_ms: f32, reduced: bool) -> f32 {
 }
 
 impl Shell {
+    fn voice_chat_context(
+        &self,
+        cx: &Context<Self>,
+    ) -> Option<openagents_proto::voice::VoiceChatContext> {
+        if self.route != Route::Chat {
+            return None;
+        }
+        let state = self.state.read(cx);
+        let id = state.selected_chat.clone()?;
+        let title = state
+            .chats
+            .iter()
+            .find(|c| c.id == id)
+            .and_then(|c| c.title.clone());
+        openagents_proto::voice::VoiceChatContext::new(id, title)
+    }
     /// The footer microphone: a new orchestrator in a projectless Codex chat
     /// on this device. The chat's model follows the composer when it already
     /// targets Codex; otherwise Codex's own default model runs the delegations.
     pub(super) fn start_voice(&mut self, cx: &mut Context<Self>) {
+        let context = self.voice_chat_context(cx);
         let state = self.state.read(cx);
         let (Some(engine), Some(device)) = (state.engine().cloned(), state.local_device_id.clone())
         else {
@@ -62,7 +79,7 @@ impl Shell {
             .unwrap_or("This device")
             .to_owned();
         self.voice.update(cx, |controller, cx| {
-            controller.start(engine, device, config, voice, cx);
+            controller.start(engine, device, config, voice, context, cx);
             controller.host_name = Some(host_name);
             controller.set_stage_open(true, cx);
         });
@@ -92,6 +109,8 @@ impl Shell {
     /// over: the stage owns the keyboard while it is up. Navigating to
     /// another thread or to Settings steps the stage aside; voice continues.
     pub(super) fn sync_voice_stage(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let context = self.voice_chat_context(cx);
+        self.voice.update(cx, |voice, _| voice.set_context(context));
         let selected = self.state.read(cx).selected_chat.clone();
         let navigating_to_settings =
             self.route != self.voice_stage_route && matches!(self.route, Route::Settings(_));
@@ -134,6 +153,8 @@ impl Shell {
         }
         let live = voice.is_live();
         let stage_open = voice.stage_open;
+        let setup_required =
+            voice.reason == Some(openagents_proto::voice::VoiceRejection::VoiceAgentRequired);
         let failure = (voice.phase == VoicePhase::Failed)
             .then(|| voice.reason_text())
             .filter(|text| !text.is_empty());
@@ -195,12 +216,23 @@ impl Shell {
             .map(SharedString::from)
             .unwrap_or_else(|| "Start voice · Codex orchestrator".into());
         let button = button
-            .aria_label("Start voice")
+            .aria_label(if setup_required {
+                "Choose voice agent"
+            } else {
+                "Start voice"
+            })
             .tooltip(move |_, cx| {
                 let text = tooltip.clone();
                 cx.new(|_| SurfaceTabTooltip { text }).into()
             })
-            .on_click(cx.listener(|this, _, _, cx| this.start_voice(cx)))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if setup_required {
+                    this.voice.update(cx, |voice, cx| voice.dismiss_reason(cx));
+                    this.open_settings(crate::shell::SettingsSection::General, cx);
+                } else {
+                    this.start_voice(cx);
+                }
+            }))
             .child(
                 icon(icons::MICROPHONE)
                     .size(px(15.0))

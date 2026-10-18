@@ -142,6 +142,18 @@ impl VoiceManager {
             .map(|_| ())
             .ok_or(VoiceRejection::InvalidLease)
     }
+    pub(crate) fn set_context(&self, update: wire::ContextUpdate) -> Result<(), VoiceRejection> {
+        if update.context.as_ref().is_some_and(|c| !c.valid()) {
+            return Err(VoiceRejection::Protocol);
+        }
+        let mut state = self.inner.slot.lock().unwrap();
+        let slot = state
+            .as_mut()
+            .filter(|s| Self::remote_matches(s, &update.lease))
+            .ok_or(VoiceRejection::InvalidLease)?;
+        slot.context = update.context;
+        Ok(())
+    }
     pub(crate) fn own_remote(&self, lease: wire::Lease) -> Result<VoiceOwner, VoiceRejection> {
         self.validate_remote(&lease)?;
         self.own(lease.voice)

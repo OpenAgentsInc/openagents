@@ -37,6 +37,7 @@ pub(super) async fn run(
     cancel: CancellationToken,
     events: mpsc::Sender<VoiceEvent>,
     mut controls: mpsc::Receiver<super::VoiceControl>,
+    context: watch::Receiver<Option<VoiceChatContext>>,
 ) -> Result<(), VoiceRejection> {
     let client = Arc::new(
         engine
@@ -55,8 +56,16 @@ pub(super) async fn run(
         codex.as_deref(),
     )?));
     let (mute_tx, muted) = watch::channel(false);
-    let call =
-        openagents_voice_session::run(control, media, config, voice, cancel.clone(), events, muted);
+    let call = openagents_voice_session::run_with_context(
+        control,
+        media,
+        config,
+        voice,
+        cancel.clone(),
+        events,
+        muted,
+        context,
+    );
     tokio::pin!(call);
     loop {
         tokio::select! {biased;

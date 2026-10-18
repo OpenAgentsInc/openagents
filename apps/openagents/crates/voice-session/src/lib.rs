@@ -92,6 +92,7 @@ pub fn rejection(error: openagents_rpc::RpcError) -> VoiceRejection {
     let message = error.to_string();
     for reason in [
         VoiceRejection::Disabled,
+        VoiceRejection::VoiceAgentRequired,
         VoiceRejection::NativeRuntimeUnavailable,
         VoiceRejection::ChatgptRequired,
         VoiceRejection::Busy,
@@ -173,6 +174,25 @@ pub async fn run(
     events: mpsc::Sender<VoiceEvent>,
     muted: watch::Receiver<bool>,
 ) -> Result<(), VoiceRejection> {
+    let (_context, receiver) = watch::channel(None);
+    run_with_context(
+        control, media, config, voice, cancel, events, muted, receiver,
+    )
+    .await
+}
+
+/// Runs one call with the calling viewport's current chat as message context.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_with_context(
+    control: Arc<dyn VoiceControlTransport>,
+    media: Arc<dyn VoiceMediaEndpoint>,
+    config: openagents_proto::ChatConfig,
+    voice: Option<String>,
+    cancel: CancellationToken,
+    events: mpsc::Sender<VoiceEvent>,
+    muted: watch::Receiver<bool>,
+    mut context: watch::Receiver<Option<openagents_proto::voice::VoiceChatContext>>,
+) -> Result<(), VoiceRejection> {
     let started = tokio::time::Instant::now();
     let local_cancel = cancel.child_token();
     let failure = Arc::new(Mutex::new(None));
@@ -205,6 +225,10 @@ pub async fn run(
             elapsed_ms = started.elapsed().as_millis() as u64,
             "remote voice stage"
         );
+        let choice: Value = call(control.as_ref(), methods::GET_VOICE_AGENT, json!({}), 8).await?;
+        if choice["target"].is_null() {
+            return Err(VoiceRejection::VoiceAgentRequired);
+        }
         media.prepare().await?;
         tracing::info!(
             stage = "prepare_host",
@@ -229,6 +253,42 @@ pub async fn run(
             "remote voice stage"
         );
         let mut owner = control.own(&prepared.lease).await?;
+        let initial_context = context.borrow_and_update().clone();
+        let _: Value = call(
+            control.as_ref(),
+            methods::UPDATE_VOICE_CONTEXT_V2,
+            wire::ContextUpdate {
+                lease: prepared.lease.clone(),
+                context: initial_context,
+            },
+            8,
+        )
+        .await?;
+        let context_control = control.clone();
+        let context_lease = prepared.lease.clone();
+        let context_cancel = local_cancel.clone();
+        let context_failure = failure.clone();
+        let context_media = media.clone();
+        scope.tasks.push(tokio::spawn(async move {
+            loop {
+                tokio::select! { biased;
+                    _ = context_cancel.cancelled() => break,
+                    changed = context.changed() => {
+                        if changed.is_err() { break; }
+                        let current = context.borrow_and_update().clone();
+                        let result: Result<Value, _> = call(context_control.as_ref(), methods::UPDATE_VOICE_CONTEXT_V2,
+                            wire::ContextUpdate { lease: context_lease.clone(), context: current }, 8).await;
+                        if let Err(reason) = result {
+                            if context_cancel.is_cancelled() { break; }
+                            *context_failure.lock().unwrap() = Some(reason);
+                            context_media.close();
+                            context_cancel.cancel();
+                            break;
+                        }
+                    }
+                }
+            }
+        }));
         let lease = prepared.lease.clone();
         let owner_cancel = local_cancel.clone();
         let owner_events = events.clone();
@@ -442,6 +502,7 @@ mod tests {
     struct Control {
         supported: bool,
         half_open: bool,
+        missing_agent: bool,
         calls: Mutex<Vec<String>>,
         lease: wire::Lease,
     }
@@ -458,6 +519,11 @@ mod tests {
                     protocol: wire::CAPABILITY.into(),
                     client_webrtc: self.supported,
                     voices: vec![]
+                }),
+                methods::GET_VOICE_AGENT => json!({"revision":0,"target":
+                    if self.missing_agent { Value::Null } else {
+                        json!({"agentId":"agent","chatId":"chat","hostId":"host"})
+                    }
                 }),
                 methods::PREPARE_VOICE_V2 => json!(wire::Prepared {
                     lease: self.lease.clone(),
@@ -498,6 +564,7 @@ mod tests {
         Arc::new(Control {
             supported,
             half_open: false,
+            missing_agent: false,
             calls: Default::default(),
             lease: wire::Lease {
                 host_device_id: "host".into(),
@@ -537,6 +604,38 @@ mod tests {
         );
         assert!(!media.prepared.load(Ordering::SeqCst));
         assert!(media.closed.load(Ordering::SeqCst));
+    }
+    #[tokio::test]
+    async fn missing_voice_agent_never_requests_microphone() {
+        let media = Arc::new(Media {
+            prepared: AtomicBool::new(false),
+            closed: AtomicBool::new(false),
+            block: false,
+        });
+        let mut control = control(true);
+        Arc::get_mut(&mut control).unwrap().missing_agent = true;
+        let (tx, _rx) = mpsc::channel(8);
+        let (_mute, muted) = watch::channel(false);
+        let result = run(
+            control.clone(),
+            media.clone(),
+            config(),
+            None,
+            CancellationToken::new(),
+            tx,
+            muted,
+        )
+        .await;
+        assert_eq!(result.unwrap_err(), VoiceRejection::VoiceAgentRequired);
+        assert!(!media.prepared.load(Ordering::SeqCst));
+        assert!(
+            !control
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|m| m == methods::PREPARE_VOICE_V2)
+        );
     }
     #[tokio::test]
     async fn cancelling_a_stalled_offer_closes_media_before_remote_cleanup() {

@@ -3218,6 +3218,17 @@ impl RpcService for EngineRpc {
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&serde_json::json!({"notified":true}))
             }
+            methods::GET_VOICE_CONTEXT => {
+                let chat = params
+                    .get("chatId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::Failed("Missing voice chat.".into()))?;
+                let context = self
+                    .voice
+                    .context(chat)
+                    .map_err(|_| RpcError::Failed("This voice call has ended.".into()))?;
+                RpcReply::value(&context)
+            }
             methods::GET_FOREMAN => RpcReply::value(&self.doc_host.foreman_status()),
             methods::SET_FOREMAN => {
                 let settings: openagents_proto::foreman::ForemanSettings = parse_params(params)?;

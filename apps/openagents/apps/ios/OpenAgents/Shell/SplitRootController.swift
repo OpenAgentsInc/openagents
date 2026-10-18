@@ -23,7 +23,9 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
     private let sidebar: SidebarViewController
     private let detail = UINavigationController()
     private lazy var tabs = DrawerShellController(app: app)
-    private(set) var currentChatId: String?
+    private(set) var currentChatId: String? {
+        didSet { if !isCollapsed { app.voice.setOpenChat(currentChatId) } }
+    }
 
     init(app: AppModel) {
         self.app = app

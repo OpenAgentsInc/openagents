@@ -10141,6 +10141,11 @@ public protocol VoiceCallProtocol: AnyObject, Sendable {
     
     func stop() 
     
+    /**
+     * Update presentation context; only the active call may publish it.
+     */
+    func updateContext(chatId: String?, title: String?) 
+    
 }
 open class VoiceCall: VoiceCallProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -10224,6 +10229,19 @@ open func stop()  {try! rustCall() {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_voicecall_stop(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Update presentation context; only the active call may publish it.
+     */
+open func updateContext(chatId: String?, title: String?)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_update_context(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(chatId),
+        FfiConverterOptionString.lower(title),uniffiCallStatus
     )
 }
 }
@@ -23049,6 +23067,7 @@ public func FfiConverterTypeVoiceCallWork_lower(_ value: VoiceCallWork) -> RustB
 
 public enum VoiceEndReason: Equatable, Hashable {
     
+    case voiceAgentRequired
     case microphoneDenied
     case audioUnavailable
     /**
@@ -23087,21 +23106,23 @@ public struct FfiConverterTypeVoiceEndReason: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .microphoneDenied
+        case 1: return .voiceAgentRequired
         
-        case 2: return .audioUnavailable
+        case 2: return .microphoneDenied
         
-        case 3: return .signInRequired
+        case 3: return .audioUnavailable
         
-        case 4: return .usageUnavailable
+        case 4: return .signInRequired
         
-        case 5: return .busy
+        case 5: return .usageUnavailable
         
-        case 6: return .hostUnavailable
+        case 6: return .busy
         
-        case 7: return .hostIncompatible
+        case 7: return .hostUnavailable
         
-        case 8: return .connectionLost
+        case 8: return .hostIncompatible
+        
+        case 9: return .connectionLost
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -23111,36 +23132,40 @@ public struct FfiConverterTypeVoiceEndReason: FfiConverterRustBuffer {
         switch value {
         
         
-        case .microphoneDenied:
+        case .voiceAgentRequired:
             writeInt(&buf, Int32(1))
         
         
-        case .audioUnavailable:
+        case .microphoneDenied:
             writeInt(&buf, Int32(2))
         
         
-        case .signInRequired:
+        case .audioUnavailable:
             writeInt(&buf, Int32(3))
         
         
-        case .usageUnavailable:
+        case .signInRequired:
             writeInt(&buf, Int32(4))
         
         
-        case .busy:
+        case .usageUnavailable:
             writeInt(&buf, Int32(5))
         
         
-        case .hostUnavailable:
+        case .busy:
             writeInt(&buf, Int32(6))
         
         
-        case .hostIncompatible:
+        case .hostUnavailable:
             writeInt(&buf, Int32(7))
         
         
-        case .connectionLost:
+        case .hostIncompatible:
             writeInt(&buf, Int32(8))
+        
+        
+        case .connectionLost:
+            writeInt(&buf, Int32(9))
         
         }
     }
@@ -27347,6 +27372,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_voicecall_stop() != 32163) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_update_context() != 64757) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_voicemedialistener_on_request() != 44204) {

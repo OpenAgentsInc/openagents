@@ -12,6 +12,7 @@ pub(super) fn handles(method: &str) -> bool {
             | methods::REPORT_VOICE_MEDIA_V2
             | methods::STOP_VOICE_V2
             | methods::CANCEL_VOICE_ATTEMPT_V2
+            | methods::UPDATE_VOICE_CONTEXT_V2
     )
 }
 fn failure(reason: VoiceRejection) -> RpcError {
@@ -30,6 +31,10 @@ impl EngineRpc {
         }
         let p = envelope.payload;
         match method {
+            methods::UPDATE_VOICE_CONTEXT_V2 => {
+                self.voice.set_context(parse_params(p)?).map_err(failure)?;
+                RpcReply::value(&serde_json::json!({"ok": true}))
+            }
             methods::VOICE_CAPABILITIES_V2 => RpcReply::value(&wire::Capabilities {
                 protocol: wire::CAPABILITY.into(),
                 client_webrtc: true,
@@ -146,6 +151,7 @@ impl EngineRpc {
         if cancel.is_cancelled() {
             return Err(VoiceRejection::InvalidLease);
         }
+        self.require_voice_agent().await?;
         let chat = self.voice_chat(p.config).await?;
         *resolved = Some(chat.clone());
         let (bridge, events, active) = self.prepare_voice_bridge(&chat).await?;
@@ -185,5 +191,18 @@ impl EngineRpc {
                 cancel,
             )
             .await
+    }
+
+    async fn require_voice_agent(&self) -> Result<(), VoiceRejection> {
+        let choice = self
+            .doc_host
+            .voice_agent()
+            .await
+            .map_err(|_| VoiceRejection::Protocol)?;
+        if choice.target.is_none() {
+            Err(VoiceRejection::VoiceAgentRequired)
+        } else {
+            Ok(())
+        }
     }
 }

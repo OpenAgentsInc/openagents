@@ -264,6 +264,7 @@ final class AppModel {
     fileprivate func handleAccount(_ snapshot: AccountSnapshot) {
         guard snapshot.generation >= accountGeneration else { return }
         if snapshot.generation != accountGeneration {
+            MainActor.assumeIsolated { voice.setOpenChat(nil) }
             voiceAgent = nil
             projectSharing = nil
             cloudHost = nil
@@ -582,7 +583,10 @@ final class AppModel {
         return Token { [weak self] in self?.observers[id] = nil }
     }
 
-    fileprivate func notifyChanged() { observers.values.forEach { $0() } }
+    fileprivate func notifyChanged() {
+        MainActor.assumeIsolated { voice.updateContext() }
+        observers.values.forEach { $0() }
+    }
 
     func observeSession(_ chatId: String, _ handler: @escaping () -> Void) -> AnyObject {
         let id = UUID()

@@ -292,6 +292,9 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
     }
 
     func navigationController(_ navigationController: UINavigationController, didShow viewController: UIViewController, animated: Bool) {
+        if navigationController.viewIfLoaded?.window != nil {
+            app.voice.setOpenChat((viewController as? SessionViewController)?.chatId)
+        }
         syncAccessory()
     }
 

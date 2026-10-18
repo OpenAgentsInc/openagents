@@ -3,6 +3,8 @@ use serde_json::json;
 use openagents_engine::{EngineCore, EngineProfile, HarnessRegistry};
 use openagents_proto::HarnessId;
 use openagents_rpc::methods;
+#[path = "voice_fixture/mod.rs"]
+mod voice_fixture;
 
 #[cfg(unix)]
 fn native_package(root: &std::path::Path) -> std::path::PathBuf {
@@ -28,10 +30,14 @@ fn native_package(root: &std::path::Path) -> std::path::PathBuf {
     binary
 }
 #[cfg(unix)]
-async fn native_core(temp: &tempfile::TempDir) -> EngineCore {
+async fn native_core(temp: &tempfile::TempDir) -> (EngineCore, voice_fixture::VoiceFixture) {
     let package = temp.path().join("codex-package");
     let binary = native_package(&package);
     let registry = std::sync::Arc::new(HarnessRegistry::new());
+    let release = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
+    registry.register(std::sync::Arc::new(voice_fixture::AnswerHarness(
+        release.clone(),
+    )));
     registry.register(std::sync::Arc::new(
         openagents_harness::CodexHarness::new()
             .with_executable(binary)
@@ -55,7 +61,8 @@ async fn native_core(temp: &tempfile::TempDir) -> EngineCore {
             Some(package.display().to_string()),
         )
         .unwrap();
-    core
+    let fixture = voice_fixture::VoiceFixture::attach(&core, temp.path(), release).await;
+    (core, fixture)
 }
 
 #[cfg(unix)]
@@ -63,7 +70,7 @@ async fn native_core(temp: &tempfile::TempDir) -> EngineCore {
 async fn remote_failed_prepare_keeps_old_transcript_but_retry_starts_fresh() {
     use openagents_proto::voice::{ORCHESTRATOR_CHAT_PREFIX, remote as wire};
     let temp = tempfile::tempdir().unwrap();
-    let core = native_core(&temp).await;
+    let (core, _account) = native_core(&temp).await;
     let client = openagents_rpc::memory_client(core.rpc_service());
     let config =
         serde_json::from_value(json!({"harness":"codex","sandbox":"danger-full-access"})).unwrap();
@@ -155,7 +162,7 @@ async fn remote_failed_prepare_keeps_old_transcript_but_retry_starts_fresh() {
 async fn remote_voice_full_control_flow_and_idempotent_prepare_without_host_audio() {
     use openagents_proto::voice::{VoiceEvent, remote as wire};
     let temp = tempfile::tempdir().unwrap();
-    let core = native_core(&temp).await;
+    let (core, _account) = native_core(&temp).await;
     std::fs::remove_file(
         temp.path()
             .join("codex-package/codex-resources/voice/bin/codex-voice-host"),
@@ -295,7 +302,7 @@ async fn remote_voice_full_control_flow_and_idempotent_prepare_without_host_audi
 async fn remote_cancel_before_prepare_and_owner_drop_preserve_other_calls() {
     use openagents_proto::voice::remote as wire;
     let temp = tempfile::tempdir().unwrap();
-    let core = native_core(&temp).await;
+    let (core, _account) = native_core(&temp).await;
     let client = openagents_rpc::memory_client(core.rpc_service());
     let wrap = |p: serde_json::Value| json!({"targetDeviceId":core.device_id,"payload":p});
     let config =
@@ -369,7 +376,7 @@ async fn remote_voice_crosses_two_engines_and_owner_drop_releases_host() {
     use openagents_proto::voice::{VoiceEvent, remote as wire};
     use openagents_rpc::{HostRelay, HostRelayConfig, LinkCache, LinkCacheConfig, StaticToken};
     let temp = tempfile::tempdir().unwrap();
-    let host = native_core(&temp).await;
+    let (host, _account) = native_core(&temp).await;
     std::fs::remove_file(
         temp.path()
             .join("codex-package/codex-resources/voice/bin/codex-voice-host"),
@@ -496,4 +503,275 @@ async fn remote_voice_crosses_two_engines_and_owner_drop_releases_host() {
     room.abort();
     host.sessions.shutdown().await;
     viewer.sessions.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn voice_requires_a_saved_agent_and_resolves_the_default_by_ids() {
+    use openagents_proto::{foreman::ForemanSettings, voice::remote as wire};
+    let temp = tempfile::tempdir().unwrap();
+    let (core, account) = native_core(&temp).await;
+    account.choice.lock().unwrap().target = None;
+    let client = openagents_rpc::memory_client(core.rpc_service());
+    let request = wire::Prepare {
+        attempt_key: wire::AttemptKey::new(),
+        config: serde_json::from_value(json!({"harness":"codex","sandbox":"workspace-write"}))
+            .unwrap(),
+        voice: None,
+    };
+    let error = client
+        .call(
+            methods::PREPARE_VOICE_V2,
+            json!({"targetDeviceId":core.device_id,"payload":request}),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("VoiceAgentRequired"), "{error}");
+    assert!(
+        core.workspace
+            .read_chats()
+            .unwrap()
+            .iter()
+            .all(|c| !openagents_proto::voice::is_orchestrator_chat(&c.id))
+    );
+    core.doc_host
+        .set_foreman(ForemanSettings {
+            chat_id: Some(account.targets[0].chat_id.clone()),
+            ..Default::default()
+        })
+        .unwrap();
+    core.workspace
+        .rename_chat(&account.targets[0].chat_id, "A renamed helper")
+        .unwrap();
+    let resolved = core.doc_host.voice_agent().await.unwrap();
+    assert_eq!(resolved.target, Some(account.targets[0].clone()));
+    assert!(
+        account.choice.lock().unwrap().target.is_none(),
+        "Resolving the default must not overwrite the account preference"
+    );
+    core.sessions.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn voice_relays_owner_messages_context_and_full_answers_through_normal_chats() {
+    use std::{sync::Arc, time::Duration};
+    use openagents_proto::voice::{VoiceChatContext, remote as wire};
+    use openagents_doc::{MessagePart, MessageRole};
+    let temp = tempfile::tempdir().unwrap();
+    let (core, account) = native_core(&temp).await;
+    let client = openagents_rpc::memory_client(core.rpc_service());
+    let envelope = |p: serde_json::Value| json!({"targetDeviceId":core.device_id,"payload":p});
+    let config =
+        serde_json::from_value(json!({"harness":"codex","sandbox":"workspace-write"})).unwrap();
+    let prepared: wire::Prepared = client
+        .call_as(
+            methods::PREPARE_VOICE_V2,
+            envelope(json!(wire::Prepare {
+                attempt_key: wire::AttemptKey::new(),
+                config,
+                voice: None
+            })),
+        )
+        .await
+        .unwrap();
+    let _owner = client
+        .subscribe_checked(methods::OWN_VOICE_V2, envelope(json!(prepared.lease)))
+        .await
+        .unwrap();
+    let tools = openagents_mcp::Tools::new(Arc::new(openagents_mcp::OpenAgents::with_client(
+        openagents_rpc::memory_client(core.rpc_service()),
+        openagents_mcp::Origin {
+            chat_id: Some(prepared.chat_id.clone()),
+            device_id: Some(core.device_id.clone()),
+        },
+    )));
+    assert_eq!(tools.list().len(), 3);
+    let chats_before = core.workspace.read_chats().unwrap().len();
+    for name in [
+        "create_chat",
+        "create_chats",
+        "send_messages",
+        "interrupt_chat",
+        "machine_action",
+        "machine_status",
+        "upgrade_host",
+        "notify_owner",
+        "work",
+    ] {
+        let error = tools.call(name, json!({})).await.unwrap_err();
+        assert!(error.contains("Voice can only"), "{name}: {error}");
+    }
+    assert_eq!(core.workspace.read_chats().unwrap().len(), chats_before);
+    client
+        .call(
+            methods::UPDATE_VOICE_CONTEXT_V2,
+            envelope(json!(wire::ContextUpdate {
+                lease: prepared.lease.clone(),
+                context: VoiceChatContext::new("chat-x".into(), Some("Chat X".into()))
+            })),
+        )
+        .await
+        .unwrap();
+    let first = tools.call("send_message", json!({"chat":"wrong-chat","text":"First complete spoken question", "mode":"steer","wait":true})).await.unwrap();
+    assert_eq!(first["chatId"], account.targets[0].chat_id);
+    assert_eq!(first["sent"]["delivery"], "run");
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !core.sessions.turn_in_flight(&account.targets[0].chat_id) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        core.workspace
+            .chat(&account.targets[0].chat_id)
+            .unwrap()
+            .unwrap()
+            .config
+            .unwrap()
+            .harness,
+        HarnessId::Opencode,
+        "The answering fixture must not fall back to the native Codex fake"
+    );
+    client
+        .call(
+            methods::UPDATE_VOICE_CONTEXT_V2,
+            envelope(json!(wire::ContextUpdate {
+                lease: prepared.lease.clone(),
+                context: VoiceChatContext::new("chat-y".into(), Some("Chat Y".into()))
+            })),
+        )
+        .await
+        .unwrap();
+    let busy = tools
+        .call(
+            "send_message",
+            json!({"chat":"wrong-chat","text":"Second question while busy","wait":false}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(busy["sent"]["delivery"], "steer");
+    account.choice.lock().unwrap().target = Some(account.targets[1].clone());
+    let switched = tools.call("send_message", json!({"chat":account.targets[0].chat_id,"text":"Question for the chosen fork","wait":false})).await.unwrap();
+    assert_eq!(switched["chatId"], account.targets[1].chat_id);
+    assert!(
+        tools
+            .call(
+                "wait_for_turn",
+                json!({"chat":"native-voice","timeout_secs":1})
+            )
+            .await
+            .is_err()
+    );
+    // Several bounded waits cover a long turn, even after the choice changes.
+    for _ in 0..2 {
+        let waiting = tools
+            .call(
+                "wait_for_turn",
+                json!({"chat":account.targets[0].chat_id,"timeout_secs":1}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(waiting["turn"]["outcome"], "timedOut");
+    }
+    account.release.add_permits(2);
+    let answer = tools
+        .call(
+            "wait_for_turn",
+            json!({"chat":account.targets[0].chat_id,"timeout_secs":5}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        answer["turn"]["outcome"],
+        "completed",
+        "reply={answer}; session={:?}; in_flight={}",
+        core.sessions.session_status(&account.targets[0].chat_id),
+        core.sessions.turn_in_flight(&account.targets[0].chat_id),
+    );
+    assert!(
+        answer
+            .to_string()
+            .contains("The full written answer stays in this chat.")
+    );
+    let fork = tools
+        .call(
+            "wait_for_turn",
+            json!({"chat":account.targets[1].chat_id,"timeout_secs":5}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(fork["turn"]["outcome"], "completed");
+    let entries = core
+        .doc_host
+        .open(&account.targets[0].chat_id)
+        .unwrap()
+        .doc()
+        .read_entries()
+        .unwrap();
+    let text = |e: &openagents_doc::SessionMessageEntry| {
+        e.parts
+            .iter()
+            .filter_map(|p| match p {
+                MessagePart::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    };
+    let users: Vec<_> = entries
+        .iter()
+        .filter(|e| e.role == MessageRole::User)
+        .map(&text)
+        .collect();
+    assert!(users.iter().any(|t| t.starts_with("Spoken:")
+        && t.contains("First complete spoken question")
+        && t.contains("chat-x")
+        && t.contains("Chat X")));
+    assert!(users.iter().any(|t| t.starts_with("Spoken:")
+        && t.contains("Second question while busy")
+        && t.contains("chat-y")
+        && t.contains("Chat Y")));
+    assert!(
+        users
+            .iter()
+            .all(|t| !t.contains("Message from OpenAgents chat"))
+    );
+    let written = entries
+        .iter()
+        .filter(|e| e.role == MessageRole::Assistant)
+        .map(&text)
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(
+        written.len() > 3000 && written.contains("Second question while busy"),
+        "The full answer belongs in the normal agent chat"
+    );
+    client
+        .call(methods::STOP_VOICE_V2, envelope(json!(prepared.lease)))
+        .await
+        .unwrap();
+    assert!(
+        client
+            .call(
+                methods::UPDATE_VOICE_CONTEXT_V2,
+                envelope(json!(wire::ContextUpdate {
+                    lease: prepared.lease,
+                    context: VoiceChatContext::new("late-chat".into(), None)
+                }))
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .call(
+                methods::GET_VOICE_CONTEXT,
+                json!({"chatId":prepared.chat_id})
+            )
+            .await
+            .is_err()
+    );
+    core.sessions.shutdown().await;
 }

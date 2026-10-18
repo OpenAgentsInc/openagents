@@ -3,7 +3,9 @@
 //! platform renders typed snapshots exactly as the desktop reads them.
 use super::*;
 use crate::orb::VoiceOrb;
-use openagents_proto::voice::{VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp};
+use openagents_proto::voice::{
+    VoiceChatContext, VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp,
+};
 use openagents_voice_session::{VoiceMediaEndpoint, VoiceView};
 use std::collections::HashMap;
 use std::sync::{
@@ -84,6 +86,7 @@ pub struct VoiceCallState {
 /// Why a call ended without the user hanging up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum VoiceEndReason {
+    VoiceAgentRequired,
     MicrophoneDenied,
     AudioUnavailable,
     /// Codex on the host must be signed in with ChatGPT.
@@ -100,6 +103,7 @@ impl From<VoiceRejection> for VoiceEndReason {
     fn from(reason: VoiceRejection) -> Self {
         use VoiceRejection::*;
         match reason {
+            VoiceAgentRequired => Self::VoiceAgentRequired,
             MicrophonePermissionDenied => Self::MicrophoneDenied,
             DeviceUnavailable | MicrophoneMetadataMissing => Self::AudioUnavailable,
             ChatgptRequired => Self::SignInRequired,
@@ -278,6 +282,7 @@ pub struct VoiceCall {
     media: Arc<PlatformMedia>,
     cancel: CancellationToken,
     muted: watch::Sender<bool>,
+    context: watch::Sender<Option<VoiceChatContext>>,
 }
 impl Drop for VoiceCall {
     fn drop(&mut self) {
@@ -287,6 +292,21 @@ impl Drop for VoiceCall {
 }
 #[uniffi::export]
 impl VoiceCall {
+    /// Update presentation context; only the active call may publish it.
+    pub fn update_context(&self, chat_id: Option<String>, title: Option<String>) {
+        if self.cancel.is_cancelled() {
+            return;
+        }
+        let context = chat_id.and_then(|id| VoiceChatContext::new(id, title));
+        self.context.send_if_modified(|current| {
+            if *current == context {
+                false
+            } else {
+                *current = context;
+                true
+            }
+        });
+    }
     pub fn set_muted(&self, muted: bool) {
         if !self.cancel.is_cancelled() {
             self.muted.send_replace(muted);
@@ -382,12 +402,14 @@ impl CoreClient {
         });
         let cancel = self.client.voice_cancellation();
         let (muted, rx) = watch::channel(false);
+        let (context, context_rx) = watch::channel(None);
         let presented_mute = rx.clone();
         let handle = Arc::new(VoiceCall {
             host_device_id: host_device_id.clone(),
             media: platform.clone(),
             cancel: cancel.clone(),
             muted,
+            context,
         });
         let client = self.client.clone();
         zc::runtime::handle().spawn(async move {
@@ -405,7 +427,7 @@ impl CoreClient {
                     model_options: Default::default(),
                     sandbox: openagents_proto::SandboxLevel::WorkspaceWrite,
                 };
-                openagents_voice_session::run(
+                openagents_voice_session::run_with_context(
                     control,
                     platform.clone(),
                     config,
@@ -413,6 +435,7 @@ impl CoreClient {
                     cancel.clone(),
                     events,
                     rx,
+                    context_rx,
                 )
                 .await
             };
@@ -430,6 +453,23 @@ impl CoreClient {
 mod tests {
     use super::*;
     use openagents_proto::voice::{VoiceEvent, VoiceSnapshot};
+    #[tokio::test]
+    async fn voice_context_changes_only_on_the_active_call() {
+        let listener = Arc::new(Listener(Mutex::new(vec![])));
+        let (context, rx) = watch::channel(None);
+        let call = VoiceCall {
+            host_device_id: "host".into(),
+            media: media(listener),
+            cancel: CancellationToken::new(),
+            muted: watch::channel(false).0,
+            context,
+        };
+        call.update_context(Some("chat-x".into()), Some("Chat X".into()));
+        assert_eq!(rx.borrow().as_ref().unwrap().chat_id, "chat-x");
+        call.stop();
+        call.update_context(Some("late-chat".into()), None);
+        assert_eq!(rx.borrow().as_ref().unwrap().chat_id, "chat-x");
+    }
     struct Listener(Mutex<Vec<u64>>);
     impl VoiceMediaListener for Listener {
         fn on_request(&self, r: VoiceMediaRequest) {
@@ -460,6 +500,7 @@ mod tests {
             media: media.clone(),
             cancel: CancellationToken::new(),
             muted,
+            context: watch::channel(None).0,
         };
         call.complete_media(1, None, Some("late SDP".into()), 0, 0);
         assert!(media.offer().await.is_err());
@@ -485,6 +526,7 @@ mod tests {
             media: media.clone(),
             cancel: CancellationToken::new(),
             muted,
+            context: watch::channel(None).0,
         };
         let clone = media.clone();
         let task = tokio::spawn(async move { clone.prepare().await });

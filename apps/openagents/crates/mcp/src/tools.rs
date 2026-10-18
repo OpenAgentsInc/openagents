@@ -876,6 +876,18 @@ fn last_pending_input(messages: &[RenderedMessage]) -> Option<Value> {
 // ---- dispatch ----------------------------------------------------------------
 
 impl Tools {
+    fn voice_relay(&self) -> bool {
+        self.openagents
+            .origin()
+            .chat_id
+            .as_deref()
+            .is_some_and(openagents_proto::voice::is_orchestrator_chat)
+    }
+
+    fn voice_tool(name: &str) -> bool {
+        matches!(name, "get_voice_agent" | "send_message" | "wait_for_turn")
+    }
+
     pub fn new(openagents: Arc<OpenAgents>) -> Self {
         Self {
             openagents,
@@ -906,6 +918,7 @@ impl Tools {
             .chain(machine_action_tool())
             .chain(upgrade_host_tool().filter(|_| in_chat))
             .chain(machine_status_tool())
+            .filter(|tool| !self.voice_relay() || Self::voice_tool(tool.name))
             .collect()
     }
 
@@ -916,6 +929,9 @@ impl Tools {
     /// `Ok` is the tool's structured result; `Err` is a message the model
     /// should read (surfaced as `isError`, never as a protocol error).
     pub async fn call(&self, name: &str, args: Value) -> Result<Value, String> {
+        if self.voice_relay() && !Self::voice_tool(name) {
+            return Err("Voice can only ask your chosen agent and wait for its answer.".into());
+        }
         let result = match name {
             "get_voice_agent" => {
                 self.openagents
@@ -1439,12 +1455,47 @@ impl Tools {
         }))
     }
 
-    async fn send_message(&self, args: SendArgs) -> anyhow::Result<Value> {
+    async fn send_message(&self, mut args: SendArgs) -> anyhow::Result<Value> {
+        let voice = self.voice_relay();
+        let mut target_host = None;
+        let mut context = Value::Null;
+        if voice {
+            // Re-read here too: a choice can change after the model read it.
+            let choice = self
+                .openagents
+                .call(openagents_rpc::methods::GET_VOICE_AGENT, json!({}))
+                .await?;
+            args.chat = choice["target"]["chat_id"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("Choose a voice agent in Settings."))?
+                .to_owned();
+            target_host = Some(
+                choice["target"]["host_id"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("Choose a voice agent in Settings."))?
+                    .to_owned(),
+            );
+            context = self
+                .openagents
+                .call(
+                    openagents_rpc::methods::GET_VOICE_CONTEXT,
+                    json!({"chatId":self.openagents.origin().chat_id}),
+                )
+                .await?;
+            args.mode = Some("auto".into());
+            args.wait = false;
+        }
         let text = args.text.trim();
         if text.is_empty() {
             anyhow::bail!("text is empty");
         }
         let chat = self.openagents.resolve_chat(&args.chat).await?;
+        if let Some(host) = target_host {
+            anyhow::ensure!(
+                chat.id == args.chat && chat.device_id == host,
+                "The chosen agent's chat is unavailable. Choose another voice agent in Settings."
+            );
+        }
         if self.openagents.origin().chat_id.as_deref() == Some(chat.id.as_str()) {
             anyhow::bail!(
                 "refusing to send a message to your own chat ({})",
@@ -1461,7 +1512,15 @@ impl Tools {
             .as_deref()
             .and_then(|id| spaces.iter().find(|s| s.id == id));
         let baseline = session_for(&sessions, &chat);
-        let mode = args.mode.as_deref().unwrap_or("auto");
+        let mode = if voice
+            && baseline
+                .as_ref()
+                .is_some_and(|s| s.status == SessionStatus::AwaitingInput)
+        {
+            "queue"
+        } else {
+            args.mode.as_deref().unwrap_or("auto")
+        };
         let message_ids = self
             .openagents
             .transcript_on(&chat.id, Some(&chat.device_id))
@@ -1469,7 +1528,19 @@ impl Tools {
             .into_iter()
             .map(|m| m.id)
             .collect();
-        let body = self.attribute(&chat, text).await;
+        let body = if voice {
+            let mut body = format!("Spoken:\n\n{text}");
+            if let Some(id) = context["chatId"].as_str() {
+                let label = match context["title"].as_str() {
+                    Some(title) => format!("{} ({id})", serde_json::to_string(title)?),
+                    None => id.to_owned(),
+                };
+                body.push_str(&format!("\n\n[Open chat: {label}]"));
+            }
+            body
+        } else {
+            self.attribute(&chat, text).await
+        };
         let mut result = json!({
             "chatId": chat.id,
             "title": chat.title,
@@ -1494,6 +1565,12 @@ impl Tools {
     }
 
     async fn wait_for_turn(&self, args: WaitArgs) -> anyhow::Result<Value> {
+        if self.voice_relay() {
+            anyhow::ensure!(
+                self.pending_turns.lock().await.contains_key(&args.chat),
+                "Wait for the chat returned by send_message."
+            );
+        }
         let chat = self.openagents.resolve_chat(&args.chat).await?;
         let pending = self.pending_turns.lock().await.get(&chat.id).cloned();
         let turn = match pending {
@@ -1869,7 +1946,8 @@ impl Tools {
             )
             .await?;
         // A timed-out or interrupted wait leaves the turn pending for the next.
-        let settled = !matches!(turn["outcome"].as_str(), Some("timedOut" | "interrupted"));
+        let settled = !matches!(turn["outcome"].as_str(), Some("timedOut" | "interrupted"))
+            && !(self.voice_relay() && turn["outcome"] == "awaitingInput");
         if settled {
             let mut turns = self.pending_turns.lock().await;
             // A concurrent send may already have installed a newer baseline.
@@ -2023,6 +2101,7 @@ mod tests {
     struct World {
         writes: Mutex<Vec<(String, Value)>>,
         voice_target: Mutex<Value>,
+        sessions: Vec<Session>,
         dispatch_barrier: Option<tokio::sync::Barrier>,
         beta_parent: Option<String>,
         beta_remote: bool,
@@ -2085,6 +2164,9 @@ mod tests {
                         "waiting": [], "landing": [], "failed": []
                     }))
                 }
+                methods::GET_VOICE_CONTEXT => {
+                    RpcReply::Value(json!({"chatId":"caller-chat", "title":"Chat X"}))
+                }
                 methods::LOCAL_DEVICE => RpcReply::Value(json!({ "deviceId": "dev-local" })),
                 methods::ENGINE_INFO => RpcReply::Value(json!({
                     "deviceId": "dev-local", "workspaceScope": "local"
@@ -2125,7 +2207,7 @@ mod tests {
                         .extend(self.extra_chats.clone());
                     stream(chats)
                 }
-                methods::WATCH_SESSIONS => stream(json!([])),
+                methods::WATCH_SESSIONS => stream(json!(self.sessions)),
                 methods::LIST_HARNESSES if remote => RpcReply::Value(json!([
                     {"id":"codex", "name":"Remote Codex", "installed":true},
                     {"id":"cursor", "name":"Disabled Cursor", "installed":true, "enabled":false}
@@ -2234,13 +2316,43 @@ mod tests {
                 device_id: Some("dev-local".into()),
             },
         );
+        assert_eq!(tools.list().len(), 3);
+        assert!(tools.list().iter().all(|t| Tools::voice_tool(t.name)));
+        for name in [
+            "create_chat",
+            "create_chats",
+            "send_messages",
+            "interrupt_chat",
+            "machine_status",
+            "machine_action",
+            "upgrade_host",
+            "notify_owner",
+            crate::work::NAME,
+        ] {
+            let error = tools.call(name, json!({})).await.unwrap_err();
+            assert!(error.contains("Voice can only"), "{name}: {error}");
+        }
+        assert!(world.writes.lock().unwrap().is_empty());
+        assert!(
+            tools
+                .call(
+                    "wait_for_turn",
+                    json!({"chat":"chat-beta-2", "timeout_secs":1})
+                )
+                .await
+                .is_err()
+        );
         for chat in ["chat-alpha-1", "chat-beta-2"] {
             *world.voice_target.lock().unwrap() = json!({"revision":1,"target":{"agent_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","chat_id":chat,"host_id":"dev-local"}});
             let selected = tools.call("get_voice_agent", json!({})).await.unwrap();
             assert_eq!(selected["target"]["chat_id"], chat);
-            tools.call("send_message", json!({"chat":selected["target"]["chat_id"],"text":"My next question","wait":false})).await.unwrap();
+            tools.call("send_message", json!({"chat":"unselected-chat","text":"My entire next question","mode":"steer","wait":true})).await.unwrap();
             let writes = world.writes.lock().unwrap();
             assert!(writes.last().unwrap().1.to_string().contains(chat));
+            let body = writes.last().unwrap().1.to_string();
+            assert!(body.contains("Spoken:") && body.contains("My entire next question"));
+            assert!(body.contains("caller-chat") && body.contains("Chat X"));
+            assert!(!body.contains("Message from OpenAgents chat"));
         }
     }
 
@@ -2382,6 +2494,52 @@ mod tests {
         assert_eq!(method, methods::PUBLISH_VISUAL);
         assert_eq!(params["chatId"], "chat-alpha-1");
         assert_eq!(params["script"], "return ui.text 'chart'");
+    }
+
+    #[tokio::test]
+    async fn voice_queues_a_spoken_request_while_the_agent_needs_input() {
+        let world = Arc::new(World {
+            voice_target: Mutex::new(json!({"revision":1,"target":{
+                "agent_id":"a".repeat(64),"chat_id":"chat-alpha-1","host_id":"dev-local"
+            }})),
+            sessions: vec![Session {
+                chat_id: "chat-alpha-1".into(),
+                device_id: "dev-local".into(),
+                status: SessionStatus::AwaitingInput,
+                started_at: None,
+                updated_at: chrono::Utc::now(),
+                last_completed_turn: None,
+                running_subagents: 0,
+                background_tasks: 0,
+                last_output_at: None,
+            }],
+            ..Default::default()
+        });
+        let tools = tools(
+            world.clone(),
+            Origin {
+                chat_id: Some("voice-orchestrator-fixture".into()),
+                device_id: Some("dev-local".into()),
+            },
+        );
+        let sent = tools
+            .call(
+                "send_message",
+                json!({"chat":"wrong-chat","text":"Keep my full request for later","wait":true}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sent["sent"]["delivery"], "queue");
+        let writes = world.writes.lock().unwrap();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0, methods::QUEUE_MESSAGE);
+        assert!(writes[0].1.to_string().contains("Spoken:"));
+        assert!(
+            writes[0]
+                .1
+                .to_string()
+                .contains("Keep my full request for later")
+        );
     }
 
     #[cfg(unix)]
@@ -2594,10 +2752,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replies_use_the_full_id_with_multiple_voice_orchestrators() {
+    async fn voice_relay_has_no_reply_wrapper_with_multiple_orchestrators() {
         let first = "voice-orchestrator-11111111-1111-4111-8111-111111111111";
         let second = "voice-orchestrator-22222222-2222-4222-8222-222222222222";
         let world = Arc::new(World {
+            voice_target: Mutex::new(json!({"revision":1,"target":{
+                "agent_id":"a".repeat(64),"chat_id":"chat-alpha-1","host_id":"dev-local"
+            }})),
             extra_chats: [first, second]
                 .into_iter()
                 .map(|id| {
@@ -2631,39 +2792,14 @@ mod tests {
             )
             .await
             .unwrap();
-        let reply_id = {
-            let writes = world.writes.lock().unwrap();
-            let prompt = writes.last().unwrap().1["command"]["request"]["prompt"]
-                .as_str()
-                .unwrap();
-            prompt
-                .split_once("tool, chat ")
-                .unwrap()
-                .1
-                .split_once(".]\n\n")
-                .unwrap()
-                .0
-                .to_owned()
-        };
-        assert_eq!(reply_id, second);
-        let worker = tools(
-            world.clone(),
-            Origin {
-                chat_id: Some("chat-alpha-1".into()),
-                device_id: None,
-            },
-        );
-        worker
-            .call(
-                "send_message",
-                json!({
-                    "chat": reply_id, "text": "review complete"
-                }),
-            )
-            .await
-            .unwrap();
         let writes = world.writes.lock().unwrap();
-        assert_eq!(writes.last().unwrap().1["chatId"], second);
+        assert_eq!(writes.last().unwrap().1["chatId"], "chat-alpha-1");
+        let prompt = writes.last().unwrap().1["command"]["request"]["prompt"]
+            .as_str()
+            .unwrap();
+        assert!(prompt.starts_with("Spoken:\n\nplease review"));
+        assert!(!prompt.contains("Message from OpenAgents chat"));
+        assert!(!prompt.contains(first) && !prompt.contains(second));
     }
 
     #[tokio::test]

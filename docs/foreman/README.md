@@ -1,5 +1,7 @@
 # Foreman
 
+Voice relays to the saved agent chosen in Voice Settings, defaulting to the configured agent chat; [voice calls](../../apps/openagents/docs/research/codex-voice.md) keep spoken requests and full answers in that chat.
+
 Foreman is the OpenAgents agent that keeps the whole picture of the work in
 `OpenAgentsInc/openagents`: every open issue, every claim, and every agent
 chat. It reads GitHub through the host's `gh` and reads every chat on every

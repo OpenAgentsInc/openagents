@@ -177,6 +177,8 @@ pub mod methods {
     pub const GET_VOICE_AGENT: &str = "GetVoiceAgent";
     /// Notify the owner from a saved agent chat; the account checks its grant.
     pub const NOTIFY_OWNER: &str = "NotifyOwner";
+    pub const GET_VOICE_CONTEXT: &str = "GetVoiceContext";
+    pub const UPDATE_VOICE_CONTEXT_V2: &str = "UpdateVoiceContextV2";
     /// Foreman autonomy (#11965): `ForemanStatus`.
     pub const GET_FOREMAN: &str = "GetForeman";
     /// `ForemanSettings` in, `ForemanStatus` out.

@@ -154,6 +154,13 @@ pub struct Cancel {
     pub attempt_key: AttemptKey,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContextUpdate {
+    pub lease: Lease,
+    pub context: Option<super::VoiceChatContext>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -241,3 +241,19 @@ open the same Rust picker on desktop and phone. Choices identify a saved
 agent definition, its chat, and its host; display names carry no authority.
 Before each spoken question, the relay reads the choice again and sends the
 request to that chat. A changed choice takes effect during the same call.
+
+The voice MCP catalog and dispatcher allow only `get_voice_agent`,
+`send_message`, and `wait_for_turn`. Sending re-reads the account choice and
+uses that saved agent's chat and host IDs. The request enters the normal chat
+as an owner message marked **Spoken**. Busy chats use normal steering, or
+queue the request when the agent is waiting for input. Each wait is bounded;
+a timeout or interruption keeps the request pending for the next wait.
+The full answer stays in the agent's chat; voice speaks a short summary.
+
+The calling viewport sends its open chat's ID and title through the active
+call lease. Navigation updates that context, which is included with each
+spoken request and cleared when the call ends. It never chooses the relay
+target. With the default voice choice, the host resolves the configured
+agent chat through its saved assignment. No display name decides routing.
+Without an available saved-agent chat, voice asks the owner to choose one in
+Settings and offers the existing picker.

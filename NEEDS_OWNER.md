@@ -1,3 +1,13 @@
+## Check the voice relay (#12059)
+
+After updating both apps, choose a saved agent or renamed fork and call with
+a chat open. Check that each spoken request appears as your message in the
+agent’s chat with the open chat’s ID and title, the full answer stays there,
+and voice speaks a short summary. Ask again while the agent is busy, navigate
+to another chat, and switch the voice choice during the call. Check the next
+question uses the new choice and current open chat. With no choice or default,
+Voice Settings must be offered. These real voice calls are owner checks only.
+
 ## Android parity: account, signing, and device handoff (#12077)
 
 The [Android sprint](docs/audits/2026-10-18-android-parity-sprint.md) is a

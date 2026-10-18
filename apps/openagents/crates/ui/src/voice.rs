@@ -1,5 +1,5 @@
 //! Window-owned voice orchestrator. Each session runs in the host's own
-//! projectless Codex chat, resumed across calls, and survives navigation
+//! fresh projectless Codex chat, and survives navigation
 //! between threads; only an explicit end, an engine change or a provider
 //! failure closes it. No automatic reconnect or microphone resume.
 use crate::orb::OrbState;
@@ -31,6 +31,7 @@ pub struct VoiceController {
     pub active_since: Option<std::time::Instant>,
     engine: Option<EngineHandle>,
     controls: Option<tokio::sync::mpsc::Sender<VoiceControl>>,
+    context_updates: Option<tokio::sync::watch::Sender<Option<VoiceChatContext>>>,
     epoch: u64,
     task: Option<Task<()>>,
     cancellation: tokio_util::sync::CancellationToken,
@@ -59,6 +60,7 @@ impl Default for VoiceController {
             active_since: None,
             engine: None,
             controls: None,
+            context_updates: None,
             epoch: 0,
             task: None,
             cancellation: tokio_util::sync::CancellationToken::new(),
@@ -70,6 +72,18 @@ impl Default for VoiceController {
     }
 }
 impl VoiceController {
+    pub fn set_context(&mut self, context: Option<VoiceChatContext>) {
+        if let Some(updates) = &self.context_updates {
+            updates.send_if_modified(|current| {
+                if *current == context {
+                    false
+                } else {
+                    *current = context;
+                    true
+                }
+            });
+        }
+    }
     /// Voice can be offered here. An unread catalog counts as yes, so a slow
     /// or failed read never hides it; a live call or its failure stays.
     pub fn offered(&self) -> bool {
@@ -131,6 +145,7 @@ impl VoiceController {
         host_device_id: String,
         config: openagents_proto::ChatConfig,
         voice: Option<String>,
+        context: Option<VoiceChatContext>,
         cx: &mut Context<Self>,
     ) {
         self.cancel(cx);
@@ -145,6 +160,8 @@ impl VoiceController {
         let cancellation = self.cancellation.clone();
         let (controls, control_rx) = tokio::sync::mpsc::channel(8);
         self.controls = Some(controls);
+        let (context_updates, context_rx) = tokio::sync::watch::channel(context);
+        self.context_updates = Some(context_updates);
         let (events, mut event_rx) = tokio::sync::mpsc::channel(32);
         let query = Tokio::spawn(cx, async move {
             // Media belongs to this viewport, even when the chosen host is
@@ -157,6 +174,7 @@ impl VoiceController {
                 cancellation,
                 events,
                 control_rx,
+                context_rx,
             )
             .await
         });
@@ -215,6 +233,7 @@ impl VoiceController {
         self.microphone_level = 0;
         self.speaker_level = 0;
         self.controls = None;
+        self.context_updates = None;
         self.task = None;
         self.stage_open = false;
         self.active_since = None;
@@ -388,6 +407,9 @@ impl VoiceController {
     }
     pub fn reason_text(&self) -> &'static str {
         match self.reason {
+            Some(VoiceRejection::VoiceAgentRequired) => {
+                "Choose a voice agent in Settings to start a call."
+            }
             Some(VoiceRejection::CreditExclusionUnverified) => {
                 "Codex controls subscription usage and any enabled additional credits."
             }

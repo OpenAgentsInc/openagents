@@ -60,6 +60,7 @@ pub fn published_id(chat_id: &str) -> &str {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VoiceRejection {
+    VoiceAgentRequired,
     Disabled,
     Unsupported,
     RemoteHost,
@@ -78,6 +79,62 @@ pub enum VoiceRejection {
     MicrophoneMetadataMissing,
     Protocol,
     NativeRuntimeUnavailable,
+}
+
+/// The chat open on the calling device. This is context, never a routing target.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VoiceChatContext {
+    pub chat_id: String,
+    pub title: Option<String>,
+}
+impl VoiceChatContext {
+    pub fn new(chat_id: String, title: Option<String>) -> Option<Self> {
+        let value = Self {
+            chat_id,
+            title: title.map(|s| s.chars().filter(|c| !c.is_control()).take(200).collect()),
+        };
+        value.valid().then_some(value)
+    }
+    pub fn valid(&self) -> bool {
+        !self.chat_id.is_empty()
+            && self.chat_id.len() <= 256
+            && !self.chat_id.chars().any(char::is_control)
+            && self
+                .title
+                .as_ref()
+                .is_none_or(|t| t.len() <= 1024 && !t.chars().any(char::is_control))
+    }
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+    #[test]
+    fn voice_context_is_bounded_and_does_not_choose_a_target() {
+        let context = VoiceChatContext::new("chat-x".into(), Some("A\n".repeat(2000))).unwrap();
+        assert_eq!(context.title.as_ref().unwrap().len(), 200);
+        assert_eq!(
+            serde_json::from_value::<VoiceChatContext>(serde_json::to_value(&context).unwrap())
+                .unwrap(),
+            context
+        );
+        assert!(VoiceChatContext::new("bad\nchat".into(), None).is_none());
+        assert!(
+            !VoiceChatContext {
+                chat_id: "x".repeat(257),
+                title: None
+            }
+            .valid()
+        );
+        assert!(
+            !VoiceChatContext {
+                chat_id: "chat".into(),
+                title: Some("x".repeat(1025))
+            }
+            .valid()
+        );
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

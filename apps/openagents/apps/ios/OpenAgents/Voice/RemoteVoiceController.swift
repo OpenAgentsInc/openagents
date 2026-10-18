@@ -15,6 +15,18 @@ final class RemoteVoiceController {
 
     private weak var app: AppModel?
     private var call: VoiceCall?
+    private var openChatId: String?
+
+    func setOpenChat(_ id: String?) {
+        openChatId = id
+        updateContext()
+    }
+
+    func updateContext() {
+        guard let call else { return }
+        let row = openChatId.flatMap { app?.session($0) }
+        call.updateContext(chatId: row?.id, title: row?.title)
+    }
     /// The Rust call handle keeps the execution host fixed for usage reads.
     var usageCall: VoiceCall? { call }
     private var media: NativeVoiceMedia?
@@ -115,6 +127,7 @@ final class RemoteVoiceController {
         let listener = VoiceListenerBridge(controller: self, generation: generation)
         let call = client.startVoice(hostDeviceId: device.id, voice: selectedStyle, media: media, listener: listener)
         self.call = call
+        updateContext()
         media.call = call
         // A call keeps the screen awake, like the phone app.
         UIApplication.shared.isIdleTimerDisabled = true
@@ -253,6 +266,7 @@ final class RemoteVoiceController {
 
     static func message(for reason: VoiceEndReason, host: String) -> String {
         switch reason {
+        case .voiceAgentRequired: return "Choose a voice agent in Voice Settings to start a call."
         case .microphoneDenied: return "OpenAgents needs microphone access to talk with Codex."
         case .audioUnavailable: return "The audio connection closed. Start a new call to reconnect."
         case .signInRequired: return "Sign in to Codex with ChatGPT on \(host)."

@@ -26,6 +26,7 @@ struct Inner {
 }
 struct Slot {
     lease: VoiceLease,
+    context: Option<VoiceChatContext>,
     snapshot: VoiceSnapshot,
     attach_deadline: Instant,
     owner_attached: bool,
@@ -99,6 +100,7 @@ impl VoiceManager {
         });
         *state = Some(Slot {
             lease: lease.clone(),
+            context: None,
             snapshot,
             attach_deadline: Instant::now() + Duration::from_secs(seconds),
             owner_attached: false,
@@ -219,6 +221,16 @@ impl VoiceManager {
             .unwrap()
             .as_ref()
             .is_some_and(|s| s.snapshot.chat_id == chat)
+    }
+    pub(crate) fn context(&self, chat: &str) -> Result<Option<VoiceChatContext>, VoiceRejection> {
+        self.inner
+            .slot
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|s| s.snapshot.chat_id == chat)
+            .map(|s| s.context.clone())
+            .ok_or(VoiceRejection::InvalidLease)
     }
     pub fn retire(&self) {
         let mut state = self.inner.slot.lock().unwrap();

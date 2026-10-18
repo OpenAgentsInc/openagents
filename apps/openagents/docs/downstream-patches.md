@@ -8,6 +8,10 @@ Keep fork-specific changes here so upstream updates can review each integration.
   retain WorkOS cases behind its compatibility feature, and check temporary
   image reads and lowercase repository identities.
 
+- OpenAgents #12059: voice has a three-tool relay to the chosen saved agent,
+  records spoken owner messages in that chat, and attaches the calling
+  viewport's current chat through the active call lease.
+
 - OpenAgents #12041: `list_runs` reads local terminal agent runs through
   `coder_lease::runs` and reports whether a claim's holder is active or its
   claim should be released. Every agent can use the tool and its stall window.

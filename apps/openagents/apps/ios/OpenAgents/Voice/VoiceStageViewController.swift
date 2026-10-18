@@ -245,7 +245,8 @@ final class VoiceStageViewController: UIViewController {
         }
         let ended = !voice.live
         agentPicker.isEnabled = app.voiceAgent != nil
-        for v in [agentPicker, mute, routeWell, end] { v.isHidden = ended }
+        agentPicker.isHidden = ended && voice.endReason != .voiceAgentRequired
+        for v in [mute, routeWell, end] { v.isHidden = ended }
         for v in [retry, close] { v.isHidden = !ended }
         if shownMuted != voice.muted {
             shownMuted = voice.muted
