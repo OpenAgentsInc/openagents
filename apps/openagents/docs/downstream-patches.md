@@ -789,19 +789,34 @@ links remain readable. Upstream fixes now require manual ports.
   approval, and queued-message cards mount through `SemanticViewAdapter`.
   The composer and transcript share a weighted chat layout, so Rust receives
   the transcript's new viewport size when the keyboard changes available space.
-  A bounded fixture core covers send choices and display-only attachment events.
+  The app build includes transcript main, unit-test, and instrumentation source
+  roots, and routes Android platform tests to instrumentation tests. It pins
+  ZXing core 3.5.4 for A3's scanner replacement while retaining CameraX 1.5.3.
+  A bounded fixture core covers send choices and attachment intake outcomes.
   The mobile FFI now has a versioned draft store keyed by hashed account ID and
   Rust session ID, plus a closed `SessionViewIntent` registry. It accepts only
   acknowledged `ValidatedView` activations and field changes, rejects stale,
   disabled, or unknown actions, and routes send/interrupt/input answers through
   existing session operations. Draft save, restore, clear, account switch, and
-  unsupported action tests are authored but have not run. The current app tree
-  has no Activity result owner: Photo Picker, document picker, paste/image
-  conversion, camera capture, and upload-specific handling are not wired. The generic
-  attachment request only returns a platform handoff; approval actions are not
-  in the mobile intent set. The composer accepts payloads only up to 24 MiB per
-  file and 48 MiB total, passes bytes to Rust `SessionHandle.send`, and keeps
-  draft and attachment bytes available after a failed send. Stub fixtures cover
-  oversized and failed sends. Rust tests, UniFFI binding regeneration,
-  Kotlin/JUnit, and device input checks remain pending because free space is
-  below the 100 GiB build floor.
+  unsupported action tests are authored but have not run. The B1 app shell
+  provides `AndroidAttachmentActivityResultOwner`; D2 listens through its
+  `MainActivity` forwarding methods for Photo Picker, document picker, and
+  camera capture results. D2 bounds each stream read by Rust's
+  `max_attachment_bytes()` value before it copies bytes into
+  `ComposerAttachmentPayload`. The Rust FFI has
+  `SessionHandle::submit_native_composer`, which passes `OutgoingAttachment`
+  bytes through the existing send call. The production Kotlin
+  `ComposerCorePort` adapter and regenerated UniFFI binding are still pending,
+  so this path is not yet connected end to end. D2 limits presentation intake
+  to 10 files and 48 MiB total, but the Rust FFI does not yet validate those
+  limits or MIME content; MIME types remain untrusted metadata. No image
+  conversion or paste API exists in this boundary. Photo/document cancellation
+  is an explicit no-op, camera cancellation uses `saved=false`, and stale
+  owner callbacks are fenced. Approval actions remain outside the mobile intent
+  set. Fixtures cover denial, cancellation, oversize, stream failure, stale
+  callbacks, and failed-send retry. Rust tests, UniFFI binding regeneration,
+  Kotlin/JUnit, and device input checks remain pending. Integrate A3's ZXing
+  scanner source and F1's regenerated bindings before the next Gradle check.
+  The C1 viewport snapshot commit
+  `6668ece8130ecadac82168f9a7c27f8e04f5acc6` is coordinated but not yet in
+  `origin/main`; D2 will integrate it after it lands.

@@ -215,7 +215,7 @@ class AndroidComposerPresentation(
         root.addView(mentionRow, matchWrap())
         root.addView(sendError, matchWrap())
         inputRow.addView(attachmentButton, wrapWrap())
-        inputRow.addView(input, LinearLayout.LayoutParams(0, wrap, 1f))
+        inputRow.addView(input, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         inputRow.addView(sendButton, wrapWrap())
         root.addView(inputRow, matchWrap())
         input.addTextChangedListener(textWatcher)
@@ -328,7 +328,7 @@ class AndroidComposerPresentation(
             current.attachmentActions.asSequence(),
             current.mentionSuggestions.asSequence(),
             current.attachments.mapNotNull { it.removeAction }.asSequence(),
-            sequenceOfNotNull(current.stopAction),
+            listOfNotNull(current.stopAction).asSequence(),
         ).flatten().firstOrNull { it.node == action.node } ?: return
         if (!currentAction.enabled) return
         core.activate(current.stamp.instance, current.stamp.viewRevision, currentAction.node)
@@ -373,13 +373,23 @@ class AndroidComposerPresentation(
     fun addAttachment(payload: ComposerAttachmentPayload): Boolean {
         checkMainThread()
         if (disposed || frame?.enabled != true || payload.data.isEmpty() ||
-            payload.data.size > MAX_ATTACHMENT_BYTES || pendingAttachments.size >= MAX_ATTACHMENTS ||
-            pendingAttachments.sumOf { it.data.size.toLong() } + payload.data.size > MAX_TOTAL_ATTACHMENT_BYTES ||
+            payload.data.size > ComposerAttachmentLimits.maxPerFileBytes ||
+            pendingAttachments.size >= ComposerAttachmentLimits.MAX_ATTACHMENTS ||
+            pendingAttachments.sumOf { it.data.size.toLong() } + payload.data.size >
+            ComposerAttachmentLimits.MAX_TOTAL_ATTACHMENT_BYTES ||
             !byteBound(payload.name) || payload.name.isBlank() || !byteBound(payload.mimeType)
         ) return false
         pendingAttachments += payload.copy(data = payload.data.copyOf())
         sendError.visibility = View.GONE
         return true
+    }
+
+    /** Shows a bounded attachment intake error without changing the current draft. */
+    fun showAttachmentError(message: String) {
+        checkMainThread()
+        if (disposed || !byteBound(message) || message.isBlank()) return
+        sendError.text = message
+        sendError.visibility = View.VISIBLE
     }
 
     private fun submit(choiceToken: String?) {
@@ -599,11 +609,9 @@ class AndroidComposerPresentation(
         const val MAX_TEXT_BYTES = 64 * 1024
         const val MAX_VIEW_BYTES = 512 * 1024
         const val MAX_CHIPS = 16
-        const val MAX_ATTACHMENTS = 10
+        const val MAX_ATTACHMENTS = ComposerAttachmentLimits.MAX_ATTACHMENTS
         const val MAX_ACTIONS = 16
         const val MAX_CHOICES = 4
-        const val MAX_ATTACHMENT_BYTES = 24 * 1024 * 1024
-        const val MAX_TOTAL_ATTACHMENT_BYTES = 48 * 1024 * 1024
         const val MATCH_PARENT = ViewGroup.LayoutParams.MATCH_PARENT
         const val WRAP_CONTENT = ViewGroup.LayoutParams.WRAP_CONTENT
     }
