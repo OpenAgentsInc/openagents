@@ -77,7 +77,8 @@ only after the server confirms a mutation and Rust refreshes the list.
 All fixtures are synthetic. No account, credential, network service, emulator, or
 Android glyph metrics were used. No Cargo, Kotlin/JUnit, Gradle, Android, or
 emulator check has run for this issue. This resumed source pass has no assigned
-D1 build slot; roughly 112 GiB of headroom does not permit fresh Rust state. Direct formatting of changed Rust files and
+D1 build slot. Read fresh capacity and wait for the coordinator before creating
+fresh Rust compiler state. Direct formatting of changed Rust files and
 `git diff --check` passed. This is not acceptance-complete or ready to merge.
 
 After capacity returns and the coordinator assigns the serial slot, queue:
