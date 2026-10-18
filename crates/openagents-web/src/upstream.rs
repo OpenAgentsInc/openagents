@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 78] = [
+const OWNED_EXACT: [&str; 79] = [
     "/",
     crate::analytics::BEACON,
     crate::analytics::SCRIPT,
@@ -94,6 +94,7 @@ const OWNED_EXACT: [&str; 78] = [
     "/settings",
     "/api/traces",
     "/v1/traces",
+    "/v1/voice-agent",
     "/projects",
     "/environments",
     crate::environments::push::CREDENTIAL,
