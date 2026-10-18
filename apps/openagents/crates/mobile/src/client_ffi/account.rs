@@ -1,4 +1,8 @@
 //! The same account controller used by the desktop, exposed to native controls.
+use super::{
+    AndroidIdentityVault, AndroidPairings, AndroidPasswords, AndroidSecretStorage,
+    AndroidWalletSeed,
+};
 use super::{ClientListener, CoreClient, CoreConfig, CoreError, CoreResult, ListenerBridge};
 use openagents_account::{
     Controller, Phase, PlatformStore,
@@ -87,6 +91,7 @@ pub struct CoreAccount {
     pub(crate) identity: Arc<Mutex<Option<Arc<Identity>>>>,
     /// This device's name, sent with each key sign-in.
     pub(crate) device_name: Arc<Mutex<String>>,
+    pairings: Option<Arc<dyn openagents_client::PairingStore>>,
 }
 impl CoreAccount {
     /// An account with no identity store, for tests: the words are never
@@ -111,6 +116,17 @@ impl CoreAccount {
         data_dir: PathBuf,
         listener: Arc<dyn AccountListener>,
     ) -> Arc<Self> {
+        Self::from_parts_with_pairings(client, store, identities, data_dir, listener, None)
+    }
+
+    fn from_parts_with_pairings(
+        client: Client,
+        store: Arc<dyn CredentialStore + Send + Sync>,
+        identities: Identities,
+        data_dir: PathBuf,
+        listener: Arc<dyn AccountListener>,
+        pairings: Option<Arc<dyn openagents_client::PairingStore>>,
+    ) -> Arc<Self> {
         let deployment = client.deployment().clone();
         let controller = Controller::new_named(
             client,
@@ -133,6 +149,7 @@ impl CoreAccount {
             identities: Arc::new(identities),
             identity: identity.clone(),
             device_name: device_name.clone(),
+            pairings,
         });
         let renewing = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let mut updates = controller.watch();
@@ -321,6 +338,49 @@ impl CoreAccount {
             client, store, identities, data_dir, listener,
         ))
     }
+
+    /// Construct an account whose credentials, identity, wallet seed, and
+    /// paired grants use Rust policies over Android's encrypted byte store.
+    #[uniffi::constructor]
+    pub fn new_with_secure_storage(
+        data_dir: String,
+        api_url: String,
+        website_url: String,
+        listener: Arc<dyn AccountListener>,
+        storage: Arc<dyn AndroidSecretStorage>,
+    ) -> CoreResult<Arc<Self>> {
+        let deployment =
+            Deployment::new(&api_url, &website_url).map_err(|e| CoreError::InvalidArgument {
+                message: e.to_string(),
+            })?;
+        let client = Client::with_timeout(deployment, Duration::from_secs(30)).map_err(|e| {
+            CoreError::InvalidArgument {
+                message: e.to_string(),
+            }
+        })?;
+        let passwords = Arc::new(AndroidPasswords(storage.clone()));
+        let store = Arc::new(
+            PlatformStore::new("com.openagents.app.account".into(), data_dir.clone())
+                .with_passwords(passwords),
+        );
+        let data_dir = PathBuf::from(data_dir);
+        let identities = Identities::new(
+            Arc::new(AndroidIdentityVault(storage.clone())),
+            Arc::new(AndroidWalletSeed(storage.clone())),
+            &data_dir.join("identity"),
+        );
+        let pairings: Arc<dyn openagents_client::PairingStore> =
+            Arc::new(AndroidPairings::new(storage));
+        Ok(Self::from_parts_with_pairings(
+            client,
+            store,
+            identities,
+            data_dir,
+            listener,
+            Some(pairings),
+        ))
+    }
+
     pub fn snapshot(&self) -> AccountSnapshot {
         self.controller.snapshot().into()
     }
@@ -399,7 +459,7 @@ impl CoreAccount {
             credentials,
             Arc::new(ListenerBridge(listener)),
         )?;
-        client.set_pairing_store(pairing_store());
+        client.set_pairing_store(self.pairings.clone().unwrap_or_else(pairing_store));
         let core = Arc::new(CoreClient { client });
         let mut clients = self.clients.lock().unwrap();
         if !self.controller.accepts(&lease) {

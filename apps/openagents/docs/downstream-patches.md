@@ -679,7 +679,6 @@ links remain readable. Upstream fixes now require manual ports.
   `engine/src/rpc/run_commands.rs` maps the RPC body. `host_rpc` checks account,
   native rights, and definition-based command grants; the device-channel adapter
   preserves the request ID when delivery is uncertain.
-
 - [OpenAgents #12088](https://github.com/OpenAgentsInc/openagents/issues/12088):
   add the shared Android semantic widget adapter in
   `apps/openagents/apps/android/platform/SemanticViewAdapter.kt`. Rust's `coder-ui::android`
@@ -688,3 +687,8 @@ links remain readable. Upstream fixes now require manual ports.
   connect the bridge and provide transcript, composer, Markdown, and local
   surface adapters. This baseline has no Gradle app shell; Android compilation,
   device input, TalkBack, deployment, and store checks have not run.
+- [OpenAgents #12082](https://github.com/OpenAgentsInc/openagents/issues/12082):
+  Android stores opaque encrypted values through Android Keystore and an
+  atomic private-file adapter. Rust owns the account, identity, wallet-seed,
+  and paired-grant records and decides when they may be created or replaced;
+  cloud backup and device transfer exclude the encrypted store.

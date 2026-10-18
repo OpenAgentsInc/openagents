@@ -12,6 +12,11 @@
 //! (`snapshot()` / `subscribe()`), never over FFI.
 
 mod account;
+mod android_storage;
+pub use android_storage::{
+    AndroidIdentityVault, AndroidPairings, AndroidPasswords, AndroidSecretStorage,
+    AndroidWalletSeed, SecretMutation, SecretRead, android_wallet_key_store,
+};
 mod owner_notifications;
 pub use owner_notifications::*;
 mod account_delete;
@@ -23,8 +28,8 @@ pub use cloud_chat::*;
 mod cloud_host;
 pub use agent_lab::*;
 mod custom_agents;
-mod identity;
 mod demo;
+mod identity;
 pub use demo::*;
 mod host_config;
 mod labs;

@@ -3,7 +3,7 @@ use openagents::{CredentialRecord, CredentialStore, Deployment, StorageError};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
-trait Passwords: Send + Sync {
+pub trait Passwords: Send + Sync {
     fn get(&self, service: &str, key: &str) -> Result<Option<Vec<u8>>, StorageError>;
     fn set(&self, service: &str, key: &str, bytes: &[u8]) -> Result<(), StorageError>;
     fn delete(&self, service: &str, key: &str) -> Result<(), StorageError>;
@@ -32,6 +32,12 @@ impl PlatformStore {
             migrate_mobile: false,
             passwords: Arc::new(SystemPasswords),
         }
+    }
+    /// Use a caller-provided platform credential store while keeping profile
+    /// and deployment key selection in Rust.
+    pub fn with_passwords(mut self, passwords: Arc<dyn Passwords>) -> Self {
+        self.passwords = passwords;
+        self
     }
     /// iOS can replace the container UUID on update. Only the directory
     /// inside Application Support identifies this app's local profile.

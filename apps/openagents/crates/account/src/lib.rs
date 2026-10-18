@@ -31,7 +31,7 @@ pub mod voice_agent;
 pub use key_session::{
     Attestation, Attester, PlayIntegrityAttester, PlayIntegrityOutcome, RENEW_WITHIN,
 };
-pub use platform::PlatformStore;
+pub use platform::{Passwords, PlatformStore};
 
 #[derive(Clone, Debug)]
 pub enum Phase {
