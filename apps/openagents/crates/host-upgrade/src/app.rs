@@ -63,7 +63,7 @@ impl Watcher {
     /// One look, at `now`, with the owner's `activity`.
     pub fn poll(&mut self, now: Instant, activity: &Activity) -> Action {
         let pending = record::read_pending(&self.state_dir)
-            .filter(|p| p.phase == Phase::Ready && p.bundle == self.bundle);
+            .filter(|p| p.phase == Phase::Ready && same_path(&p.bundle, &self.bundle));
         let Some(pending) = pending else {
             let noticing = self.wait.noticing();
             self.current = None;
@@ -150,7 +150,7 @@ pub fn reopened(data_dir: &Path, bundle: &Path, now_ms: u64) -> Option<(LogEntry
     let Phase::Restarting { chat, .. } = &pending.phase else {
         return None;
     };
-    if pending.bundle != bundle {
+    if !same_path(&pending.bundle, bundle) {
         return None;
     }
     // A rolled-back app is the old commit; the upgrader logs that.
@@ -186,4 +186,13 @@ pub fn reopened_line(entry: &LogEntry) -> String {
         ),
         _ => "Reopened after an upgrade. Your chats kept running.".into(),
     }
+}
+
+/// Whether two paths name the same file, however they're spelled.
+fn same_path(a: &Path, b: &Path) -> bool {
+    a == b
+        || matches!(
+            (std::fs::canonicalize(a), std::fs::canonicalize(b)),
+            (Ok(a), Ok(b)) if a == b
+        )
 }

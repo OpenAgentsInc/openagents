@@ -98,7 +98,11 @@ impl SystemHost {
                 .env("OPENAGENTS_IPC_PORT", port.to_string())
                 .env("OPENAGENTS_AUTO_UPDATE", "0")
                 .env("OPENAGENTS_AGENT_BUILD_GATE", "0")
-                .env("OPENAGENTS_WORKOS_CLIENT_ID", "");
+                .env("OPENAGENTS_WORKOS_CLIENT_ID", "")
+                // A named org skips the saved OpenAgents sign-in, and file
+                // storage skips Antigravity's: no Keychain, so no prompt.
+                .env("OPENAGENTS_ORG_ID", "host-upgrade-smoke")
+                .env("AGY_ACP_FORCE_FILE_STORAGE", "1");
         };
         let mut version = Command::new(&binary);
         version.arg("--version");
