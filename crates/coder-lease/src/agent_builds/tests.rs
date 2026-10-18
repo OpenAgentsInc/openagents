@@ -244,6 +244,40 @@ fn every_worktree_shares_one_target_folder_per_workspace() {
         ],
     );
     assert_eq!(kept_target, kept.to_str().unwrap());
+    for path in [&main_root, &main_app, &kept_target] {
+        assert_eq!(
+            Path::new(path).join(".metadata_never_index").is_file(),
+            cfg!(target_os = "macos"),
+            "{path}"
+        );
+    }
+}
+
+#[test]
+fn spotlight_marker_is_restored_without_rewriting_an_existing_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join(".metadata_never_index");
+    exclude_from_spotlight(dir.path()).unwrap();
+    assert_eq!(marker.is_file(), cfg!(target_os = "macos"));
+    if cfg!(target_os = "macos") {
+        std::fs::write(&marker, "keep").unwrap();
+        exclude_from_spotlight(dir.path()).unwrap();
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "keep");
+        std::fs::remove_file(&marker).unwrap();
+        exclude_from_spotlight(dir.path()).unwrap();
+        assert!(marker.is_file());
+    }
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn spotlight_marker_does_not_follow_a_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let outside = dir.path().join("outside");
+    std::fs::write(&outside, "keep").unwrap();
+    std::os::unix::fs::symlink(&outside, dir.path().join(".metadata_never_index")).unwrap();
+    assert!(exclude_from_spotlight(dir.path()).is_err());
+    assert_eq!(std::fs::read_to_string(outside).unwrap(), "keep");
 }
 
 #[test]

@@ -909,3 +909,7 @@ links remain readable. Upstream fixes now require manual ports.
   keep the new-chat computer visible beside the model on iPhone, offer all
   online computers, and remember the selection before sending. The shared
   mobile core puts online Macs first for drafts without a saved choice.
+
+- [OpenAgents #12125](https://github.com/OpenAgentsInc/openagents/issues/12125):
+  mark desktop and iOS build targets before building so Spotlight skips them
+  on macOS.

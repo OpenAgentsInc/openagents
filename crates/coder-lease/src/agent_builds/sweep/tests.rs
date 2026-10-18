@@ -124,6 +124,57 @@ fn policy(cap_kib: u64, floor_kib: u64, critical_kib: u64) -> Policy {
     }
 }
 
+#[test]
+fn sweeps_restore_spotlight_markers_even_for_busy_and_dev_targets() {
+    let home = Home::new();
+    let layout = home.layout();
+    let targets = [
+        home.target(SHARED[0], 16, 0.0),
+        home.target(SHARED[1], 16, 0.0),
+        home.target(DEV_APP, 16, 0.0),
+        home.target("agent-targets/workspace", 16, 0.0),
+    ];
+    let host = fake(1_000 * GIB, vec![cargo(42, Some(&targets[0]), None, &[])]);
+    for pass in 0..2 {
+        let report = sweep(&layout, &Policy::default(), &host, false);
+        assert!(report.actions.is_empty(), "{:?}", report.actions);
+        for target in &targets {
+            let marker = target.join(".metadata_never_index");
+            assert_eq!(marker.is_file(), cfg!(target_os = "macos"));
+            if cfg!(target_os = "macos") && pass == 0 {
+                std::fs::remove_file(marker).unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn dry_sweep_does_not_write_spotlight_markers() {
+    let home = Home::new();
+    let target = home.target(SHARED[0], 16, 0.0);
+    let _ = sweep(
+        &home.layout(),
+        &Policy::default(),
+        &fake(1_000 * GIB, vec![]),
+        true,
+    );
+    assert!(!target.join(".metadata_never_index").exists());
+}
+
+#[test]
+fn spotlight_marker_does_not_make_unused_artifacts_recent() {
+    let home = Home::new();
+    let target = home.target("openagents-target-copy", 16, 3.0);
+    std::fs::write(target.join(".metadata_never_index"), "").unwrap();
+    let report = sweep(
+        &home.layout(),
+        &Policy::default(),
+        &fake(1_000 * GIB, vec![]),
+        false,
+    );
+    assert!(!target.exists(), "{:?}", report.actions);
+}
+
 fn cargo(pid: u32, target_dir: Option<&Path>, cwd: Option<&Path>, args: &[&str]) -> Proc {
     Proc {
         pid,

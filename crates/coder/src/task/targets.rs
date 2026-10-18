@@ -134,6 +134,7 @@ impl Lease {
                     return Err(Error::UnsafePath);
                 }
                 std::fs::create_dir_all(&path)?;
+                coder_lease::agent_builds::exclude_from_spotlight(&path)?;
                 let cutoff = remember_build(&mut lock, policy.keep)?;
                 return Ok(Self {
                     path,
@@ -618,6 +619,7 @@ fn remember_build(lock: &mut File, keep: usize) -> Result<SystemTime, Error> {
 #[cfg(unix)]
 fn maintain(root: &Path, policy: Policy, volumes: &dyn Volumes) -> Result<(), Error> {
     for slot in background::view::slots(root, false) {
+        coder_lease::agent_builds::exclude_from_spotlight(&slot.path)?;
         let Some(mut held) = lock(&slot.path)? else {
             continue;
         };
@@ -1012,6 +1014,64 @@ mod tests {
         assert_eq!(size(dir.path()).unwrap(), before);
         assert!(dir.path().join("debug/incremental/cache").exists());
         assert!(dir.path().join("debug/deps/stale.rlib").exists());
+    }
+
+    #[test]
+    fn acquiring_a_slot_excludes_it_from_spotlight_only_on_macos() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("tasks");
+        let common = dir.path().join("project/.git");
+        std::fs::create_dir_all(&common).unwrap();
+        let policy = Policy {
+            cap: 1000,
+            floor: 0,
+            keep: 3,
+        };
+        let lease = Lease::acquire_with(&store, &common, policy, &Free(100)).unwrap();
+        assert_eq!(
+            lease.path.join(".metadata_never_index").is_file(),
+            cfg!(target_os = "macos")
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reusing_a_slot_restores_its_spotlight_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("tasks");
+        let common = dir.path().join("project/.git");
+        std::fs::create_dir_all(&common).unwrap();
+        let policy = Policy {
+            cap: 1000,
+            floor: 0,
+            keep: 3,
+        };
+        let lease = Lease::acquire_with(&store, &common, policy, &Free(100)).unwrap();
+        let path = lease.path.clone();
+        drop(lease);
+        std::fs::remove_file(path.join(".metadata_never_index")).unwrap();
+        let lease = Lease::acquire_with(&store, &common, policy, &Free(100)).unwrap();
+        assert_eq!(lease.path, path);
+        assert!(path.join(".metadata_never_index").is_file());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn maintenance_excludes_busy_slots_from_spotlight() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("tasks");
+        let common = dir.path().join("project/.git");
+        std::fs::create_dir_all(&common).unwrap();
+        let policy = Policy {
+            cap: 1000,
+            floor: 0,
+            keep: 3,
+        };
+        let lease = Lease::acquire_with(&store, &common, policy, &Free(100)).unwrap();
+        let marker = lease.path.join(".metadata_never_index");
+        std::fs::remove_file(&marker).unwrap();
+        maintain(&root(&store), policy, &Free(100)).unwrap();
+        assert!(marker.is_file());
     }
 
     #[test]

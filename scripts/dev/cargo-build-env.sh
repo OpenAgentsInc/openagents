@@ -35,6 +35,9 @@ CARGO_BUILD_BUILD_DIR=$CARGO_TARGET_DIR/worktrees/${oa_build_hash%"${oa_build_ha
 CARGO_INCREMENTAL=0
 export CARGO_BUILD_BUILD_DIR CARGO_INCREMENTAL
 mkdir -p "$CARGO_BUILD_BUILD_DIR" || return 1
+case $(uname -s) in
+  Darwin) touch "$CARGO_TARGET_DIR/.metadata_never_index" || return 1 ;;
+esac
 printf '%s\n%s\n' "$RUSTC" "$oa_build_version" > "$CARGO_BUILD_BUILD_DIR/.compiler.$$.new" || return 1
 mv -f "$CARGO_BUILD_BUILD_DIR/.compiler.$$.new" "$CARGO_BUILD_BUILD_DIR/.openagents-compiler" || return 1
 printf '%s\n' "$oa_build_manifest" > "$CARGO_BUILD_BUILD_DIR/.workspace.$$.new" || return 1
