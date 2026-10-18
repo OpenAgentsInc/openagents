@@ -72,7 +72,9 @@ fn decide(event: &AttentionEvent, live: &[String]) -> Step {
         },
         Attention::ClaimNoProgress { issue, holder, .. } if is_live(holder) => Step::Nudge {
             run: holder.clone(),
-            text: format!("Issue {issue} has seen no progress. Push what you have or say what is blocking you."),
+            text: format!(
+                "Issue {issue} has seen no progress. Push what you have or say what is blocking you."
+            ),
         },
         Attention::RunAwaitingInput { run, question } => Step::AskOwner {
             title: "An agent is waiting for you".into(),
