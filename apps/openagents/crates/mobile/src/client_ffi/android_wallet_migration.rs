@@ -39,7 +39,8 @@ impl MigratingWalletKeyStore {
             SecretRead::Absent => KeyRead::NotFound,
             SecretRead::Present { bytes } => KeyRead::Found { bytes },
             SecretRead::Locked => KeyRead::Failed { status: -25293 },
-            SecretRead::Corrupt | SecretRead::Failed => KeyRead::Failed { status: -1 },
+            SecretRead::Corrupt => KeyRead::Unreadable,
+            SecretRead::Failed => KeyRead::Failed { status: -1 },
         }
     }
 
@@ -48,13 +49,13 @@ impl MigratingWalletKeyStore {
             RetiredSeedRead::Absent => return KeyRead::NotFound,
             RetiredSeedRead::Present { bytes } => bytes,
             RetiredSeedRead::Locked => return KeyRead::Failed { status: -25293 },
-            RetiredSeedRead::Corrupt => return KeyRead::Found { bytes: Vec::new() },
+            RetiredSeedRead::Corrupt => return KeyRead::Unreadable,
             RetiredSeedRead::Failed => return KeyRead::Failed { status: -1 },
         };
 
         if bytes.len() != 16 && bytes.len() != 32 {
             bytes.fill(0);
-            return KeyRead::Found { bytes: Vec::new() };
+            return KeyRead::Unreadable;
         }
 
         let write = self
@@ -246,15 +247,15 @@ mod tests {
 
     #[test]
     fn locked_failed_or_corrupt_legacy_storage_fails_closed() {
-        for read in [
-            RetiredSeedRead::Locked,
-            RetiredSeedRead::Failed,
-            RetiredSeedRead::Corrupt,
+        for (read, expected) in [
+            (RetiredSeedRead::Locked, KeyRead::Failed { status: -25293 }),
+            (RetiredSeedRead::Failed, KeyRead::Failed { status: -1 }),
+            (RetiredSeedRead::Corrupt, KeyRead::Unreadable),
         ] {
             let current = MemoryStorage::absent();
             let retired = Retired(Arc::new(Mutex::new(read)));
             let result = store(&current, &retired).read_seed();
-            assert!(!matches!(result, KeyRead::NotFound));
+            assert_eq!(result, expected);
             assert_eq!(*current.creates.lock().unwrap(), 0);
         }
     }
@@ -264,10 +265,7 @@ mod tests {
         for bytes in [vec![0; 15], vec![0; 33]] {
             let current = MemoryStorage::absent();
             let retired = Retired(Arc::new(Mutex::new(RetiredSeedRead::Present { bytes })));
-            assert!(matches!(
-                store(&current, &retired).read_seed(),
-                KeyRead::Found { bytes } if bytes.is_empty()
-            ));
+            assert_eq!(store(&current, &retired).read_seed(), KeyRead::Unreadable);
             assert!(*current.value.lock().unwrap() == SecretRead::Absent);
             assert_eq!(*current.creates.lock().unwrap(), 0);
         }
@@ -275,16 +273,17 @@ mod tests {
 
     #[test]
     fn current_store_errors_do_not_fall_back_to_legacy_storage() {
-        for read in [SecretRead::Locked, SecretRead::Corrupt, SecretRead::Failed] {
+        for (read, expected) in [
+            (SecretRead::Locked, KeyRead::Failed { status: -25293 }),
+            (SecretRead::Corrupt, KeyRead::Unreadable),
+            (SecretRead::Failed, KeyRead::Failed { status: -1 }),
+        ] {
             let current = MemoryStorage::absent();
             *current.value.lock().unwrap() = read;
             let retired = Retired(Arc::new(Mutex::new(RetiredSeedRead::Present {
                 bytes: entropy(),
             })));
-            assert!(matches!(
-                store(&current, &retired).read_seed(),
-                KeyRead::Failed { .. }
-            ));
+            assert_eq!(store(&current, &retired).read_seed(), expected);
             assert_eq!(*current.creates.lock().unwrap(), 0);
         }
     }
@@ -310,17 +309,54 @@ mod tests {
 
     #[test]
     fn a_racing_different_seed_is_never_replaced() {
-        let current = MemoryStorage::absent();
-        *current.next_create.lock().unwrap() = SecretMutation::AlreadyExists;
-        *current.value.lock().unwrap() = SecretRead::Present { bytes: vec![7; 16] };
+        #[derive(Clone)]
+        struct RacingStorage {
+            reads: Arc<Mutex<usize>>,
+            creates: Arc<Mutex<usize>>,
+            raced_seed: Vec<u8>,
+        }
+
+        impl AndroidSecretStorage for RacingStorage {
+            fn read(&self, _namespace: String, _key: String) -> SecretRead {
+                let mut reads = self.reads.lock().unwrap();
+                *reads += 1;
+                if *reads == 1 {
+                    SecretRead::Absent
+                } else {
+                    SecretRead::Present {
+                        bytes: self.raced_seed.clone(),
+                    }
+                }
+            }
+
+            fn create(&self, _namespace: String, _key: String, _bytes: Vec<u8>) -> SecretMutation {
+                *self.creates.lock().unwrap() += 1;
+                SecretMutation::AlreadyExists
+            }
+
+            fn replace(&self, _namespace: String, _key: String, _bytes: Vec<u8>) -> SecretMutation {
+                SecretMutation::Failed
+            }
+
+            fn delete(&self, _namespace: String, _key: String) -> SecretMutation {
+                SecretMutation::Failed
+            }
+        }
+
+        let current = RacingStorage {
+            reads: Arc::new(Mutex::new(0)),
+            creates: Arc::new(Mutex::new(0)),
+            raced_seed: vec![7; 16],
+        };
         let retired = Retired(Arc::new(Mutex::new(RetiredSeedRead::Present {
             bytes: entropy(),
         })));
-
-        assert!(matches!(
-            store(&current, &retired).read_seed(),
-            KeyRead::Failed { .. }
-        ));
-        assert!(*current.value.lock().unwrap() == SecretRead::Present { bytes: vec![7; 16] });
+        let key_store = MigratingWalletKeyStore {
+            current: Arc::new(current.clone()),
+            retired: Arc::new(retired),
+        };
+        assert!(matches!(key_store.read_seed(), KeyRead::Failed { .. }));
+        assert_eq!(*current.reads.lock().unwrap(), 2);
+        assert_eq!(*current.creates.lock().unwrap(), 1);
     }
 }
