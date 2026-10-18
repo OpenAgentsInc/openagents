@@ -1,4 +1,6 @@
 //! Android-facing ownership over the existing Rust project, session, cloud, and continuation APIs.
+use super::chat_homes::{CoreChatHomes, CoreContinuationDraft};
+use super::own_computer::CoreOwnComputerOffer;
 use super::*;
 use rust_native::{Activation, Axis, Element, Node, TextRole, ValidatedView, View};
 use serde::Serialize;
