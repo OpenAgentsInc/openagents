@@ -751,6 +751,12 @@ links remain readable. Upstream fixes now require manual ports.
   and provide the matching `CoreAndroidRecovery`. The generated D3 and recovery
   bindings are not present in the checked-in Kotlin file, so Kotlin compilation
   and E1's source fixtures remain pending.
+  Static checks passed: `git diff --check` and bounded Python source assertions
+  confirmed one API 35 build-tools pin, ZXing 3.5.4 with no ML Kit dependency,
+  onboarding main/instrumentation source roots, the `RESULT_OK` credential gate,
+  and the injected `sessions.defaultChat()` callback with no session creation
+  or close in the shell. The assertions also confirmed `CoreAndroidSessions`
+  is absent from the checked-in UniFFI binding.
   The additive generation-fenced restore API commits under the shared
   account-switch lock; its race fixtures are unrun.
 - [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
