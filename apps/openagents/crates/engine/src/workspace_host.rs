@@ -748,16 +748,6 @@ impl WorkspaceHost {
 
     /// WatchSessions source: remote devices' rows from the registry merged with
     /// this engine's live status watch (the local view is fresher for our own runs).
-    /// The merged session rows right now, as [`Self::merged_sessions_watch`]
-    /// would first yield them, without a watch.
-    pub fn merged_sessions(&self, local: &[Session]) -> Vec<Session> {
-        merge_sessions(
-            &self.inner.config.device_id,
-            &self.watch_session_rows().borrow(),
-            local,
-        )
-    }
-
     pub fn merged_sessions_watch(
         &self,
         local: watch::Receiver<Vec<Session>>,

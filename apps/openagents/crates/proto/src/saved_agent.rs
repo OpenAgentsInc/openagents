@@ -28,9 +28,6 @@ pub struct Declared {
     pub check_ins: bool,
     pub every_minutes: Option<u32>,
     pub authority: bool,
-    /// Minutes of no progress before a chat or claim it manages is raised.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stall_minutes: Option<u32>,
 }
 
 /// What a saved-agent chat's definition declares, from its config. `None`
@@ -149,7 +146,6 @@ mod tests {
                 check_ins: true,
                 every_minutes: Some(10),
                 authority: true,
-                stall_minutes: None,
             })
         );
         assert!(declares_check_ins(Some(&declaring)));
