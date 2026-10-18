@@ -32,6 +32,13 @@ internal-testing handoff:
   files or Secret Manager. The deploy lane configures the push gateway and
   `coder-sync`; an agent does not shift production traffic from an Android
   feature issue.
+- For #12101, confirm the existing Play App Signing and release-key
+  continuity, compare the installed-app certificate with `assetlinks.json`,
+  and approve the internal tester list, privacy/Data safety answers, content
+  rating, Firebase setup, and any upload or publication. Keep signing and
+  service credentials out of Git and logs. On a dedicated test device, verify
+  the signed in-place upgrade with synthetic account, wallet, grant, and
+  settings data before any store upload.
 - On dedicated test devices/accounts, check signed upgrade and synthetic
   wallet-seed preservation, Keystore/biometric behavior, TalkBack, camera and
   verified links, push wakes, background/recreated sessions, voice routing
