@@ -856,11 +856,9 @@ impl DocHost {
                         "This computer turned on check-ins for {}, because its definition asks for them: it checks in every {} minutes{}. Turn them off in Settings → General → Check-ins.",
                         pick.title,
                         state.settings.every_minutes,
-                        if state.wants_standing {
-                            ", and the account is asked to grant it standing authority to message, start, steer and stop chats without asking"
-                        } else {
-                            ""
-                        }
+                        // Agents act without grants (#12135, #12155), so
+                        // the note no longer mentions standing authority.
+                        ""
                     );
                     if let Err(e) = self.runtime_note(&pick.chat_id, text) {
                         tracing::warn!(error = %e, "agent wakes: couldn't tell the chosen chat");
