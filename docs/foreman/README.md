@@ -91,3 +91,11 @@ work through `openagents chat work --on gce` and every landing through
 Mac; ask System One for the typed judgments (stalled or not, on `main` too
 or not, overlapping or not); and measure Foreman by the minutes from code
 complete to close and the minutes any chat sat stalled.
+
+Phase 1 of the [roadmap](roadmap.md) is held to six items that ship before
+anything else: the watchdog, check-ins on by default, coordination in app
+chats, the stall rule, machine actions as logged scopes, and a replay of
+2026-10-17 as the acceptance test. That order follows Foreman's own review of
+these docs. Making Foreman forkable doesn't delay it: Phase 1 is built keyed
+by agent ID with no name checks, and roadmap items 19 to 22 then generalize
+what proved itself.

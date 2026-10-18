@@ -17,6 +17,15 @@ notifications below are general agent capabilities that Foreman uses, and a
 fork gets them too. Items 19 to 22 remove the Foreman-only code that exists
 today.
 
+**Order (revised 2026-10-17 after Foreman's own review of these docs).**
+Phase 1 is held to six items and ships before anything else: the watchdog,
+on by default, coordination in app chats, the stall rule, machine actions
+as logged scopes (moved up from Phase 3), and the bad-day replay (moved up
+from Phase 3), which is the acceptance harness for the rest. Making Foreman
+forkable is the destination, but it doesn't delay Phase 1: Phase 1 is built
+keyed by agent ID with no name checks, and items 19 to 22 generalize what
+proves itself. Item numbers are stable IDs, not the order.
+
 ## The target loop
 
 ```mermaid
@@ -33,7 +42,7 @@ flowchart TD
     H[Host watchdog] -->|Foreman's own turn stuck 10 min| C
 ```
 
-## Phase 1: now
+## Phase 1: now (ship first)
 
 ### 1. A host watchdog over Foreman's own turn
 
@@ -115,6 +124,41 @@ flowchart TD
   stall, not one per check-in.
 - **Size:** M.
 
+### 16. Machine actions as logged scopes
+
+- **What:** Pruning a build cache and stopping a process become explicit
+  scopes beside `Message`, `Create`, `Steer`, and `Stop`, granted and logged
+  like them, or go to a chat. Deploys stay with the owner.
+- **Why:** L12. Foreman deleted about 640 GiB of build caches and stopped a
+  production deploy script on judgment, with no scope and no record. Both
+  were right calls, but powers like these should be scoped and logged
+  before Foreman gets any more of them, not after.
+- **Where:** `apps/openagents/crates/proto/src/foreman.rs` (`Scope`),
+  `templates/foreman.md`.
+- **Acceptance:** A prune Foreman does shows in the decision log with its
+  scope; with the scope off, the host refuses it.
+- **Size:** S.
+
+### 17. Replay a bad day as a Foreman test
+
+- **What:** An Agent Lab suite that replays 2026-10-17's events (issues
+  opening, branches finishing, the disk falling, a silent coordinator) at
+  speed, and scores whether Foreman dispatched, landed, and escalated in
+  time.
+- **Why:** L13. Foreman's current tests check that it reaches its sources,
+  not its judgment (`docs/agent-lab/foreman.md`, "Its tests"). 2026-10-17 is
+  the ideal fixture: a hung tool call (14:11), a coordinator stall (from
+  18:25, flagged 19:13), the disk falling to 32 GiB, and a wrong rollback
+  about to fire. This suite is the acceptance harness for items 1 to 7:
+  "fixed" means "that day would have gone right".
+- **Where:** `crates/agent-lab` (suites, A5 fixed suites), a fixture under
+  `docs/agent-lab/`.
+- **Acceptance:** The suite fails a Foreman that only offers on a stall and
+  passes one that follows the ladder.
+- **Size:** M for the first cut (the four events above), L for the full day.
+
+## Phase 2: next
+
 ### 5. Dispatch through `openagents chat work --on gce`
 
 - **What:** Foreman starts issue work with the briefed agent on the GCE pool
@@ -167,7 +211,39 @@ flowchart TD
   and builds over the cap become events that wake Foreman.
 - **Size:** M.
 
-## Phase 2: next
+### 23. One claim per working chat
+
+- **What:** A claim names one working chat or run, and a chat holds at most
+  one claim at a time (or a small, declared batch it is actively working).
+  A coordinator doesn't claim the issues it hands out; each agent claims its
+  own. Foreman treats a claim whose chat has shown no progress as
+  unclaimed for planning, and says so.
+- **Why:** On 2026-10-17 one coordinator session (`a9366ded`) held 16
+  claims. The claims said "someone is working on these" while the real
+  state was "nobody is". The landing queue (item 6) fixes the integration
+  half, not this.
+- **Where:** `openagents issue claim` (`crates/openagents-cli`),
+  `coder::claim`, `scripts/dev/issue-board.sh`, `templates/foreman.md`.
+- **Acceptance:** A second claim from a chat that already holds one is
+  refused with a plain message; Foreman's status lists claims with no live
+  chat separately.
+- **Size:** S.
+
+### 24. What is waiting on the owner, in every check-in
+
+- **What:** A first-class list of what only the owner can do, with how long
+  each has waited: production deploys (who may deploy is a fact, read from
+  the deploy permissions, not discovered when a deploy fails), App Store and
+  TestFlight review, keys, payments, and device checks from
+  `NEEDS_OWNER.md` and After-close checks. Every check-in shows it, and
+  item 8 pushes new entries to the phone.
+- **Why:** On 2026-10-17 nobody, Foreman included, knew a production deploy
+  needed the owner's `actAs` permission until one was refused.
+- **Where:** the check-in facts (item 7), `NEEDS_OWNER.md`, the deploy
+  scripts' permission check.
+- **Acceptance:** A check-in on a host without deploy permission lists
+  "production deploy: owner only" before anyone tries one.
+- **Size:** S.
 
 ### 8. Push to the owner's phone
 
@@ -251,14 +327,21 @@ flowchart TD
 
 ### 13. Measure Foreman
 
-- **What:** Two numbers per day, computed from GitHub and chat status:
-  minutes from code complete to close for each issue, and stall minutes per
-  chat and for Foreman itself. Also: check-ins on time, and actions per
-  check-in. `openagents foreman report --day YYYY-MM-DD` prints them.
+- **What:** A daily report, computed from GitHub, chat status, and the
+  decision log, printed by `openagents foreman report --day YYYY-MM-DD`:
+  - per issue: open → claim → first commit → code complete → close, in
+    minutes;
+  - stall minutes with no action, per chat and for Foreman's own turn;
+  - check-ins on time and late, and actions per check-in;
+  - disk-floor breaches (under 100 GiB free) and how long each lasted;
+  - probes or checks that wrote data to production or to the owner's
+    account (target: zero);
+  - what waited on the owner, and for how long (item 24).
 - **Why:** L13. The 2026-10-17 numbers exist only because an audit counted
   them by hand: 4 h 47 min to 5 h 17 min from code complete to close for the
   coordinator's 11 issues, against 21–35 minutes for Foreman's three fastest
-  dispatches that evening.
+  dispatches that evening. The takeover went from about 1.5 hours of nothing
+  to six closes in 45 minutes. That day is the baseline.
 - **Where:** the engine's Foreman module (it already sees chat status and
   issue events), `crates/openagents-cli`.
 - **Acceptance:** The report for 2026-10-17, run against recorded data,
@@ -293,33 +376,6 @@ flowchart TD
   missed intervals.
 - **Size:** M.
 
-### 16. Machine actions as logged scopes
-
-- **What:** Pruning a build cache and stopping a process become explicit
-  scopes beside `Message`, `Create`, `Steer`, and `Stop`, granted and logged
-  like them, or go to a chat. Deploys stay with the owner.
-- **Why:** L12. Foreman deleted caches and stopped a deploy script with no
-  record.
-- **Where:** `apps/openagents/crates/proto/src/foreman.rs` (`Scope`),
-  `templates/foreman.md`.
-- **Acceptance:** A prune Foreman does shows in the decision log with its
-  scope; with the scope off, the host refuses it.
-- **Size:** S.
-
-### 17. Replay a bad day as a Foreman test
-
-- **What:** An Agent Lab suite that replays 2026-10-17's events (issues
-  opening, branches finishing, the disk falling, a silent coordinator) at
-  speed, and scores whether Foreman dispatched, landed, and escalated in
-  time.
-- **Why:** L13. Foreman's current tests check that it reaches its sources,
-  not its judgment (`docs/agent-lab/foreman.md`, "Its tests").
-- **Where:** `crates/agent-lab` (suites, A5 fixed suites), a fixture under
-  `docs/agent-lab/`.
-- **Acceptance:** The suite fails a Foreman that only offers on a stall and
-  passes one that follows the ladder.
-- **Size:** L.
-
 ### 18. Foreman for any repository and any harness
 
 - **What:** The same loop through the public SDK, so an outside harness can
@@ -332,11 +388,18 @@ flowchart TD
   a test repository with only SDK calls.
 - **Size:** L.
 
-## Foreman on the SDK, forkable by anyone
-
 These items make the official Foreman and anyone's fork equal. They come
 before the dashboard and the decision log on the account, which should be
 built once, for every agent.
+
+## Foreman on the SDK, forkable by anyone
+
+These items make the official Foreman and anyone's fork equal. They don't
+hold up Phase 1. Phase 1 ships first, with two constraints so nothing needs
+rewriting: new state is keyed by agent definition ID, and no new code
+branches on the name "Foreman". Items 19 to 22 then generalize what Phase 1
+proved, before the dashboard and the decision log on the account, which
+should be built once, for every agent.
 
 ### 19. Agent wakes and grants for any agent
 
@@ -400,28 +463,30 @@ built once, for every agent.
 
 | Order | Item | Depends on |
 | --- | --- | --- |
-| 1 | Host watchdog | — |
-| 2 | On by default | — |
-| 3 | App chats for coordination | — |
-| 4 | Stall rule | 1, 2 |
-| 5 | Dispatch through `chat work` | 2 |
-| 6 | Land through the queue | 5 |
-| 7 | Facts in every check-in | 2 |
-| 8 | Push to the phone | 4 |
-| 9 | Terminal sessions | 4 |
-| 10 | System One judgments | 4 |
-| 11 | Dashboard | 12, 13, 20 |
-| 12 | Decision log on the account | 2, 20 |
-| 13 | Measurement | 4 |
-| 14–18 | Later | Phase 1 and 2 |
-| 19 | Agent wakes and grants for any agent | 2 |
-| 20 | Decision log and autonomy card for any agent | 19 |
-| 21 | Official Foreman as a published definition | — |
-| 22 | Fork and publish | 19, 21 |
+| 1 | 1 Host watchdog | — |
+| 2 | 2 On by default | — |
+| 3 | 3 App chats for coordination | — |
+| 4 | 4 Stall rule | 1, 2 |
+| 5 | 16 Machine actions as logged scopes | 2 |
+| 6 | 17 Replay a bad day (acceptance harness) | — |
+| 7 | 23 One claim per working chat | — |
+| 8 | 24 Waiting on the owner | 7 |
+| 9 | 5 Dispatch through `chat work` | 2 |
+| 10 | 6 Land through the queue | 5 |
+| 11 | 7 Facts in every check-in | 2 |
+| 12 | 8 Push to the phone | 4, 24 |
+| 13 | 9 Terminal sessions | 4 |
+| 14 | 10 System One judgments | 4 |
+| 15 | 13 Measurement | 4 |
+| 16 | 19 Agent wakes and grants for any agent | Phase 1 |
+| 17 | 20 Decision log and autonomy card for any agent | 19 |
+| 18 | 12 Decision log on the account | 20 |
+| 19 | 11 Dashboard | 12, 13, 20 |
+| 20 | 21 Official Foreman as a published definition | — |
+| 21 | 22 Fork and publish | 19, 21 |
+| 22 | 14, 15, 18 Later | Phases 1 and 2 |
 
-Build items 1, 2, and 4 (the watchdog, on by default, and the stall rule) as
-agent capabilities from the start, so they don't need rewriting in item 19.
-
-Items 1, 2, 3, and 6 are small and independent; together they would have
-removed the 71-minute stall, the 4-hour Foreman freeze, and most of the
-hand merging on 2026-10-17.
+Phase 1 (items 1, 2, 3, 4, 16, 17) ships before anything else. Items 1 to 4
+and 16 would have removed the 71-minute stall, the 4-hour Foreman freeze,
+and the unrecorded cache deletion and deploy stop on 2026-10-17; item 17
+proves it by replaying that day.
