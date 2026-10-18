@@ -14,7 +14,7 @@ mod runtime;
 pub(super) struct AgentHost {
     auth: Auth,
     registry: Arc<HarnessRegistry>,
-    lab_root: std::path::PathBuf,
+    pub(super) lab_root: std::path::PathBuf,
     sign_ins: runtime::SignIns,
 }
 pub(super) const ASSIGNMENT: &str = openagents_proto::saved_agent::ASSIGNMENT;

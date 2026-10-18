@@ -35,6 +35,11 @@ fn hash(value: &impl Serialize) -> String {
 fn location(root: &Path, assignment: &str) -> PathBuf {
     root.join("trials").join(assignment)
 }
+/// Whether `assignment` is an Agent Lab trial on this computer (#12109).
+pub(super) fn is_trial(root: &Path, assignment: &str) -> bool {
+    openagents_account::openagents::agents::valid_id(assignment)
+        && location(root, assignment).join("ready.json").exists()
+}
 pub(super) fn trial_cwd(root: &Path, a: &Assignment) -> Result<Option<(String, u64)>, EngineError> {
     let dir = location(root, &a.id);
     let path = dir.join("ready.json");

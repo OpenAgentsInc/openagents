@@ -320,6 +320,7 @@ impl DocHost {
         let Some(foreman) = self.foreman().cloned() else {
             return Ok(());
         };
+        self.foreman_drop_trial(&foreman)?;
         if foreman.chat().is_none() {
             self.foreman_adopt(&foreman, now_ms())?;
         }
@@ -376,8 +377,43 @@ impl DocHost {
             return Ok(());
         };
         let chats = workspace.watch_chats().borrow().clone();
-        let declaring = declaring_chats(&chats, &self.inner.config.device_id);
+        let declaring = declaring_chats(&chats, &self.inner.config.device_id, |a| {
+            self.is_lab_trial(a)
+        });
         self.foreman_adopt_from(foreman, now, declaring)
+    }
+
+    /// Whether `assignment` is an Agent Lab trial on this computer.
+    fn is_lab_trial(&self, assignment: &str) -> bool {
+        self.inner
+            .custom_agents
+            .get()
+            .is_some_and(|b| super::agent_lab::is_trial(&b.lab_root, assignment))
+    }
+
+    /// A trial chat this host picked by itself (#12109) loses check-ins and
+    /// the authority, logged, so the next pick or bind is the real agent.
+    /// An owner's own choice is left alone.
+    fn foreman_drop_trial(&self, foreman: &Foreman) -> Result<(), EngineError> {
+        let state = foreman.state();
+        let (Some(chat), Some(_)) = (&state.settings.chat_id, state.turned_on_at) else {
+            return Ok(());
+        };
+        let Some(row) = self.workspace().and_then(|w| w.chat(chat).ok().flatten()) else {
+            return Ok(());
+        };
+        if !assignment_of(&row).is_some_and(|a| self.is_lab_trial(a)) {
+            return Ok(());
+        }
+        tracing::warn!(chat = %chat, "foreman: dropping a test chat picked for check-ins");
+        foreman.set(
+            ForemanSettings {
+                chat_id: None,
+                authority: false,
+                ..state.settings
+            },
+            now_ms(),
+        )
     }
 
     /// A chat the owner just bound to a saved agent (#12057) is their
@@ -390,7 +426,11 @@ impl DocHost {
         let Some(foreman) = self.foreman().cloned() else {
             return Ok(());
         };
-        let declaring = declaring_chats(std::slice::from_ref(chat), &self.inner.config.device_id);
+        let declaring = declaring_chats(
+            std::slice::from_ref(chat),
+            &self.inner.config.device_id,
+            |a| self.is_lab_trial(a),
+        );
         self.foreman_adopt_from(&foreman, now_ms(), declaring)
     }
 
@@ -643,11 +683,17 @@ impl DocHost {
 
 /// This computer's unarchived saved-agent chats whose agent's definition
 /// declares check-ins. Read from the chat config the host stamps from the
-/// definition, never from the chat's or agent's name.
-fn declaring_chats(chats: &[openagents_proto::Chat], device: &str) -> Vec<Declaring> {
+/// definition, never from the chat's or agent's name. Agent Lab trial chats
+/// (`is_trial` of their assignment) run a draft and never count (#12109).
+fn declaring_chats(
+    chats: &[openagents_proto::Chat],
+    device: &str,
+    is_trial: impl Fn(&str) -> bool,
+) -> Vec<Declaring> {
     chats
         .iter()
         .filter(|c| c.device_id == device && !c.archived)
+        .filter(|c| assignment_of(c).is_none_or(|a| !is_trial(a)))
         .filter_map(|c| {
             let declared = openagents_proto::saved_agent::declared(c.config.as_ref())?;
             declared.check_ins.then(|| Declaring {
@@ -667,6 +713,14 @@ fn declaring_chats(chats: &[openagents_proto::Chat], device: &str) -> Vec<Declar
             })
         })
         .collect()
+}
+
+fn assignment_of(chat: &openagents_proto::Chat) -> Option<&str> {
+    chat.config
+        .as_ref()?
+        .model_options
+        .get(openagents_proto::saved_agent::ASSIGNMENT)?
+        .as_str()
 }
 
 /// Ask the host's GitHub CLI what changed. A missing or signed-out `gh`
@@ -1103,9 +1157,11 @@ mod tests {
             archived,
             chat("c5", "mac", "Plain", serde_json::json!({})),
         ];
-        let found = declaring_chats(&chats, "mac");
+        let found = declaring_chats(&chats, "mac", |_| false);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].chat_id, "c2");
+        // #12109: an Agent Lab trial of the same agent never counts.
+        assert!(declaring_chats(&chats, "mac", |a| a == "a1").is_empty());
         assert_eq!(found[0].agent.as_deref(), Some("def-1"));
         assert_eq!(found[0].declared.every_minutes, Some(10));
     }
