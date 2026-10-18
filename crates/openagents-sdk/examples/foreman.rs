@@ -1,5 +1,12 @@
-//! Save Foreman as an Agent Lab experiment, run its tests on a computer,
-//! print the report, and with `--promote` save it as an agent (#11926).
+//! Start from the published Foreman, save it as an Agent Lab experiment, run
+//! its tests on a computer, print the report, and with `--promote` save it as
+//! an agent (#11926, #12048).
+//!
+//! `--built-in` starts from the copy in this build instead, for a change to
+//! the playbook that isn't published yet. `--publish` (with `--promote`)
+//! publishes the saved agent for anyone to start from: a new revision of
+//! OPENAGENTS_PUBLISHED_ID when it is set, otherwise a new published agent
+//! under OPENAGENTS_PUBLISH_REQUEST_ID (or a fresh request ID).
 //!
 //! OPENAGENTS_TOKEN signs in. OPENAGENTS_LAB_HOST picks the computer by name
 //! or ID and OPENAGENTS_LAB_PROJECT the project, defaulting to the first.
@@ -27,6 +34,11 @@ fn keep<T: serde::Serialize>(name: &str, request: &T) -> Result<(), Box<dyn std:
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let promote = std::env::args().any(|a| a == "--promote");
+    let publish = std::env::args().any(|a| a == "--publish");
+    let built_in = std::env::args().any(|a| a == "--built-in");
+    if publish && !promote {
+        return Err("Add --promote: only a saved agent can be published.".into());
+    }
     let client = Client::new(Deployment::production())?;
     let credential = std::env::var("OPENAGENTS_TOKEN")?;
     let session = client.authenticate(&credential).await?;
@@ -50,7 +62,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .find(|p| wanted.as_ref().is_none_or(|w| &p.id == w || &p.name == w))
         .ok_or("Choose a project on that computer first.")?;
 
-    let mut experiment = ::agent_lab::templates::foreman();
+    let template = if built_in {
+        println!("Starting from the Foreman in this build");
+        ::agent_lab::templates::foreman()
+    } else {
+        let published = client
+            .published_agent(::agent_lab::templates::FOREMAN_ID, None, &cancel)
+            .await?;
+        println!(
+            "Starting from published Foreman revision {}",
+            published.revision
+        );
+        published.template
+    };
+    let mut experiment = template.clone();
     experiment.host = host.id.clone();
     experiment.project = project.id.clone();
     let save = labs.bind(SaveDocument {
@@ -106,6 +131,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Saved agent {} revision {}: it is now in the agent picker.",
             agent.spec.name, agent.revision
         );
+        if publish {
+            let definition = Pin {
+                id: agent.id.clone(),
+                revision: agent.revision,
+            };
+            let published = match std::env::var("OPENAGENTS_PUBLISHED_ID") {
+                Ok(id) => {
+                    let current = client.published_agent(&id, None, &cancel).await?;
+                    let request = labs.bind(UpdatePublishedAgent {
+                        request_id: openagents_sdk::agents::request_id()?,
+                        expected_revision: current.revision,
+                        definition,
+                        template,
+                    });
+                    keep("publish.json", &request)?;
+                    labs.update_published(&id, &request, &cancel).await?
+                }
+                Err(_) => {
+                    let request_id = match std::env::var("OPENAGENTS_PUBLISH_REQUEST_ID") {
+                        Ok(r) => r,
+                        Err(_) => openagents_sdk::agents::request_id()?,
+                    };
+                    let request = labs.bind(PublishAgent {
+                        request_id,
+                        definition,
+                        template,
+                    });
+                    keep("publish.json", &request)?;
+                    labs.publish(&request, &cancel).await?
+                }
+            };
+            println!(
+                "Published {} revision {}: anyone can start from it.",
+                published.id, published.revision
+            );
+        }
     }
     Ok(())
 }

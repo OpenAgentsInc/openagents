@@ -414,7 +414,24 @@ fn foreman_template_is_a_valid_claude_code_experiment() {
     assert_eq!(e.draft.spec.runtime, "claude-code");
     // Claude Code runs with the host's own access; the host refuses any other setting.
     assert_eq!(e.draft.spec.access, agent_contract::Access::HostDefault);
-    e.draft.agent_spec().unwrap();
+    // Saving folds the skills into the instructions, which a definition caps
+    // at 16,384 bytes (NIP-AGENT).
+    let folded: usize = e.draft.spec.instructions.len()
+        + e.draft
+            .components
+            .iter()
+            .filter_map(Component::context)
+            .map(|c| c.len() + 2)
+            .sum::<usize>();
+    assert!(
+        folded <= 16_384,
+        "Foreman's instructions and skills are {folded} bytes, over the 16,384 a saved agent allows; shorten them"
+    );
+    let saved = e.draft.agent_spec().unwrap();
+    // The playbook is in skills; the instructions stay short (#12048).
+    assert_eq!(e.draft.components.len(), 8);
+    assert!(e.draft.spec.instructions.len() < 2048);
+    assert!(saved.instructions.contains("Dispatching issue work:\n"));
     e.host = "host-1".into();
     e.project = "project-1".into();
     e.validate().unwrap();
@@ -428,7 +445,7 @@ fn foreman_template_is_a_valid_claude_code_experiment() {
     assert_eq!(automatic, 3);
     assert_eq!(e.suite.cases[0].check.evaluate("It is #11840."), Some(true));
     // Shell calls are capped and every probe carries its own timeout (#12029).
-    let text = &e.draft.spec.instructions;
+    let text = &saved.instructions;
     let autonomy = e.draft.spec.autonomy.as_ref().expect("autonomy");
     assert_eq!(autonomy.shell_timeout_secs, Some(120));
     assert!(text.contains("`work_issues`") && text.contains("`request_id`"));
@@ -511,10 +528,59 @@ fn workbench_starts_from_foreman() {
         .activate(&rust_native::Activation {
             instance: s.instance.clone(),
             revision: s.revision,
-            node: "template:foreman".into(),
+            node: format!("template:{}", templates::FOREMAN_ID),
         })
         .unwrap();
-    s.action("template:foreman").unwrap();
+    s.action(&format!("template:{}", templates::FOREMAN_ID))
+        .unwrap();
     assert_eq!(s.draft.draft.spec.name, "Foreman");
     assert!(s.document.is_none());
+    // A published revision the host fetched replaces the copy in this build.
+    let mut next = templates::foreman();
+    next.draft.components[0] = templates::skill("Where I look", "The board first.");
+    let definition = agent_contract::AgentDefinition {
+        id: "1".repeat(64),
+        revision: 3,
+        spec: next.draft.agent_spec().unwrap(),
+        deleted: false,
+    };
+    agent_lab::api::check_published(&next, &definition).unwrap();
+    s.published.push(agent_lab::api::PublishedAgent {
+        id: templates::FOREMAN_ID.into(),
+        revision: 2,
+        definition,
+        template: next.clone(),
+    });
+    s.action(&format!("template:{}", templates::FOREMAN_ID))
+        .unwrap();
+    assert_eq!(s.draft, next);
+    assert!(s.action("template:unknown").is_err());
+}
+#[test]
+fn a_published_template_saves_exactly_its_definition() {
+    use agent_lab::api::{check_published, published_id};
+    let e = templates::foreman();
+    let mut definition = agent_contract::AgentDefinition {
+        id: "1".repeat(64),
+        revision: 1,
+        spec: e.draft.agent_spec().unwrap(),
+        deleted: false,
+    };
+    check_published(&e, &definition).unwrap();
+    let mut chosen = e.clone();
+    chosen.host = "host-1".into();
+    assert!(check_published(&chosen, &definition).is_err());
+    definition.spec.instructions.push_str("\nSomething else.");
+    assert!(check_published(&e, &definition).is_err());
+    definition.spec = e.draft.agent_spec().unwrap();
+    definition.deleted = true;
+    assert!(check_published(&e, &definition).is_err());
+    let id = published_id(&"a".repeat(64));
+    assert!(agent_contract::valid_id(&id));
+    assert_ne!(id, templates::FOREMAN_ID);
+    assert!(
+        templates::offered()
+            .iter()
+            .any(|(i, _)| *i == templates::FOREMAN_ID)
+    );
 }

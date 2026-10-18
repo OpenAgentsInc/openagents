@@ -1,8 +1,63 @@
 //! Ready-made experiments that a person can start from instead of a blank draft.
+//!
+//! Each one is published as an agent definition (`api::PublishedAgent`) that
+//! anyone can fetch, test and save as their own (#12048). The copies here are
+//! what a build falls back to when it can't reach the published one, and what
+//! the publisher sends as a new revision.
 use super::*;
 
-/// Foreman's instructions: the whole picture of open issues and active agents.
-pub const FOREMAN_INSTRUCTIONS: &str = include_str!("templates/foreman.md");
+/// The published ID of the official Foreman. It is the digest of the private
+/// request ID of its first publish ([`api::published_id`]), so nobody else
+/// can publish under it.
+pub const FOREMAN_ID: &str = "04288eb136553674824afea5992734e56e9ede0508bf8a931b9d5023d5255a2c";
+
+/// Foreman's short instructions. Its playbook is in [`FOREMAN_SKILLS`].
+pub const FOREMAN_INSTRUCTIONS: &str = include_str!("templates/foreman/instructions.md");
+
+/// Foreman's playbook as Agent Lab skills, in order: name and text.
+pub const FOREMAN_SKILLS: [(&str, &str); 8] = [
+    (
+        "Where I look",
+        include_str!("templates/foreman/where-i-look.md"),
+    ),
+    (
+        "How I reason",
+        include_str!("templates/foreman/how-i-reason.md"),
+    ),
+    (
+        "What I may change",
+        include_str!("templates/foreman/what-i-may-change.md"),
+    ),
+    (
+        "Dispatching issue work",
+        include_str!("templates/foreman/dispatching.md"),
+    ),
+    (
+        "Upgrading myself",
+        include_str!("templates/foreman/upgrading-myself.md"),
+    ),
+    (
+        "Staying responsive",
+        include_str!("templates/foreman/staying-responsive.md"),
+    ),
+    ("Check-ins", include_str!("templates/foreman/check-ins.md")),
+    ("Stalls", include_str!("templates/foreman/stalls.md")),
+];
+
+/// A skill component for a draft, with the digest Agent Lab checks.
+pub fn skill(name: &str, text: &str) -> Component {
+    Component::Skill {
+        name: name.into(),
+        text: text.into(),
+        sha256: lab_kit::digest(&json!({"name": name, "text": text})),
+    }
+}
+
+/// The templates Agent Lab offers to start from: each one's published ID and
+/// the copy in this build.
+pub fn offered() -> Vec<(&'static str, Experiment)> {
+    vec![(FOREMAN_ID, foreman())]
+}
 
 /// Foreman (#11926): an agent that reasons over every open issue and every
 /// active agent. It runs on Claude Code, which the app host gives its chat,
@@ -19,7 +74,7 @@ pub fn foreman() -> Experiment {
             spec: AgentSpec {
                 name: "Foreman".into(),
                 description: "Keeps the whole picture of open issues and active agents: what's idle, what's colliding, what's stuck, and what to do next.".into(),
-                instructions: FOREMAN_INSTRUCTIONS.into(),
+                instructions: FOREMAN_INSTRUCTIONS.trim_end().into(),
                 runtime: "claude-code".into(),
                 model: Some("claude-opus-5-5".into()),
                 access: agent_contract::Access::HostDefault,
@@ -38,7 +93,10 @@ pub fn foreman() -> Experiment {
                 }),
             },
             source: None,
-            components: vec![],
+            components: FOREMAN_SKILLS
+                .iter()
+                .map(|(name, text)| skill(name, text.trim_end()))
+                .collect(),
         },
         suite: Suite {
             title: "Foreman reach and judgment".into(),

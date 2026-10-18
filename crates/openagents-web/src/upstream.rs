@@ -212,6 +212,7 @@ pub fn owned(path: &str) -> bool {
         || path.starts_with("/v1/notify/")
         || path == "/v1/agent-definitions"
         || path.starts_with("/v1/agent-definitions/")
+        || crate::published_agents::owns(path)
         || path.starts_with("/v1/home/")
         || path == "/v1/labs"
         || path.starts_with("/v1/labs/")

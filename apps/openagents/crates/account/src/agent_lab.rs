@@ -165,6 +165,17 @@ impl Lab {
             .hosts(&lease.cancel)
             .await
             .map_err(|_| "Couldn't load your computers.")?;
+        // A template that can't be fetched starts from the copy in this build.
+        let mut published = vec![];
+        for (id, _) in templates::offered() {
+            if let Ok(p) = lease
+                .client()
+                .published_agent(id, None, &lease.cancel)
+                .await
+            {
+                published.push(p);
+            }
+        }
         if !lease.is_current() {
             return Ok(());
         }
@@ -184,6 +195,7 @@ impl Lab {
         s.runs = runs;
         s.agents = definitions;
         s.hosts = hosts;
+        s.published = published;
         if s.draft.host == "choose" {
             if let Some(h) = s.hosts.first().cloned() {
                 s.draft.host = h.id;

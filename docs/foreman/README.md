@@ -43,7 +43,7 @@ SDK calls only. Roadmap items 19 to 22 do the work.
 
 | Part | Where | State on 2026-10-17 |
 | --- | --- | --- |
-| Template and instructions | [`crates/agent-lab/src/templates.rs`](../../crates/agent-lab/src/templates.rs), [`templates/foreman.md`](../../crates/agent-lab/src/templates/foreman.md) | Claude Code on Opus 5.5, host-default access, five Agent Lab tests (#11926). |
+| Template and instructions | [`crates/agent-lab/src/templates.rs`](../../crates/agent-lab/src/templates.rs), [`templates/foreman/`](../../crates/agent-lab/src/templates/foreman/) | Claude Code on Opus 5.5, host-default access, five Agent Lab tests (#11926). |
 | Claim-to-chat join | `harnessSessionId` on `list_chats` in [`apps/openagents/crates/mcp/src/tools.rs`](../../apps/openagents/crates/mcp/src/tools.rs) | On `main` (#11927). A claim whose session matches no chat is reported as "outside the app". |
 | Ask from the CLI, web, and phone chats | `openagents agents ask Foreman …`, the chat agents door | On `main` (#11934). |
 | Check-ins, standing authority, decision log | [`apps/openagents/crates/engine/src/foreman.rs`](../../apps/openagents/crates/engine/src/foreman.rs), [`doc_host/foreman.rs`](../../apps/openagents/crates/engine/src/doc_host/foreman.rs), Settings → General → Foreman | On `main` (#11965, `96876f7206`, `a33cdd25ba`). Off until the owner picks Foreman's chat in Settings. Never turned on on the owner's Mac (see [chat-review.md](chat-review.md#what-the-autonomy-code-did-and-didnt-do)). |

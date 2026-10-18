@@ -57,7 +57,7 @@ flowchart TD
   `Stuck` wake reason and `DecisionEntry::Outcome { status: "stuck" }`),
   `doc_host/foreman.rs` (track the last output time from the session rows
   it already watches). The shell timeout goes in the harness settings for
-  Foreman's chat and in `crates/agent-lab/src/templates/foreman.md`.
+  Foreman's chat and in `crates/agent-lab/src/templates/foreman/`.
 - **Acceptance:** A fake-clock engine test: Foreman's chat stays `working`
   with no output for 10 minutes, the host interrupts it, starts one
   check-in, and logs a `stuck` outcome. A second test: a busy turn that
@@ -105,7 +105,7 @@ flowchart TD
 - **Where:** `AGENTS.md` (one rule, replacing ad hoc Task-tool subagents for
   issue work), `crates/openagents-cli/src/chat.rs`, the engine's existing
   `create_chat` path (`apps/openagents/crates/mcp/src/tools.rs`),
-  `templates/foreman.md`.
+  `templates/foreman/`.
 - **Acceptance:** A chat opened from the terminal appears in `list_chats`,
   in the phone's chat list, and on the website, and a message sent from the
   phone reaches it within 10 seconds.
@@ -116,7 +116,7 @@ flowchart TD
   `docs/cli/chat.md`). Without `--project` it picks the app project whose
   folder holds the current directory. `AGENTS.md` carries the rule, including
   one claim per working chat (item 23's rule; its enforcement is still open),
-  and `templates/foreman.md` tells the owner the hand-off for a terminal
+  and `templates/foreman/` tells the owner the hand-off for a terminal
   claim. The phone and website timing check is an After-close check.
 
 ### 4. A stall rule that acts
@@ -131,7 +131,7 @@ flowchart TD
 - **Why:** L3. At 19:13 Foreman had the right signal and only offered. The
   audit asks for exactly this rule.
 - **Where:** `apps/openagents/crates/engine/src/foreman.rs` (the `Event`
-  enum, `observe`, `observe_claims`), `templates/foreman.md` (the ladder).
+  enum, `observe`, `observe_claims`), `templates/foreman/` (the ladder).
   The `AGENTS.md` claim rule gets one sentence: Foreman may take over a
   claim whose holder made no progress through the ladder.
 - **Acceptance:** Fake-clock tests for both events, including no event for a
@@ -154,7 +154,7 @@ flowchart TD
   were right calls, but powers like these should be scoped and logged
   before Foreman gets any more of them, not after.
 - **Where:** `apps/openagents/crates/proto/src/foreman.rs` (`Scope`),
-  `templates/foreman.md`.
+  `templates/foreman/`.
 - **Acceptance:** A prune Foreman does shows in the decision log with its
   scope; with the scope off, the host refuses it.
 - **Size:** S.
@@ -202,7 +202,7 @@ flowchart TD
 - **Why:** L6 and L8. The briefed agent compiles and tests its own change
   on its own host, so compile errors never reach integration, and nothing
   builds on the owner's Mac. The pool grant was live all day with 0 hosts.
-- **Where:** `templates/foreman.md`; a new app tool `work_issues` that wraps
+- **Where:** `templates/foreman/`; a new app tool `work_issues` that wraps
   `POST /v1/work` so Foreman doesn't shell out
   (`apps/openagents/crates/mcp/src/tools.rs`, using the SDK client from
   [sdk-additions.md](sdk-additions.md#s5-work-and-cloud-pool-client)).
@@ -227,7 +227,7 @@ flowchart TD
   chat to rebase and push by hand.
 - **Why:** L7. The landing queue's integrator hadn't run for five days on
   2026-10-17 while one session hand-merged 11 branches.
-- **Where:** `templates/foreman.md`, the brief template in
+- **Where:** `templates/foreman/`, the brief template in
   `scripts/work/work_issue.py` (it already supports `land: queue`), and a
   `land_status` app tool (item 7).
 - **Acceptance:** Over one working day, every code change Foreman dispatched
@@ -273,7 +273,7 @@ flowchart TD
   state was "nobody is". The landing queue (item 6) fixes the integration
   half, not this.
 - **Where:** `openagents issue claim` (`crates/openagents-cli`),
-  `coder::claim`, `scripts/dev/issue-board.sh`, `templates/foreman.md`.
+  `coder::claim`, `scripts/dev/issue-board.sh`, `templates/foreman/`.
 - **Acceptance:** A second claim from a chat that already holds one is
   refused with a plain message; Foreman's status lists claims with no live
   chat separately. Replaying 2026-10-17's case (one session holding 16
@@ -327,7 +327,7 @@ flowchart TD
 - **Where:** a `list_runs` app tool over `scripts/dev/agent-run.py`'s run
   records (and a `last_activity` field it writes), `crates/coder-lease/src/claims.rs`
   (claims already record the session's pid and start time),
-  `templates/foreman.md`.
+  `templates/foreman/`.
 - **Acceptance:** Fixture tests with a fake run directory: a live
   progressing run, a live silent run, and a dead run each give the right
   report and action.
@@ -500,7 +500,7 @@ should be built once, for every agent.
   revisions. `agent_lab::templates::foreman()` fetches it instead of
   building a Rust constant.
 - **Why:** A fork should start from what runs, and see later changes.
-- **Where:** `crates/agent-lab/src/templates.rs`, `templates/foreman.md`, the
+- **Where:** `crates/agent-lab/src/templates.rs`, `templates/foreman/`, the
   agent catalog.
 - **Acceptance:** The SDK example makes Foreman from the published
   definition; changing the definition needs no app release.

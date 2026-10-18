@@ -594,7 +594,11 @@ fn revision_draft(
     let mut spec = match template {
         None => agent.spec.clone(),
         Some("foreman") => {
-            let mut spec = templates::foreman().draft.spec;
+            // The skills are folded into the instructions, as Agent Lab saves it.
+            let mut spec = templates::foreman()
+                .draft
+                .agent_spec()
+                .map_err(|e| e.message)?;
             spec.name = agent.spec.name.clone();
             spec
         }
@@ -826,6 +830,14 @@ mod revise_tests {
                 .autonomy
                 .as_ref()
                 .is_some_and(|x| x.check_ins && x.authority)
+        );
+        // Without an instructions file, the template brings its skills (#12048).
+        let templated = revision_draft(&a, Some("foreman"), None).unwrap();
+        assert!(
+            templated
+                .spec
+                .instructions
+                .contains("Dispatching issue work:\n")
         );
         let plain = revision_draft(&a, None, None).unwrap();
         assert_eq!(plain.spec, a.spec);

@@ -527,6 +527,28 @@
                   "path": "/v1/labs/agent/documents/*/promote"
                 }
               ]
+            },
+            {
+              "name": "publish",
+              "doc": "Publishes one of your saved agents with the template it was made from,\nunder the published ID [`published_id`] of the request ID.",
+              "declaration": "pub async fn publish(\n    &self,\n    request: &Request<PublishAgent>,\n    cancel: &CancellationToken,\n) -> Result<PublishedAgent, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/published-agents"
+                }
+              ]
+            },
+            {
+              "name": "update_published",
+              "doc": "Adds a revision to the agent you published as `id`.",
+              "declaration": "pub async fn update_published(\n    &self,\n    id: &str,\n    request: &Request<UpdatePublishedAgent>,\n    cancel: &CancellationToken,\n) -> Result<PublishedAgent, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/published-agents/*"
+                }
+              ]
             }
           ]
         },
@@ -2590,6 +2612,12 @@
               "name": "agent_lab",
               "doc": "Returns the Agent Lab client for `session`, or an error if the session belongs to another deployment.",
               "declaration": "pub fn agent_lab<'a>(\n    &'a self,\n    session: &'a Session,\n) -> Result<AgentLabClient<'a>, Error>",
+              "calls": []
+            },
+            {
+              "name": "published_agent",
+              "doc": "Fetches a published agent, at `revision` when given or the latest\notherwise. Anyone can read one, signed in or not (#12048).",
+              "declaration": "pub async fn published_agent(\n    &self,\n    id: &str,\n    revision: Option<u64>,\n    cancel: &CancellationToken,\n) -> Result<PublishedAgent, Error>",
               "calls": []
             },
             {

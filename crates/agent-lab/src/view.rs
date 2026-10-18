@@ -22,6 +22,10 @@ pub struct Workbench {
     pub pending: bool,
     pub inputs: std::collections::BTreeMap<String, String>,
     pub review_notes: std::collections::BTreeMap<String, String>,
+    /// The latest published copies of the offered templates
+    /// ([`crate::templates::offered`]) that the host could fetch.
+    #[serde(default)]
+    pub published: Vec<crate::api::PublishedAgent>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Command {
@@ -111,7 +115,23 @@ impl Workbench {
             pending: false,
             inputs: Default::default(),
             review_notes: Default::default(),
+            published: vec![],
         }
+    }
+    /// The templates to start from, by published ID: the published copy when
+    /// the host fetched it, otherwise the copy in this build.
+    pub fn templates(&self) -> Vec<(String, Experiment)> {
+        crate::templates::offered()
+            .into_iter()
+            .map(|(id, built_in)| {
+                let e = self
+                    .published
+                    .iter()
+                    .find(|p| p.id == id)
+                    .map_or(built_in, |p| p.template.clone());
+                (id.to_string(), e)
+            })
+            .collect()
     }
     pub fn bump(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1)
@@ -144,8 +164,14 @@ impl Workbench {
             text("heading", "Agent Lab"),
             button("refresh", "Refresh", enabled),
             button("new", "New experiment", enabled),
-            button("template:foreman", "Start from Foreman", enabled),
         ];
+        for (id, e) in self.templates() {
+            n.push(button(
+                format!("template:{id}"),
+                format!("Start from {}", e.title),
+                enabled,
+            ));
+        }
         if let Some(notice) = &self.notice {
             n.push(text("notice", notice))
         }
@@ -728,12 +754,8 @@ impl Workbench {
         match key {
             "retry" => command = Some(Command::Retry),
             "refresh" => command = Some(Command::Refresh),
-            "new" | "template:foreman" => {
-                self.draft = if key == "new" {
-                    starter()
-                } else {
-                    crate::templates::foreman()
-                };
+            "new" => {
+                self.draft = starter();
                 self.document = None;
                 self.base = 0;
                 self.dirty = true;
@@ -813,6 +835,19 @@ impl Workbench {
                 let parts: Vec<_> = key.split(':').collect();
                 let id = *parts.get(1).ok_or("Choose an action.")?;
                 match parts[0] {
+                    "template" => {
+                        self.draft = self
+                            .templates()
+                            .into_iter()
+                            .find(|(t, _)| t == id)
+                            .ok_or("Choose a template.")?
+                            .1;
+                        self.document = None;
+                        self.base = 0;
+                        self.dirty = true;
+                        self.selected_run = None;
+                        self.inputs.clear();
+                    }
                     "open" => command = Some(Command::Load(id.into())),
                     "run" => self.selected_run = Some(id.into()),
                     "session" => command = Some(Command::Session(id.into())),

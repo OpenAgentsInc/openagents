@@ -126,6 +126,7 @@ pub fn document() -> Value {
     lab_api::contract::extend(&mut document);
     crate::custom_agents_openapi::extend(&mut document);
     crate::voice_agent::extend_openapi(&mut document);
+    crate::published_agents::openapi(&mut document);
     crate::agent_lab_openapi::extend(&mut document);
     crate::dashboard_openapi::extend(&mut document);
     crate::thread_openapi::extend(&mut document);

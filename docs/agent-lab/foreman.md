@@ -37,8 +37,8 @@ question to Foreman the same way and replies with its answer
 ([#11934](https://github.com/OpenAgentsInc/openagents/issues/11934)).
 
 To make Foreman from code instead of the app, run the [SDK example](../../crates/openagents-sdk/examples/foreman.rs).
-It saves the experiment, runs its tests on a computer, prints the report, and with
-`--promote` saves the agent:
+It starts from the published Foreman, saves the experiment, runs its tests on a
+computer, prints the report, and with `--promote` saves the agent:
 
 ```sh
 mkdir -m 700 /tmp/foreman-requests
@@ -95,9 +95,16 @@ The computer's `gh` reports the issue and claim events. Each check-in asks Forem
 
 ## What it is
 
-The template is [`agent_lab::templates::foreman`](../../crates/agent-lab/src/templates.rs):
-Claude Code on Opus 5.5 with the host's own access, and the instructions in
-[`foreman.md`](../../crates/agent-lab/src/templates/foreman.md). It reads two sources:
+Foreman is a published agent: anyone can start from it, and when it changes,
+the next **Start from Foreman** gets the new version without an app update
+([#12048](https://github.com/OpenAgentsInc/openagents/issues/12048)). It is
+Claude Code on Opus 5.5 with the host's own access, short instructions, and
+its playbook as eight skills: where it looks, how it reasons, what it may
+change, dispatching issue work, upgrading itself, staying responsive,
+check-ins, and stalls. The copy in
+this repository is [`agent_lab::templates::foreman`](../../crates/agent-lab/src/templates.rs)
+with its text in [`templates/foreman/`](../../crates/agent-lab/src/templates/foreman/);
+the app falls back to it when it can't reach the published one. It reads two sources:
 
 | Source | What Foreman reads |
 | --- | --- |
@@ -109,6 +116,15 @@ The harness session id is the join between the two
 marker `session=claude-code:ID` belongs to the chat whose `harnessSessionId` is
 `ID`. A claim that matches no chat comes from an agent outside the app, such as a
 terminal session, and Foreman says so.
+
+## Publish your own
+
+To share your version, change its skills or instructions in
+`crates/agent-lab/src/templates/foreman/` and run the SDK example above with
+`--built-in --promote --publish`. It prints the published ID; anyone can read
+it at `https://openagents.com/v1/published-agents/ID`, signed in or not. For a
+new revision, run it again with `OPENAGENTS_PUBLISHED_ID=ID`. Only the account
+that published it can add revisions.
 
 ## Its tests
 

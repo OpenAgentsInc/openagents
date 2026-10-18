@@ -32,7 +32,7 @@ fork have exactly the same powers.
 | --- | --- | --- | --- |
 | Exist as an agent: name, instructions, runtime, model, access, fallbacks | `AgentSpec` and the agent catalog: `Agents::create`, `update`, `list`, `get` | [`crates/agent-contract/src/lib.rs`](../../crates/agent-contract/src/lib.rs), [`crates/openagents-sdk/src/agents.rs`](../../crates/openagents-sdk/src/agents.rs) | Yes |
 | Start from a template, be tested, then be saved as an agent | Agent Lab: `AgentLabClient::save`, `start`, `runs`, `promote`, and `Experiment`, `Draft`, `Suite` | [`crates/openagents-sdk/src/agent_lab.rs`](../../crates/openagents-sdk/src/agent_lab.rs), [`crates/agent-lab/src/lib.rs`](../../crates/agent-lab/src/lib.rs) | Yes |
-| Carry its playbook | Agent Lab `Component::Skill` and `Component::Memory` in a `Draft` | [`crates/agent-lab/src/lib.rs`](../../crates/agent-lab/src/lib.rs) | Yes. The Foreman template doesn't use them yet: its whole playbook is one instruction string, `FOREMAN_INSTRUCTIONS`. |
+| Carry its playbook | Agent Lab `Component::Skill` and `Component::Memory` in a `Draft` | [`crates/agent-lab/src/lib.rs`](../../crates/agent-lab/src/lib.rs) | Yes. Foreman's playbook is eight skills (`FOREMAN_SKILLS`) next to short instructions (#12048). |
 | Run on a computer, in a project | Assignments and placement: `agents::place`, the host's runtimes | [`crates/openagents-sdk/src/agents/place.rs`](../../crates/openagents-sdk/src/agents/place.rs), [`assignments.rs`](../../crates/openagents-sdk/src/agents/assignments.rs) | Yes |
 | Be asked a question from the CLI, the web, and phone chats | The saved-agent door: `openagents agents ask NAME` | [`crates/openagents-cli/src/agents.rs`](../../crates/openagents-cli/src/agents.rs) | Yes. It looks agents up by name. |
 | Wake on a timer | Account schedules: `Schedules::list`, `sync`, with `chat` set to the agent's chat | [`crates/openagents-sdk/src/schedules.rs`](../../crates/openagents-sdk/src/schedules.rs) | Yes for a timed prompt. The event wakes (a chat it manages finished, an issue opened, a claim went stale) and the coalescing are Foreman-only (below). |
@@ -67,13 +67,16 @@ log. That is the gap to close.
 
 ## Forking Foreman
 
-**Today.** In Agent Lab, **Start from Foreman** copies the template into a
-new experiment that you own. You can edit it, test it, and save it as your
-own agent. From code, the SDK example does the same with
-`agent_lab::templates::foreman()`. Both copy a template that ships in
-`crates/agent-lab`, not a published agent, so a fork can't see later
-changes to the original, and nobody outside this repository can publish
-their own Foreman for others to fork. Public catalogs are outside the
+**Today.** The official Foreman is a published agent with a stable ID
+(`agent_lab::templates::FOREMAN_ID`) and revisions (#12048). In Agent Lab,
+**Start from Foreman** copies its latest revision into a new experiment that
+you own; you can edit it, test it, and save it as your own agent. From code,
+`Client::published_agent` reads it, signed in or not, and the SDK example
+starts from it. Anyone can publish their own agent the same way
+(`AgentLabClient::publish`, then `update_published` for new revisions), so a
+change to Foreman needs no app release. A build that can't reach the
+published Foreman starts from the copy in `crates/agent-lab`. A fork doesn't
+yet record which revision it came from (item 22). Public catalogs are outside the
 custom-agents delivery ([`docs/custom-agents.md`](../custom-agents.md)).
 Private portable exports are specified in
 [NIP-AGENT](../../nips/openagents/NIP-AGENT.md).

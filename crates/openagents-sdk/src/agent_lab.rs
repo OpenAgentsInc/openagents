@@ -25,6 +25,25 @@ impl Client {
         })
     }
 }
+impl Client {
+    /// Fetches a published agent, at `revision` when given or the latest
+    /// otherwise. Anyone can read one, signed in or not (#12048).
+    pub async fn published_agent(
+        &self,
+        id: &str,
+        revision: Option<u64>,
+        cancel: &CancellationToken,
+    ) -> Result<PublishedAgent, Error> {
+        if !agent_contract::valid_id(id) {
+            return Err(Error::InvalidReference);
+        }
+        let q = revision
+            .map(|r| vec![("revision", r.to_string())])
+            .unwrap_or_default();
+        let path = ["published-agents", id];
+        tokio::select! {biased;_=cancel.cancelled()=>Err(Error::Cancelled),r=self.request(Method::GET,&path,&q,None,None)=>r}
+    }
+}
 impl AgentLabClient<'_> {
     /// Ties `body` to this session's account and deployment.
     pub fn bind<T>(&self, body: T) -> Request<T> {
@@ -228,6 +247,41 @@ impl AgentLabClient<'_> {
         self.send(
             Method::POST,
             &["labs", "agent", "documents", id, "promote"],
+            &[],
+            Some(self.body(request)?),
+            cancel,
+        )
+        .await
+    }
+    /// Publishes one of your saved agents with the template it was made from,
+    /// under the published ID [`published_id`] of the request ID.
+    pub async fn publish(
+        &self,
+        request: &Request<PublishAgent>,
+        cancel: &CancellationToken,
+    ) -> Result<PublishedAgent, Error> {
+        self.send(
+            Method::POST,
+            &["published-agents"],
+            &[],
+            Some(self.body(request)?),
+            cancel,
+        )
+        .await
+    }
+    /// Adds a revision to the agent you published as `id`.
+    pub async fn update_published(
+        &self,
+        id: &str,
+        request: &Request<UpdatePublishedAgent>,
+        cancel: &CancellationToken,
+    ) -> Result<PublishedAgent, Error> {
+        if !agent_contract::valid_id(id) {
+            return Err(Error::InvalidReference);
+        }
+        self.send(
+            Method::PUT,
+            &["published-agents", id],
             &[],
             Some(self.body(request)?),
             cancel,

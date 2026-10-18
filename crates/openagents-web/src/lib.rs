@@ -64,6 +64,7 @@ mod session_index;
 mod custom_agents;
 mod voice_agent;
 mod custom_agents_openapi;
+mod published_agents;
 mod dashboard;
 mod dashboard_openapi;
 mod demo;
@@ -658,6 +659,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(lab_card_view::routes())
         .merge(custom_agents::routes())
         .merge(voice_agent::routes())
+        .merge(published_agents::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())
         .merge(agent_lab_page::routes())
