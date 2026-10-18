@@ -9,12 +9,12 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use futures::StreamExt;
+use openagents_harness::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
-use openagents_harness::process::{Command, Stdio};
 
 use openagents_proto::{
     HarnessId, HarnessInstallSource, HarnessUpdateFailure, HarnessUpdatePhase, HarnessUpdatePolicy,
@@ -23,6 +23,8 @@ use openagents_proto::{
 
 use crate::now_ms;
 use crate::registry::HarnessRegistry;
+
+mod commands;
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const MAX_JITTER: u64 = 30 * 60;
@@ -335,6 +337,7 @@ struct ActiveUpdate {
 
 struct Inner {
     registry: Arc<HarnessRegistry>,
+    commands: Arc<dyn commands::CommandRunner>,
     order: Vec<HarnessId>,
     prefs_path: PathBuf,
     prefs: Mutex<Preferences>,
@@ -405,6 +408,14 @@ impl Drop for UpdateIntentGuard {
 
 impl HarnessUpdateCoordinator {
     pub fn new(data_dir: &Path, registry: Arc<HarnessRegistry>) -> Self {
+        Self::new_with_commands(data_dir, registry, Arc::new(commands::SystemCommands))
+    }
+
+    fn new_with_commands(
+        data_dir: &Path,
+        registry: Arc<HarnessRegistry>,
+        commands: Arc<dyn commands::CommandRunner>,
+    ) -> Self {
         let prefs_path = data_dir.join("harness-update-prefs.json");
         let prefs: Preferences = std::fs::read_to_string(&prefs_path)
             .ok()
@@ -452,6 +463,7 @@ impl HarnessUpdateCoordinator {
         Self {
             inner: Arc::new(Inner {
                 registry,
+                commands,
                 order,
                 prefs_path,
                 prefs: Mutex::new(prefs),
@@ -630,7 +642,7 @@ impl HarnessUpdateCoordinator {
         };
         let spec = provider(harness);
         let version_lease = self.inner.registry.execution_lease(harness).await;
-        let installed = run_version_command(harness, &executable, spec.version_args).await;
+        let installed = self.version(harness, &executable, spec.version_args).await;
         drop(version_lease);
         let installed = match installed {
             Ok(version) => version,
@@ -664,8 +676,9 @@ impl HarnessUpdateCoordinator {
                     // policy. Guessing from a subset of its files can advertise
                     // a release that its updater will never install.
                     let lease = self.inner.registry.execution_lease(harness).await;
-                    let diagnostic =
-                        run_command_output(&executable, &["doctor"], COMMAND_TIMEOUT).await;
+                    let diagnostic = self
+                        .command_output(&executable, &["doctor"], COMMAND_TIMEOUT, &[])
+                        .await;
                     drop(lease);
                     diagnostic
                         .ok()
@@ -699,7 +712,8 @@ impl HarnessUpdateCoordinator {
                 .map(UpdateCheck::Version),
             LatestSource::Command(args) => {
                 let lease = self.inner.registry.execution_lease(harness).await;
-                let result = run_command_output(&executable, args, COMMAND_TIMEOUT)
+                let result = self
+                    .command_output(&executable, args, COMMAND_TIMEOUT, &[])
                     .await
                     .and_then(|output| {
                         extract_latest_version(&output)
@@ -710,10 +724,10 @@ impl HarnessUpdateCoordinator {
             }
             LatestSource::Hermes => {
                 let lease = self.inner.registry.execution_lease(harness).await;
-                let result =
-                    run_command_output(&executable, &["update", "--check"], COMMAND_TIMEOUT)
-                        .await
-                        .and_then(|output| parse_hermes_update_check(&output));
+                let result = self
+                    .command_output(&executable, &["update", "--check"], COMMAND_TIMEOUT, &[])
+                    .await
+                    .and_then(|output| parse_hermes_update_check(&output));
                 drop(lease);
                 result
             }
@@ -908,7 +922,9 @@ impl HarnessUpdateCoordinator {
             &["info", "--formula", "--json=v2", token]
         };
         // Don't refresh taps on a probe. `brew upgrade` does that when applying.
-        let output = run_command_output_env(&brew, args, COMMAND_TIMEOUT, BREW_INFO_ENV).await?;
+        let output = self
+            .command_output(&brew, args, COMMAND_TIMEOUT, BREW_INFO_ENV)
+            .await?;
         parse_homebrew_version(package.cask, &output)
     }
 
@@ -1037,7 +1053,10 @@ impl HarnessUpdateCoordinator {
         let applied = match plan {
             UpdatePlan::Command { executable, args } => {
                 match self.begin_install(harness, &cancel) {
-                    Ok(()) => run_command(&executable, args, UPDATE_TIMEOUT).await,
+                    Ok(()) => self
+                        .command_output(&executable, args, UPDATE_TIMEOUT, &[])
+                        .await
+                        .map(drop),
                     Err(error) => Err(error),
                 }
             }
@@ -1064,11 +1083,10 @@ impl HarnessUpdateCoordinator {
                 Ok(brew) => {
                     let args = package.upgrade_args();
                     match self.begin_install(harness, &cancel) {
-                        Ok(()) => {
-                            run_command_output_env(&brew, &args, UPDATE_TIMEOUT, BREW_UPGRADE_ENV)
-                                .await
-                                .map(drop)
-                        }
+                        Ok(()) => self
+                            .command_output(&brew, &args, UPDATE_TIMEOUT, BREW_UPGRADE_ENV)
+                            .await
+                            .map(drop),
                         Err(error) => Err(error),
                     }
                 }
@@ -1090,11 +1108,10 @@ impl HarnessUpdateCoordinator {
             status.phase = HarnessUpdatePhase::Verifying
         });
         let verified = match self.executable(harness) {
-            Ok(executable) => {
-                run_version_command(harness, &executable, provider(harness).version_args)
-                    .await
-                    .map(|version| (version, executable))
-            }
+            Ok(executable) => self
+                .version(harness, &executable, provider(harness).version_args)
+                .await
+                .map(|version| (version, executable)),
             Err(error) => Err(error),
         };
         let result = match verified {
@@ -1395,6 +1412,32 @@ impl HarnessUpdateCoordinator {
         self.inner.status_tx.send_replace(snapshot);
     }
 
+    async fn command_output(
+        &self,
+        executable: &Path,
+        args: &[&str],
+        timeout: Duration,
+        env: &[(&str, &str)],
+    ) -> Result<String, String> {
+        self.inner
+            .commands
+            .output(executable, args, timeout, env)
+            .await
+    }
+
+    async fn version(
+        &self,
+        harness: HarnessId,
+        executable: &Path,
+        args: &[&str],
+    ) -> Result<String, String> {
+        let output = self
+            .command_output(executable, args, COMMAND_TIMEOUT, &[])
+            .await?;
+        installed_version(harness, &output)
+            .ok_or_else(|| "command returned no recognizable version".into())
+    }
+
     fn executable(&self, harness: HarnessId) -> Result<PathBuf, String> {
         self.inner
             .registry
@@ -1568,7 +1611,9 @@ impl HarnessUpdateCoordinator {
         let _install_lock = InstallFileLock::acquire(&install.root)?;
         let releases = install.root.join("releases");
         let nonce = uuid::Uuid::new_v4();
-        let archive = install.root.join(format!(".openagents-codex-{nonce}.tar.gz"));
+        let archive = install
+            .root
+            .join(format!(".openagents-codex-{nonce}.tar.gz"));
         let staging = releases.join(format!(".{version}-{}-{nonce}.partial", install.target));
         std::fs::create_dir(&staging)
             .map_err(|error| format!("could not stage Codex update: {error}"))?;
@@ -2153,16 +2198,6 @@ fn parse_hermes_update_check(output: &str) -> Result<UpdateCheck, String> {
     Err("Hermes update check returned no recognizable verdict".into())
 }
 
-async fn run_version_command(
-    harness: HarnessId,
-    executable: &Path,
-    args: &[&str],
-) -> Result<String, String> {
-    let output = run_command_output(executable, args, COMMAND_TIMEOUT).await?;
-    installed_version(harness, &output)
-        .ok_or_else(|| "command returned no recognizable version".into())
-}
-
 async fn run_command(executable: &Path, args: &[&str], timeout: Duration) -> Result<(), String> {
     run_command_output(executable, args, timeout)
         .await
@@ -2598,31 +2633,39 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn automatic_fixture() -> (tempfile::TempDir, super::HarnessUpdateCoordinator) {
-        use std::os::unix::fs::PermissionsExt;
+    struct AutomaticFixture {
+        temp: tempfile::TempDir,
+        commands: Arc<super::commands::TestCommands>,
+    }
+
+    #[cfg(unix)]
+    impl AutomaticFixture {
+        fn path(&self) -> &std::path::Path {
+            self.temp.path()
+        }
+        fn version(&self) -> String {
+            self.commands.version()
+        }
+        fn fail_check(&self, fail: bool) {
+            self.commands.fail_check(fail);
+        }
+    }
+
+    #[cfg(unix)]
+    fn automatic_fixture() -> (AutomaticFixture, super::HarnessUpdateCoordinator) {
         let temp = tempfile::tempdir().unwrap();
-        let executable = temp.path().join("agent");
-        std::fs::write(temp.path().join("version"), "1.0.0\n").unwrap();
-        std::fs::write(
-            &executable,
-            r#"#!/bin/sh
-root="$(dirname "$0")"
-case "$1:$2" in
-  version:) cat "$root/version" ;;
-  update:--check)
-    test ! -f "$root/fail-check" || exit 1
-    printf '2.0.0\n' ;;
-  update:) printf '2.0.0\n' > "$root/version" ;;
-  *) exit 2 ;;
-esac
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let commands = Arc::new(super::commands::TestCommands::new());
         let registry = Arc::new(HarnessRegistry::new());
-        registry.register(Arc::new(ExecutableHarness(executable, HarnessId::Grok)));
-        let coordinator = super::HarnessUpdateCoordinator::new(temp.path(), registry);
-        (temp, coordinator)
+        registry.register(Arc::new(ExecutableHarness(
+            temp.path().join("agent"),
+            HarnessId::Grok,
+        )));
+        let coordinator = super::HarnessUpdateCoordinator::new_with_commands(
+            temp.path(),
+            registry,
+            commands.clone(),
+        );
+        (AutomaticFixture { temp, commands }, coordinator)
     }
 
     #[test]
@@ -2670,8 +2713,8 @@ esac
     #[cfg(unix)]
     #[tokio::test]
     async fn hermes_commit_updates_can_install_without_changing_the_cli_version() {
-        use std::os::unix::fs::PermissionsExt;
         use openagents_proto::HarnessUpdatePolicy;
+        use std::os::unix::fs::PermissionsExt;
 
         let temp = tempfile::tempdir().unwrap();
         let executable = temp.path().join("hermes");
@@ -2838,7 +2881,7 @@ esac
                 .lock_owned()
                 .await;
             assert_eq!(
-                std::fs::read_to_string(temp.path().join("version")).unwrap(),
+                temp.version(),
                 if automatic { "1.0.0\n" } else { "2.0.0\n" }
             );
         }
@@ -2949,10 +2992,7 @@ esac
         .expect("disable cancels the idle wait before the active run finishes");
         drop(running);
         coordinator.shutdown().await;
-        assert_eq!(
-            std::fs::read_to_string(temp.path().join("version")).unwrap(),
-            "1.0.0\n"
-        );
+        assert_eq!(temp.version(), "1.0.0\n");
     }
 
     #[cfg(unix)]
@@ -3019,6 +3059,43 @@ esac
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn automatic_policy_fixture_ignores_slow_ambient_helpers() {
+        use openagents_proto::HarnessUpdatePolicy;
+        use std::os::unix::ffi::OsStrExt as _;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let (temp, coordinator) = automatic_fixture();
+        let gate =
+            std::ffi::CString::new(temp.path().join("helper-gate").as_os_str().as_bytes()).unwrap();
+        // SAFETY: this is a NUL-terminated path inside the private fixture.
+        assert_eq!(unsafe { libc::mkfifo(gate.as_ptr(), 0o600) }, 0);
+        let helper = temp.path().join("dirname");
+        std::fs::write(
+            &helper,
+            r#"#!/bin/sh
+printf started > "${0%/*}/helper-started"
+read release < "${0%/*}/helper-gate"
+printf '%s\n' "${1%/*}"
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        coordinator.set_policy(HarnessId::Grok, HarnessUpdatePolicy::AutoWhenIdle);
+        wait_for_phase(&coordinator, HarnessId::Grok, HarnessUpdatePhase::Updated).await;
+        assert!(!temp.path().join("helper-started").exists());
+        assert_eq!(
+            coordinator
+                .status(HarnessId::Grok)
+                .installed_version
+                .as_deref(),
+            Some("2.0.0")
+        );
+        coordinator.shutdown().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn enabling_auto_updates_installs_release_discovered_by_its_check() {
         use openagents_proto::HarnessUpdatePolicy;
         for phase in [
@@ -3030,9 +3107,15 @@ esac
             coordinator.mutate(HarnessId::Grok, |status| status.phase = phase);
             coordinator.set_policy(HarnessId::Grok, HarnessUpdatePolicy::AutoWhenIdle);
             wait_for_phase(&coordinator, HarnessId::Grok, HarnessUpdatePhase::Updated).await;
+            assert_eq!(temp.version(), "2.0.0\n");
             assert_eq!(
-                std::fs::read_to_string(temp.path().join("version")).unwrap(),
-                "2.0.0\n"
+                temp.commands.calls(),
+                vec![
+                    vec!["version"],
+                    vec!["update", "--check"],
+                    vec!["update"],
+                    vec!["version"]
+                ]
             );
             coordinator.shutdown().await;
         }
@@ -3043,16 +3126,13 @@ esac
     async fn retrying_one_failed_check_schedules_automatic_installation() {
         use openagents_proto::HarnessUpdatePolicy;
         let (temp, coordinator) = automatic_fixture();
-        std::fs::write(temp.path().join("fail-check"), "").unwrap();
+        temp.fail_check(true);
         coordinator.set_policy(HarnessId::Grok, HarnessUpdatePolicy::AutoWhenIdle);
         wait_for_phase(&coordinator, HarnessId::Grok, HarnessUpdatePhase::Failed).await;
-        std::fs::remove_file(temp.path().join("fail-check")).unwrap();
+        temp.fail_check(false);
         coordinator.check_one(HarnessId::Grok).await.unwrap();
         wait_for_phase(&coordinator, HarnessId::Grok, HarnessUpdatePhase::Updated).await;
-        assert_eq!(
-            std::fs::read_to_string(temp.path().join("version")).unwrap(),
-            "2.0.0\n"
-        );
+        assert_eq!(temp.version(), "2.0.0\n");
         coordinator.shutdown().await;
     }
 
@@ -3497,10 +3577,7 @@ esac
             .unwrap();
         assert_eq!(result.unwrap_err(), "update cancelled");
         drop(checking);
-        assert_eq!(
-            std::fs::read_to_string(temp.path().join("version")).unwrap(),
-            "1.0.0\n"
-        );
+        assert_eq!(temp.version(), "1.0.0\n");
         assert!(!coordinator.inner.registry.update_pending(HarnessId::Grok));
         assert_eq!(
             coordinator.apply(HarnessId::Grok).await.unwrap_err(),
@@ -3568,8 +3645,8 @@ esac
     #[cfg(unix)]
     #[tokio::test]
     async fn unknown_claude_channel_clears_stale_release_and_never_auto_installs() {
-        use std::os::unix::fs::PermissionsExt;
         use openagents_proto::HarnessUpdatePolicy;
+        use std::os::unix::fs::PermissionsExt;
         let temp = tempfile::tempdir().unwrap();
         let executable = temp.path().join("claude");
         std::fs::write(&executable, "#!/bin/sh\ncase $1 in\n --version) echo '2.1.100 (Claude Code)' ;;\n doctor) echo 'Old diagnostic with no channel' ;;\n update) exit 42 ;;\nesac\n").unwrap();
