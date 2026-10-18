@@ -40,11 +40,12 @@ const SHADERS: [(&str, &str, &[Constant]); 6] = [
     ("present.wgsl", include_str!("present.wgsl"), &[]),
 ];
 
-fn parse(name: &str, source: &str) -> (naga::Module, naga::valid::ModuleInfo) {
-    // Expand the shared contract with the renderer's own function, so a new
-    // shared module cannot be left out of this test.
+fn parse(name: &str, source: &str, gles: bool) -> (naga::Module, naga::valid::ModuleInfo) {
+    // Expand shared modules before preprocessing so directives in an included
+    // shader select the same backend variant as directives in the host file.
     let expanded = verse_pbr::shading::source(source);
-    let source = expanded.as_str();
+    let translated = wgsl(&expanded, gles);
+    let source = translated.as_ref();
     let module = naga::front::wgsl::parse_str(source)
         .unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(source)));
     let info = naga::valid::Validator::new(
@@ -162,8 +163,7 @@ fn every_shader_translates_to_glsl_es_300() {
     let mut failures = Vec::new();
     let mut entries = 0;
     for (name, source, constants) in SHADERS {
-        let source = wgsl(source, true);
-        let (module, info) = parse(name, &source);
+        let (module, info) = parse(name, source, true);
         for set in constant_sets(constants) {
             // GLES binds each texture unit to one sampler for the whole
             // program, so a texture must not meet two samplers in any
@@ -213,8 +213,7 @@ fn every_shader_translates_to_glsl_es_300() {
 #[test]
 fn default_variants_are_valid_and_translate_to_metal() {
     for (name, source, constants) in SHADERS {
-        let source = wgsl(source, false);
-        let (module, info) = parse(name, &source);
+        let (module, info) = parse(name, source, false);
         for set in constant_sets(constants) {
             let (module, info) =
                 naga::back::pipeline_constants::process_overrides(&module, &info, None, &set)
@@ -241,8 +240,11 @@ fn default_variants_are_valid_and_translate_to_metal() {
 #[test]
 fn daylight_sky_validates_without_textures() {
     for gles in [false, true] {
-        let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), gles);
-        let (module, info) = parse("pbr/photo.wgsl", &source);
+        let (module, info) = parse(
+            "pbr/photo.wgsl",
+            include_str!("../../verse-pbr/src/pbr/photo.wgsl"),
+            gles,
+        );
         let entry = module
             .entry_points
             .iter()
@@ -271,8 +273,11 @@ fn daylight_sky_validates_without_textures() {
 /// `default_variants_are_valid_and_translate_to_metal` covers Metal.
 #[test]
 fn the_sky_light_and_height_fog_translate_for_webgl2() {
-    let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), true);
-    let (module, info) = parse("photo", &source);
+    let (module, info) = parse(
+        "photo",
+        include_str!("../../verse-pbr/src/pbr/photo.wgsl"),
+        true,
+    );
     for set in constant_sets(&[("DIRECT", &[0.0, 1.0])]) {
         for entry in [
             "fs_lit",
@@ -335,8 +340,11 @@ fn variants_differ_only_where_gles_needs_them() {
 /// textured entries that read the cascades need no extension.
 #[test]
 fn sun_cascades_sample_a_depth_array_on_glsl_es() {
-    let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), true);
-    let (module, info) = parse("photo", &source);
+    let (module, info) = parse(
+        "photo",
+        include_str!("../../verse-pbr/src/pbr/photo.wgsl"),
+        true,
+    );
     for pcss in [0.0, 1.0] {
         let mut set = naga::back::PipelineConstants::default();
         set.insert("PCSS".to_owned(), pcss);
@@ -361,7 +369,7 @@ fn the_engine_scene_shader_translates_to_glsl_es_300() {
         "bones:array<mat4x4<f32>,256>",
         "bones:array<mat4x4<f32>,254>",
     );
-    let (module, info) = parse("imported/scene.wgsl", &source);
+    let (module, info) = parse("imported/scene.wgsl", &source, true);
     let set = naga::back::PipelineConstants::default();
     for (stage, entry) in [
         (naga::ShaderStage::Vertex, "vs"),
@@ -385,8 +393,11 @@ fn the_engine_scene_shader_translates_to_glsl_es_300() {
 /// this keeps the test above honest about what it detects.
 #[test]
 fn the_default_photo_shader_does_not_translate_to_glsl_es() {
-    let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), false);
-    let (module, info) = parse("photo", &source);
+    let (module, info) = parse(
+        "photo",
+        include_str!("../../verse-pbr/src/pbr/photo.wgsl"),
+        false,
+    );
     let set = naga::back::PipelineConstants::default();
     let error = |stage, entry| {
         write_gles(&module, &info, stage, entry, &set)
@@ -411,8 +422,11 @@ fn the_default_photo_shader_does_not_translate_to_glsl_es() {
 /// ones discard, so opaque and blended draws keep early depth rejection.
 #[test]
 fn textured_entries_translate_and_only_masked_entries_discard() {
-    let source = wgsl(include_str!("../../verse-pbr/src/pbr/photo.wgsl"), true);
-    let (module, info) = parse("photo", &source);
+    let (module, info) = parse(
+        "photo",
+        include_str!("../../verse-pbr/src/pbr/photo.wgsl"),
+        true,
+    );
     let set = naga::back::PipelineConstants::default();
     for (stage, entry) in [
         (naga::ShaderStage::Vertex, "vs_textured"),
