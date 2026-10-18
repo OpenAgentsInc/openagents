@@ -48,6 +48,14 @@ pub struct Autonomy {
     pub shell_timeout_secs: Option<u32>,
 }
 
+/// The most UTF-8 bytes a saved agent's `instructions` may hold, skills
+/// folded in. It was 16,384 until 2026-10-18 (#12114); a reader from
+/// before refuses a longer definition as invalid.
+/// Every limit on instructions (the catalog server, hosts, the Lab and
+/// mobile forms) reads this. It can't pass 64 KiB without raising the most
+/// a native text field holds (`rust_native::input::MAX_INPUT_VALUE_BYTES`).
+pub const MAX_INSTRUCTIONS_BYTES: usize = 65_536;
+
 /// The allowed range of [`Autonomy::every_minutes`].
 pub const MIN_CHECK_IN_MINUTES: u32 = 5;
 pub const MAX_CHECK_IN_MINUTES: u32 = 24 * 60;
@@ -101,11 +109,16 @@ impl AgentSpec {
         if self.description.len() > 512 || self.description.chars().any(char::is_control) {
             return Err("Enter a shorter description.");
         }
-        if self.instructions.trim().is_empty()
-            || self.instructions.len() > 16_384
-            || self.instructions.contains('\0')
-        {
-            return Err("Add instructions or shorten the text.");
+        if self.instructions.trim().is_empty() {
+            return Err("Add instructions.");
+        }
+        if self.instructions.contains('\0') {
+            return Err("Remove the NUL character from the instructions.");
+        }
+        if self.instructions.len() > MAX_INSTRUCTIONS_BYTES {
+            return Err(
+                "Shorten the instructions: with skills, they may hold at most 65,536 bytes.",
+            );
         }
         if !valid_runtime(&self.runtime) {
             return Err("Choose a supported runtime.");
@@ -239,6 +252,28 @@ mod tests {
             runtime: runtime.into(),
             model: None,
         }
+    }
+
+    #[test]
+    fn instructions_fit_the_raised_limit_and_a_longer_text_says_so() {
+        let mut s = spec();
+        // Past the old 16,384-byte limit (#12114).
+        s.instructions = "a".repeat(16_385);
+        s.validate().unwrap();
+        s.instructions = "a".repeat(MAX_INSTRUCTIONS_BYTES);
+        s.validate().unwrap();
+        s.instructions.push('a');
+        let err = s.validate().unwrap_err();
+        assert!(err.contains("Shorten the instructions"), "{err}");
+        let limit = MAX_INSTRUCTIONS_BYTES.to_string();
+        let (thousands, rest) = limit.split_at(limit.len() - 3);
+        assert!(err.contains(&format!("{thousands},{rest} bytes")), "{err}");
+        for empty in ["", "  "] {
+            s.instructions = empty.into();
+            assert_eq!(s.validate(), Err("Add instructions."));
+        }
+        s.instructions = "a\0b".into();
+        assert!(s.validate().unwrap_err().contains("NUL"));
     }
 
     #[test]

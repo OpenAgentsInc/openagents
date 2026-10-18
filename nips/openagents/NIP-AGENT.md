@@ -27,12 +27,16 @@ characters), `revision` (positive integer), `spec`, and `deleted` (boolean).
 | --- | --- |
 | `name` | Nonblank, at most 80 UTF-8 bytes, no control characters. |
 | `description` | At most 512 UTF-8 bytes, no control characters. |
-| `instructions` | Nonblank, at most 16,384 UTF-8 bytes, no NUL. |
+| `instructions` | Nonblank, at most 65,536 UTF-8 bytes, no NUL. Skills a definition was built with are part of it. |
 | `runtime` | 1–128 ASCII letters, digits, `.`, `_`, `:`, or `-`. An installed implementation ID, never a command or URL. |
 | `model` | Null or 1–256 UTF-8 bytes without control characters. |
 | `access` | `host_default`, `read_only`, or `workspace_write`. A request that the executing host must enforce or refuse. |
 | `fallbacks` | Optional array of at most 4 `{runtime, model?}` objects, tried in order when `runtime` is not ready on the host. Each runtime uses the `runtime` rules, appears once, differs from `runtime`, and is not `sdk` or `any`. |
 | `autonomy` | Optional object: how the agent runs on its own. `check_ins` (boolean) asks hosts to turn timed check-ins on for its chat without being asked, every `every_minutes` (5–1440); `authority` (boolean) asks for standing authority over other chats with them, which the host grants with a log entry and the owner can revoke. `stall_minutes` (5–240) is how long a chat or claim it manages may go with no progress before the host raises it (hosts default to 20). `shell_timeout_secs` (10–3600) is the longest one shell command may run; the host passes it to the runtime. Readers ignore fields they don't know. |
+
+The `instructions` limit was 16,384 bytes until 2026-10-18
+([#12114](https://github.com/OpenAgentsInc/openagents/issues/12114)). A reader
+from before then refuses a longer definition as invalid.
 
 `runtime` `any` (with a null model) leaves the choice to the host. The runtime,
 model, fallbacks, and autonomy are settings of the agent, not part of its identity: a

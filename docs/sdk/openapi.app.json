@@ -30038,8 +30038,8 @@
           "instructions": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 16384,
-            "description": "Nonblank, no NUL; at most 16,384 UTF-8 bytes."
+            "maxLength": 65536,
+            "description": "Nonblank, no NUL; at most 65,536 UTF-8 bytes, skills included."
           },
           "runtime": {
             "type": "string",

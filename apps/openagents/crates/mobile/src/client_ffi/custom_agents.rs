@@ -6,7 +6,7 @@ use openagents_account::{
         self,
         agents::{
             ANY_RUNTIME, Access, AgentDefinition, AgentRequest, AgentSpec, CreateAgent,
-            DeleteAgent, MAX_FALLBACKS, RuntimeChoice, UpdateAgent,
+            DeleteAgent, MAX_FALLBACKS, MAX_INSTRUCTIONS_BYTES, RuntimeChoice, UpdateAgent,
             assignments::{AssignmentSpec, CreateAssignment},
         },
     },
@@ -249,7 +249,7 @@ fn form_view(
             "instructions",
             "Instructions",
             &form.spec.instructions,
-            16384,
+            MAX_INSTRUCTIONS_BYTES,
             true,
             Intent::Instructions,
         ),

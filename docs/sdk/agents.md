@@ -27,8 +27,8 @@ the computer's own default. `runtime: "any"` leaves the choice to the computer.
 The runtime, model, and fallbacks are settings, not identity: change them with
 `PUT` and the agent's conversations use them from the next turn, noting which
 runtime ran. Limits are 80 UTF-8
-bytes for the nonblank name, 512 for the description, 16,384 for nonblank
-instructions, 128 ASCII bytes for the runtime ID, and 256 bytes for a model ID.
+bytes for the nonblank name, 512 for the description, 65,536 for nonblank
+instructions (skills folded in; 16,384 before 2026-10-18), 128 ASCII bytes for the runtime ID, and 256 bytes for a model ID.
 Names/descriptions/models reject control characters; instructions reject NUL.
 Runtime IDs contain only ASCII letters, digits, `.`, `_`, `:`, and `-`.
 They identify a host-supported implementation and are never commands or URLs.

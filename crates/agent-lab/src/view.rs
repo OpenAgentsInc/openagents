@@ -218,7 +218,7 @@ impl Workbench {
                 "instructions",
                 "Instructions",
                 &self.draft.draft.spec.instructions,
-                16384,
+                agent_contract::MAX_INSTRUCTIONS_BYTES,
                 true,
                 enabled,
             ),

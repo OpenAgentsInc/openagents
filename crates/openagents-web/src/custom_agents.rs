@@ -269,7 +269,11 @@ pub(crate) fn routes() -> Router<App> {
             "/v1/agent-definitions/{id}",
             get(detail).put(update).delete(delete),
         )
-        .layer(DefaultBodyLimit::max(24 * 1024))
+        // The instructions, escaped as JSON at worst six bytes a byte, and
+        // the rest of the request (#12114).
+        .layer(DefaultBodyLimit::max(
+            agent_contract::MAX_INSTRUCTIONS_BYTES * 6 + 16 * 1024,
+        ))
 }
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]

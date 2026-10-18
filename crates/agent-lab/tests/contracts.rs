@@ -414,19 +414,8 @@ fn foreman_template_is_a_valid_claude_code_experiment() {
     assert_eq!(e.draft.spec.runtime, "claude-code");
     // Claude Code runs with the host's own access; the host refuses any other setting.
     assert_eq!(e.draft.spec.access, agent_contract::Access::HostDefault);
-    // Saving folds the skills into the instructions, which a definition caps
-    // at 16,384 bytes (NIP-AGENT).
-    let folded: usize = e.draft.spec.instructions.len()
-        + e.draft
-            .components
-            .iter()
-            .filter_map(Component::context)
-            .map(|c| c.len() + 2)
-            .sum::<usize>();
-    assert!(
-        folded <= 16_384,
-        "Foreman's instructions and skills are {folded} bytes, over the 16,384 a saved agent allows; shorten them"
-    );
+    // Saving folds the skills into the instructions; every template's
+    // headroom under the limit is checked below (#12114).
     let saved = e.draft.agent_spec().unwrap();
     // The playbook is in skills; the instructions stay short (#12048).
     assert_eq!(e.draft.components.len(), 8);
@@ -583,4 +572,57 @@ fn a_published_template_saves_exactly_its_definition() {
             .iter()
             .any(|(i, _)| *i == templates::FOREMAN_ID)
     );
+}
+
+/// Every template saves as an agent with room to grow (#12114): what a save
+/// folds into the instructions (the base text and every skill) stays at
+/// least 10% under the limit, so the next playbook line doesn't break it.
+#[test]
+fn every_template_saves_with_ten_percent_headroom() {
+    let limit = agent_contract::MAX_INSTRUCTIONS_BYTES;
+    let budget = limit - limit / 10;
+    let offered = templates::offered();
+    assert!(!offered.is_empty());
+    for (id, e) in &offered {
+        let name = &e.draft.spec.name;
+        let saved = e
+            .draft
+            .agent_spec()
+            .unwrap_or_else(|r| panic!("the {name} template ({id}) doesn't save: {r:?}"));
+        let bytes = saved.instructions.len();
+        assert!(
+            bytes <= budget,
+            "the {name} template's instructions and skills are {bytes} bytes; keep them under {budget} (90% of the {limit}-byte limit) by moving reference text out or trimming it"
+        );
+    }
+}
+
+/// Every text under `src/templates/` belongs to an offered template, so a
+/// new template can't skip the headroom check above.
+#[test]
+fn every_template_text_belongs_to_an_offered_template() {
+    let texts: Vec<String> = templates::offered()
+        .into_iter()
+        .map(|(_, e)| e.draft.agent_spec().unwrap().instructions)
+        .collect();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/templates");
+    let mut files = vec![root];
+    let mut checked = 0;
+    while let Some(path) = files.pop() {
+        if path.is_dir() {
+            files.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+            continue;
+        }
+        if path.extension().is_none_or(|x| x != "md") {
+            continue;
+        }
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            texts.iter().any(|t| t.contains(body.trim_end())),
+            "{} isn't part of any template in templates::offered(); add its template there",
+            path.display()
+        );
+        checked += 1;
+    }
+    assert!(checked > 0);
 }

@@ -212,7 +212,12 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/v1/published-agents", post(create))
         .route("/v1/published-agents/{id}", get(detail).put(update))
-        .layer(DefaultBodyLimit::max(160 * 1024))
+        // A template's draft holds up to the instructions limit (skills
+        // included), escaped as JSON at worst six bytes a byte, plus its
+        // suite (#12114).
+        .layer(DefaultBodyLimit::max(
+            agent_contract::MAX_INSTRUCTIONS_BYTES * 6 + 64 * 1024,
+        ))
 }
 
 #[derive(Default, Deserialize)]
