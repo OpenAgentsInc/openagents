@@ -90,8 +90,9 @@ work.
 All entries are real GitHub issues on project 22 under
 [#12077](https://github.com/OpenAgentsInc/openagents/issues/12077).
 Dependencies are recorded as native GitHub blockers and in the issue bodies.
-Only A0 is claimed. `G1` joins the entire required graph;
-it cannot pass after only the first composer works.
+Each working chat claims one implementation issue. Project 22 and the epic
+checklist track delivery; `G1` joins the entire required graph and cannot pass
+after only the first composer works.
 
 | Step | Issue | Estimate | Depends on |
 | --- | --- | --- | --- |
