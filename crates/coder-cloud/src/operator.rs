@@ -908,11 +908,11 @@ impl Operator {
         }
         self.admitted(device, &a.admission)?;
         let store = self.store()?;
+        let path = store.root().join(format!("{id}.json"));
+        // Keep both reads on the same saved version.
+        let _snapshot = crate::snapshot_lock(&path).map_err(|_| Code::Unavailable)?;
         let record = store.read(id).map_err(|_| Code::Unavailable)?;
-        let bytes = read_private(
-            &store.root().join(format!("{id}.json")),
-            crate::MAX_RECORD_BYTES,
-        )?;
+        let bytes = read_private(&path, crate::MAX_RECORD_BYTES)?;
         if encoded(&record)? != bytes {
             return Err(Code::Malformed);
         }

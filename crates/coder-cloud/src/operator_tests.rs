@@ -457,17 +457,7 @@ fn read(f: &Fixture, id: &str) -> dto::Job {
             revision: None,
         },
     };
-    // A read racing the worker's save sees two different record bytes and
-    // refuses as malformed; read again.
-    let mut outcome = f.owner.execute("read", &f.principal, &query);
-    for _ in 0..50 {
-        if outcome != Err(Code::Malformed) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(10));
-        outcome = f.owner.execute("read", &f.principal, &query);
-    }
-    match outcome.unwrap() {
+    match f.owner.execute("read", &f.principal, &query).unwrap() {
         Outcome::CloudRead { job } => *job,
         _ => panic!("Expected a native job."),
     }
@@ -488,6 +478,41 @@ fn wait(f: &Fixture, id: &str, state: &str) -> dto::Job {
         "Synthetic native job did not reach expected state: {} / {} / {:?}",
         job.state, job.cleanup, job.error
     )
+}
+
+#[test]
+fn record_read_waits_for_the_workers_save_fence() {
+    let f = fixture(Fake::default());
+    accepted(f.owner.execute("first", &f.principal, &submit(&f)).unwrap());
+    wait(&f, "first", "completed");
+    let store = f.owner.store().unwrap();
+    let path = store.root().join("first.json");
+    let fence = crate::snapshot_lock(&path).unwrap();
+    let mut record = store.read("first").unwrap();
+    record.updated_ms += 1;
+    let owner = f.owner.clone();
+    let device = f.principal.device.clone();
+    let (started, start) = std::sync::mpsc::channel();
+    let (finished, finish) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        started.send(()).unwrap();
+        let result = owner.record(&device, "checkout", "synthetic", "first");
+        finished.send(()).unwrap();
+        result
+    });
+    start.recv().unwrap();
+    let while_saving = finish.recv_timeout(Duration::from_millis(100));
+    // Replace the complete record while holding the same fence as Lease::save.
+    let bytes = encoded(&record).unwrap();
+    write(&path, &bytes).unwrap();
+    drop(fence);
+    let (saved, _, original) = reader.join().unwrap().unwrap();
+    assert_eq!(
+        while_saving,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+    );
+    assert_eq!(saved.updated_ms, record.updated_ms);
+    assert_eq!(original, bytes);
 }
 
 #[test]
