@@ -29,6 +29,7 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
 
     override fun onCreate() {
         super.onCreate()
+        System.loadLibrary("openagents_mobile")
         AndroidCoreBootstrap.initialize(this)
         secretStorage = AndroidEncryptedFileStore(this)
         if (AndroidPushFlavor.enabled) AndroidPushNotifications.createChannels(this)
