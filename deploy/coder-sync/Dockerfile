@@ -15,6 +15,8 @@ COPY Cargo.toml /app/Cargo.toml
 # deploy.py exports only the local dependency trees needed by this workspace.
 COPY crates/ /app/crates/
 COPY nips/openagents/schemas/ /app/nips/openagents/schemas/
+# jev embeds its decision questions from the repository root.
+COPY questions/ /app/questions/
 COPY apps/openagents/Cargo.toml /app/apps/openagents/Cargo.toml
 COPY apps/openagents/crates/brand/ /app/apps/openagents/crates/brand/
 COPY apps/openagents/crates/client/ /app/apps/openagents/crates/client/
