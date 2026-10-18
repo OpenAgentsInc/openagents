@@ -36,6 +36,8 @@ pub const PHONE: &str = "phone";
 pub const DESKTOP: &str = "desktop";
 /// The desktop app's capture runs, inside the captures folder.
 pub const DESKTOP_DIR: &str = "desktop";
+/// The marker a capture script keeps in a run folder until the run is done.
+pub const CAPTURING: &str = ".capturing";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -339,7 +341,13 @@ fn scan_app(dir: &Path, prefix: &str, app: &str) -> Result<Vec<Screen>, String> 
         })
         .collect();
     runs.sort();
-    let newest = runs.last().map(|(run, _, _)| run.clone());
+    // A run still being captured holds `.capturing`; the newest finished run
+    // decides which screens are current.
+    let newest = runs
+        .iter()
+        .rev()
+        .find(|(run, _, _)| !dir.join(run).join(CAPTURING).exists())
+        .map(|(run, _, _)| run.clone());
     let mut screens: BTreeMap<String, Screen> = BTreeMap::new();
     let mut in_newest: std::collections::BTreeSet<String> = Default::default();
     for (run, unix, commit) in runs {

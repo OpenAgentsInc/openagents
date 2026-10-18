@@ -20,6 +20,9 @@ DIRTY=""
 git -C "$ROOT" diff --quiet HEAD -- . || DIRTY="-dirty"
 RUN="$CAPTURES/$(date +%Y%m%d-%H%M%S)-$COMMIT$DIRTY"
 mkdir -p "$RUN"
+# Design Lab ignores this run for "current" until the marker is gone.
+touch "$RUN/.capturing"
+trap 'rm -f "$RUN/.capturing"' EXIT
 
 cd "$ROOT"
 cargo run -p openagents-ui --example design-lab-tour --features account-fixture -- "$RUN" "$@" \
@@ -27,6 +30,7 @@ cargo run -p openagents-ui --example design-lab-tour --features account-fixture 
 
 COUNT="$(find "$RUN" -name '*.png' | wc -l | tr -d ' ')"
 if [ "$COUNT" = 0 ]; then
+  rm -f "$RUN/.capturing"
   rmdir "$RUN"
   echo "design-lab-capture-desktop: no screens were captured" >&2
   exit 1

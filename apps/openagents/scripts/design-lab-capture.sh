@@ -20,6 +20,9 @@ DIRTY=""
 git -C "$ROOT" diff --quiet HEAD -- . || DIRTY="-dirty"
 RUN="$CAPTURES/$(date +%Y%m%d-%H%M%S)-$COMMIT$DIRTY"
 mkdir -p "$RUN"
+# Design Lab ignores this run for "current" until the marker is gone.
+touch "$RUN/.capturing"
+trap 'rm -f "$RUN/.capturing"' EXIT
 
 # The simulator's id, so its appearance can be set.
 UDID="$SIM"
@@ -50,6 +53,7 @@ xcrun simctl ui "$UDID" appearance light
 
 COUNT="$(find "$RUN" -name '*.png' | wc -l | tr -d ' ')"
 if [ "$COUNT" = 0 ]; then
+  rm -f "$RUN/.capturing"
   rmdir "$RUN"
   echo "design-lab-capture: no screens were captured" >&2
   exit 1
