@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "id": "openagents.ready-to-close.v1",
+  "name": "Whether an issue's code is complete",
+  "summary": "Asks one question about one open issue: whether the commits that landed for it do what its acceptance text asks of the code. The state holds the issue's number, title, and acceptance text, the commits on main that name it (subject and changed paths), and the last comment on it. Steps only the owner can take (a payment, a device run, an owner-held key, a store release) go to NEEDS_OWNER.md and don't hold an issue open, so they don't count against it.",
+  "gate": "code_complete",
+  "questions": {
+    "code_complete": {
+      "type": "noul",
+      "instructions": "The commits in `landed` do everything `issue.acceptance` asks of the code: each item of the acceptance text that a commit can satisfy has a commit in `landed` that does it, as its subject and changed paths show. Steps only the owner can take, such as a payment, a device run, an owner-held key, or a store release, don't count against it. It isn't complete when `landed` is empty, when an acceptance item has no commit that does it, when `last_comment` says part of the work is still open or failing, or when the commits only add docs or tests for code the acceptance text asks to change."
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 12288,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-18-coordination-judgments.md"
+    ]
+  }
+}

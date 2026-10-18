@@ -28,7 +28,7 @@ with caller-chosen request ids for safe retries (as in
 | S8 | Schedules | `schedules` module (list, sync) | No missed-tick signal; no kind |
 | S9 | Machine and capacity facts | `openagents capacity`, leases, `df` | Not published; no route |
 | S10 | Owner notifications | `push-gateway` wake constants | No "tell the owner" call |
-| S11 | Typed judgments for coordination | `POST /v1/systemone`, `crates/jev` | No question sets for coordination |
+| S11 | Typed judgments for coordination | `POST /v1/decisions`, `jev::question_set`, the `judge` app tool (#12042) | Shipped; the overlap judgment needs the app workspace's package graph first |
 
 ## S1. Run presence and heartbeats
 
@@ -405,6 +405,15 @@ under `docs/decision-models/measurements/` before use:
   commits, "is the code complete?"
 
 Foreman records each judgment's receipt with the decision that used it.
+
+**Shipped (#12042).** The four sets are in `questions/` (named for what they
+judge: `run-progress`, `failure-on-main`, `change-overlap`,
+`ready-to-close`), read by `jev::question_set::coordination` and asked
+through the Decisions API, Clef first. Any agent asks them with the `judge`
+app tool and passes its receipt to `record_decision` in `judgments`.
+`land_plan::overlap_judged` asks `change-overlap` behind
+`OPENAGENTS_LAND_OVERLAP_JUDGE=1`. Baselines:
+[2026-10-18-coordination-judgments.md](../decision-models/measurements/2026-10-18-coordination-judgments.md).
 
 ## S12. Agent wakes and grants
 

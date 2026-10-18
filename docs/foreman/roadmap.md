@@ -355,6 +355,11 @@ flowchart TD
 - **Acceptance:** Each question set has a recorded baseline and error rates
   on held-out examples taken from 2026-10-16 and 2026-10-17, written under
   `docs/decision-models/measurements/`.
+- **Status:** shipped in #12042 with a fourth set (ready to close). The
+  baselines are in
+  [2026-10-18-coordination-judgments.md](../decision-models/measurements/2026-10-18-coordination-judgments.md).
+  The overlap flag stays off until `land_plan` reads the app workspace's
+  package graph.
 - **Size:** M each.
 
 ### 11. A Foreman dashboard

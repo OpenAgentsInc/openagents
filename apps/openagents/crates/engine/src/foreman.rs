@@ -13,9 +13,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
 use openagents_proto::foreman::{
-    Authority, DecisionEntry, ForemanSettings, MAX_EVERY_MINUTES, MAX_STALL_MINUTES,
-    MAX_STUCK_MINUTES, MIN_EVERY_MINUTES, MIN_STALL_MINUTES, MIN_STUCK_MINUTES, STALL_RUNG_MINUTES,
-    Scope, WakeReason,
+    Authority, DecisionEntry, ForemanSettings, JudgmentReceipt, MAX_EVERY_MINUTES,
+    MAX_STALL_MINUTES, MAX_STUCK_MINUTES, MIN_EVERY_MINUTES, MIN_STALL_MINUTES, MIN_STUCK_MINUTES,
+    STALL_RUNG_MINUTES, Scope, WakeReason,
 };
 use openagents_proto::saved_agent::Declared;
 use openagents_proto::{Session, SessionStatus, ToolCall};
@@ -38,6 +38,8 @@ const PROMPT_ENTRIES: usize = 12;
 pub(crate) const STATUS_ENTRIES: usize = 20;
 /// A field Foreman records is cut at this many bytes.
 const MAX_FIELD: usize = 2000;
+/// The most judgment receipts one decision keeps.
+const MAX_JUDGMENTS: usize = 8;
 const MAX_EVENTS: usize = 200;
 const MAX_WAKES: usize = 64;
 const MAX_ISSUES: usize = 1000;
@@ -1092,8 +1094,16 @@ impl Foreman {
         })
     }
 
-    /// Foreman's own record of a check-in.
-    pub fn record(&self, saw: &str, decided: &str, did: &str, now: i64) -> Result<(), EngineError> {
+    /// Foreman's own record of a check-in, with the receipts of the
+    /// judgments it used.
+    pub fn record(
+        &self,
+        saw: &str,
+        decided: &str,
+        did: &str,
+        judgments: Vec<JudgmentReceipt>,
+        now: i64,
+    ) -> Result<(), EngineError> {
         let field = |text: &str| bounded(text.trim(), MAX_FIELD);
         if saw.trim().is_empty() && decided.trim().is_empty() && did.trim().is_empty() {
             return Err(EngineError::Other(
@@ -1105,6 +1115,14 @@ impl Foreman {
             saw: field(saw),
             decided: field(decided),
             did: field(did),
+            judgments: judgments
+                .into_iter()
+                .take(MAX_JUDGMENTS)
+                .map(|mut judgment| {
+                    judgment.answers = bounded(judgment.answers.trim(), MAX_FIELD);
+                    judgment
+                })
+                .collect(),
         })
     }
 
@@ -1211,17 +1229,24 @@ pub(crate) fn prompt(
                 saw,
                 decided,
                 did,
+                judgments,
             } = entry
             {
+                let judged: Vec<&str> = judgments.iter().map(|j| j.answers.as_str()).collect();
+                let judged = if judged.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (judged: {})", judged.join("; "))
+                };
                 text.push_str(&format!(
-                    "- {}: saw {saw}; decided {decided}; did {did}\n",
+                    "- {}: saw {saw}; decided {decided}; did {did}{judged}\n",
                     clock(*at)
                 ));
             }
         }
     }
     text.push_str(
-        "\nGather fresh facts and act on what needs it. Then, even when nothing changed, post a short status of 3 to 6 lines in this chat: what changed, what you did, and what's next. Finally call record_decision once with what you saw, what you decided and what you did.",
+        "\nGather fresh facts and act on what needs it. Then, even when nothing changed, post a short status of 3 to 6 lines in this chat: what changed, what you did, and what's next. Finally call record_decision once with what you saw, what you decided and what you did, and the receipts of any judge calls you used.",
     );
     text
 }
@@ -1688,8 +1713,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let f = configured(dir.path());
         f.manage("a").unwrap();
-        f.record("two idle issues", "start one", "created a chat", 3)
-            .unwrap();
+        f.record(
+            "two idle issues",
+            "start one",
+            "created a chat",
+            Vec::new(),
+            3,
+        )
+        .unwrap();
         let wake = f.due(false, 20 * MIN).unwrap().unwrap();
         assert!(
             wake.text
@@ -1701,6 +1732,36 @@ mod tests {
         assert!(f.is_wake(&wake.id));
         assert_eq!(f.read(10).len(), 2);
         assert_eq!(f.due(false, 21 * MIN).unwrap(), None);
+    }
+
+    #[test]
+    fn a_decision_keeps_the_judgments_it_used_for_the_next_check_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let receipt = |answers: &str| JudgmentReceipt {
+            question_set: "openagents.run-progress.v1".into(),
+            decision: "dec_1".into(),
+            model: "clef-flash".into(),
+            door: Some("clef".into()),
+            receipt: None,
+            answers: answers.into(),
+        };
+        let many: Vec<JudgmentReceipt> = (0..20).map(|_| receipt("progressed 0.91")).collect();
+        f.record("Beta silent", "message it", "sent a nudge", many, 3)
+            .unwrap();
+        let entries = f.read(10);
+        let Some(DecisionEntry::Decision { judgments, .. }) = entries.last() else {
+            panic!("a decision");
+        };
+        assert_eq!(judgments.len(), MAX_JUDGMENTS);
+        assert_eq!(judgments[0].decision, "dec_1");
+        let wake = f.due(false, 20 * MIN).unwrap().unwrap();
+        assert!(
+            wake.text
+                .contains("did sent a nudge (judged: progressed 0.91; progressed 0.91;"),
+            "{}",
+            wake.text
+        );
     }
 
     #[test]

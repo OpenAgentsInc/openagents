@@ -8,7 +8,8 @@
 //!   skip the build ([`super::land_queue::DocChecks`]), rebase, and push in
 //!   seconds, never behind a code entry;
 //! - **code slots** (two by default): entries whose packages do not
-//!   [`overlap`] check side by side, each in its own worktree and build slot;
+//!   [`land_plan::overlap`] check side by side, each in its own worktree
+//!   and build slot;
 //! - **strict order where it matters**: a code entry waits while an
 //!   earlier open entry overlaps it, so overlapping ones land one at a
 //!   time in submission order.
@@ -25,7 +26,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use super::issue_run::Checks;
-use super::land_plan::{self, Lane, Plan, overlap};
+use super::land_plan::{self, Lane, OverlapJudge, Plan};
 use super::land_queue::{
     Busy, DocChecks, Effects, Entry, Heartbeat, Instance, Integrator, Outcome, PushLock, Queue,
     State, Store, ensure_worktree, fetch_entry, now,
@@ -35,7 +36,18 @@ use super::landing;
 /// Plans an entry before it is scheduled.
 pub trait Planner: Sync {
     fn plan(&self, entry: &Entry) -> Plan;
+
+    /// Whom to ask about two code entries the rule finds apart
+    /// ([`land_plan::overlap_judged`]); none by default.
+    fn overlap_judge(&self) -> Option<&dyn OverlapJudge> {
+        None
+    }
 }
+
+/// The integrator's overlap judge, when [`land_plan::OVERLAP_JUDGE_ENV`]
+/// turns it on.
+static OVERLAP_JUDGE: std::sync::LazyLock<Option<land_plan::DecisionsOverlapJudge>> =
+    std::sync::LazyLock::new(land_plan::DecisionsOverlapJudge::from_env);
 
 /// Plans entries in a worktree of its own: the branch checked out, its
 /// changed paths classified against the workspace ([`land_plan::plan`]).
@@ -64,6 +76,12 @@ impl Planner for RepoPlanner {
             Ok(land_plan::plan(w, &base))
         };
         run().unwrap_or_else(|why| Plan::unknown(&why))
+    }
+
+    fn overlap_judge(&self) -> Option<&dyn OverlapJudge> {
+        OVERLAP_JUDGE
+            .as_ref()
+            .map(|judge| judge as &dyn OverlapJudge)
     }
 }
 
@@ -135,6 +153,9 @@ impl Lanes<'_> {
         let (tx, rx) = mpsc::channel::<Finished>();
         let mut slots: Vec<Option<Running>> = (0..=self.code_slots).map(|_| None).collect();
         let mut plans: HashMap<String, Plan> = HashMap::new();
+        // Whether an earlier entry overlaps a later one, settled once per
+        // pair: the rule is cheap, but a judgment is a call.
+        let mut overlaps: HashMap<(String, String), bool> = HashMap::new();
         let mut known: HashMap<String, Entry> = HashMap::new();
         let mut finished: Vec<Finished> = Vec::new();
         let mut last_beat: Option<(Instant, Vec<Busy>, bool)> = None;
@@ -149,6 +170,7 @@ impl Lanes<'_> {
                         Ok((entry, outcome)) => {
                             if entry.state != State::Queued {
                                 plans.remove(&entry.id);
+                                overlaps.retain(|(a, b), _| *a != entry.id && *b != entry.id);
                             }
                             (control.done)(&entry, &outcome);
                         }
@@ -197,8 +219,20 @@ impl Lanes<'_> {
                         let index = match plan.lane {
                             Lane::Fast => (slots[0].is_none()).then_some(0),
                             Lane::Code => {
+                                let judge = self.planner.overlap_judge();
                                 let blocker = open[..k].iter().find(|earlier| {
-                                    plans.get(&earlier.id).is_none_or(|p| overlap(p, &plan))
+                                    let Some(p) = plans.get(&earlier.id) else {
+                                        return true;
+                                    };
+                                    *overlaps
+                                        .entry((earlier.id.clone(), entry.id.clone()))
+                                        .or_insert_with(|| {
+                                            land_plan::overlap_judged(
+                                                (&earlier.summary, p),
+                                                (&entry.summary, &plan),
+                                                judge,
+                                            )
+                                        })
                                 });
                                 if let Some(blocker) = blocker {
                                     if entry.waiting_for.as_deref() != Some(blocker.id.as_str()) {

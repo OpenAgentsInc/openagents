@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "id": "openagents.change-overlap.v1",
+  "name": "Whether two changes waiting to land overlap",
+  "summary": "Asks one question about two entries in the landing queue: whether landing one could change what the other's checks test or how it behaves, so they must land one after the other. The state holds each entry's summary, changed paths, and the workspace packages those paths are in. The landing plan's own rule decides first (a shared file, one entry's packages in the other's dependency closure, a workspace-wide build file); the question is asked only when that rule finds no overlap, and a yes only makes the two land in order, never side by side.",
+  "gate": "overlap",
+  "questions": {
+    "overlap": {
+      "type": "noul",
+      "instructions": "Landing the change in `a` could change what the checks of the change in `b` test, or how `b` behaves, or the reverse. They overlap when they change the same file, when one changes a package the other's packages use, or when one changes something the other's code or tests read across packages: an API route or its contract, a schema or wire format, a fixture, a generated file, a question set, a shared script, or a document a test checks. Changes to unrelated packages, or to documents and assets no build or test of the other reads, don't overlap."
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 12288,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-18-coordination-judgments.md"
+    ]
+  }
+}

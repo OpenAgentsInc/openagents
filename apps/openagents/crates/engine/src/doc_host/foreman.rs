@@ -267,7 +267,13 @@ impl DocHost {
         if let (Some(items), Some(chat)) = (record.working, record.origin_chat_id.as_deref()) {
             self.save_working_state(chat, items, now)?;
         }
-        foreman.record(&record.saw, &record.decided, &record.did, now)
+        foreman.record(
+            &record.saw,
+            &record.decided,
+            &record.did,
+            record.judgments,
+            now,
+        )
     }
 
     /// Whether a command `origin` sends to `target` is within Foreman's
@@ -1339,6 +1345,7 @@ mod tests {
                 note: "shared-cache fix".into(),
                 since: 0,
             }]),
+            judgments: Vec::new(),
         })
         .unwrap();
         drop(host);
@@ -1365,6 +1372,7 @@ mod tests {
                 decided: "x".into(),
                 did: "x".into(),
                 working: Some(vec![]),
+                judgments: Vec::new(),
             })
             .is_err(),
             "only the checked-in chat writes its working state"
@@ -1609,6 +1617,7 @@ mod tests {
             decided: "nothing else needed".into(),
             did: "nothing".into(),
             working: None,
+            judgments: Vec::new(),
         })
         .unwrap();
         assert!(
@@ -1618,6 +1627,7 @@ mod tests {
                 decided: "x".into(),
                 did: "x".into(),
                 working: None,
+                judgments: Vec::new(),
             })
             .is_err()
         );

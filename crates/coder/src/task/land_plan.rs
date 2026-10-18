@@ -22,6 +22,12 @@
 //! when either changes a workspace-wide build file. Overlapping entries
 //! land one at a time in submission order; the others run side by side.
 //!
+//! Behind a flag ([`OVERLAP_JUDGE_ENV`]), two code entries the rule finds
+//! apart are also put to the change-overlap judgment
+//! ([`overlap_judged`]), which can catch a coupling the package graph
+//! doesn't show (a route and its caller in another crate, a fixture, a
+//! generated file) and make them land in order.
+//!
 //! The registry of generated files ([`Generator`],
 //! `.openagents/generated.json`) lets the queue rewrite a committed file
 //! that is generated from sources (the CLI tree, the first-party OpenAPI
@@ -255,6 +261,126 @@ pub fn overlap(a: &Plan, b: &Plan) -> bool {
     }
     a.packages.iter().any(|p| b.closure.contains(p))
         || b.packages.iter().any(|p| a.closure.contains(p))
+}
+
+/// The flag that lets the landing queue ask the Decisions API whether two
+/// code entries overlap when [`overlap`] finds they don't (#12042): set it
+/// to `1` on the integrator.
+pub const OVERLAP_JUDGE_ENV: &str = "OPENAGENTS_LAND_OVERLAP_JUDGE";
+/// At or above this probability a judged overlap lands the two in order.
+/// Provisional; the baseline is
+/// `docs/decision-models/measurements/2026-10-18-coordination-judgments.md`.
+pub const JUDGED_OVERLAP_AT: f64 = 0.7;
+/// The most changed paths of one entry the judgment reads.
+const JUDGED_FILES_MAX: usize = 60;
+
+/// Judges whether two code entries overlap through something the package
+/// graph doesn't show (`questions/change-overlap.json`).
+pub trait OverlapJudge: Sync {
+    /// The probability that landing one changes what the other's checks
+    /// test, over [`overlap_state`].
+    ///
+    /// # Errors
+    /// When nothing answered.
+    fn overlap(&self, state: &serde_json::Value) -> Result<f64, String>;
+}
+
+/// The state the change-overlap judgment reads for two entries, each a
+/// summary and its plan.
+#[must_use]
+pub fn overlap_state(a: (&str, &Plan), b: (&str, &Plan)) -> serde_json::Value {
+    let side = |(summary, plan): (&str, &Plan)| {
+        serde_json::json!({
+            "summary": summary,
+            "files": plan.files.iter().take(JUDGED_FILES_MAX).collect::<Vec<_>>(),
+            "packages": plan.packages,
+        })
+    };
+    serde_json::json!({ "a": side(a), "b": side(b) })
+}
+
+/// [`overlap`], and when it finds none between two code entries, the
+/// judge's answer. A judgment can only make two entries land in order,
+/// never side by side, and a judge that doesn't answer leaves the rule's
+/// answer.
+#[must_use]
+pub fn overlap_judged(
+    a: (&str, &Plan),
+    b: (&str, &Plan),
+    judge: Option<&dyn OverlapJudge>,
+) -> bool {
+    if overlap(a.1, b.1) {
+        return true;
+    }
+    if a.1.lane == Lane::Fast || b.1.lane == Lane::Fast {
+        return false;
+    }
+    judge.is_some_and(|judge| {
+        judge
+            .overlap(&overlap_state(a, b))
+            .is_ok_and(|p| p >= JUDGED_OVERLAP_AT)
+    })
+}
+
+/// The Decisions API answers `questions/change-overlap.json`, Clef first.
+pub struct DecisionsOverlapJudge {
+    client: jev::decisions::DecisionsClient,
+    runtime: tokio::runtime::Runtime,
+}
+
+impl DecisionsOverlapJudge {
+    /// A judge for `OPENAGENTS_DECISIONS_URL`, else the OpenAgents API.
+    ///
+    /// # Errors
+    /// When the URL is not one or the runtime doesn't start.
+    pub fn new() -> Result<Self, String> {
+        let url = std::env::var("OPENAGENTS_DECISIONS_URL")
+            .ok()
+            .filter(|url| !url.trim().is_empty())
+            .unwrap_or_else(|| jev::decisions::OPENAGENTS.to_owned());
+        let client = jev::decisions::DecisionsClient::new(url)
+            .map_err(|e| e.to_string())?
+            .timeout(std::time::Duration::from_secs(15));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| format!("cannot start a runtime: {e}"))?;
+        Ok(Self { client, runtime })
+    }
+
+    /// The judge when [`OVERLAP_JUDGE_ENV`] is `1`.
+    #[must_use]
+    pub fn from_env() -> Option<Self> {
+        if std::env::var(OVERLAP_JUDGE_ENV).as_deref() != Ok("1") {
+            return None;
+        }
+        Self::new()
+            .inspect_err(|why| eprintln!("land: no overlap judge: {why}"))
+            .ok()
+    }
+}
+
+impl OverlapJudge for DecisionsOverlapJudge {
+    fn overlap(&self, state: &serde_json::Value) -> Result<f64, String> {
+        use jev::question_set::{Judgment, MODEL, coordination};
+        let set = coordination::set(coordination::CHANGE_OVERLAP)
+            .ok_or("the change-overlap set is missing")?;
+        let request = set.request(MODEL, state).map_err(|e| e.to_string())?;
+        let response = self
+            .runtime
+            .block_on(self.client.create(&request))
+            .map_err(|e| e.to_string())?;
+        let judgment = Judgment::from_response(set, response).map_err(|e| e.to_string())?;
+        eprintln!(
+            "land: judged overlap: {} ({} {})",
+            judgment.summary(),
+            judgment.receipt.question_set,
+            judgment.receipt.decision
+        );
+        judgment
+            .probability(&set.gate)
+            .ok_or_else(|| "no overlap answer".to_owned())
+    }
 }
 
 /// What the repository says about the changed paths, for [`classify`].

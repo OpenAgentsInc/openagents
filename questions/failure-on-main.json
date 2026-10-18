@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "id": "openagents.failure-on-main.v1",
+  "name": "Whether a branch's failing test also fails on main",
+  "summary": "Asks one question about one failing test on a branch against the failures of the same checks run on the main commit the branch is based on. The state holds the branch's failing test (its name, its package, and its message) and main's failing tests with theirs. Code asks once per branch failure, side by side, and decides first: when main's run has no failures at all, nothing is asked and the failure is the branch's own. A failure judged to be on main isn't held against the branch; one judged new is.",
+  "gate": "also_on_main",
+  "questions": {
+    "also_on_main": {
+      "type": "noul",
+      "instructions": "The failing test in `failure` also fails on main, for the same reason: `main.failures` has the same test (or the same test under a renamed or moved path) failing with the same kind of message, or a failure with the same cause that the branch didn't introduce, such as a shared fixture, a stale generated file, or state shared between tests. It isn't on main when no failure in `main.failures` is that test, or when main's failure of that test has a different cause, such as a different assertion, a different panic, or a compile error main doesn't have."
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 12288,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-18-coordination-judgments.md"
+    ]
+  }
+}

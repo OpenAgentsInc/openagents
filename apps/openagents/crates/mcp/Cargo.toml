@@ -22,6 +22,8 @@ chrono.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 reqwest.workspace = true
+# OpenAgents #12042: `judge` asks the coordination question sets.
+jev = { path = "../../../../crates/jev" }
 
 # OpenAgents #11971: `build_status` reads the agent build gate.
 [target.'cfg(unix)'.dependencies]

@@ -23,6 +23,7 @@ Dated comparisons, question baselines, and retained state-budget evidence.
 | [2026-09-20-state-budget-choice](2026-09-20-state-budget-choice.md) | Choice adapter state-budget sweep |
 | [2026-09-20-state-budget](2026-09-20-state-budget.md) | A state budget for the smallest door |
 | [2026-09-24-tenant-training-demo](2026-09-24-tenant-training-demo.md) | The tenant-training contract, rehearsed end to end |
+| [2026-10-18-coordination-judgments](2026-10-18-coordination-judgments.md) | Run progress, failures on main, change overlap, and ready to close: first baselines |
 
 Additional evidence remains in [data](../data/), the
 [Lev domain-gap bundle](../2026-09-20-lev-domain-gap/), and the

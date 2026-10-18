@@ -45,6 +45,8 @@ pub struct Tools {
     // wait:false also waits for a newly created chat with no session row yet.
     pending_turns: tokio::sync::Mutex<HashMap<String, Arc<PendingTurn>>>,
     inbox: tokio::sync::Mutex<std::sync::Weak<Inbox>>,
+    /// Who answers `judge` (#12042): the Decisions API, or a fake in tests.
+    decider: Arc<dyn crate::judge::Decider>,
 }
 
 /// OpenAgents #11971: the agent build gate's status, on Unix.
@@ -343,7 +345,7 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: RECORD_DECISION,
-            description: "Foreman only: add one entry to Foreman's decision log, which the owner sees in the app and the next check-in reads. Call it once per check-in with what you saw, what you decided and what you did. Pass `working` with every issue you track, the chat that owns it and its status: the host saves it and puts it in every check-in, even after a restart, with how long each item has been in its status.",
+            description: "Foreman only: add one entry to Foreman's decision log, which the owner sees in the app and the next check-in reads. Call it once per check-in with what you saw, what you decided and what you did. Pass `working` with every issue you track, the chat that owns it and its status: the host saves it and puts it in every check-in, even after a restart, with how long each item has been in its status. In judgments, pass the receipt of each judge call the decision used.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -364,6 +366,11 @@ fn catalog() -> Vec<ToolDef> {
                             },
                             "required": ["status"]
                         }
+                    },
+                    "judgments": {
+                        "type": "array",
+                        "items": { "type": "object" },
+                        "description": "The `receipt` of each judge call this decision used, as judge returned it."
                     }
                 },
                 "required": ["saw", "decided", "did"]
@@ -651,6 +658,9 @@ struct DecisionArgs {
     /// The whole working state, replacing the saved one (#12057).
     #[serde(default)]
     working: Option<Vec<openagents_proto::foreman::WorkItem>>,
+    /// Receipts from `judge` for the judgments this decision used.
+    #[serde(default)]
+    judgments: Vec<openagents_proto::foreman::JudgmentReceipt>,
 }
 
 #[derive(Deserialize)]
@@ -912,7 +922,15 @@ impl Tools {
             openagents,
             pending_turns: Default::default(),
             inbox: Default::default(),
+            decider: Arc::new(crate::judge::Api),
         }
+    }
+
+    /// The same tools with `judge` answered by `decider`.
+    #[must_use]
+    pub fn with_decider(mut self, decider: Arc<dyn crate::judge::Decider>) -> Self {
+        self.decider = decider;
+        self
     }
 
     pub fn list(&self) -> Vec<ToolDef> {
@@ -932,6 +950,7 @@ impl Tools {
             })
             .chain(crate::video_lab::tools().iter().cloned())
             .chain(std::iter::once(crate::work::tool()))
+            .chain(std::iter::once(crate::judge::tool()))
             .chain(build_status_tool())
             .chain(list_runs_tool())
             .chain(machine_action_tool())
@@ -1009,6 +1028,7 @@ impl Tools {
                     .ok_or_else(|| "Choose a saved agent's chat.".to_owned())?;
                 self.openagents.call(openagents_rpc::methods::NOTIFY_OWNER, json!({"originChatId":chat,"requestId":note.request_id,"title":note.title,"body":note.body})).await
             }
+            crate::judge::NAME => return crate::judge::call(self.decider.as_ref(), args).await,
             #[cfg(unix)]
             crate::build_status::NAME => return crate::build_status::call(args),
             #[cfg(unix)]
@@ -1733,6 +1753,7 @@ impl Tools {
                     "decided": args.decided,
                     "did": args.did,
                     "working": args.working,
+                    "judgments": args.judgments,
                 }),
             )
             .await?;
@@ -2699,6 +2720,53 @@ mod tests {
         assert_eq!(params["originChatId"], "chat-alpha-1");
         assert_eq!(params["did"], "stopped Beta");
         assert_eq!(params["working"][0]["status"], "handoff");
+    }
+
+    #[tokio::test]
+    async fn any_agent_can_judge_and_a_decision_carries_the_receipt() {
+        let world = Arc::new(World::default());
+        let fake = Arc::new(crate::judge::tests::Fake::default());
+        let outside = tools(world.clone(), Origin::default()).with_decider(fake.clone());
+        assert!(outside.has("judge"));
+        let inside = tools(
+            world.clone(),
+            Origin {
+                chat_id: Some("chat-alpha-1".into()),
+                device_id: Some("dev-local".into()),
+            },
+        )
+        .with_decider(fake.clone());
+        let judged = inside
+            .call(
+                "judge",
+                json!({ "set": "run-progress", "state": { "run": { "holds": "#1" }, "outputs": [] } }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(judged["answers"][0]["name"], "progressed");
+        inside
+            .call(
+                "record_decision",
+                json!({
+                    "saw": "Beta silent for 20 minutes",
+                    "decided": "message it",
+                    "did": "sent a nudge",
+                    "judgments": [judged["receipt"]],
+                }),
+            )
+            .await
+            .unwrap();
+        let writes = world.writes.lock().unwrap();
+        let (method, params) = writes.last().unwrap();
+        assert_eq!(method, methods::RECORD_FOREMAN_DECISION);
+        assert_eq!(params["judgments"][0]["decision"], "dec_7");
+        assert_eq!(
+            params["judgments"][0]["questionSet"],
+            "openagents.run-progress.v1"
+        );
+        let record: openagents_proto::foreman::RecordDecision =
+            serde_json::from_value(params.clone()).unwrap();
+        assert_eq!(record.judgments[0].door.as_deref(), Some("clef"));
     }
 
     #[tokio::test]

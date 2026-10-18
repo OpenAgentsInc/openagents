@@ -13,6 +13,8 @@
 //! under the same kind of grant (#12056).
 //! `list_runs` reads this computer's terminal agent sessions and identifies
 //! claims whose holder is dead or has stopped producing output (#12041).
+//! `judge` asks a coordination question set of the Decisions API and
+//! returns its receipt (#12042).
 //!
 //! The server is hand-rolled rather than an SDK: the MCP surface a stdio
 //! tool server needs is five methods (`initialize`, `ping`, `tools/list`,
@@ -27,6 +29,7 @@
 mod changed_paths;
 #[cfg(unix)]
 mod build_status;
+mod judge;
 #[cfg(unix)]
 mod machine_action;
 #[cfg(unix)]

@@ -278,6 +278,7 @@ mod models;
 pub mod nip_dec;
 mod options;
 mod questions;
+pub mod question_set;
 mod retry;
 pub mod schema;
 mod transport;

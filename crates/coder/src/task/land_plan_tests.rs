@@ -209,6 +209,64 @@ fn entries_overlap_only_when_one_can_affect_the_others_checks() {
     assert!(overlap(&Plan::unknown("x"), &lone));
 }
 
+/// A judge that answers one probability and keeps what it was asked.
+struct Fake {
+    p: Result<f64, String>,
+    asked: std::sync::Mutex<Vec<serde_json::Value>>,
+}
+
+impl OverlapJudge for Fake {
+    fn overlap(&self, state: &serde_json::Value) -> Result<f64, String> {
+        self.asked.lock().unwrap().push(state.clone());
+        self.p.clone()
+    }
+}
+
+fn fake(p: Result<f64, String>) -> Fake {
+    Fake {
+        p,
+        asked: std::sync::Mutex::default(),
+    }
+}
+
+#[test]
+fn a_judged_overlap_only_ever_adds_order() {
+    let web = plan_of(&["crates/web/src/lib.rs"], &[]);
+    let cli = plan_of(&["crates/cli/src/main.rs"], &[]);
+    let core = plan_of(&["crates/core/src/lib.rs"], &[]);
+    let docs = plan_of(&["docs/a.md"], &[]);
+    let yes = fake(Ok(0.9));
+    // The rule finds web and cli apart; the judge sees both sides.
+    assert!(overlap_judged(
+        ("route", &web),
+        ("caller", &cli),
+        Some(&yes)
+    ));
+    let asked = yes.asked.lock().unwrap().clone();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0]["a"]["summary"], "route");
+    assert_eq!(asked[0]["a"]["files"][0], "crates/web/src/lib.rs");
+    assert_eq!(asked[0]["b"]["packages"][0], "cli");
+    // A rule overlap is never asked about, and a document never waits.
+    let never = fake(Ok(0.0));
+    assert!(overlap_judged(("", &core), ("", &cli), Some(&never)));
+    assert!(!overlap_judged(("", &docs), ("", &web), Some(&yes)));
+    assert!(never.asked.lock().unwrap().is_empty());
+    // Below the threshold, failed, or off: the rule's answer stands.
+    let low = fake(Ok(JUDGED_OVERLAP_AT - 0.01));
+    assert!(!overlap_judged(("", &web), ("", &cli), Some(&low)));
+    let failed = fake(Err("offline".into()));
+    assert!(!overlap_judged(("", &web), ("", &cli), Some(&failed)));
+    assert!(!overlap_judged(("", &web), ("", &cli), None));
+}
+
+#[test]
+fn the_judgment_is_off_unless_the_flag_is_one() {
+    // The test process doesn't set the flag.
+    assert!(std::env::var(OVERLAP_JUDGE_ENV).is_err());
+    assert!(DecisionsOverlapJudge::from_env().is_none());
+}
+
 #[test]
 fn an_unreadable_graph_makes_a_package_change_wide() {
     let plan = classify(

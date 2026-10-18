@@ -12628,6 +12628,7 @@ dependencies = [
  "coder-cloud",
  "coder-lease",
  "futures",
+ "jev",
  "microcoder-loop",
  "openagents-brand",
  "openagents-doc",

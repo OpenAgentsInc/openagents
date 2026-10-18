@@ -456,6 +456,7 @@ mod tests {
                 saw: "a".into(),
                 decided: "to wait".into(),
                 did: "nothing".into(),
+                judgments: Vec::new(),
             },
             DecisionEntry::Outcome {
                 at: 0,

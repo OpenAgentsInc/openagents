@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "id": "openagents.run-progress.v1",
+  "name": "Whether an agent run moved its work forward since the last check-in",
+  "summary": "Asks two questions about one agent run (an app chat, a terminal session, or a cloud work run) over the window since a coordinating agent last checked on it. The state names what the run holds, the window, the run's status, its last outputs, the commits and pushes naming its work, and the build and test events in its worktree. The Noul is the gate: code reads it against a provisional threshold before it climbs the stall ladder. The Choice says what kind of standstill a run that didn't progress is in, so the next rung fits it. Code decides first: a commit or push naming the work in the window is progress with no question.",
+  "gate": "progressed",
+  "questions": {
+    "progressed": {
+      "type": "noul",
+      "instructions": "Between `window.from` and `window.to`, the run in `run` moved the work it holds forward. Progress is a commit or push in `commits`, a build or test run in `builds` that started, finished, or reported a new result, a file edited or a command run that `outputs` shows, or output reporting a new finding or the next step of the work. It isn't progress when `outputs` and `builds` are empty, when the run repeats the same failing command or the same message, when it only waits, polls, or sleeps with nothing changing, when it asked a question nobody answered, or when it says it stopped or is blocked."
+    },
+    "activity": {
+      "type": "choice",
+      "instructions": "What is the run in `run` doing in the window from `window.from` to `window.to`, judging by `status`, `outputs`, `commits`, and `builds`?",
+      "criteria": {
+        "progressing": "It is moving its work forward: new commits, edits, commands, results, or steps in the window.",
+        "waiting_on_work": "It is waiting on something that is itself running: a build or test run in `builds` that started and hasn't finished, or another agent it handed work to and that is still working.",
+        "looping": "It is busy but going in circles: the same failing command, the same error, or the same message, over and over, with nothing new.",
+        "stopped": "It isn't doing anything: no output in the window, it ended its turn, it asked a question or waits for approval that nobody gave, it errored, or it says it is blocked."
+      }
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 12288,
+    "evidence": [
+      "docs/decision-models/measurements/2026-10-18-coordination-judgments.md"
+    ]
+  }
+}

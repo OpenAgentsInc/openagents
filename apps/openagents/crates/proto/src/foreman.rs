@@ -130,6 +130,9 @@ pub enum DecisionEntry {
         saw: String,
         decided: String,
         did: String,
+        /// The judgments the decision used, each with its receipt (#12042).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        judgments: Vec<JudgmentReceipt>,
     },
     /// How a check-in turn ended.
     #[serde(rename_all = "camelCase")]
@@ -185,6 +188,10 @@ pub struct RecordDecision {
     /// saved one (#12057). `None` keeps the saved state as it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working: Option<Vec<WorkItem>>,
+    /// Receipts the `judge` tool returned, for the judgments this
+    /// decision used.
+    #[serde(default)]
+    pub judgments: Vec<JudgmentReceipt>,
 }
 
 /// The most items a working state keeps, and the longest note.
@@ -238,6 +245,29 @@ pub struct WorkingState {
     pub items: Vec<WorkItem>,
 }
 
+/// One typed judgment a decision used: which question set was asked, what
+/// it answered in a line, and the Decisions API's receipt for the call
+/// (#12042). Any agent's decision log can carry these.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JudgmentReceipt {
+    /// The set's identifier, such as `openagents.run-progress.v1`.
+    pub question_set: String,
+    /// The decision's id in the Decisions API's response.
+    pub decision: String,
+    /// The model that answered.
+    pub model: String,
+    /// The door that answered (`clef`, `pylon:<slug>`, `jev`, `vertex`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub door: Option<String>,
+    /// The door's own receipt, when it gave one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<String>,
+    /// The answers in one line, such as `progressed 0.12, activity stopped (0.70)`.
+    #[serde(default)]
+    pub answers: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +288,52 @@ mod tests {
             entry
         );
         assert_eq!(entry.at(), 5);
+    }
+
+    #[test]
+    fn a_decision_keeps_its_judgments_and_older_lines_still_read() {
+        let entry = DecisionEntry::Decision {
+            at: 7,
+            saw: "no output for 20 minutes".into(),
+            decided: "message the chat".into(),
+            did: "sent a nudge".into(),
+            judgments: vec![JudgmentReceipt {
+                question_set: "openagents.run-progress.v1".into(),
+                decision: "dec_1".into(),
+                model: "clef-flash".into(),
+                door: Some("clef".into()),
+                receipt: None,
+                answers: "progressed 0.08, activity stopped (0.81)".into(),
+            }],
+        };
+        let wire = serde_json::to_value(&entry).unwrap();
+        assert_eq!(
+            wire["judgments"][0]["questionSet"],
+            "openagents.run-progress.v1"
+        );
+        assert_eq!(
+            serde_json::from_value::<DecisionEntry>(wire).unwrap(),
+            entry
+        );
+        let older = serde_json::json!({"kind": "decision", "at": 1, "saw": "a", "decided": "b", "did": "c"});
+        let DecisionEntry::Decision { judgments, .. } =
+            serde_json::from_value::<DecisionEntry>(older).unwrap()
+        else {
+            panic!("a decision");
+        };
+        assert!(judgments.is_empty());
+        let plain = DecisionEntry::Decision {
+            at: 1,
+            saw: "a".into(),
+            decided: "b".into(),
+            did: "c".into(),
+            judgments: Vec::new(),
+        };
+        assert!(
+            serde_json::to_value(&plain)
+                .unwrap()
+                .get("judgments")
+                .is_none()
+        );
     }
 }

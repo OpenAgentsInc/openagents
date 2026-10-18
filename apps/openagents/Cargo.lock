@@ -11234,6 +11234,7 @@ dependencies = [
  "coder-lease",
  "futures",
  "image",
+ "jev",
  "microcoder-loop",
  "openagents-brand",
  "openagents-doc",
