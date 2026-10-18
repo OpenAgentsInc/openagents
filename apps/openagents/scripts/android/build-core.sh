@@ -38,6 +38,11 @@ if [[ -z "${ANDROID_NDK_HOME:-}" ]] || ! command -v cargo-ndk >/dev/null; then
   exit 1
 fi
 
+# The Android shell exports the NDK compiler as generic CC. Build scripts for
+# host tools (for example, libz-sys) need the host compiler; cargo-ndk supplies
+# target-specific compiler variables for the Android library builds below.
+unset CC CXX AR
+
 cargo build --locked -p openagents-mobile --lib --bin uniffi-bindgen \
   --features bindgen --profile mobile
 HOST_LIB="$CARGO_TARGET_DIR/mobile/libopenagents_mobile.$([[ "$(uname)" == Darwin ]] && echo dylib || echo so)"
