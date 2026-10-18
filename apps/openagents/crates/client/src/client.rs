@@ -1856,6 +1856,14 @@ impl Client {
         self.inner.tick();
     }
 
+    /// A push reconnect wake redials sync without changing app lifecycle state.
+    pub fn reconnect_from_push(&self) {
+        if let Some(live) = self.inner.live() {
+            live.kick();
+            self.kick_rooms();
+        }
+    }
+
     /// App is backgrounding: persist registry + docs now; pause time-driven
     /// work and PR streams.
     pub fn on_background(&self) {

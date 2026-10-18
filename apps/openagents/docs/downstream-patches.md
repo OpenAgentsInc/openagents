@@ -679,3 +679,13 @@ links remain readable. Upstream fixes now require manual ports.
   `engine/src/rpc/run_commands.rs` maps the RPC body. `host_rpc` checks account,
   native rights, and definition-based command grants; the device-channel adapter
   preserves the request ID when delivery is uncertain.
+- [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
+  Android push delivery uses the existing Rust push registration and private
+  owner-note APIs. `CoreClient::handle_push_wake` receives a typed wake; Rust
+  returns the newest checked owner note for attention and redials sync for a
+  reconnect without changing app lifecycle state. The shared platform
+  coordinator validates data-only wake messages, and the `push` source set
+  contains the Firebase transport adapter; `nopush` has no Firebase symbols.
+  The app owns client creation, foreground suppression, notification routing,
+  and tap handling. Android channel setup and permission checks live in
+  `platform/AndroidPushNotifications.kt`.
