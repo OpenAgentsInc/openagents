@@ -692,3 +692,15 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+- [OpenAgents #12096](https://github.com/OpenAgentsInc/openagents/issues/12096):
+  The Android app scanner uses CameraX `ImageAnalysis` with
+  `KEEP_ONLY_LATEST` and the direct ZXing core decoder. The decoder copies the
+  bounded Y plane using its row and pixel strides, applies CameraX rotation,
+  and asks ZXing to decode QR codes only. The presentation boundary limits raw
+  scan text before it reaches the Rust classifier; Kotlin does not parse links
+  or authorize actions. Synthetic QR matrix tests cover stride handling,
+  rotation, close, oversized frames, and exact unmodified text. B1 owns the
+  Activity Result permission shell, CameraX 1.5.3/API 35 pins, and
+  `com.google.zxing:core:3.5.4` in Gradle. The Kotlin instrumentation and
+  Android app compile remain pending an assigned build slot. App Links
+  release-certificate verification remains owner-only.
