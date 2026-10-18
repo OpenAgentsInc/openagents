@@ -28,7 +28,7 @@ export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1}"
 export CARGO_INCREMENTAL=0
 
 OUT="${1:-$CARGO_TARGET_DIR/android-core}"
-mkdir -p "$OUT/kotlin" "$OUT/jniLibs"
+mkdir -p "$OUT/kotlin"
 OUT="$(cd "$OUT" && pwd -P)"
 cd "$ROOT"
 . "$ROOT/../../scripts/dev/cargo-build-env.sh"
@@ -45,16 +45,13 @@ unset CC CXX AR
 
 cargo build --locked -p openagents-mobile --lib --bin uniffi-bindgen \
   --features bindgen --profile mobile
-HOST_LIB="$CARGO_TARGET_DIR/mobile/libopenagents_mobile.$([[ "$(uname)" == Darwin ]] && echo dylib || echo so)"
-cargo ndk -t arm64-v8a -o "$OUT/jniLibs" \
-  build --locked -p openagents-mobile --lib --profile mobile
-cargo ndk -t x86_64 -o "$OUT/jniLibs" \
-  build --locked -p openagents-mobile --lib --profile mobile
+cargo ndk -t arm64-v8a build --locked -p openagents-mobile --lib --profile mobile
+cargo ndk -t x86_64 build --locked -p openagents-mobile --lib --profile mobile
 
 # Extract UniFFI metadata from the Android artifact so Android-gated exports
 # appear in the Kotlin binding. UniFFI library mode reads object-file metadata;
 # it does not load or execute the target library.
-ANDROID_LIB="$OUT/jniLibs/arm64-v8a/libopenagents_mobile.so"
+ANDROID_LIB="$CARGO_BUILD_BUILD_DIR/aarch64-linux-android/mobile/deps/libopenagents_mobile.so"
 "$CARGO_TARGET_DIR/mobile/uniffi-bindgen" generate --library "$ANDROID_LIB" --language kotlin \
   --no-format --out-dir "$OUT/kotlin"
 echo "kotlin bindings: $OUT/kotlin"
@@ -68,4 +65,4 @@ if ! cmp -s "$SYNC_BINDING" "$APP_BINDING"; then
 fi
 echo "Android source binding: $APP_BINDING"
 
-echo "jniLibs: $OUT/jniLibs"
+bash "$ROOT/scripts/android/stage-core-libs.sh" "$CARGO_BUILD_BUILD_DIR" "$OUT/app-jniLibs"

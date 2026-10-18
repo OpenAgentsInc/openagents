@@ -38,6 +38,7 @@ android {
     namespace = appId
     compileSdk = 35
     buildToolsVersion = "35.0.0"
+    ndkVersion = "27.1.12297006"
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -63,7 +64,7 @@ android {
     sourceSets["main"].java.exclude("**/tests/**")
     sourceSets["main"].java.srcDir(if (pushEnabled) "src/push/java" else "src/nopush/java")
     sourceSets["androidTest"].java.srcDir("../platform/tests")
-    sourceSets["main"].jniLibs.srcDir("$cargoTargetDir/android-core/jniLibs")
+    sourceSets["main"].jniLibs.srcDir("$cargoTargetDir/android-core/app-jniLibs")
 
     buildTypes {
         debug {
@@ -78,8 +79,10 @@ android {
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    exclude { element ->
-        element.file.toPath().startsWith(file("../platform/tests").toPath())
+    if (name == "compileDebugKotlin" || name == "compileReleaseKotlin") {
+        exclude { element ->
+            element.file.toPath().startsWith(file("../platform/tests").toPath())
+        }
     }
 }
 

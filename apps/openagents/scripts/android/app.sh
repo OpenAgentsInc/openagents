@@ -63,7 +63,7 @@ case "$command" in
     gradle :app:bundleRelease "$@"
     ;;
   check)
-    gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease "$@"
+    gradle :app:compileDebugAndroidTestKotlin :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease "$@"
     clean_env bash "$ROOT/scripts/android/check-release-apk.sh" \
       "$ANDROID_DIR/app/build/outputs/apk/release/app-release-unsigned.apk"
     ;;
