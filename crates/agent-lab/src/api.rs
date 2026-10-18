@@ -145,3 +145,70 @@ pub fn check_published(template: &Experiment, definition: &AgentDefinition) -> R
     }
     Ok(())
 }
+
+/// The request body that forks a published agent into your own agents
+/// (#12049). The fork's ID is the request ID.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForkAgent {
+    pub request_id: String,
+    pub name: String,
+}
+/// A new fork: your own agent, where it came from, and the Agent Lab
+/// experiment to test and change it in. The experiment saves the fork.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Forked {
+    pub definition: AgentDefinition,
+    pub forked_from: agent_contract::ForkedFrom,
+    pub template: Experiment,
+}
+/// The request body that publishes one of your agents, or a new revision of
+/// it once it is published. Without a template, a fork publishes with the
+/// tests it was forked with.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishDefinition {
+    pub request_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<Experiment>,
+}
+/// A fork's original: the revision it copied and, when the original has
+/// published a newer revision since, that revision.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Upstream {
+    pub forked_from: agent_contract::ForkedFrom,
+    pub newer: Option<PublishedAgent>,
+}
+
+/// The fork of `published` named `name`: its spec, and the experiment that
+/// saves it, pinned to the fork's own definition at revision 1.
+pub fn fork(published: &PublishedAgent, id: &str, name: &str) -> (AgentSpec, Experiment) {
+    let mut spec = published.definition.spec.clone();
+    spec.name = name.into();
+    let mut template = published.template.clone();
+    template.title = name.chars().take(100).collect();
+    template.draft.spec.name = name.into();
+    template.draft.source = Some(Pin {
+        id: id.into(),
+        revision: 1,
+    });
+    (spec, template)
+}
+/// The experiment that publishes `definition` when none is sent: the
+/// fork's experiment with the definition's current settings, so it saves
+/// exactly that definition.
+pub fn publish_template(forked: &Experiment, definition: &AgentDefinition) -> Experiment {
+    let mut t = forked.clone();
+    t.draft.source = None;
+    t.compare = None;
+    t.host = "choose".into();
+    t.project = "choose".into();
+    if t.draft.agent_spec().ok().as_ref() != Some(&definition.spec) {
+        t.draft.spec = definition.spec.clone();
+        t.draft.components.clear();
+    }
+    t.title = definition.spec.name.chars().take(100).collect();
+    t
+}

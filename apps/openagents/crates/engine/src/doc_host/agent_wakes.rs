@@ -387,11 +387,11 @@ impl DocHost {
             .ensure(&request.agent)?;
         let lease = self
             .wakes_lease()
-            .ok_or_else(|| error("Sign in to OpenAgents to grant an agent powers."))?;
+            .ok_or_else(|| error("We couldn't connect to your account to grant an agent powers. Try again."))?;
         let agents = lease
             .client()
             .agents(lease.session())
-            .map_err(|_| error("Sign in to OpenAgents again."))?;
+            .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         let words: Vec<String> = scopes.iter().map(|s| s.word().to_owned()).collect();
         let over = serde_json::from_value(
             serde_json::to_value(&request.over).map_err(|e| error(&e.to_string()))?,
@@ -416,11 +416,11 @@ impl DocHost {
             .ok_or_else(|| error("That agent has no check-ins on this computer."))?;
         let lease = self
             .wakes_lease()
-            .ok_or_else(|| error("Sign in to OpenAgents to change an agent's powers."))?;
+            .ok_or_else(|| error("We couldn't connect to your account to change an agent's powers. Try again."))?;
         let agents = lease
             .client()
             .agents(lease.session())
-            .map_err(|_| error("Sign in to OpenAgents again."))?;
+            .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         agents
             .revoke_grant(&revoke.agent, &revoke.grant, &lease.cancel)
             .await
@@ -440,7 +440,7 @@ impl DocHost {
         let agents = lease
             .client()
             .agents(lease.session())
-            .map_err(|_| error("Sign in to OpenAgents again."))?;
+            .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         let state = engine.state();
         if state.authority.is_some() || state.wants_standing {
             let listed = agents
@@ -1560,6 +1560,33 @@ mod tests {
         assert!(declaring_chats(&chats, "mac", |a| a == "a1").is_empty());
         assert_eq!(found[0].agent.as_deref(), Some("def-1"));
         assert_eq!(found[0].declared.every_minutes, Some(10));
+    }
+
+    /// #12049: a fork carries its original's declared autonomy, so on the
+    /// same computer it wakes on exactly the same events.
+    #[test]
+    fn a_fork_wakes_on_the_same_events_as_its_original() {
+        use openagents_proto::saved_agent::{AGENT, AGENT_NAME, ASSIGNMENT, AUTONOMY};
+        let autonomy = serde_json::json!({
+            "checkIns": true, "everyMinutes": 10, "authority": true,
+            "wakes": ["chat_finished", "issue_opened", "claim_stale"], "coalesceSecs": 60
+        });
+        let official = chat(
+            "c1",
+            "mac",
+            "Foreman",
+            serde_json::json!({ASSIGNMENT: "a1", AGENT_NAME: "Foreman", AGENT: "def-official", AUTONOMY: autonomy}),
+        );
+        let fork = chat(
+            "c2",
+            "mac",
+            "Release Foreman",
+            serde_json::json!({ASSIGNMENT: "a2", AGENT_NAME: "Release Foreman", AGENT: "def-fork", AUTONOMY: autonomy}),
+        );
+        let (wakes, coalesce) = declared_wakes(&official);
+        assert_eq!(wakes.len(), 3);
+        assert_eq!(coalesce, Some(60_000));
+        assert_eq!(declared_wakes(&fork), (wakes, coalesce));
     }
 
     /// #12032: a claim whose worktree shows an active build counts as

@@ -68,31 +68,47 @@ log. That is the gap to close.
 ## Forking Foreman
 
 **Today.** The official Foreman is a published agent with a stable ID
-(`agent_lab::templates::FOREMAN_ID`) and revisions (#12048). In Agent Lab,
-**Start from Foreman** copies its latest revision into a new experiment that
-you own; you can edit it, test it, and save it as your own agent. From code,
-`Client::published_agent` reads it, signed in or not, and the SDK example
-starts from it. Anyone can publish their own agent the same way
-(`AgentLabClient::publish`, then `update_published` for new revisions), so a
-change to Foreman needs no app release. A build that can't reach the
-published Foreman starts from the copy in `crates/agent-lab`. A fork doesn't
-yet record which revision it came from (item 22). Public catalogs are outside the
+(`agent_lab::templates::FOREMAN_ID`) and revisions (#12048), and anyone can
+fork it (#12049):
+
+- In Agent Lab, **Fork Foreman** saves a copy of its latest revision as your
+  own agent and opens its experiment, with Foreman's skills and tests, to
+  change and test. **Use agent** saves your changes to the fork. (When the
+  published Foreman can't be reached, the button reads **Start from
+  Foreman** and starts from the copy in this build instead.)
+- From code: `Agents::fork(published_id, &agents.fork_request(ForkOptions {
+  name })?, &cancel)` (route `POST /v1/published-agents/{id}/fork`). The
+  fork records `forked_from: {published, revision}` and copies the spec
+  (model, access, wakes, and the authority it asks for, all in
+  `autonomy`), the skills, and the test suite. Grants the original's owner
+  gave it never copy: a fork has none until its own owner grants them.
+- `Agents::upstream(id)` (`GET /v1/agent-definitions/{id}/upstream`) says
+  which revision a fork came from and returns the original's newer revision
+  when there is one.
+- `Agents::publish(id, &agents.publish_request(template)?)` (`POST
+  /v1/agent-definitions/{id}/publish`) publishes any of your agents, a fork
+  or not, for others to fork: a new published ID the first time, its next
+  revision after. A fork may leave out the experiment to publish with the
+  tests it was forked with.
+- A NIP-AGENT export of a fork names its original in `forked_from`.
+
+Public catalogs are outside the
 custom-agents delivery ([`docs/custom-agents.md`](../custom-agents.md)).
 Private portable exports are specified in
 [NIP-AGENT](../../nips/openagents/NIP-AGENT.md).
 
 **Target.**
 
-1. The official Foreman is a published agent definition with a stable ID
-   and revisions, not a Rust constant. `templates::foreman()` becomes a
-   fetch of that definition.
-2. `fork` copies a published definition, including its skills, test suite,
-   declared wakes, and requested grants, into the caller's catalog. It
-   records `forked_from: {definition, revision}`, so a fork can see what
-   changed upstream and pull it in.
-3. Granted powers never copy. A fork asks its own owner for its grants.
-4. Anyone can publish a definition, theirs or a fork, for others to fork.
-   NIP-AGENT exports carry the same data.
+1. Done (#12048): the official Foreman is a published agent definition
+   with a stable ID and revisions, not a Rust constant.
+2. Done (#12049): `fork` copies a published definition, including its
+   skills, test suite, declared wakes, and requested grants, into the
+   caller's catalog, and records where it came from, so `upstream` shows
+   what changed. Pulling a newer revision into a fork is still by hand:
+   read it with `upstream`, then save it with `Agents::update`.
+3. Done: granted powers never copy. A fork asks its own owner for its grants.
+4. Done: anyone can publish a definition, theirs or a fork, for others to
+   fork. NIP-AGENT exports carry `forked_from`.
 
 Examples of a fork with its own spin:
 

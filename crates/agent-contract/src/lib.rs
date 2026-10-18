@@ -349,24 +349,46 @@ pub fn valid_id(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// The published agent a fork was copied from, and the revision it copied
+/// (#12049). Only the copy's settings come along: grants the original's
+/// owner gave it never do.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ForkedFrom {
+    pub published: String,
+    pub revision: u64,
+}
+impl ForkedFrom {
+    pub fn valid(&self) -> bool {
+        valid_id(&self.published) && self.revision > 0
+    }
+}
+
 pub const SCHEMA: &str = "openagents.agent.definition.v1";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
     pub schema: String,
     pub definition: AgentDefinition,
+    /// Set when the definition is a fork. Omitted otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from: Option<ForkedFrom>,
 }
 impl Profile {
     pub fn new(definition: AgentDefinition) -> Result<Self, &'static str> {
         let p = Self {
             schema: SCHEMA.into(),
             definition,
+            forked_from: None,
         };
         p.validate()?;
         Ok(p)
     }
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.schema != SCHEMA || !valid_id(&self.definition.id) || self.definition.revision == 0
+        if self.schema != SCHEMA
+            || !valid_id(&self.definition.id)
+            || self.definition.revision == 0
+            || self.forked_from.as_ref().is_some_and(|f| !f.valid())
         {
             return Err("Invalid agent profile.");
         }
@@ -535,7 +557,13 @@ mod tests {
             vec![choice("sdk")],
             vec![choice(ANY_RUNTIME)],
             vec![choice("sh -c x")],
-            vec![choice("a"), choice("b"), choice("c"), choice("d"), choice("e")],
+            vec![
+                choice("a"),
+                choice("b"),
+                choice("c"),
+                choice("d"),
+                choice("e"),
+            ],
         ] {
             let mut s = spec();
             s.fallbacks = fallbacks;
@@ -544,6 +572,35 @@ mod tests {
         let mut s = spec();
         s.runtime = ANY_RUNTIME.into();
         assert!(s.validate().is_err(), "a model needs a runtime");
+    }
+
+    #[test]
+    fn an_export_names_the_agent_it_was_forked_from_only_when_it_is_a_fork() {
+        let definition = AgentDefinition {
+            id: "a".repeat(64),
+            revision: 2,
+            spec: spec(),
+            deleted: false,
+        };
+        let mut p = Profile::new(definition).unwrap();
+        assert!(
+            serde_json::to_value(&p)
+                .unwrap()
+                .get("forked_from")
+                .is_none()
+        );
+        p.forked_from = Some(ForkedFrom {
+            published: "b".repeat(64),
+            revision: 3,
+        });
+        p.validate().unwrap();
+        let back: Profile = serde_json::from_value(serde_json::to_value(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
+        p.forked_from = Some(ForkedFrom {
+            published: "not an id".into(),
+            revision: 3,
+        });
+        assert!(p.validate().is_err());
     }
 
     #[test]

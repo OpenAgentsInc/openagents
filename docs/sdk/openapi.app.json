@@ -7631,6 +7631,451 @@
         }
       }
     },
+    "/v1/published-agents/{id}/fork": {
+      "post": {
+        "operationId": "forkPublishedAgent",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Copies the latest revision of a published agent into your agents under a new name, with its skills, tests, and settings. It never copies grants: a fork has none until you give it some. The fork's ID is the request ID; retrying returns the same fork.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "request_id",
+                  "name"
+                ],
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Your new agent, where it came from, and the Agent Lab experiment that saves it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "definition",
+                    "forked_from",
+                    "template"
+                  ],
+                  "properties": {
+                    "definition": {
+                      "$ref": "#/components/schemas/CustomAgentDefinition"
+                    },
+                    "forked_from": {
+                      "type": "object",
+                      "required": [
+                        "published",
+                        "revision"
+                      ],
+                      "properties": {
+                        "published": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    },
+                    "template": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-definitions/{id}/publish": {
+      "post": {
+        "operationId": "publishAgentDefinition",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Publishes the latest revision of one of your agents for anyone to fork: under a new published ID the first time, as its next revision after. A fork may leave out the template to publish with the tests it was forked with.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "request_id"
+                ],
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "template": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The published agent at its new revision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-definitions/{id}/upstream": {
+      "get": {
+        "operationId": "getAgentUpstream",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "For one of your forks: the published agent and revision it was copied from, and the original's newest revision when it is newer.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Where the fork came from.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "forked_from",
+                    "newer"
+                  ],
+                  "properties": {
+                    "forked_from": {
+                      "type": "object"
+                    },
+                    "newer": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, not the publisher, missing, version_conflict/idempotency_conflict, too large, too many revisions, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/labs/agent/kinds": {
       "get": {
         "operationId": "getAgentLabKinds",

@@ -17,8 +17,11 @@ is never proof that the signer controls that account.
 
 ## Definition payload
 
-The JSON object contains exactly `schema` (`openagents.agent.definition.v1`)
-and `definition`. The definition contains `id` (64 lowercase hexadecimal
+The JSON object contains `schema` (`openagents.agent.definition.v1`),
+`definition`, and, only for a fork, `forked_from`: `{published, revision}`,
+the 64-hexadecimal published agent ID it was copied from and the positive
+revision it copied. A fork's export never carries grants. Readers that
+predate `forked_from` refuse an export that has it. The definition contains `id` (64 lowercase hexadecimal
 characters), `revision` (positive integer), `spec`, and `deleted` (boolean).
 `spec` contains the fields below; `fallbacks` may be omitted when empty, and
 `autonomy` when unset:

@@ -6,7 +6,9 @@ use crate::auth::Auth;
 
 pub(super) async fn status(auth: &Auth) -> Result<RpcReply, RpcError> {
     let lease = auth.openagents_lease().ok_or_else(|| {
-        RpcError::Failed("Sign in to OpenAgents to read the landing queue.".into())
+        RpcError::Failed(
+            "We couldn't connect to your account to read the landing queue. Try again.".into(),
+        )
     })?;
     let status = lease
         .client()
@@ -17,7 +19,7 @@ pub(super) async fn status(auth: &Auth) -> Result<RpcReply, RpcError> {
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     if !lease.is_current() {
         return Err(RpcError::Failed(
-            "Your OpenAgents sign-in changed. Try again.".into(),
+            "We couldn't connect to your account. Try again.".into(),
         ));
     }
     RpcReply::value(&status)

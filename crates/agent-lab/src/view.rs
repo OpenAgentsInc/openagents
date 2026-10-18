@@ -43,6 +43,8 @@ pub enum Command {
         passed: bool,
     },
     Session(String),
+    /// Fork the published agent with this ID into the person's agents.
+    Fork(String),
 }
 fn node(key: impl Into<String>, element: Element<Action>) -> Node<Action> {
     Node {
@@ -166,9 +168,14 @@ impl Workbench {
             button("new", "New experiment", enabled),
         ];
         for (id, e) in self.templates() {
+            let verb = if self.published.iter().any(|p| p.id == id) {
+                "Fork"
+            } else {
+                "Start from"
+            };
             n.push(button(
                 format!("template:{id}"),
-                format!("Start from {}", e.title),
+                format!("{verb} {}", e.title),
                 enabled,
             ));
         }
@@ -749,6 +756,18 @@ impl Workbench {
         self.bump();
         Ok(())
     }
+    /// Opens a new fork's experiment, which saves the fork itself.
+    pub fn forked(&mut self, forked: crate::api::Forked) {
+        self.draft = forked.template;
+        self.document = None;
+        self.base = 0;
+        self.dirty = true;
+        self.selected_run = None;
+        self.inputs.clear();
+        self.agents.retain(|a| a.id != forked.definition.id);
+        self.agents.push(forked.definition);
+        self.bump();
+    }
     pub fn action(&mut self, key: &str) -> Result<Option<Command>, String> {
         let mut command = None;
         match key {
@@ -835,6 +854,9 @@ impl Workbench {
                 let parts: Vec<_> = key.split(':').collect();
                 let id = *parts.get(1).ok_or("Choose an action.")?;
                 match parts[0] {
+                    "template" if self.published.iter().any(|p| p.id == id) => {
+                        command = Some(Command::Fork(id.into()))
+                    }
                     "template" => {
                         self.draft = self
                             .templates()

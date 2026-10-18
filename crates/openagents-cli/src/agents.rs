@@ -230,7 +230,7 @@ fn list() -> Result<(Value, String), String> {
     let (client, session) = connect()?;
     let agents = agents(&client, &session)?;
     let text = if agents.is_empty() {
-        "You have no saved agents yet. Make one in the OpenAgents app (Agent Lab › Start from Foreman), or with the SDK.".to_owned()
+        "You have no saved agents yet. Make one in the OpenAgents app (in Agent Lab, start from Foreman), or with the SDK.".to_owned()
     } else {
         crate::out::table(
             &agents
@@ -294,7 +294,7 @@ fn ask(
         [] => {
             let names: Vec<&str> = mine.iter().map(|a| a.spec.name.as_str()).collect();
             return Err(if names.is_empty() {
-                "You have no saved agents yet. Make one in the OpenAgents app (Agent Lab › Start from Foreman).".into()
+                "You have no saved agents yet. Make one in the OpenAgents app (in Agent Lab, start from Foreman).".into()
             } else {
                 format!(
                     "You have no agent named {name}. Your agents: {}.",

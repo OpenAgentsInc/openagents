@@ -2403,6 +2403,28 @@ mod tests {
         Tools::new(Arc::new(OpenAgents::with_client(client, origin)))
     }
 
+    /// #12049: the tools a chat gets don't depend on which agent runs in
+    /// it, so the official Foreman and a fork on one computer get the same.
+    #[tokio::test]
+    async fn every_agent_chat_gets_the_same_tools() {
+        let names = |chat: &str| {
+            tools(
+                Arc::new(World::default()),
+                Origin {
+                    chat_id: Some(chat.into()),
+                    device_id: Some("mac".into()),
+                },
+            )
+            .list()
+            .into_iter()
+            .map(|t| t.name)
+            .collect::<Vec<_>>()
+        };
+        let official = names("chat-official-foreman");
+        assert!(official.contains(&"record_decision") && official.contains(&"send_message"));
+        assert_eq!(names("chat-forked-foreman"), official);
+    }
+
     #[tokio::test]
     async fn a_field_the_tool_does_not_declare_is_refused_not_dropped() {
         let tools = tools(Arc::new(World::default()), Origin::default());

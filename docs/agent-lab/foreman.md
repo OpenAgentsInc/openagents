@@ -14,7 +14,7 @@ For the review of Foreman's first two days, lessons learned, and the roadmap, se
 On the phone or at [openagents.com/labs/agent](https://openagents.com/labs/agent):
 
 1. Open **Agent Lab** (on the phone, from the agent picker).
-2. Choose **Start from Foreman**.
+2. Choose **Fork Foreman**. It saves a copy of Foreman as your own agent and opens it. (If the app can't reach the published Foreman, the button reads **Start from Foreman** and starts from the copy in the app.)
 3. Choose the computer it runs on and a project, then **Save**.
 4. Choose **Use agent**. Foreman now appears in the agent picker. Pick it and ask.
 
@@ -98,7 +98,7 @@ The computer's `gh` reports the issue and claim events. Each check-in asks Forem
 ## What it is
 
 Foreman is a published agent: anyone can start from it, and when it changes,
-the next **Start from Foreman** gets the new version without an app update
+the next **Fork Foreman** gets the new version without an app update
 ([#12048](https://github.com/OpenAgentsInc/openagents/issues/12048)). It is
 Claude Code on Opus 5.5 with the host's own access, short instructions, and
 its playbook as eight skills: where it looks, how it reasons, what it may

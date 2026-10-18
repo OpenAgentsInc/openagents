@@ -7,10 +7,11 @@ use crate::{CancellationToken, Client, Deployment, Error, Session};
 use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+pub use crate::agent_lab::{ForkAgent, Forked, PublishDefinition, PublishedAgent, Upstream};
 pub use agent_contract::{
-    ANY_RUNTIME, Access, AgentDefinition, AgentGrant, AgentSpec, Autonomy, GrantOver, GrantScope,
-    MAX_FALLBACKS, MAX_INSTRUCTIONS_BYTES, NEVER_GRANTED_REFUSAL, Profile, RuntimeChoice,
-    WakeEvent, valid_id,
+    ANY_RUNTIME, Access, AgentDefinition, AgentGrant, AgentSpec, Autonomy, ForkedFrom, GrantOver,
+    GrantScope, MAX_FALLBACKS, MAX_INSTRUCTIONS_BYTES, NEVER_GRANTED_REFUSAL, Profile,
+    RuntimeChoice, WakeEvent, valid_id,
 };
 
 /// The request body that grants an agent scopes (#12044). Scopes travel as
@@ -61,6 +62,11 @@ pub struct UpdateAgent {
 pub struct DeleteAgent {
     pub request_id: String,
     pub expected_revision: u64,
+}
+/// What to call a fork (#12049).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForkOptions {
+    pub name: String,
 }
 /// One page of agent definitions and the cursor for the next page.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -129,6 +135,29 @@ impl Agents<'_> {
         Ok(self.bind(DeleteAgent {
             request_id: request_id()?,
             expected_revision,
+        }))
+    }
+    /// Prepares a request that forks a published agent under `options.name`.
+    /// The fork's ID is the request's ID.
+    pub fn fork_request(&self, options: ForkOptions) -> Result<AgentRequest<ForkAgent>, Error> {
+        let name = options.name;
+        if name.trim().is_empty() || name.len() > 80 || name.chars().any(char::is_control) {
+            return Err(Error::InvalidReference);
+        }
+        Ok(self.bind(ForkAgent {
+            request_id: request_id()?,
+            name,
+        }))
+    }
+    /// Prepares a request that publishes one of your agents. Pass the Agent
+    /// Lab experiment it was made from; a fork may pass `None`.
+    pub fn publish_request(
+        &self,
+        template: Option<crate::agent_lab::Experiment>,
+    ) -> Result<AgentRequest<PublishDefinition>, Error> {
+        Ok(self.bind(PublishDefinition {
+            request_id: request_id()?,
+            template,
         }))
     }
     fn bind<T>(&self, body: T) -> AgentRequest<T> {
@@ -315,6 +344,62 @@ impl Agents<'_> {
             &["agent-definitions", id],
             &[],
             Some(self.body(request)?),
+            cancel,
+        )
+        .await
+    }
+    /// Forks the published agent `published` into your agents. A fork copies
+    /// the agent's settings, skills and tests; it has no grants until you
+    /// give it some.
+    pub async fn fork(
+        &self,
+        published: &str,
+        request: &AgentRequest<ForkAgent>,
+        cancel: &CancellationToken,
+    ) -> Result<Forked, Error> {
+        if !valid_id(published) {
+            return Err(Error::InvalidReference);
+        }
+        self.send(
+            Method::POST,
+            &["published-agents", published, "fork"],
+            &[],
+            Some(self.body(request)?),
+            cancel,
+        )
+        .await
+    }
+    /// Publishes the latest revision of your agent `id` for anyone to fork:
+    /// a new published agent the first time, its next revision after.
+    pub async fn publish(
+        &self,
+        id: &str,
+        request: &AgentRequest<PublishDefinition>,
+        cancel: &CancellationToken,
+    ) -> Result<PublishedAgent, Error> {
+        if !valid_id(id) {
+            return Err(Error::InvalidReference);
+        }
+        self.send(
+            Method::POST,
+            &["agent-definitions", id, "publish"],
+            &[],
+            Some(self.body(request)?),
+            cancel,
+        )
+        .await
+    }
+    /// Where your fork `id` came from, and the original's newer revision
+    /// when it has published one since.
+    pub async fn upstream(&self, id: &str, cancel: &CancellationToken) -> Result<Upstream, Error> {
+        if !valid_id(id) {
+            return Err(Error::InvalidReference);
+        }
+        self.send(
+            Method::GET,
+            &["agent-definitions", id, "upstream"],
+            &[],
+            None,
             cancel,
         )
         .await

@@ -179,7 +179,9 @@ mod tests {
             runtime: "codex".into(),
             model: None,
         }];
-        let id = |a: &AgentDefinition, hosts: &[Host]| place(hosts, a, None, None, None).map(|(h, _)| h.id);
+        let id = |a: &AgentDefinition, hosts: &[Host]| {
+            place(hosts, a, None, None, None).map(|(h, _)| h.id)
+        };
         assert_eq!(id(&a, &hosts), Ok("claude".into()));
         assert_eq!(id(&a, &hosts[..1]), Ok("codex".into()));
         assert_eq!(id(&a, &hosts[2..]), Err(Unplaced::NoComputer));

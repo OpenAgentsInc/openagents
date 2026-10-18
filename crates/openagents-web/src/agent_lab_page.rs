@@ -110,6 +110,13 @@ async fn refresh(
             break;
         }
     }
+    // A template that can't be fetched starts from the copy in this build.
+    s.published.clear();
+    for (id, _) in openagents_sdk::agent_lab::templates::offered() {
+        if let Ok(p) = client.published_agent(id, None, &cancel).await {
+            s.published.push(p);
+        }
+    }
     if s.draft.host == "choose" {
         if let Some(h) = s.hosts.first() {
             s.draft.host = h.id.clone();
@@ -402,6 +409,24 @@ async fn apply(
             return Ok(());
         }
         Command::Session(_) => return Err("Open this conversation in the OpenAgents app.".into()),
+        Command::Fork(id) => {
+            let name = s
+                .templates()
+                .into_iter()
+                .find(|(t, _)| *t == id)
+                .map(|(_, e)| e.draft.spec.name)
+                .ok_or("Choose an agent to fork.")?;
+            let agents = client.agents(session).map_err(|e| e.to_string())?;
+            let request = agents
+                .fork_request(openagents_sdk::agents::ForkOptions { name })
+                .map_err(|e| e.to_string())?;
+            let forked = agents
+                .fork(&id, &request, &cancel)
+                .await
+                .map_err(|_| "Couldn't fork this agent. Try again.")?;
+            s.forked(forked);
+            return Ok(());
+        }
         Command::Retry => {}
         command => {
             let id = f.request.clone();

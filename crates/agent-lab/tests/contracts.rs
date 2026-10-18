@@ -534,15 +534,42 @@ fn workbench_starts_from_foreman() {
         deleted: false,
     };
     agent_lab::api::check_published(&next, &definition).unwrap();
-    s.published.push(agent_lab::api::PublishedAgent {
+    let published = agent_lab::api::PublishedAgent {
         id: templates::FOREMAN_ID.into(),
         revision: 2,
         definition,
         template: next.clone(),
+    };
+    s.published.push(published.clone());
+    // With the published one in hand, the button forks it (#12049).
+    let key = format!("template:{}", templates::FOREMAN_ID);
+    let view = serde_json::to_string(&s.view()).unwrap();
+    assert!(view.contains("Fork Foreman") && !view.contains("Start from Foreman"));
+    assert!(matches!(
+        s.action(&key).unwrap(),
+        Some(agent_lab::view::Command::Fork(id)) if id == templates::FOREMAN_ID
+    ));
+    let fork_id = "3".repeat(64);
+    let (spec, template) = agent_lab::api::fork(&published, &fork_id, "Foreman");
+    s.forked(agent_lab::api::Forked {
+        definition: agent_contract::AgentDefinition {
+            id: fork_id.clone(),
+            revision: 1,
+            spec,
+            deleted: false,
+        },
+        forked_from: agent_contract::ForkedFrom {
+            published: templates::FOREMAN_ID.into(),
+            revision: 2,
+        },
+        template,
     });
-    s.action(&format!("template:{}", templates::FOREMAN_ID))
-        .unwrap();
-    assert_eq!(s.draft, next);
+    assert_eq!(s.draft.draft.components, next.draft.components);
+    assert_eq!(
+        s.draft.draft.source.as_ref().map(|p| p.id.as_str()),
+        Some(fork_id.as_str())
+    );
+    assert!(s.agents.iter().any(|a| a.id == fork_id));
     assert!(s.action("template:unknown").is_err());
 }
 #[test]
@@ -625,4 +652,55 @@ fn every_template_text_belongs_to_an_offered_template() {
         checked += 1;
     }
     assert!(checked > 0);
+}
+#[test]
+fn a_fork_of_foreman_keeps_its_tests_and_takes_its_own_settings() {
+    use agent_lab::api::{PublishedAgent, check_published, fork, publish_template};
+    let original = templates::foreman();
+    let published = PublishedAgent {
+        id: templates::FOREMAN_ID.into(),
+        revision: 4,
+        definition: agent_contract::AgentDefinition {
+            id: "1".repeat(64),
+            revision: 9,
+            spec: original.draft.agent_spec().unwrap(),
+            deleted: false,
+        },
+        template: original.clone(),
+    };
+    let id = "2".repeat(64);
+    let (spec, mut e) = fork(&published, &id, "Release Foreman");
+    // The fork saves itself: Use agent revises the fork, not the original.
+    assert_eq!(
+        e.draft.source,
+        Some(Pin {
+            id: id.clone(),
+            revision: 1
+        })
+    );
+    assert_eq!(e.draft.agent_spec().unwrap(), spec);
+    assert_eq!(e.suite, original.suite);
+    assert_eq!(e.draft.components, original.draft.components);
+    // Its own model and stall rule; it still asks for standing authority,
+    // which its own owner grants or not.
+    e.draft.spec.model = Some("claude-sonnet-5-5".into());
+    let autonomy = e.draft.spec.autonomy.as_mut().unwrap();
+    autonomy.stall_minutes = Some(10);
+    assert!(autonomy.authority && autonomy.check_ins);
+    e.host = "host-1".into();
+    e.project = "project-1".into();
+    e.validate().unwrap();
+    let saved = e.draft.agent_spec().unwrap();
+    assert_eq!(saved.name, "Release Foreman");
+    assert_eq!(saved.instructions, spec.instructions);
+    // Published again, it saves exactly the fork.
+    let definition = agent_contract::AgentDefinition {
+        id,
+        revision: 2,
+        spec: saved,
+        deleted: false,
+    };
+    let t = publish_template(&e, &definition);
+    check_published(&t, &definition).unwrap();
+    assert_eq!(t.suite, original.suite);
 }

@@ -342,6 +342,13 @@
         },
         {
           "kind": "fn",
+          "name": "play_integrity_request_hash",
+          "doc": "Standard Play Integrity binds only this digest to the platform request.\nThe key's signed HTTP request separately binds the returned token body.",
+          "declaration": "pub fn play_integrity_request_hash(challenge: &str, pubkey: &str) -> String",
+          "calls": []
+        },
+        {
+          "kind": "fn",
           "name": "solve_pow",
           "doc": "Solve the sign-up proof of work over `challenge`: the first counter, in\ndecimal, whose `SHA-256(challenge \":\" counter)` starts with `bits` zero\nbits. About a million hashes at 20 bits: run it off the UI thread.",
           "declaration": "pub fn solve_pow(challenge: &str, bits: u8) -> String",
@@ -718,6 +725,57 @@
               "calls": []
             },
             {
+              "name": "fork_request",
+              "doc": "Prepares a request that forks a published agent under `options.name`.\nThe fork's ID is the request's ID.",
+              "declaration": "pub fn fork_request(\n    &self,\n    options: ForkOptions,\n) -> Result<AgentRequest<ForkAgent>, Error>",
+              "calls": []
+            },
+            {
+              "name": "publish_request",
+              "doc": "Prepares a request that publishes one of your agents. Pass the Agent\nLab experiment it was made from; a fork may pass `None`.",
+              "declaration": "pub fn publish_request(\n    &self,\n    template: Option<crate::agent_lab::Experiment>,\n) -> Result<AgentRequest<PublishDefinition>, Error>",
+              "calls": []
+            },
+            {
+              "name": "grants",
+              "doc": "The grants the account owner gave the agent `id` (#12044).",
+              "declaration": "pub async fn grants(\n    &self,\n    id: &str,\n    cancel: &CancellationToken,\n) -> Result<Vec<AgentGrant>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/agent-definitions/*/grants"
+                }
+              ]
+            },
+            {
+              "name": "grant",
+              "doc": "Grants the agent `id` the scopes `scopes` over `over`. Only the\naccount owner can; money, keys, secrets, deploys and closing other\nagents' issues are refused for every agent.",
+              "declaration": "pub async fn grant(\n    &self,\n    id: &str,\n    scopes: Vec<String>,\n    over: GrantOver,\n    cancel: &CancellationToken,\n) -> Result<AgentGrant, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/agent-definitions/*/grants"
+                }
+              ]
+            },
+            {
+              "name": "revoke_grant",
+              "doc": "Revokes the grant `grant` of the agent `id`.",
+              "declaration": "pub async fn revoke_grant(\n    &self,\n    id: &str,\n    grant: &str,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/agent-definitions/*/grants/*"
+                }
+              ]
+            },
+            {
+              "name": "set_wakes",
+              "doc": "Sets what the agent `id` wakes on, as a new revision of its\ndefinition's `autonomy`. Wakes are definition data, so a fork copies\nthem; grants never copy.",
+              "declaration": "pub async fn set_wakes(\n    &self,\n    id: &str,\n    wakes: Wakes,\n    cancel: &CancellationToken,\n) -> Result<AgentDefinition, Error>",
+              "calls": []
+            },
+            {
               "name": "list",
               "doc": "Lists up to `limit` agent definitions (1 to 100), starting after the cursor `after`.",
               "declaration": "pub async fn list(\n    &self,\n    after: Option<&str>,\n    limit: usize,\n    cancel: &CancellationToken,\n) -> Result<AgentPage, Error>",
@@ -762,6 +820,39 @@
               ]
             },
             {
+              "name": "fork",
+              "doc": "Forks the published agent `published` into your agents. A fork copies\nthe agent's settings, skills and tests; it has no grants until you\ngive it some.",
+              "declaration": "pub async fn fork(\n    &self,\n    published: &str,\n    request: &AgentRequest<ForkAgent>,\n    cancel: &CancellationToken,\n) -> Result<Forked, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/published-agents/*/fork"
+                }
+              ]
+            },
+            {
+              "name": "publish",
+              "doc": "Publishes the latest revision of your agent `id` for anyone to fork:\na new published agent the first time, its next revision after.",
+              "declaration": "pub async fn publish(\n    &self,\n    id: &str,\n    request: &AgentRequest<PublishDefinition>,\n    cancel: &CancellationToken,\n) -> Result<PublishedAgent, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/agent-definitions/*/publish"
+                }
+              ]
+            },
+            {
+              "name": "upstream",
+              "doc": "Where your fork `id` came from, and the original's newer revision\nwhen it has published one since.",
+              "declaration": "pub async fn upstream(\n    &self,\n    id: &str,\n    cancel: &CancellationToken,\n) -> Result<Upstream, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/agent-definitions/*/upstream"
+                }
+              ]
+            },
+            {
               "name": "delete",
               "doc": "Deletes the agent definition `id` from a prepared request.",
               "declaration": "pub async fn delete(\n    &self,\n    id: &str,\n    request: &AgentRequest<DeleteAgent>,\n    cancel: &CancellationToken,\n) -> Result<AgentDefinition, Error>",
@@ -788,9 +879,33 @@
         },
         {
           "kind": "struct",
+          "name": "ForkOptions",
+          "doc": "What to call a fork (#12049).",
+          "declaration": "pub struct ForkOptions {\n    pub name: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "GrantAgent",
+          "doc": "The request body that grants an agent scopes (#12044). Scopes travel as\nwords so the server can refuse never-list requests by name.",
+          "declaration": "pub struct GrantAgent {\n    pub request_id: String,\n    pub scopes: Vec<String>,\n    pub over: GrantOver,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "GrantList",
+          "doc": "An agent's grants, oldest first.",
+          "declaration": "pub struct GrantList {\n    pub data: Vec<AgentGrant>,\n}"
+        },
+        {
+          "kind": "struct",
           "name": "UpdateAgent",
           "doc": "The request body that replaces an agent definition at an expected revision.",
           "declaration": "pub struct UpdateAgent {\n    pub request_id: String,\n    pub expected_revision: u64,\n    pub spec: AgentSpec,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Wakes",
+          "doc": "What an agent declares to wake on: a definition setting, so a fork copies\nit (#12044).",
+          "declaration": "pub struct Wakes {\n    pub events: Vec<WakeEvent>,\n    pub every_minutes: Option<u32>,\n    pub coalesce_secs: Option<u32>,\n}"
         },
         {
           "kind": "fn",
@@ -815,6 +930,10 @@
         },
         {
           "from": "agent_contract",
+          "name": "AgentGrant"
+        },
+        {
+          "from": "agent_contract",
           "name": "AgentSpec"
         },
         {
@@ -823,7 +942,27 @@
         },
         {
           "from": "agent_contract",
+          "name": "ForkedFrom"
+        },
+        {
+          "from": "agent_contract",
+          "name": "GrantOver"
+        },
+        {
+          "from": "agent_contract",
+          "name": "GrantScope"
+        },
+        {
+          "from": "agent_contract",
           "name": "MAX_FALLBACKS"
+        },
+        {
+          "from": "agent_contract",
+          "name": "MAX_INSTRUCTIONS_BYTES"
+        },
+        {
+          "from": "agent_contract",
+          "name": "NEVER_GRANTED_REFUSAL"
         },
         {
           "from": "agent_contract",
@@ -832,6 +971,10 @@
         {
           "from": "agent_contract",
           "name": "RuntimeChoice"
+        },
+        {
+          "from": "agent_contract",
+          "name": "WakeEvent"
         },
         {
           "from": "agent_contract",
@@ -2718,6 +2861,12 @@
               "calls": []
             },
             {
+              "name": "attention",
+              "doc": "Follow the account's attention events after cursor `after` (0 for all\nretained events). After a dropped connection, call again with\n[`AttentionStream::cursor`].",
+              "declaration": "pub async fn attention(\n    &self,\n    session: &Session,\n    after: u64,\n    cancel: &CancellationToken,\n) -> Result<AttentionStream, Error>",
+              "calls": []
+            },
+            {
               "name": "scanned_login",
               "doc": "Which browser `scanned` signs in, to show before approving.",
               "declaration": "pub async fn scanned_login(\n    &self,\n    scanned: &ScannedLogin,\n) -> Result<ScannedLoginAbout, Error>",
@@ -2748,7 +2897,7 @@
             },
             {
               "name": "sign_in_with_key_on",
-              "doc": "Sign in over `challenge` (from [`Client::key_challenge`]), adding\n`proof` to the body: `{\"pow\": solve_pow(challenge, POW_BITS)}`, or\n`{\"app_attest\": {\"key_id\", \"attestation\"}}` from App Attest over\n`SHA-256(challenge)`. The body stays under [`KEY_BODY_MAX`].",
+              "doc": "Sign in over `challenge` (from [`Client::key_challenge`]), adding\n`proof` to the body: `{\"pow\": solve_pow(challenge, POW_BITS)}`, or\n`{\"app_attest\": {\"key_id\", \"attestation\"}}` from App Attest over\n`SHA-256(challenge)`, or `{\"play_integrity\": {\"token\"}}` over\n[`play_integrity_request_hash`]. The body stays under [`KEY_BODY_MAX`].",
               "declaration": "pub async fn sign_in_with_key_on(\n    &self,\n    signer: &dyn NostrSigner,\n    challenge: &str,\n    app: &str,\n    computer: &str,\n    proof: serde_json::Map<String, Value>,\n) -> Result<KeySignIn, Error>",
               "calls": []
             },
@@ -2880,12 +3029,6 @@
                   "path": "/v1/device/sign-out"
                 }
               ]
-            },
-            {
-              "name": "attention",
-              "doc": "Follow the account's attention events after cursor `after` (0 for all\nretained events). After a dropped connection, call again with\n[`AttentionStream::cursor`].",
-              "declaration": "pub async fn attention(\n    &self,\n    session: &Session,\n    after: u64,\n    cancel: &CancellationToken,\n) -> Result<AttentionStream, Error>",
-              "calls": []
             },
             {
               "name": "cloud_host",
@@ -4112,7 +4255,7 @@
           "kind": "struct",
           "name": "Schedule",
           "doc": "One scheduled prompt, or the record that it was deleted. Either a time\nof day on chosen days or an interval. `chat` names the conversation it\nposts into; unset means a new run.",
-          "declaration": "pub struct Schedule {\n    pub id: String,\n    pub computer: String,\n    pub prompt: Option<String>,\n    pub days: Vec<u8>,\n    pub time: Option<String>,\n    pub every_secs: Option<u64>,\n    pub chat: Option<String>,\n    pub chat_title: Option<String>,\n    pub workspace: Option<String>,\n    pub paused: bool,\n    pub updated: u64,\n    pub deleted: bool,\n}",
+          "declaration": "pub struct Schedule {\n    pub id: String,\n    pub computer: String,\n    pub prompt: Option<String>,\n    pub days: Vec<u8>,\n    pub time: Option<String>,\n    pub every_secs: Option<u64>,\n    pub chat: Option<String>,\n    pub chat_title: Option<String>,\n    pub agent: Option<String>,\n    pub workspace: Option<String>,\n    pub paused: bool,\n    pub updated: u64,\n    pub deleted: bool,\n}",
           "methods": [
             {
               "name": "valid",

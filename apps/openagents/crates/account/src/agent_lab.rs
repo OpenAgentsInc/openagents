@@ -240,6 +240,33 @@ impl Lab {
             .client()
             .agent_lab(lease.session())
             .map_err(|_| "We couldn't connect to your account. Try again.")?;
+        if let Command::Fork(id) = command {
+            let name = {
+                let s = self.state.lock().unwrap();
+                s.templates()
+                    .into_iter()
+                    .find(|(t, _)| *t == id)
+                    .map(|(_, e)| e.draft.spec.name)
+                    .ok_or("Choose an agent to fork.")?
+            };
+            let agents = lease
+                .client()
+                .agents(lease.session())
+                .map_err(|_| "We couldn't connect to your account. Try again.")?;
+            let request = agents
+                .fork_request(openagents::agents::ForkOptions { name })
+                .map_err(|_| "Couldn't fork this agent.")?;
+            let forked = agents
+                .fork(&id, &request, &lease.cancel)
+                .await
+                .map_err(|_| "Couldn't fork this agent. Try again.")?;
+            if !lease.is_current() {
+                return Ok(Effect::None);
+            }
+            self.state.lock().unwrap().forked(forked);
+            self.publish();
+            return Ok(Effect::None);
+        }
         if let Command::Load(id) = command {
             let d = labs
                 .document(&id, &lease.cancel)
