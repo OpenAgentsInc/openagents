@@ -52,7 +52,9 @@ fn request(method: Method) -> Operation {
     Operation::AppRpc {
         app: Request {
             method,
-            params: if method == Method::RelayCommand {
+            params: if method == Method::RunCommand {
+                json!({"account":"account","run":"run","request_id":"request","command":{"kind":"stop"}})
+            } else if method == Method::RelayCommand {
                 json!({"chatId":"chat","entry":{"id":"command"}})
             } else if method == Method::ContinueChat {
                 json!({"account":"fixture","chatId":"a1000000-0000-4000-8000-000000000001","target":{"id":"a1000000-0000-4000-8000-000000000002","home":"cloud"}})
@@ -193,4 +195,31 @@ fn an_app_refusal_of_a_read_is_a_signed_refusal() {
         client.verify_reply(&read, &reply, now()).unwrap_err().code,
         Code::Unsupported
     );
+}
+
+#[test]
+fn run_commands_require_operate_and_keep_the_native_retry_identity() {
+    let fixture = Fixture::local();
+    let mut app = App::default();
+    let (_, observer) = enrolled(&fixture, "observe", &mut app);
+    let pending = observer
+        .prepare(request(Method::RunCommand), now())
+        .unwrap();
+    assert_eq!(
+        call(&fixture, &observer, &pending, &mut app)
+            .unwrap_err()
+            .code,
+        Code::MissingRight
+    );
+    assert_eq!(app.effects, 0);
+    let (_, operator) = enrolled(&fixture, "operate", &mut app);
+    let pending = operator
+        .prepare(request(Method::RunCommand), now())
+        .unwrap();
+    let first = call(&fixture, &operator, &pending, &mut app).unwrap();
+    assert_eq!(
+        first,
+        call(&fixture, &operator, &pending, &mut app).unwrap()
+    );
+    assert_eq!(app.effects, 1);
 }

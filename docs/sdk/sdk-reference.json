@@ -3984,6 +3984,17 @@
           "declaration": "pub struct Runs<'a> {}",
           "methods": [
             {
+              "name": "command",
+              "doc": "Send a command through the host's NIP-HOST connection. A current operate\ngrant and any calling agent's host grant are required. Keep the request ID\nand command unchanged on retry, including after an unavailable result.",
+              "declaration": "pub async fn command(\n    &self,\n    run: &str,\n    request_id: &str,\n    command: SessionCommand,\n    cancel: &CancellationToken,\n) -> Result<CommandReceipt, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/runs/*/commands"
+                }
+              ]
+            },
+            {
               "name": "heartbeat",
               "doc": "Report once a minute and on status changes. An exact retry within a minute succeeds\nwithout extending liveness. Ended IDs cannot receive heartbeats.",
               "declaration": "pub async fn heartbeat(\n    &self,\n    beat: &RunHeartbeat,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
@@ -4036,6 +4047,59 @@
           "name": "LIVE_WINDOW_MS",
           "doc": "A run is live for three minutes after its last accepted heartbeat.",
           "declaration": "pub const LIVE_WINDOW_MS: i64 = 180_000;"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "runs::commands",
+      "doc": "Commands delivered through the run host's existing device channel.",
+      "items": [
+        {
+          "kind": "enum",
+          "name": "CommandOutcome",
+          "doc": "The host's handling result.",
+          "declaration": "pub enum CommandOutcome {\n    Accepted,\n    Refused { reason: CommandRefusal },\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "CommandReceipt",
+          "doc": "A result bound to the caller's run and request ID.",
+          "declaration": "pub struct CommandReceipt {\n    pub run: String,\n    pub request_id: String,\n    pub outcome: CommandOutcome,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "CommandRefusal",
+          "doc": "Why a host could not accept a command.",
+          "declaration": "pub enum CommandRefusal {\n    NotSteerable,\n    NoGrant,\n    RunEnded,\n    Offline,\n    Unavailable,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "RunCommand",
+          "doc": "The body of POST /v1/runs/{id}/commands. Keep this exact body on retry.",
+          "declaration": "pub struct RunCommand {\n    pub request_id: String,\n    pub command: SessionCommand,\n}",
+          "methods": [
+            {
+              "name": "valid",
+              "doc": "Whether the request ID and command meet the API's bounds.",
+              "declaration": "pub fn valid(&self) -> bool",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "SessionCommand",
+          "doc": "A change requested from a run's host. Acceptance means the host recorded\nthe command; it does not mean a turn finished.",
+          "declaration": "pub enum SessionCommand {\n    Message { text: String },\n    Steer { text: String },\n    Stop,\n    Restart { brief: Option<String> },\n}",
+          "methods": [
+            {
+              "name": "valid",
+              "doc": "Whether text fits the command's limits: nonblank, at most 16 KiB, no NUL.",
+              "declaration": "pub fn valid(&self) -> bool",
+              "calls": []
+            }
+          ]
         }
       ],
       "reexports": []

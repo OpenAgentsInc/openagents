@@ -665,3 +665,9 @@ links remain readable. Upstream fixes now require manual ports.
   `crates/account/tests/desktop_copy.rs` checks account, background, client,
   engine, sync, UI, and SDK strings, including startup pickup errors. Agent-provider
   logins and the optional upstream WorkOS flow keep their own instructions.
+- [OpenAgents #12054](https://github.com/OpenAgentsInc/openagents/issues/12054):
+  Route public run commands through NIP-HOST app RPC and the existing session
+  command ledger. Our `engine/src/doc_host/run_commands.rs` owns execution;
+  `engine/src/rpc/run_commands.rs` maps the RPC body. `host_rpc` checks account,
+  native rights, and definition-based command grants; the device-channel adapter
+  preserves the request ID when delivery is uncertain.

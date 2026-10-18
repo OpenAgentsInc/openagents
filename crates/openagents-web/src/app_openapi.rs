@@ -138,6 +138,7 @@ pub fn document() -> Value {
     crate::attention_openapi::extend(&mut document);
     crate::landing::openapi(&mut document);
     crate::issue_claims_openapi::extend(&mut document);
+    crate::run_commands_openapi::extend(&mut document);
     crate::key_openapi::extend(&mut document);
     crate::computers_api::extend_openapi(&mut document);
     crate::project_openapi::extend(&mut document);
@@ -338,12 +339,21 @@ mod tests {
 
     #[test]
     fn committed_schema_matches_implemented_contract() {
+        let document = super::document();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/sdk/openapi.app.json");
+        if std::env::var("OPENAGENTS_APP_OPENAPI_WRITE").as_deref() == Ok("1") {
+            std::fs::write(
+                &path,
+                serde_json::to_string_pretty(&document).unwrap() + "\n",
+            )
+            .unwrap();
+        }
         let fixture: serde_json::Value =
-            serde_json::from_str(include_str!("../../../docs/sdk/openapi.app.json")).unwrap();
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         assert_eq!(
-            super::document(),
-            fixture,
-            "regenerate with cargo run -p openagents-web --example app_openapi"
+            document, fixture,
+            "regenerate with OPENAGENTS_APP_OPENAPI_WRITE=1 cargo test -p openagents-web committed_schema_matches_implemented_contract"
         );
         let mut gateway =
             serde_json::json!({"paths": {"/v1/models": {"get": {"operationId":"listModels"}}}});

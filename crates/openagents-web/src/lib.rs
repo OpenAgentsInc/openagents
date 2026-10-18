@@ -78,6 +78,8 @@ mod attention_openapi;
 mod issue_claims;
 mod issue_claims_openapi;
 mod runs;
+mod run_commands;
+mod run_commands_openapi;
 mod runs_openapi;
 mod owner_notifications;
 mod sand_gallery;
@@ -658,6 +660,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(runs::routes())
         .merge(attention::routes())
         .merge(issue_claims::routes())
+        .merge(run_commands::routes())
         .merge(labs_api::routes(&app))
         .merge(lab_card_view::routes())
         .merge(custom_agents::routes())

@@ -46,6 +46,8 @@ pub enum Method {
     ListSkills,
     ListCommands,
     RelayCommand,
+    /// Run controls over this existing device channel.
+    RunCommand,
     ContinueChat,
     PrepareContinuation,
     /// Sign this computer's request to join the phone's account (#12000):
@@ -68,6 +70,7 @@ impl Method {
             Self::ListSkills => "ListSkills",
             Self::ListCommands => "ListCommands",
             Self::RelayCommand => "RelayCommand",
+            Self::RunCommand => "RunCommand",
             Self::ContinueChat => "ContinueChat",
             Self::PrepareContinuation => "PrepareContinuation",
             Self::LinkAccount => "LinkAccount",
@@ -77,6 +80,7 @@ impl Method {
     pub fn right(self) -> Right {
         match self {
             Self::RelayCommand
+            | Self::RunCommand
             | Self::AuthorizeSync
             | Self::ContinueChat
             | Self::PrepareContinuation
@@ -88,7 +92,7 @@ impl Method {
     pub fn reads_only(self) -> bool {
         !matches!(
             self,
-            Self::RelayCommand | Self::ContinueChat | Self::PrepareContinuation
+            Self::RelayCommand | Self::RunCommand | Self::ContinueChat | Self::PrepareContinuation
         )
     }
     pub fn first_missing(self, rights: &crate::Rights) -> Option<Right> {
@@ -121,6 +125,25 @@ impl Request {
                 Code::Forbidden,
                 "Choose this computer directly.",
             ));
+        }
+        if self.method == Method::RunCommand {
+            for field in ["account", "run", "request_id"] {
+                if !self.params[field].as_str().is_some_and(|s| {
+                    !s.is_empty()
+                        && s.len() <= 128
+                        && s.bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b"_.:-".contains(&b))
+                        && !matches!(s, "." | "..")
+                }) {
+                    return Err(Error::new(
+                        Code::Malformed,
+                        "Check the run command details.",
+                    ));
+                }
+            }
+            if !self.params["command"].is_object() {
+                return Err(Error::new(Code::Malformed, "Choose a run command."));
+            }
         }
         if self.method == Method::RelayCommand {
             for value in [&self.params["chatId"], &self.params["entry"]["id"]] {

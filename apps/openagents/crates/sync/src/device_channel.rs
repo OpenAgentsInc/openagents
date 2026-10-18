@@ -130,7 +130,9 @@ impl DeviceChannel {
             }
             _ if method.reads_only() => Err(Failure::Unavailable),
             _ => Err(Failure::Uncertain {
-                command_id: if method == Method::PrepareContinuation {
+                command_id: if method == Method::RunCommand {
+                    request.params["request_id"].as_str().unwrap().into()
+                } else if method == Method::PrepareContinuation {
                     request.params["chatId"].as_str().unwrap().into()
                 } else if method == Method::ContinueChat {
                     request.params["target"]["id"].as_str().unwrap().into()
@@ -228,5 +230,11 @@ mod tests {
             })
         );
         assert_eq!(link.calls.load(Ordering::Relaxed), 1);
+    }
+    #[tokio::test]
+    async fn an_unanswered_run_command_keeps_its_request_id() {
+        let (channel, _) = channel(Code::Unavailable, true, true);
+        assert_eq!(channel.call("RunCommand", json!({"account":"account","run":"run","request_id":"original-request","command":{"kind":"stop"}})).await,
+            Err(Failure::Uncertain { command_id:"original-request".into() }));
     }
 }

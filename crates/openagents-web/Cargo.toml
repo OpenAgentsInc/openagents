@@ -111,6 +111,7 @@ url = "2"
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+coder-host = { path = "../coder-host" }
 verse-lagrange2 = { path = "../verse-lagrange2" }
 jsonschema = { version = "0.33", default-features = false }
 lightning-invoice = "0.34.1"

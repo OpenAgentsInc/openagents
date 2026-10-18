@@ -52,6 +52,7 @@
 
 mod land;
 mod moves;
+mod run_commands;
 mod voice_chat;
 mod voice_remote;
 use async_trait::async_trait;
@@ -2072,6 +2073,7 @@ impl RpcService for EngineRpc {
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&serde_json::json!({}))
             }
+            "RunCommand" => self.run_command(params).await,
             methods::RELAY_COMMAND => {
                 let p: RelayCommandParams = parse_params(params)?;
                 let outcome = self

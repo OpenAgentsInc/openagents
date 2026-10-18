@@ -141,7 +141,7 @@ publish.",
     Area {
         slug: "runs",
         title: "Runs",
-        lead: "Report agent and harness activity and progress, and see which runs are still active.",
+        lead: "Report agent and harness activity and progress, see which runs are active, and send commands through their hosts.",
         tags: &["Runs"],
     },
     Area {

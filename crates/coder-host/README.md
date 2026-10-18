@@ -52,6 +52,7 @@ for explicit provider configuration and uncertainty handling.
 | `mailbox` | Mailboxes derived from the host and device's NIP-44 conversation key, the terminal generation, and workspace IDs. |
 | `client` | `Device`, directory and reach fetches, summaries, nudges, `Link`, `Connector`, `Ordered` frame ordering, and the `websocket` hint dialer. |
 | `computer` | NIP-HOST `computer` for a device that holds `terminal`: a screenshot (the desk protocol, `grim`, X11 tools, `screencapture`, or `adb`), the open windows, and file chunks read and written, every file checked against its SHA-256 digest and none replaced without `overwrite`. |
+| `run_commands` | Host-owned native-grant caller identities (owner or agent definition ID). Unbound grants refuse commands; account grants decide agent permissions. |
 | `tasks` | The task-owner trait (creation, steering, cancellation, archiving, durable commands, and queue edits) and `NoTasks`. |
 | `nudge` | A device's stored note to its host that commands wait; the host answers with fresh presence when it reads one, even after being away. |
 | `spend` | Agent spending, phase 1: the book of spend requests an agent asks the owner's phone to pay (`coder host spend request|list|show`), which the phone reads and answers with NIP-HOST `spend.list` and `spend.settle`. Nothing here pays. See [the spend protocol](../../docs/breez/spend-protocol.md). |
@@ -61,6 +62,13 @@ for explicit provider configuration and uncertainty handling.
 | `generation` | Which NIP-REACH generation `serve` runs as, from the host root's one counter in `coder_service::generation`. |
 | `enroll` | Reverse enrollment for a host without a screen: publish a request, show its code, and read the outcome the running host recorded. |
 | `cli` | `coder host init`, `public-key`, `invite`, `request`, `list`, `revoke`, `serve`, and `spend`. |
+
+Public run controls use `app.rpc` on the same channel. The host operator binds
+an enrolled native grant through `host_rpc::Hosted::run_command_principals`
+to the owner or an agent definition. Unbound grants refuse. The app's
+`DocHost::set_run_command_authority` hook checks the shared account grant
+cache for agent calls; an absent hook refuses them. Bindings identify callers
+and store no action permissions. Restart needs `chat.stop` and `chat.message`.
 
 The default `host` feature builds the host: `serve`, `cli`, `authority`,
 `config`, `telemetry`, `generation`, `enroll`, and `tls`. A client, such as the mobile library through

@@ -663,6 +663,11 @@
       "line": 214
     },
     {
+      "path": "/v1/runs/{id}/commands",
+      "source": "crates/openagents-web/src/run_commands.rs",
+      "line": 154
+    },
+    {
       "path": "/v1/runs",
       "source": "crates/openagents-web/src/runs.rs",
       "line": 294

@@ -45,6 +45,7 @@ pub mod mailbox;
 pub mod message;
 pub mod nudge;
 pub mod projects;
+pub mod run_commands;
 #[cfg(feature = "host")]
 mod publish;
 #[cfg(feature = "host")]

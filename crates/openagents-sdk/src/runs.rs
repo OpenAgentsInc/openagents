@@ -1,4 +1,7 @@
 //! Presence and progress for runs from any agent or harness.
+pub mod commands;
+pub use commands::{CommandOutcome, CommandReceipt, CommandRefusal, RunCommand, SessionCommand};
+
 use crate::{CancellationToken, Client, Error, Session, sessions::SessionStatus};
 use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};

@@ -13,6 +13,7 @@ pub struct Hosted {
     link: AccountLink,
     /// Follows the desktop identity's offer (`watch_account_link`).
     link_watch: Option<tokio::task::JoinHandle<()>>,
+    run_callers: Arc<coder_host::run_commands::Principals>,
 }
 
 /// The account key that signs a phone's request to link this computer to
@@ -53,6 +54,7 @@ impl Hosted {
         let handler = AppRpc::new(service, runtime.clone())
             .map_err(|_| anyhow::anyhow!("This runtime can't serve the device connection."))?;
         let link = handler.link.clone();
+        let run_callers = handler.run_command_principals();
         let host = coder_host::start(config, Arc::new(coder_host::NoTasks)).await?;
         host.set_app_rpc(Some(Arc::new(handler)));
         host.publish_reach().await;
@@ -61,7 +63,13 @@ impl Hosted {
             runtime,
             link,
             link_watch: None,
+            run_callers,
         })
+    }
+
+    /// Caller identities supplied by the host operator for native grants.
+    pub fn run_command_principals(&self) -> Arc<coder_host::run_commands::Principals> {
+        self.run_callers.clone()
     }
 
     /// Follow the desktop identity's link offer for `data_dir`: while the
@@ -208,6 +216,7 @@ impl Hosted {
         let mut adapter = AppRpc::new(service, self.runtime.clone())
             .map_err(|_| anyhow::anyhow!("Couldn't start the device connection."))?;
         adapter.link = self.link.clone();
+        adapter.run_callers = self.run_callers.clone();
         adapter.sync = Some(SyncIssuer {
             secret,
             account,
@@ -305,6 +314,7 @@ pub struct AppRpc {
     runtime: tokio::runtime::Handle,
     sync: Option<SyncIssuer>,
     link: AccountLink,
+    run_callers: Arc<coder_host::run_commands::Principals>,
 }
 
 struct SyncIssuer {
@@ -326,10 +336,50 @@ impl AppRpc {
             runtime,
             sync: None,
             link: AccountLink::default(),
+            run_callers: Arc::default(),
         })
     }
 }
 impl AppRpc {
+    /// Host-owned native-grant caller bindings. Remote requests cannot edit them.
+    pub fn run_command_principals(&self) -> Arc<coder_host::run_commands::Principals> {
+        self.run_callers.clone()
+    }
+
+    fn admit_run_command(
+        &self,
+        grant: Option<(&str, u64)>,
+        request: &Request,
+    ) -> Result<Request, Code> {
+        use coder_host::run_commands::Principal;
+        let issuer = self.sync.as_ref().ok_or(Code::Forbidden)?;
+        if request.params["account"].as_str() != Some(&issuer.account) {
+            return Err(Code::Forbidden);
+        }
+        let command: openagents_sdk::runs::SessionCommand =
+            serde_json::from_value(request.params["command"].clone())
+                .map_err(|_| Code::Malformed)?;
+        if !command.valid() {
+            return Err(Code::Malformed);
+        }
+        let principal = match grant {
+            Some((id, _)) => self.run_callers.resolve(id)?,
+            None => Principal::Owner,
+        };
+        let agent = match principal {
+            Principal::Owner => None,
+            Principal::Agent(id) => Some(id),
+        };
+        if !request.params["agent"].is_null()
+            && request.params["agent"].as_str() != agent.as_deref()
+        {
+            return Err(Code::Forbidden);
+        }
+        let mut request = request.clone();
+        request.params["agent"] = serde_json::json!(agent);
+        Ok(request)
+    }
+
     /// A paired phone asks this computer to sign its request to join the
     /// phone's account (#12000). Only a pairing grant may ask.
     fn link_account(
@@ -405,6 +455,17 @@ impl Handler for AppRpc {
         request: &Request,
         admission: &coder_access::app_rpc::Admission<'_>,
     ) -> Result<Answer, Code> {
+        if request.method == coder_access::app_rpc::Method::RunCommand {
+            request.validate().map_err(|e| e.code)?;
+            if !admission.rights.contains(coder_access::Right::Operate) {
+                return Err(Code::MissingRight);
+            }
+            if admission.expires_at <= coder_access::unix_time().map_err(|e| e.code)? {
+                return Err(Code::Expired);
+            }
+            let request = self.admit_run_command(grant, request)?;
+            return self.call_service(&request);
+        }
         if request.method == coder_access::app_rpc::Method::LinkAccount {
             return self.link_account(grant, request, admission);
         }
@@ -457,6 +518,15 @@ impl Handler for AppRpc {
         _: Option<(&str, u64)>,
         request: &Request,
     ) -> Result<Answer, Code> {
+        if request.method == coder_access::app_rpc::Method::RunCommand {
+            return Err(Code::Forbidden);
+        }
+        self.call_service(request)
+    }
+}
+
+impl AppRpc {
+    fn call_service(&self, request: &Request) -> Result<Answer, Code> {
         request.validate().map_err(|error| error.code)?;
         let service = self.service.clone();
         let request = request.clone();
@@ -734,6 +804,15 @@ mod tests {
                     RpcReply::value(&json!({"deviceId":"fixture-app"}))
                 }
                 openagents_rpc::methods::LIST_MODELS => RpcReply::value(&json!(["fixture-model"])),
+                "RunCommand" => {
+                    self.0
+                        .lock()
+                        .unwrap()
+                        .insert(params["request_id"].as_str().unwrap().into());
+                    RpcReply::value(
+                        &json!({"run":params["run"],"request_id":params["request_id"],"outcome":{"status":"accepted"}}),
+                    )
+                }
                 openagents_rpc::methods::RELAY_COMMAND => {
                     let id = params["entry"]["id"].as_str().unwrap().to_owned();
                     let fresh = self.0.lock().unwrap().insert(id);
@@ -743,6 +822,102 @@ mod tests {
             }
         }
     }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_commands_check_account_native_right_and_host_owned_caller_binding() {
+        use coder_access::app_rpc::Admission;
+        use coder_host::run_commands::Principal;
+        let service = Arc::new(Service::default());
+        let mut adapter = AppRpc::new(service.clone(), tokio::runtime::Handle::current()).unwrap();
+        adapter.sync = Some(SyncIssuer {
+            secret: secp256k1::SecretKey::new(&mut secp256k1::rand::rng()),
+            account: "account".into(),
+            device: "host".into(),
+            origin: "https://example.test".into(),
+        });
+        let native = "b".repeat(64);
+        let agent = "a".repeat(64);
+        let now = coder_access::unix_time().unwrap();
+        let request = Request {
+            method: Method::RunCommand,
+            params: json!({"account":"account","run":"run","request_id":"request","command":{"kind":"stop"},"agent":agent}),
+        };
+        let grants = adapter.run_command_principals();
+        tokio::task::spawn_blocking(move || {
+            let rights = coder_access::Rights::parse_list("operate").unwrap();
+            let observe = coder_access::Rights::parse_list("observe").unwrap();
+            let admitted = Admission {
+                rights: &rights,
+                expires_at: now + 60,
+            };
+            assert_eq!(
+                adapter
+                    .call_admitted(
+                        "id",
+                        "device",
+                        Some((&native, 1)),
+                        &request,
+                        &Admission {
+                            rights: &observe,
+                            expires_at: now + 60
+                        }
+                    )
+                    .unwrap_err(),
+                Code::MissingRight
+            );
+            assert_eq!(
+                adapter
+                    .call_admitted("id", "device", Some((&native, 1)), &request, &admitted)
+                    .unwrap_err(),
+                Code::Forbidden
+            );
+            grants
+                .bind(&native, Principal::Agent(agent.clone()))
+                .unwrap();
+            assert_eq!(
+                adapter
+                    .call_admitted("id", "device", Some((&native, 1)), &request, &admitted)
+                    .unwrap()
+                    .value["outcome"]["status"],
+                "accepted"
+            );
+            let mut omitted = request.clone();
+            omitted.params["agent"] = serde_json::Value::Null;
+            assert_eq!(
+                adapter
+                    .admit_run_command(Some((&native, 1)), &omitted)
+                    .unwrap()
+                    .params["agent"],
+                agent
+            );
+            let mut wrong = request.clone();
+            wrong.params["agent"] = json!("c".repeat(64));
+            assert_eq!(
+                adapter
+                    .call_admitted("id", "device", Some((&native, 1)), &wrong, &admitted)
+                    .unwrap_err(),
+                Code::Forbidden
+            );
+            wrong = request.clone();
+            wrong.params["account"] = json!("other");
+            assert_eq!(
+                adapter
+                    .call_admitted("id", "device", Some((&native, 1)), &wrong, &admitted)
+                    .unwrap_err(),
+                Code::Forbidden
+            );
+            grants.unbind(&native).unwrap();
+            assert_eq!(
+                adapter
+                    .call_admitted("id", "device", Some((&native, 1)), &request, &admitted)
+                    .unwrap_err(),
+                Code::Forbidden
+            );
+            assert_eq!(service.0.lock().unwrap().len(), 1);
+        })
+        .await
+        .unwrap();
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn dispatch_keeps_the_method_and_the_original_command_id() {
         let service = Arc::new(Service::default());

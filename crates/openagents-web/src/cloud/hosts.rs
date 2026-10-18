@@ -46,6 +46,9 @@ struct Declared {
     device_secret: PathBuf,
     #[serde(default)]
     browser: Option<Browser>,
+    /// Agent definition represented by this service device, when configured.
+    #[serde(default)]
+    run_agent: Option<String>,
     /// The former Verse world directory. Worlds left with the Cloud pages
     /// (docs/web/cloud-reset.md); an existing entry is accepted and ignored.
     #[serde(default, rename = "world")]
@@ -79,6 +82,7 @@ pub struct Binding {
     files: [ProtectedFile; 2],
     browser: Option<Browser>,
     loopback: bool,
+    run_agent: Option<String>,
 }
 
 /// Operator-provisioned read bindings; account sign-in never creates one.
@@ -141,6 +145,19 @@ impl Hosts {
         Ok(binding)
     }
 
+    /// A run command uses only an explicitly enabled binding for this account.
+    pub(crate) fn for_run(&self, account: &str, id: &str) -> Result<&Binding, SessionError> {
+        self.config.check().map_err(|_| SessionError::Unavailable)?;
+        let binding = self
+            .bindings
+            .iter()
+            .find(|b| b.id == id && b.account == account)
+            .filter(|_| self.control_bindings.iter().any(|allowed| allowed == id))
+            .ok_or(SessionError::Forbidden)?;
+        binding.admit_run(account)?;
+        Ok(binding)
+    }
+
     /// Find a binding by ID without account admission, for ticketed reads.
     pub(crate) fn find(&self, id: &str) -> Result<&Binding, SessionError> {
         self.config.check().map_err(|_| SessionError::Unavailable)?;
@@ -191,6 +208,12 @@ impl Binding {
         };
         if !valid_id(&declared.id)
             || !scope_id(&declared.account)
+            || declared.run_agent.as_deref().is_some_and(|id| {
+                id.len() != 64
+                    || !id
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
             || !scope_id(&declared.workspace)
             || query.validate().is_err()
         {
@@ -224,7 +247,7 @@ impl Binding {
                 .chain(browser.route.as_deref())
                 .any(|value| value.starts_with("ws://"))
         });
-        let identity = digest(&serde_json::json!({
+        let mut identity_fields = serde_json::json!({
             "world":serde_json::Value::Null,
             "binding":declared.id, "account":declared.account,
             "workspace":declared.workspace,"members_epoch":declared.members_epoch,
@@ -232,7 +255,11 @@ impl Binding {
             "host_workspace":declared.host_workspace,"device":access.grant.device,
             "grant":access.grant.grant,"epoch":access.grant.epoch,
             "browser":declared.browser
-        }));
+        });
+        if let Some(agent) = &declared.run_agent {
+            identity_fields["run_agent"] = serde_json::json!(agent);
+        }
+        let identity = digest(&identity_fields);
         let device = Device::new(access, secret, policy).map_err(|_| UNAVAILABLE)?;
         Ok(Self {
             id: declared.id,
@@ -247,6 +274,7 @@ impl Binding {
             files: [access_file, secret_file],
             browser: declared.browser,
             loopback,
+            run_agent: declared.run_agent,
         })
     }
 
@@ -266,6 +294,62 @@ impl Binding {
             file.check().map_err(|_| SessionError::Unavailable)?;
         }
         Ok(())
+    }
+
+    fn admit_run(&self, account: &str) -> Result<(), SessionError> {
+        if account != self.account
+            || self.device.access().grant.expires_at <= now()
+            || !self.device.access().grant.rights.contains(Right::Operate)
+        {
+            return Err(SessionError::Forbidden);
+        }
+        for file in &self.files {
+            file.check().map_err(|_| SessionError::Unavailable)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn run_agent(&self) -> Option<&str> {
+        self.run_agent.as_deref()
+    }
+
+    pub(crate) fn prepare_run(
+        &self,
+        account: &str,
+        app: coder_access::app_rpc::Request,
+        id: String,
+    ) -> Result<coder_access::client::Pending, SessionError> {
+        self.admit_run(account)?;
+        self.device
+            .prepare_operation(Operation::AppRpc { app }, id)
+            .map_err(native_error)
+    }
+
+    pub(crate) async fn send_run(
+        &self,
+        account: &str,
+        pending: &coder_access::client::Pending,
+    ) -> Result<Outcome, coder_access::Code> {
+        self.admit_run(account)
+            .map_err(|_| coder_access::Code::Forbidden)?;
+        self.device.validate_pending(pending).map_err(|e| match e {
+            coder_host::Error::Access(e) => e.code,
+            _ => coder_access::Code::Unavailable,
+        })?;
+        let link = self.connect().await.map_err(|e| match e {
+            SessionError::Forbidden => coder_access::Code::Forbidden,
+            _ => coder_access::Code::Unavailable,
+        })?;
+        let answer = tokio::time::timeout(TIMEOUT, link.send_pending(pending))
+            .await
+            .map_err(|_| coder_access::Code::Unavailable)?
+            .map_err(|e| match e {
+                coder_host::Error::Access(e) => e.code,
+                _ => coder_access::Code::Unavailable,
+            })?;
+        self.admit_run(account)
+            .map_err(|_| coder_access::Code::Forbidden)?;
+        Ok(answer)
     }
 
     pub(crate) fn id(&self) -> &str {
@@ -607,6 +691,15 @@ fn parse_secret(bytes: &[u8]) -> Result<SecretKey, String> {
 
 fn native_error(error: coder_host::Error) -> SessionError {
     match error {
+        coder_host::Error::Reach(error)
+            if error.detail != coder_host::reach::channel::UNAUTHENTICATED
+                && matches!(
+                    error.code,
+                    coder_host::reach::Refusal::Revoked | coder_host::reach::Refusal::NotAdmitted
+                ) =>
+        {
+            SessionError::Forbidden
+        }
         coder_host::Error::Access(error) => match error.code {
             coder_access::Code::Revoked
             | coder_access::Code::Expired
@@ -635,6 +728,30 @@ fn digest(value: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_authenticated_channel_refusals_report_missing_authority() {
+        use coder_host::reach::{Error, Refusal, channel::UNAUTHENTICATED};
+        for code in [Refusal::Revoked, Refusal::NotAdmitted] {
+            assert!(matches!(
+                native_error(coder_host::Error::Reach(Error::new(
+                    code,
+                    "host refused the channel"
+                ))),
+                SessionError::Forbidden
+            ));
+            assert!(matches!(
+                native_error(coder_host::Error::Reach(Error::new(code, UNAUTHENTICATED))),
+                SessionError::Unavailable
+            ));
+        }
+        assert!(matches!(
+            native_error(coder_host::Error::Reach(Error::new(
+                Refusal::Unavailable,
+                "handshake timed out"
+            ))),
+            SessionError::Unavailable
+        ));
+    }
     #[test]
     fn routes_are_explicit_and_cannot_use_ambient_credentials() {
         assert!(route("tcp://127.0.0.1:4567").is_ok());

@@ -1756,7 +1756,19 @@ The initial profile supports unary calls:
 | --- | --- |
 | `EngineInfo`, `ListHarnesses`, `ListModels`, `ListSkills`, `ListCommands` | `observe` |
 | `AuthorizeSync` | All six pairing rights |
-| `RelayCommand` | `operate` |
+| `RelayCommand`, `RunCommand` | `operate` |
+
+`RunCommand` carries `{account, run, session, request_id, command, agent}`.
+The command is `message` or `steer` with `text`, `stop`, or `restart` with an
+optional `brief`. Text is nonblank, at most 16 KiB of UTF-8, without NUL.
+The app checks its signed-in account, resolves only a local session, and uses
+stable child command IDs in its existing command ledger. An optional `agent`
+is a definition ID supplied by the server's operator-provisioned binding;
+the host resolves the native grant through its own caller binding and also
+checks the definition's account command grants. Unbound native grants refuse
+run commands. An absent account-grant checker refuses agent commands;
+`operate` is still required.
+A host without an input adapter returns `not_steerable` in its command receipt.
 
 `QueueCommand` stays on its existing transport until it accepts a stable
 client-generated command ID.

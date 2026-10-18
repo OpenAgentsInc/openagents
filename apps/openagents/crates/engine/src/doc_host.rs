@@ -21,6 +21,8 @@ mod continuations;
 mod custom_agents;
 mod voice_agent;
 mod owner_notifications;
+mod run_commands;
+pub use run_commands::RunCommandAuthority;
 mod foreman;
 mod session_index;
 mod transfer;
@@ -258,6 +260,7 @@ struct DocHostInner {
     custom_agents: OnceLock<custom_agents::AgentHost>,
     #[cfg(unix)]
     owner_wait_seen: Mutex<openagents_mcp::machine_status::NewEntries>,
+    run_command_authority: Mutex<Option<Arc<RunCommandAuthority>>>,
     /// Foreman's schedule, authority and decision log (#11965).
     foreman: OnceLock<Arc<crate::foreman::Foreman>>,
     /// Where the checked-in agent's working state is saved (#12057).
@@ -1003,6 +1006,7 @@ impl DocHost {
                 custom_agents: OnceLock::new(),
                 #[cfg(unix)]
                 owner_wait_seen: Mutex::new(Default::default()),
+                run_command_authority: Mutex::new(None),
                 foreman: OnceLock::new(),
                 working: OnceLock::new(),
                 store,

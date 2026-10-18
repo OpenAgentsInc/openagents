@@ -574,6 +574,8 @@ impl Client {
                 Some("invalid_agent") => Some("invalid_agent"),
                 Some("assignment_conflict") => Some("assignment_conflict"),
                 Some("invalid_assignment") => Some("invalid_assignment"),
+                Some("invalid_run_command") => Some("invalid_run_command"),
+                Some("command_conflict") => Some("command_conflict"),
                 Some("invalid_run") => Some("invalid_run"),
                 Some("run_ended") => Some("run_ended"),
                 Some("run_conflict") => Some("run_conflict"),
