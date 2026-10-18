@@ -963,6 +963,10 @@ struct DialState {
     failures: u32,
     last_failure: Option<Instant>,
     cooldown_until: Option<Instant>,
+    /// A presence reset already skipped this streak's cooldown. Presence
+    /// beats every few seconds, so without this a peer the room cannot reach
+    /// (`host_offline`) was redialed on every beat (#12130).
+    reset_spent: bool,
 }
 
 /// Lazily-dialed, cached peer links keyed by device id — the Rust twin of openagents's
@@ -1243,8 +1247,17 @@ impl LinkCache {
     /// Data-driven cooldown reset: called when out-of-band evidence says the
     /// peer is alive again (fresh workspace presence heartbeat). The next call
     /// dials immediately instead of waiting out the backoff window.
+    ///
+    /// One reset per failure streak: the streak's count is kept, so if that
+    /// dial fails too, the backoff keeps growing and later beats wait it out.
     pub fn reset_cooldown(&self, device_id: &str) {
-        if lock(&self.dial_state).remove(device_id).is_some() {
+        let mut state = lock(&self.dial_state);
+        if let Some(entry) = state.get_mut(device_id)
+            && !entry.reset_spent
+            && entry.cooldown_until.is_some()
+        {
+            entry.cooldown_until = None;
+            entry.reset_spent = true;
             tracing::info!(device = %device_id, "peer: cooldown cleared (peer is alive)");
         }
     }
@@ -1285,6 +1298,7 @@ impl LinkCache {
             .is_some_and(|at| at.elapsed() > FAILURE_DECAY)
         {
             entry.failures = 0;
+            entry.reset_spent = false;
         }
         entry.last_failure = Some(Instant::now());
         entry.failures += 1;

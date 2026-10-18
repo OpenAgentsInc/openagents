@@ -684,6 +684,39 @@ async fn presence_reset_clears_cooldown_immediately() {
     );
 }
 
+/// Presence beats every few seconds. When the room still cannot reach the
+/// peer, only the first beat of a failure streak skips the backoff; later
+/// beats must not turn into a redial on every beat (#12130).
+#[tokio::test]
+async fn presence_reset_skips_the_backoff_once_per_streak() {
+    let relay = FakeRelay::start().await;
+    let mut config =
+        LinkCacheConfig::new(relay.edge_url(), Arc::new(StaticToken("test-user".into())));
+    config.cooldown_base = Duration::from_secs(120);
+    config.cooldown_max = Duration::from_secs(120);
+    config.probe_timeout = Duration::from_millis(1_500);
+    let links = LinkCache::new(config);
+
+    assert!(links.client("dev-a").await.is_err(), "no host: dial fails");
+    links.reset_cooldown("dev-a");
+    let Err(err) = links.client("dev-a").await else {
+        panic!("still no host")
+    };
+    assert!(
+        !err.to_string().contains("backing off"),
+        "the reset dials: {err}"
+    );
+
+    links.reset_cooldown("dev-a");
+    let Err(err) = links.client("dev-a").await else {
+        panic!("still no host")
+    };
+    assert!(
+        err.to_string().contains("backing off"),
+        "second reset ignored: {err}"
+    );
+}
+
 #[tokio::test]
 async fn host_supersede_drops_old_links_and_recovers() {
     let relay = FakeRelay::start().await;
