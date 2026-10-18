@@ -90,14 +90,20 @@ Keep fork-specific changes here so upstream updates can review each integration.
   points to source commit `7b6390f`. The Rust-owned media contract and fake
   bridge cover request delivery, typed platform state, callback fencing, and
   closure. `AndroidWebRtcMediaDriver` maps Rust media operations to a
-  call-scoped peer, while `AndroidVoiceAudioMonitor` reports focus, route,
-  network, and proximity changes and applies speaker routing near or away
-  from the phone. The bridge stops the Rust call when the RTC connection ends.
-  A fake RTC session covers request mapping. These sources still need the
-  coordinator-owned dependency and manifest permission entries. The current
-  Android manifest lacks `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, and
-  `ACCESS_NETWORK_STATE`; add them before runtime checks. Focused JVM tests,
-  Kotlin compilation, and lifecycle/device validation remain unrun.
+  call-scoped peer. On API 31 and later, the monitor selects from Android's
+  available communication devices and reports the active communication
+  device. On earlier versions, it requests Bluetooth SCO and reports Bluetooth
+  only after Android confirms SCO is active; it reports an unknown route when
+  a wired device is connected but the active route cannot be identified. It
+  falls back to speaker or earpiece when Bluetooth selection is unavailable.
+  Device changes reapply the selection. Permission denial skips Bluetooth
+  selection without blocking microphone permission or voice setup. The driver
+  completes requests rejected during shutdown as unavailable. The bridge stops
+  the Rust call when the RTC connection ends. Fake RTC and route fixtures cover
+  request mapping, selected-versus-connected routes, permission fallback, and
+  closure. These sources still need the coordinator-owned dependency and
+  manifest permission entries, including `BLUETOOTH_CONNECT`; focused JVM
+  tests, Kotlin compilation, and lifecycle/device validation remain unrun.
 
 - OpenAgents #12081: Android startup initializes the JVM context and platform
   certificate verifier before any live Rust client can start. Kotlin retries

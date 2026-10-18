@@ -1,9 +1,9 @@
 // Copyright OpenAgents contributors. SPDX-License-Identifier: MIT
 package com.openagents.app.voice
 
+import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -53,6 +53,21 @@ class AndroidWebRtcMediaDriverTest {
 
         driver.close()
         assertTrue(session.closed.await(2, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun rejectedExecutorCompletesTheRequestAsUnavailable() {
+        val executor = Executors.newSingleThreadExecutor().apply { shutdown() }
+        val driver = AndroidWebRtcMediaDriver(
+            hasMicrophonePermission = { true },
+            createSession = AndroidVoiceRtcSessionFactory { _ -> FakeRtcSession() },
+            worker = executor,
+        )
+
+        val result = execute(driver, request(7u, VoiceMediaOperation.PREPARE))
+
+        assertEquals(VoiceMediaFailure.UNAVAILABLE, result.failure)
+        driver.close()
     }
 
     private fun execute(

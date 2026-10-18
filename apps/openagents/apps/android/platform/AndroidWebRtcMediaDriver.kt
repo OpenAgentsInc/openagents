@@ -15,6 +15,8 @@ import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import org.webrtc.audio.JavaAudioDeviceModule
 import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
@@ -36,6 +38,7 @@ class AndroidWebRtcMediaDriver internal constructor(
     private val hasMicrophonePermission: () -> Boolean,
     private val createSession: AndroidVoiceRtcSessionFactory,
     private val audioMonitor: AndroidVoiceAudioMonitor? = null,
+    private val worker: ExecutorService = Executors.newSingleThreadExecutor(),
 ) : VoiceMediaDriver {
     constructor(context: Context) : this(
         hasMicrophonePermission = {
@@ -50,7 +53,6 @@ class AndroidWebRtcMediaDriver internal constructor(
         audioMonitor = AndroidVoiceAudioMonitor(context.applicationContext),
     )
 
-    private val worker = Executors.newSingleThreadExecutor()
     @Volatile private var eventListener: ((VoiceMediaPlatformEvent) -> Unit)? = null
     @Volatile private var closed = false
     private var session: AndroidVoiceRtcSession? = null
@@ -60,49 +62,53 @@ class AndroidWebRtcMediaDriver internal constructor(
             complete(VoiceMediaResult(failure = uniffi.openagents_core.VoiceMediaFailure.UNAVAILABLE))
             return
         }
-        worker.execute {
-            if (closed) {
-                complete(VoiceMediaResult(failure = uniffi.openagents_core.VoiceMediaFailure.UNAVAILABLE))
-                return@execute
-            }
-            when (request.operation) {
-                uniffi.openagents_core.VoiceMediaOperation.PREPARE -> prepare(complete)
-                uniffi.openagents_core.VoiceMediaOperation.OFFER -> withSession(complete) { current ->
-                    current.createOffer { result ->
-                        complete(result.fold(
-                            onSuccess = { VoiceMediaResult(sdp = it) },
-                            onFailure = { VoiceMediaResult(failure = uniffi.openagents_core.VoiceMediaFailure.UNAVAILABLE) },
-                        ))
-                    }
+        try {
+            worker.execute {
+                if (closed) {
+                    complete(unavailable())
+                    return@execute
                 }
-                uniffi.openagents_core.VoiceMediaOperation.APPLY_ANSWER -> withSession(complete) { current ->
-                    val sdp = request.sdp
-                    if (sdp.isNullOrBlank() || sdp.length > MAX_SDP_LENGTH) {
-                        complete(unavailable())
-                    } else {
-                        current.applyAnswer(sdp) { result ->
+                when (request.operation) {
+                    uniffi.openagents_core.VoiceMediaOperation.PREPARE -> prepare(complete)
+                    uniffi.openagents_core.VoiceMediaOperation.OFFER -> withSession(complete) { current ->
+                        current.createOffer { result ->
                             complete(result.fold(
-                                onSuccess = { VoiceMediaResult() },
+                                onSuccess = { VoiceMediaResult(sdp = it) },
                                 onFailure = { unavailable() },
                             ))
                         }
                     }
-                }
-                uniffi.openagents_core.VoiceMediaOperation.SET_MUTED -> withSession(complete) { current ->
-                    runCatching { current.setMuted(request.muted) }
-                        .onSuccess { complete(VoiceMediaResult()) }
-                        .onFailure { complete(unavailable()) }
-                }
-                uniffi.openagents_core.VoiceMediaOperation.LEVELS -> withSession(complete) { current ->
-                    current.levels { result ->
-                        complete(result.fold(
-                            onSuccess = { VoiceMediaResult(microphone = it.first, speaker = it.second) },
-                            onFailure = { unavailable() },
-                        ))
+                    uniffi.openagents_core.VoiceMediaOperation.APPLY_ANSWER -> withSession(complete) { current ->
+                        val sdp = request.sdp
+                        if (sdp.isNullOrBlank() || sdp.length > MAX_SDP_LENGTH) {
+                            complete(unavailable())
+                        } else {
+                            current.applyAnswer(sdp) { result ->
+                                complete(result.fold(
+                                    onSuccess = { VoiceMediaResult() },
+                                    onFailure = { unavailable() },
+                                ))
+                            }
+                        }
                     }
+                    uniffi.openagents_core.VoiceMediaOperation.SET_MUTED -> withSession(complete) { current ->
+                        runCatching { current.setMuted(request.muted) }
+                            .onSuccess { complete(VoiceMediaResult()) }
+                            .onFailure { complete(unavailable()) }
+                    }
+                    uniffi.openagents_core.VoiceMediaOperation.LEVELS -> withSession(complete) { current ->
+                        current.levels { result ->
+                            complete(result.fold(
+                                onSuccess = { VoiceMediaResult(microphone = it.first, speaker = it.second) },
+                                onFailure = { unavailable() },
+                            ))
+                        }
+                    }
+                    uniffi.openagents_core.VoiceMediaOperation.CLOSE -> close()
                 }
-                uniffi.openagents_core.VoiceMediaOperation.CLOSE -> close()
             }
+        } catch (_: RejectedExecutionException) {
+            complete(unavailable())
         }
     }
 
@@ -143,10 +149,15 @@ class AndroidWebRtcMediaDriver internal constructor(
         if (closed) return
         closed = true
         eventListener = null
-        worker.execute {
+        val dispose = {
             runCatching { audioMonitor?.close() }
             runCatching { session?.close() }
             session = null
+        }
+        try {
+            worker.execute { dispose() }
+        } catch (_: RejectedExecutionException) {
+            dispose()
         }
         worker.shutdown()
     }
