@@ -32,6 +32,8 @@ pub(crate) struct PText {
     pub lh: f32,
     pub base: f32,
     pub paints: Vec<SpanPaint>,
+    /// Reveal start offsets aligned with the prepared spans.
+    pub reveal_ms: Vec<Option<u32>>,
     pub links: Vec<String>,
     /// Chip rect within a line box: (top offset, height).
     pub chip: (f32, f32),
@@ -169,6 +171,7 @@ pub(crate) fn prepare_runs(ctx: &mut Ctx, runs: &[InlineRun], kind: TextKind, mu
         lh,
         base: baseline(lh, body),
         paints,
+        reveal_ms: vec![None; spans.len()],
         links,
         chip: ((lh - chip_h) / 2.0, chip_h),
         badges: Vec::new(),
@@ -212,6 +215,7 @@ pub(crate) fn prepare_plain(
             link: None,
             chip: false,
         }],
+        reveal_ms: if text.is_empty() { Vec::new() } else { vec![None] },
         links: Vec::new(),
         chip: (0.0, 0.0),
         badges: Vec::new(),
@@ -286,6 +290,202 @@ pub(crate) fn prepare_block(ctx: &mut Ctx, block: &Block, depth: usize, muted: b
         }
         Block::Rule => PBlock::Rule,
     }
+}
+
+/// Carries reveal offsets through a streaming row update without restarting
+/// text whose rendered content stayed the same.
+pub(crate) fn apply_reveal_history(ctx: &mut Ctx, previous: Option<&PBlock>, next: &mut PBlock, age_ms: Option<u32>) {
+    match (previous, next) {
+        (Some(PBlock::Text(old)), PBlock::Text(new)) | (Some(PBlock::Heading(old)), PBlock::Heading(new)) => {
+            apply_text_reveal(ctx, Some(old), new, age_ms);
+        }
+        (Some(PBlock::Code(old)), PBlock::Code(new)) => {
+            if let (Some(old), Some(new)) = (&old.label, &mut new.label) {
+                apply_text_reveal(ctx, Some(old), new, age_ms);
+            }
+            apply_text_reveal(ctx, Some(&old.body), &mut new.body, age_ms);
+        }
+        (Some(PBlock::Quote(old)), PBlock::Quote(new)) => {
+            for (index, block) in new.iter_mut().enumerate() {
+                apply_reveal_history(ctx, old.get(index), block, age_ms);
+            }
+        }
+        (Some(PBlock::List { items: old, .. }), PBlock::List { items: new, .. }) => {
+            for (index, item) in new.iter_mut().enumerate() {
+                let previous = old.get(index);
+                if let Some(marker) = &mut item.marker {
+                    apply_text_reveal(ctx, previous.and_then(|item| item.marker.as_ref()), marker, age_ms);
+                }
+                for (child_index, child) in item.children.iter_mut().enumerate() {
+                    let old_child = previous.and_then(|item| item.children.get(child_index));
+                    apply_reveal_history(ctx, old_child, child, age_ms);
+                }
+            }
+        }
+        (Some(PBlock::Table(old)), PBlock::Table(new)) => {
+            for (row_index, row) in new.cells.iter_mut().enumerate() {
+                for (cell_index, cell) in row.iter_mut().enumerate() {
+                    let previous = old.cells.get(row_index).and_then(|row| row.get(cell_index));
+                    apply_text_reveal(ctx, previous, cell, age_ms);
+                }
+            }
+        }
+        (_, block) => set_block_reveal_age(block, age_ms),
+    }
+}
+
+fn set_block_reveal_age(block: &mut PBlock, age_ms: Option<u32>) {
+    match block {
+        PBlock::Text(text) | PBlock::Heading(text) => set_text_reveal_age(text, age_ms),
+        PBlock::Code(code) => {
+            if let Some(label) = &mut code.label {
+                set_text_reveal_age(label, age_ms);
+            }
+            set_text_reveal_age(&mut code.body, age_ms);
+        }
+        PBlock::Quote(children) => children.iter_mut().for_each(|child| set_block_reveal_age(child, age_ms)),
+        PBlock::List { items, .. } => {
+            for item in items {
+                if let Some(marker) = &mut item.marker {
+                    set_text_reveal_age(marker, age_ms);
+                }
+                item.children.iter_mut().for_each(|child| set_block_reveal_age(child, age_ms));
+            }
+        }
+        PBlock::Table(table) => {
+            for cell in table.cells.iter_mut().flatten() {
+                set_text_reveal_age(cell, age_ms);
+            }
+        }
+        PBlock::Rule => {}
+    }
+}
+
+fn set_text_reveal_age(text: &mut PText, age_ms: Option<u32>) {
+    text.reveal_ms = vec![age_ms; text.p.spans().len()];
+}
+
+fn apply_text_reveal(ctx: &mut Ctx, previous: Option<&PText>, next: &mut PText, age_ms: Option<u32>) {
+    let Some(age_ms) = age_ms else {
+        set_text_reveal_age(next, None);
+        return;
+    };
+    let Some(previous) = previous else {
+        set_text_reveal_age(next, Some(age_ms));
+        return;
+    };
+
+    let old_text = previous.p.text();
+    let new_text = next.p.text().to_owned();
+    let prefix = common_prefix_bytes(old_text, &new_text);
+    let suffix = common_suffix_bytes(&old_text[prefix..], &new_text[prefix..]);
+    let old_suffix = old_text.len() - suffix;
+    let new_suffix = new_text.len() - suffix;
+    let mut timed_chars = Vec::new();
+    for (start, ch) in new_text.char_indices() {
+        let end = start + ch.len_utf8();
+        let old_start = if end <= prefix {
+            Some(start)
+        } else if start >= new_suffix {
+            Some(old_suffix + start - new_suffix)
+        } else {
+            None
+        };
+        let inherited = old_start.and_then(|at| text_age_at(previous, at));
+        timed_chars.push((start..end, inherited.unwrap_or(age_ms)));
+    }
+
+    let old_spans = next.p.spans().to_vec();
+    let mut spans = Vec::with_capacity(old_spans.len() + 2);
+    let mut paints = Vec::with_capacity(old_spans.len() + 2);
+    let mut reveal_ms = Vec::with_capacity(old_spans.len() + 2);
+    let mut first_span = Vec::with_capacity(old_spans.len());
+    for (span_index, span) in old_spans.iter().enumerate() {
+        first_span.push(spans.len());
+        let chunks: Vec<_> = timed_chars
+            .iter()
+            .filter(|(range, _)| range.start >= span.range.start && range.end <= span.range.end)
+            .fold(Vec::<(std::ops::Range<usize>, u32)>::new(), |mut chunks, (range, age)| {
+                if let Some((last_range, last_age)) = chunks.last_mut()
+                    && *last_age == *age
+                    && last_range.end == range.start
+                {
+                    last_range.end = range.end;
+                } else {
+                    chunks.push((range.clone(), *age));
+                }
+                chunks
+            });
+        if chunks.is_empty() {
+            let mut empty = span.clone();
+            empty.pad_start = 0.0;
+            empty.pad_end = 0.0;
+            spans.push(empty);
+            paints.push(next.paints.get(span_index).copied().unwrap_or(SpanPaint {
+                color: ColorRole::Text,
+                decoration: Decoration::None,
+                link: None,
+                chip: false,
+            }));
+            reveal_ms.push(Some(age_ms));
+            continue;
+        }
+        for (chunk_index, (range, age)) in chunks.iter().enumerate() {
+            let mut split = span.clone();
+            split.range = range.clone();
+            if chunk_index > 0 {
+                split.pad_start = 0.0;
+            }
+            if chunk_index + 1 < chunks.len() {
+                split.pad_end = 0.0;
+            }
+            spans.push(split);
+            paints.push(next.paints.get(span_index).copied().unwrap_or(SpanPaint {
+                color: ColorRole::Text,
+                decoration: Decoration::None,
+                link: None,
+                chip: false,
+            }));
+            reveal_ms.push(Some(*age));
+        }
+    }
+
+    let badges = next
+        .badges
+        .iter()
+        .filter_map(|(index, icon)| first_span.get(*index).map(|new_index| (*new_index, icon.clone())))
+        .collect();
+    let options = *next.p.options();
+    next.p = openagents_text::prepare(&ctx.typo.book, ctx.cache, &new_text, &spans, &options);
+    next.paints = paints;
+    next.reveal_ms = reveal_ms;
+    next.badges = badges;
+}
+
+fn text_age_at(text: &PText, byte: usize) -> Option<u32> {
+    text.p
+        .spans()
+        .iter()
+        .enumerate()
+        .find(|(_, span)| span.range.start <= byte && byte < span.range.end)
+        .and_then(|(index, _)| text.reveal_ms.get(index).copied().flatten())
+}
+
+fn common_prefix_bytes(left: &str, right: &str) -> usize {
+    left.chars()
+        .zip(right.chars())
+        .take_while(|(left, right)| left == right)
+        .map(|(ch, _)| ch.len_utf8())
+        .sum()
+}
+
+fn common_suffix_bytes(left: &str, right: &str) -> usize {
+    left.chars()
+        .rev()
+        .zip(right.chars().rev())
+        .take_while(|(left, right)| left == right)
+        .map(|(ch, _)| ch.len_utf8())
+        .sum()
 }
 
 fn syntax_color(kind: openagents_syntax::HighlightKind) -> ColorRole {
@@ -390,6 +590,7 @@ fn prepare_code(ctx: &mut Ctx, language: Option<&str>, code: &str) -> PCode {
                 chip: false,
             })
             .collect(),
+        reveal_ms: vec![None; cover.len()],
         links: Vec::new(),
         chip: (0.0, 0.0),
         badges: Vec::new(),
@@ -495,7 +696,7 @@ pub(crate) fn place_text(t: &PText, x: f32, y: f32, width: f32, out: Option<&mut
                 color: paint.color,
                 decoration: paint.decoration,
                 scroller: out.scroller,
-                reveal_ms: None,
+                reveal_ms: t.reveal_ms.get(f.span).copied().flatten(),
             });
             if let Some(link) = paint.link {
                 out.links.push(super::display::LinkHit {

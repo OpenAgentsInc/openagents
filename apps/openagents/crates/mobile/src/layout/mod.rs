@@ -235,11 +235,6 @@ impl LayoutFrame {
             .core
             .reveal_started()
             .map(|started| started.elapsed().as_millis().min(u32::MAX as u128) as u32);
-        if reveal_age_ms.is_some() {
-            for run in &mut out.runs {
-                run.reveal_ms = Some(0);
-            }
-        }
         Some(RowDisplay {
             key: r.core.key,
             version: r.version(),
