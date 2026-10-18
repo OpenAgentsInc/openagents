@@ -19,6 +19,7 @@ import com.openagents.app.accessibility.*
 import com.openagents.app.composer.*
 import com.openagents.app.drawer.*
 import com.openagents.app.onboarding.*
+import com.openagents.app.platform.AndroidVoiceOrbSurface
 import com.openagents.app.sessions.AndroidSessionsHost
 import com.openagents.app.settings.*
 import com.openagents.app.transcript.*
@@ -57,6 +58,14 @@ internal class AndroidRootPresentation(
     private var sessions: AndroidSessionsHost? = null
     private var settings: SettingsHost? = null
     private var recovery: RecoveryHost? = null
+    private var microphoneRequest: AutoCloseable? = null
+    private var voiceCapsule: SemanticViewAdapter? = null
+    private var voiceScreen: SemanticViewAdapter? = null
+    private var voiceOrb: AndroidVoiceOrbSurface? = null
+    private var voiceResources: AndroidActiveVoice? = null
+    private var voiceCall: VoiceCall? = null
+    private lateinit var voiceButton: Button
+    private val voiceCapsuleContainer = FrameLayout(activity)
     private var settingsActions: AndroidSettingsActions? = null
     private var drawer: DrawerPresenter? = null
     private val notice = TextView(activity)
@@ -79,6 +88,8 @@ internal class AndroidRootPresentation(
         buttons.addView(action("New chat") { owner.navigate(AndroidHostRoute.SESSIONS); panes.showSession() })
         buttons.addView(action("Settings") { owner.navigate(AndroidHostRoute.SETTINGS); panes.showSession() })
         if (owner.account() != null) buttons.addView(action("Your ID") { owner.navigate(AndroidHostRoute.RECOVERY); panes.showSession() })
+        voiceButton = action("Call") { requestVoice() }
+        buttons.addView(voiceButton)
         navigation.addView(buttons)
         navigation.addView(drawerView, LinearLayout.LayoutParams(-1, 0, 1f))
         content.addView(chatContainer, FrameLayout.LayoutParams(-1, -1))
@@ -97,6 +108,7 @@ internal class AndroidRootPresentation(
         toolbar.addView(action("Chats") { panes.showNavigation() })
         toolbar.addView(notice, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(toolbar)
+        root.addView(voiceCapsuleContainer)
         root.addView(panes.view, LinearLayout.LayoutParams(-1, 0, 1f))
         observation = application.observeAndroidHost(::refresh)
         ViewCompat.setOnApplyWindowInsetsListener(panes.view) { view, insets ->
@@ -147,6 +159,7 @@ internal class AndroidRootPresentation(
             bindDrawer(next)
         }
         snapshot = next
+        mountVoice(next)
         if (contentRevision != next.contentRevision) {
             closeChat()
             mountChat(next)
@@ -189,6 +202,12 @@ internal class AndroidRootPresentation(
                     ).also { it.start(android.os.Build.MODEL) }
                 }
             }
+            AndroidHostRoute.VOICE -> {
+                closeRoutes()
+                chatContainer.visibility = View.GONE
+                routeContainer.visibility = View.VISIBLE
+                voiceCall?.let { call -> voiceScreen?.mount(routeContainer, call.screenView().toByteArray(Charsets.UTF_8)) }
+            }
             AndroidHostRoute.SETTINGS -> {
                 recovery?.close(); recovery = null
                 sessions?.close(); sessions = null
@@ -203,6 +222,50 @@ internal class AndroidRootPresentation(
         if (next.client != null && drawer == null) bindDrawer(next)
         drawer?.show()
         panes.refresh()
+    }
+
+    private fun requestVoice() {
+        val requested = snapshot ?: return
+        if (requested.activeVoice != null) { owner.navigate(AndroidHostRoute.VOICE); return }
+        if (!requested.canStartVoice) return
+        microphoneRequest?.close()
+        microphoneRequest = activity.requestVoiceMicrophone { granted ->
+            if (!closed && foreground && granted) guarded { application.startVoice(owner, requested) }
+        }
+    }
+
+    private fun mountVoice(next: AndroidHostSnapshot) {
+        val active = application.voice(next)
+        val call = active?.call
+        voiceButton.visibility = if (next.canStartVoice || call != null) View.VISIBLE else View.GONE
+        if (call == null) { closeVoiceViews(); return }
+        if (voiceResources !== active) {
+            closeVoiceViews()
+            voiceCall = call; voiceResources = active
+            val orb = AndroidVoiceOrbSurface(activity)
+            voiceOrb = orb
+            fun adapter(surface: AndroidHostSurface, extensions: Map<String, SemanticViewAdapter.Extension> = emptyMap()) = SemanticViewAdapter(
+                activity,
+                activate = { instance, revision, key -> guarded {
+                    if (call.activateView(instance, revision.toULong(), key) == VoiceUiAction.OPEN_CALL) {
+                        owner.navigate(AndroidHostRoute.VOICE); panes.showSession()
+                    }
+                } },
+                changeField = { _, _, _, _ -> }, acknowledge = { _, _ -> },
+                extensions = extensions, semantics = semantics(surface),
+            )
+            voiceCapsule = adapter(AndroidHostSurface.VOICE_CAPSULE)
+            voiceScreen = adapter(AndroidHostSurface.VOICE_SCREEN, mapOf("voice-orb" to orb))
+        }
+        voiceCapsule?.mount(voiceCapsuleContainer, call.capsuleView().toByteArray(Charsets.UTF_8))
+        active.state?.let { voiceOrb?.update(it) }
+    }
+
+    private fun closeVoiceViews() {
+        voiceCapsule?.dispose(); voiceCapsule = null
+        voiceScreen?.dispose(); voiceScreen = null
+        voiceOrb = null; voiceCall = null; voiceResources = null
+        voiceCapsuleContainer.removeAllViews()
     }
 
     private fun mountChat(next: AndroidHostSnapshot) {
@@ -408,6 +471,7 @@ internal class AndroidRootPresentation(
     fun background() {
         if (closed) return
         foreground = false
+        microphoneRequest?.close(); microphoneRequest = null
         recovery?.background()
         settings?.close(); settings = null
         sessions?.retire()
@@ -417,6 +481,9 @@ internal class AndroidRootPresentation(
     fun foreground() {
         if (closed) return
         foreground = true
+        if (activity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            snapshot?.let { application.voice(it)?.close() }
+        }
         runCatching { owner.setForeground(true) }
         semanticMounts.values.forEach { runCatching { it.lifecycle("foreground") } }
         recovery?.foreground(); sessions?.showPicker(); refresh()
@@ -468,6 +535,8 @@ internal class AndroidRootPresentation(
         closed = true
         observation.close()
         scope.cancel()
+        microphoneRequest?.close(); microphoneRequest = null
+        closeVoiceViews()
         closeRoutes(); closeChat()
         drawer?.detach(); drawer = null
         drawerView.onRequest = {}; drawerView.onIntent = {}

@@ -69,6 +69,7 @@ android {
     sourceSets["main"].java.srcDir("../settings/src/main/java")
     sourceSets["test"].java.srcDir("../settings/src/test/java")
     sourceSets["test"].java.srcDir("../transcript/src/test/java")
+    sourceSets["test"].java.srcDir("../voice/src/test/java")
     sourceSets["androidTest"].java.srcDir("../transcript/src/androidTest/java")
     sourceSets["main"].java.srcDir("../platform")
     sourceSets["main"].java.exclude("**/tests/**")
@@ -112,6 +113,7 @@ dependencies {
     implementation("io.github.webrtc-sdk:android:150.7871.01")
     if (pushEnabled) implementation("com.google.firebase:firebase-messaging:24.1.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation(kotlin("test"))
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestCompileOnly(
         files(

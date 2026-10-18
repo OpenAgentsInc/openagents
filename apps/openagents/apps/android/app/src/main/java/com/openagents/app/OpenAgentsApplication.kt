@@ -33,6 +33,7 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
             java.util.concurrent.ThreadPoolExecutor.AbortPolicy())
     }
     fun recoveryWork(work: () -> Unit) { recoveryWorker.execute { work() } }
+    private var activeVoice: AndroidActiveVoice? = null
     private var realHost: uniffi.openagents_core.CoreAndroidHost? = null
     private var demoHost: uniffi.openagents_core.CoreAndroidHost? = null
     private var hostObserver: (() -> Unit)? = null
@@ -63,6 +64,25 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
                 BuildConfig.VERSION_NAME, encryptedFileStore(), hostListener,
             ).also { realHost = it; it.start() }
         }
+    }
+
+    internal fun startVoice(owner: uniffi.openagents_core.CoreAndroidHost, snapshot: uniffi.openagents_core.AndroidHostSnapshot) {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        check(activeVoice == null)
+        val resources = AndroidActiveVoice(this, owner, snapshot.generation,
+            { hostObserver?.invoke() }, { ended -> if (activeVoice === ended) activeVoice = null })
+        activeVoice = resources
+        resources.start(snapshot.contentRevision)
+    }
+
+    internal fun voice(snapshot: uniffi.openagents_core.AndroidHostSnapshot): AndroidActiveVoice? {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val current = activeVoice ?: return null
+        if (current.generation != snapshot.generation || snapshot.activeVoice == null) {
+            current.close()
+            return null
+        }
+        return current
     }
 
     fun observeAndroidHost(observer: () -> Unit): AutoCloseable {

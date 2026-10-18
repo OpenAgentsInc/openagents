@@ -63,6 +63,7 @@ pub enum AndroidHostRoute {
     Sessions,
     Settings,
     Recovery,
+    Voice,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -115,6 +116,8 @@ pub struct AndroidHostSnapshot {
     pub anchor: Option<AndroidTranscriptAnchor>,
     pub recovery: Option<Arc<CoreAndroidRecovery>>,
     pub selection: Option<AndroidHostSelection>,
+    pub active_voice: Option<Arc<VoiceCall>>,
+    pub can_start_voice: bool,
 }
 enum Content {
     Cloud(Arc<CoreCloudChat>),
@@ -134,6 +137,8 @@ enum Content {
     },
 }
 struct State {
+    voice_notice: Option<String>,
+    active_voice: Option<Arc<VoiceCall>>,
     selection: Option<AndroidHostSelection>,
     foreground: bool,
     semantics: BTreeMap<AndroidHostSurface, Arc<CoreAccessibilitySurface>>,
@@ -161,6 +166,17 @@ impl NavigationStamp {
     }
 }
 impl State {
+    fn voice_target(&self) -> Option<(Arc<CoreClient>, String)> {
+        let Content::Live { client, id, .. } = &self.content else {
+            return None;
+        };
+        let row = client.session_row(id.clone())?;
+        client
+            .devices()
+            .iter()
+            .find(|device| voice_device_matches(&row.device_id, device))?;
+        Some((client.clone(), row.device_id))
+    }
     fn apply_visibility(&self) {
         let visible = self.foreground && self.route == AndroidHostRoute::Chat;
         if let Content::Live { session, .. } = &self.content {
@@ -207,6 +223,10 @@ impl CoreAndroidHost {
         };
         let snapshot = account.snapshot();
         if snapshot.generation != state.generation {
+            if let Some(call) = state.active_voice.take() {
+                call.stop();
+            }
+            state.voice_notice = None;
             if let Some(composer) = state.composer.take() {
                 composer.dispose();
             }
@@ -334,6 +354,8 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                voice_notice: None,
+                active_voice: None,
                 selection: None,
                 foreground: true,
                 semantics: BTreeMap::new(),
@@ -371,6 +393,8 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                voice_notice: None,
+                active_voice: None,
                 selection: None,
                 foreground: true,
                 semantics: BTreeMap::new(),
@@ -436,7 +460,7 @@ impl CoreAndroidHost {
                 Content::Indexed { .. } => AndroidHostContent::Indexed,
             },
             signed_in,
-            notice,
+            notice: notice.or_else(|| s.voice_notice.clone()),
             composer: s.composer.clone(),
             sessions: s.sessions.clone(),
             client: s.client.clone(),
@@ -445,7 +469,63 @@ impl CoreAndroidHost {
             anchor: s.anchor.clone(),
             recovery: self.recovery.clone(),
             selection: s.selection.clone(),
+            active_voice: s.active_voice.clone(),
+            can_start_voice: s.active_voice.is_none() && s.voice_target().is_some(),
         })
+    }
+    /// Permission callbacks carry the account/content that requested the microphone.
+    pub fn start_host_voice(
+        &self,
+        generation: u64,
+        content_revision: u64,
+        media: Arc<dyn VoiceMediaListener>,
+        listener: Arc<dyn VoiceSessionListener>,
+    ) -> CoreResult<Arc<VoiceCall>> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation
+            || state.content_revision != content_revision
+            || state.active_voice.is_some()
+            || !state.foreground
+        {
+            return Err(CoreError::Closed);
+        }
+        let (client, device) = state.voice_target().ok_or(CoreError::Closed)?;
+        let call = client.start_voice(device, None, media, listener);
+        state.voice_notice = None;
+        state.active_voice = Some(call.clone());
+        state.route = AndroidHostRoute::Voice;
+        state.apply_visibility();
+        drop(state);
+        self.events.0.on_android_host_changed();
+        Ok(call)
+    }
+    /// A late terminal callback cannot clear a replacement call or account.
+    pub fn voice_ended(
+        &self,
+        generation: u64,
+        call: Arc<VoiceCall>,
+        reason: Option<VoiceEndReason>,
+    ) -> CoreResult<bool> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation
+            || !state
+                .active_voice
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, &call))
+        {
+            return Ok(false);
+        }
+        state.active_voice = None;
+        state.voice_notice = reason.map(|reason| voice_end_notice(reason).into());
+        if state.route == AndroidHostRoute::Voice {
+            state.route = AndroidHostRoute::Chat;
+        }
+        state.apply_visibility();
+        drop(state);
+        self.events.0.on_android_host_changed();
+        Ok(true)
     }
     /// Resolves a widget identity against the current Rust display, never a caller-supplied payload.
     pub fn transcript_widget(
@@ -705,6 +785,9 @@ impl CoreAndroidHost {
         if self.account.is_none() && route != AndroidHostRoute::Chat {
             return Err(CoreError::Closed);
         }
+        if route == AndroidHostRoute::Voice && s.active_voice.is_none() {
+            return Err(CoreError::Closed);
+        }
         s.route = route;
         s.apply_visibility();
         drop(s);
@@ -841,6 +924,34 @@ impl CoreAndroidHost {
     }
 }
 
+fn voice_end_notice(reason: VoiceEndReason) -> &'static str {
+    match reason {
+        VoiceEndReason::MicrophoneDenied => "Allow microphone access to make a call.",
+        VoiceEndReason::SignInRequired => "Sign in on your computer to use voice.",
+        VoiceEndReason::Busy => "Your computer is already in a call.",
+        VoiceEndReason::VoiceAgentRequired => "Choose a voice agent on your computer first.",
+        VoiceEndReason::UsageUnavailable => "Voice usage is unavailable. Try again later.",
+        VoiceEndReason::HostIncompatible => "Update OpenAgents on your computer to use voice.",
+        VoiceEndReason::HostUnavailable => {
+            "Your computer is unavailable. Try again when it is online."
+        }
+        VoiceEndReason::AudioUnavailable => {
+            "Audio is unavailable. Check your microphone and try again."
+        }
+        VoiceEndReason::ConnectionLost => "The call disconnected. Try again.",
+    }
+}
+
+fn voice_device_matches(selected: &str, device: &DeviceView) -> bool {
+    device.id == selected
+        && device.online
+        && device.is_execution_host
+        && device
+            .capabilities
+            .iter()
+            .any(|capability| capability == &voice_host_capability())
+}
+
 fn browser_link(url: &str) -> bool {
     url.len() <= 8192
         && (url.starts_with("https://") || url.starts_with("http://"))
@@ -867,6 +978,38 @@ mod tests {
     struct Listener;
     impl AndroidHostListener for Listener {
         fn on_android_host_changed(&self) {}
+    }
+    #[test]
+    fn voice_target_requires_the_selected_online_execution_host_and_capability() {
+        let mut device = DeviceView {
+            id: "selected".into(),
+            name: "Fixture computer".into(),
+            platform: "linux".into(),
+            online: true,
+            last_seen_ms: None,
+            version: None,
+            capabilities: vec![voice_host_capability()],
+            is_execution_host: true,
+            is_self: false,
+            session_count: 0,
+        };
+        assert!(voice_device_matches("selected", &device));
+        assert!(!voice_device_matches("another", &device));
+        device.online = false;
+        assert!(!voice_device_matches("selected", &device));
+        device.online = true;
+        device.is_execution_host = false;
+        assert!(!voice_device_matches("selected", &device));
+        device.is_execution_host = true;
+        device.capabilities.clear();
+        assert!(!voice_device_matches("selected", &device));
+    }
+    #[test]
+    fn demo_and_unselected_cloud_do_not_advertise_or_open_voice() {
+        let owner = CoreAndroidHost::demo(Arc::new(Listener));
+        assert!(!owner.snapshot().unwrap().can_start_voice);
+        assert!(owner.snapshot().unwrap().active_voice.is_none());
+        assert!(owner.navigate(AndroidHostRoute::Voice).is_err());
     }
     #[test]
     fn browser_links_are_bounded_and_do_not_launch_platform_commands() {

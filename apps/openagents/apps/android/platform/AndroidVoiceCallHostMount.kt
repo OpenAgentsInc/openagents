@@ -51,8 +51,8 @@ class AndroidVoiceCallHost(
         }
     }
 
-    /** Call after the app has obtained the Rust call and its first state snapshot. */
-    fun attach(call: VoiceCall, state: VoiceCallState) {
+    /** Start the microphone service while the permission-granting Activity is foreground. */
+    fun attach(call: VoiceCall) {
         pendingCall = call
         AndroidVoiceCallForegroundService.start(context)
         context.bindService(
@@ -60,6 +60,11 @@ class AndroidVoiceCallHost(
             connection,
             Context.BIND_AUTO_CREATE,
         )
+    }
+
+    /** Compatibility entry for callers that already have the first Rust snapshot. */
+    fun attach(call: VoiceCall, state: VoiceCallState) {
+        attach(call)
         update(state)
     }
 

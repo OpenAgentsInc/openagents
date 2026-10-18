@@ -1012,3 +1012,10 @@ links remain readable. Upstream fixes now require manual ports.
   shutdown renames are merged from the feature batch. Rust/Kotlin checks and
   binding generation remain unrun; media viewer routing remains a separate C2
   integration step.
+
+- #12100: Wire the selected live session's Rust-authorized voice target to F2's
+  RTC bridge and F3's Rust Native capsule/screen. The process owns media/service
+  resources across Activity recreation; Rust owns the call and rejects stale
+  permission/terminal callbacks. Start the microphone foreground service before
+  waiting for its first asynchronous state snapshot. Voice JVM source roots are
+  registered; all new host/voice checks and matching bindings remain unrun.
