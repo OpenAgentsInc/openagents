@@ -979,3 +979,15 @@ links remain readable. Upstream fixes now require manual ports.
   passed Kotlin compilation, 26 JVM tests, paired APK assembly, and 17 direct
   offline API 35 instrumentation tests. Host mounting, media viewing, and
   streaming fade remain unfinished; no combined integration pass is claimed.
+
+- [OpenAgents #12100](https://github.com/OpenAgentsInc/openagents/issues/12100):
+  attach default cloud chat and the offline demo directly to the shared Rust
+  transcript worker. Source replacement, clearing, and shutdown reject queued
+  updates from older subscriptions; Kotlin receives layout frames instead of
+  rebuilding message rows. The Android host retains Rust account, session,
+  navigation, editor, and bounded scroll-bookmark handles across Activity mounts;
+  C1, D2, D3, D5, the drawer, and adaptive panes share that owner. Cloud sends bind
+  the account lease before scheduling and stop when it retires. Source fixtures
+  cover layout, editor admission, failed sends, cancellation, and bookmark
+  restoration. Binding generation and executable checks remain unrun; additional
+  feature-route integration is still in progress.

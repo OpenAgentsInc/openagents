@@ -26,6 +26,44 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     @Volatile
     private var ownerNotificationHandler: ((OwnerNoteView) -> Unit)? = null
     private lateinit var secretStorage: AndroidEncryptedFileStore
+    private var realHost: uniffi.openagents_core.CoreAndroidHost? = null
+    private var demoHost: uniffi.openagents_core.CoreAndroidHost? = null
+    private var hostObserver: (() -> Unit)? = null
+    private val hostListener = object : uniffi.openagents_core.AndroidHostListener {
+        override fun onAndroidHostChanged() { mainHandler.post { hostObserver?.invoke() } }
+    }
+    val transcriptFonts by lazy {
+        com.openagents.app.transcript.TranscriptFonts(assets,
+            com.openagents.app.transcript.TranscriptFonts.geistAssetPaths)
+    }
+    val transcriptText by lazy {
+        uniffi.openagents_core.TextSystem(transcriptFonts.faces,
+            com.openagents.app.transcript.AndroidTranscriptMeasurer(transcriptFonts))
+    }
+
+    /** Activity mounts borrow these process-owned Rust handles. */
+    fun androidHost(demo: Boolean): uniffi.openagents_core.CoreAndroidHost {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        if (demo) return demoHost ?: uniffi.openagents_core.CoreAndroidHost.demo(hostListener)
+            .also { demoHost = it }
+        return realHost ?: run {
+            val preferences = getSharedPreferences("android-install", MODE_PRIVATE)
+            val device = preferences.getString("device-id", null) ?: ("android-" + java.util.UUID.randomUUID()).also {
+                check(preferences.edit().putString("device-id", it).commit())
+            }
+            uniffi.openagents_core.CoreAndroidHost.production(
+                java.io.File(filesDir, "core").absolutePath, device, android.os.Build.MODEL,
+                BuildConfig.VERSION_NAME, encryptedFileStore(), hostListener,
+            ).also { realHost = it; it.start() }
+        }
+    }
+
+    fun observeAndroidHost(observer: () -> Unit): AutoCloseable {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        hostObserver = observer
+        return AutoCloseable { if (hostObserver === observer) hostObserver = null }
+    }
+
 
     override fun onCreate() {
         super.onCreate()

@@ -8,6 +8,7 @@
 //! ranges are a binary search, display lists are built on demand from the
 //! frame's prepared rows (pure arithmetic, no measurement).
 
+mod cloud;
 pub mod display;
 mod markdown;
 mod file_icons;
@@ -375,6 +376,9 @@ pub struct TranscriptView {
     watch: Mutex<Option<openagents_client::SnapshotWatch>>,
     visuals: Arc<crate::visual::VisualHub>,
     labs: Arc<LiveLabs>,
+    source_binding: Mutex<()>,
+    source: Arc<Mutex<cloud::SourceGate>>,
+    cloud_watch: Mutex<Option<tokio_util::sync::CancellationToken>>,
 }
 
 /// Live Lab cards a transcript's visuals turned out to be (#11948), and the
@@ -470,6 +474,9 @@ impl TranscriptView {
             watch: Mutex::new(None),
             visuals,
             labs,
+            source_binding: Mutex::new(()),
+            source: Arc::new(Mutex::new(Default::default())),
+            cloud_watch: Mutex::new(None),
         })
     }
 
@@ -518,7 +525,12 @@ impl TranscriptView {
         let Some(handle) = client.session_handle(&chat_id) else {
             return false;
         };
+        let _binding = self.source_binding.lock().unwrap();
+        let Some(generation) = self.replace_source() else {
+            return false;
+        };
         let tx = Mutex::new(self.tx.lock().unwrap().clone());
+        let source = self.source.clone();
         let guard = handle.watch(move |snap| {
             let input = TranscriptInput {
                 entries: snap.transcript_messages(),
@@ -535,7 +547,7 @@ impl TranscriptView {
                 streaming: snap.streaming,
                 lab_cards: Default::default(),
             };
-            let _ = tx.lock().unwrap().send(Msg::Input(input));
+            cloud::send(&source, &tx.lock().unwrap(), generation, input);
         });
         *self.watch.lock().unwrap() = Some(guard);
         true
@@ -565,17 +577,21 @@ impl TranscriptView {
 
     /// Feed markdown fixtures directly (demo screens, benchmarks, tests).
     pub fn set_debug_entries(&self, entries: Vec<DebugEntry>, working: bool) {
-        self.send(Msg::Input(debug_input(entries, working)));
+        let _binding = self.source_binding.lock().unwrap();
+        if let Some(generation) = self.replace_source() {
+            self.send_source(generation, debug_input(entries, working));
+        }
     }
 
     /// Detach the source and remove its displayed content.
     pub fn clear(&self) {
-        self.watch.lock().unwrap().take();
-        self.set_input(Default::default());
+        let _binding = self.source_binding.lock().unwrap();
+        self.replace_source();
     }
 
     pub fn close(&self) {
-        self.watch.lock().unwrap().take();
+        let _binding = self.source_binding.lock().unwrap();
+        self.close_source();
         self.visuals.shutdown();
         self.send(Msg::Shutdown);
     }
@@ -594,6 +610,7 @@ impl TranscriptView {
 
 impl Drop for TranscriptView {
     fn drop(&mut self) {
+        self.close_source();
         self.visuals.shutdown();
         self.send(Msg::Shutdown);
     }

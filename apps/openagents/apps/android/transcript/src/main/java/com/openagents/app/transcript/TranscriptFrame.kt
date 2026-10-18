@@ -32,6 +32,11 @@ class RustTranscriptFrame(private val frame: LayoutFrame) : TranscriptFrame, Aut
     override fun close() = frame.close()
 }
 
+/** A bounded bookmark over row geometry returned by Rust. */
+data class TranscriptViewportAnchor(val row: ULong, val inside: Float, val following: Boolean) {
+    init { require(inside.isFinite() && inside >= 0f) }
+}
+
 /** Viewport state only. Row measurement, ordering, and visibility stay in Rust. */
 class TranscriptViewport(private val cacheLimit: Int = 96) {
     init { require(cacheLimit > 0) }
@@ -71,6 +76,23 @@ class TranscriptViewport(private val cacheLimit: Int = 96) {
             } else offset
             desired.coerceIn(0f, maxOffset)
         }
+    }
+
+    fun exportAnchor(): TranscriptViewportAnchor? {
+        val current = frame ?: return null
+        val row = current.indexAt(offset)?.let(current::placement) ?: return null
+        return TranscriptViewportAnchor(row.key, (offset - row.y).coerceAtLeast(0f), following)
+    }
+
+    /** False means the matching Rust row has not arrived yet. */
+    fun restoreAnchor(anchor: TranscriptViewportAnchor): Boolean {
+        val current = frame ?: return false
+        val row = current.indexOf(anchor.row)?.let(current::placement) ?: return false
+        following = anchor.following
+        offset = if (following) maxOffset else (row.y + anchor.inside.coerceAtMost(
+            (row.height - .001f).coerceAtLeast(0f),
+        )).coerceIn(0f, maxOffset)
+        return true
     }
 
     fun userScrollTo(y: Float, dragging: Boolean) {
