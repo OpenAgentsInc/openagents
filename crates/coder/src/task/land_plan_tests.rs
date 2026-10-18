@@ -335,3 +335,229 @@ fn the_repository_registry_parses_and_names_files_that_exist() {
         }
     }
 }
+
+fn pkg(name: &str, dir: &str, paths: &[&str]) -> Listed {
+    Listed {
+        name: name.into(),
+        dir: dir.into(),
+        paths: files(paths),
+    }
+}
+
+const APP: &str = "apps/openagents/crates";
+
+/// The app workspace as it stood on 2026-10-17, cut down to the crates
+/// the six missed pairs touch (#12121), beside a few root crates.
+fn app_graph() -> Graph {
+    let top = vec![
+        pkg("coder-access", "crates/coder-access", &[]),
+        pkg("chat-home", "crates/chat-home", &[]),
+        pkg(
+            "openagents-sdk",
+            "crates/openagents-sdk",
+            &["crates/chat-home"],
+        ),
+        pkg("lab-kit", "crates/lab-kit", &[]),
+        pkg("lab-ui", "crates/lab-ui", &["crates/lab-kit"]),
+        pkg("boat", "crates/boat", &[]),
+    ];
+    let app = |crate_: &str| format!("{APP}/{crate_}");
+    let nested = vec![(
+        "apps/openagents".to_owned(),
+        vec![
+            pkg(
+                "openagents-engine",
+                &app("engine"),
+                &[
+                    "crates/coder-access",
+                    "crates/chat-home",
+                    &app("rpc"),
+                    &app("account"),
+                    &app("harness"),
+                ],
+            ),
+            pkg("openagents-rpc", &app("rpc"), &[]),
+            pkg("openagents-account", &app("account"), &["crates/lab-kit"]),
+            pkg("openagents-harness", &app("harness"), &[]),
+            pkg(
+                "openagents-ui",
+                &app("ui"),
+                &[
+                    &app("engine"),
+                    &app("rpc"),
+                    &app("account"),
+                    "crates/lab-ui",
+                    "crates/lab-kit",
+                ],
+            ),
+            pkg("openagents-sync", &app("sync"), &[]),
+            pkg(
+                "openagents-mobile",
+                &app("mobile"),
+                &[&app("sync"), &app("account"), "crates/lab-kit"],
+            ),
+            pkg("openagents-orb", &app("orb"), &[]),
+        ],
+    )];
+    // The top workspace's own graph, as `workspace_graph` reads it.
+    let mut graph: Graph = top
+        .iter()
+        .map(|p| {
+            let depends = p
+                .paths
+                .iter()
+                .filter_map(|path| top.iter().find(|t| t.dir == *path))
+                .map(|t| t.name.clone())
+                .collect();
+            (p.name.clone(), depends)
+        })
+        .collect();
+    graph.extend(path_edges(&top, &nested));
+    graph
+}
+
+/// Root crates by name; an app crate by its folder; anything else under
+/// the app by the app's folder, as `package_of` reads the checkout.
+fn app_package_of(path: &str) -> Option<String> {
+    if let Some(rest) = path.strip_prefix(&format!("{APP}/")) {
+        let (crate_, _) = rest.split_once('/')?;
+        return Some(format!("dir:{APP}/{crate_}"));
+    }
+    if path.starts_with("apps/openagents/") {
+        return Some("dir:apps/openagents".into());
+    }
+    package_of(path)
+}
+
+fn app_plan(paths: &[&str]) -> Plan {
+    let graph = app_graph();
+    classify(
+        &files(paths),
+        &Facts {
+            package_of: &app_package_of,
+            literals: &[],
+            graph: Some(&graph),
+        },
+    )
+}
+
+#[test]
+fn the_six_pairs_the_app_workspace_hid_now_overlap() {
+    // The pairs from 2026-10-17 the rule found apart and that were coupled
+    // (`docs/decision-models/measurements/2026-10-18-coordination/change-overlap.jsonl`).
+    let ui = app_plan(&[
+        "apps/openagents/crates/ui/src/shell.rs",
+        "apps/openagents/crates/ui/src/shell/move_sheet.rs",
+        "apps/openagents/docs/downstream-patches.md",
+    ]);
+    let mobile = app_plan(&[
+        "apps/openagents/crates/mobile/src/wallet/mod.rs",
+        "apps/openagents/crates/mobile/src/wallet/tests.rs",
+    ]);
+    let pairs = [
+        // co-11: the engine and rpc move plan, and the ui's move sheet.
+        (
+            "co-11",
+            app_plan(&[
+                "apps/openagents/crates/engine/src/sessions/move_cloud.rs",
+                "apps/openagents/crates/rpc/src/moves.rs",
+            ]),
+            ui.clone(),
+        ),
+        // co-12: computer moves in chat-home, the SDK and the engine.
+        (
+            "co-12",
+            app_plan(&[
+                "apps/openagents/crates/engine/src/doc_host/session_index.rs",
+                "crates/chat-home/src/lib.rs",
+                "crates/openagents-sdk/src/sessions.rs",
+            ]),
+            ui.clone(),
+        ),
+        // co-13: coder-access, which the engine depends on by path.
+        (
+            "co-13",
+            app_plan(&["crates/coder-access/src/host/mod.rs"]),
+            app_plan(&[
+                "apps/openagents/crates/engine/src/handoff.rs",
+                "apps/openagents/crates/harness/src/keeper/client.rs",
+            ]),
+        ),
+        // co-14: sync and the app's lock file, and the phone crate.
+        (
+            "co-14",
+            app_plan(&[
+                "apps/openagents/Cargo.lock",
+                "apps/openagents/crates/sync/src/paired_device.rs",
+            ]),
+            mobile.clone(),
+        ),
+        // co-15: the account crate and the lock file, and the desktop ui.
+        (
+            "co-15",
+            app_plan(&[
+                "apps/openagents/Cargo.lock",
+                "apps/openagents/crates/account/src/reader.rs",
+            ]),
+            app_plan(&["apps/openagents/crates/ui/src/lib.rs"]),
+        ),
+        // co-16: lab-kit, which the phone crate depends on by path.
+        (
+            "co-16",
+            app_plan(&["crates/lab-kit/src/model.rs"]),
+            mobile.clone(),
+        ),
+    ];
+    for (id, a, b) in &pairs {
+        assert!(overlap(a, b) && overlap(b, a), "{id}: {a:?} / {b:?}");
+    }
+}
+
+#[test]
+fn app_crates_that_share_nothing_still_land_side_by_side() {
+    let sync = app_plan(&["apps/openagents/crates/sync/src/lib.rs"]);
+    let harness = app_plan(&["apps/openagents/crates/harness/src/lib.rs"]);
+    let orb = app_plan(&["apps/openagents/crates/orb/src/lib.rs"]);
+    let boat = app_plan(&["crates/boat/src/lib.rs"]);
+    let sdk = app_plan(&["crates/openagents-sdk/src/lib.rs"]);
+    // Two app crates neither of which uses the other.
+    assert!(!overlap(&sync, &harness) && !overlap(&orb, &sync));
+    // A root crate no app crate uses.
+    assert!(!overlap(&boat, &orb) && !overlap(&boat, &harness));
+    // The SDK, which these app crates don't use.
+    assert!(!overlap(&sdk, &orb));
+    // The app's lock file reaches every app crate, never a root one.
+    let lock = app_plan(&["apps/openagents/Cargo.lock"]);
+    assert!(overlap(&lock, &orb) && overlap(&lock, &harness));
+    assert!(!overlap(&lock, &boat));
+    // A root crate's closure names the app crates that use it.
+    let lab_kit = app_plan(&["crates/lab-kit/src/lib.rs"]);
+    for user in ["ui", "mobile", "account", "engine"] {
+        assert!(
+            lab_kit.closure.contains(&format!("dir:{APP}/{user}")),
+            "{user}: {:?}",
+            lab_kit.closure
+        );
+    }
+}
+
+#[test]
+fn the_repository_graph_reaches_across_the_app_workspace() {
+    let top = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    assert!(
+        nested_workspaces(&top)
+            .iter()
+            .any(|w| w == "apps/openagents")
+    );
+    let graph = repository_graph(&top).expect("cargo metadata reads the checkout");
+    let engine = format!("dir:{APP}/engine");
+    let reaches = |from: &str, to: &str| crate::task::landing::reaches(&graph, from, to);
+    assert!(reaches(&engine, "coder-access"), "engine uses coder-access");
+    assert!(reaches(&format!("dir:{APP}/mobile"), "lab-kit"));
+    assert!(reaches(&format!("dir:{APP}/ui"), &engine));
+    assert!(reaches(
+        &format!("dir:{APP}/mobile"),
+        &format!("dir:{APP}/sync")
+    ));
+    assert!(reaches(&engine, "dir:apps/openagents"));
+}

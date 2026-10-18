@@ -14,7 +14,9 @@
 //!   outside any package (an `include_str!` of a script, a test's fixture),
 //!   and pseudo-packages (`dir:crates/psionic`) for build directories
 //!   outside the workspace. Its [`Plan::closure`] adds what those packages
-//!   depend on and what depends on them.
+//!   depend on and what depends on them, across nested workspaces too
+//!   ([`path_edges`]): an `apps/openagents` crate reaches the app crates
+//!   and the root crates it depends on by path, and they reach it.
 //!
 //! Two code entries [`overlap`] when one's packages are in the other's
 //! closure (the relation [`super::landing::affects`] uses to decide whether
@@ -226,20 +228,171 @@ pub fn refers(file: &str, text: &str, path: &str) -> bool {
     false
 }
 
-/// Each workspace package's workspace dependencies.
+/// Each workspace package's workspace dependencies, and (from
+/// [`path_edges`]) each nested workspace's packages by `dir:` folder with
+/// their path dependencies.
 pub type Graph = Vec<(String, Vec<String>)>;
+
+/// One package as `cargo metadata --no-deps` lists it: its name, its
+/// folder and the folders of its path dependencies, relative to the
+/// checkout.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Listed {
+    pub name: String,
+    pub dir: String,
+    pub paths: Vec<String>,
+}
+
+/// The packages of the Cargo workspace at `workspace` (a folder relative
+/// to `worktree`, `""` for the top); `None` when cargo can't list them.
+#[must_use]
+pub fn listed(worktree: &Path, workspace: &str) -> Option<Vec<Listed>> {
+    let top = worktree.canonicalize().ok()?;
+    let output = std::process::Command::new("cargo")
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--offline",
+        ])
+        .current_dir(top.join(workspace))
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())?;
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let relative = |path: &str| -> Option<String> {
+        let path = Path::new(path);
+        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        path.strip_prefix(&top)
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+    };
+    Some(
+        metadata["packages"]
+            .as_array()?
+            .iter()
+            .filter_map(|package| {
+                let manifest = Path::new(package["manifest_path"].as_str()?);
+                Some(Listed {
+                    name: package["name"].as_str()?.to_owned(),
+                    dir: relative(manifest.parent()?.to_str()?)?,
+                    paths: package["dependencies"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|dependency| relative(dependency["path"].as_str()?))
+                        .collect(),
+                })
+            })
+            .collect(),
+    )
+}
+
+/// The folders of the Cargo workspaces under `worktree` other than the
+/// top one (`apps/openagents`, `crates/psionic`): every tracked
+/// `Cargo.toml` with a `[workspace]` table.
+#[must_use]
+pub fn nested_workspaces(worktree: &Path) -> Vec<String> {
+    let Ok(output) = std::process::Command::new("git")
+        .args(["ls-files", "--", "*Cargo.toml"])
+        .current_dir(worktree)
+        .stdin(std::process::Stdio::null())
+        .output()
+    else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|manifest| manifest.strip_suffix("/Cargo.toml"))
+        .filter(|dir| {
+            std::fs::read_to_string(worktree.join(dir).join("Cargo.toml"))
+                .is_ok_and(|text| text.lines().any(|line| line.trim() == "[workspace]"))
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The edges the top workspace's graph leaves out (#12121). A nested
+/// workspace's package is the `dir:` folder [`package_of`] names it by;
+/// it depends on its workspace's own folder (its `Cargo.toml` and
+/// `Cargo.lock`) and on each path dependency: a top-workspace package by
+/// name, anything else by `dir:` folder. A top-workspace package's path
+/// dependencies outside the top workspace are edges too.
+#[must_use]
+pub fn path_edges(top: &[Listed], nested: &[(String, Vec<Listed>)]) -> Graph {
+    let node = |dir: &str| {
+        top.iter()
+            .find(|package| package.dir == dir)
+            .map_or_else(|| format!("dir:{dir}"), |package| package.name.clone())
+    };
+    let mut edges: Graph = Vec::new();
+    for package in top {
+        let outside: Vec<String> = package
+            .paths
+            .iter()
+            .filter(|path| !top.iter().any(|member| member.dir == **path))
+            .map(|path| node(path))
+            .collect();
+        if !outside.is_empty() {
+            edges.push((package.name.clone(), outside));
+        }
+    }
+    for (workspace, packages) in nested {
+        let root = format!("dir:{workspace}");
+        for package in packages {
+            let name = node(&package.dir);
+            let mut depends: Vec<String> = package.paths.iter().map(|path| node(path)).collect();
+            if name != root {
+                depends.push(root.clone());
+            }
+            edges.push((name, depends));
+        }
+    }
+    edges
+}
+
+/// The top workspace's graph with [`path_edges`] for every nested
+/// workspace cargo can list; `None` when the top one can't be read.
+#[must_use]
+pub fn repository_graph(worktree: &Path) -> Option<Graph> {
+    let mut graph = super::landing::workspace_graph(worktree)?;
+    let top = listed(worktree, "").unwrap_or_default();
+    let nested: Vec<(String, Vec<Listed>)> = nested_workspaces(worktree)
+        .into_iter()
+        .filter_map(|workspace| listed(worktree, &workspace).map(|packages| (workspace, packages)))
+        .collect();
+    graph.extend(path_edges(&top, &nested));
+    Some(graph)
+}
 
 /// `packages`, every workspace package they depend on, and every one that
 /// depends on them.
 #[must_use]
 pub fn closure(packages: &[String], graph: &Graph) -> Vec<String> {
+    use std::collections::HashMap;
+    // Both directions once, so the walk is linear in the graph however
+    // many nested workspaces it holds.
+    let mut down: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut up: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (name, depends) in graph {
+        for dependency in depends {
+            down.entry(name).or_default().push(dependency);
+            up.entry(dependency).or_default().push(name);
+        }
+    }
     let mut out: BTreeSet<String> = packages.iter().cloned().collect();
-    for (name, _) in graph {
-        if packages.iter().any(|package| {
-            super::landing::reaches(graph, name, package)
-                || super::landing::reaches(graph, package, name)
-        }) {
-            out.insert(name.clone());
+    for edges in [&down, &up] {
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        let mut next: Vec<&str> = packages.iter().map(String::as_str).collect();
+        while let Some(at) = next.pop() {
+            for &to in edges.get(at).into_iter().flatten() {
+                if seen.insert(to) {
+                    out.insert(to.to_owned());
+                    next.push(to);
+                }
+            }
         }
     }
     out.into_iter().collect()
@@ -466,13 +619,9 @@ pub fn classify(files: &[String], facts: &Facts<'_>) -> Plan {
         .cloned()
         .collect();
     let closure = match facts.graph {
-        Some(graph) => {
-            let mut all = closure(&members, graph);
-            for p in packages.iter().filter(|p| p.starts_with("dir:")) {
-                all.push(p.clone());
-            }
-            all
-        }
+        // `dir:` folders are in the graph when they belong to a nested
+        // workspace (#12121); any other stays its own closure.
+        Some(graph) => closure(&packages, graph),
         None => {
             if !members.is_empty() {
                 wide = true;
@@ -626,7 +775,7 @@ pub fn plan(worktree: &Path, base: &str) -> Plan {
     // The graph only matters to code; reading it runs cargo.
     let needs_graph = files.iter().any(|f| !document(f));
     let graph = if needs_graph {
-        super::landing::workspace_graph(worktree)
+        repository_graph(worktree)
     } else {
         Some(Vec::new())
     };

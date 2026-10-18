@@ -97,7 +97,12 @@ examples labelled no; "false no" is the reverse.
 - The gap is in the rule, not in the judgment: `land_plan` treats each
   `apps/openagents` crate as its own `dir:` folder with no edges. The fix
   is to read the app workspace's graph and app crates' path dependencies
-  into `Graph`. That is follow-up work, not in this change.
+  into `Graph`. Done in #12121: `land_plan::path_edges` adds every
+  nested workspace's packages by `dir:` folder, with their path
+  dependencies, and its regression tests put the six pairs above in order
+  by rule. Of the 15 pairs the rule found apart, the 9 left are all real
+  non-overlaps, so the next measurement needs new pairs coupled only
+  through contracts.
 - So `OPENAGENTS_LAND_OVERLAP_JUDGE` stays off. Turning it on today costs
   one call per new pair of code entries and changes nothing; it can only
   ever make two entries land in order, never side by side. Measure it
