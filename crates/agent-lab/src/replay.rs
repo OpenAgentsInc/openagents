@@ -545,7 +545,9 @@ or stuck. Every action that changes something needs one at the same check-in.",
                         && d.get("at") == a.get("at")
                         && d.get("action").and_then(Value::as_str) == Some(name)
                         && TARGETS.iter().all(|k| match target(a, k) {
+                            // An empty list names nothing to repeat (#12057).
                             None => true,
+                            Some(Value::Array(v)) if v.is_empty() => true,
                             Some(v) => target(d, k).is_some_and(|d| covers(&d, &v)),
                         })
                 })

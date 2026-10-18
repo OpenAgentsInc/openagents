@@ -388,6 +388,13 @@ fn global_rules_hold_in_every_scenario() {
     };
     assert!(!score("disk-alarm", prune("15:40")).passed);
     assert!(score("disk-alarm", prune("15:50")).passed);
+    // An action's empty target list needs no copy in its decision (#12057).
+    let empty = prune("15:50").to_string().replace(
+        "\"brief\":\"Free disk.\"",
+        "\"brief\":\"Free disk.\",\"issues\":[]",
+    );
+    assert!(empty.contains("\"issues\":[]"));
+    assert!(score("disk-alarm", serde_json::from_str(&empty).unwrap()).passed);
     // Releasing the 16 claims before the stall window has passed fails.
     let issues = [
         11994, 11995, 11996, 11997, 11998, 12000, 12001, 12007, 12010, 12011, 12016, 12018, 12019,
