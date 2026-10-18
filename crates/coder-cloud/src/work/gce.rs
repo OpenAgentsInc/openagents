@@ -353,22 +353,7 @@ fn credentials(engine: &str, fresh: bool) -> crate::Result<runtime::Credentials>
     let github = std::env::var("OA_BOAT_GH_TOKEN")
         .ok()
         .or_else(|| std::env::var("GH_TOKEN").ok())
-        .or_else(|| {
-            pool::gcloud_in(
-                &pool::project(),
-                &[
-                    "secrets",
-                    "versions",
-                    "access",
-                    "latest",
-                    "--secret",
-                    "coder-pool-git-token",
-                ],
-                Duration::from_secs(60),
-            )
-            .ok()
-            .map(|value| value.trim().to_owned())
-        })
+        .or_else(|| pool_secret("coder-pool-git-token"))
         .filter(|value| !value.is_empty())
         .ok_or("Connect GitHub before starting issue work on the pool.")?;
     values.insert("GH_TOKEN".into(), github);
@@ -385,12 +370,18 @@ fn credentials(engine: &str, fresh: bool) -> crate::Result<runtime::Credentials>
         )?;
         let login = access_only_login(&text, pool::now(), fresh)?;
         values.insert("OA_CODEX_AUTH".into(), login);
-    } else {
-        for key in ["CLAUDE_CODE_OAUTH_TOKEN", "XAI_API_KEY"] {
-            if let Ok(value) = std::env::var(key) {
-                values.insert(key.into(), value);
-            }
-        }
+    } else if let Ok(value) = std::env::var("XAI_API_KEY") {
+        values.insert("XAI_API_KEY".into(), value);
+    }
+    // Every engine can hand off to Claude Code, so every run carries the
+    // pool's Claude token. It rides in the run's environment, never on disk.
+    if let Some(token) = std::env::var(crate::claude::OAUTH_TOKEN)
+        .ok()
+        .or_else(|| pool_secret("coder-pool-claude-token"))
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+    {
+        values.insert(crate::claude::OAUTH_TOKEN.into(), token);
     }
     for key in ["OPENAGENTS_TOKEN", "OPENAGENTS_SITE", "OPENAGENTS_API_BASE"] {
         if let Ok(value) = std::env::var(key) {
@@ -400,6 +391,17 @@ fn credentials(engine: &str, fresh: bool) -> crate::Result<runtime::Credentials>
     runtime::Credentials::from_names(&values.keys().cloned().collect::<Vec<_>>(), |key| {
         values.get(key).cloned()
     })
+}
+
+/// One Secret Manager value of the pool's project, trimmed; `None` when unreadable.
+fn pool_secret(name: &str) -> Option<String> {
+    pool::gcloud_in(
+        &pool::project(),
+        &["secrets", "versions", "access", "latest", "--secret", name],
+        Duration::from_secs(60),
+    )
+    .ok()
+    .map(|value| value.trim().to_owned())
 }
 
 fn access_only_login(text: &str, now: u64, fresh: bool) -> crate::Result<String> {
