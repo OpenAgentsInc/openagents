@@ -260,10 +260,13 @@ impl VoiceMediaEndpoint for PlatformMedia {
         Ok((r.microphone, r.speaker))
     }
     fn close(&self) {
-        if self.closed.swap(true, Ordering::AcqRel) {
-            return;
-        }
-        let pending = std::mem::take(&mut *self.pending.lock().unwrap());
+        let pending = {
+            let mut pending = self.pending.lock().unwrap();
+            if self.closed.swap(true, Ordering::AcqRel) {
+                return;
+            }
+            std::mem::take(&mut *pending)
+        };
         for (_, tx) in pending {
             let _ = tx.send(Err(VoiceRejection::InvalidLease));
         }
@@ -325,10 +328,11 @@ impl VoiceCall {
         microphone: u16,
         speaker: u16,
     ) {
+        let mut pending = self.media.pending.lock().unwrap();
         if self.media.closed.load(Ordering::Acquire) {
             return;
         }
-        if let Some(tx) = self.media.pending.lock().unwrap().remove(&request_id) {
+        if let Some(tx) = pending.remove(&request_id) {
             let reply = match failure {
                 Some(VoiceMediaFailure::PermissionDenied) => {
                     Err(VoiceRejection::MicrophonePermissionDenied)
@@ -488,12 +492,6 @@ mod tests {
     async fn close_releases_pending_callbacks_and_rejects_late_replies() {
         let listener = Arc::new(Listener(Mutex::new(vec![])));
         let media = media(listener.clone());
-        let clone = media.clone();
-        let task = tokio::spawn(async move { clone.offer().await });
-        tokio::task::yield_now().await;
-        media.close();
-        assert!(task.await.unwrap().is_err());
-        assert!(media.pending.lock().unwrap().is_empty());
         let (muted, _) = watch::channel(false);
         let call = VoiceCall {
             host_device_id: "host".into(),
@@ -502,8 +500,17 @@ mod tests {
             muted,
             context: watch::channel(None).0,
         };
+        let clone = media.clone();
+        let task = tokio::spawn(async move { clone.offer().await });
+        tokio::task::yield_now().await;
+        call.stop();
+        assert!(task.await.unwrap().is_err());
+        assert!(media.pending.lock().unwrap().is_empty());
+        assert!(call.cancel.is_cancelled());
+        call.stop();
         call.complete_media(1, None, Some("late SDP".into()), 0, 0);
         assert!(media.offer().await.is_err());
+        drop(call);
         assert_eq!(
             listener
                 .0
