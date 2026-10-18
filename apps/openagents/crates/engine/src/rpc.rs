@@ -1185,6 +1185,15 @@ impl EngineRpc {
         }
     }
 
+    fn admit_voice_message(&self, chat: &str) -> Result<(), RpcError> {
+        if openagents_proto::voice::is_orchestrator_chat(chat) && !self.voice.owns_chat(chat) {
+            return Err(RpcError::Failed(
+                "This voice call has ended. Send your message to the agent's chat.".into(),
+            ));
+        }
+        Ok(())
+    }
+
     async fn prepare_voice_bridge(
         &self,
         chat: &str,
@@ -2023,6 +2032,7 @@ impl RpcService for EngineRpc {
             }
             methods::QUEUE_COMMAND => {
                 let p: QueueCommandParams = parse_params(params)?;
+                self.admit_voice_message(&p.chat_id)?;
                 self.doc_host
                     .foreman_admit(p.origin_chat_id.as_deref(), &p.chat_id, Some(&p.command))
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
@@ -2123,6 +2133,7 @@ impl RpcService for EngineRpc {
             }
             methods::QUEUE_MESSAGE => {
                 let p: QueueMessageParams = parse_params(params)?;
+                self.admit_voice_message(&p.chat_id)?;
                 self.doc_host
                     .foreman_admit(p.origin_chat_id.as_deref(), &p.chat_id, None)
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
@@ -3803,6 +3814,35 @@ impl RpcService for EngineRpc {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn ended_voice_calls_refuse_messages_before_recording_them() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = crate::EngineCore::assemble_with_profile(
+            crate::EngineProfile::local(temp.path()).unwrap(),
+            std::sync::Arc::new(HarnessRegistry::new()),
+            HarnessId::Codex,
+            None,
+        )
+        .unwrap();
+        let rpc = core.rpc_service();
+        let chat = "voice-orchestrator-ended";
+        let result = rpc
+            .handle(
+                methods::QUEUE_MESSAGE,
+                serde_json::json!({"chatId": chat, "text": "late report"}),
+            )
+            .await;
+        assert!(
+            matches!(result, Err(RpcError::Failed(message)) if message.contains("call has ended"))
+        );
+        let lease = rpc.voice.reserve(chat).unwrap();
+        assert!(rpc.admit_voice_message(chat).is_ok());
+        rpc.voice.stop(&lease).unwrap();
+        assert!(rpc.admit_voice_message(chat).is_err());
+        assert!(rpc.admit_voice_message("ordinary").is_ok());
+        core.sessions.shutdown().await;
+    }
 
     #[tokio::test]
     async fn voice_owner_is_shared_across_services_and_shutdown_retires_it() {

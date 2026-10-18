@@ -93,6 +93,13 @@ if has "$turnline" '"method":"review/start"'; then
 fi
 
 case "$turnline" in
+*scenario:compaction*)
+  emit "{\"id\":$tid,\"result\":{\"turn\":{\"id\":\"t-1\"}}}"
+  emit '{"method":"turn/started","params":{"turn":{"id":"t-1"}}}'
+  emit '{"method":"item/completed","params":{"item":{"id":"compact","type":"contextCompaction"}}}'
+  emit '{"method":"item/completed","params":{"item":{"id":"reply","type":"agentMessage","text":"The answer."}}}'
+  emit '{"method":"turn/completed","params":{"turn":{"id":"t-1","status":"completed"}}}'
+  ;;
 *scenario:kept*)
   # A slow turn for keeper tests: `chunks=N` deltas, an optional
   # approval at chunk `ask=N`, the message's completed item, then

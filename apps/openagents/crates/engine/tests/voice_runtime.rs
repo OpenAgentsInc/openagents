@@ -33,7 +33,9 @@ async fn native_core(temp: &tempfile::TempDir) -> EngineCore {
     let binary = native_package(&package);
     let registry = std::sync::Arc::new(HarnessRegistry::new());
     registry.register(std::sync::Arc::new(
-        openagents_harness::CodexHarness::new().with_executable(binary),
+        openagents_harness::CodexHarness::new()
+            .with_executable(binary)
+            .with_voice_auth_home(temp.path().join("fixture-auth")),
     ));
     let core = EngineCore::assemble_with_profile(
         EngineProfile::local(&temp.path().join("data")).unwrap(),
@@ -58,7 +60,7 @@ async fn native_core(temp: &tempfile::TempDir) -> EngineCore {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
+async fn remote_failed_prepare_keeps_old_transcript_but_retry_starts_fresh() {
     use openagents_proto::voice::{ORCHESTRATOR_CHAT_PREFIX, remote as wire};
     let temp = tempfile::tempdir().unwrap();
     let core = native_core(&temp).await;
@@ -72,7 +74,7 @@ async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
     };
     let envelope = |p: serde_json::Value| json!({"targetDeviceId":core.device_id,"payload":p});
 
-    // Seed a previous call at the rotation threshold with its native thread.
+    // An earlier call has a long transcript and a saved thread.
     let previous = format!("{ORCHESTRATOR_CHAT_PREFIX}previous");
     core.workspace
         .create_chat(
@@ -85,16 +87,14 @@ async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
         .unwrap();
     core.workspace
         .set_chat_harness_session(&previous, "remembered-thread", "");
-    // The engine's `ROTATE_AFTER`.
-    const ROTATE_AFTER: usize = 1000;
+    const ENTRIES: usize = 1000;
     let doc = core.doc_host.open(&previous).unwrap();
-    for i in 0..ROTATE_AFTER {
+    for i in 0..ENTRIES {
         doc.write_user_message(&format!("m{i}"), "remember me", i as i64)
             .unwrap();
     }
 
-    // An unsupported voice fails after rotation and exercises the real
-    // preparation cleanup, rather than manually deleting the successor.
+    // An unsupported voice exercises preparation cleanup.
     let failure = client
         .call(methods::PREPARE_VOICE_V2, envelope(json!(request)))
         .await
@@ -124,9 +124,9 @@ async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
         core.workspace.chat_harness_session(&previous).unwrap().0,
         "remembered-thread"
     );
-    assert_eq!(doc.doc().read_entries().unwrap().len(), ROTATE_AFTER);
+    assert_eq!(doc.doc().read_entries().unwrap().len(), ENTRIES);
 
-    // A fresh attempt rotates again and resumes the original Codex thread.
+    // A fresh attempt never resumes the earlier call.
     request.attempt_key = wire::AttemptKey::new();
     request.voice = None;
     let prepared: wire::Prepared = client
@@ -140,7 +140,7 @@ async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
             .unwrap()
             .resume
             .as_deref(),
-        Some("remembered-thread")
+        None
     );
     assert!(core.workspace.chat(&previous).unwrap().is_some());
     client
@@ -269,6 +269,13 @@ async fn remote_voice_full_control_flow_and_idempotent_prepare_without_host_audi
     .await
     .unwrap();
     drop(owner);
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while core.sessions.has_run(&prepared.chat_id) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("hanging up retires the voice-only runtime");
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
     assert!(
         client

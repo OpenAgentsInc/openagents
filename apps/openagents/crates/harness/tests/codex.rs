@@ -1533,7 +1533,7 @@ async fn native_commands_use_rpc_operations_and_render_results() {
     }
     .link();
     for (prompt, resume, expected) in [
-        ("/compact", true, "Context compacted."),
+        ("/compact", true, ""),
         ("/review", true, "Review fixture result"),
         (
             "/review check error handling",
@@ -1925,9 +1925,9 @@ async fn idle_voice_runtime_has_no_initial_turn_and_preserves_mcp() {
 #[cfg(feature = "voice")]
 #[tokio::test]
 async fn external_voice_keeps_canonical_events_without_any_local_helper() {
-    use std::os::unix::fs::PermissionsExt;
     use openagents_harness::codex::realtime::{VoiceCommand, channel};
     use openagents_proto::voice::{VoiceEvent, remote::Sdp};
+    use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let binary = dir.path().join("bin/codex");
     std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
@@ -2004,4 +2004,117 @@ async fn external_voice_keeps_canonical_events_without_any_local_helper() {
     assert!(!wire.contains("appendAudio"));
     token.cancel();
     pump.abort();
+}
+
+#[cfg(feature = "voice")]
+#[tokio::test]
+async fn voice_calls_isolate_configuration_and_start_distinct_threads() {
+    let dir = tempfile::tempdir().unwrap();
+    let auth = dir.path().join("user-codex");
+    std::fs::create_dir(&auth).unwrap();
+    std::fs::write(auth.join("auth.json"), "fixture-auth").unwrap();
+    std::fs::write(
+        auth.join("config.toml"),
+        "developer_instructions='user instructions'\n[mcp_servers.user]\ncommand='user-mcp'\n[plugins.leak]\nenabled=true",
+    )
+    .unwrap();
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake-codex-voice.py");
+    let driver = CodexHarness::new()
+        .with_executable(fixture)
+        .with_voice_auth_home(auth)
+        .with_graces(Duration::from_millis(10), Duration::from_millis(100));
+    let mut threads = Vec::new();
+    let mut homes = Vec::new();
+    for call in 0..2 {
+        let cwd = dir.path().join(format!("call-{call}"));
+        std::fs::create_dir(&cwd).unwrap();
+        let mut req = request("");
+        req.cwd = cwd.display().to_string();
+        req.resume = Some("must-not-resume".into());
+        req.model_options
+            .insert("openagentsVoice".into(), true.into());
+        req.mcp = Some(openagents_proto::McpServer {
+            name: "openagents".into(),
+            command: "fixture-mcp".into(),
+            args: vec![],
+            env: Default::default(),
+        });
+        let (mut controls, _steer, token) = controls("Yes");
+        let (_voice, bridge, _voice_events) = openagents_harness::codex::realtime::channel();
+        controls.realtime = Some(bridge);
+        let mut stream = driver.start_idle(req, controls).await.unwrap();
+        let event = tokio::time::timeout(Duration::from_secs(5), stream.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let AgentEvent::SessionStarted { session_id, .. } = event else {
+            panic!("{event:?}")
+        };
+        threads.push(session_id);
+        let env: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(cwd.join("voice-environment.json")).unwrap())
+                .unwrap();
+        let home = PathBuf::from(env["CODEX_HOME"].as_str().unwrap());
+        assert_eq!(
+            std::fs::read_to_string(home.join("auth.json")).unwrap(),
+            "fixture-auth"
+        );
+        assert!(!home.join("config.toml").exists());
+        assert!(!home.join("plugins").exists());
+        assert_ne!(env["HOME"], serde_json::json!(dir.path()));
+        assert_eq!(env["BROWSER"], "/usr/bin/true");
+        homes.push(home);
+        let wire = std::fs::read_to_string(cwd.join("voice-wire.jsonl")).unwrap();
+        let frames: Vec<serde_json::Value> = wire
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert!(
+            !frames
+                .iter()
+                .any(|f| f["method"] == "thread/resume" || f["method"] == "turn/start")
+        );
+        let start = frames
+            .iter()
+            .find(|f| f["method"] == "thread/start")
+            .unwrap();
+        assert_eq!(start["params"]["ephemeral"], true);
+        assert_eq!(start["params"]["config"]["features.plugins"], false);
+        assert_eq!(start["params"]["config"]["features.apps"], false);
+        assert_eq!(
+            start["params"]["config"]["mcp_servers.openagents.command"],
+            "fixture-mcp"
+        );
+        assert!(!start.to_string().contains("user instructions"));
+        assert!(!start.to_string().contains("user-mcp"));
+        assert!(
+            start["params"]["config"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .filter(|key| key.starts_with("mcp_servers."))
+                .all(|key| key.starts_with("mcp_servers.openagents."))
+        );
+        token.cancel();
+        drop(stream);
+    }
+    assert_ne!(threads[0], threads[1]);
+    assert_ne!(homes[0], homes[1]);
+}
+
+#[tokio::test]
+async fn compaction_during_a_turn_does_not_become_assistant_text() {
+    let (controls, steer, _) = controls("Yes");
+    drop(steer);
+    let events = run_to_end(&harness(), request("scenario:compaction"), controls).await;
+    let text: String = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentEvent::TextDelta { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text.trim(), "The answer.");
 }

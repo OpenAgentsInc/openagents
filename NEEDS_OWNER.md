@@ -1,3 +1,9 @@
+## Check fresh voice calls (#12060)
+
+After updating the app, make two voice calls. Check that each starts fresh,
+user Codex plugins do not appear, and an ended call refuses a late report.
+The implementation was checked with fake voice sessions only.
+
 ## Check the wallet presentation on a test iPhone (#12013)
 
 Install OpenAgents 1.0.0 (1013) from TestFlight over the existing test app.

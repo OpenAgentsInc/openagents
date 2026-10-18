@@ -49,6 +49,7 @@ mod normalize;
 #[cfg(feature = "voice")]
 pub mod realtime;
 mod subagents;
+mod voice_profile;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -142,6 +143,7 @@ pub fn login_command(codex_home: &std::path::Path) -> Result<Command, HarnessErr
 pub struct CodexHarness {
     models_cache: crate::catalog::Catalog,
     executable: Option<PathBuf>,
+    voice_auth_home: Option<PathBuf>,
     #[cfg(unix)]
     launch_broker: Option<crate::process::LaunchBroker>,
     /// Grace between `turn/interrupt` and SIGTERM.
@@ -158,6 +160,7 @@ impl Default for CodexHarness {
         Self {
             models_cache: crate::catalog::Catalog::default(),
             executable: None,
+            voice_auth_home: None,
             #[cfg(unix)]
             launch_broker: None,
             interrupt_grace: Duration::from_secs(2),
@@ -175,6 +178,12 @@ impl CodexHarness {
     /// Use a fixed CLI binary instead of PATH/known-location resolution.
     pub fn with_executable(mut self, path: impl Into<PathBuf>) -> Self {
         self.executable = Some(path.into());
+        self
+    }
+
+    /// Choose the authentication source for an isolated voice runtime.
+    pub fn with_voice_auth_home(mut self, home: PathBuf) -> Self {
+        self.voice_auth_home = Some(home);
         self
     }
 
@@ -828,12 +837,30 @@ impl CodexHarness {
         if !request.cwd.is_empty() {
             cmd.current_dir(&request.cwd);
         }
+        let voice_profile = if request
+            .model_options
+            .get("openagentsVoice")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            request.resume = None;
+            Some(voice_profile::Profile::prepare(
+                &mut cmd,
+                &request.cwd,
+                self.voice_auth_home.as_deref(),
+            )?)
+        } else {
+            None
+        };
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         #[cfg(unix)]
-        if !title_only && let Some(broker) = &self.launch_broker {
+        if !title_only
+            && voice_profile.is_none()
+            && let Some(broker) = &self.launch_broker
+        {
             broker.options.codex_command(&mut cmd);
         }
         // Voice keeps its own routing on the live pipes, so a voice run
@@ -905,6 +932,7 @@ impl CodexHarness {
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
         let events = child.events(&event_tx, event_rx);
         tokio::spawn(run_session(Session {
+            voice_profile,
             #[cfg(unix)]
             host_options: self.launch_broker.as_ref().map(|b| b.options.clone()),
             title_only,
@@ -930,6 +958,7 @@ impl CodexHarness {
 // ---------------------------------------------------------------------------
 
 struct Session {
+    voice_profile: Option<voice_profile::Profile>,
     #[cfg(unix)]
     host_options: Option<crate::host::NativeOptions>,
     executable: PathBuf,
@@ -1131,6 +1160,7 @@ async fn start_turn(client: &RpcClient, params: Value) -> Result<String, Harness
 /// steering mailbox, the interrupt token, and consumer liveness.
 async fn run_session(session: Session) {
     let Session {
+        voice_profile: _voice_profile,
         #[cfg(unix)]
         host_options,
         executable,
@@ -1204,6 +1234,14 @@ async fn run_session(session: Session) {
         {
             p.insert("developerInstructions".into(), instructions.into());
         }
+        if _voice_profile.is_some() {
+            p.insert(
+                "developerInstructions".into(),
+                voice_profile::INSTRUCTIONS.into(),
+            );
+            p.insert("ephemeral".into(), true.into());
+            p.insert("config".into(), voice_profile::thread_config());
+        }
         p.insert("cwd".into(), Value::String(request.cwd.clone()));
         if let Some(mcp) = request.mcp.as_ref().filter(|_| !title_only) {
             // OpenAgents's own MCP server as dotted config overrides on top of the
@@ -1217,7 +1255,10 @@ async fn run_session(session: Session) {
             overrides.extend(codex_mcp_overrides(mcp));
         }
         #[cfg(unix)]
-        if !title_only && let Some(options) = &host_options {
+        if !title_only
+            && _voice_profile.is_none()
+            && let Some(options) = &host_options
+        {
             p.entry("config")
                 .or_insert_with(|| json!({}))
                 .as_object_mut()
@@ -1612,7 +1653,6 @@ async fn run_session(session: Session) {
                         if phase == Phase::Completed {
                             let output = match item_type(item) {
                                 "exitedReviewMode" => item.get("review").and_then(Value::as_str),
-                                "contextCompaction" => Some("Context compacted."),
                                 _ => None,
                             };
                             if let Some(text) = output

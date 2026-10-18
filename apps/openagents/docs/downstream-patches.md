@@ -2,6 +2,10 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12060: each voice call uses a fresh chat and isolated Codex home,
+  copies authentication only, refuses messages after hang-up, and keeps
+  compaction notices out of assistant text.
+
 - [OpenAgents #12022](https://github.com/OpenAgentsInc/openagents/issues/12022):
   The root CLI reads account quota through `openagents-rpc`. Its sync
   dependency disables the optional SQLite store; app consumers still enable

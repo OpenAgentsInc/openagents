@@ -21,7 +21,7 @@ Codex 0.159's WebSocket audio path calls `realtime_api_key` and requires API-key
 credentials, including an environment-key fallback. That path is unsuitable for
 this integration. Native subscription voice uses **WebRTC V3** instead:
 
-1. Prepare or reuse an idle native thread with the normal OpenAgents MCP server.
+1. Prepare a fresh idle native thread with the normal OpenAgents MCP server.
    No initial `turn/start`, empty user message, title request, or submitted draft.
    Load the initial `account/read` snapshot before attaching the voice router:
    Codex announces initial authentication with `account/updated`, which must not
@@ -73,8 +73,8 @@ also permanently invalidates the voice bridge before any new token can be
 installed. A fresh explicit request can renew that idle runtime after cleanup;
 continuing delegated work is preserved and must finish before renewal.
 
-Voice protects the warm runtime from idle reaping and updates. Voice stop leaves
-delegated Codex work running. Account/profile retirement, engine/window owner
+Voice protects the runtime from idle reaping and updates. Hanging up retires
+the voice-only runtime. Work in other chats continues. Account/profile retirement, engine/window owner
 loss, audio failure and provider termination close voice; navigating between
 threads does not. An agent question keeps voice open: the stage reports it and
 links to the session transcript, where the usual input UI answers it. Reconnection and
@@ -107,7 +107,7 @@ continuing tasks or their children.
 ## Interface and packaging
 
 Voice starts from the microphone in the sidebar footer, next to Settings. Each
-session creates a fresh projectless Codex chat (cwd `~`) on this device whose id
+session creates a fresh projectless Codex chat in a scratch folder on this device whose id
 starts with `voice-orchestrator-`. That prefix keeps it out of the sidebar,
 jump slots, command palette, archive and completion notifications, and the
 engine drops it as a `parentChatId`: chats the orchestrator creates are ordinary
@@ -229,3 +229,10 @@ remain unverified; protocol/fixture success does not establish those results.
 Implementation review and local test results are recorded in the ignored
 `.personal/codex-voice/` working notes. No push, deployment or remote PR is part
 of this task.
+
+Each call starts a new ephemeral Codex thread in a private runtime home. Only
+`auth.json` is copied from the user's Codex home; configuration, plugins, MCP
+servers, skills, and instructions are excluded. The runtime home is removed
+when its process ends. Hanging up retires that runtime. Calls never resume an
+earlier call's thread. Messages to a voice chat after its call ends are refused. Compaction notices stay out
+of assistant text.

@@ -586,6 +586,16 @@ impl SessionsEngine {
         idle: bool,
     ) -> Result<String, EngineError> {
         let _admitted = keepers::admit(&self.inner)?;
+        if openagents_proto::voice::is_orchestrator_chat(chat_id) {
+            if !idle && !self.inner.voice.owns_chat(chat_id) {
+                return Err(EngineError::Other("This voice call has ended.".into()));
+            }
+            request
+                .model_options
+                .insert("openagentsVoice".into(), true.into());
+            request.resume = None;
+        }
+
         // Only the host decides a native fork, below.
         request
             .model_options
@@ -2653,8 +2663,24 @@ async fn drive_run(
                     inner.set_background_tasks(&chat_id, turn.background_tasks());
                     continue;
                 }
-                // A hang-up restarts the idle window, however long the call.
+                // A voice-only runtime ends with its call.
                 _ = resume_state.voice_active.ended.notified() => {
+                    if openagents_proto::voice::is_orchestrator_chat(&chat_id)
+                        && !resume_state.voice_active.live()
+                    {
+                        interrupted = true;
+                        if let Some(token) = lock(&inner.runs)
+                            .get(&chat_id)
+                            .filter(|h| h.run_id == run_id)
+                            .map(|h| h.interrupt_token.clone())
+                        {
+                            token.cancel();
+                        }
+                        interrupt_deadline = Some(
+                            tokio::time::Instant::now() + std::time::Duration::from_secs(3),
+                        );
+                        continue;
+                    }
                     if idle_since.is_some() {
                         idle_since = Some(tokio::time::Instant::now());
                     }

@@ -212,7 +212,6 @@ impl VoiceManager {
             reason,
         });
     }
-    #[cfg(test)]
     pub(crate) fn owns_chat(&self, chat: &str) -> bool {
         self.inner
             .slot
