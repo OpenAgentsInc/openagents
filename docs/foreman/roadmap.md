@@ -226,7 +226,9 @@ flowchart TD
   `coder::claim`, `scripts/dev/issue-board.sh`, `templates/foreman.md`.
 - **Acceptance:** A second claim from a chat that already holds one is
   refused with a plain message; Foreman's status lists claims with no live
-  chat separately.
+  chat separately. Replaying 2026-10-17's case (one session holding 16
+  claims, no live chat progressing on any of them), Foreman treats them as
+  unclaimed within the stall window and takes them over.
 - **Size:** S.
 
 ### 24. What is waiting on the owner, in every check-in
@@ -336,7 +338,10 @@ flowchart TD
   - disk-floor breaches (under 100 GiB free) and how long each lasted;
   - probes or checks that wrote data to production or to the owner's
     account (target: zero);
-  - what waited on the owner, and for how long (item 24).
+  - what waited on the owner, and for how long (item 24);
+  - deploy-permission surprises: a deploy refused for permissions that no
+    check-in had listed first (target: zero; 2026-10-17 had one, the
+    `actAs` refusal).
 - **Why:** L13. The 2026-10-17 numbers exist only because an audit counted
   them by hand: 4 h 47 min to 5 h 17 min from code complete to close for the
   coordinator's 11 issues, against 21–35 minutes for Foreman's three fastest
