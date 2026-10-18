@@ -453,7 +453,10 @@ async fn presence_relays_but_does_not_survive_a_server_restart() {
 #[tokio::test]
 async fn applied_migrations_do_not_lock_live_registry_writers() {
     let server = Server::start().await;
-    server.get("/rows").await;
+    // A push creates the account's head (reads don't, #12120).
+    server
+        .push(json!({"batch":"seed","ops":[create("seed","Seed",1)]}))
+        .await;
     let mut db = server.db.connect().await.unwrap();
     let tx = db.transaction().await.unwrap();
     tx.query_one(
@@ -467,4 +470,103 @@ async fn applied_migrations_do_not_lock_live_registry_writers() {
         .expect("an already applied migration must not wait on live table locks")
         .unwrap();
     tx.rollback().await.unwrap();
+}
+
+/// #12120: a hello and a probe read the registry; they write nothing (no
+/// head row, so no commit waits on a WAL flush in the account's queue). The
+/// first push still creates the head.
+#[tokio::test]
+async fn a_hello_and_a_probe_read_without_writing() {
+    let server = Server::start().await;
+    let (mut ws, _) = tokio_tungstenite::connect_async(server.url())
+        .await
+        .unwrap();
+    send(&mut ws, json!({"t":"hello","device":"fixture"})).await;
+    let state = next(&mut ws).await;
+    assert_eq!(state["t"], "state");
+    assert_eq!(state["seq"], 0);
+    assert_eq!(state["full"], true);
+    send(&mut ws, json!({"t":"probe"})).await;
+    let probe = next(&mut ws).await;
+    assert_eq!(
+        (probe["t"].as_str(), probe["seq"].as_i64()),
+        (Some("probe-ok"), Some(0))
+    );
+    let db = server.db.connect().await.unwrap();
+    let before = db
+        .query(
+            "SELECT 1 FROM registry_heads WHERE account=$1",
+            &[&server.account],
+        )
+        .await
+        .unwrap();
+    assert!(before.is_empty(), "a read created the account's head");
+    drop(db);
+    let ack = server
+        .push(json!({"batch":"first","ops":[create("chat","First",1)]}))
+        .await;
+    assert_eq!(ack["seq"], 1);
+    let db = server.db.connect().await.unwrap();
+    let seq: i64 = db
+        .query_one(
+            "SELECT seq FROM registry_heads WHERE account=$1",
+            &[&server.account],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(seq, 1);
+}
+
+/// #12120: connections are kept and reused, at most the pool's size are out
+/// at once, and a transaction dropped without commit is rolled back before
+/// the connection serves anyone else.
+#[tokio::test]
+async fn database_connections_are_reused_capped_and_rolled_back() {
+    let dsn =
+        std::env::var("CODER_SYNC_TEST_DATABASE_URL").expect("Run scripts/coder-sync/test.sh");
+    let db = Database::with_pool_size(&dsn, 1).unwrap();
+    let first = db.connect().await.unwrap();
+    let pid: i32 = first
+        .query_one("SELECT pg_backend_pid()", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let other = db.clone();
+    let waiting = tokio::spawn(async move {
+        let client = other.connect().await.unwrap();
+        client
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await
+            .unwrap()
+            .get::<_, i32>(0)
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        !waiting.is_finished(),
+        "a second caller went past the pool's size"
+    );
+    drop(first);
+    assert_eq!(
+        waiting.await.unwrap(),
+        pid,
+        "the kept connection served the next caller"
+    );
+    {
+        let mut client = db.connect().await.unwrap();
+        let tx = client.transaction().await.unwrap();
+        tx.batch_execute("CREATE TEMP TABLE pool_probe(x int)")
+            .await
+            .unwrap();
+    }
+    let client = db.connect().await.unwrap();
+    let left: bool = client
+        .query_one("SELECT to_regclass('pg_temp.pool_probe') IS NOT NULL", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert!(
+        !left,
+        "a dropped transaction's work survived into the next use"
+    );
 }

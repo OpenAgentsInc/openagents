@@ -160,17 +160,36 @@ async fn run<T: Send + 'static, F: Future<Output = Result<T>> + Send + 'static>(
         .await
         .map_err(|_| Failure(StatusCode::SERVICE_UNAVAILABLE, "busy"))?
 }
+/// The account's head and floor, read only (#12120). Reads used to take the
+/// write lock (an INSERT and FOR UPDATE), so every hello, probe and upgrade
+/// committed and waited on a WAL flush inside the account's queue. An
+/// account with no head yet reads as 0 and 0; its first push creates it.
+async fn read_head(
+    client: &impl tokio_postgres::GenericClient,
+    account: &str,
+) -> Result<(i64, i64)> {
+    Ok(client
+        .query_opt(
+            "SELECT seq,gc_floor FROM registry_heads WHERE account=$1",
+            &[&account],
+        )
+        .await?
+        .map_or((0, 0), |row| (row.get(0), row.get(1))))
+}
 async fn head(state: &StateData, account: &str) -> Result<i64> {
-    let mut db = state.database.connect().await?;
-    let tx = db.transaction().await?;
-    let (seq, _) = lock(&tx, account).await?;
-    tx.commit().await?;
-    Ok(seq)
+    let db = state.database.connect().await?;
+    Ok(read_head(&*db, account).await?.0)
 }
 async fn snapshot(state: &StateData, account: &str, cursor: Option<i64>) -> Result<Value> {
     let mut db = state.database.connect().await?;
-    let tx = db.transaction().await?;
-    let (seq, floor) = lock(&tx, account).await?;
+    // One consistent read of the head and its rows, with no write.
+    let tx = db
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await?;
+    let (seq, floor) = read_head(&tx, account).await?;
     let full = cursor.is_none_or(|c| c < floor || c > seq);
     let after = if full { 0 } else { cursor.unwrap() };
     let rows=tx.query("SELECT value::text FROM registry_rows WHERE account=$1 AND seq>$2 ORDER BY seq,kind,id",&[&account,&after]).await?.iter().map(|r|serde_json::from_str::<RegistryRow>(&r.get::<_,String>(0)).map_err(|_|Failure(StatusCode::SERVICE_UNAVAILABLE,"unavailable"))).collect::<Result<Vec<_>>>()?;
