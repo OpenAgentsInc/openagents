@@ -382,8 +382,13 @@ fn out_of_capacity(error: &str) -> bool {
 
 /// Hourly list-price estimate of one host: `OA_POOL_HOURLY_USD`, else
 /// about $0.0175 (spot) or $0.0525 (on demand) per vCPU of a C3 shape, plus
-/// the 300 GB disk.
+/// the 300 GB disk. Archil sandboxes (`archil-{vcpus}x{mib}`) are priced
+/// at Archil's rates.
 pub fn hourly_usd(machine: &str, spot: bool) -> f64 {
+    // An Archil sandbox (`chat work --on archil`) at Archil's list price.
+    if let Some(price) = crate::archil_backend::hourly_usd(machine) {
+        return price;
+    }
     if let Some(price) = std::env::var("OA_POOL_HOURLY_USD")
         .ok()
         .and_then(|p| p.parse::<f64>().ok())

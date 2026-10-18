@@ -5,6 +5,8 @@
 //! - `here`: this computer (no `--on`).
 //! - `boat`: a Boat sandbox per issue (`chat_boat.rs`, #10220). Typing
 //!   `--on boat` is the grant.
+//! - `archil`: an Archil sandbox per issue (`chat_archil.rs`, #12136).
+//!   Typing `--on archil` is the grant, under the cloud budget's caps.
 //! - `gce`: the GCE spot pool `openagents cloud up` granted (`cloud.rs`,
 //!   `chat_gce.rs`, #10225). The grant is the pool record `cloud up` wrote;
 //!   `cloud down` revokes it, and `--on gce` then refuses.
@@ -23,6 +25,7 @@ pub(super) enum Target {
     Here,
     Boat,
     Gce,
+    Archil,
 }
 
 impl Target {
@@ -32,7 +35,10 @@ impl Target {
             None | Some("here") => Ok(Self::Here),
             Some("boat") => Ok(Self::Boat),
             Some("gce" | "cloud") => Ok(Self::Gce),
-            Some(other) => Err(format!("--on is `here`, `boat`, or `gce`, not `{other}`")),
+            Some("archil") => Ok(Self::Archil),
+            Some(other) => Err(format!(
+                "--on is `here`, `boat`, `gce`, or `archil`, not `{other}`"
+            )),
         }
     }
 
@@ -42,6 +48,7 @@ impl Target {
             Self::Here => "here",
             Self::Boat => "boat",
             Self::Gce => "gce",
+            Self::Archil => "archil",
         }
     }
 }
@@ -115,6 +122,8 @@ mod tests {
         assert_eq!(Target::parse(Some("cloud")), Ok(Target::Gce));
         assert!(Target::parse(Some("anywhere")).is_err());
         assert_eq!(Target::Gce.computer(), "gce");
+        assert_eq!(Target::parse(Some("archil")), Ok(Target::Archil));
+        assert_eq!(Target::Archil.computer(), "archil");
     }
 
     #[test]
