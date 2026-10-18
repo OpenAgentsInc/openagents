@@ -289,12 +289,7 @@ impl CoreClient {
 
     /// Devices that can run sessions (new-session / new-project pickers).
     pub fn execution_devices(&self) -> Vec<DeviceView> {
-        self.client
-            .workspace()
-            .execution_devices()
-            .iter()
-            .map(Into::into)
-            .collect()
+        host_config::execution_devices(&self.client.workspace().devices)
     }
 
     /// Any chat row (archived and child chats included).

@@ -905,3 +905,7 @@ links remain readable. Upstream fixes now require manual ports.
   embedded in that text; it exposes no separate invitation code. Bindings,
   lockfile resolution, app wiring, and executable checks remain pending.
   Android push registration belongs to F1.
+- [OpenAgents #12133](https://github.com/OpenAgentsInc/openagents/issues/12133):
+  keep the new-chat computer visible beside the model on iPhone, offer all
+  online computers, and remember the selection before sending. The shared
+  mobile core puts online Macs first for drafts without a saved choice.

@@ -81,6 +81,8 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     var preferredDelivery: DeliveryMode = .queue { didSet { refreshAction(animated: false) } }
     var placeholder = "Message" { didSet { placeholderLabel.text = placeholder } }
     var chips: [ComposerChip] = [] { didSet { if chips != oldValue { rebuildChips() } } }
+    /// Keep these chips beside Send; other choices get their own scroll row.
+    var pinnedChipIds: Set<String> = [] { didSet { rebuildChips() } }
     /// Chips with a menu open it on tap (native, glassy, lazily loaded).
     var chipMenus: [String: () -> UIMenu?] = [:] { didSet { applyChipMenus() } }
     /// Stay in the card state even when idle (new-session canvas).
@@ -105,12 +107,17 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     private let thumbsScroll = FadingScrollView()
     private let toolbar = UIView()
     private let chipStrip = UIStackView()
+    private let pinnedChipStrip = UIStackView()
     private let chipScroll = FadingScrollView()
     private var textHeight: NSLayoutConstraint!
     private var thumbsHeight: NSLayoutConstraint!
     private var toolbarHeight: NSLayoutConstraint!
     private var compactConstraints: [NSLayoutConstraint] = []
     private var cardConstraints: [NSLayoutConstraint] = []
+    private var scrollingChipConstraints: [NSLayoutConstraint] = []
+    private var pinnedChipConstraints: [NSLayoutConstraint] = []
+    private var controlCenterConstraints: [NSLayoutConstraint] = []
+    private var chipWidthConstraints: [String: NSLayoutConstraint] = [:]
     private(set) var isCard = false
     private var currentAction: Action = .send
     private var mentions = MentionIndex()
@@ -202,6 +209,12 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
         chipStrip.translatesAutoresizingMaskIntoConstraints = false
         chipScroll.addSubview(chipStrip)
         toolbar.addSubview(chipScroll)
+        pinnedChipStrip.axis = .horizontal
+        pinnedChipStrip.spacing = 6
+        pinnedChipStrip.distribution = .fillEqually
+        pinnedChipStrip.translatesAutoresizingMaskIntoConstraints = false
+        pinnedChipStrip.isHidden = true
+        toolbar.addSubview(pinnedChipStrip)
 
         actionButton.translatesAutoresizingMaskIntoConstraints = false
         actionButton.accessibilityIdentifier = "composer-send"
@@ -246,9 +259,6 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             actionButton.heightAnchor.constraint(equalToConstant: c),
             actionButton.widthAnchor.constraint(greaterThanOrEqualToConstant: c),
 
-            chipScroll.leadingAnchor.constraint(equalTo: attachButton.trailingAnchor, constant: 8),
-            chipScroll.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -8),
-            chipScroll.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
             chipScroll.heightAnchor.constraint(equalToConstant: c),
             chipStrip.topAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.topAnchor),
             chipStrip.bottomAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.bottomAnchor),
@@ -256,6 +266,21 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             chipStrip.trailingAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.trailingAnchor),
             chipStrip.heightAnchor.constraint(equalTo: chipScroll.frameLayoutGuide.heightAnchor),
         ])
+        scrollingChipConstraints = [
+            chipScroll.leadingAnchor.constraint(equalTo: attachButton.trailingAnchor, constant: 8),
+            chipScroll.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -8),
+            chipScroll.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+        ]
+        pinnedChipConstraints = [
+            pinnedChipStrip.leadingAnchor.constraint(equalTo: attachButton.trailingAnchor, constant: 8),
+            pinnedChipStrip.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -8),
+            pinnedChipStrip.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 8),
+            pinnedChipStrip.heightAnchor.constraint(equalToConstant: c),
+            chipScroll.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 10),
+            chipScroll.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -10),
+            chipScroll.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 48),
+        ]
+        NSLayoutConstraint.activate(scrollingChipConstraints)
         // Resting capsule: controls at the capsule's ends, text between them.
         compactConstraints = [
             attachButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8),
@@ -266,11 +291,13 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             textView.trailingAnchor.constraint(equalTo: actionButton.leadingAnchor, constant: -8),
         ]
         // Card: full-width text, controls in the toolbar row.
-        cardConstraints = [
-            attachButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+        controlCenterConstraints = [
             attachButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
-            actionButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
             actionButton.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+        ]
+        cardConstraints = controlCenterConstraints + [
+            attachButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+            actionButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
             textView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             textView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
         ]
@@ -330,8 +357,9 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
                 NSLayoutConstraint.deactivate(self.cardConstraints)
                 NSLayoutConstraint.activate(self.compactConstraints)
             }
-            self.toolbarHeight.constant = card ? 50 : 0
+            self.toolbarHeight.constant = card ? self.chipToolbarHeight : 0
             self.chipScroll.alpha = card ? 1 : 0
+            self.pinnedChipStrip.alpha = card ? 1 : 0
             self.textView.textContainerInset = card ? UIEdgeInsets(top: 14, left: 0, bottom: 6, right: 0) : UIEdgeInsets(top: 14, left: 0, bottom: 14, right: 0)
             self.glass.cornerConfiguration = .uniformCorners(radius: .fixed(card ? 26 : 25))
             self.recomputeTextHeight()
@@ -410,6 +438,22 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
     // MARK: Focus & chips
 
+    private var hasPinnedChips: Bool { chips.contains { pinnedChipIds.contains($0.id) } }
+    private var hasSecondaryChips: Bool { chips.contains { !pinnedChipIds.contains($0.id) } }
+    private var chipToolbarHeight: CGFloat { hasPinnedChips && hasSecondaryChips ? 90 : 50 }
+
+    private func updateChipLayout() {
+        let pinned = hasPinnedChips
+        NSLayoutConstraint.deactivate(pinned ? scrollingChipConstraints : pinnedChipConstraints)
+        NSLayoutConstraint.activate(pinned ? pinnedChipConstraints : scrollingChipConstraints)
+        pinnedChipStrip.isHidden = !pinned
+        pinnedChipStrip.alpha = isCard ? 1 : 0
+        chipScroll.isHidden = pinned && !hasSecondaryChips
+        controlCenterConstraints.forEach { $0.constant = pinned && hasSecondaryChips ? -20 : 0 }
+        toolbarHeight.constant = isCard ? chipToolbarHeight : 0
+        onHeightChange?()
+    }
+
     @discardableResult
     override func becomeFirstResponder() -> Bool { textView.becomeFirstResponder() }
 
@@ -430,15 +474,25 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
 
     private func rebuildChips() {
         let identifiers = Set(chips.map { "composer-chip-\($0.id)" })
-        for child in chipStrip.arrangedSubviews where !identifiers.contains(child.accessibilityIdentifier ?? "") {
-            chipStrip.removeArrangedSubview(child)
-            child.removeFromSuperview()
+        let strips = [pinnedChipStrip, chipStrip]
+        for strip in strips {
+            for child in strip.arrangedSubviews where !identifiers.contains(child.accessibilityIdentifier ?? "") {
+                if let id = child.accessibilityIdentifier {
+                    chipWidthConstraints.removeValue(forKey: id)?.isActive = false
+                }
+                strip.removeArrangedSubview(child)
+                child.removeFromSuperview()
+            }
         }
-        for (index, chip) in chips.enumerated() {
+        for chip in chips {
             let identifier = "composer-chip-\(chip.id)"
-            let existing = chipStrip.arrangedSubviews.first { $0.accessibilityIdentifier == identifier } as? UIButton
+            let pinned = pinnedChipIds.contains(chip.id)
+            let strip = pinned ? pinnedChipStrip : chipStrip
+            let index = chips.prefix { $0.id != chip.id }.filter { pinnedChipIds.contains($0.id) == pinned }.count
+            let existing = strips.flatMap(\.arrangedSubviews).first { $0.accessibilityIdentifier == identifier } as? UIButton
             var config = UIButton.Configuration.filled()
             config.title = chip.title
+            if hasPinnedChips { config.titleLineBreakMode = .byTruncatingTail }
             if let icon = chip.icon {
                 config.image = icon
             } else if let symbol = chip.symbol {
@@ -462,24 +516,32 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
             let b = existing ?? UIButton()
             b.configuration = config
             b.accessibilityIdentifier = identifier
-            b.setContentHuggingPriority(.required, for: .horizontal)
-            b.setContentCompressionResistancePriority(.required, for: .horizontal)
+            b.accessibilityLabel = chip.title
+            b.setContentHuggingPriority(pinned ? .defaultLow : .required, for: .horizontal)
+            b.setContentCompressionResistancePriority(hasPinnedChips ? .defaultLow : .required, for: .horizontal)
             if existing == nil {
                 b.addAction(UIAction { [weak self, weak b] _ in
                     guard let self, let b else { return }
                     self.onChipTap?(chip.id, b)
                 }, for: .touchUpInside)
             }
-            if index >= chipStrip.arrangedSubviews.count || chipStrip.arrangedSubviews[index] !== b {
-                if existing != nil { chipStrip.removeArrangedSubview(b) }
-                chipStrip.insertArrangedSubview(b, at: index)
+            if index >= strip.arrangedSubviews.count || strip.arrangedSubviews[index] !== b {
+                if existing != nil {
+                    strips.forEach { $0.removeArrangedSubview(b) }
+                    b.removeFromSuperview()
+                }
+                strip.insertArrangedSubview(b, at: index)
             }
+            let width = chipWidthConstraints[identifier] ?? b.widthAnchor.constraint(lessThanOrEqualTo: chipScroll.frameLayoutGuide.widthAnchor)
+            chipWidthConstraints[identifier] = width
+            width.isActive = hasPinnedChips && !pinned
         }
         applyChipMenus()
+        updateChipLayout()
     }
 
     private func applyChipMenus() {
-        for case let b as UIButton in chipStrip.arrangedSubviews {
+        for case let b as UIButton in pinnedChipStrip.arrangedSubviews + chipStrip.arrangedSubviews {
             guard let id = b.accessibilityIdentifier?.replacingOccurrences(of: "composer-chip-", with: "") else { continue }
             guard chipMenus[id] != nil else {
                 b.menu = nil

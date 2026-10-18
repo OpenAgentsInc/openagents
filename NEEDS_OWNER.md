@@ -16,6 +16,19 @@ steps need you:
 4. Decide the accepted data loss when a worker fails while a computer is
    awake. Today that computer can only be deleted, losing its last checkpoint too
    (#12141).
+## Check the new-chat computer picker on iPhone (#12133)
+
+After the next app update, use a dedicated test account with an online Mac
+and another online computer. Open **New chat** and check that the computer
+is visible beside the model, with the project below, without scrolling. Switch
+computers before sending, including one without that project's files, and check that
+the chat runs on the chosen computer. Close and reopen the composer and then
+relaunch the app to check that it remembers the choice. A fresh choice should
+prefer the online Mac; an offline saved choice must stay visible without
+switching computers. Check a small iPhone and large text. Delete test chats
+afterward. The demo UI regression is added but needs the next iOS test run;
+The mobile Rust tests passed (129 passed, 1 ignored), and edited-file formatting
+passed. No iOS or TestFlight build ran for this fix.
 
 ## Check the voice relay (#12059)
 
