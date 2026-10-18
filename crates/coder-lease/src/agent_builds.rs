@@ -12,6 +12,9 @@
 //!   repository shares the folder for the same workspace, and Cargo's own
 //!   lock keeps two builds in it from colliding. `OPENAGENTS_KEEP_TARGET_DIR=1`
 //!   keeps the caller's `CARGO_TARGET_DIR` instead.
+//! - Keys intermediate compiler state by Cargo's workspace manifest path hash
+//!   under the shared target, and disables incremental compilation, including
+//!   builds already inside a lease (#12071).
 //! - Refuses to start below the disk floor, [`FLOOR_GIB`] GiB free, with a
 //!   plain message.
 //! - Waits for one of the `build` leases under `openagents lease build
@@ -54,6 +57,9 @@ pub const FLOOR_GIB: u64 = 30;
 /// One GiB.
 pub const GIB: u64 = 1 << 30;
 
+/// Shared settings for direct builds and both Cargo shims.
+pub const BUILD_ENV_SCRIPT: &str = include_str!("../../../scripts/dev/cargo-build-env.sh");
+
 /// The agent `cargo` shim's text.
 pub const AGENT_CARGO_SHIM: &str = r#"#!/bin/sh
 # OpenAgents build gate for agent chats, written by the coder-lease crate.
@@ -79,9 +85,6 @@ if [ -z "$real" ]; then
   echo "cargo: no cargo on PATH besides the build gate in $shims" >&2
   exit 127
 fi
-case ",${OPENAGENTS_LEASES:-}," in
-  *,build,*) exec "$real" "$@" ;;
-esac
 sub=
 skip=
 for arg in "$@"; do
@@ -99,18 +102,45 @@ case $sub in
   build|b|test|t|check|c|clippy|run|r|bench|nextest) ;;
   *) exec "$real" "$@" ;;
 esac
-targets=${OPENAGENTS_AGENT_TARGETS:-}
-if [ -n "$targets" ] && [ "${OPENAGENTS_KEEP_TARGET_DIR:-}" != 1 ]; then
-  ws=
-  dir=$(pwd -P)
+# Cargo's workspace-relative fingerprints can call another worktree's source
+# Fresh without invoking rustc or kache. Keep compiler state under a manifest-
+# path hash inside the one shared target; kache still keys outputs by content.
+CARGO_INCREMENTAL=0
+export CARGO_INCREMENTAL
+manifest=
+previous=
+for arg in "$@"; do
+  if [ "$previous" = manifest ]; then manifest=$arg; previous=; continue; fi
+  case $arg in
+    --manifest-path) previous=manifest ;;
+    --manifest-path=*) manifest=${arg#--manifest-path=} ;;
+    --) break ;;
+  esac
+done
+build_dir=$(pwd -P)
+if [ -n "$manifest" ]; then
+  build_dir=$(CDPATH= cd -- "$(dirname -- "$manifest")" && pwd -P) || exit 1
+  project=$("$real" locate-project --workspace --message-format plain --manifest-path "$manifest" 2>/dev/null) || project=
+else
+  project=$("$real" locate-project --workspace --message-format plain 2>/dev/null) || project=
+fi
+ws=
+if [ -f "$project" ]; then
+  ws=$(CDPATH= cd -- "$(dirname -- "$project")" && pwd -P) || exit 1
+else
+  project=
+  # Older Cargo shims may not implement locate-project. Keep their lock-based
+  # discovery rather than assigning a fresh target for every member directory.
+  dir=$build_dir
   while [ -n "$dir" ]; do
-    if [ -f "$dir/Cargo.lock" ]; then
-      ws=$dir
-      break
-    fi
+    if [ -f "$dir/Cargo.lock" ]; then ws=$dir; break; fi
     [ "$dir" = / ] && break
     dir=$(dirname -- "$dir")
   done
+fi
+[ -z "$ws" ] || build_dir=$ws
+targets=${OPENAGENTS_AGENT_TARGETS:-}
+if [ -n "$targets" ] && [ "${OPENAGENTS_KEEP_TARGET_DIR:-}" != 1 ]; then
   if [ -n "$ws" ]; then
     name=$(basename -- "$ws")
     key=$ws
@@ -137,6 +167,17 @@ if [ -n "$targets" ] && [ "${OPENAGENTS_KEEP_TARGET_DIR:-}" != 1 ]; then
     export CARGO_TARGET_DIR
   fi
 fi
+# KEEP_TARGET_DIR and an existing lease only bypass target assignment or
+# admission, not source identity. Override stale inherited build-dir settings.
+if [ -z "${CARGO_TARGET_DIR:-}" ]; then
+  CARGO_TARGET_DIR=${ws:-$build_dir}/target
+  export CARGO_TARGET_DIR
+fi
+oa_build_manifest=${project:-${ws:-$build_dir}/Cargo.toml}
+. "$shims/build-env.sh" || exit 1
+case ",${OPENAGENTS_LEASES:-}," in
+  *,build,*) exec "$real" "$@" ;;
+esac
 floor=${OPENAGENTS_AGENT_FLOOR_GIB:-30}
 case $floor in
   ''|*[!0-9]*) floor=30 ;;
@@ -235,20 +276,26 @@ impl Gate {
     /// The folder or the shim can't be written.
     pub fn install(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.shims)?;
-        let path = self.shims.join("cargo");
-        if std::fs::read(&path).is_ok_and(|bytes| bytes == AGENT_CARGO_SHIM.as_bytes()) {
-            return Ok(());
+        for (name, content) in [
+            ("build-env.sh", BUILD_ENV_SCRIPT),
+            ("cargo", AGENT_CARGO_SHIM),
+        ] {
+            let path = self.shims.join(name);
+            if std::fs::read(&path).is_ok_and(|bytes| bytes == content.as_bytes()) {
+                continue;
+            }
+            let staging = self
+                .shims
+                .join(format!(".{name}.{}.new", std::process::id()));
+            std::fs::write(&staging, content)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o755))?;
+            }
+            std::fs::rename(&staging, &path)?;
         }
-        let staging = self
-            .shims
-            .join(format!(".cargo.{}.new", std::process::id()));
-        std::fs::write(&staging, AGENT_CARGO_SHIM)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o755))?;
-        }
-        std::fs::rename(&staging, &path)
+        Ok(())
     }
 
     /// The variables an agent's environment sets: `PATH` as `path` with the

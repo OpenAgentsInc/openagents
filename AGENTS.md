@@ -168,13 +168,32 @@ leave edits, `cargo fmt` output, or build files behind in the main checkout.
 Run `cargo fmt` only on the files you changed (`rustfmt FILE` or
 `cargo fmt -p CRATE`), not across the whole workspace.
 
-Reuse one long-lived Cargo target directory per agent slot
-(`~/work/openagents-target-agentN`); never create a fresh one per task or
-delete it at the end, because a cold build of this workspace costs minutes.
-On the owner's Mac, build only in the shared `~/work/openagents-target-1`
-(root crates) or `~/work/openagents-target-1-app` (app crates): the build
-sweep flags any other copy and removes it once idle
-(`docs/coder/runtime/leases.md`, "The build sweep").
+Reuse one long-lived shared Cargo target directory per Cargo workspace, across
+worktrees and agents; never copy one per agent or task. On the owner's Mac,
+use `~/work/openagents-target-1` for root crates and
+`~/work/openagents-target-1-app` for `apps/openagents`. Set
+`OPENAGENTS_KEEP_TARGET_DIR=1` with that explicit `CARGO_TARGET_DIR`; otherwise
+the desktop agent build gate replaces it with its one shared folder per
+workspace under `~/work/agent-targets` (`OPENAGENTS_AGENT_TARGETS`). Don't
+create both sets for the same workspace or delete a shared target at task end.
+
+Every agent build in a shared target must use `CARGO_INCREMENTAL=0` and
+source-keyed compiler state. After choosing `CARGO_TARGET_DIR`, load
+`. "$(git rev-parse --show-toplevel)/scripts/dev/cargo-build-env.sh"`, then
+run Cargo directly. The helper hashes the physical workspace manifest path
+with SHA-256 and sets `CARGO_BUILD_BUILD_DIR` under the shared target's
+`worktrees/` folder. It records the manifest for the sweep and refreshes the
+last-use time, including for all-fresh builds. The agent and lease shims use
+this same helper, including with `OPENAGENTS_KEEP_TARGET_DIR=1` and inside an
+existing build lease. Never flatten compiler state onto the shared target:
+Cargo can call another worktree's older source fresh without running rustc
+or kache (#12071), including when a new module isn't in the old dep-info.
+The sweep evicts compiled artifacts for deleted worktrees and idle state
+(default 6 hours), retains Cargo lock files, and counts every state toward
+the shared target's cap. kache still reuses compiled artifacts by source
+content. The shared-target regression uses disposable scratch targets and
+removes them afterward. See
+[`leases.md`](docs/coder/runtime/leases.md#agent-chats-in-the-desktop-app).
 
 Run Cargo commands directly; do not wrap them in the machine's build
 lease. `openagents lease` (`docs/coder/runtime/leases.md`) stays on the
@@ -275,9 +294,9 @@ commits, pushes, or closing an issue whose own acceptance checks pass. Never
 hold independent issue work while it runs. Fix failures relevant to a change;
 record unrelated failures separately and continue the other work. Documentation
 changes remain exempt from Rust checks. Read `docs/verification.md` for scope
-and prerequisites. Use a separate Cargo target directory per worktree, outside
-the worktree: a Coder run already has one in `CARGO_TARGET_DIR` (keep it; never
-point it at `$PWD/target`), because a target directory inside the workspace
+and prerequisites. Keep Cargo targets shared per workspace and outside the
+worktree, with the build-directory and incremental settings above; never point
+`CARGO_TARGET_DIR` at `$PWD/target`, because a target inside the workspace
 outgrows what the next task's admission can observe and every later task there
 is refused. Keep workspace formatting changes separate from behavior changes.
 The workspace takes every `crates/*` folder as a crate, so one without a
@@ -286,10 +305,11 @@ The workspace takes every `crates/*` folder as a crate, so one without a
 it may be another agent's work in progress (#11593).
 
 Deploy host builds only from a commit rebased on current `origin/main`, and
-give each checkout its own Cargo target directory, so an older checkout
-cannot overwrite a newer build and a deploy of an older commit does not roll
-the host back. A headless host is deployed with `openagents connect --ssh
-DEST --binary PATH`, PATH being `openagents` built from that commit: it
+copy the verified build to a commit-named scratch path before deploying, so
+another build in the shared target can't replace the binary being deployed.
+Never deploy an older commit over a newer host. A headless host is deployed
+with `openagents connect --ssh DEST --binary PATH`, PATH being `openagents`
+built from that commit: it
 installs the build when it differs and restarts the host it started. On a
 Mac the desktop app runs the host. After a deploy, check the host's running
 commit.
@@ -1007,8 +1027,8 @@ uses, and marks which are implemented and which are only specified.
 
 Cloud Agents already have the pinned toolchain (Rust 1.97.1, rustfmt, and
 Clippy), `protoc`, OpenSSL, SQLite, libclang, and `bubblewrap`. The root
-workspace crates are fetched. Put each checkout's Cargo output in
-`~/work/openagents-target-agentN`, as the Velocity section describes. This
+workspace crates are fetched. Share one Cargo target per workspace, with
+the source-keyed build settings, as Velocity describes. This
 machine has 4 cores and about 16 GB of memory. Set `CARGO_BUILD_JOBS=2`
 when you compile `openagents` or `verse`, so a cold build stays within
 that memory.

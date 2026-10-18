@@ -2,6 +2,9 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12071: agent builds disable incremental compilation and keep
+  Cargo fingerprints under each manifest's path hash within a shared target.
+
 - OpenAgents #12060: each voice call uses a fresh chat and isolated Codex home,
   copies authentication only, refuses messages after hang-up, and keeps
   compaction notices out of assistant text.

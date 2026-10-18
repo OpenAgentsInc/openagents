@@ -74,9 +74,6 @@ if [ -z "$real" ]; then
   echo "cargo: no cargo on PATH besides the lease shim in $shims" >&2
   exit 127
 fi
-case ",${OPENAGENTS_LEASES:-}," in
-  *,build,*) exec "$real" "$@" ;;
-esac
 sub=
 skip=
 for arg in "$@"; do
@@ -93,6 +90,14 @@ done
 case $sub in
   build|b|test|t|check|c|clippy|run|r|bench|nextest) ;;
   *) exec "$real" "$@" ;;
+esac
+CARGO_INCREMENTAL=0
+export CARGO_INCREMENTAL
+if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+  . "$shims/build-env.sh" || exit 1
+fi
+case ",${OPENAGENTS_LEASES:-}," in
+  *,build,*) exec "$real" "$@" ;;
 esac
 lease=${OPENAGENTS_LEASE_BIN:-}
 [ -n "$lease" ] || lease=$(command -v openagents 2>/dev/null)
@@ -144,9 +149,12 @@ pub fn cargo_wanted(env: &dyn Fn(&str) -> Option<OsString>) -> bool {
 /// can't be removed.
 pub fn install(dir: &Path, cargo: bool) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    for (name, text) in [("screencapture", crate::SCREENCAPTURE_SHIM)]
-        .into_iter()
-        .chain(cargo.then_some(("cargo", CARGO_SHIM)))
+    for (name, text) in [
+        ("screencapture", crate::SCREENCAPTURE_SHIM),
+        ("build-env.sh", crate::agent_builds::BUILD_ENV_SCRIPT),
+    ]
+    .into_iter()
+    .chain(cargo.then_some(("cargo", CARGO_SHIM)))
     {
         let path = dir.join(name);
         if std::fs::read(&path).is_ok_and(|bytes| bytes == text.as_bytes()) {

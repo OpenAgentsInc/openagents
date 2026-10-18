@@ -34,8 +34,12 @@ fi
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 target=${CARGO_TARGET_DIR:-$HOME/work/openagents-target-1}
-(cd "$repo" && OPENAGENTS_KEEP_TARGET_DIR=1 CARGO_TARGET_DIR=$target \
-  cargo build -q -p coder-lease --bin openagents-build-sweep)
+(
+  cd "$repo"
+  export OPENAGENTS_KEEP_TARGET_DIR=1 CARGO_TARGET_DIR="$target"
+  . ./scripts/dev/cargo-build-env.sh
+  cargo build -q -p coder-lease --bin openagents-build-sweep
+)
 built=$target/debug/openagents-build-sweep
 
 if [ "${1:-}" = "--dry-run" ]; then

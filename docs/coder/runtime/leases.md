@@ -235,16 +235,35 @@ The OpenAgents desktop app gives every agent chat it starts a build gate
 The app writes a `cargo` shim into `~/.openagents/bin/agent-build-shims`
 (`OPENAGENTS_AGENT_SHIMS`) and puts that folder first on each agent's `PATH`.
 For `build`, `test`, `check`, `clippy`, `run`, `bench`, and `nextest`, the
-shim does three things before it runs the real `cargo`:
+shim prepares the build before it runs the real `cargo`:
 
 - **Shared target folders.** It builds in one target folder per Cargo
   workspace under `~/work/agent-targets` (`OPENAGENTS_AGENT_TARGETS`). The
-  workspace is the nearest folder with a `Cargo.lock`, and every worktree of
-  a repository shares the folder for the same workspace, so the root
-  workspace and `apps/openagents` each get one. Cargo's own lock keeps two
-  builds in one folder from colliding: the second waits for the first. A
-  `CARGO_TARGET_DIR` the agent set is replaced, and the shim says so;
-  `OPENAGENTS_KEEP_TARGET_DIR=1` keeps it.
+  workspace comes from `cargo locate-project --workspace`, honoring
+  `--manifest-path`, with `Cargo.lock` discovery for older shims. Every worktree
+  of a repository shares the folder for the same workspace, so the root
+  workspace and `apps/openagents` each get one. The directory name uses the
+  Git common directory plus the workspace's relative path, never the agent's
+  ID or the worktree's name. Cargo locks each build directory while compiling.
+  A `CARGO_TARGET_DIR` the agent set is replaced, and the shim says so;
+  `OPENAGENTS_KEEP_TARGET_DIR=1` keeps it. On the owner's Mac, keep the existing
+  shared `~/work/openagents-target-1` and `~/work/openagents-target-1-app`
+  with that variable instead of creating another set under `agent-targets`.
+- **Source-path identity.** The shim loads
+  [`cargo-build-env.sh`](../../../scripts/dev/cargo-build-env.sh). The helper
+  hashes the physical workspace manifest path with SHA-256 and sets
+  `CARGO_BUILD_BUILD_DIR` to `$CARGO_TARGET_DIR/worktrees/<first two hex digits>/<remaining hex digits>`.
+  Fingerprints, dependency libraries, and build-script outputs belong to that
+  source path; kache still restores compiled artifacts by source content.
+  This covers workspace members, excluded path dependencies, and nested
+  workspaces. Final binaries stay in the shared target's normal `debug` or
+  `release` directory. A `.openagents-workspace` file records the manifest
+  and its modification time records each build, including all-fresh builds.
+- **No incremental state.** Heavy Cargo subcommands set
+  `CARGO_INCREMENTAL=0`, overriding an inherited `1`. Both this and source-path
+  identity apply with `OPENAGENTS_KEEP_TARGET_DIR=1`, inside a build lease,
+  and when `openagents` is unavailable. An inherited build directory is replaced
+  so it cannot point at another worktree's compiler state.
 - **The disk floor.** It refuses to start when less than 30 GiB is free
   (`OPENAGENTS_AGENT_FLOOR_GIB`), and says how much is free.
 - **The build limit.** It runs `openagents lease build --keep-target-dir`
@@ -254,10 +273,49 @@ shim does three things before it runs the real `cargo`:
   floor (`OPENAGENTS_BUILD_DISK_GB`), because shared folders grow little. A
   build over the limit waits in the `build` queue and prints why.
 
-Every other subcommand, and a build already inside a `build` lease, runs the
-real `cargo` directly. Without an installed `openagents`, a build runs
-without waiting and says so. Start the app with `OPENAGENTS_AGENT_BUILD_GATE=0`
+Every other subcommand runs the real `cargo` directly. A build inside a
+`build` lease skips admission after selecting its build directory and
+disabling incremental compilation. Without an installed `openagents`, a build
+runs without waiting and says so. Start the app with `OPENAGENTS_AGENT_BUILD_GATE=0`
 to give its agents no gate.
+
+Issue #12071 reproduced a wrong-code link with kache both enabled and
+removed. Cargo uses workspace-relative source paths and modification times
+for freshness: when two worktrees' different sources predate a build in one
+shared target, the second can be called `Fresh` without running rustc or
+kache. A cache-key salt inside kache cannot correct that skipped invocation.
+A [separate Cargo build directory](https://doc.rust-lang.org/cargo/reference/config.html#buildbuild-dir)
+keys all intermediate state by the source manifest's path before the freshness
+check, including excluded path dependencies inside the workspace.
+
+For direct agent builds, choose the shared target and load the same settings,
+then run Cargo directly:
+
+```sh
+export OPENAGENTS_KEEP_TARGET_DIR=1
+export CARGO_TARGET_DIR="$HOME/work/openagents-target-1"
+. "$(git rev-parse --show-toplevel)/scripts/dev/cargo-build-env.sh"
+cargo test -p coder-lease
+```
+
+For `apps/openagents`, use `openagents-target-1-app` instead and load the helper
+from that directory. Keep one shared target per workspace; a source hash
+belongs to its manifest path, never an agent or session.
+
+The offline regression uses real Cargo and kache, two Git worktrees with
+different same-version library sources older than every artifact, alternating
+root and app builds, and one target per workspace. It checks workspace members,
+an added module whose entry file also predates the build, an excluded
+dependency, an external domain dependency, `--manifest-path`, an
+explicit target, a nested lease, unchanged dependency bytes, and empty
+incremental state. Its worktrees, targets, home, and kache store live under
+durable scratch and are removed when it finishes:
+
+```sh
+OPENAGENTS_SCRATCH="$(openagents scratch)" \
+OPENAGENTS_TEST_KACHE="$(command -v kache)" \
+cargo test -p coder-lease --test shared_target -- --ignored
+```
 
 The app's MCP server offers `build_status`: the builds running and waiting,
 the limit, the free disk, and the floor. Called with `limit`, it sets the
@@ -273,20 +331,29 @@ GiB in four hours while free disk fell to 32 GiB. The build sweep
 running. launchd runs `~/.openagents/bin/openagents-build-sweep` every 5
 minutes (`com.openagents.build-sweep`). Each run, in order:
 
-1. **Copies.** A target folder in `~/work` other than
+1. **Worktree state.** Compiler artifacts under `worktrees/<hash>` go when
+   the recorded manifest no longer exists, or when the state has been unused
+   for 6 hours (`OPENAGENTS_BUILD_SWEEP_WORKTREE_IDLE_HOURS`). The sweep skips
+   state held by a process or Cargo lock, and skips this cleanup when it can't
+   read processes. It takes every affected profile's Cargo locks and refreshes
+   the process and last-use checks before removal. Empty directories, source
+   markers, and lock files stay so a waiting Cargo keeps the same lock inode.
+   The states all count toward their parent target's cap; they have no separate
+   cap or disk allowance.
+2. **Copies.** A target folder in `~/work` other than
    `openagents-target-1` (root crates), `openagents-target-1-app` (app
    crates), and the owner's `openagents-target-app` is a copy. The sweep
    flags it in the log, and removes it once no build holds it and nothing
    in it changed for an hour. A path in `agent-target-grants` in the lease
    root (one a line) is shared, not a copy. The gate's own folders under
    `~/work/agent-targets` are shared.
-2. **The floor.** Below 100 GiB free, it removes whole target folders no
+3. **The floor.** Below 100 GiB free, it removes whole target folders no
    build holds, copies first and then the least recently used, until 100 GiB
    is free again.
-3. **The cap.** A target over 120 GiB loses its least recently used
+4. **The cap.** A target over 120 GiB loses its least recently used
    artifacts in `deps` (a crate's files with its fingerprint), `build`, and
    `incremental` that nothing read or wrote for 2 hours, down to 90 GiB.
-4. **Still below the floor**, it does the same across every target for
+5. **Still below the floor**, it does the same across every target for
    artifacts untouched 30 minutes, until 100 GiB is free.
 
 A `cargo`, `rustc`, `kache`, `clippy-driver`, `rustdoc`, or build-script
@@ -320,7 +387,8 @@ as JSON.
 
 | Setting | Default | Variable |
 | --- | --- | --- |
-| Per-target cap | 120 GiB | `OPENAGENTS_BUILD_SWEEP_CAP_GIB` |
+| Per-target cap, including worktree state | 120 GiB | `OPENAGENTS_BUILD_SWEEP_CAP_GIB` |
+| Unused worktree state | 6 hours | `OPENAGENTS_BUILD_SWEEP_WORKTREE_IDLE_HOURS` |
 | Free-disk floor | 100 GiB | `OPENAGENTS_BUILD_SWEEP_FLOOR_GIB` |
 | Critical level (the dev app may go) | 40 GiB | `OPENAGENTS_BUILD_SWEEP_CRITICAL_GIB` |
 | Untouched before a capped target loses it | 120 minutes | `OPENAGENTS_BUILD_SWEEP_IDLE_MINUTES` |

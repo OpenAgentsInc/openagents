@@ -27,11 +27,11 @@ impl Machine {
         let root = std::fs::canonicalize(dir.path()).unwrap();
         script(
             &root.join("real/cargo"),
-            "#!/bin/sh\necho \"real $* target=${CARGO_TARGET_DIR:-}\"\n",
+            "#!/bin/sh\necho \"real $* incremental=${CARGO_INCREMENTAL:-} build_dir=${CARGO_BUILD_BUILD_DIR:-} target=${CARGO_TARGET_DIR:-}\"\n",
         );
         script(
             &root.join("bin/openagents"),
-            "#!/bin/sh\necho \"lease $* builds=$OPENAGENTS_BUILD_LEASES floor=$OPENAGENTS_SLOT_FREE_GB target=${CARGO_TARGET_DIR:-}\"\n",
+            "#!/bin/sh\necho \"lease $* builds=$OPENAGENTS_BUILD_LEASES floor=$OPENAGENTS_SLOT_FREE_GB incremental=${CARGO_INCREMENTAL:-} build_dir=${CARGO_BUILD_BUILD_DIR:-} target=${CARGO_TARGET_DIR:-}\"\n",
         );
         let gate = Gate {
             shims: root.join("shims"),
@@ -96,14 +96,17 @@ fn git(cwd: &Path, args: &[&str]) {
 fn light_subcommands_run_cargo_directly() {
     let machine = Machine::new();
     let output = machine.cargo(&machine.root(), &["fmt", "--all"], &[]);
-    assert_eq!(stdout(&output), "real fmt --all target=");
+    assert_eq!(
+        stdout(&output),
+        "real fmt --all incremental= build_dir= target="
+    );
     // Inside a build lease, even a build passes straight through.
     let output = machine.cargo(
         &machine.root(),
         &["build"],
         &[("OPENAGENTS_LEASES", "build")],
     );
-    assert_eq!(stdout(&output), "real build target=");
+    assert!(stdout(&output).starts_with("real build incremental=0 build_dir="));
 }
 
 #[test]
@@ -116,7 +119,7 @@ fn a_build_waits_for_a_slot_under_the_coordinators_limit() {
     let line = stdout(&output);
     assert!(
         line.starts_with(&format!(
-            "lease lease build --keep-target-dir -- {} test -p x builds=5 floor=0 target={}/ws-",
+            "lease lease build --keep-target-dir -- {} test -p x builds=5 floor=0 incremental=0 build_dir={}/ws-",
             machine.root().join("real/cargo").display(),
             machine.gate.targets.display()
         )),
@@ -143,7 +146,7 @@ fn every_worktree_shares_one_target_folder_per_workspace() {
     let target = |cwd: &Path, extra: &[(&str, &str)]| {
         let output = machine.cargo(cwd, &["check"], extra);
         let line = stdout(&output);
-        let target = line.rsplit("target=").next().unwrap().to_owned();
+        let target = line.rsplit(" target=").next().unwrap().to_owned();
         (target, String::from_utf8_lossy(&output.stderr).into_owned())
     };
     let (main_root, _) = target(&repo, &[]);
@@ -151,6 +154,19 @@ fn every_worktree_shares_one_target_folder_per_workspace() {
     let (main_app, _) = target(&repo.join("apps/app"), &[]);
     let (wt_app, _) = target(&machine.root().join("wt/apps/app"), &[]);
     assert_eq!(main_root, wt_root);
+    let kept = machine.root().join("kept");
+    for extra in [
+        vec![("OPENAGENTS_LEASES", "build"), ("CARGO_INCREMENTAL", "1")],
+        vec![
+            ("OPENAGENTS_KEEP_TARGET_DIR", "1"),
+            ("CARGO_TARGET_DIR", kept.to_str().unwrap()),
+        ],
+    ] {
+        let output = machine.cargo(&repo, &["check"], &extra);
+        let line = stdout(&output);
+        assert!(line.contains("incremental=0"), "{line}");
+        assert!(line.contains("/worktrees/"), "{line}");
+    }
     assert_eq!(main_app, wt_app);
     assert_ne!(main_root, main_app);
     let targets = machine.gate.targets.display().to_string();
@@ -168,14 +184,14 @@ fn every_worktree_shares_one_target_folder_per_workspace() {
     assert_eq!(private, main_root);
     assert!(note.contains("building in the shared folder"), "{note}");
     // Unless the caller asks to keep its own.
-    let (kept, _) = target(
+    let (kept_target, _) = target(
         &repo,
         &[
-            ("CARGO_TARGET_DIR", "/elsewhere/copy"),
+            ("CARGO_TARGET_DIR", kept.to_str().unwrap()),
             ("OPENAGENTS_KEEP_TARGET_DIR", "1"),
         ],
     );
-    assert_eq!(kept, "/elsewhere/copy");
+    assert_eq!(kept_target, kept.to_str().unwrap());
 }
 
 #[test]
@@ -198,7 +214,7 @@ fn without_openagents_the_build_runs_and_says_so() {
     std::fs::remove_file(machine.root().join("bin/openagents")).unwrap();
     machine.gate.bin = None;
     let output = machine.cargo(&machine.root(), &["build"], &[]);
-    assert_eq!(stdout(&output), "real build target=");
+    assert!(stdout(&output).starts_with("real build incremental=0 build_dir="));
     assert!(String::from_utf8_lossy(&output.stderr).contains("without waiting for a build slot"));
 }
 

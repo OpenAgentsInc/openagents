@@ -28,7 +28,7 @@ fn scratch() -> Scratch {
     std::fs::create_dir(&tools).unwrap();
     script(
         &tools.join("cargo"),
-        "echo \"real cargo $* leases=${OPENAGENTS_LEASES:-none}\"",
+        "echo \"real cargo $* leases=${OPENAGENTS_LEASES:-none} incremental=${CARGO_INCREMENTAL:-}\"",
     );
     script(
         &tools.join("screencapture"),
@@ -63,7 +63,8 @@ fn cargo(scratch: &Scratch, args: &[&str], leases: Option<&str>) -> String {
         .env_clear()
         .env("PATH", &scratch.path)
         .env("HOME", scratch.shims.parent().unwrap())
-        .env(coder_lease::shim::BIN_VAR, &scratch.bin);
+        .env(coder_lease::shim::BIN_VAR, &scratch.bin)
+        .env("CARGO_INCREMENTAL", "1");
     if let Some(leases) = leases {
         command.env("OPENAGENTS_LEASES", leases);
     }
@@ -80,7 +81,10 @@ fn the_shim_leases_heavy_subcommands_and_passes_the_rest_through() {
         test.starts_with("lease lease build --keep-target-dir"),
         "{test}"
     );
-    assert!(test.contains("real cargo test -p x leases=build"), "{test}");
+    assert!(
+        test.contains("real cargo test -p x leases=build incremental=0"),
+        "{test}"
+    );
     let toolchain = cargo(&scratch, &["+nightly", "--color", "never", "clippy"], None);
     assert!(toolchain.starts_with("lease "), "{toolchain}");
 
@@ -99,7 +103,10 @@ fn the_shim_leases_heavy_subcommands_and_passes_the_rest_through() {
 fn the_shim_passes_through_under_a_build_lease() {
     let scratch = scratch();
     let out = cargo(&scratch, &["build"], Some("quiet,build"));
-    assert_eq!(out.trim(), "real cargo build leases=quiet,build");
+    assert_eq!(
+        out.trim(),
+        "real cargo build leases=quiet,build incremental=0"
+    );
 }
 
 #[test]

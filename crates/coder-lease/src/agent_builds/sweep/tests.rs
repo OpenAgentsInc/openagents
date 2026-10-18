@@ -127,6 +127,7 @@ fn cargo(pid: u32, target_dir: Option<&Path>, cwd: Option<&Path>, args: &[&str])
         name: "cargo".into(),
         args: args.iter().map(|arg| (*arg).to_owned()).collect(),
         target_dir: target_dir.map(Path::to_owned),
+        build_dir: None,
         cwd: cwd.map(Path::to_owned),
     }
 }
@@ -260,6 +261,7 @@ fn below_the_floor_unheld_targets_go_whole_and_held_ones_stay() {
             name: "rustc".into(),
             args: vec!["rustc".into()],
             target_dir: None,
+            build_dir: None,
             cwd: Some(by_cwd.join("debug/build/ring-1/out")),
         },
         Proc {
@@ -271,6 +273,7 @@ fn below_the_floor_unheld_targets_go_whole_and_held_ones_stay() {
                 format!("dependency={}", by_arg.join("debug/deps").display()),
             ],
             target_dir: None,
+            build_dir: None,
             cwd: Some(home.root.clone()),
         },
     ];
@@ -738,4 +741,133 @@ fn artifacts_go_only_while_the_sweep_holds_the_cargo_locks() {
         unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
         0
     );
+}
+
+#[test]
+fn profiles_include_manifest_keyed_build_state_without_following_links() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path();
+    let legacy = target.join("debug");
+    let state = target.join("worktrees/ab/cdef/debug");
+    let cross = target.join("worktrees/12/3456/wasm32-unknown-unknown/release");
+    for profile in [&legacy, &state, &cross] {
+        std::fs::create_dir_all(profile.join("deps")).unwrap();
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target.join("worktrees/ab"), target.join("worktrees/linked"))
+        .unwrap();
+    let mut expected = vec![legacy, state, cross];
+    expected.sort();
+    assert_eq!(profiles(target), expected);
+}
+
+fn worktree_state(home: &Home, target: &Path, key: &str, hours: f64, exists: bool) -> PathBuf {
+    let state = target.join("worktrees/aa").join(key);
+    home.unit(&state, "state-1234", 32, hours);
+    let manifest = home.work(&format!("source-{key}/Cargo.toml"));
+    if exists {
+        home.file(&manifest, 1, hours);
+    }
+    let marker = state.join(".openagents-workspace");
+    std::fs::write(&marker, format!("{}\n", manifest.display())).unwrap();
+    age(&marker, hours);
+    state
+}
+
+#[test]
+fn deleted_and_idle_worktrees_lose_artifacts_but_active_and_recent_ones_stay() {
+    let home = Home::new();
+    let target = home.work(SHARED[0]);
+    let orphan = worktree_state(&home, &target, "orphan", 0.1, false);
+    let idle = worktree_state(&home, &target, "idle", 8.0, true);
+    let recent = worktree_state(&home, &target, "recent", 8.0, true);
+    // A Fresh build refreshes the marker even if no crate was recompiled.
+    age(&recent.join(".openagents-workspace"), 1.0);
+    let active = worktree_state(&home, &target, "active", 9.0, true);
+    let process = Proc {
+        build_dir: Some(active.clone()),
+        ..cargo(10, Some(&target), None, &[])
+    };
+    let report = sweep(
+        &home.layout(),
+        &policy(10000, 0, 0),
+        &fake(500 * GIB, vec![process]),
+        false,
+    );
+    for state in [&orphan, &idle] {
+        assert!(!state.join("debug/deps/libstate-1234.rlib").exists());
+        // Reuse the same lock inode if a Cargo arrives during the sweep.
+        assert!(state.join("debug/.cargo-lock").exists());
+    }
+    for state in [&recent, &active] {
+        assert!(state.join("debug/deps/libstate-1234.rlib").exists());
+    }
+    assert!(
+        report
+            .actions
+            .iter()
+            .any(|action| action.reason.contains("worktree no longer exists"))
+    );
+    assert!(
+        report
+            .actions
+            .iter()
+            .any(|action| action.reason.contains("worktree build state unused"))
+    );
+}
+
+#[test]
+fn hashed_artifacts_count_toward_one_target_cap_and_unknown_processes_keep_them() {
+    let home = Home::new();
+    let target = home.work(SHARED[0]);
+    let first = worktree_state(&home, &target, "first", 3.0, true);
+    let second = worktree_state(&home, &target, "second", 3.0, true);
+    // Younger than the whole-state idle age; the aggregate target cap applies.
+    let before = sweep(
+        &home.layout(),
+        &policy(10000, 0, 0),
+        &fake(500 * GIB, vec![]),
+        true,
+    );
+    assert!(before.targets[0].bytes >= 2 * 32 * KIB);
+    let unknown = Fake {
+        procs: Err("ps unavailable".into()),
+        ..fake(500 * GIB, vec![])
+    };
+    let mut idle_policy = policy(40, 0, 0);
+    idle_policy.worktree_idle = Duration::ZERO;
+    let _report = sweep(&home.layout(), &idle_policy, &unknown, false);
+    for state in [&first, &second] {
+        assert!(state.join("debug/deps/libstate-1234.rlib").exists());
+    }
+    let report = sweep(
+        &home.layout(),
+        &policy(40, 0, 0),
+        &fake(500 * GIB, vec![]),
+        false,
+    );
+    assert!(report.freed > 0);
+    assert!(report.targets[0].bytes < before.targets[0].bytes);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_locked_worktree_keeps_its_orphaned_artifacts() {
+    use std::os::unix::io::AsRawFd as _;
+    let home = Home::new();
+    let target = home.work(SHARED[0]);
+    let state = worktree_state(&home, &target, "locked", 10.0, false);
+    let lock = File::create(state.join("debug/.cargo-lock")).unwrap();
+    // SAFETY: the file remains open while the fixture holds its lock.
+    assert_eq!(
+        unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+        0
+    );
+    let _report = sweep(
+        &home.layout(),
+        &policy(10000, 0, 0),
+        &fake(500 * GIB, vec![]),
+        false,
+    );
+    assert!(state.join("debug/deps/libstate-1234.rlib").exists());
 }

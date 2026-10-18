@@ -65,6 +65,8 @@ pub const CRITICAL_VAR: &str = "OPENAGENTS_BUILD_SWEEP_CRITICAL_GIB";
 /// Overrides how long an artifact sits untouched before a target over its
 /// cap loses it, in minutes.
 pub const IDLE_VAR: &str = "OPENAGENTS_BUILD_SWEEP_IDLE_MINUTES";
+/// Overrides how long an unused worktree's compiler state stays, in hours.
+pub const WORKTREE_IDLE_VAR: &str = "OPENAGENTS_BUILD_SWEEP_WORKTREE_IDLE_HOURS";
 /// The file in the lease root that names extra target folders the gate
 /// allows, one path per line.
 pub const GRANTS_FILE: &str = "agent-target-grants";
@@ -109,6 +111,8 @@ pub struct Policy {
     /// How long a copy beyond the shared targets sits untouched before it
     /// goes.
     pub stray_idle: Duration,
+    /// How long an unused worktree's compiler state stays, even below the cap.
+    pub worktree_idle: Duration,
     /// How long the sweep waits for a build to free a profile's cargo locks
     /// before it leaves that profile's artifacts to the next run.
     pub lock_wait: Duration,
@@ -123,6 +127,7 @@ impl Default for Policy {
             idle: Duration::from_secs(2 * 3600),
             low_idle: Duration::from_secs(30 * 60),
             stray_idle: Duration::from_secs(3600),
+            worktree_idle: Duration::from_secs(6 * 3600),
             lock_wait: Duration::from_secs(20),
         }
     }
@@ -146,6 +151,9 @@ impl Policy {
         }
         if let Some(minutes) = number(IDLE_VAR) {
             policy.idle = Duration::from_secs(minutes.saturating_mul(60));
+        }
+        if let Some(hours) = number(WORKTREE_IDLE_VAR) {
+            policy.worktree_idle = Duration::from_secs(hours.saturating_mul(3600));
         }
         policy
     }
@@ -282,6 +290,8 @@ pub struct Proc {
     pub args: Vec<String>,
     /// Its `CARGO_TARGET_DIR`, when set.
     pub target_dir: Option<PathBuf>,
+    /// Its source-keyed compiler state, when set.
+    pub build_dir: Option<PathBuf>,
     /// Its working directory, when known.
     pub cwd: Option<PathBuf>,
 }
@@ -298,7 +308,12 @@ impl Proc {
             Some(cwd) if dir.is_relative() => cwd.join(dir),
             _ => dir.clone(),
         });
+        let build_dir = self.build_dir.as_ref().map(|dir| match &self.cwd {
+            Some(cwd) if dir.is_relative() => cwd.join(dir),
+            _ => dir.clone(),
+        });
         resolved.as_deref().is_some_and(inside)
+            || build_dir.as_deref().is_some_and(inside)
             || self.cwd.as_deref().is_some_and(inside)
             || self.args.iter().any(|arg| {
                 let value = arg
@@ -351,6 +366,12 @@ pub fn parse_ps(plain: &str, with_env: &str) -> Vec<Proc> {
             name,
             args,
             target_dir,
+            build_dir: env
+                .split_whitespace()
+                .filter_map(|token| token.strip_prefix("CARGO_BUILD_BUILD_DIR="))
+                .next_back()
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from),
             cwd: None,
         });
     }
@@ -717,6 +738,13 @@ pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -
     {
         let known = watch.used.get(&unit.key()).copied().unwrap_or(0);
         unit.used = unit.used.max(at_unix(known.max(watch.since)));
+        if let Some(state) = targets_state_ancestor(&unit.profile) {
+            if let Ok(modified) = std::fs::metadata(state.join(".openagents-workspace"))
+                .and_then(|meta| meta.modified())
+            {
+                unit.used = unit.used.max(modified);
+            }
+        }
     }
     let mut run = Run {
         layout,
@@ -730,6 +758,76 @@ pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -
     };
     let critical = free_before.is_some_and(|free| free < policy.critical);
     let touchable = |target: &Target| target.kind != Kind::DevApp || critical;
+
+    // Source-keyed compiler state is bounded independently of the target cap.
+    // Keep Cargo lock files and their directories: unlinking a held lock would
+    // let a waiting Cargo use a different inode and race the next builder.
+    for target in targets.iter_mut().filter(|target| touchable(target)) {
+        let Ok(processes) = &procs else {
+            continue;
+        };
+        for state in worktree_states(&target.path) {
+            if layout.protected(&state)
+                || processes.iter().any(|process| process.holds(&state))
+                || cargo_locked(&state)
+            {
+                continue;
+            }
+            let marker = state.join(".openagents-workspace");
+            let marked = std::fs::symlink_metadata(&marker)
+                .ok()
+                .filter(|meta| meta.is_file());
+            let used = target
+                .units
+                .iter()
+                .filter(|unit| unit.profile.starts_with(&state))
+                .map(|unit| unit.used)
+                .max()
+                .unwrap_or(at_unix(watch.since))
+                .max(
+                    marked
+                        .as_ref()
+                        .and_then(|meta| meta.modified().ok())
+                        .unwrap_or(SystemTime::UNIX_EPOCH),
+                );
+            let orphan = marked.is_some()
+                && std::fs::read_to_string(&marker).ok().is_some_and(|text| {
+                    let manifest = Path::new(text.trim());
+                    manifest.is_absolute() && !manifest.exists()
+                });
+            if !orphan && ago(now, used) < policy.worktree_idle {
+                continue;
+            }
+            let profiles = profiles(&state);
+            if !profiles.iter().all(|profile| run.locked(profile)) {
+                continue;
+            }
+            // Refresh after taking the locks, so a build starting since the
+            // snapshot (including an all-Fresh run) keeps its state.
+            if host.processes().map_or(true, |processes| {
+                processes.iter().any(|process| process.holds(&state))
+            }) || (!orphan
+                && std::fs::metadata(&marker)
+                    .and_then(|meta| meta.modified())
+                    .is_ok_and(|modified| ago(now, modified) < policy.worktree_idle))
+            {
+                continue;
+            }
+            let reason = if orphan {
+                "the worktree no longer exists".to_owned()
+            } else {
+                format!("worktree build state unused {}", span(ago(now, used)))
+            };
+            let units = std::mem::take(&mut target.units);
+            for unit in units {
+                if unit.profile.starts_with(&state) && run.remove_unit(&unit, reason.clone()) {
+                    target.bytes = target.bytes.saturating_sub(unit.bytes);
+                } else {
+                    target.units.push(unit);
+                }
+            }
+        }
+    }
 
     // 1. Copies beyond the shared targets.
     for target in targets
@@ -793,7 +891,8 @@ pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -
         let mut kept = Vec::new();
         for unit in units {
             let idle = ago(now, unit.used);
-            if target.bytes > low_water && idle >= policy.idle {
+            if target.bytes > low_water && idle >= policy.idle && !state_held(&unit.profile, &procs)
+            {
                 let reason = format!(
                     "the target held {}, over its {} cap; untouched {}",
                     size(held),
@@ -832,7 +931,7 @@ pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -
                 kept.push((kind, unit));
                 continue;
             };
-            if idle < policy.low_idle {
+            if idle < policy.low_idle || state_held(&unit.profile, &procs) {
                 kept.push((kind, unit));
                 continue;
             }
@@ -1133,7 +1232,8 @@ fn lock_held(_: &Path) -> bool {
 }
 
 /// A target's profile folders: `debug`, `release`, and
-/// `<triple>/<profile>`, the folders that hold `deps` or `.fingerprint`.
+/// `<triple>/<profile>`, including manifest-keyed state under `worktrees/`.
+/// Profile folders hold `deps` or `.fingerprint`.
 fn profiles(target: &Path) -> Vec<PathBuf> {
     let real_dir = |path: PathBuf| std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir());
     let is_profile = |dir: &Path| real_dir(dir.join("deps")) || real_dir(dir.join(".fingerprint"));
@@ -1145,7 +1245,40 @@ fn profiles(target: &Path) -> Vec<PathBuf> {
             found.extend(dirs(&child).into_iter().filter(|dir| is_profile(dir)));
         }
     }
+    // Source keys have two levels so a busy target has a bounded fan-out.
+    for workspace in worktree_states(target) {
+        found.extend(profiles(&workspace));
+    }
+    found.sort();
     found
+}
+
+/// The source-state ancestor of a profile, when it has the two-level layout.
+fn targets_state_ancestor(profile: &Path) -> Option<&Path> {
+    profile.ancestors().find(|ancestor| {
+        ancestor
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == "worktrees")
+    })
+}
+
+/// Keep active or unknown source state out of cap and floor pruning too.
+fn state_held(profile: &Path, processes: &Result<Vec<Proc>, String>) -> bool {
+    targets_state_ancestor(profile).is_some_and(|state| {
+        processes.as_ref().map_or(true, |processes| {
+            processes.iter().any(|process| process.holds(state))
+        })
+    })
+}
+
+/// Source-keyed state under a shared target; never follow links.
+fn worktree_states(target: &Path) -> Vec<PathBuf> {
+    dirs(&target.join("worktrees"))
+        .into_iter()
+        .flat_map(|bucket| dirs(&bucket))
+        .collect()
 }
 
 /// The real folders (not links) directly in `dir`.
