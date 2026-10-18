@@ -232,6 +232,8 @@ mod tests {
         let root = dir.path().canonicalize().unwrap();
         let file = root.join("source");
         std::fs::write(&file, "synthetic").unwrap();
+        // Wide on purpose, whatever the umask (a GCE pool run has 077).
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert!(read_file(&file, 100, true).is_err());
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
         assert_eq!(read_file(&file, 100, true).unwrap(), b"synthetic");
