@@ -14,7 +14,15 @@ final class VoiceFlowTests: XCTestCase {
         return app
     }
 
-    /// Stage → transcript → back: the live strip in the bottom bar reopens the stage.
+    /// The live call's way back: the capsule strip on pages without a composer,
+    /// the orb in the navigation bar over a chat or session (the capsule hides there).
+    private func liveCall(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier IN {'voice-live', 'voice-bar'} AND label BEGINSWITH 'Voice call'"
+        )).firstMatch
+    }
+
+    /// Stage → transcript → back: the live call control reopens the stage.
     func testLiveStripReopensTheStageAfterTheTranscript() {
         let app = launch(["-voice-stage"])
         let stage = app.otherElements["voice-stage"]
@@ -23,22 +31,23 @@ final class VoiceFlowTests: XCTestCase {
         XCTAssertTrue(app.scrollViews["transcript"].waitForExistence(timeout: 10))
         XCTAssertFalse(stage.exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let strip = app.descendants(matching: .any)["voice-live"].firstMatch
-        XCTAssertTrue(strip.waitForExistence(timeout: 5))
-        strip.tap()
-        XCTAssertTrue(stage.waitForExistence(timeout: 5), "the live strip opens the call stage")
+        let call = liveCall(app)
+        XCTAssertTrue(call.waitForExistence(timeout: 5))
+        call.tap()
+        XCTAssertTrue(stage.waitForExistence(timeout: 5), "the live call control opens the call stage")
     }
 
-    /// Minimizing the stage and tapping the strip brings it back.
+    /// Minimizing the stage lands on the chat (the first page since #12009);
+    /// its navigation-bar orb brings the stage back.
     func testLiveStripReopensAMinimizedStage() {
         let app = launch(["-voice-stage"])
         let stage = app.otherElements["voice-stage"]
         XCTAssertTrue(stage.waitForExistence(timeout: 10))
         app.buttons["voice-minimize"].tap()
-        let strip = app.descendants(matching: .any)["voice-live"].firstMatch
-        XCTAssertTrue(strip.waitForExistence(timeout: 5))
+        let call = liveCall(app)
+        XCTAssertTrue(call.waitForExistence(timeout: 5))
         sleep(1)
-        strip.tap()
+        call.tap()
         XCTAssertTrue(stage.waitForExistence(timeout: 5))
     }
 

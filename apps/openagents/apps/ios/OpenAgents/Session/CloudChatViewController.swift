@@ -83,6 +83,8 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
     private var appObservation: AnyObject?
     private var rows: [CloudChatLine] = []
     private var ownComputerCard: OwnComputerCardView?
+    private var voiceBar: VoiceBarItem?
+    private var voiceObservation: AnyObject?
 
     init(app: AppModel, chat: CloudChatModel) {
         self.app = app
@@ -163,6 +165,10 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
             footer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -4),
         ])
         observation = chat.observe { [weak self] in self?.render() }
+        // The chat has its own composer, so the shell hides the capsule's
+        // voice strip here; the call (or starting one) stays a tap away up top.
+        voiceBar = VoiceBarItem(app: app, host: self)
+        voiceObservation = app.voice.observe { [weak self] in self?.syncBarItems() }
         appObservation = app.observe { [weak self] in self?.renderBar() }
         renderBar()
         render()
@@ -196,18 +202,29 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         }
     }
 
+    private lazy var freshItem: UIBarButtonItem = {
+        let fresh = UIBarButtonItem(image: UIImage(systemName: "square.and.pencil"), primaryAction: UIAction { [weak self] _ in
+            self?.chat.newChat()
+        })
+        fresh.accessibilityLabel = "New chat"
+        fresh.accessibilityIdentifier = "cloud-chat-new"
+        return fresh
+    }()
+
     private func renderBar() {
-        var items: [UIBarButtonItem] = []
-        if !chat.snapshot.lines.isEmpty {
-            let fresh = UIBarButtonItem(image: UIImage(systemName: "square.and.pencil"), primaryAction: UIAction { [weak self] _ in
-                self?.chat.newChat()
-            })
-            fresh.accessibilityLabel = "New chat"
-            fresh.accessibilityIdentifier = "cloud-chat-new"
-            items.append(fresh)
-        }
-        navigationItem.rightBarButtonItems = items
+        syncBarItems()
         renderOwnComputerCard()
+    }
+
+    private func syncBarItems() {
+        var items: [UIBarButtonItem] = []
+        if !chat.snapshot.lines.isEmpty { items.append(freshItem) }
+        if let voiceBar, voiceBar.visible { items.append(voiceBar.item) }
+        // Voice level frames land here too: only touch the bar when it changes.
+        let shown = navigationItem.rightBarButtonItems ?? []
+        if shown.count != items.count || !zip(shown, items).allSatisfy({ $0 === $1 }) {
+            navigationItem.rightBarButtonItems = items
+        }
     }
 
     private func render() {

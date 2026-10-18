@@ -291,7 +291,10 @@ final class RemoteVoiceController {
                 // Words stream in, about three per second, like a live partial.
                 let words = caption.split(separator: " ")
                 let streamed = words.prefix(1 + (step % 40) / 3).joined(separator: " ")
-                self.state = VoiceCallState(phase: .active, orb: orb, chatId: "voice-orchestrator-preview", work: work, muted: self.muted, speaking: orb == .speaking, caption: streamed, captionSpeaker: speaker, captionItem: "preview-\(turn)", microphone: orb == .listening ? wave : 0, speaker: orb == .speaking ? wave : 0, voices: [])
+                // The transcript opens a session that exists (a made-up id
+                // can't open since the drawer shell, #12025).
+                let chatId = self.app?.frontPage.sessions.first?.id
+                self.state = VoiceCallState(phase: .active, orb: orb, chatId: chatId, work: work, muted: self.muted, speaking: orb == .speaking, caption: streamed, captionSpeaker: speaker, captionItem: "preview-\(turn)", microphone: orb == .listening ? wave : 0, speaker: orb == .speaking ? wave : 0, voices: [])
                 step += 1
                 self.changed()
             }
