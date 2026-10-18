@@ -14,7 +14,7 @@ class ComputersContract(unittest.TestCase):
 
     def test_identical_public_contract_is_accepted(self):
         operations = public.compare_contract(self.spec, self.spec, 'https://api.openagents.com')
-        self.assertEqual(len(operations), 18)
+        self.assertEqual(len(operations), 21)
 
     def test_changed_runtime_operation_is_refused(self):
         changed = copy.deepcopy(self.spec)
