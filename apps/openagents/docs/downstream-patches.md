@@ -703,8 +703,9 @@ links remain readable. Upstream fixes now require manual ports.
   release page lists 1.6.2 as stable, and the official ML Kit page documents
   bundled `com.google.mlkit:barcode-scanning:17.3.0` ([CameraX](https://developer.android.com/jetpack/androidx/releases/camera),
   [ML Kit](https://developers.google.com/ml-kit/vision/barcode-scanning/android)).
-  Neither dependency has been resolved in an Android build. The Android app
-  source set and CameraX integration are not wired or compiled.
+  Neither dependency has been resolved in an Android build. This branch does
+  not wire `apps/android/platform/` into the app source set or connect the
+  driver to the scanner screen, so CameraX capture is not compiled or integrated.
   `cargo test --locked -p openagents-mobile app_links` from `apps/openagents`
   and `scripts/android/build-core.sh` remain unrun below the 100 GiB build
   floor. The latter generates bindings and builds arm64 then x86_64. The
