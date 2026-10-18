@@ -644,3 +644,4 @@ Already in `NEEDS_OWNER.md`, and they don't block closing: the CAD history copy 
 - `main` builds every Coder program, `1.0.0-rc.23` or later is green on the brief's gate, and the go or no-go is called on Sunday night.
 - Production web runs a commit from Saturday's `main`, and the patch files are gone from `docs/audits/`.
 - No test resource is left on the owner's account, and every machine created for a check is deleted or labeled for the reaper.
+- [ ] #12143: rerun the 60 s native API outage cases (wake, stop, delete) against the private SPACE deployment; the driver now resends an uncertain request under its saved key.
