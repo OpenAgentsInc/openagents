@@ -86,12 +86,15 @@ test APK assembly. The five JVM XML reports under
 0 errors, and 0 skipped. The two C2 JVM suites account for 11 of those tests.
 AndroidTest compilation produced five test classes: `SemanticViewAdapterTest`,
 `AndroidScannerPresentationBoundaryTest`, `AndroidTranscriptSelectionSnapshotTest`,
-`AndroidTranscriptSelectionTextTest`, and `AndroidTranscriptTextTest`. No AndroidTest
-runner ran, so no instrumentation test XML exists. Both debug APKs verify, with
-matching signer SHA-256 `f1e42e894e0a5b73548b388f442ab5b2c1e4566f001d9d93e587f9bdfc95be25`.
-The command and all compilation or assembly tasks completed successfully. Stop
-here until a new coordinator admission for a direct runner and a fresh paired
-capacity check.
+`AndroidTranscriptSelectionTextTest`, and `AndroidTranscriptTextTest`. On the
+existing isolated offline API 35 guest, direct `AndroidJUnitRunner` execution
+passed all 17 tests. The output is preserved at
+`$OPENAGENTS_SCRATCH/android-runtime-12083/evidence/c2-instrument-results.txt`;
+the runner emitted text output, not instrumentation XML. Both debug APKs verify,
+with matching signer SHA-256
+`f1e42e894e0a5b73548b388f442ab5b2c1e4566f001d9d93e587f9bdfc95be25`. The
+compile and assembly tasks and direct runner passed. Stop here; further runtime
+checks require fresh coordinator admission.
 
 ```sh
 nix develop ./os#android --command bash -c 'cd apps/openagents && CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app" scripts/android/app.sh compile :app:assembleDebug :app:assembleDebugAndroidTest'
