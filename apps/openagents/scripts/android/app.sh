@@ -9,7 +9,7 @@ GRADLE_USER_HOME="${GRADLE_USER_HOME:-$OPENAGENTS_ANDROID_WORK/gradle}"
 export CARGO_TARGET_DIR OPENAGENTS_ANDROID_WORK GRADLE_USER_HOME
 
 if [[ $# -lt 1 ]]; then
-  echo "usage: $0 core|apk|install|run|bundle|check" >&2
+  echo "usage: $0 core|compile|apk|install|run|bundle|check" >&2
   exit 2
 fi
 command="$1"
@@ -43,6 +43,9 @@ gradle() {
 case "$command" in
   core)
     clean_env bash "$ROOT/scripts/android/build-core.sh"
+    ;;
+  compile)
+    gradle :app:compileDebugKotlin :app:compileReleaseKotlin :app:testDebugUnitTest "$@"
     ;;
   apk)
     gradle :app:assembleDebug "$@"
