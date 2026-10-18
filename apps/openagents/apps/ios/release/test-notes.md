@@ -1,4 +1,17 @@
-# OpenAgents 1.0.0 (1014)
+# OpenAgents 1.0.0 (1015)
+
+An installation that was signed in before 1014 stays on its account when the
+server can't add the new key yet, instead of coming up signed out.
+
+Also in this build:
+- Voice can send a request to any saved agent and chat you choose.
+- Each computer's voice chat is listed as "Voice transcript".
+- A saved agent's stuck turn stops and says why at the next check-in.
+
+Check that an installation updated from 1014 opens on the same account and its
+chats, that a chat answers, and that a connected computer shows its sessions.
+
+OpenAgents 1.0.0 (1014)
 
 No sign-in. The app makes your account the first time it opens, from 12 words
 it keeps on this phone. The same 12 words open your wallet, so one backup
