@@ -3,6 +3,8 @@ package com.openagents.app.transcript
 
 import android.graphics.Color
 import android.test.InstrumentationTestCase
+import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
 import uniffi.openagents_core.*
 
 /** Synthetic frames; requires C1 fonts and B1 Android test wiring. Not run yet. */
@@ -57,6 +59,54 @@ class AndroidTranscriptSelectionSnapshotTest : InstrumentationTestCase() {
             canvas.close()
             assertNull(canvas.interactionSnapshot())
             assertEquals(listOf("before-1", "viewport", "before-2", "viewport", "close-first", "retire", "close-second"), trace)
+        }
+    }
+
+    fun testVirtualNavigationUsesSelectionProviderAndRejectsRetiredActions() {
+        val context = instrumentation.targetContext
+        instrumentation.runOnMainSync {
+            val canvas = TranscriptCanvas(context, TranscriptFonts(context.assets, TranscriptFonts.geistAssetPaths), TranscriptPalette { Color.BLACK })
+            val host = TranscriptSelectionHost(
+                context,
+                canvas,
+                canvas::interactionSnapshot,
+                AndroidTranscriptSelectionGeometry(TranscriptFonts(context.assets, TranscriptFonts.geistAssetPaths)),
+                object : TranscriptSelectionCallbacks {
+                    override fun onSelection(token: TranscriptSelectionToken, range: TranscriptTextSelection?) = Unit
+                    override fun onHit(token: TranscriptSelectionToken, target: TranscriptHitTarget) = Unit
+                    override fun onSystemTextAction(intent: android.content.Intent) = Unit
+                },
+                Color.BLACK,
+                Color.BLACK,
+            )
+            canvas.interactionObserver = host.observer("synthetic-account/room")
+            canvas.submitFrame(Frame(3uL))
+            val forwarded = mutableListOf<Triple<Int, ULong, ULong>>()
+            var retired = 0
+            host.setVirtualActionDelegate(object : TranscriptVirtualActionDelegate {
+                override fun actions(revision: ULong, anchorRow: ULong) = listOf(
+                    AccessibilityNodeInfo.AccessibilityAction(0x01020001, "Earlier"),
+                    AccessibilityNodeInfo.AccessibilityAction(0x01020002, "Later"),
+                )
+                override fun perform(actionId: Int, revision: ULong, anchorRow: ULong): Boolean {
+                    forwarded += Triple(actionId, revision, anchorRow)
+                    return true
+                }
+                override fun retire() { retired++ }
+            })
+
+            val provider = host.accessibilityNodeProvider
+            val root = requireNotNull(provider.createAccessibilityNodeInfo(View.NO_ID))
+            val action = root.actionList.first { it.id == 0x01020002 }
+            assertTrue(provider.performAction(View.NO_ID, action.id, null))
+            assertEquals(listOf(Triple(action.id, 3uL, 20uL)), forwarded)
+
+            host.viewportChanged()
+            assertFalse(provider.performAction(View.NO_ID, action.id, null))
+            assertEquals(1, forwarded.size)
+            assertTrue(retired > 0)
+            root.recycle()
+            host.close()
         }
     }
 }
