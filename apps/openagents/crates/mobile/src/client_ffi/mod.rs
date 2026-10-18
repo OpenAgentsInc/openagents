@@ -45,6 +45,8 @@ mod sharing;
 pub use sharing::*;
 mod saved;
 pub use saved::*;
+mod composer_drafts;
+mod semantic_bridge;
 mod session;
 mod voice_usage;
 pub use voice_usage::*;
@@ -58,6 +60,7 @@ use std::sync::Arc;
 
 use openagents_client as zc;
 
+pub use semantic_bridge::NativeActionResult;
 pub use session::*;
 pub use types::*;
 
@@ -115,6 +118,7 @@ where
 #[derive(uniffi::Object)]
 pub struct CoreClient {
     pub(crate) client: zc::Client,
+    composer_drafts: Arc<composer_drafts::ComposerDraftStore>,
 }
 
 #[allow(dead_code)] // consumed in Rust by the layout engine
@@ -142,13 +146,22 @@ impl CoreClient {
         credentials: Credentials,
         listener: Arc<dyn ClientListener>,
     ) -> CoreResult<Arc<Self>> {
+        let data_dir = std::path::PathBuf::from(&config.data_dir);
         crate::android_bootstrap::ensure_initialized()?;
         let client = zc::Client::new(
             config.into(),
             credentials.into(),
             Arc::new(ListenerBridge(listener)),
         )?;
-        Ok(Arc::new(Self { client }))
+        let account_id = client.user_id();
+        let composer_drafts = Arc::new(composer_drafts::ComposerDraftStore::new(
+            data_dir,
+            &account_id,
+        ));
+        Ok(Arc::new(Self {
+            client,
+            composer_drafts,
+        }))
     }
 
     /// Connect a computer by the code it shows (scanned QR, opened connect
@@ -201,6 +214,7 @@ impl CoreClient {
 
     /// Stop all background work (sign-out). Snapshots stay readable.
     pub fn shutdown(&self) {
+        self.composer_drafts.close();
         self.client.shutdown();
     }
 
@@ -410,12 +424,17 @@ impl CoreClient {
 
     /// Open (or return the open) session — instant from the local snapshot.
     pub fn open_session(&self, chat_id: String) -> CoreResult<Arc<SessionHandle>> {
-        Ok(SessionHandle::new(self.client.open_session(&chat_id)?))
+        Ok(SessionHandle::new(
+            self.client.open_session(&chat_id)?,
+            self.composer_drafts.clone(),
+        ))
     }
 
     /// An already-open session.
     pub fn session(&self, chat_id: String) -> Option<Arc<SessionHandle>> {
-        self.client.session(&chat_id).map(SessionHandle::new)
+        self.client
+            .session(&chat_id)
+            .map(|inner| SessionHandle::new(inner, self.composer_drafts.clone()))
     }
 
     /// The view closed; the session stays warm until evicted.

@@ -3,10 +3,18 @@
 //! [`openagents_client::SessionSnapshot`] in Rust.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use openagents_client as zc;
+use rust_native::edit::mirror::{Mirror, Stamp as EditorStamp};
+use rust_native::view::{Activation, FieldChange};
 
-use super::types::{CoreResult, SendState};
+use super::composer_drafts::ComposerDraftStore;
+use super::semantic_bridge::{
+    NativeActionResult, NativeViewRegistry, SessionViewIntent, answer_input, lock_registry,
+    map_send_outcome,
+};
+use super::types::{CoreError, CoreResult, SendState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum BusyPolicy {
@@ -441,11 +449,19 @@ pub enum QueueEditFinish {
 #[derive(uniffi::Object)]
 pub struct SessionHandle {
     pub(crate) inner: zc::SessionHandle,
+    drafts: Arc<ComposerDraftStore>,
+    native_views: std::sync::Mutex<NativeViewRegistry>,
+    composer_editor: Mutex<Mirror>,
 }
 
 impl SessionHandle {
-    pub(crate) fn new(inner: zc::SessionHandle) -> Arc<Self> {
-        Arc::new(Self { inner })
+    pub(crate) fn new(inner: zc::SessionHandle, drafts: Arc<ComposerDraftStore>) -> Arc<Self> {
+        Arc::new(Self {
+            inner,
+            drafts,
+            native_views: std::sync::Mutex::new(NativeViewRegistry::default()),
+            composer_editor: Mutex::new(Mirror::default()),
+        })
     }
 
     /// The Rust handle (transcript snapshots + subscription for the layout
@@ -474,6 +490,219 @@ impl SessionHandle {
     /// Composer + status strip state (pull after `ComposerChanged`).
     pub fn composer(&self) -> ComposerState {
         (&*self.inner.composer()).into()
+    }
+
+    /// Save this session's bounded text draft in the signed-in account store.
+    pub fn save_composer_draft(&self, text: String) -> CoreResult<()> {
+        self.drafts.save(self.inner.chat_id(), &text)
+    }
+
+    /// Restore the saved text draft for this session.
+    pub fn restore_composer_draft(&self) -> CoreResult<Option<String>> {
+        self.drafts.restore(self.inner.chat_id())
+    }
+
+    /// Remove this session's saved draft after sending or cancelling it.
+    pub fn clear_composer_draft(&self) -> CoreResult<()> {
+        self.drafts.save(self.inner.chat_id(), "")
+    }
+
+    /// Edit the native composer through Rust Native's UTF-16/IME mirror.
+    /// Successful changes are saved in the signed-in account's draft store.
+    pub fn composer_editor(
+        &self,
+        instance: String,
+        view_revision: u64,
+        request_json: Vec<u8>,
+    ) -> CoreResult<Vec<u8>> {
+        let mut editor = self.composer_editor.lock().map_err(|_| CoreError::Closed)?;
+        if request_json.len() > rust_native::edit::mirror::MAX_REQUEST_BYTES {
+            return Err(CoreError::InvalidArgument {
+                message: "composer edit exceeds its byte limit".into(),
+            });
+        }
+        let mut request: serde_json::Value =
+            serde_json::from_slice(&request_json).map_err(|_| CoreError::InvalidArgument {
+                message: "composer edit is invalid".into(),
+            })?;
+        let token = request
+            .get("token")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| request.get("stamp")?.get("token")?.as_str())
+            .map(str::to_owned)
+            .ok_or_else(|| CoreError::InvalidArgument {
+                message: "composer edit has no input token".into(),
+            })?;
+        let limit = lock_registry(&self.native_views)?.composer_max_bytes(
+            &instance,
+            view_revision,
+            &token,
+        )?;
+        let mounting = request.get("op").and_then(serde_json::Value::as_str) == Some("mount");
+        if mounting
+            && request.get("max_bytes").and_then(serde_json::Value::as_u64) != Some(limit as u64)
+        {
+            return Err(CoreError::InvalidArgument {
+                message: "composer input does not match its Rust view".into(),
+            });
+        }
+        if mounting && let Some(draft) = self.drafts.restore(self.inner.chat_id())? {
+            request["draft"] = serde_json::Value::String(draft);
+        }
+        let request_json = serde_json::to_vec(&request).map_err(|_| CoreError::Internal {
+            message: "composer edit could not be encoded".into(),
+        })?;
+        let reply = editor.call_json(&request_json);
+        let response: serde_json::Value =
+            serde_json::from_slice(&reply).map_err(|_| CoreError::Internal {
+                message: "composer edit returned invalid state".into(),
+            })?;
+        if response.get("error").is_none() {
+            if let Some(text) = response
+                .get("state")
+                .and_then(|state| state.get("text"))
+                .and_then(serde_json::Value::as_str)
+            {
+                self.drafts.save(self.inner.chat_id(), text)?;
+            }
+        }
+        Ok(reply)
+    }
+
+    /// Submit the current Rust Native composer input through the existing
+    /// session send operation. Rust resolves the choice token and busy policy.
+    pub fn submit_native_composer(
+        &self,
+        instance: String,
+        view_revision: u64,
+        input_token: String,
+        editing_lifetime: u64,
+        editor_revision: u64,
+        choice_token: Option<String>,
+        text: String,
+        attachments: Vec<OutgoingAttachment>,
+    ) -> CoreResult<NativeActionResult> {
+        let stamp = EditorStamp {
+            token: input_token.clone(),
+            lifetime: editing_lifetime,
+            revision: editor_revision,
+        };
+        {
+            let editor = self.composer_editor.lock().map_err(|_| CoreError::Closed)?;
+            let state = editor.state().ok_or(CoreError::Closed)?;
+            if editor.stamp().as_ref() != Some(&stamp) || state.text != text {
+                return Err(CoreError::InvalidArgument {
+                    message: "composer text changed before it was sent".into(),
+                });
+            }
+        }
+        validate_outgoing_attachments(&attachments)?;
+        let choice = choice_token.as_deref().unwrap_or(&input_token);
+        let busy = lock_registry(&self.native_views)?.composer_busy_policy(
+            &instance,
+            view_revision,
+            choice,
+            &text,
+        )?;
+        let submitted_text = text.clone();
+        let request = SendRequest {
+            text,
+            attachments,
+            worktree: None,
+            busy,
+        };
+        let outcome = self.inner.send(request.into())?;
+        if let Ok(mut editor) = self.composer_editor.lock() {
+            if editor.submitted(&stamp, &submitted_text).unwrap_or(false) {
+                let _ = self.drafts.save(self.inner.chat_id(), "");
+            }
+        }
+        Ok(map_send_outcome(outcome.into()))
+    }
+
+    /// Validate a Rust Native view whose intents use the closed mobile
+    /// session action set. Return its canonical bytes for native mounting.
+    pub fn prepare_native_view(&self, view_json: Vec<u8>) -> CoreResult<Vec<u8>> {
+        lock_registry(&self.native_views)?.prepare(&view_json)
+    }
+
+    /// Mark a mounted view current only after the native adapter applied it.
+    pub fn acknowledge_native_view(&self, instance: String, revision: u64) -> CoreResult<()> {
+        lock_registry(&self.native_views)?.acknowledge(&instance, revision)
+    }
+
+    /// Resolve a field change against the acknowledged Rust Native view.
+    /// Only draft fields may change through this bridge.
+    pub fn change_native_field(
+        &self,
+        instance: String,
+        revision: u64,
+        node: String,
+        value: String,
+    ) -> CoreResult<NativeActionResult> {
+        let event = FieldChange {
+            activation: Activation {
+                instance,
+                revision,
+                node,
+            },
+            value,
+        };
+        let intent = lock_registry(&self.native_views)?.change_field(&event)?;
+        match intent {
+            SessionViewIntent::SaveDraft => {
+                self.drafts.save(self.inner.chat_id(), &event.value)?;
+                Ok(NativeActionResult::DraftSaved)
+            }
+            _ => Err(CoreError::Unsupported {
+                message: "this Rust Native field change is not supported by the mobile session"
+                    .into(),
+            }),
+        }
+    }
+
+    /// Resolve an activation against the acknowledged view, then call an
+    /// existing session operation. Unknown intents fail during view decoding.
+    pub fn activate_native(
+        &self,
+        instance: String,
+        revision: u64,
+        node: String,
+        text: Option<String>,
+        attachments: Vec<OutgoingAttachment>,
+    ) -> CoreResult<NativeActionResult> {
+        let event = Activation {
+            instance,
+            revision,
+            node,
+        };
+        let registry = lock_registry(&self.native_views)?;
+        let intent = registry.activate(&event)?;
+        match intent {
+            SessionViewIntent::Interrupt => {
+                reject_unused_input(text, attachments)?;
+                drop(registry);
+                self.inner.interrupt()?;
+                Ok(NativeActionResult::Interrupted)
+            }
+            SessionViewIntent::RespondInput {
+                request_id,
+                answers,
+            } => {
+                reject_unused_input(text, attachments)?;
+                let (request_id, answers) = answer_input(request_id, answers);
+                drop(registry);
+                self.inner.respond_input(&request_id, answers)?;
+                Ok(NativeActionResult::InputAnswered)
+            }
+            SessionViewIntent::RequestAttachment => {
+                reject_unused_input(text, attachments)?;
+                Ok(NativeActionResult::AttachmentPickerRequested)
+            }
+            SessionViewIntent::SaveDraft => Err(CoreError::Unsupported {
+                message: "this Rust Native action is not supported by the mobile session".into(),
+            }),
+        }
     }
 
     pub fn transcript_status(&self) -> TranscriptStatus {
@@ -642,4 +871,48 @@ impl SessionHandle {
     pub fn retry_delivery(&self) -> CoreResult<()> {
         Ok(self.inner.retry_delivery()?)
     }
+}
+
+fn reject_unused_input(
+    text: Option<String>,
+    attachments: Vec<OutgoingAttachment>,
+) -> CoreResult<()> {
+    if text.is_some() || !attachments.is_empty() {
+        Err(CoreError::InvalidArgument {
+            message: "this action does not accept composer content".into(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_outgoing_attachments(attachments: &[OutgoingAttachment]) -> CoreResult<()> {
+    const MAX_ATTACHMENTS: usize = 10;
+    const MAX_TOTAL_BYTES: usize = 48 * 1024 * 1024;
+    if attachments.len() > MAX_ATTACHMENTS {
+        return Err(CoreError::InvalidArgument {
+            message: "too many attachments".into(),
+        });
+    }
+    let mut total = 0usize;
+    for attachment in attachments {
+        if attachment.name.trim().is_empty()
+            || attachment.name.len() > 255
+            || attachment.mime_type.trim().is_empty()
+            || attachment.mime_type.len() > 255
+            || attachment.data.is_empty()
+            || attachment.data.len() > zc::attachments::MAX_ATTACHMENT_BYTES
+        {
+            return Err(CoreError::InvalidArgument {
+                message: "attachment metadata or size is invalid".into(),
+            });
+        }
+        total = total.saturating_add(attachment.data.len());
+        if total > MAX_TOTAL_BYTES {
+            return Err(CoreError::InvalidArgument {
+                message: "attachments exceed the combined size limit".into(),
+            });
+        }
+    }
+    Ok(())
 }
