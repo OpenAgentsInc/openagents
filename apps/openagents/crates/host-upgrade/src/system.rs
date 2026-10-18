@@ -250,8 +250,11 @@ impl SystemHost {
 }
 
 impl Host for SystemHost {
+    /// Only the bundle's own stamp counts: the checkout may have moved
+    /// since the bundle was built. A bundle from before stamps is unknown,
+    /// so it's never up to date.
     fn installed_commit(&mut self) -> Option<String> {
-        Layout::bundle_commit(&self.layout.bundle).or_else(|| self.checkout_commit())
+        Layout::bundle_commit(&self.layout.bundle)
     }
 
     fn checkout_commit(&mut self) -> Option<String> {
