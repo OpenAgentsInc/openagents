@@ -231,6 +231,15 @@ impl LayoutFrame {
         let mut out = DisplayBuilder::default();
         let height = place_row(&r.core, r.gap, Px(self.scale), self.width, r.visual, Some(&mut out));
         debug_assert!((height - r.height).abs() < 0.01, "paint/measure divergence");
+        let reveal_age_ms = r
+            .core
+            .reveal_started()
+            .map(|started| started.elapsed().as_millis().min(u32::MAX as u128) as u32);
+        if reveal_age_ms.is_some() {
+            for run in &mut out.runs {
+                run.reveal_ms = Some(0);
+            }
+        }
         Some(RowDisplay {
             key: r.core.key,
             version: r.version(),
@@ -243,6 +252,7 @@ impl LayoutFrame {
             scrollers: out.scrollers,
             fades: out.fades,
             widgets: out.widgets,
+            reveal_age_ms,
             copy_text: r.core.copy_text.clone(),
         })
     }

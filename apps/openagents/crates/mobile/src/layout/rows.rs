@@ -91,7 +91,10 @@ pub(crate) struct Chip {
 // Cores are built once and shared behind Arc; boxing variants only adds a hop.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Content {
-    Block(PBlock),
+    Block {
+        block: PBlock,
+        reveal_started: Option<std::time::Instant>,
+    },
     User(UserBubble),
     Tools(ToolGroup),
     Chip(Chip),
@@ -111,6 +114,15 @@ pub(crate) struct RowCore {
     pub entry_id: Arc<str>,
     pub content: Content,
     pub copy_text: String,
+}
+
+impl RowCore {
+    pub(crate) fn reveal_started(&self) -> Option<std::time::Instant> {
+        match &self.content {
+            Content::Block { reveal_started, .. } => *reveal_started,
+            _ => None,
+        }
+    }
 }
 
 /// A row in transcript order: shared core + its context-dependent top gap.
@@ -422,7 +434,10 @@ impl RowBuilder {
                             let part_streaming = streaming && pi + 1 == nparts;
                             let blocks = self.text_blocks(ctx, &pkey, text, part_streaming);
                             for (bi, (_, core)) in blocks.iter().enumerate() {
-                                let heading = matches!(core.content, Content::Block(PBlock::Heading(_)));
+                                let heading = matches!(
+                                    core.content,
+                                    Content::Block { block: PBlock::Heading(_), .. }
+                                );
                                 let gap = gap_for(&rows, heading && bi > 0);
                                 rows.push(Placed { core: core.clone(), gap });
                             }
@@ -525,7 +540,11 @@ impl RowBuilder {
             let reuse = state
                 .blocks
                 .get(bi)
-                .filter(|(b, core)| (Arc::ptr_eq(b, block) || b.block == block.block) && core.copy_text == copy)
+                .filter(|(b, core)| {
+                    (Arc::ptr_eq(b, block) || b.block == block.block)
+                        && core.copy_text == copy
+                        && core.reveal_started().is_some() == streaming
+                })
                 .map(|(_, core)| core.clone());
             let core = reuse.unwrap_or_else(|| {
                 let id = format!("{pkey}.{bi}");
@@ -535,7 +554,10 @@ impl RowBuilder {
                     version: next_version(),
                     kind: RowKind::Markdown,
                     entry_id: Arc::from(pkey.split('#').next().unwrap_or("")),
-                    content: Content::Block(content),
+                    content: Content::Block {
+                        block: content,
+                        reveal_started: streaming.then(std::time::Instant::now),
+                    },
                     copy_text: copy.to_owned(),
                 })
             });
@@ -791,7 +813,7 @@ pub(crate) fn place_row(
     let x = ((width - cw) / 2.0).max(margin).floor();
     let top = gap.px(px);
     let body = match &core.content {
-        Content::Block(b) => place(b, px, x, top, cw, out),
+        Content::Block { block, .. } => place(block, px, x, top, cw, out),
         Content::User(u) => place_user(u, px, x, top, cw, out),
         Content::Tools(t) => place_tools(t, px, x, top, cw, out),
         Content::Chip(c) => {
@@ -959,7 +981,7 @@ pub(crate) fn content_heap_bytes(content: &Content) -> usize {
         }
     }
     match content {
-        Content::Block(b) => block(b),
+        Content::Block { block: b, .. } => block(b),
         Content::User(u) => u.text.p.heap_bytes() + u.more.p.heap_bytes() + u.files.iter().map(|(_, n)| n.p.heap_bytes()).sum::<usize>(),
         Content::Tools(t) => super::tools::heap_bytes(t),
         Content::Chip(c) => c.text.p.heap_bytes(),

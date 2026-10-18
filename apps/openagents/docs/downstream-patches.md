@@ -1012,3 +1012,10 @@ links remain readable. Upstream fixes now require manual ports.
   shutdown renames are merged from the feature batch. Rust/Kotlin checks and
   binding generation remain unrun; media viewer routing remains a separate C2
   integration step.
+
+- OpenAgents #12085 source follow-up `06085048` adds a Rust monotonic
+  row reveal-age sample and a thin bounded image viewer over the existing
+  Rust attachment/Lab media APIs. New Rust/Kotlin fixtures and generated binding
+  updates remain unrun. Changed rows currently restart their whole reveal;
+  preserving unchanged text during streaming appends remains source acceptance
+  work. No earlier test receipt applies to this follow-up.
