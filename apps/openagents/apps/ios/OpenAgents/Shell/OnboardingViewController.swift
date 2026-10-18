@@ -4,8 +4,9 @@ import UIKit
 /// ending on a new chat. There is no sign-in. Rust owns the pages' words and
 /// whether the tutorial was seen (`CoreOnboarding`); this view paints them.
 final class OnboardingViewController: UIViewController, UIScrollViewDelegate {
-    /// The tutorial is done. `true` when the person chose "See a demo".
-    var onFinish: ((Bool) -> Void)?
+    /// The tutorial is done. People can't open the demo; only the
+    /// screenshot tour starts it, with `-demo`.
+    var onFinish: (() -> Void)?
     /// The person tapped "Scan the code" on the connect page (#12000).
     var onScan: (() -> Void)?
 
@@ -15,7 +16,6 @@ final class OnboardingViewController: UIViewController, UIScrollViewDelegate {
     private let dots = UIPageControl()
     private let primary = UIButton(configuration: .filled())
     private let skip = UIButton(type: .system)
-    private let demo = UIButton(type: .system)
     private var index: Int
 
     init(steps: [OnboardingStep], start: Int = 0) {
@@ -67,19 +67,12 @@ final class OnboardingViewController: UIViewController, UIScrollViewDelegate {
         skip.titleLabel?.font = Fonts.ui(.sansMedium, 16)
         skip.tintColor = Palette.secondary
         skip.accessibilityIdentifier = "onboarding-skip"
-        skip.addAction(UIAction { [weak self] _ in self?.onFinish?(false) }, for: .touchUpInside)
+        skip.addAction(UIAction { [weak self] _ in self?.onFinish?() }, for: .touchUpInside)
 
-        demo.setTitle("See a demo", for: .normal)
-        demo.titleLabel?.font = Fonts.ui(.sans, 14)
-        demo.tintColor = Palette.secondary
-        demo.accessibilityIdentifier = "open-demo"
-        demo.addAction(UIAction { [weak self] _ in self?.onFinish?(true) }, for: .touchUpInside)
-
-        let footer = UIStackView(arrangedSubviews: [dots, primary, demo])
+        let footer = UIStackView(arrangedSubviews: [dots, primary])
         footer.axis = .vertical
         footer.alignment = .center
         footer.spacing = 16
-        footer.setCustomSpacing(8, after: primary)
 
         for v in [scroll, pages, footer, skip] as [UIView] { v.translatesAutoresizingMaskIntoConstraints = false }
         scroll.addSubview(pages)
@@ -171,7 +164,7 @@ final class OnboardingViewController: UIViewController, UIScrollViewDelegate {
     }
 
     private func advance() {
-        guard index + 1 < steps.count else { return onFinish?(false) ?? () }
+        guard index + 1 < steps.count else { return onFinish?() ?? () }
         index += 1
         scroll.setContentOffset(CGPoint(x: CGFloat(index) * scroll.bounds.width, y: 0), animated: true)
         render()

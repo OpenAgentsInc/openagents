@@ -187,10 +187,6 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         s.appendItems([
             Row(id: "account", title: app.accountName, subtitle: app.accountDetail, symbol: "person.crop.circle", accessory: .none),
         ])
-        if app.isDemo {
-            let copy = demoExitCopy()
-            s.appendItems([Row(id: "exit-demo", title: copy.settingsTitle, subtitle: copy.settingsDetail, symbol: "arrow.uturn.backward", accessory: .none)])
-        }
         // The account's identity and its backup (#11996). They show once the
         // Rust core has an identity to show (#11995).
         if let identity = app.identity {
@@ -357,8 +353,6 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             WallpaperStore.remove()
         case "archived":
             navigationController?.pushViewController(FolderViewController(app: app, folder: FolderRowVM(id: "archived", name: "Archived", count: 0, symbol: "archivebox")), animated: true)
-        case "exit-demo":
-            app.exitDemo()
         case "your-id":
             guard let npub = app.identity?.npub else { return }
             // The public ID only; it is not a secret, so it may stay on the pasteboard.

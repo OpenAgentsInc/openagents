@@ -199,13 +199,6 @@ final class AppModel {
         }
     }
 
-    /// The tutorial's "See a demo". The account stays saved: the demo only
-    /// sets it aside, and leaving the demo starts it again (#12011).
-    @MainActor func openDemo() {
-        if client != nil { signOutLocally(keepingDrafts: true) }
-        if start(.demo(options: Self.demoOptions())) { onSignedIn?() }
-    }
-
     /// Leaves the offline demo without restarting the app (#12011): the
     /// demo client stops, everything it saved is forgotten, and this phone's
     /// own account starts the way it does at launch.

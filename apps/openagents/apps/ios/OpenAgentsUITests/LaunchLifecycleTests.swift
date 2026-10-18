@@ -37,12 +37,12 @@ final class LaunchLifecycleTests: XCTestCase {
         }
         backgroundAndReturn(app)
         XCTAssertTrue(tutorial.waitForExistence(timeout: 5))
-        app.buttons["open-demo"].tap()
+        app.buttons["onboarding-skip"].tap()
         XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 15))
-        capture(app, "release-demo-opened")
+        capture(app, "release-tutorial-finished")
         backgroundAndReturn(app)
         XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 5))
-        capture(app, "release-demo-restored")
+        capture(app, "release-tutorial-restored")
     }
 
     func testDemoSurvivesRepeatedSceneTransitionsAndRelaunch() {

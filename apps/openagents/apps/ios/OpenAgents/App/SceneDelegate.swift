@@ -103,18 +103,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             guard let self, let tutorial else { return }
             CodeAction.scan(from: tutorial, app: self.app)
         }
-        tutorial.onFinish = { [weak self, weak tutorial] demo in
+        tutorial.onFinish = { [weak self, weak tutorial] in
             guard let self else { return }
             onboarding.finish()
             let presenter = tutorial?.presentingViewController
             presenter?.dismiss(animated: true) {
-                if demo {
-                    self.app.openDemo()
-                } else {
-                    // A new chat; the chat page focuses its empty composer.
-                    self.app.cloudChat?.newChat()
-                    (self.window?.rootViewController as? AppRouter)?.showChat()
-                }
+                // A new chat; the chat page focuses its empty composer.
+                self.app.cloudChat?.newChat()
+                (self.window?.rootViewController as? AppRouter)?.showChat()
             }
         }
         DispatchQueue.main.async {
@@ -132,8 +128,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // the person to sign in (#11996), and the shell's first page is the
         // chat (#12009: there is no Home).
         let root: UIViewController = UIDevice.current.userInterfaceIdiom == .pad ? SplitRootController(app: app) : DrawerShellController(app: app)
-        // The demo's way out, on every page of it (#12011).
-        if app.isDemo { DemoChip.install(on: root, app: app) }
         // Sheets (new session, Settings) belong to the old root: they'd
         // stay on top of the new one.
         if let old = window.rootViewController, old.presentedViewController != nil {
