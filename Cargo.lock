@@ -4565,6 +4565,7 @@ dependencies = [
 name = "computer-driver"
 version = "1.0.0"
 dependencies = [
+ "archil",
  "base64 0.22.1",
  "boat",
  "computer-credentials",
@@ -4578,6 +4579,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "uuid",
+ "wiremock",
  "zeroize",
 ]
 

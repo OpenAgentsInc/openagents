@@ -549,7 +549,11 @@ impl Catalog {
             .values()
             .filter(|target| {
                 target.placement != Placement::Enrolled
-                    && (placement == Placement::Auto || target.placement == placement)
+                    // An Archil deployment is chosen only by name of its
+                    // placement, never by `auto`, unless it is the default.
+                    && (placement == Placement::Auto
+                        && (target.id == self.default || target.caps.driver != "archil")
+                        || target.placement == placement)
             })
             .collect();
         if targets.is_empty() {
@@ -769,6 +773,8 @@ fn compatible(kind: ArtifactKind, reference: &str) -> bool {
     match kind {
         ArtifactKind::EnrolledWorkspace => false,
         ArtifactKind::Test => true,
+        // An OCI reference, `archil-image:ID`, or `archil:default`.
+        ArtifactKind::ArchilImage => !reference.contains("://"),
         ArtifactKind::SpaceTemplate => {
             reference.contains("@sha256:") || reference.starts_with("sha256:")
         }
@@ -956,6 +962,47 @@ mod tests {
             },
         );
         Target::new(id, origin, caps, ArtifactKind::Test, placement).unwrap()
+    }
+    #[test]
+    fn archil_is_placed_only_when_named_or_the_default() {
+        let boat = target("boat", "https://boat.example/api", Placement::OurCloud);
+        let mut archil = target("archil", "https://archil.example", Placement::FastSandbox);
+        archil.caps.driver = "archil".into();
+        // Needs only Archil can meet still do not move `auto` onto it.
+        let mut boat_only_core = boat.clone();
+        boat_only_core.caps = Capabilities::new("oa-boat", [Profile::Core], &["small"]);
+        boat_only_core.caps.default_artifact = boat.caps.default_artifact.clone();
+        boat_only_core.caps.shapes = boat.caps.shapes.clone();
+        let catalog = Catalog::new("boat", "p", [boat_only_core, archil.clone()]).unwrap();
+        let fork = CreateIntent {
+            needs: Some(Needs {
+                profiles: [Profile::Fork].into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(catalog.choose("owner", &fork, &BTreeMap::new()).is_err());
+        let named = CreateIntent {
+            placement: Some(Placement::FastSandbox),
+            ..fork
+        };
+        assert_eq!(
+            catalog
+                .choose("owner", &named, &BTreeMap::new())
+                .unwrap()
+                .deployment,
+            "archil"
+        );
+        let default = Catalog::new("archil", "p", [boat, archil]).unwrap();
+        assert_eq!(
+            default
+                .choose("owner", &CreateIntent::default(), &BTreeMap::new())
+                .unwrap()
+                .deployment,
+            "archil"
+        );
+        assert!(compatible(ArtifactKind::ArchilImage, "rust:bookworm"));
+        assert!(!compatible(ArtifactKind::ArchilImage, "https://x/y"));
     }
     #[test]
     fn default_changes_and_overlapping_ids_do_not_change_a_saved_binding() {

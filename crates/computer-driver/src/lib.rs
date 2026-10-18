@@ -2,6 +2,7 @@
 //!
 //! A driver maps a small set of lifecycle operations onto one backend: our
 //! GCE sandboxes through `oa-boat` ([`boat::BoatDriver`], feature `boat`),
+//! Archil sandboxes ([`archil::ArchilDriver`], feature `archil`),
 //! an in-memory machine for tests ([`fake::FakeDriver`]), and later a
 //! person's own Mac, a Pylon contributor, or a Kubernetes sandbox. The
 //! lifecycle layer (`coder-working-computer`'s decide/apply, run by
@@ -41,6 +42,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+#[cfg(feature = "archil")]
+pub mod archil;
 #[cfg(feature = "boat")]
 pub mod boat;
 pub mod fake;
@@ -69,6 +72,8 @@ pub enum ArtifactKind {
     Test,
     /// A logical workspace attachment; no image is allocated.
     EnrolledWorkspace,
+    /// An OCI reference, `archil-image:ID`, or `archil:default`.
+    ArchilImage,
 }
 
 /// A resolved base image. When present, `provider_identity` is the image ID

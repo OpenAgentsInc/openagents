@@ -168,7 +168,9 @@ impl<D: Driver> Run<'_, D> {
 
     async fn cleanup(&mut self) -> Vec<String> {
         let mut left = Vec::new();
-        for id in std::mem::take(&mut self.computers) {
+        // Newest first: a copy goes before the computer it was made from,
+        // which some backends require.
+        for id in std::mem::take(&mut self.computers).into_iter().rev() {
             if !self.d.delete(&id).await.is_done() || self.wait(&id, State::Gone).await.is_err() {
                 left.push(format!("computer {id}"));
             }

@@ -13,6 +13,8 @@ path = "src/main.rs"
 
 [features]
 space = ["computer-driver/space"]
+# Archil sandboxes as an opt-in `fast-sandbox` deployment (#12138).
+archil = ["computer-driver/archil"]
 
 [dependencies]
 computer-enrolled = { path = "../computer-enrolled" }

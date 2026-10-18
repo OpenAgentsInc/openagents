@@ -170,3 +170,57 @@ matter in practice.
   disconnect), not a backgrounded shell command.
 - The agent's workspace and session history live on the sandbox root disk,
   because attaching a separate disk failed.
+
+## The Archil driver, measured (2026-10-18, #12138)
+
+`crates/computer-driver` now has an `archil` driver behind the `archil`
+feature, off by default. `oa-computers` accepts an `archil` deployment with
+placement `fast-sandbox`. `auto` never chooses it unless an operator makes it
+the default.
+
+What it declares:
+
+- **Core**: one computer is one sandbox on its own root disk, with no separate
+  Archil disk. Archil takes no idempotency key on sandbox create, so the
+  driver names each sandbox after a digest of the create operation and looks
+  that name up first. A create retried after a lost reply returns the same
+  sandbox. Two creates racing under one operation can still both land.
+- **Suspend** with memory: Archil pause and resume. Resume also cold-starts
+  a stopped sandbox.
+- **Fork**: Archil fork, named after the source and the fork operation, so a
+  repeated fork returns the same child.
+- **Snapshot** is not declared. Archil has no named disk snapshot that a new
+  sandbox can start from.
+- **Identified commands**: the shared spool wrapper runs as an Archil process
+  and is then disconnected. Its `mkdir` claim means a retried start runs the
+  command once. Secrets go over stdin, never in the process start request.
+
+Archil refuses to delete a sandbox while forks of it exist
+(`sandbox_has_forks`). The driver reports that as a definite failure without
+stopping the source. The conformance suite now deletes newest first.
+
+`computer-conformance` passed 10 of 10 cases against aws-us-east-1 and left
+no sandboxes behind. The lifecycle run, through the driver, used the default
+image and size `small` (2 vCPU, 4 GiB), 10 runs each, with no failures:
+
+| Path to first command | p50 | p90 | Range |
+| --- | --- | --- | --- |
+| Create | 2.0 s | 3.3 s | 1.2 to 4.5 s |
+| Pause, then resume | 1.3 s | 1.6 s | 1.1 to 2.8 s |
+| Stop, then start | 1.5 s | 1.9 s | 1.3 to 2.8 s |
+| Fork of a running computer | 5.1 s | 6.6 s | 4.7 to 8.8 s |
+
+The same run checked that a retried identified start runs once, and that a
+command keeps running through a pause and finishes after resume.
+
+For comparison:
+
+- SPACE through the Computers API: cold first useful p50 11.5 s with 3 of 20
+  failing, snapshot p50 11.7 s and p90 16.7 s, wake p50 12.8 s and p90
+  42.7 s, and a retried command that ran twice after a lost reply.
+- `oa-boat`: create 34 to 65 s, and a warm fork ready in 33 s with the first
+  `cargo build` at 93 s.
+
+These sandboxes held no workspace, so they don't settle the lazy-restore
+question above. The decisive check is still a fork of a warm openagents
+checkout to its first `cargo build`, against `oa-boat`'s 33 s plus 93 s.

@@ -8,6 +8,7 @@ description = "Black-box conformance cases for computer drivers, per profile (Co
 
 [features]
 space = ["computer-driver/space"]
+archil = ["computer-driver/archil"]
 
 [dependencies]
 computer-driver = { path = "../computer-driver", features = ["boat"] }

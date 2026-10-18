@@ -18,6 +18,8 @@ pub enum RuntimeDriver {
     Enrolled(computer_enrolled::Enrolled),
     #[cfg(feature = "space")]
     Space(computer_driver::space::SpaceDriver),
+    #[cfg(feature = "archil")]
+    Archil(computer_driver::archil::ArchilDriver),
 }
 macro_rules! forward {
     ($($name:ident($($arg:ident:$ty:ty),*)->$out:ty;)+)=>{$(
@@ -28,6 +30,8 @@ macro_rules! forward {
                 Self::Enrolled(driver)=>driver.$name($($arg),*).await,
                 #[cfg(feature="space")]
                 Self::Space(driver)=>driver.$name($($arg),*).await,
+                #[cfg(feature="archil")]
+                Self::Archil(driver)=>driver.$name($($arg),*).await,
             }
         }
     )+};
@@ -40,6 +44,8 @@ impl Driver for RuntimeDriver {
             Self::Enrolled(driver) => driver.capabilities(),
             #[cfg(feature = "space")]
             Self::Space(driver) => driver.capabilities(),
+            #[cfg(feature = "archil")]
+            Self::Archil(driver) => driver.capabilities(),
         }
     }
     forward! {
@@ -79,6 +85,7 @@ enum Kind {
     Space,
     Fake,
     Enrolled,
+    Archil,
 }
 impl Kind {
     fn driver(self) -> &'static str {
@@ -87,6 +94,7 @@ impl Kind {
             Self::Space => "space",
             Self::Fake => "fake",
             Self::Enrolled => "enrolled",
+            Self::Archil => "archil",
         }
     }
     fn artifact(self) -> ArtifactKind {
@@ -95,11 +103,12 @@ impl Kind {
             Self::Space => ArtifactKind::SpaceTemplate,
             Self::Fake => ArtifactKind::Test,
             Self::Enrolled => ArtifactKind::EnrolledWorkspace,
+            Self::Archil => ArtifactKind::ArchilImage,
         }
     }
     fn placement(self) -> Placement {
         match self {
-            Self::Space => Placement::FastSandbox,
+            Self::Space | Self::Archil => Placement::FastSandbox,
             Self::Enrolled => Placement::Enrolled,
             _ => Placement::OurCloud,
         }
@@ -241,6 +250,7 @@ impl Configuration {
         let kind = match env("OA_COMPUTERS_DRIVER").as_deref().unwrap_or("boat") {
             "boat" => Kind::Boat,
             "space" => Kind::Space,
+            "archil" => Kind::Archil,
             "fake" => Kind::Fake,
             _ => return Err(settings()),
         };
@@ -262,6 +272,7 @@ impl Configuration {
                         Some(env("BOAT_API_BASE").unwrap_or_else(|| boat::BASE_URL.into()))
                     }
                     Kind::Space => env("SPACE_API_URL"),
+                    Kind::Archil => env("ARCHIL_API_URL"),
                     Kind::Fake => None,
                     Kind::Enrolled => return Err(settings()),
                 },
@@ -269,11 +280,15 @@ impl Configuration {
                 credential_env: Some(
                     match kind {
                         Kind::Space => "SPACE_API_TOKEN",
+                        Kind::Archil => "ARCHIL_API_KEY",
                         _ => "BOAT_API_KEY",
                     }
                     .into(),
                 ),
-                template: env("SPACE_TEMPLATE"),
+                template: match kind {
+                    Kind::Archil => env("ARCHIL_IMAGE"),
+                    _ => env("SPACE_TEMPLATE"),
+                },
                 fake_root: env("OA_COMPUTERS_FAKE_DIR").map(Into::into),
                 placement: None,
                 priority: 0,
@@ -287,7 +302,10 @@ impl Configuration {
                 withdrawn_artifacts: BTreeSet::new(),
                 network_profile: None,
                 credential_proxy: false,
-                scope: None,
+                scope: match kind {
+                    Kind::Archil => env("ARCHIL_REGION"),
+                    _ => None,
+                },
             }],
         })
     }
@@ -332,6 +350,34 @@ async fn load(
                 root,
             )))
         }
+        Kind::Archil => {
+            #[cfg(feature = "archil")]
+            {
+                let key = computer_driver::Secret::new(credential(
+                    deployment
+                        .credential_env
+                        .as_deref()
+                        .unwrap_or("ARCHIL_API_KEY"),
+                )?);
+                let region = deployment.scope.as_deref().ok_or_else(settings)?;
+                let driver = if computer_driver::archil::region_url(region).as_deref() == Some(api)
+                {
+                    computer_driver::archil::ArchilDriver::new(key, region)
+                } else {
+                    computer_driver::archil::ArchilDriver::with_base_url(key, region, api)
+                }
+                .map_err(|_| settings())?;
+                let driver = match &deployment.template {
+                    Some(image) => driver.with_image(image).map_err(|_| settings())?,
+                    None => driver,
+                };
+                Ok(RuntimeDriver::Archil(driver))
+            }
+            #[cfg(not(feature = "archil"))]
+            {
+                Err(Refused::Unavailable)
+            }
+        }
         Kind::Space => {
             #[cfg(feature = "space")]
             {
@@ -367,6 +413,24 @@ async fn load(
                 Err(Refused::Unavailable)
             }
         }
+    }
+}
+
+/// An Archil deployment names its region in `scope` (or `ARCHIL_REGION` in
+/// the legacy environment); `api_url` overrides the region's origin.
+fn archil_api(deployment: &Deployment) -> Result<String, Refused> {
+    let region = deployment.scope.as_deref().ok_or_else(settings)?;
+    if let Some(url) = &deployment.api_url {
+        return Ok(url.clone());
+    }
+    #[cfg(feature = "archil")]
+    {
+        computer_driver::archil::region_url(region).ok_or_else(settings)
+    }
+    #[cfg(not(feature = "archil"))]
+    {
+        let _ = region;
+        Err(Refused::Unavailable)
     }
 }
 
@@ -452,6 +516,7 @@ pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
                     )
                 )
             }
+            Kind::Archil => endpoint(&archil_api(&deployment)?)?,
             _ => endpoint(deployment.api_url.as_deref().ok_or_else(settings)?)?,
         };
         let data = deployment

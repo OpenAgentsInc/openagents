@@ -89,6 +89,13 @@ Optional settings include `data_plane_url`, digest-pinned `template`, `scope`,
 trusted `shapes`, and explicit `legacy`. Credentials stay in environment variables.
 Boat remains the default. SPACE needs the server's `space` feature and an admitted
 configuration; this change does not enable SPACE in production.
+An `archil` deployment needs the server's `archil` feature. It names its Archil
+region in `scope` (for example `aws-us-east-1`), reads its key from
+`credential_env` (default `ARCHIL_API_KEY`), and takes an optional `template`
+image (an OCI reference or `archil-image:ID`); `api_url` overrides the region's
+origin. Its placement is `fast-sandbox`, and `auto` never chooses it unless it
+is the default. Deleting a computer that has live copies is refused until the
+copies are deleted.
 For an admission rollback, retain `enabled: true`, set `admit_new: false`, keep
 the old deployment connection, and restore the previous default. Existing bound
 computers remain manageable; disabling the whole connection also prevents that.
@@ -281,7 +288,8 @@ cargo run -p oa-computers
 ```
 
 Settings: `OA_COMPUTERS_DRIVER` (`boat` with `BOAT_API_BASE`/`BOAT_API_KEY`,
-`fake`, or experimental [`space`](space.md) when built with `--features space`),
+`fake`, experimental [`space`](space.md) when built with `--features space`, or
+`archil` with `ARCHIL_REGION`/`ARCHIL_API_KEY` when built with `--features archil`),
 `OA_COMPUTERS_LISTEN` (else `0.0.0.0:$PORT`),
 `OA_COMPUTERS_RECONCILE=0` (API only), `OA_COMPUTERS_LEASE_SECONDS` (60),
 `OA_COMPUTERS_REVISIT_SECONDS` (30), `OA_COMPUTERS_BACKOFF_MS` (5000),
