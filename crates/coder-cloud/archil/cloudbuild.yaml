@@ -1,0 +1,7 @@
+steps:
+- name: gcr.io/cloud-builders/docker
+  args: ["build", "-t", "us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/archil-worker:$_TAG", "."]
+images: ["us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/archil-worker:$_TAG"]
+options: {machineType: E2_HIGHCPU_8, logging: CLOUD_LOGGING_ONLY}
+timeout: 3600s
+serviceAccount: projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com

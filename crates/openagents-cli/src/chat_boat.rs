@@ -322,6 +322,11 @@ fn jwt_expiry(token: &str) -> Option<u64> {
     serde_json::from_slice::<Value>(&bytes).ok()?["exp"].as_u64()
 }
 
+/// The OpenAI API key cloud Codex falls back to with `--engine-fallback`.
+pub(super) fn openai_api_key() -> Option<String> {
+    variable("OA_CODER_OPENAI_API_KEY").or_else(|| secret(OPENAI_SECRET))
+}
+
 fn variable(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -409,7 +414,7 @@ pub(super) fn credentials(
             &mut variables,
             codex_chatgpt_login(),
             engine_fallback,
-            || variable("OA_CODER_OPENAI_API_KEY").or_else(|| secret(OPENAI_SECRET)),
+            openai_api_key,
         )?;
         match variable("XAI_API_KEY").or_else(|| secret(XAI_SECRET)) {
             Some(xai) => {
