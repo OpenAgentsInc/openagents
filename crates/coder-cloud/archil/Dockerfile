@@ -3,7 +3,9 @@
 # Archil's managed network allowlist blocks static.rust-lang.org, so the
 # toolchains the repository pins (rust-toolchain.toml and
 # apps/openagents/rust-toolchain.toml), with rustfmt and clippy, are baked in
-# here. Node carries Codex and Claude Code. Runs happen as `coder`.
+# here, with the GPUI system libraries apps/openagents' crates build against
+# (apps/openagents/CONTRIBUTORS.md). Node carries Codex and Claude Code.
+# Runs happen as `coder`.
 #
 # Build and push with Cloud Build (docs/cloud/archil.md),
 # then the first `chat work --on archil` imports it into Archil once.
@@ -19,6 +21,9 @@ RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
       jq python3 python3-numpy bubblewrap ca-certificates curl git xz-utils \
       clang lld cmake protobuf-compiler libprotobuf-dev pkg-config libssl-dev \
+      libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev \
+      libx11-xcb-dev libfontconfig1-dev libfreetype-dev libasound2-dev libvulkan-dev \
+      libwebkit2gtk-4.1-dev libjson-glib-dev \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules

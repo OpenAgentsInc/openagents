@@ -42,7 +42,7 @@ pub const MEM_MIB: u32 = 16384;
 /// The image every sandbox starts from, built from
 /// `crates/coder-cloud/archil/Dockerfile`; `OA_ARCHIL_IMAGE` picks another.
 pub const DEFAULT_IMAGE: &str =
-    "us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/archil-worker:v2";
+    "us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/archil-worker:v3";
 /// Published list prices (archil.com/pricing, 2026-10-18).
 const USD_PER_VCPU_HOUR: f64 = 0.055;
 const USD_PER_GIB_HOUR: f64 = 0.020;
@@ -490,15 +490,50 @@ pub async fn template(
     Ok(sandbox)
 }
 
-/// A new sandbox for one run: a fork of the template.
+/// A new sandbox for one run: a fork of the template that answers a
+/// command. Some forks report `running` but refuse every process
+/// (HTTP 400, about 5 in 11 on 2026-10-18, #12157); such a fork is deleted
+/// and the template forked again, up to three times.
 pub async fn fork(template: &mut Sandbox, name: &str) -> Result<Sandbox, String> {
-    template
-        .fork_with(SandboxForkOptions {
-            wait: true,
-            name: Some(name.to_owned()),
-        })
-        .await
-        .map_err(|e| format!("Archil could not fork the template: {e}"))
+    let mut last = String::new();
+    for _ in 0..FORK_TRIES {
+        let mut sandbox = template
+            .fork_with(SandboxForkOptions {
+                wait: true,
+                name: Some(name.to_owned()),
+            })
+            .await
+            .map_err(|e| format!("Archil could not fork the template: {e}"))?;
+        match answers(&sandbox).await {
+            Ok(()) => return Ok(sandbox),
+            Err(why) => {
+                last = why;
+                discard(&mut sandbox).await;
+            }
+        }
+    }
+    Err(format!(
+        "Archil forked the template {FORK_TRIES} times, but no fork ran a command: {last}"
+    ))
+}
+
+const FORK_TRIES: usize = 3;
+
+/// Whether `sandbox` runs a command within about half a minute.
+async fn answers(sandbox: &Sandbox) -> Result<(), String> {
+    let mut last = String::new();
+    for _ in 0..3 {
+        match sandbox
+            .exec("true", ProcessStartOptions::new().timeout_seconds(30))
+            .await
+        {
+            Ok(result) if result.exit_code == Some(0) => return Ok(()),
+            Ok(result) => last = format!("`true` exited {:?}", result.exit_code),
+            Err(e) => last = e.to_string(),
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+    Err(last)
 }
 
 #[cfg(test)]

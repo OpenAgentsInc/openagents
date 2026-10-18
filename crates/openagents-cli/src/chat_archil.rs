@@ -189,6 +189,14 @@ fn cost_comment(sandbox: &str, outcome: &str, wall: Duration, dollars: f64) -> S
     )
 }
 
+/// The comment that claims an issue for one Archil run.
+fn claim_comment(sandbox: &str, engine: &str) -> String {
+    format!(
+        "Claimed: an agent is working on this in Archil sandbox `{sandbox}` \
+         (`openagents chat work --on archil`, engine `{engine}`)."
+    )
+}
+
 /// The route record for one run on Archil.
 fn route_record(
     repository: &str,
@@ -243,6 +251,26 @@ fn append_record(record: &Value) {
     {
         let _ = writeln!(file, "{record}");
     }
+}
+
+/// Keeps the driver's result (each check with its output's tail) beside
+/// the route records, since the sandbox and its run directory are deleted.
+fn keep_result(issue: u64, run_id: &str, result: &Value) {
+    let dir = std::env::var_os("OPENAGENTS_CLOUD_HOME")
+        .map_or_else(
+            || {
+                user_home::home_os()
+                    .map_or_else(|| PathBuf::from("."), PathBuf::from)
+                    .join(".openagents/cloud")
+            },
+            PathBuf::from,
+        )
+        .join("archil-runs");
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(
+        dir.join(format!("{issue}-{run_id}.json")),
+        serde_json::to_string_pretty(result).unwrap_or_default(),
+    );
 }
 
 /// The engine's scripts as this binary carries them, under the run dir.
@@ -330,6 +358,12 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
     );
     let run_id = nonce();
     let branch = format!("land/archil-{issue}-{run_id}");
+    // The sandbox can't reach GitHub's API, so this computer claims the
+    // issue (#12158); `land submit --issue` closes it when it lands.
+    let claim = claim_comment(&name, &request.engine);
+    let repository = request.repository.clone();
+    let _ =
+        tokio::task::spawn_blocking(move || super::boat::comment(&repository, issue, &claim)).await;
     let script = archil::run_script(
         &request.repository,
         issue,
@@ -427,6 +461,7 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
         live.retain(|id| *id != sandbox.id);
     }
     let mut result = result_or(result, code, &tail);
+    keep_result(issue, &run_id, &result);
     // The sandbox pushed the change; this computer lands it.
     if result["ok"] == true
         && result["landed"]["how"] == "push"
@@ -654,6 +689,7 @@ mod tests {
         assert_eq!(record["run"]["projection"]["state"], "completed");
         assert_eq!(record["run"]["cost_microusd"], 126_700);
         assert_eq!(record["machine"], archil::machine());
+        assert!(claim_comment("oa-issue-7-x", "briefed").starts_with("Claimed:"));
         let comment = cost_comment("oa-issue-7-x", "queued", Duration::from_secs(600), 0.1267);
         assert!(comment.contains("600 s") && comment.contains("$0.1267"));
     }
