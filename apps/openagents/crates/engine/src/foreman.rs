@@ -200,6 +200,9 @@ pub(crate) struct LocalProgress {
     pub chats: HashMap<String, i64>,
     pub runs: HashMap<String, i64>,
     pub builds: BTreeMap<u64, i64>,
+    /// Each issue's latest output from an app chat whose title names it
+    /// (`#N`), whoever holds the claim.
+    pub titled: BTreeMap<u64, i64>,
 }
 
 impl LocalProgress {
@@ -887,6 +890,18 @@ impl Foreman {
             let mut events = Vec::new();
             for issue in issues {
                 let open = issue.state.eq_ignore_ascii_case("open");
+                if !open {
+                    // A closed issue's claim is no stall, whatever the claims
+                    // search (which can lag) still says.
+                    s.stalls.remove(&format!("claim:{}", issue.number));
+                    s.pending.retain(|p| {
+                        !matches!(
+                            &p.event,
+                            Event::ClaimNoProgress { number, .. } | Event::StaleClaim { number, .. }
+                                if *number == issue.number
+                        )
+                    });
+                }
                 match s.issues.insert(issue.number, open) {
                     None if !first && open && issue.number > highest => {
                         events.push(Event::IssueOpened {
@@ -929,16 +944,21 @@ impl Foreman {
             let mut events = Vec::new();
             let mut claimed = BTreeSet::new();
             for issue in issues {
+                if s.issues.get(&issue.number) == Some(&false) {
+                    continue;
+                }
                 let Some(claim) = active_claim(issue) else {
                     continue;
                 };
                 claimed.insert(format!("claim:{}", issue.number));
                 let chat = local.chats.get(&claim.session).copied();
                 let run = local.runs.get(&claim.session).copied();
+                let titled = local.titled.get(&issue.number).copied();
                 let last = claim_progress(issue, &claim)
                     .into_iter()
                     .chain(chat)
                     .chain(run)
+                    .chain(titled)
                     .chain(local.builds.get(&issue.number).copied())
                     .max()
                     .unwrap_or(claim.at);
@@ -967,7 +987,7 @@ impl Foreman {
                 } else {
                     s.stalls.remove(&key);
                 }
-                if chat.is_some() || run.is_some() {
+                if chat.is_some() || run.is_some() || titled.is_some() {
                     continue;
                 }
                 let Some((session, since)) = stale_claim(issue, now) else {
@@ -1247,6 +1267,21 @@ pub(crate) fn claim_issues(answer: &serde_json::Value) -> Vec<GhClaimIssue> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Issue numbers a chat title names as `#N` (4 to 6 digits).
+pub(crate) fn issue_refs(title: &str) -> Vec<u64> {
+    title
+        .split('#')
+        .skip(1)
+        .filter_map(|rest| {
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            (4..=6)
+                .contains(&digits.len())
+                .then(|| digits.parse().ok())
+                .flatten()
+        })
+        .collect()
 }
 
 /// An issue's latest unreleased claim.
@@ -2186,6 +2221,71 @@ mod tests {
             hex64(&format!("stall:claim:11999:{}", 0)),
             "stable for the same stall"
         );
+    }
+
+    /// A claim on an issue that closed drops out of the stall rule at once,
+    /// even while the claims search still lists it (it can lag).
+    #[test]
+    fn a_closed_issues_claim_is_no_stall() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let issue = |state: &str| GhIssue {
+            number: 12062,
+            title: "Done".into(),
+            state: state.into(),
+        };
+        f.observe_issues(&[issue("OPEN")], 0).unwrap();
+        let answer = serde_json::json!({"data":{"search":{"nodes":[
+            claim(12062, "Done", "claude-code:coord", 0, serde_json::json!({})),
+        ]}}});
+        let issues = claim_issues(&answer);
+        f.observe_claims(&issues, &LocalProgress::default(), 40 * MIN)
+            .unwrap();
+        assert_eq!(f.state().stalls.len(), 1, "stalled, rung 3 due");
+        f.observe_issues(&[issue("CLOSED")], 41 * MIN).unwrap();
+        assert!(f.state().stalls.is_empty(), "closing it ends the stall");
+        assert!(f.owner_notices(45 * MIN).unwrap().is_empty());
+        // The lagging search still lists it: still no stall.
+        f.observe_claims(&issues, &LocalProgress::default(), 50 * MIN)
+            .unwrap();
+        assert!(f.state().stalls.is_empty());
+        let wake = f.due(false, 60 * MIN).unwrap().expect("check-in");
+        assert!(
+            !wake.text.contains("has shown no progress"),
+            "{}",
+            wake.text
+        );
+        assert!(!wake.text.contains("Stalled work"), "{}", wake.text);
+    }
+
+    /// A claim held by a coordinator session counts as progressing while an
+    /// app chat titled for that issue has recent output.
+    #[test]
+    fn an_app_chat_titled_for_the_issue_is_progress() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let answer = serde_json::json!({"data":{"search":{"nodes":[
+            claim(12041, "Terminal runs", "claude-code:a9366ded", 0, serde_json::json!({})),
+            claim(12038, "Land queue", "claude-code:a9366ded", 0, serde_json::json!({})),
+        ]}}});
+        let issues = claim_issues(&answer);
+        for minute in [20, 40, 400] {
+            let now = minute * MIN;
+            let local = LocalProgress {
+                titled: BTreeMap::from([(12041, now - 2 * MIN)]),
+                ..LocalProgress::default()
+            };
+            f.observe_claims(&issues, &local, now).unwrap();
+        }
+        let stalls = f.state().stalls;
+        assert!(!stalls.contains_key("claim:12041"), "its chat is answering");
+        assert!(stalls.contains_key("claim:12038"), "nothing works #12038");
+        assert_eq!(
+            issue_refs("#12041 Foreman: act on terminal sessions"),
+            [12041]
+        );
+        assert_eq!(issue_refs("Cloud fan-out (#12058, #12037)"), [12058, 12037]);
+        assert!(issue_refs("Fix #12 and # 12041").is_empty());
     }
 
     #[test]

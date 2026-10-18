@@ -127,6 +127,26 @@ impl DocHost {
         let rows = workspace.merged_sessions(&sessions.watch_sessions().borrow());
         let chats = workspace.watch_chats().borrow().clone();
         for chat in &chats {
+            let row = rows.iter().find(|r| r.chat_id == chat.id);
+            let working = row
+                .filter(|r| r.status == openagents_proto::SessionStatus::Working)
+                .and_then(|r| r.started_at);
+            let Some(last) = row
+                .and_then(|r| r.last_output_at)
+                .into_iter()
+                .chain(working)
+                .chain(chat.last_message_at)
+                .map(|t| t.timestamp_millis())
+                .max()
+            else {
+                continue;
+            };
+            // An app chat titled for an issue works it, whoever holds the
+            // claim (a coordinator session often does).
+            for number in crate::foreman::issue_refs(chat.title.as_deref().unwrap_or("")) {
+                let seen = local.titled.entry(number).or_insert(last);
+                *seen = (*seen).max(last);
+            }
             let (Some(config), Some(id)) = (
                 chat.config.as_ref(),
                 chat.harness_session_id.as_deref().filter(|s| !s.is_empty()),
@@ -139,20 +159,7 @@ impl DocHost {
             else {
                 continue;
             };
-            let row = rows.iter().find(|r| r.chat_id == chat.id);
-            let working = row
-                .filter(|r| r.status == openagents_proto::SessionStatus::Working)
-                .and_then(|r| r.started_at);
-            let last = row
-                .and_then(|r| r.last_output_at)
-                .into_iter()
-                .chain(working)
-                .chain(chat.last_message_at)
-                .map(|t| t.timestamp_millis())
-                .max();
-            if let Some(last) = last {
-                local.chats.insert(format!("{harness}:{id}"), last);
-            }
+            local.chats.insert(format!("{harness}:{id}"), last);
         }
         // The checkout the agent's chat works in.
         let checkout = self
