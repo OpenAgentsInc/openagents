@@ -2,30 +2,51 @@
 # Build the Rust mobile core (crates/mobile) for Android and generate its
 # Kotlin bindings — the same library the iOS app links.
 #
-#   scripts/android/build-core.sh [out_dir]
+#   CARGO_TARGET_DIR=/path/to/shared/app-target \
+#     scripts/android/build-core.sh [out_dir]
 #
-# Kotlin generation needs only the host toolchain. The .so build needs the
-# Android NDK + cargo-ndk (`cargo install cargo-ndk`,
-# `rustup target add aarch64-linux-android x86_64-linux-android`); it is
-# skipped with a note when they are missing. (Not yet exercised in CI.)
+# The app's pinned Rust toolchain, Android NDK, and cargo-ndk must be available.
+# Run from the pinned Android shell documented in os/README.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-OUT="${1:-$ROOT/target/android-core}"
-mkdir -p "$OUT/kotlin" "$OUT/jniLibs"
-cd "$ROOT"
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-}"
+if [[ -z "$CARGO_TARGET_DIR" ]]; then
+  echo "error: set CARGO_TARGET_DIR to the shared app target directory" >&2
+  exit 1
+fi
+mkdir -p "$CARGO_TARGET_DIR"
+CARGO_TARGET_DIR="$(cd "$CARGO_TARGET_DIR" && pwd -P)"
+case "$CARGO_TARGET_DIR/" in
+  "$ROOT/"*)
+    echo "error: CARGO_TARGET_DIR must be outside the apps/openagents checkout" >&2
+    exit 1
+    ;;
+esac
+export CARGO_TARGET_DIR
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1}"
+export CARGO_INCREMENTAL=0
 
-cargo build --locked -p openagents-mobile --lib --profile mobile
-cargo build --locked -p openagents-mobile --bin uniffi-bindgen --features bindgen --profile mobile
-HOST_LIB="$ROOT/target/mobile/libopenagents_mobile.$([[ "$(uname)" == Darwin ]] && echo dylib || echo so)"
-"$ROOT/target/mobile/uniffi-bindgen" generate --library "$HOST_LIB" --language kotlin \
+OUT="${1:-$CARGO_TARGET_DIR/android-core}"
+mkdir -p "$OUT/kotlin" "$OUT/jniLibs"
+OUT="$(cd "$OUT" && pwd -P)"
+cd "$ROOT"
+. "$ROOT/../../scripts/dev/cargo-build-env.sh"
+
+if [[ -z "${ANDROID_NDK_HOME:-}" ]] || ! command -v cargo-ndk >/dev/null; then
+  echo "error: enter the pinned Android shell from os/README.md" >&2
+  exit 1
+fi
+
+cargo build --locked -p openagents-mobile --lib --bin uniffi-bindgen \
+  --features bindgen --profile mobile
+HOST_LIB="$CARGO_TARGET_DIR/mobile/libopenagents_mobile.$([[ "$(uname)" == Darwin ]] && echo dylib || echo so)"
+"$CARGO_TARGET_DIR/mobile/uniffi-bindgen" generate --library "$HOST_LIB" --language kotlin \
   --no-format --out-dir "$OUT/kotlin"
 echo "kotlin bindings: $OUT/kotlin"
 
-if command -v cargo-ndk >/dev/null && [[ -n "${ANDROID_NDK_HOME:-}" ]]; then
-  cargo ndk -t arm64-v8a -t x86_64 -o "$OUT/jniLibs" \
-    build --locked -p openagents-mobile --lib --profile mobile
-  echo "jniLibs: $OUT/jniLibs"
-else
-  echo "note: cargo-ndk / ANDROID_NDK_HOME not found — skipped the .so build"
-fi
+cargo ndk -t arm64-v8a -o "$OUT/jniLibs" \
+  build --locked -p openagents-mobile --lib --profile mobile
+cargo ndk -t x86_64 -o "$OUT/jniLibs" \
+  build --locked -p openagents-mobile --lib --profile mobile
+echo "jniLibs: $OUT/jniLibs"

@@ -360,23 +360,44 @@ production. The command stops after at most 240 seconds plus 15 seconds for
 forced cleanup. It shuts down its own guest and adb server on exit. Do not
 sign in or install the app during this check.
 
-For the first app cross-build (A1), use the existing app workspace target:
+For the first app cross-build (A1), enter the pinned Android shell and use
+the existing app workspace target. After a fresh `machine_status` reports at
+least 100 GiB free and the coordinator assigns the A1 build slot, run this as
+one serial build sequence:
 
 ```sh
-cd apps/openagents
-export CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app"
-export OPENAGENTS_KEEP_TARGET_DIR=1
-. "$(git rev-parse --show-toplevel)/scripts/dev/cargo-build-env.sh"
+nix develop ./os#android --command bash -lc '
+  cd apps/openagents
+  export CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app"
+  export OPENAGENTS_KEEP_TARGET_DIR=1
+  export RUSTUP_TOOLCHAIN=1.98.1
+  export CARGO_INCREMENTAL=0
+  scripts/android/build-core.sh
+'
 ```
 
-The helper sets `CARGO_INCREMENTAL=0`, pins the compiler, and gives each
-physical workspace and compiler its own intermediate build directory.
-Keep this shared app target across worktrees; the root workspace uses the
-existing `~/work/openagents-target-workspace` instead. Run one Cargo command
-at a time in each chat. A1 must fix `scripts/android/build-core.sh` to honor
-these settings before using it; the script still assumes a local target.
-Use `aarch64-linux-android` for devices and `x86_64-linux-android` for the
-KVM guest. Both standard libraries are installed for Rust 1.98.1.
+`build-core.sh` loads `scripts/dev/cargo-build-env.sh` after setting the app
+workspace, shared target, and Rust 1.98.1. The helper pins the compiler and
+sets `CARGO_INCREMENTAL=0` with a separate intermediate directory for this
+workspace and compiler. Keep this shared app target across worktrees; the root
+workspace uses `~/work/openagents-target-workspace`. The script builds the host
+library and UniFFI generator, generates Kotlin bindings from that library, then
+builds `arm64-v8a` and `x86_64` in order. Its default outputs are
+`$CARGO_TARGET_DIR/android-core/kotlin/` and
+`$CARGO_TARGET_DIR/android-core/jniLibs/{arm64-v8a,x86_64}/`. Commit the
+generated Kotlin bindings under the Android app when its package destination
+is established; keep intermediate libraries and build output in the shared
+target. Rust target names are `aarch64-linux-android` for devices and
+`x86_64-linux-android` for the KVM guest. Both standard libraries are installed
+for Rust 1.98.1.
+
+The first build must measure target growth and free space before scheduling
+another build. Likely Android cross-build issues include native C/C++ build
+scripts and alignment, Luau, tree-sitter, `ring`, Breez's bundled SQLite,
+`iroh`, and `wgpu`; check these in the real output rather than adding duplicate
+domain libraries or speculative workarounds. Record each ABI's library size
+and ELF `LOAD` alignment, including the 16 KiB requirement, under session
+scratch. No A1 build has run yet.
 
 ### CoderOS verification, 2026-10-18 (#12079)
 
