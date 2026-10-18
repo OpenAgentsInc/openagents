@@ -17,6 +17,13 @@ pub struct OwnerNoteView {
     pub body: String,
     pub deep_link: String,
 }
+
+/// A data-only push wake. Rust owns the reconnect and owner-note behavior.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum PushWakeKind {
+    Attention,
+    Reconnect,
+}
 fn checked(value: serde_json::Value) -> CoreResult<Option<OwnerNoteView>> {
     if value["notification"].is_null() {
         return Ok(None);
@@ -48,6 +55,16 @@ fn checked(value: serde_json::Value) -> CoreResult<Option<OwnerNoteView>> {
 
 #[uniffi::export]
 impl CoreClient {
+    pub async fn handle_push_wake(&self, kind: PushWakeKind) -> CoreResult<Option<OwnerNoteView>> {
+        match kind {
+            PushWakeKind::Attention => self.owner_notification().await,
+            PushWakeKind::Reconnect => {
+                self.client.reconnect_from_push();
+                Ok(None)
+            }
+        }
+    }
+
     pub async fn owner_notification(&self) -> CoreResult<Option<OwnerNoteView>> {
         let client = self.client.clone();
         let value = on_runtime(async move { client.owner_notification().await }).await?;
