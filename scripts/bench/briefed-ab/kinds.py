@@ -48,7 +48,7 @@ HERE = Path(__file__).resolve().parent
 
 # Workspaces of their own inside the repository (root Cargo.toml's
 # `exclude`): `cargo -p` from the root cannot see their packages.
-NESTED = ("crates/openagents-mobile", "crates/psionic", "vendor")
+NESTED = ("apps/openagents", "crates/openagents-mobile", "crates/psionic", "vendor")
 CHECK_SECS = int(os.environ.get("OA_KIND_CHECK_SECS", "300"))
 PY_EXT = (".py",)
 SH_EXT = (".sh", ".bash")
