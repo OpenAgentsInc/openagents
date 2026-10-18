@@ -60,6 +60,9 @@ android {
     buildFeatures { buildConfig = true }
 
     sourceSets["main"].assets.srcDir("../../ios/OpenAgents/Fonts")
+    sourceSets["main"].java.srcDir("../transcript/src/main/java")
+    sourceSets["test"].java.srcDir("../transcript/src/test/java")
+    sourceSets["androidTest"].java.srcDir("../transcript/src/androidTest/java")
     sourceSets["main"].java.srcDir("../platform")
     sourceSets["main"].java.exclude("**/tests/**")
     sourceSets["main"].java.srcDir(if (pushEnabled) "src/push/java" else "src/nopush/java")
