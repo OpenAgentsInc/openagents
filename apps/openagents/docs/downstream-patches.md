@@ -738,9 +738,21 @@ links remain readable. Upstream fixes now require manual ports.
   confirmation requirements, callback revisions, and authentication scope. New
   Kotlin onboarding files supply device credentials, secret-screen protection,
   lifecycle redaction, and explicit sensitive clipboard copy. A3 storage, D5
-  settings, and B1 Activity/Gradle files are unchanged. Source fixtures are unrun;
-  binding/host integration remains pending. The additive generation-fenced restore
-  API commits under the shared account-switch lock; its race fixtures are unrun.
+  settings, and B1 Activity/Gradle files remain separately owned. B1 includes
+  onboarding production and instrumentation source roots. `MainActivity` owns
+  the credential Activity Result launcher and maps only `RESULT_OK` to success;
+  it forwards pause/resume to `RecoveryHost` and closes the host on dismissal or
+  account replacement. The host mounts from a caller-supplied `RecoveryPort`
+  with a bounded serial worker. `showRecoveryWithAccountChat` accepts D3's
+  account-owned `CoreAndroidSessions` and a shell mount callback; on the Rust
+  `openChat` effect it passes `sessions.defaultChat()` directly to that callback.
+  The shell neither constructs nor closes `CoreAndroidSessions`, and does not
+  create a replacement chat. D3's caller must create the account/session owner
+  and provide the matching `CoreAndroidRecovery`. The generated D3 and recovery
+  bindings are not present in the checked-in Kotlin file, so Kotlin compilation
+  and E1's source fixtures remain pending.
+  The additive generation-fenced restore API commits under the shared
+  account-switch lock; its race fixtures are unrun.
 - [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
   Android push delivery uses the existing Rust push registration and private
   owner-note APIs. `CoreClient::handle_push_wake` receives a typed wake; Rust

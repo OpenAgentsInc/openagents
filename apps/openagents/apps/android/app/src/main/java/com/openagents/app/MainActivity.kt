@@ -1,7 +1,10 @@
 package com.openagents.app
 
+import android.app.Activity
 import android.graphics.Typeface
 import android.Manifest
+import android.content.ClipboardManager
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
@@ -15,12 +18,22 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
+import com.openagents.app.onboarding.AndroidDeviceAuthentication
+import com.openagents.app.onboarding.CredentialLauncher
+import com.openagents.app.onboarding.RecoveryClipboard
+import com.openagents.app.onboarding.RecoveryHost
+import com.openagents.app.onboarding.RecoveryPort
 import uniffi.openagents_core.CloudChatListener
 import uniffi.openagents_core.CloudChatSnapshot
+import uniffi.openagents_core.CoreAndroidSessions
 import uniffi.openagents_core.CoreCloudChat
 import com.openagents.app.scanner.AndroidScannerPresentationBoundary
 import com.openagents.app.scanner.CameraXQrScannerDriver
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -37,6 +50,43 @@ class MainActivity : ComponentActivity() {
     private var scannerSession: Long? = null
     private var scannerPermissionPending = false
     private var scannerFailure: ((Exception) -> Unit)? = null
+    private val recoveryWorker = ThreadPoolExecutor(
+        1,
+        1,
+        0L,
+        TimeUnit.MILLISECONDS,
+        ArrayBlockingQueue(16),
+        { task -> Thread(task, "openagents-recovery").apply { isDaemon = true } },
+        ThreadPoolExecutor.AbortPolicy(),
+    )
+    private var recoveryHost: RecoveryHost? = null
+    private var recoveryCredentialRequest = 0L
+    private var recoveryCredentialResult: Pair<Long, (Boolean) -> Unit>? = null
+    private val recoveryCredentialLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val pending = recoveryCredentialResult
+        recoveryCredentialResult = null
+        pending?.second?.invoke(result.resultCode == Activity.RESULT_OK)
+    }
+    private val credentialLauncher = CredentialLauncher { intent, result ->
+        check(Looper.myLooper() == Looper.getMainLooper())
+        check(recoveryCredentialResult == null) { "A device credential prompt is already active." }
+        val request = ++recoveryCredentialRequest
+        recoveryCredentialResult = request to result
+        try {
+            recoveryCredentialLauncher.launch(intent)
+        } catch (error: Exception) {
+            if (recoveryCredentialResult?.first == request) recoveryCredentialResult = null
+            result(false)
+        }
+        AutoCloseable {
+            if (recoveryCredentialResult?.first == request) {
+                recoveryCredentialResult = null
+                recoveryCredentialRequest++
+            }
+        }
+    }
 
     private val listener = object : CloudChatListener {
         override fun onCloudChatChanged(snapshot: CloudChatSnapshot) {
@@ -68,6 +118,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        closeRecoveryHost()
+        recoveryWorker.shutdown()
+        recoveryCredentialResult = null
         mainHandler.removeCallbacksAndMessages(null)
         attachmentResults?.close()
         attachmentResults = null
@@ -84,6 +137,59 @@ class MainActivity : ComponentActivity() {
         demoChat = null
         transcriptScroll = null
         super.onDestroy()
+    }
+
+    override fun onPause() {
+        recoveryHost?.background()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        recoveryHost?.foreground()
+    }
+
+    /** Mount Rust recovery in an app-owned container after account stores are ready. */
+    fun showRecovery(
+        parent: android.view.ViewGroup,
+        port: RecoveryPort,
+        deviceName: String,
+        openDefaultChat: () -> Unit,
+    ) {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        closeRecoveryHost()
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        recoveryHost = RecoveryHost(
+            parent = parent,
+            window = window,
+            port = port,
+            authentication = AndroidDeviceAuthentication(applicationContext, credentialLauncher),
+            clipboard = RecoveryClipboard(clipboard, mainHandler),
+            worker = { operation -> recoveryWorker.execute(operation) },
+            openChat = openDefaultChat,
+        ).also { it.start(deviceName) }
+    }
+
+    /** Mount the account-owned default chat without creating or closing its session owner. */
+    fun showRecoveryWithAccountChat(
+        parent: android.view.ViewGroup,
+        port: RecoveryPort,
+        deviceName: String,
+        sessions: CoreAndroidSessions,
+        mountAccountChat: (CoreCloudChat) -> Unit,
+    ) {
+        showRecovery(parent, port, deviceName) {
+            mountAccountChat(sessions.defaultChat())
+        }
+    }
+
+    /** Dismiss recovery before replacing the account or its Rust stores. */
+    fun closeRecoveryHost() {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        recoveryHost?.close()
+        recoveryHost = null
+        recoveryCredentialResult = null
+        recoveryCredentialRequest++
     }
 
     /** Installs the current screen's bounded URI intake callback. */

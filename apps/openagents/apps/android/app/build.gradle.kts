@@ -62,9 +62,11 @@ android {
     sourceSets["main"].java.srcDir("../platform")
     sourceSets["main"].java.exclude("tests/**")
     sourceSets["main"].java.srcDir("../transcript/src/main/java")
+    sourceSets["main"].java.srcDir("../onboarding")
     sourceSets["test"].java.srcDir("../transcript/src/test/java")
     sourceSets["androidTest"].java.srcDir("../transcript/src/androidTest/java")
     sourceSets["androidTest"].java.srcDir("../platform/tests")
+    sourceSets["androidTest"].java.srcDir("../onboarding/tests")
     sourceSets["main"].java.srcDir(if (pushEnabled) "src/push/java" else "src/nopush/java")
     sourceSets["main"].jniLibs.srcDir("$cargoTargetDir/android-core/jniLibs")
 
