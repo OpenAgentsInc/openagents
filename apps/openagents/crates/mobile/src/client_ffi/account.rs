@@ -74,6 +74,24 @@ fn close_clients(clients: &Clients, keep: Option<u64>) {
     });
 }
 
+fn close_clients_from_sign_out(clients: &Clients, generations: &[u64]) {
+    clients.lock().unwrap().retain(|(generation, client)| {
+        let Some(client) = client.upgrade() else {
+            return false;
+        };
+        if client_generation_was_signed_out(*generation, generations) {
+            client.client.shutdown();
+            false
+        } else {
+            true
+        }
+    });
+}
+
+fn client_generation_was_signed_out(generation: u64, sign_out_generations: &[u64]) -> bool {
+    sign_out_generations.contains(&generation)
+}
+
 async fn bounded_push_revocation<F>(revoke: F, timeout: Duration)
 where
     F: std::future::Future<Output = ()> + Send,
@@ -428,17 +446,21 @@ impl CoreAccount {
             .lock()
             .unwrap()
             .iter()
-            .filter_map(|(_, client)| client.upgrade())
+            .filter_map(|(generation, client)| client.upgrade().map(|client| (*generation, client)))
+            .collect::<Vec<_>>();
+        let sign_out_generations = revocation_clients
+            .iter()
+            .map(|(generation, _)| *generation)
             .collect::<Vec<_>>();
         openagents_client::runtime::shared().spawn(async move {
             finish_sign_out(
                 async move {
-                    for client in revocation_clients {
+                    for (_, client) in revocation_clients {
                         let _ = crate::push::unregister(&client.client).await;
                     }
                 },
                 PUSH_REVOKE_TIMEOUT,
-                || close_clients(&clients, None),
+                || close_clients_from_sign_out(&clients, &sign_out_generations),
             )
             .await;
         });
@@ -575,21 +597,26 @@ mod tests {
     async fn sign_out_cleanup_finishes_after_push_revocation_times_out() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
-        let signed_out = Arc::new(AtomicBool::new(false));
         let cleaned_up = Arc::new(AtomicBool::new(false));
-        let sign_out_flag = signed_out.clone();
         let cleanup_flag = cleaned_up.clone();
-
-        sign_out_flag.store(true, Ordering::SeqCst);
+        let old_generation = 4;
+        let new_generation = 5;
+        let sign_out_generations = [old_generation];
+        let mut live_generations = vec![old_generation, new_generation];
         finish_sign_out(
             std::future::pending::<()>(),
             Duration::from_millis(5),
-            move || cleanup_flag.store(true, Ordering::SeqCst),
+            move || {
+                live_generations.retain(|generation| {
+                    !client_generation_was_signed_out(*generation, &sign_out_generations)
+                });
+                cleanup_flag.store(true, Ordering::SeqCst);
+            },
         )
         .await;
 
-        assert!(signed_out.load(Ordering::SeqCst));
         assert!(cleaned_up.load(Ordering::SeqCst));
+        assert_eq!(live_generations, [new_generation]);
     }
 
     struct Memory;
