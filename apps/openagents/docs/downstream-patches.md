@@ -708,3 +708,13 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+- [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
+  Android push delivery uses the existing Rust push registration and private
+  owner-note APIs. `CoreClient::handle_push_wake` receives a typed wake; Rust
+  returns the newest checked owner note for attention and redials sync for a
+  reconnect without changing app lifecycle state. The shared platform
+  coordinator validates data-only wake messages, and the `push` source set
+  contains the Firebase transport adapter; `nopush` has no Firebase symbols.
+  The app owns client creation, foreground suppression, notification routing,
+  and tap handling. Android channel setup and permission checks live in
+  `platform/AndroidPushNotifications.kt`.
