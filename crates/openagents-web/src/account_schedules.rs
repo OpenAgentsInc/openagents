@@ -15,6 +15,7 @@
 //! | `PUT /v1/schedules/{id}` `{computer, prompt, days, time, every_secs, chat, paused}` | Save one (`new` makes one). `200 {schedule}`; `400 invalid`; `404 unknown`; `413 full`; `422 secret` |
 //! | `POST /v1/schedules/{id}/pause` `{paused}` | Pause or resume one. `200 {schedule}`; `404 unknown` |
 //! | `DELETE /v1/schedules/{id}` | Delete one: kept as a deletion so its computer removes it. `200 {deleted}` |
+//! | `GET /v1/schedules/{id}/health` | Whether it ran on time (#12051): `200 {id, health, last_ran_at, paused, alarm, notified}`, `health` being `{state: "on_time"}`, `{state: "late", missed}`, or `{state: "never_ran"}`. The first check that finds two missed runs in a row answers `alarm: true` and tells the owner through the agent it wakes (`notified`); later checks don't until it runs again. `404 unknown` |
 //! | `GET /settings/schedules` | The person's prompts, each with Pause or Resume and Delete, and a form for a new one |
 //! | `POST /settings/schedules/save`, `/pause`, `/delete` | The page's forms |
 //!
@@ -22,7 +23,9 @@
 //! Coder's other account routes.
 //!
 //! A record is `{id, computer, prompt, days, time, every_secs, chat,
-//! chat_title, workspace, paused, updated, deleted}`: `id` is Coder's rule
+//! chat_title, agent, workspace, paused, updated, deleted, last_ran_at}`:
+//! `agent` is the saved agent definition it wakes; `last_ran_at` is the
+//! Unix seconds its computer last ran it. `id` is Coder's rule
 //! id (`prompt-…`); `time` is `HH:MM` on the computer's clock, on `days`
 //! (0 Sunday to 6 Saturday, every day when empty), or `every_secs` (at
 //! least a minute) instead; `chat` is the session id of the chat it posts
@@ -46,6 +49,8 @@ use openagents_ui::content::MarkdownRoot;
 use openagents_ui::forms::{Field, Input, InputType, Select, Textarea};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+pub(crate) use openagents_sdk::schedules::Health;
 
 use crate::App;
 use crate::chat_store::{Error, Store, account_owner, now_unix};
@@ -128,6 +133,14 @@ pub(crate) struct Schedule {
     pub updated: u64,
     #[serde(default)]
     pub deleted: bool,
+    /// Unix seconds of the last run, written by its computer on each tick
+    /// (#12051). A merge keeps the later one whichever record wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_ran_at: Option<i64>,
+    /// The `last_ran_at` after which the owner was told it stopped running,
+    /// so two missed runs in a row tell them once. Only this site sets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alarmed_after: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -201,6 +214,11 @@ fn checked(mut schedule: Schedule, now: u64) -> Result<Schedule, Refusal> {
     if schedule.updated == 0 || schedule.updated > now + FUTURE_SLACK {
         return Err(Refusal::Invalid("A scheduled prompt has an invalid time."));
     }
+    // Only this site records an alarm; a run time must be a real one.
+    schedule.alarmed_after = None;
+    schedule.last_ran_at = schedule
+        .last_ran_at
+        .filter(|at| u64::try_from(*at).is_ok_and(|at| at > 0 && at <= now + FUTURE_SLACK));
     if schedule.deleted {
         return Ok(Schedule {
             id: schedule.id,
@@ -277,17 +295,26 @@ fn checked(mut schedule: Schedule, now: u64) -> Result<Schedule, Refusal> {
 
 /// Keep `incoming` when it is newer than the prompt with its id (a delete
 /// wins a tie), or new and there is room. Returns whether anything
-/// changed.
-fn merge(schedules: &mut Vec<Schedule>, incoming: Schedule) -> bool {
+/// changed. A live prompt keeps the later run time and alarm of the two,
+/// so a tick counts even from a copy that is otherwise older.
+fn merge(schedules: &mut Vec<Schedule>, mut incoming: Schedule) -> bool {
     match schedules.iter_mut().find(|have| have.id == incoming.id) {
         Some(have) => {
             let newer = incoming.updated > have.updated
                 || (incoming.updated == have.updated && incoming.deleted && !have.deleted);
-            if !newer || *have == incoming {
-                return false;
+            if !incoming.deleted && !have.deleted {
+                incoming.last_ran_at = incoming.last_ran_at.max(have.last_ran_at);
+                incoming.alarmed_after = incoming.alarmed_after.max(have.alarmed_after);
             }
-            *have = incoming;
-            true
+            if newer && *have != incoming {
+                *have = incoming;
+                return true;
+            }
+            if !have.deleted && !incoming.deleted && incoming.last_ran_at > have.last_ran_at {
+                have.last_ran_at = incoming.last_ran_at;
+                return true;
+            }
+            false
         }
         None => {
             if !incoming.deleted
@@ -568,6 +595,8 @@ async fn save(store: &Store, owner: &str, edit: &Edit, chats: &[Chat]) -> Result
             paused: edit.paused,
             updated,
             deleted: false,
+            last_ran_at: existing.and_then(|have| have.last_ran_at),
+            alarmed_after: None,
         };
         let schedule = match checked(schedule, now) {
             Ok(schedule) => schedule,
@@ -628,6 +657,130 @@ async fn forget(store: &Store, owner: &str, id: &str) -> Result<bool, Error> {
     .await
 }
 
+/// The missed runs in a row that tell the owner.
+const ALARM_MISSED: u32 = 2;
+
+/// The longest wait between two runs of `schedule`, in seconds: its
+/// interval, or the longest gap between its days at a time of day (so a
+/// weekend is never a missed run).
+fn interval_secs(schedule: &Schedule) -> Option<u64> {
+    if let Some(seconds) = schedule.every_secs {
+        return Some(seconds.max(1));
+    }
+    schedule.time.as_ref()?;
+    let mut days = schedule.days.clone();
+    days.sort_unstable();
+    days.dedup();
+    let (Some(first), Some(last)) = (days.first(), days.last()) else {
+        return Some(86_400);
+    };
+    let gap = days
+        .windows(2)
+        .map(|pair| pair[1] - pair[0])
+        .chain(std::iter::once(first + 7 - last))
+        .max()
+        .unwrap_or(7);
+    Some(u64::from(gap) * 86_400)
+}
+
+/// Whether `schedule` ran when it should have, at `now`: counted from its
+/// last run or its last change, whichever is later, with a quarter of an
+/// interval (at most ten minutes) of slack for a slow tick.
+pub(crate) fn health(schedule: &Schedule, now: u64) -> Health {
+    let (Some(last), Some(interval)) = (schedule.last_ran_at, interval_secs(schedule)) else {
+        return Health::NeverRan;
+    };
+    let since = u64::try_from(last).unwrap_or(0).max(schedule.updated);
+    let grace = (interval / 4).min(600);
+    let missed = now.saturating_sub(since).saturating_sub(grace) / interval;
+    match u32::try_from(missed).unwrap_or(u32::MAX) {
+        0 => Health::OnTime,
+        missed => Health::Late { missed },
+    }
+}
+
+/// Whether the owner should be told now: a live, unpaused prompt has
+/// missed two runs in a row since a run they weren't yet told about.
+fn alarm_due(schedule: &Schedule, health: Health) -> bool {
+    !schedule.deleted
+        && !schedule.paused
+        && matches!(health, Health::Late { missed } if missed >= ALARM_MISSED)
+        && schedule.last_ran_at.is_some()
+        && schedule.alarmed_after < schedule.last_ran_at
+}
+
+/// The prompt `id`, how it is running at `now`, and whether the owner
+/// should be told it stopped. `None` when there is no such prompt.
+async fn checkup(
+    store: &Store,
+    owner: &str,
+    id: &str,
+    now: u64,
+) -> Result<Option<(Schedule, Health, bool)>, Error> {
+    let found = schedules(store, owner)
+        .await?
+        .into_iter()
+        .find(|have| have.id == id && !have.deleted);
+    Ok(found.map(|schedule| {
+        let health = health(&schedule, now);
+        let due = alarm_due(&schedule, health);
+        (schedule, health, due)
+    }))
+}
+
+/// Record that the owner was told the prompt `id` stopped after its run at
+/// `last_ran_at`, so later checks don't tell them again. Returns whether
+/// this call recorded it (false when another check already had).
+async fn record_alarm(
+    store: &Store,
+    owner: &str,
+    id: &str,
+    last_ran_at: i64,
+) -> Result<bool, Error> {
+    update(store, owner, |list| {
+        let Some(have) = list.iter_mut().find(|have| have.id == id && !have.deleted) else {
+            return (false, false);
+        };
+        if have.alarmed_after >= Some(last_ran_at) {
+            return (false, false);
+        }
+        have.alarmed_after = Some(last_ran_at);
+        (true, true)
+    })
+    .await
+}
+
+/// The note that tells the owner a prompt stopped running, for the agent it
+/// wakes, with an id that stays the same for that missed run so a retry or
+/// a second check sends one notice.
+fn alarm_note(owner: &str, schedule: &Schedule, missed: u32) -> Option<Value> {
+    use sha2::{Digest, Sha256};
+    let agent = schedule.agent.as_deref()?;
+    let chat = schedule.chat.as_deref()?;
+    let request_id: String = Sha256::digest(
+        format!(
+            "schedule-alarm:{owner}:{}:{}",
+            schedule.id,
+            schedule.last_ran_at.unwrap_or_default()
+        )
+        .as_bytes(),
+    )
+    .iter()
+    .map(|byte| format!("{byte:02x}"))
+    .collect();
+    let note = openagents_sdk::owner_notifications::OwnerNote {
+        agent: agent.to_owned(),
+        chat: chat.to_owned(),
+        title: "A scheduled check-in stopped".to_owned(),
+        body: format!(
+            "Its last {missed} runs on {} didn't happen. That computer may be off, asleep, or stuck.",
+            schedule.computer
+        ),
+    };
+    note.validate().ok()?;
+    Some(json!({ "request_id": request_id, "note": note }))
+}
+
 /// When a prompt runs, in plain words: "Weekdays at 09:00", "Every 2
 /// hours".
 pub(crate) fn when_words(schedule: &Schedule) -> String {
@@ -674,6 +827,7 @@ pub(crate) fn routes() -> Router<App> {
             axum::routing::put(api_put).delete(api_delete),
         )
         .route(&format!("{API}/{{id}}/pause"), post(api_pause))
+        .route(&format!("{API}/{{id}}/health"), get(api_health))
         .route(CODER_API, get(api_list))
         .route(CODER_SYNC, post(api_sync))
         .route(
@@ -681,6 +835,7 @@ pub(crate) fn routes() -> Router<App> {
             axum::routing::put(api_put).delete(api_delete),
         )
         .route(&format!("{CODER_API}/{{id}}/pause"), post(api_pause))
+        .route(&format!("{CODER_API}/{{id}}/health"), get(api_health))
         .layer(DefaultBodyLimit::max(MAX_UPLOAD))
         .route(PAGE, get(schedules_page))
         .route(SAVE, post(save_form))
@@ -848,6 +1003,55 @@ async fn api_pause(
         ),
         Err(error) => stored(&error),
     }
+}
+
+async fn api_health(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let owner = match crate::coder_sync::owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    let store = &app.config.chat_store;
+    let (schedule, health, due) = match checkup(store, &owner, &id, now_unix()).await {
+        Ok(Some(found)) => found,
+        Ok(None) => {
+            return refused(
+                StatusCode::NOT_FOUND,
+                "unknown",
+                "No such scheduled prompt.",
+            );
+        }
+        Err(error) => return stored(&error),
+    };
+    // Recorded before it is sent, so two checks at once tell the owner once.
+    let alarm = match (due, schedule.last_ran_at) {
+        (true, Some(last)) => match record_alarm(store, &owner, &id, last).await {
+            Ok(recorded) => recorded,
+            Err(error) => return stored(&error),
+        },
+        _ => false,
+    };
+    let mut notified = false;
+    if alarm
+        && let Health::Late { missed } = health
+        && let Some(note) = alarm_note(&owner, &schedule, missed)
+    {
+        notified = crate::owner_notifications::send(&app, &headers, note).await;
+    }
+    answer(
+        StatusCode::OK,
+        json!({
+            "id": schedule.id,
+            "health": health,
+            "last_ran_at": schedule.last_ran_at,
+            "paused": schedule.paused,
+            "alarm": alarm,
+            "notified": notified,
+        }),
+    )
 }
 
 async fn api_delete(
@@ -1445,6 +1649,310 @@ mod tests {
             Saved::Refused(Refusal::Invalid(_))
         ));
         assert!(schedules(&store, &owner()).await.unwrap().is_empty());
+    }
+
+    fn ticking(last_ran_at: i64, updated: u64) -> Value {
+        json!({"id": "prompt-check-in", "computer": "mac", "prompt": "check in",
+               "every_secs": 600, "chat": "2026-10-10-abc", "agent": "a".repeat(64),
+               "updated": updated, "last_ran_at": last_ran_at})
+    }
+
+    #[tokio::test]
+    async fn a_tick_moves_the_last_run_and_keeps_the_agent_even_from_an_older_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        let start = now_unix() - 3600;
+        let listed = exchange(&store, &owner(), "mac", &[ticking(start as i64, start)])
+            .await
+            .unwrap();
+        assert_eq!(listed[0].last_ran_at, Some(start as i64));
+        assert_eq!(listed[0].agent.as_deref(), Some("a".repeat(64).as_str()));
+        // Paused on the website: newer than the host's copy.
+        let paused = set_paused(&store, &owner(), "prompt-check-in", true)
+            .await
+            .unwrap()
+            .unwrap();
+        // The host's next tick, still at its older time, moves only the run.
+        let later = start as i64 + 600;
+        let listed = exchange(&store, &owner(), "mac", &[ticking(later, start)])
+            .await
+            .unwrap();
+        assert!(listed[0].paused && listed[0].updated == paused.updated);
+        assert_eq!(listed[0].last_ran_at, Some(later));
+        // An earlier run never moves it back, and one far ahead isn't kept.
+        let back = exchange(&store, &owner(), "mac", &[ticking(start as i64, start + 1)])
+            .await
+            .unwrap();
+        assert_eq!(back[0].last_ran_at, Some(later));
+        let ahead = (now_unix() + 3 * FUTURE_SLACK) as i64;
+        let ahead = exchange(&store, &owner(), "mac", &[ticking(ahead, now_unix())])
+            .await
+            .unwrap();
+        assert_eq!(ahead[0].last_ran_at, Some(later));
+        // An alarm sent by a host is not its to set.
+        let mut forged = ticking(later, now_unix() + 1);
+        forged["alarmed_after"] = json!(later);
+        let forged = exchange(&store, &owner(), "mac", &[forged]).await.unwrap();
+        assert_eq!(forged[0].alarmed_after, None);
+    }
+
+    #[test]
+    fn health_counts_whole_missed_runs_with_slack() {
+        let every = Schedule {
+            every_secs: Some(600),
+            ..Schedule::default()
+        };
+        assert_eq!(health(&every, 10_000), Health::NeverRan);
+        let ran = Schedule {
+            last_ran_at: Some(10_000),
+            updated: 5_000,
+            ..every.clone()
+        };
+        assert_eq!(health(&ran, 10_000), Health::OnTime);
+        // A tick a little late isn't a missed run.
+        assert_eq!(health(&ran, 10_000 + 600 + 149), Health::OnTime);
+        assert_eq!(health(&ran, 10_000 + 600 + 150), Health::Late { missed: 1 });
+        assert_eq!(
+            health(&ran, 10_000 + 1200 + 150),
+            Health::Late { missed: 2 }
+        );
+        // A change since (say, resumed) starts the clock again.
+        let resumed = Schedule {
+            updated: 11_000,
+            ..ran.clone()
+        };
+        assert_eq!(health(&resumed, 11_500), Health::OnTime);
+        // Weekdays at nine: a weekend is not two missed runs.
+        let weekdays = Schedule {
+            days: vec![1, 2, 3, 4, 5],
+            time: Some("09:00".into()),
+            last_ran_at: Some(0),
+            ..Schedule::default()
+        };
+        assert_eq!(interval_secs(&weekdays), Some(3 * 86_400));
+        assert_eq!(health(&weekdays, 3 * 86_400), Health::OnTime);
+        let daily = Schedule {
+            time: Some("09:00".into()),
+            ..Schedule::default()
+        };
+        assert_eq!(interval_secs(&daily), Some(86_400));
+    }
+
+    /// A host that stops ticking: one notice after two missed runs, not one
+    /// per run, and another only after it ran again and stopped again.
+    #[tokio::test]
+    async fn a_stopped_host_tells_the_owner_once_after_two_missed_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        let start = now_unix() - 100_000;
+        let id = "prompt-check-in";
+        exchange(&store, &owner(), "mac", &[ticking(start as i64, start)])
+            .await
+            .unwrap();
+        let at = |runs: u64| start + runs * 600 + 300;
+        let mut notices = 0;
+        for runs in 0..8 {
+            let (schedule, health, due) = checkup(&store, &owner(), id, at(runs))
+                .await
+                .unwrap()
+                .unwrap();
+            if runs < 2 {
+                assert!(!due, "{runs}: {health:?}");
+            }
+            if due {
+                let note = alarm_note(&owner(), &schedule, 2).unwrap();
+                assert_eq!(note["note"]["agent"], "a".repeat(64));
+                assert_eq!(note["note"]["chat"], "2026-10-10-abc");
+                assert_eq!(note["request_id"].as_str().unwrap().len(), 64);
+                if record_alarm(&store, &owner(), id, start as i64)
+                    .await
+                    .unwrap()
+                {
+                    notices += 1;
+                }
+                // A second check at the same moment doesn't tell them again.
+                assert!(
+                    !record_alarm(&store, &owner(), id, start as i64)
+                        .await
+                        .unwrap()
+                );
+            }
+        }
+        assert_eq!(notices, 1);
+        // It runs again, then stops again: a new notice for the new stop.
+        let back = start + 10_000;
+        exchange(&store, &owner(), "mac", &[ticking(back as i64, start)])
+            .await
+            .unwrap();
+        let (_, health, due) = checkup(&store, &owner(), id, back + 10)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(health, Health::OnTime);
+        assert!(!due);
+        let (_, _, due) = checkup(&store, &owner(), id, back + 1500)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(due);
+        // Paused: never an alarm.
+        set_paused(&store, &owner(), id, true).await.unwrap();
+        let (_, _, due) = checkup(&store, &owner(), id, back + 900_000)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!due);
+        assert!(
+            checkup(&store, &owner(), "prompt-none", back)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_health_route_answers_and_tells_the_owner_once() {
+        use axum::Json;
+        use axum::body::Body;
+        use axum::http::Request;
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::{Arc, Mutex};
+        use tower::ServiceExt;
+
+        let token = format!("Bearer sess_{}", "a".repeat(64));
+        let account = {
+            let token = token.clone();
+            move |headers: HeaderMap| {
+                let token = token.clone();
+                async move {
+                    if headers
+                        .get(axum::http::header::AUTHORIZATION)
+                        .and_then(|h| h.to_str().ok())
+                        != Some(token.as_str())
+                    {
+                        return (
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error": {"code": "signed_out"}})),
+                        )
+                            .into_response();
+                    }
+                    Json(json!({"session": {"id": "fixture-session",
+                        "account": "acct_schedule_health", "kind": "user", "state": "active",
+                        "expires_at": crate::cloud::session::now() + 3600}}))
+                    .into_response()
+                }
+            }
+        };
+        let notes = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured = notes.clone();
+        let upstream = Router::new().route("/v1/session", get(account)).route(
+            "/v1/notify",
+            post(move |Json(note): Json<Value>| {
+                let captured = captured.clone();
+                async move {
+                    captured.lock().unwrap().push(note);
+                    Json(json!({"ok": true}))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().canonicalize().unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let key = path.join("csrf");
+        std::fs::write(&key, [42; 32]).unwrap();
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let config_path = path.join("cloud.json");
+        std::fs::write(
+            &config_path,
+            serde_json::to_vec(&json!({"schema": "openagents.cloud.web-config.v1",
+                "public_origin": "http://127.0.0.1:4300", "account_service": base,
+                "csrf_secret": key}))
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let store = Arc::new(Store::local(path.join("chats")));
+        let owner = account_owner("acct_schedule_health");
+        let start = now_unix() - 1500;
+        exchange(&store, &owner, "mac", &[ticking(start as i64, start)])
+            .await
+            .unwrap();
+        let mut config = crate::Config::development(path.join("tasks"));
+        config.chat_store = store.clone();
+        config.owner_notifications_url = format!("{base}/");
+        config.cloud = Some(Arc::new(
+            crate::cloud::session::CloudSession::load(&config_path).unwrap(),
+        ));
+        let router = routes().with_state(App(Arc::new(crate::Inner { config })));
+        let get_json = |uri: &str, auth: Option<&str>| {
+            let mut request = Request::builder().uri(uri);
+            if let Some(auth) = auth {
+                request = request.header("authorization", auth);
+            }
+            let request = request.body(Body::empty()).unwrap();
+            let router = router.clone();
+            async move {
+                let response = router.oneshot(request).await.unwrap();
+                let status = response.status();
+                let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+                    .await
+                    .unwrap();
+                (
+                    status,
+                    serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null),
+                )
+            }
+        };
+
+        // The new fields come back in the list.
+        let (status, listed) = get_json(API, Some(&token)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(listed["schedules"][0]["last_ran_at"], start);
+        assert_eq!(listed["schedules"][0]["agent"], "a".repeat(64));
+        // Two missed runs: late, and the owner is told, once.
+        let health_uri = format!("{API}/prompt-check-in/health");
+        let (status, first) = get_json(&health_uri, Some(&token)).await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        assert_eq!(first["health"], json!({"state": "late", "missed": 2}));
+        assert_eq!(first["last_ran_at"], start);
+        assert_eq!(first["alarm"], true);
+        assert_eq!(first["notified"], true);
+        let (_, again) =
+            get_json(&format!("{CODER_API}/prompt-check-in/health"), Some(&token)).await;
+        assert_eq!(again["health"], json!({"state": "late", "missed": 2}));
+        assert_eq!(again["alarm"], false);
+        assert_eq!(again["notified"], false);
+        {
+            let notes = notes.lock().unwrap();
+            assert_eq!(notes.len(), 1);
+            assert_eq!(notes[0]["note"]["agent"], "a".repeat(64));
+            assert_eq!(notes[0]["note"]["chat"], "2026-10-10-abc");
+        }
+        // It runs again: on time, and nothing more is sent.
+        exchange(&store, &owner, "mac", &[ticking(now_unix() as i64, start)])
+            .await
+            .unwrap();
+        let (_, back) = get_json(&health_uri, Some(&token)).await;
+        assert_eq!(back["health"], json!({"state": "on_time"}));
+        assert_eq!(back["alarm"], false);
+        // A prompt no host has run yet, an unknown one, and no token.
+        let mut fresh = ticking(0, now_unix());
+        fresh["id"] = json!("prompt-fresh");
+        fresh.as_object_mut().unwrap().remove("last_ran_at");
+        exchange(&store, &owner, "mac", &[fresh]).await.unwrap();
+        let (_, never) = get_json(&format!("{API}/prompt-fresh/health"), Some(&token)).await;
+        assert_eq!(never["health"], json!({"state": "never_ran"}));
+        let (status, _) = get_json(&format!("{API}/prompt-none/health"), Some(&token)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = get_json(&health_uri, None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(notes.lock().unwrap().len(), 1);
+        server.abort();
     }
 
     #[test]

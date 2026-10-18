@@ -4252,10 +4252,16 @@
       "doc": "The account's scheduled prompts (`/v1/schedules`, #11177). The site keeps\none list per account; each computer runs its own entries, so no server\nclock starts work. The app host uses this for Foreman's check-ins\n(#11965); Coder keeps its own copy of the same records.",
       "items": [
         {
+          "kind": "enum",
+          "name": "Health",
+          "doc": "Whether a schedule ran when it should have (`GET /v1/schedules/{id}/health`).",
+          "declaration": "pub enum Health {\n    OnTime,\n    Late { missed: u32 },\n    NeverRan,\n}"
+        },
+        {
           "kind": "struct",
           "name": "Schedule",
           "doc": "One scheduled prompt, or the record that it was deleted. Either a time\nof day on chosen days or an interval. `chat` names the conversation it\nposts into; unset means a new run.",
-          "declaration": "pub struct Schedule {\n    pub id: String,\n    pub computer: String,\n    pub prompt: Option<String>,\n    pub days: Vec<u8>,\n    pub time: Option<String>,\n    pub every_secs: Option<u64>,\n    pub chat: Option<String>,\n    pub chat_title: Option<String>,\n    pub agent: Option<String>,\n    pub workspace: Option<String>,\n    pub paused: bool,\n    pub updated: u64,\n    pub deleted: bool,\n}",
+          "declaration": "pub struct Schedule {\n    pub id: String,\n    pub computer: String,\n    pub prompt: Option<String>,\n    pub days: Vec<u8>,\n    pub time: Option<String>,\n    pub every_secs: Option<u64>,\n    pub chat: Option<String>,\n    pub chat_title: Option<String>,\n    pub agent: Option<String>,\n    pub workspace: Option<String>,\n    pub paused: bool,\n    pub updated: u64,\n    pub deleted: bool,\n    pub last_ran_at: Option<i64>,\n}",
           "methods": [
             {
               "name": "valid",
@@ -4290,6 +4296,17 @@
                 {
                   "method": "POST",
                   "path": "/v1/schedules/sync"
+                }
+              ]
+            },
+            {
+              "name": "health",
+              "doc": "Whether the schedule ran on time, from its last recorded run.",
+              "declaration": "pub async fn health(\n    &self,\n    schedule: &str,\n    cancel: &CancellationToken,\n) -> Result<Health, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/schedules/*/health"
                 }
               ]
             }
