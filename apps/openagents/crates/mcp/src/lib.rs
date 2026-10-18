@@ -37,6 +37,7 @@ mod transcript;
 mod upgrade_host;
 pub mod video_lab;
 mod openagents;
+mod work;
 
 pub use jsonrpc::serve_stdio;
 pub use tools::{ToolDef, Tools};

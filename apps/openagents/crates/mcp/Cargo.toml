@@ -10,6 +10,7 @@ openagents-brand.workspace = true
 openagents-proto.workspace = true
 openagents-doc.workspace = true
 openagents-rpc.workspace = true
+openagents-sdk = { path = "../../../../crates/openagents-sdk" }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

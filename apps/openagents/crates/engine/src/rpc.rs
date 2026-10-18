@@ -706,6 +706,7 @@ pub struct EngineRpc {
     harness_updates: Option<crate::harness_updates::HarnessUpdateCoordinator>,
     local_import: Option<crate::local_import::LocalImporter>,
     engine_info: EngineInfo,
+    work: coder_cloud::work::Service,
 }
 
 impl EngineRpc {
@@ -732,6 +733,7 @@ impl EngineRpc {
             capabilities: openagents_proto::capabilities::current(),
         };
         let github = GitHubCli::new().with_store(repos.data_dir());
+        let work = coder_cloud::work::Service::local(&repos.data_dir().join("cloud-work"));
         Self {
             voice: sessions.voice_manager(),
             sessions,
@@ -745,6 +747,7 @@ impl EngineRpc {
             previews: None,
             change_requests,
             github,
+            work,
             diff_sync,
             uploads,
             agent_accounts,
@@ -1921,6 +1924,9 @@ impl RpcService for EngineRpc {
             return AuthRpc::new(self.auth()?.clone())
                 .handle(method, params)
                 .await;
+        }
+        if crate::work_rpc::handles(method) {
+            return crate::work_rpc::handle(&self.work, method, params).await;
         }
         match method {
             methods::ENGINE_INFO => RpcReply::value(&self.engine_info),

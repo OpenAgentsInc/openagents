@@ -795,7 +795,15 @@ fn every_module_and_its_calls_are_found() {
         .iter()
         .map(|m| m["path"].as_str().unwrap())
         .collect();
-    for expected in ["", "chats", "computers", "labs", "agents", "history"] {
+    for expected in [
+        "",
+        "chats",
+        "computers",
+        "labs",
+        "agents",
+        "history",
+        "work",
+    ] {
         assert!(modules.contains(&expected), "{expected} in {modules:?}");
     }
     let text = reference.to_string();

@@ -883,6 +883,7 @@ impl Tools {
                         && tool.name != "notify_owner")
             })
             .chain(crate::video_lab::tools().iter().cloned())
+            .chain(std::iter::once(crate::work::tool()))
             .chain(build_status_tool())
             .chain(machine_action_tool())
             .chain(upgrade_host_tool().filter(|_| in_chat))
@@ -903,6 +904,7 @@ impl Tools {
                     .call(openagents_rpc::methods::GET_VOICE_AGENT, json!({}))
                     .await
             }
+            crate::work::NAME => return crate::work::call(&self.openagents, args).await,
             "whoami" => self.whoami().await,
             "list_devices" => self.list_devices().await,
             "list_projects" => self.list_projects(parse(args)?).await,

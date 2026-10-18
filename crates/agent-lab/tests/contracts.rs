@@ -431,6 +431,8 @@ fn foreman_template_is_a_valid_claude_code_experiment() {
     let text = &e.draft.spec.instructions;
     let autonomy = e.draft.spec.autonomy.as_ref().expect("autonomy");
     assert_eq!(autonomy.shell_timeout_secs, Some(120));
+    assert!(text.contains("`work_issues`") && text.contains("`request_id`"));
+    assert!(!text.contains("nohup openagents chat work"));
     // Check-ins and standing authority come on by default (#12030).
     assert!(autonomy.check_ins && autonomy.authority);
     assert_eq!(autonomy.every_minutes, Some(10));

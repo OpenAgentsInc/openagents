@@ -81,13 +81,17 @@ fn run_script(
     slots: u64,
     engine: &str,
 ) -> String {
-    let engine = boat::shell_quote(engine);
-    let land = match land {
-        Some(Land::Main) => " --land main",
-        Some(Land::PullRequest) => " --land pr",
-        Some(Land::Queue) => " --land queue",
-        None => "",
-    };
+    let command = cloud::issue_command(
+        issue,
+        match land {
+            Some(Land::Main) => Some("main"),
+            Some(Land::PullRequest) => Some("pr"),
+            Some(Land::Queue) => Some("queue"),
+            None => None,
+        },
+        engine,
+    )
+    .expect("parsed landing mode");
     let exports: String = credentials_lines(credentials);
     let last = slots.saturating_sub(1);
     format!(
@@ -138,8 +142,7 @@ d=$(dirname "$0")
   oa_build || return $?
   cd "$HOME/openagents" || return 2
   # The briefed engine lands through this build's CLI (`land submit`).
-  OA_CLI=$HOME/.oa-pool/bin/openagents OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder OPENAGENTS_CODER_PLACEMENT=gce \
-    "$HOME/.oa-pool/bin/openagents" chat work --local --json --issues {issue} --parallel 1 --engine {engine}{land}
+  {command}
 }}
 main; rc=$?
 echo "$rc" >"$d/exit"; touch "$HOME/.oa-pool/busy"; exit "$rc"

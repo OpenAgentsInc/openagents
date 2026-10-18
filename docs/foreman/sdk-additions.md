@@ -22,7 +22,7 @@ with caller-chosen request ids for safe retries (as in
 | S2 | Steer, nudge, or stop any session | `chats::send`/`stop` for account threads; assignment commands; local app tools | No account route to reach a session on another computer |
 | S3 | Attention event stream | Foreman's engine-local `Event` enum | Local, managed chats only, no stall events |
 | S4 | Landing queue client | `openagents land` (CLI over a GCS queue) | No SDK or HTTP |
-| S5 | Work and cloud pool client | `POST /v1/work`, `openagents cloud` | No SDK module |
+| S5 | Work and cloud pool client | Public `work::{Work, Pool, Transport}` and the `work_issues` app tool (#12062) | Account-wide GCE HTTP routing remains separate |
 | S6 | Issue claims and boards | `openagents issue claim`, `issue-board.sh`, `coder-lease` claims | No SDK; claims are local files plus comments |
 | S7 | Decision log | `foreman/decisions.jsonl`, engine RPC | Local to one computer |
 | S8 | Schedules | `schedules` module (list, sync) | No missed-tick signal; no kind |
@@ -201,46 +201,38 @@ writes, so both paths share one queue.
 
 ## S5. Work and cloud pool client
 
-**Today.** `POST /v1/work {repo, issue, land, engine}`, `GET /v1/work`,
-`GET /v1/work/{id}`, `GET /v1/work/{id}/events`, `POST /v1/work/{id}/cancel`
-(`crates/openagents-web/src/work_runs.rs`,
-[`docs/cloud/work-on-issues.md`](../cloud/work-on-issues.md)); the doc says
-these accept agent-work accounts only. `openagents cloud up | down |
-status` manages the pool (`crates/openagents-cli/src/cloud.rs`,
-[`docs/cloud/gce-pool.md`](../cloud/gce-pool.md)). The SDK has
-`dashboard::Home::work`, which reads `GET /v1/home/work`, but no client for
-`/v1/work` or the pool.
+**Available (#12062).** `openagents_sdk::work` provides `Work::start`,
+`list`, `events`, and `cancel`, plus `Pool::status`, `up`, and `down`. Clients
+supply a public `Transport`; the SDK reads no local credentials. The app uses
+its authenticated engine RPC connection. A local Rust harness can connect
+these same clients directly to `coder_cloud::work::Service`.
 
-**Gap.** Foreman can't dispatch briefed agents or start pool hosts except
-through the CLI.
+`WorkRequest` names `repo`, `issue`, `land`, `engine`, `on`, and the saved
+agent definition ID in `agent`. Landing defaults to `queue`. The host returns
+a stable run ID for the same agent, request ID, and body; changing that body
+requires a new request ID. Progress reads return at most 128 events, a `next`
+cursor, and `complete`. Canceling a read leaves the work running; `cancel`
+requests that the host stop the run. Execution and recovery continue after
+the calling tool returns, using the existing durable GCE backend.
 
-**Proposal.**
+The GCE host service accepts `on: gce` and refuses other placements. It uses
+the same pool and budget checks as the CLI, with an explicit agent ID for
+each request instead of a process-wide actor. Warm hosts also require that
+agent's budget. Each remote run has a budget-derived timeout. `Pool::up`
+can grow an existing grant within its limits; it cannot create a grant or
+raise a budget. Refusals carry `owner_command` for the owner to run.
 
-```rust
-pub struct WorkRequest {
-    pub repo: String,
-    pub issue: u64,
-    pub land: LandMode,             // Queue (default), Pr, None
-    pub engine: Option<String>,     // "briefed", "briefed:codex", "bare", "solver"
-    pub on: Option<Placement>,      // Gce, Boat, Computer(name)
-}
+The `work_issues` app tool exposes these calls without launching a local
+CLI. A saved-agent chat uses its saved agent ID, and cannot substitute
+another agent's budget. Start a batch with a stable `request_id`, save the
+returned run IDs, and read each run with its saved progress cursor. The
+Foreman template uses this tool, while the SDK and host service work for
+any saved agent.
 
-impl Work<'_> {
-    pub async fn start(&self, request_id: &str, req: WorkRequest, cancel: &CancellationToken) -> Result<WorkRun, Error>;
-    pub async fn list(&self, cancel: &CancellationToken) -> Result<Vec<WorkRun>, Error>;
-    pub async fn events(&self, id: &str, after: u64, cancel: &CancellationToken) -> Result<WorkEvents, Error>;
-    pub async fn cancel(&self, id: &str, cancel: &CancellationToken) -> Result<(), Error>;
-}
-
-impl Pool<'_> {
-    pub async fn status(&self, cancel: &CancellationToken) -> Result<PoolStatus, Error>;
-    pub async fn up(&self, hosts: u32, cancel: &CancellationToken) -> Result<PoolStatus, Error>; // spends money
-    pub async fn down(&self, cancel: &CancellationToken) -> Result<(), Error>;
-}
-```
-
-`Pool::up` spends money, so for Foreman it stays behind the owner's approval
-unless the owner grants a daily budget (a new authority scope).
+The hosted `POST /v1/work` routes remain the website's separate work-host
+queue (`crates/openagents-web/src/work_runs.rs`). They have no Pool routes
+and do not address the GCE pool. The host connection above does not redirect
+GCE requests into that queue.
 
 ## S6. Issue claims and boards
 

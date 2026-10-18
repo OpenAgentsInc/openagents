@@ -18,6 +18,7 @@ openagents-connect = { path = "../../../../crates/openagents-connect" }
 chat-home = { path = "../../../../crates/chat-home" }
 # Moving chats to a cloud computer (#11932).
 openagents-sdk = { path = "../../../../crates/openagents-sdk" }
+coder-cloud = { path = "../../../../crates/coder-cloud" }
 openagents-account.workspace = true
 openagents-brand.workspace = true
 openagents-preview.workspace = true

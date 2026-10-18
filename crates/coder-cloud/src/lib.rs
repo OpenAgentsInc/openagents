@@ -21,6 +21,7 @@ mod operator_adapters;
 pub mod pool;
 pub mod release;
 pub mod runtime;
+pub mod work;
 pub mod workspace;
 
 pub type Result<T> = std::result::Result<T, String>;

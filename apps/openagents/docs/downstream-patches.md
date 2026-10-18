@@ -638,3 +638,6 @@ links remain readable. Upstream fixes now require manual ports.
   push gateway. The engine checks the calling assignment; the mobile core
   fetches private owner notes, and the iOS shell shows the note and opens its
   chat, including on a cold launch.
+- 2026-10-18 (#12062): Add `work_issues` through the public SDK Work/Pool
+  connection and the shared `coder-cloud` host service. Use saved agent IDs
+  for budget checks and preserve owner commands in refusals.

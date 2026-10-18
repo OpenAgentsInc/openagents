@@ -4032,6 +4032,222 @@
         }
       ],
       "reexports": []
+    },
+    {
+      "path": "work",
+      "doc": "Issue work and a computer's granted cloud pool over a caller-supplied\nconnection. The host owns execution and budgets; this client never reads\nlocal credentials or substitutes the website's separate work-host queue.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Error",
+          "doc": "A refusal preserves the owner's exact command across the connection.",
+          "declaration": "pub struct Error {\n    pub code: String,\n    pub message: String,\n    pub owner_command: Option<String>,\n}",
+          "methods": [
+            {
+              "name": "invalid",
+              "doc": "Build a refusal for invalid request parameters.",
+              "declaration": "pub fn invalid(message: impl Into<String>) -> Self",
+              "calls": []
+            },
+            {
+              "name": "refused",
+              "doc": "Build a host or connection refusal.",
+              "declaration": "pub fn refused(message: impl Into<String>) -> Self",
+              "calls": []
+            },
+            {
+              "name": "cancelled",
+              "doc": "Build the typed result for a canceled client call.",
+              "declaration": "pub fn cancelled() -> Self",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "LandMode",
+          "doc": "Where a verified change goes. Direct pushes to main are not an option.",
+          "declaration": "pub enum LandMode {\n    Queue,\n    Pr,\n    None,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "Placement",
+          "doc": "The explicitly requested computer. A host must refuse an unavailable\nplacement rather than silently sending work somewhere else.",
+          "declaration": "pub enum Placement {\n    Gce,\n    Boat,\n    Computer(String),\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Pool",
+          "doc": "The connected host's granted pool, with spend attributed to one saved agent.",
+          "declaration": "pub struct Pool<'a> {}",
+          "methods": [
+            {
+              "name": "new",
+              "doc": "Borrow the connection with the saved agent ID used for budget checks.",
+              "declaration": "pub fn new(transport: &'a dyn Transport, agent: &'a str) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "status",
+              "doc": "Read hosts, activity, and spend for this saved agent.",
+              "declaration": "pub async fn status(&self, cancel: &CancellationToken) -> Result<PoolStatus, Error>",
+              "calls": []
+            },
+            {
+              "name": "up",
+              "doc": "Reach the requested host count within an existing owner grant.",
+              "declaration": "pub async fn up(\n    &self,\n    hosts: u32,\n    cancel: &CancellationToken,\n) -> Result<PoolStatus, Error>",
+              "calls": []
+            },
+            {
+              "name": "down",
+              "doc": "Stop the connected pool without deleting its saved run records.",
+              "declaration": "pub async fn down(&self, cancel: &CancellationToken) -> Result<(), Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "PoolStatus",
+          "doc": "The connected pool's hosts, slot capacity, and current compute spend.",
+          "declaration": "pub struct PoolStatus {\n    pub pool: Option<String>,\n    pub granted: bool,\n    pub hosts: Vec<Value>,\n    pub activity: Vec<Value>,\n    pub slots: u64,\n    pub spent_usd: f64,\n    pub daily_usd: f64,\n    pub agent_spent_usd: Option<f64>,\n    pub agent_daily_usd: Option<f64>,\n}"
+        },
+        {
+          "kind": "type",
+          "name": "Reply",
+          "doc": "One asynchronous response from a caller-supplied host connection.",
+          "declaration": "pub type Reply<'a> = Pin<Box<dyn Future<Output = Result<Value, Error>> + Send + 'a>>;"
+        },
+        {
+          "kind": "trait",
+          "name": "Transport",
+          "doc": "The public Work/Pool connection boundary. A remote connection supplies\nauthentication and timeouts; the receiver checks grants on every mutation.",
+          "declaration": "pub trait Transport: Send + Sync {\n    fn request<'a>(\n        &'a self,\n        method: &'static str,\n        params: Value,\n        cancel: &'a CancellationToken,\n    ) -> Reply<'a>;\n}",
+          "methods": [
+            {
+              "name": "request",
+              "doc": "Send one named operation, preserving typed refusals and cancellation.",
+              "declaration": "fn request<'a>(\n    &'a self,\n    method: &'static str,\n    params: Value,\n    cancel: &'a CancellationToken,\n) -> Reply<'a>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Work",
+          "doc": "A client for issue work on one connected host, usable by any harness.",
+          "declaration": "pub struct Work<'a> {}",
+          "methods": [
+            {
+              "name": "new",
+              "doc": "Borrow an authenticated host connection without adopting local credentials.",
+              "declaration": "pub fn new(transport: &'a dyn Transport) -> Self",
+              "calls": []
+            },
+            {
+              "name": "start",
+              "doc": "Reuse the same request ID and body after response loss. The host must\nreturn the original run, or refuse a changed body under the same ID.",
+              "declaration": "pub async fn start(\n    &self,\n    request_id: &str,\n    request: WorkRequest,\n    cancel: &CancellationToken,\n) -> Result<WorkRun, Error>",
+              "calls": []
+            },
+            {
+              "name": "list",
+              "doc": "List runs saved by the connected host.",
+              "declaration": "pub async fn list(&self, cancel: &CancellationToken) -> Result<Vec<WorkRun>, Error>",
+              "calls": []
+            },
+            {
+              "name": "events",
+              "doc": "Read progress after a saved cursor without changing execution.",
+              "declaration": "pub async fn events(\n    &self,\n    id: &str,\n    after: u64,\n    cancel: &CancellationToken,\n) -> Result<WorkEvents, Error>",
+              "calls": []
+            },
+            {
+              "name": "cancel",
+              "doc": "Ask the host to stop the run; subsequent reads report its outcome.",
+              "declaration": "pub async fn cancel(&self, id: &str, cancel: &CancellationToken) -> Result<(), Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "WorkEvents",
+          "doc": "A bounded page of progress. Save `next` and pass it as `after` on the next\ncall. Canceling a read never cancels execution on the host.",
+          "declaration": "pub struct WorkEvents {\n    pub run: WorkRun,\n    pub events: Vec<Value>,\n    pub next: u64,\n    pub complete: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "WorkRequest",
+          "doc": "One issue to run on an explicitly selected host under a saved agent budget.",
+          "declaration": "pub struct WorkRequest {\n    pub repo: String,\n    pub issue: u64,\n    pub land: LandMode,\n    pub engine: Option<String>,\n    pub on: Option<Placement>,\n    pub agent: String,\n}",
+          "methods": [
+            {
+              "name": "validate",
+              "doc": "Check identifiers and options before contacting the host.",
+              "declaration": "pub fn validate(&self) -> Result<(), Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "WorkRun",
+          "doc": "The host's saved run identity, state, and latest outcome.",
+          "declaration": "pub struct WorkRun {\n    pub id: String,\n    pub request: WorkRequest,\n    pub state: String,\n    pub created_unix: u64,\n    pub updated_unix: u64,\n    pub host: Option<String>,\n    pub result: Option<Value>,\n    pub error: Option<String>,\n    pub usage: Option<Value>,\n}"
+        },
+        {
+          "kind": "fn",
+          "name": "identifier",
+          "doc": "Whether an identifier is a bounded path-free name accepted by this client.",
+          "declaration": "pub fn identifier(value: &str) -> bool",
+          "calls": []
+        },
+        {
+          "kind": "const",
+          "name": "CANCEL",
+          "doc": "Request that the host stop a run.",
+          "declaration": "pub const CANCEL: &str = \"work.cancel\";"
+        },
+        {
+          "kind": "const",
+          "name": "EVENTS",
+          "doc": "Read a bounded page of run progress.",
+          "declaration": "pub const EVENTS: &str = \"work.events\";"
+        },
+        {
+          "kind": "const",
+          "name": "LIST",
+          "doc": "List issue runs on the connected host.",
+          "declaration": "pub const LIST: &str = \"work.list\";"
+        },
+        {
+          "kind": "const",
+          "name": "POOL_DOWN",
+          "doc": "Stop the connected host pool.",
+          "declaration": "pub const POOL_DOWN: &str = \"pool.down\";"
+        },
+        {
+          "kind": "const",
+          "name": "POOL_STATUS",
+          "doc": "Read the granted pool and its compute budget.",
+          "declaration": "pub const POOL_STATUS: &str = \"pool.status\";"
+        },
+        {
+          "kind": "const",
+          "name": "POOL_UP",
+          "doc": "Grow an existing pool within the saved agent budget.",
+          "declaration": "pub const POOL_UP: &str = \"pool.up\";"
+        },
+        {
+          "kind": "const",
+          "name": "START",
+          "doc": "Start an issue run with a caller-chosen request ID.",
+          "declaration": "pub const START: &str = \"work.start\";"
+        }
+      ],
+      "reexports": []
     }
   ]
 }

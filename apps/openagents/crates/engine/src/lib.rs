@@ -49,6 +49,7 @@ pub mod titles;
 mod transcript_history;
 pub mod uploads;
 pub mod voice;
+mod work_rpc;
 pub mod workspace_files;
 pub mod workspace_host;
 pub mod workspace_search;

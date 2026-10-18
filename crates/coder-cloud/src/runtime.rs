@@ -318,6 +318,12 @@ exit "$rc"
         agent = boat::shell_quote(&record.spec.agent),
         session = boat::shell_quote(&record.id)
     );
+    wrap_launch(dir, &body)
+}
+
+/// Wraps a host operation in the same one-dispatch process identity, owner
+/// lock, and credential handoff as a Coder turn.
+pub fn wrap_launch(dir: &str, body: &str) -> String {
     // Keep the existing wrapper identity and owner lock through exec. The
     // credential enters only through the environment and is removed before
     // the delegate starts. Its anonymous descriptor survives descendant execs.

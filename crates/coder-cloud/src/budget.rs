@@ -314,8 +314,13 @@ impl Ledger {
 
 /// Records a host this process just started.
 pub fn started(pool: &Pool, host: &Host) {
+    started_for(pool, host, agent().as_deref());
+}
+
+/// Records a host for an explicit agent without changing process identity.
+pub fn started_for(pool: &Pool, host: &Host, actor: Option<&str>) {
     let at = now();
-    let agent = agent();
+    let agent = actor.map(str::to_owned);
     let _ = Ledger::update(|ledger| {
         ledger.hosts.retain(|h| h.name != host.name);
         ledger.hosts.push(HostSpend {
@@ -344,13 +349,23 @@ pub fn observe(pool: &str, listed: &[Host]) {
 /// Whether `adding` more hosts of `pool` may start, given the hosts it has
 /// now; the refusal says why and what the owner can change.
 pub fn admit(pool: &Pool, hosts: &[Host], adding: u64) -> Result<(), String> {
+    admit_for(pool, hosts, adding, agent().as_deref())
+}
+
+/// Admission for a multi-agent host. Never changes the process-wide CLI actor.
+pub fn admit_for(
+    pool: &Pool,
+    hosts: &[Host],
+    adding: u64,
+    actor: Option<&str>,
+) -> Result<(), String> {
     admit_with(
         &Budget::load(),
         &Ledger::load(),
         pool,
         hosts,
         adding,
-        agent().as_deref(),
+        actor,
         now(),
     )
 }
@@ -406,8 +421,34 @@ pub fn admit_with(
 
 /// Whether a new run may start: refused once the 24-hour cap is spent.
 pub fn admit_run() -> Result<(), String> {
+    admit_run_for(agent().as_deref())
+}
+
+/// Checks a run even on a warm host, under the named agent's grant and cap.
+pub fn admit_run_for(actor: Option<&str>) -> Result<(), String> {
     let budget = Budget::load();
-    let spent = Ledger::load().spent(now(), None);
+    let ledger = Ledger::load();
+    admit_run_with(&budget, &ledger, actor, now())
+}
+
+/// Checks the same run grant and caps against an explicit budget snapshot.
+pub fn admit_run_with(
+    budget: &Budget,
+    ledger: &Ledger,
+    actor: Option<&str>,
+    at: u64,
+) -> Result<(), String> {
+    let spent = ledger.spent(at, None);
+    if let Some(actor) = actor {
+        let grant = budget.agents.get(actor).ok_or_else(|| format!(
+            "Agent {actor} has no compute budget. Ask the owner to grant one: `openagents cloud budget --agent {actor} --daily 300`"
+        ))?;
+        if ledger.spent(at, Some(actor)) >= grant.daily_usd {
+            return Err(format!(
+                "Agent {actor} reached its daily compute budget. Ask the owner to raise it: `openagents cloud budget --agent {actor} --daily N`"
+            ));
+        }
+    }
     if spent >= budget.daily_usd {
         return Err(format!(
             "the pool has spent about ${spent:.2} of its ${:.2} over the last 24 hours; no new \
@@ -575,5 +616,34 @@ mod tests {
             ..Budget::default()
         };
         assert!(bad.check().is_err());
+    }
+}
+
+#[cfg(test)]
+mod run_admission_tests {
+    use super::*;
+    #[test]
+    fn a_warm_host_never_bypasses_an_explicit_agents_grant_or_cap() {
+        let mut budget = Budget::default();
+        let ledger = Ledger::default();
+        let at = 1_792_288_800;
+        let error = admit_run_with(&budget, &ledger, Some("agt_builder"), at).unwrap_err();
+        assert!(error.contains("openagents cloud budget --agent agt_builder"));
+        budget.agents.insert(
+            "agt_builder".into(),
+            AgentGrant {
+                daily_usd: 10.0,
+                granted_at: at,
+            },
+        );
+        assert!(admit_run_with(&budget, &ledger, Some("agt_builder"), at).is_ok());
+        assert!(admit_run_with(&budget, &ledger, Some("agt_reviewer"), at).is_err());
+        budget.agents.get_mut("agt_builder").unwrap().daily_usd = 0.0;
+        assert!(
+            admit_run_with(&budget, &ledger, Some("agt_builder"), at)
+                .unwrap_err()
+                .contains("raise it")
+        );
+        assert!(admit_run_with(&budget, &ledger, None, at).is_ok());
     }
 }

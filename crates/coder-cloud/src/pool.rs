@@ -924,6 +924,21 @@ pub fn kill_remote(run: &str) -> String {
     format!("d={dir}; kill -TERM -- -\"$(cat \"$d/pid\")\" 2>/dev/null; true")
 }
 
+/// The issue-flow command shared by CLI and SDK pool dispatch. The CLI and
+/// controller always come from the same prepared pool build.
+pub fn issue_command(issue: u64, land: Option<&str>, engine: &str) -> Result<String, String> {
+    let land = match land {
+        None => String::new(),
+        Some(word @ ("main" | "queue" | "pr" | "none")) => format!(" --land {word}"),
+        Some(_) => return Err("Choose queue, pr, or none for landing.".into()),
+    };
+    Ok(format!(
+        r#"OA_CLI=$HOME/.oa-pool/bin/openagents OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder OPENAGENTS_CODER_PLACEMENT=gce \
+    "$HOME/.oa-pool/bin/openagents" chat work --local --json --issues {issue} --parallel 1 --engine {}{land}"#,
+        boat::shell_quote(engine)
+    ))
+}
+
 /// The script that prepares a new host: builds the CLI and engine once, so
 /// the first run starts at once. Runs as a pool run so the idle check
 /// counts it.
@@ -1165,14 +1180,25 @@ fn run_prepare(project: &str, host: &Host, json_output: bool) -> Result<(), Stri
 /// Starts `count` hosts of `pool` at once and waits until each is ready and
 /// prepared. Hosts that fail are deleted.
 pub fn start_hosts(pool: &Pool, count: u64, json_output: bool) -> Result<Vec<Started>, String> {
+    start_hosts_for(pool, count, json_output, crate::budget::agent().as_deref())
+}
+
+/// Starts hosts under one explicit agent's admission and spend attribution.
+pub fn start_hosts_for(
+    pool: &Pool,
+    count: u64,
+    json_output: bool,
+    agent: Option<&str>,
+) -> Result<Vec<Started>, String> {
     // Every path that starts a host stays inside the compute budget.
     let hosts = list_hosts(&pool.project, Some(&pool.pool))?;
-    crate::budget::admit(pool, &hosts, count)?;
+    crate::budget::admit_for(pool, &hosts, count, agent)?;
     let public_key = ensure_key()?;
     let handles: Vec<_> = (0..count)
         .map(|_| {
-            let (pool, public_key) = (pool.clone(), public_key.clone());
-            std::thread::spawn(move || start_one(&pool, &public_key, json_output))
+            let (pool, public_key, agent) =
+                (pool.clone(), public_key.clone(), agent.map(str::to_owned));
+            std::thread::spawn(move || start_one(&pool, &public_key, json_output, agent.as_deref()))
         })
         .collect();
     Ok(handles
@@ -1188,6 +1214,11 @@ pub fn start_hosts(pool: &Pool, count: u64, json_output: bool) -> Result<Vec<Sta
 
 /// Grow once under a local lock, with the current grant's host limit.
 pub fn grow_host(pool: &Pool) -> Result<Host, String> {
+    grow_host_for(pool, crate::budget::agent().as_deref())
+}
+
+/// Grows a pool for one agent on a host serving several independent agents.
+pub fn grow_host_for(pool: &Pool, agent: Option<&str>) -> Result<Host, String> {
     std::fs::create_dir_all(home()).map_err(|_| "Cannot create the GCE pool directory.")?;
     let path = home().join("growth.lock");
     crate::regular_or_missing(&path)?;
@@ -1207,7 +1238,7 @@ pub fn grow_host(pool: &Pool) -> Result<Host, String> {
     if list_hosts(&pool.project, Some(&pool.pool))?.len() as u64 >= pool.max_hosts {
         return Err("The GCE pool reached the grant's host limit.".into());
     }
-    let first = start_hosts(pool, 1, false)?
+    let first = start_hosts_for(pool, 1, false, agent)?
         .into_iter()
         .next()
         .ok_or("No GCE host was started.")?;
@@ -1217,7 +1248,7 @@ pub fn grow_host(pool: &Pool) -> Result<Host, String> {
     first.host.ok_or("The started GCE host is unknown.".into())
 }
 
-fn start_one(pool: &Pool, public_key: &str, json_output: bool) -> Started {
+fn start_one(pool: &Pool, public_key: &str, json_output: bool, agent: Option<&str>) -> Started {
     let began = Instant::now();
     let mut started = Started::default();
     let say = |what: &str, host: &str| {
@@ -1237,7 +1268,7 @@ fn start_one(pool: &Pool, public_key: &str, json_output: bool) -> Started {
         }
     };
     started.create_seconds = began.elapsed().as_secs_f64();
-    crate::budget::started(pool, &host);
+    crate::budget::started_for(pool, &host, agent);
     say(
         &format!(
             "created in {} ({})",
@@ -1613,5 +1644,24 @@ mod tests {
         assert_eq!(bake, 200);
         assert_eq!(DISK_GB, 300);
         assert!(DISK_GB >= bake + 100, "pool {DISK_GB} GB, image {bake} GB");
+    }
+}
+
+#[cfg(test)]
+mod issue_command_tests {
+    #[test]
+    fn issue_commands_keep_the_selected_engine_and_prepared_cli() {
+        let command = super::issue_command(12062, Some("queue"), "briefed:codex").unwrap();
+        assert!(command.contains("OA_CLI=$HOME/.oa-pool/bin/openagents"));
+        assert!(command.contains("OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder"));
+        assert!(
+            command.contains("--issues 12062 --parallel 1 --engine 'briefed:codex' --land queue")
+        );
+        assert!(super::issue_command(12, Some("invalid"), "bare").is_err());
+        assert!(
+            !super::issue_command(12, None, "bare")
+                .unwrap()
+                .contains("--land")
+        );
     }
 }
