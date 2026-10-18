@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
         val app = application as OpenAgentsApplication
         rootPresentation = AndroidRootPresentation(this, app, app.androidHost(BuildConfig.DEBUG && debugLaunch.demo))
         setContentView(requireNotNull(rootPresentation).view())
+        if (savedInstanceState == null) routeAppLink(intent)
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (rootPresentation?.handleBack() != true) {
@@ -83,6 +84,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         })
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        routeAppLink(intent)
+    }
+    private fun routeAppLink(intent: android.content.Intent) {
+        if (intent.action == android.content.Intent.ACTION_VIEW) {
+            intent.dataString?.let { rootPresentation?.offerAppLink(it) }
+        }
     }
 
     override fun onConfigurationChanged(configuration: android.content.res.Configuration) {
