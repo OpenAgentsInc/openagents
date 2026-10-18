@@ -29,9 +29,10 @@ use openagents_rpc::device_room::{
     CLIENT_CLOSED, CLIENT_GONE, HOST_CLOSED, HOST_OFFLINE, NUDGE_KIND, RELAY_KIND,
 };
 use openagents_rpc::{
-    DeviceFrameHeader, DeviceLink, HostRelay, HostRelayConfig, LinkCache, LinkCacheConfig,
-    RpcError, RpcReply, RpcService, StaticToken, TokenError, TokenSource, decode_device_frame,
-    device_room_ws_url, encode_device_frame, methods,
+    DeviceFrameHeader, DeviceLink, DirectRoutes, DirectStream, HostRelay, HostRelayConfig,
+    LinkCache, LinkCacheConfig, LinkRoute, RpcError, RpcReply, RpcService,
+    STATUS_CONNECTED_DIRECTLY, STATUS_SYNC_UNAVAILABLE, StaticToken, TokenError, TokenSource,
+    decode_device_frame, device_room_ws_url, encode_device_frame, methods, serve_direct,
 };
 
 // ---------------------------------------------------------------------------
@@ -763,7 +764,8 @@ async fn live_edge_relay_round_trip() {
     let Ok(edge_url) = openagents_brand::env_var("OPENAGENTS_EDGE_WS") else {
         panic!("set OPENAGENTS_EDGE_WS to the edge base URL (e.g. http://127.0.0.1:26640)");
     };
-    let token = openagents_brand::env_var("OPENAGENTS_EDGE_TOKEN").unwrap_or_else(|_| "relay-live-test".into());
+    let token = openagents_brand::env_var("OPENAGENTS_EDGE_TOKEN")
+        .unwrap_or_else(|_| "relay-live-test".into());
     let device_id = format!("relay-live-{}", uuid::Uuid::new_v4());
 
     let service = TestService::new("live-host");
@@ -864,4 +866,112 @@ async fn nudge_ack_requires_durable_acceptance_and_echoes_the_exact_token() {
         relay.state.lock().unwrap().nudge_acks[0],
         serde_json::json!({"chatId":"chat","token":"receipt-v2"})
     );
+}
+
+// ---------------------------------------------------------------------------
+// Direct routes (#12130)
+// ---------------------------------------------------------------------------
+
+/// A device room that refuses every socket with 429, as the sync server did
+/// during the #12128 outage. Returns its edge URL and a count of dials.
+async fn refusing_room() -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let dials = Arc::new(AtomicUsize::new(0));
+    let counter = dials.clone();
+    let task = tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
+            counter.fetch_add(1, Ordering::SeqCst);
+            tokio::spawn(async move {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let mut request = [0u8; 4096];
+                let _ = stream.read(&mut request).await;
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 429 Too Many Requests\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                    )
+                    .await;
+            });
+        }
+    });
+    (format!("http://127.0.0.1:{port}"), dials, task)
+}
+
+/// A direct route to `dev-a` over an in-memory pipe, served by the host side
+/// the engine runs for admitted direct streams.
+struct PipeRoute {
+    service: Arc<dyn RpcService>,
+    dials: AtomicUsize,
+}
+
+#[async_trait]
+impl DirectRoutes for PipeRoute {
+    fn knows(&self, device_id: &str) -> bool {
+        device_id == "dev-a"
+    }
+
+    async fn dial(&self, _device_id: &str) -> Result<DirectStream, RpcError> {
+        self.dials.fetch_add(1, Ordering::SeqCst);
+        let (client, host) = tokio::io::duplex(64 * 1024);
+        tokio::spawn(serve_direct(host, self.service.clone()));
+        Ok(Box::new(client))
+    }
+}
+
+#[tokio::test]
+async fn a_refusing_room_falls_back_to_the_direct_route() {
+    let (edge, room_dials, _room) = refusing_room().await;
+    let route = Arc::new(PipeRoute {
+        service: TestService::new("host-a"),
+        dials: AtomicUsize::new(0),
+    });
+    let mut config = LinkCacheConfig::new(edge, Arc::new(StaticToken("test-user".into())));
+    config.probe_timeout = Duration::from_millis(1_500);
+    config.direct = Some(route.clone());
+    let links = LinkCache::new(config);
+
+    let client = links.client("dev-a").await.expect("direct fallback");
+    let reply = client
+        .call("Echo", serde_json::json!({ "n": 1 }))
+        .await
+        .expect("echo over the direct route");
+    assert_eq!(reply["host"], "host-a");
+    // Streams work too: the same frames ride the direct path.
+    let mut items = client
+        .subscribe("Count", serde_json::json!({ "n": 3 }))
+        .await
+        .expect("subscribe");
+    let mut count = 0;
+    while let Some(_item) = items.recv().await {
+        count += 1;
+    }
+    assert_eq!(count, 3);
+    // One refusal is enough: the room's retry sequence is skipped.
+    assert_eq!(room_dials.load(Ordering::SeqCst), 1);
+    assert_eq!(route.dials.load(Ordering::SeqCst), 1);
+    assert_eq!(links.route("dev-a"), Some(LinkRoute::Direct));
+    assert_eq!(links.status("dev-a"), Some(STATUS_CONNECTED_DIRECTLY));
+
+    // While the room is known to be down, the next dial goes direct first.
+    links.invalidate("dev-a");
+    links.client("dev-a").await.expect("direct again");
+    assert_eq!(room_dials.load(Ordering::SeqCst), 1);
+    assert_eq!(route.dials.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_refusing_room_without_a_direct_route_says_sync_is_unavailable() {
+    let (edge, _room_dials, _room) = refusing_room().await;
+    let links = cache(&edge);
+    let Err(err) = links.client("dev-a").await else {
+        panic!("no route can succeed")
+    };
+    let message = err.to_string();
+    assert!(message.contains(STATUS_SYNC_UNAVAILABLE), "got: {message}");
+    assert!(message.contains("429"), "got: {message}");
+    assert!(!message.contains("offline"), "got: {message}");
+    assert_eq!(links.status("dev-a"), Some(STATUS_SYNC_UNAVAILABLE));
 }
