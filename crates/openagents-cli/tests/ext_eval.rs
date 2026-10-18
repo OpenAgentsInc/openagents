@@ -20,30 +20,21 @@ const FIXTURE: &str = concat!(
     "/../ext-eval/fixtures/repo-map-brief"
 );
 
-/// The fake agent, built once per test process.
+/// Cargo builds the example before default integration tests run.
+/// A focused test needs the explicit build below; never invoke Cargo here.
 fn fake_agent() -> PathBuf {
-    static BUILT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    BUILT
-        .get_or_init(|| {
-            let profile = Path::new(OPENAGENTS).parent().unwrap().to_path_buf();
-            let target = profile.parent().unwrap();
-            let status = Command::new(env!("CARGO"))
-                .args([
-                    "build",
-                    "--quiet",
-                    "-p",
-                    "ext-eval",
-                    "--example",
-                    "fake_agent",
-                ])
-                .env("CARGO_TARGET_DIR", target)
-                .current_dir(env!("CARGO_MANIFEST_DIR"))
-                .status()
-                .unwrap();
-            assert!(status.success(), "the fake agent builds");
-            profile.join("examples").join("fake_agent")
-        })
-        .clone()
+    let profile = Path::new(OPENAGENTS).parent().unwrap();
+    let binary = profile.join("examples").join(format!(
+        "ext-eval-fake-agent{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    assert!(
+        binary.is_file(),
+        "missing test helper {}; before a focused --test ext_eval run, use \
+         cargo build -p openagents-cli --example ext-eval-fake-agent",
+        binary.display()
+    );
+    binary
 }
 
 /// A copy of the fixture extension a test may run and write results into.

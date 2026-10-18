@@ -19,6 +19,12 @@ verse = ["dep:verse", "dep:verse-engine", "dep:verse-world", "dep:verse-lagrange
 name = "openagents"
 path = "src/main.rs"
 
+# Cargo builds examples before default integration tests. Reuse the runner's
+# fixture without starting Cargo while the test holds the shared target lock.
+[[example]]
+name = "ext-eval-fake-agent"
+path = "../ext-eval/examples/fake_agent.rs"
+
 [dependencies]
 jiff = "0.2"
 openagents-rpc = { path = "../../apps/openagents/crates/rpc" }

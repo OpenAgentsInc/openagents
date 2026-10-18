@@ -174,7 +174,7 @@ fn money_subcommands_show_their_own_usage() {
         (
             vec!["x402", "fetch"],
             "usage: openagents x402 fetch URL",
-            "--pay-with wallet|node|phone",
+            "--pay-with wallet|node|lnd|phone",
         ),
         (
             vec!["wallet", "send"],
