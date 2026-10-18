@@ -2,16 +2,11 @@
 package com.openagents.app.transcript
 
 import android.graphics.Color
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
-import org.junit.Assert.*
-import org.junit.Test
-import org.junit.runner.RunWith
+import android.test.InstrumentationTestCase
 import uniffi.openagents_core.*
 
 /** Synthetic frames; requires C1 fonts and B1 Android test wiring. Not run yet. */
-@RunWith(AndroidJUnit4::class)
-class AndroidTranscriptSelectionSnapshotTest {
+class AndroidTranscriptSelectionSnapshotTest : InstrumentationTestCase() {
     private class Frame(override val revision: ULong) : TranscriptFrame, AutoCloseable {
         var onClose: () -> Unit = {}
         var closed = false
@@ -26,9 +21,10 @@ class AndroidTranscriptSelectionSnapshotTest {
             emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), "hello") else null
         override fun close() { onClose(); closed = true }
     }
-    @Test fun snapshotAndObserverRetireStampsBeforeAnyBorrowedFrameCloses() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+    fun testSnapshotAndObserverRetireStampsBeforeAnyBorrowedFrameCloses() {
+        val instrumentation = instrumentation
+        val context = instrumentation.targetContext
+        instrumentation.runOnMainSync {
             val canvas = TranscriptCanvas(context, TranscriptFonts(context.assets, TranscriptFonts.geistAssetPaths), TranscriptPalette { Color.BLACK })
             val controller = TranscriptSelectionController(AndroidTranscriptBoundaries)
             val trace = mutableListOf<String>()

@@ -2,7 +2,7 @@
 
 C2 adds presentation over C1's Rust `TranscriptFrame`. Kotlin never wraps a row,
 orders sessions, interprets a retry/stop status, or changes Rust Native intents.
-The source and authored fixtures are uncompiled and unrun below the disk floor.
+The source and authored fixtures are being validated against the C1-only Android shell; the current build result is recorded below.
 
 `TranscriptSelectionHost` wraps the C1 view. Supply the same `TranscriptFonts`,
 colors, and current immutable frame/viewport through `TranscriptInteractionSnapshot`.
@@ -69,19 +69,33 @@ reveal integration must use a real Rust clock/epoch contract; C2 does not invent
 one or infer session state from text labels. That remaining contract is explicit.
 
 Authored JVM checks: `TranscriptInteractionsTest` and
-`TranscriptSelectionLifecycleTest`. Android checks:
+`TranscriptSelectionLifecycleTest`. Android checks are
+`AndroidTranscriptSelectionSnapshotTest` and
 `AndroidTranscriptSelectionTextTest`, including real ICU joined-emoji boundaries.
-None has run. B1's Gradle configuration already includes the C2 main, JVM-test,
-and Android-test roots. This validation branch excludes the unrelated D2/D3/D5
-app sources and generated binding changes. After a fresh capacity check and
-coordinator admission, run the focused app/JVM/Android-test phase:
+B1's Gradle configuration includes the C2 main, JVM-test, and Android-test roots.
+This validation branch excludes the unrelated D2/D3/D5 app sources and generated
+binding changes. The focused command was admitted once on CoderOS. The first run
+found a Kotlin recursive type-inference error in `TranscriptSelectionHost`; an
+explicit controller type fixed app compilation. The retry compiled debug and
+release Kotlin and the debug JVM-test source, then failed compiling AndroidTest
+because `androidx.test.ext.junit.runners.AndroidJUnit4` is not a configured
+dependency. The two Android fixtures now use the existing
+`android.test.InstrumentationTestCase` runner pattern. That adaptation has not
+been recompiled. No test task ran and no test XML was produced. The command did
+not reach APK assembly. The last paired reading was 82.72 GiB free, below the
+100 GiB build floor, so another compile waits for restored headroom and coordinator
+admission. The exact command for that admission is:
 
 ```sh
 nix develop ./os#android --command bash -c 'cd apps/openagents && CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app" scripts/android/app.sh compile :app:assembleDebug :app:assembleDebugAndroidTest'
 ```
 
-Run native selection/action-mode/clipboard, API 26/35, TalkBack focus, real RTL
-caret positions, rotation and cancel, system processor availability, long
-transcripts, horizontal code/tables, warm reopen, attachment zoom/dismiss, and
-streaming state checks in offline synthetic state. Android test-runner/source-set
-wiring still belongs to B1. No executable result is claimed by source inspection.
+Remaining C2 work includes mounting the host through the app owner, media zoom/dismiss,
+and a Rust-owned stable row-layout epoch/age for temporal streaming fade. Rust
+currently exposes `TextRun.reveal_ms` but no stable epoch or age through
+`TranscriptFrame`; keep rendering deterministic until that contract is explicit.
+The current hit callback exposes a typed image/media widget target, but no media
+payload loader or viewer-dismiss contract. Also run native selection/action-mode/clipboard,
+API 26/35, TalkBack focus, real RTL caret positions, rotation and cancel, system
+processor availability, long transcripts, horizontal code/tables, and warm reopen
+in offline synthetic state. No executable result is claimed for checks that did not run.

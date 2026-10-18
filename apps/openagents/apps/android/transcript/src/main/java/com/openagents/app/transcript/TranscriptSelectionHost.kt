@@ -55,7 +55,7 @@ class TranscriptSelectionHost(
         event.setSource(this, id)
         parent?.requestSendAccessibilityEvent(this, event)
     }
-    private val model = TranscriptSelectionController(AndroidTranscriptBoundaries) { range ->
+    private val model: TranscriptSelectionController = TranscriptSelectionController(AndroidTranscriptBoundaries) { range ->
         if (range == null) actionMode?.finish() else actionMode?.invalidate()
         overlay.invalidate()
         accessibleRows.clear()
