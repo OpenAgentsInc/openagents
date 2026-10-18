@@ -1,8 +1,8 @@
 # Android parity sprint
 
-Status: ready for implementation planning, 2026-10-18. This change contains
-documentation and GitHub issues only. No Android app, build environment,
-account credential, or host service was installed or changed.
+Status: implementation started, 2026-10-18. The original planning pass
+changed documentation and GitHub issues only. CoderOS registration is now
+complete, and one Codex app chat is working on A0 (#12079).
 
 The [October 17 Android audit](2026-10-17-android-app.md) supplies the initial
 assessment. This plan updates its dependencies and acceptance scope against
@@ -90,7 +90,7 @@ work.
 All entries are real GitHub issues on project 22 under
 [#12077](https://github.com/OpenAgentsInc/openagents/issues/12077).
 Dependencies are recorded as native GitHub blockers and in the issue bodies.
-Implementation issues remain unclaimed. `G1` joins the entire required graph;
+Only A0 is claimed. `G1` joins the entire required graph;
 it cannot pass after only the first composer works.
 
 | Step | Issue | Estimate | Depends on |
@@ -154,11 +154,12 @@ and device availability are outside that range.
 Use lane 8's mobile ownership boundary from the
 [master delegation](2026-10-16-master-delegation.md#lane-8-phone).
 Before implementation, claim the specific issue and update its board state.
-Claim no implementation issue during this documentation-only pass.
+The owner subsequently authorized one Codex worker on CoderOS for A0.
 
 ## CoderOS handoff
 
-Read-only observations on 2026-10-18:
+Initial read-only observations from the planning pass on 2026-10-18 follow.
+The registration update below replaces the account-target and package rows.
 
 | Check | Observed result | What remains |
 | --- | --- | --- |
@@ -172,9 +173,9 @@ Read-only observations on 2026-10-18:
 | Native package | No native engine at the checked standard install/build locations; `https://openagents.com/releases/latest.txt` returns 404 | Build native headless from current main or supply a verified published package; do not install the withdrawn Coder release |
 
 No SDK installation, emulator launch, account-key creation, native service
-installation, or build ran in this pass. The legacy host-status probe stalled
-and was terminated; it supplies no host-health evidence beyond the unit being
-active. SSH and the tool/version checks completed.
+installation, or build ran in the planning pass. The legacy host-status
+probe stalled and was terminated; it supplies no host-health evidence beyond
+the unit being active. SSH and the tool/version checks completed.
 
 R0's supported account path is a fresh named sign-in key from
 **Settings → Sign-in keys**, held in a private service environment/credential
@@ -186,6 +187,43 @@ use the injected-credential path in the
 Never copy the Mac's credential or owner secret. Use a separate native
 service and profile; verify the entry through `list_devices` without making
 owner-account test chats.
+
+### Registration completed
+
+At 12:43 UTC on 2026-10-18, the native headless engine joined the owner's
+account as `coderos-4080`, device
+`c0a120a9-b63b-4df2-9648-0c3ed8dce5e0` (#12078). The build used commit
+`d2fa0bba5bae3ee74eb96e354b86e4528ba81b83`, Rust 1.98.1, and
+`cargo build --locked -p openagents --no-default-features` from
+`apps/openagents`, with dev debug information and dependency optimization
+disabled for this installation. The build completed in 1 minute 38 seconds;
+the copied binary's version and Linux loader checks passed.
+
+- Service: `systemctl --user status openagents-native-target.service`.
+  It is enabled, and user lingering is enabled for starts after logout.
+- Binary: `~/.openagents/native-host/versions/<commit>/openagents`, with a
+  sibling `COMMIT` file. The service uses this copy, not shared build output.
+- Data: `~/.local/share/openagents-native-target`; IPC is loopback port 42941.
+- Credential: the dedicated **CoderOS native target (12078)** sign-in key,
+  held in `~/.config/openagents/native-target-12078.env` with mode `0600`.
+  The Mac credential was not copied. The native launcher removes this key
+  from its environment before starting agent children.
+- Verification: account device discovery, remote projects, harnesses, and
+  the Codex model catalog all answer through the app. The legacy Coder
+  service remains active. Optional phone pairing was not changed.
+
+Codex app chat `9f45b787-5171-417c-9ae3-9311e5471bdf` runs #12079 on
+CoderOS in `~/.openagents/scratch/process-417853/android-env-12079`. It
+confirmed the hostname and app chat, claimed the issue, and moved project
+22 to **In Progress**. No other Android issue was delegated.
+
+To remove this native target, stop and disable
+`openagents-native-target.service`, then revoke its named sign-in key with
+`openagents keys revoke 'CoderOS native target (12078)' --kind signin`.
+Preserve the data directory for recovery and leave the legacy Coder service
+and its executable alone.
+
+### Android build work
 
 For Android work, reserve dedicated Gradle, Android-user, and AVD directories.
 Reuse warm external Cargo targets under the current `AGENTS.md` build
@@ -245,5 +283,5 @@ Before distribution, confirm the minimum API, exact signing/Play App Signing
 continuity, and testing channel. Owner actions for Firebase/server secrets,
 Play Console, privacy/Data safety/content rating, physical devices, and any
 funded wallet or real-call checks are listed in
-[NEEDS_OWNER.md](../../NEEDS_OWNER.md). They do not authorize implementation
-or publication in this turn.
+[NEEDS_OWNER.md](../../NEEDS_OWNER.md). A0 is authorized separately; these
+remaining decisions do not authorize publication.

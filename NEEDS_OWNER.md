@@ -10,10 +10,11 @@ Voice Settings must be offered. These real voice calls are owner checks only.
 
 ## Android parity: account, signing, and device handoff (#12077)
 
-The [Android sprint](docs/audits/2026-10-18-android-parity-sprint.md) is a
-documentation-only plan with implementation issues on project 22. No app,
-build environment, credential, or service was changed. These steps belong
-to the later implementation and internal-testing handoff:
+The [Android sprint](docs/audits/2026-10-18-android-parity-sprint.md) has
+implementation issues on project 22. CoderOS is registered as an account
+target (#12078), and one Codex app chat is working on the Android build
+environment (#12079). These owner steps remain for the implementation and
+internal-testing handoff:
 
 - Confirm the Android minimum version and distribution channel. Preserve
   API 26 and the existing `com.openagents.app` signing identity until a
@@ -36,10 +37,6 @@ to the later implementation and internal-testing handoff:
   verified links, push wakes, background/recreated sessions, voice routing
   and ongoing-call controls, and a tablet layout. Authorize any funded
   payment or real call separately. Remove test resources when finished.
-- CoderOS is reachable over Tailscale and SSH, but is not yet a target in
-  this app's device list. #12078 tracks a native headless build/package and
-  a fresh named per-computer sign-in key. Do not copy the Mac credential or
-  replace the running legacy Coder service to register it.
 
 Close implementation issues when their code is merged with focused checks
 passing. List remaining deploy/device/store evidence in the handoff and
