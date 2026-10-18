@@ -29,7 +29,7 @@ use crate::out::Output;
 /// its build runner, and every bench module the briefing imports, so a
 /// computer without the repository's scripts (a GCE pool host) runs the
 /// whole engine (#12058).
-const SCRIPTS: [(&str, &str); 12] = [
+pub(super) const SCRIPTS: [(&str, &str); 12] = [
     (
         "scripts/work/work_issue.py",
         include_str!("../../../scripts/work/work_issue.py"),
@@ -149,7 +149,7 @@ fn agent_binary() -> Option<PathBuf> {
 }
 
 /// One line the engine printed, as this command shows it.
-fn shown(output: &Output, issue: u64, row: &Value) {
+pub(super) fn shown(output: &Output, issue: u64, row: &Value) {
     match row["type"].as_str() {
         Some("progress") => {
             event(
@@ -166,7 +166,7 @@ fn shown(output: &Output, issue: u64, row: &Value) {
 }
 
 /// The result as one `issue` record and line.
-fn finished(output: &Output, issue: u64, result: &Value) -> Value {
+pub(super) fn finished(output: &Output, issue: u64, result: &Value) -> Value {
     let landed = &result["landed"];
     let outcome = if !result["ok"].as_bool().unwrap_or(false) {
         "failed"

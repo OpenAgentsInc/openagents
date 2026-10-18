@@ -543,6 +543,13 @@ def land(run: Run, root: Path, repo: str, issue: dict, how: str, run_id: str, en
          checks: list[dict]) -> dict:
     if how == "none":
         return {"how": "none"}
+    if how == "push":
+        # The orchestrator lands it (`chat work --on archil`, #12136): the
+        # sandbox reaches github.com but not the landing queue.
+        branch = os.environ.get("OA_WORK_PUSH_BRANCH") or f"land/issue-{issue['number']}-{run_id[:8]}"
+        sh(["git", "-C", str(root), "push", "-q", "origin", f"HEAD:refs/heads/{branch}"], timeout=600)
+        run.say("land", f"pushed {branch} for the orchestrator to land", branch=branch)
+        return {"how": "push", "branch": branch}
     if how == "queue":
         oa = os.environ.get("OA_CLI") or shutil.which("openagents") or "openagents"
         proc = sh([oa, "--json", "land", "submit", "--issue", str(issue["number"]),
@@ -682,7 +689,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--repo", required=True)
     ap.add_argument("--issue", type=int, required=True)
-    ap.add_argument("--land", choices=["queue", "pr", "none"], default="pr")
+    ap.add_argument("--land", choices=["queue", "pr", "push", "none"], default="pr")
+    ap.add_argument("--issue-json", help="the issue as `gh issue view --json number,title,body,state,url` "
+                    "printed it, for a run that cannot reach GitHub's API")
     ap.add_argument("--engine", choices=["briefed", "briefed:codex", "briefed:opencode", "briefed:gemini", "bare"],
                     default="briefed")
     ap.add_argument("--briefer", choices=["filefind", "haiku"], default=os.environ.get("OA_WORK_BRIEFER", "filefind"),
@@ -716,7 +725,8 @@ def main() -> int:
         if missing := signed_in(args.engine):
             raise RuntimeError(missing)
         run.say("start", f"working {args.repo}#{args.issue}", run_id=run_id)
-        issue = json.loads(sh(["gh", "issue", "view", str(args.issue), "--repo", args.repo,
+        issue = json.loads(Path(args.issue_json).read_text() if args.issue_json else
+                           sh(["gh", "issue", "view", str(args.issue), "--repo", args.repo,
                                "--json", "number,title,body,state,url"], timeout=120).stdout)
         result["title"], result["url"] = issue["title"], issue["url"]
         run.say("issue", f"#{issue['number']} {issue['title']}", title=issue["title"])
