@@ -178,6 +178,13 @@ final class DesignLabTourTests: XCTestCase {
         }
     }
 
+    /// #12045: a saved agent's autonomy card, the same view desktop and web show.
+    func testAgentCard() {
+        let app = launch(["-demo", "-fast", "-agent-card"])
+        _ = app.otherElements["agent-card"].waitForExistence(timeout: 15)
+        shot(app, "agents", "agent-card")
+    }
+
     func testVoice() {
         let app = launch(["-demo", "-fast", "-voice-preview", "-voice-stage"])
         _ = app.otherElements["voice-stage"].waitForExistence(timeout: 15)

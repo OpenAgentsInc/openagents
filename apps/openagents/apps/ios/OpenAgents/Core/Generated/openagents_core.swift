@@ -2917,9 +2917,20 @@ public func FfiConverterTypeCoreAgentLab_lower(_ value: CoreAgentLab) -> UInt64 
 
 public protocol CoreAgentsProtocol: AnyObject, Sendable {
     
+    /**
+     * Carry out what the card asked for through the account, and return
+     * the fresh card.
+     */
+    func actOnCard(id: String, instance: String, revision: UInt64, node: String) async throws  -> String
+    
     func activate(instance: String, revision: UInt64, key: String) throws 
     
     func assign(core: CoreClient, host: String, project: String?, task: String) throws 
+    
+    /**
+     * One saved agent's autonomy card as Rust Native view JSON (#12045).
+     */
+    func autonomyCard(id: String) async throws  -> String
     
     func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
     
@@ -2996,6 +3007,26 @@ open class CoreAgents: CoreAgentsProtocol, @unchecked Sendable {
     
 
     
+    /**
+     * Carry out what the card asked for through the account, and return
+     * the fresh card.
+     */
+open func actOnCard(id: String, instance: String, revision: UInt64, node: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreagents_act_on_card(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(node)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
 open func activate(instance: String, revision: UInt64, key: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_coreagents_activate(
@@ -3017,6 +3048,25 @@ open func assign(core: CoreClient, host: String, project: String?, task: String)
         FfiConverterString.lower(task),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * One saved agent's autonomy card as Rust Native view JSON (#12045).
+     */
+open func autonomyCard(id: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreagents_autonomy_card(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
 open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -26506,6 +26556,16 @@ public func accountDeletionWarning() -> String  {
 })
 }
 /**
+ * A sample agent's card for the offline demo and Design Lab (#12045).
+ */
+public func demoAutonomyCard() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_demo_autonomy_card(uniffiCallStatus
+    )
+})
+}
+/**
  * The chip's and the Settings row's words.
  */
 public func demoExitCopy() -> DemoExitCopy  {
@@ -26748,6 +26808,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_account_deletion_warning() != 18673) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_demo_autonomy_card() != 22875) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_demo_exit_copy() != 960) {
@@ -27170,10 +27233,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_corecloudchat_transcript() != 12692) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreagents_act_on_card() != 34508) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreagents_activate() != 20375) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreagents_assign() != 15141) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreagents_autonomy_card() != 38980) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreagents_change_field() != 47811) {

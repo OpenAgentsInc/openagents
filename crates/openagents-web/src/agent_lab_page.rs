@@ -37,7 +37,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/static/agent-lab.js", get(script))
         .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
 }
-async fn access(app: &App, headers: &HeaderMap) -> Result<(Client, Session), Response> {
+pub(crate) async fn access(app: &App, headers: &HeaderMap) -> Result<(Client, Session), Response> {
     let cloud = app
         .config
         .cloud

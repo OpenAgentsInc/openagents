@@ -23,7 +23,7 @@ pub(crate) fn extend(doc: &mut Value) {
     "shell_timeout_secs":{"type":"integer","minimum":10,"maximum":3600,"description":"The longest one shell command may run, in seconds. The host passes it to the runtime."},
     "wakes":{"type":"array","maxItems":16,"description":"What the agent wakes on; omitted or empty is every wake the host knows. Readers skip wakes they don't know.","items":{"type":"string","examples":["chat_finished","chat_errored","chat_needs_answer","issue_opened","issue_closed","claim_stale","chat_stalled","claim_no_progress"]}},
     "coalesce_secs":{"type":"integer","minimum":0,"maximum":1800,"description":"Seconds events wait for quiet before they start one check-in."}}}}});
-    let scope = json!({"type":"string","enum":["chat.message","chat.start","chat.steer","chat.stop","land.submit","work.dispatch"]});
+    let scope = json!({"type":"string","enum":["chat.message","chat.start","chat.steer","chat.stop","land.submit","work.dispatch","log.write"]});
     let over = json!({"oneOf":[
         {"type":"string","enum":["account"]},
         {"type":"object","additionalProperties":false,"required":["project"],"properties":{"project":{"type":"string","minLength":1,"maxLength":128}}},

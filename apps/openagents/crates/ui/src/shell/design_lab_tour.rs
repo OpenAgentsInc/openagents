@@ -308,6 +308,9 @@ impl Tour<'_> {
             crate::composer::init(cx, settings.composer_send_behavior.clone());
             crate::terminal::panel::init(cx);
             AppAccount::install_fixture(controller, cx);
+            crate::settings::agent_wakes::install_fixture(
+                crate::settings::agent_wakes::fixture_status(),
+            );
         });
         let state = cx.update(|cx| cx.new(|_| fixture_state()));
         let boot = EngineBootConfig {

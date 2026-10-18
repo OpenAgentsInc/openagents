@@ -31089,7 +31089,8 @@
                 "chat.steer",
                 "chat.stop",
                 "land.submit",
-                "work.dispatch"
+                "work.dispatch",
+                "log.write"
               ]
             }
           },

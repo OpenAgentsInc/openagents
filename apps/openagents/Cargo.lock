@@ -11255,6 +11255,8 @@ dependencies = [
 name = "openagents-mobile"
 version = "0.2.113"
 dependencies = [
+ "agent-contract",
+ "agent-lab",
  "async-trait",
  "bitcoin-amount",
  "breez-sdk-spark",
@@ -11508,6 +11510,8 @@ dependencies = [
 name = "openagents-ui"
 version = "0.2.113"
 dependencies = [
+ "agent-contract",
+ "agent-lab",
  "alacritty_terminal",
  "anyhow",
  "ashpd",

@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use openagents_proto::{AuthState, WorkspaceScope};
 
 pub mod accounts;
-mod agent_wakes;
+pub(crate) mod agent_wakes;
 pub mod appearance;
 pub mod archived;
 pub mod composer;

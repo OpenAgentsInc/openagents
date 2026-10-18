@@ -313,6 +313,10 @@ pub(crate) struct State {
     /// The agent's definition asked for standing authority when this host
     /// turned its check-ins on; the host asks the account to grant it once.
     pub wants_standing: bool,
+    /// The account granted `log.write` to an agent whose log this host
+    /// already kept before the grant existed (#12045). Until then that
+    /// agent may keep writing; after, only the grant counts.
+    pub log_grant_moved: bool,
     /// What the agent's definition declares it wakes on; empty is every wake.
     pub wakes_on: Vec<WakeOn>,
     /// The definition's coalescing window, when it sets one.
@@ -358,6 +362,7 @@ impl Default for State {
             grants: Vec::new(),
             authority: None,
             wants_standing: false,
+            log_grant_moved: false,
             wakes_on: Vec::new(),
             coalesce_ms: None,
             schedule_id: None,
@@ -1190,6 +1195,29 @@ impl WakeEngine {
             }
             notices
         })
+    }
+
+    /// Whether the agent holds `log.write`, or kept a log here before the
+    /// grant existed and the account hasn't taken that grant yet (#12045).
+    pub fn may_log(&self) -> bool {
+        let state = self.state();
+        state
+            .grants
+            .iter()
+            .any(|g| g.scopes.contains(&Scope::LogWrite))
+            || (!state.log_grant_moved && self.kept_a_log())
+    }
+
+    /// Whether the agent wrote any decision of its own here.
+    pub fn kept_a_log(&self) -> bool {
+        let Ok(file) = std::fs::File::open(self.log_path()) else {
+            return false;
+        };
+        std::io::BufReader::new(file)
+            .lines()
+            .map_while(Result::ok)
+            .filter_map(|line| serde_json::from_str::<DecisionEntry>(&line).ok())
+            .any(|entry| matches!(entry, DecisionEntry::Decision { .. }))
     }
 
     /// The agent's own record of a check-in, with the receipts of the

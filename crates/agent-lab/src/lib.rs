@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 pub mod api;
+#[cfg(feature = "views")]
+pub mod autonomy;
 pub mod components;
 pub mod dashboard;
 pub mod kind;

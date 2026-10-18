@@ -258,6 +258,7 @@ version = "1.0.0"
 dependencies = [
  "agent-contract",
  "lab-kit",
+ "oa-copy",
  "rust-native",
  "serde",
  "serde_json",

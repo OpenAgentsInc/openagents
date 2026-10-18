@@ -91,6 +91,9 @@ pub enum Scope {
     /// Dispatch issue work to a cloud pool.
     #[serde(rename = "work.dispatch")]
     WorkDispatch,
+    /// Keep its own decision log (#12045).
+    #[serde(rename = "log.write")]
+    LogWrite,
 }
 
 /// Powers no agent can be granted, whoever asks: money, keys, secrets,
@@ -118,6 +121,7 @@ impl Scope {
             Scope::ChatStop => "chat.stop",
             Scope::LandSubmit => "land.submit",
             Scope::WorkDispatch => "work.dispatch",
+            Scope::LogWrite => "log.write",
         }
     }
 
@@ -140,6 +144,7 @@ impl Scope {
             Scope::ChatStop,
             Scope::LandSubmit,
             Scope::WorkDispatch,
+            Scope::LogWrite,
         ]
         .into_iter()
         .find(|s| s.word() == word)
@@ -319,6 +324,11 @@ pub struct AgentWakeStatus {
     pub turned_on_at: Option<i64>,
     /// The latest entries, oldest first.
     pub decisions: Vec<DecisionEntry>,
+    /// It kept a decision log here before the log grant existed and the
+    /// account hasn't taken that grant yet, so it may log without it
+    /// (#12045).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub log_kept_before_grant: bool,
 }
 
 impl AgentWakeStatus {
