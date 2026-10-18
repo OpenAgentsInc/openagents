@@ -34,6 +34,8 @@ pub enum KeyRead {
     Found { bytes: Vec<u8> },
     /// The key store answered that no such item exists.
     NotFound,
+    /// A value is stored but its authenticated bytes are invalid.
+    Unreadable,
     /// The read failed for another reason, such as a locked device. `status`
     /// is the platform's code (an `OSStatus` on iOS), for the log only.
     Failed { status: i32 },
@@ -82,6 +84,7 @@ pub fn read(store: &dyn KeyStore) -> SeedRead {
             Err(_) => SeedRead::Unreadable,
         },
         KeyRead::NotFound => SeedRead::Absent,
+        KeyRead::Unreadable => SeedRead::Unreadable,
         KeyRead::Failed { .. } => SeedRead::Unavailable,
     }
 }

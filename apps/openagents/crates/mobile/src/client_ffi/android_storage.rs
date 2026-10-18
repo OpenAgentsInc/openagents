@@ -102,6 +102,23 @@ impl IdentityVault for AndroidIdentityVault {
             .map(|value| value.map(|bytes| (bytes, false)))
     }
 
+    fn create_if_absent(&self, entropy: &[u8], icloud: bool) -> Result<bool, StorageError> {
+        if icloud {
+            return Err(StorageError::Unavailable);
+        }
+        let mut payload = entropy.to_vec();
+        let result = self
+            .0
+            .create(PHONE_SERVICE.into(), "words-v1".into(), payload.clone());
+        payload.fill(0);
+        match result {
+            SecretMutation::Stored => Ok(true),
+            SecretMutation::AlreadyExists => Ok(false),
+            SecretMutation::Locked => Err(StorageError::Denied),
+            SecretMutation::Absent | SecretMutation::Failed => Err(StorageError::Unavailable),
+        }
+    }
+
     fn store(&self, entropy: &[u8], icloud: bool) -> Result<(), StorageError> {
         if icloud {
             return Err(StorageError::Unavailable);
@@ -137,7 +154,8 @@ impl super::super::wallet::seed::KeyStore for AndroidWalletKeyStore {
             SecretRead::Absent => KeyRead::NotFound,
             SecretRead::Present { bytes } => KeyRead::Found { bytes },
             SecretRead::Locked => KeyRead::Failed { status: -25293 },
-            SecretRead::Corrupt | SecretRead::Failed => KeyRead::Failed { status: -1 },
+            SecretRead::Corrupt => KeyRead::Unreadable,
+            SecretRead::Failed => KeyRead::Failed { status: -1 },
         }
     }
 
@@ -394,6 +412,47 @@ mod tests {
             Err(IdentityError::Locked)
         ));
         assert!(provider.values.lock().unwrap().is_empty());
+        assert_eq!(*provider.creates.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn racing_identity_creation_keeps_the_first_value() {
+        use openagents_account::identity::Identities;
+
+        let provider = Arc::new(MemoryProvider::default());
+        let stored = vec![1; 16];
+        provider
+            .values
+            .lock()
+            .unwrap()
+            .insert((PHONE_SERVICE.into(), "words-v1".into()), stored.clone());
+        *provider.next_read.lock().unwrap() = Some(SecretRead::Absent);
+        let directory = tempfile::tempdir().unwrap();
+        let identities = Identities::new(
+            Arc::new(AndroidIdentityVault(provider.clone())),
+            Arc::new(AndroidWalletSeed(provider.clone())),
+            directory.path(),
+        );
+
+        let opened = identities.load_or_create().unwrap();
+        assert_eq!(opened.entropy(), stored);
+        assert_eq!(
+            AndroidIdentityVault(provider.clone()).load().unwrap(),
+            Some((stored, false))
+        );
+        assert_eq!(*provider.creates.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn corrupt_wallet_key_is_unreadable_and_is_not_replaced() {
+        use super::super::wallet::seed::{KeyRead, KeyStore};
+        let provider = Arc::new(MemoryProvider::default());
+        *provider.next_read.lock().unwrap() = Some(SecretRead::Corrupt);
+
+        assert_eq!(
+            AndroidWalletKeyStore(provider.clone()).read_seed(),
+            KeyRead::Unreadable
+        );
         assert_eq!(*provider.creates.lock().unwrap(), 0);
     }
 

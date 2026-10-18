@@ -166,6 +166,12 @@ impl std::error::Error for IdentityError {}
 pub trait IdentityVault: Send + Sync {
     /// The stored entropy, and whether it is the iCloud Keychain copy.
     fn load(&self) -> Result<Option<(Vec<u8>, bool)>, StorageError>;
+    /// Add the first identity without replacing a value created by a racer.
+    /// Stores with an atomic insert should override this method.
+    fn create_if_absent(&self, entropy: &[u8], icloud: bool) -> Result<bool, StorageError> {
+        self.store(entropy, icloud)?;
+        Ok(true)
+    }
     /// Store `entropy` on this device only (`icloud == false`) or as an
     /// iCloud Keychain copy, then remove it from the other place.
     fn store(&self, entropy: &[u8], icloud: bool) -> Result<(), StorageError>;
@@ -248,8 +254,10 @@ impl Identities {
             WalletRead::Unavailable => return Err(IdentityError::Locked),
             WalletRead::Unreadable => return Err(IdentityError::WalletUnreadable),
         };
-        self.save(&identity, false)?;
-        Ok(identity)
+        if self.create_if_absent(&identity, false)? {
+            return Ok(identity);
+        }
+        self.load()?.ok_or(IdentityError::NotSaved)
     }
 
     /// The stored identity, if there is one. Never makes one.
@@ -299,6 +307,13 @@ impl Identities {
     fn save(&self, identity: &Identity, icloud: bool) -> Result<(), IdentityError> {
         let mut entropy = identity.entropy();
         let stored = self.vault.store(&entropy, icloud);
+        entropy.fill(0);
+        stored.map_err(|_| IdentityError::NotSaved)
+    }
+
+    fn create_if_absent(&self, identity: &Identity, icloud: bool) -> Result<bool, IdentityError> {
+        let mut entropy = identity.entropy();
+        let stored = self.vault.create_if_absent(&entropy, icloud);
         entropy.fill(0);
         stored.map_err(|_| IdentityError::NotSaved)
     }
