@@ -1,5 +1,6 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
 mod links;
+mod wallet;
 use super::*;
 pub use links::CoreAndroidLinkReview;
 use openagents_account::openagents::Deployment;
@@ -8,6 +9,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
+pub use wallet::{AndroidWalletFrame, CoreAndroidWallet};
 
 #[uniffi::export(with_foreign)]
 pub trait AndroidHostListener: Send + Sync {
@@ -26,6 +28,11 @@ impl CloudChatListener for Events {
 }
 impl ClientListener for Events {
     fn on_event(&self, _: ClientEvent) {
+        self.0.on_android_host_changed();
+    }
+}
+impl crate::wallet::WalletListener for Events {
+    fn on_wallet_changed(&self) {
         self.0.on_android_host_changed();
     }
 }
@@ -67,6 +74,7 @@ pub enum AndroidHostRoute {
     Recovery,
     Voice,
     LinkReview,
+    Wallet,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -141,6 +149,7 @@ enum Content {
     },
 }
 struct State {
+    wallet: Option<Arc<CoreAndroidWallet>>,
     pending_link: Option<(Option<u64>, String)>,
     link_review: Option<Arc<CoreAndroidLinkReview>>,
     voice_notice: Option<String>,
@@ -215,6 +224,8 @@ impl State {
 #[derive(uniffi::Object)]
 pub struct CoreAndroidHost {
     account: Option<Arc<CoreAccount>>,
+    current_storage: Option<Arc<dyn AndroidSecretStorage>>,
+    wallet_core: Mutex<Option<Arc<crate::wallet::CoreWallet>>>,
     recovery: Option<Arc<CoreAndroidRecovery>>,
     config: CoreConfig,
     events: Arc<Events>,
@@ -229,6 +240,9 @@ impl CoreAndroidHost {
         };
         let snapshot = account.snapshot();
         if snapshot.generation != state.generation {
+            if let Some(wallet) = state.wallet.take() {
+                wallet.redact();
+            }
             if let Some(review) = state.link_review.take() {
                 review.retire();
             }
@@ -335,6 +349,9 @@ impl CoreAndroidHost {
         if let Some(review) = state.link_review.take() {
             review.retire();
         }
+        if let Some(wallet) = &state.wallet {
+            wallet.redact();
+        }
         state.retire_content();
         state.content = content;
         state.anchor = None;
@@ -364,7 +381,7 @@ impl CoreAndroidHost {
             deployment.api_base().to_string(),
             deployment.website().to_string(),
             events.clone(),
-            storage,
+            storage.clone(),
         )?;
         let generation = account.snapshot().generation;
         let sessions = CoreAndroidSessions::new(account.clone(), events.clone());
@@ -380,6 +397,8 @@ impl CoreAndroidHost {
         composer.bind_listener(events.0.clone());
         Ok(Arc::new(Self {
             account: Some(account),
+            current_storage: Some(storage),
+            wallet_core: Mutex::new(None),
             recovery: Some(recovery),
             config: CoreConfig {
                 edge_url: production_edge_url(),
@@ -391,6 +410,7 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                wallet: None,
                 pending_link: None,
                 link_review: None,
                 voice_notice: None,
@@ -421,6 +441,8 @@ impl CoreAndroidHost {
         composer.bind_listener(events.0.clone());
         Arc::new(Self {
             account: None,
+            current_storage: None,
+            wallet_core: Mutex::new(None),
             recovery: None,
             config: CoreConfig {
                 edge_url: String::new(),
@@ -432,6 +454,7 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                wallet: None,
                 pending_link: None,
                 link_review: None,
                 voice_notice: None,
@@ -514,6 +537,39 @@ impl CoreAndroidHost {
             can_start_voice: s.active_voice.is_none() && s.voice_target().is_some(),
             link_review: s.link_review.clone(),
         })
+    }
+    /// The underlying device wallet is shared across native mounts; account wrappers are fenced.
+    pub fn wallet(
+        &self,
+        retired: Arc<dyn AndroidRetiredWalletSeed>,
+    ) -> CoreResult<Arc<CoreAndroidWallet>> {
+        let account = self.account.clone().ok_or(CoreError::Closed)?;
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if !matches!(account.snapshot().state, AccountState::SignedIn { .. }) {
+            return Err(CoreError::Closed);
+        }
+        if let Some(wallet) = &state.wallet {
+            return Ok(wallet.clone());
+        }
+        let storage = self.current_storage.clone().ok_or(CoreError::Closed)?;
+        let mut shared = self.wallet_core.lock().map_err(|_| CoreError::Closed)?;
+        let core = shared
+            .get_or_insert_with(|| {
+                crate::wallet::CoreWallet::android(
+                    std::path::Path::new(&self.config.data_dir)
+                        .join("spark")
+                        .to_string_lossy()
+                        .into_owned(),
+                    storage,
+                    retired,
+                    self.events.clone(),
+                )
+            })
+            .clone();
+        let wallet = CoreAndroidWallet::new(account, core);
+        state.wallet = Some(wallet.clone());
+        Ok(wallet)
     }
     /// One bounded pending link can survive initial sign-in, without moving codes into Kotlin state.
     pub fn offer_app_link(&self, raw: String) -> CoreResult<bool> {
@@ -882,6 +938,19 @@ impl CoreAndroidHost {
             if let Some(review) = s.link_review.take() {
                 review.retire();
             }
+        }
+        if route != AndroidHostRoute::Wallet {
+            if let Some(wallet) = &s.wallet {
+                wallet.redact();
+            }
+        }
+        if route == AndroidHostRoute::Wallet
+            && !matches!(
+                self.account.as_ref().map(|a| a.snapshot().state),
+                Some(AccountState::SignedIn { .. })
+            )
+        {
+            return Err(CoreError::Closed);
         }
         s.route = route;
         s.apply_visibility();

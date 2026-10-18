@@ -20,6 +20,7 @@ import com.openagents.app.composer.*
 import com.openagents.app.drawer.*
 import com.openagents.app.onboarding.*
 import com.openagents.app.platform.AndroidVoiceOrbSurface
+import com.openagents.app.storage.AndroidRetiredSparkSeed
 import com.openagents.app.sessions.AndroidSessionsHost
 import com.openagents.app.settings.*
 import com.openagents.app.transcript.*
@@ -58,6 +59,8 @@ internal class AndroidRootPresentation(
     private var sessions: AndroidSessionsHost? = null
     private var settings: SettingsHost? = null
     private var recovery: RecoveryHost? = null
+    private var wallet: RecoveryHost? = null
+    private lateinit var walletButton: Button
     private var linkReview: AndroidLinkReviewMount? = null
     private var microphoneRequest: AutoCloseable? = null
     private var voiceCapsule: SemanticViewAdapter? = null
@@ -89,6 +92,8 @@ internal class AndroidRootPresentation(
         buttons.addView(action("New chat") { owner.navigate(AndroidHostRoute.SESSIONS); panes.showSession() })
         buttons.addView(action("Settings") { owner.navigate(AndroidHostRoute.SETTINGS); panes.showSession() })
         if (owner.account() != null) buttons.addView(action("Your ID") { owner.navigate(AndroidHostRoute.RECOVERY); panes.showSession() })
+        walletButton = action("Wallet") { owner.navigate(AndroidHostRoute.WALLET); panes.showSession() }
+        buttons.addView(walletButton)
         voiceButton = action("Call") { requestVoice() }
         buttons.addView(voiceButton)
         navigation.addView(buttons)
@@ -160,6 +165,7 @@ internal class AndroidRootPresentation(
             bindDrawer(next)
         }
         snapshot = next
+        walletButton.visibility = if (next.account != null && next.signedIn) View.VISIBLE else View.GONE
         mountVoice(next)
         if (contentRevision != next.contentRevision) {
             closeChat()
@@ -169,6 +175,7 @@ internal class AndroidRootPresentation(
             // Saved-history updates also feed the existing Rust layout, without native message rows.
             owner.refreshTranscript(requireNotNull(layout), next.generation, next.contentRevision)
         }
+        if (next.route != AndroidHostRoute.WALLET) { wallet?.close(); wallet = null }
         if (next.route != AndroidHostRoute.LINK_REVIEW) { linkReview?.close(); linkReview = null }
         val composerFrame = next.composer?.frame()
         composerFrame?.let { composer?.render(AndroidComposerFeature.frame(it)) }
@@ -203,6 +210,22 @@ internal class AndroidRootPresentation(
                         { semantics(AndroidHostSurface.RECOVERY) },
                     ).also { it.start(android.os.Build.MODEL) }
                 }
+            }
+            AndroidHostRoute.WALLET -> {
+                recovery?.close(); recovery = null
+                sessions?.close(); sessions = null
+                settings?.close(); settings = null
+                settingsActions?.close(); settingsActions = null
+                chatContainer.visibility = View.GONE; routeContainer.visibility = View.VISIBLE
+                if (wallet == null) {
+                    val core = owner.wallet(AndroidRetiredSparkSeed(activity.applicationContext))
+                    wallet = RecoveryHost(routeContainer, activity.window,
+                        AndroidWalletRecoveryPort(core, application::recoveryWork, { wallet?.refresh() }),
+                        AndroidDeviceAuthentication(activity, CredentialLauncher(activity::launchDeviceCredential)),
+                        RecoveryClipboard(activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager, label = "Wallet"),
+                        application::recoveryWork, {}, { semantics(AndroidHostSurface.WALLET) },
+                    ).also { it.start("") }
+                } else wallet?.refresh()
             }
             AndroidHostRoute.LINK_REVIEW -> {
                 recovery?.close(); recovery = null
@@ -496,6 +519,7 @@ internal class AndroidRootPresentation(
         microphoneRequest?.close(); microphoneRequest = null
         snapshot?.linkReview?.let { runCatching { owner.dismissLinkReview(it) } }
         linkReview?.close(); linkReview = null
+        wallet?.background()
         recovery?.background()
         settings?.close(); settings = null
         sessions?.retire()
@@ -510,7 +534,7 @@ internal class AndroidRootPresentation(
         }
         runCatching { owner.setForeground(true) }
         semanticMounts.values.forEach { runCatching { it.lifecycle("foreground") } }
-        recovery?.foreground(); sessions?.showPicker(); refresh()
+        wallet?.foreground(); recovery?.foreground(); sessions?.showPicker(); refresh()
     }
     fun configurationChanged() {
         if (closed) return
@@ -520,7 +544,7 @@ internal class AndroidRootPresentation(
                 !android.animation.ValueAnimator.areAnimatorsEnabled())
         } }
         canvas?.refreshViewport(); panes.refresh()
-        recovery?.refresh(); settings?.refresh(); sessions?.showPicker()
+        wallet?.refresh(); recovery?.refresh(); settings?.refresh(); sessions?.showPicker()
     }
     private fun guarded(action: () -> Unit) {
         if (closed) return
@@ -528,6 +552,7 @@ internal class AndroidRootPresentation(
     }
     private fun showFailure() { notice.text = "Couldn't open this screen. Try again."; notice.visibility = View.VISIBLE }
     private fun closeRoutes() {
+        wallet?.close(); wallet = null
         linkReview?.close(); linkReview = null
         recovery?.close(); recovery = null
         sessions?.close(); sessions = null

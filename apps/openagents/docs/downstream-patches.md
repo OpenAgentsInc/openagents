@@ -1060,3 +1060,12 @@ links remain readable. Upstream fixes now require manual ports.
   contextually for API 33+ notification permission after foreground call start;
   denial preserves the call, required FGS notification posting, and in-app
   controls. Native generation/denial fixtures are authored but unrun.
+
+- #12100: Retain the existing Android `CoreWallet` across native mounts and use
+  an account-fenced Rust Native backup view. The current/retired seed migration
+  adapter is unchanged. Reuse Android credential, secure-window, clipboard, and
+  lifecycle mounting through `RecoveryHost`; Rust owns one-use authentication,
+  word expiry, copy/save actions, and late-account rejection. New synthetic
+  denial, expiry, account-switch, current-view copy and redaction fixtures are
+  authored but unrun. No wallet, money, device credential, or owner data was
+  accessed during source preparation.
