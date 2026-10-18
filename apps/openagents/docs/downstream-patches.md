@@ -568,3 +568,7 @@ links remain readable. Upstream fixes now require manual ports.
   and saves every screen in light and dark mode;
   `examples/design-lab-tour.rs` and `scripts/design-lab-capture-desktop.sh`
   run it. Hook: one `pub mod design_lab_tour` in `crates/ui/src/shell.rs`.
+- [OpenAgents #12019](https://github.com/OpenAgentsInc/openagents/issues/12019):
+  The phone's saved-account transcript uses the existing turn activity state
+  for its Working row, including before answer text arrives. The saved
+  message adapter, Lab cards, Stop, and computer sessions keep their paths.

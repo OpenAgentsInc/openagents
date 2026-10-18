@@ -320,18 +320,15 @@ impl CoreSavedHistory {
         }
         let snapshot = self.reader.snapshot();
         let target = self.reader.target();
-        view.set_input(crate::layout::TranscriptInput {
-            entries: openagents_account::chat_entries::entries_with_lab_rows(
-                &snapshot.messages,
-                snapshot.epoch,
-                target.as_ref().map(|target| &target.chat),
-            )
-            .into_iter()
-            .map(Arc::new)
-            .collect(),
-            lab_cards: super::labs::layout_cards(&self.reader),
-            ..Default::default()
-        });
+        let mut input = transcript_input(
+            &snapshot,
+            target.as_ref().map(|target| &target.chat),
+            // Empty after a chat or account switch; idle once the answer
+            // ends, stops, fails, or observation pauses.
+            self.current() && self.turns.snapshot().busy,
+        );
+        input.lab_cards = super::labs::layout_cards(&self.reader);
+        view.set_input(input);
         Ok(())
     }
 
@@ -670,9 +667,61 @@ impl Drop for CoreSavedHistory {
     }
 }
 
+fn transcript_input(
+    snapshot: &openagents_account::reader::Snapshot,
+    chat: Option<&openagents_account::openagents::ChatRef>,
+    answering: bool,
+) -> crate::layout::TranscriptInput {
+    crate::layout::TranscriptInput {
+        entries: openagents_account::chat_entries::entries_with_lab_rows(
+            &snapshot.messages,
+            snapshot.epoch,
+            chat,
+        )
+        .into_iter()
+        .map(Arc::new)
+        .collect(),
+        // Saved messages are complete snapshots; turn activity comes from Turns.
+        working: answering,
+        ..Default::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_reply_activity_survives_complete_message_snapshots_and_clears_when_idle() {
+        let mut snapshot = openagents_account::reader::Snapshot::default();
+        // The server can be working before it has written any answer text.
+        assert!(transcript_input(&snapshot, None, true).working);
+        snapshot.messages = Arc::new(vec![SavedMessage {
+            id: "answer".into(),
+            role: MessageRole::Assistant,
+            text: "First words".into(),
+            files: vec![],
+            tool: None,
+            cards: vec![],
+            extra: Default::default(),
+        }]);
+        let answering = transcript_input(&snapshot, None, true);
+        assert!(answering.working);
+        assert_eq!(answering.entries.len(), 1);
+        assert_eq!(
+            answering.entries[0].status,
+            Some(openagents_doc::MessageStatus::Complete)
+        );
+        assert!(!answering.streaming);
+        // Done, stop, failure, and pause all clear Turns.busy; keep the answer.
+        let idle = transcript_input(&snapshot, None, false);
+        assert!(!idle.working);
+        assert_eq!(idle.entries, answering.entries);
+        // A cleared reader/turn after a chat or account switch stays empty.
+        let cleared = transcript_input(&Default::default(), None, false);
+        assert!(!cleared.working);
+        assert!(cleared.entries.is_empty());
+    }
 
     #[test]
     fn text_parts_preserve_unicode_and_clamp_a_stale_part() {
