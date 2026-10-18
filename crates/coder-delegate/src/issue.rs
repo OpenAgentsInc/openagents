@@ -1467,9 +1467,17 @@ pub fn changed_packages(workdir: &Path, diff: &str) -> Vec<String> {
                 // listed in the root's `exclude`) can't be tested by name from
                 // the root: `cargo test -p openagents-mobile` fails with
                 // "cannot specify features for packages outside of workspace".
-                if text.lines().any(|l| l.trim() == "[workspace]")
-                    || excluded.contains(&format!("\"{}\"", at.display()))
-                {
+                // The same holds for a package nested in another workspace,
+                // such as apps/openagents/crates/sync (#12128).
+                let outside = at
+                    .ancestors()
+                    .filter(|a| !a.as_os_str().is_empty())
+                    .any(|a| {
+                        excluded.contains(&format!("\"{}\"", a.display()))
+                            || std::fs::read_to_string(workdir.join(a).join("Cargo.toml"))
+                                .is_ok_and(|t| t.lines().any(|l| l.trim() == "[workspace]"))
+                    });
+                if outside {
                     break;
                 }
                 let name = text
@@ -2151,11 +2159,13 @@ mod tests {
             ("crates/inside", "[package]\nname = \"inside\"\n"),
             ("crates/excluded", "[package]\nname = \"excluded\"\n"),
             ("crates/own", "[package]\nname = \"own\"\n\n[workspace]\n"),
+            ("apps/app", "[workspace]\nmembers = [\"crates/nested\"]\n"),
+            ("apps/app/crates/nested", "[package]\nname = \"nested\"\n"),
         ] {
             std::fs::create_dir_all(root.join(crate_dir).join("src")).unwrap();
             std::fs::write(root.join(crate_dir).join("Cargo.toml"), manifest).unwrap();
         }
-        let diff = "+++ b/crates/inside/src/lib.rs\n+++ b/crates/excluded/src/lib.rs\n+++ b/crates/own/src/lib.rs\n";
+        let diff = "+++ b/crates/inside/src/lib.rs\n+++ b/crates/excluded/src/lib.rs\n+++ b/crates/own/src/lib.rs\n+++ b/apps/app/crates/nested/src/lib.rs\n";
         assert_eq!(changed_packages(root, diff), vec!["inside".to_string()]);
     }
 
