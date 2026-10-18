@@ -89,7 +89,10 @@ The `dns` command edits the Cloudflare zone with `CLOUDFLARE_API_TOKEN`
 
 ## First rollout
 
-1. `vm-provision`, then `dns cert`.
+1. `vm-provision` with `CLOUDFLARE_API_TOKEN` set, which also runs `dns cert`
+   before it creates the certificate. A certificate created before its DNS
+   record exists waits about an hour for its next attempt; delete it and the
+   `sync` map entry, then run `vm-provision` again.
 2. Wait until `vm-status` shows the certificate `ACTIVE` and `vm /health`
    answers with the expected revision.
 3. Check the VM's websockets with the test account through

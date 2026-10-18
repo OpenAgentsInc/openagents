@@ -411,6 +411,13 @@ def vm_provision():
     if not exists("certificate-manager", "dns-authorizations", "describe", DNS_AUTH, "--location=global"):
         g("certificate-manager", "dns-authorizations", "create", DNS_AUTH, f"--domain={DOMAIN}", "--location=global")
     if not exists("certificate-manager", "certificates", "describe", CERT, "--location=global"):
+        # The certificate's first authorization runs at once and the next
+        # one much later, so publish its DNS record first.
+        if os.environ.get("CLOUDFLARE_API_TOKEN"):
+            dns("cert")
+            time.sleep(60)
+        else:
+            print("Set CLOUDFLARE_API_TOKEN so the certificate's DNS record exists before the certificate.")
         g("certificate-manager", "certificates", "create", CERT, f"--domains={DOMAIN}", f"--dns-authorizations={DNS_AUTH}", "--location=global")
     if not exists("certificate-manager", "maps", "describe", CERT_MAP, "--location=global"):
         g("certificate-manager", "maps", "create", CERT_MAP, "--location=global")
