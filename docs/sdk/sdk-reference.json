@@ -474,18 +474,6 @@
               ]
             },
             {
-              "name": "notify_owner",
-              "doc": "Notify once for `request_id`. Reuse the same ID and note after a failed request.\nThe account must have enabled notifications for this agent. At most six\nnew notes per agent per hour are accepted, including across host restarts.",
-              "declaration": "pub async fn notify_owner(\n    &self,\n    session: &Session,\n    request_id: &str,\n    note: OwnerNote,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
-              "calls": []
-            },
-            {
-              "name": "set_owner_notification_grant",
-              "doc": "Enable or revoke this agent's permission to notify the owner. Disabled by default.",
-              "declaration": "pub async fn set_owner_notification_grant(\n    &self,\n    session: &Session,\n    agent: &str,\n    enabled: bool,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
-              "calls": []
-            },
-            {
               "name": "runs",
               "doc": "Lists runs, optionally for one host, starting after the cursor `after`.",
               "declaration": "pub async fn runs(\n    &self,\n    host: Option<&str>,\n    after: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<Page<Run>, Error>",
@@ -3090,6 +3078,18 @@
               "name": "job_request_with_key",
               "doc": "Builds a job request with a key you supply, such as a saved one.",
               "declaration": "pub fn job_request_with_key(\n    &self,\n    body: CreateJob,\n    key: RequestKey,\n) -> Result<JobRequest, Error>",
+              "calls": []
+            },
+            {
+              "name": "notify_owner",
+              "doc": "Notify once for `request_id`. Reuse the same ID and note after a failed request.\nThe account must have enabled notifications for this agent. At most six\nnew notes per agent per hour are accepted, including across host restarts.",
+              "declaration": "pub async fn notify_owner(\n    &self,\n    session: &Session,\n    request_id: &str,\n    note: OwnerNote,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": []
+            },
+            {
+              "name": "set_owner_notification_grant",
+              "doc": "Enable or revoke this agent's permission to notify the owner. Disabled by default.",
+              "declaration": "pub async fn set_owner_notification_grant(\n    &self,\n    session: &Session,\n    agent: &str,\n    enabled: bool,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
               "calls": []
             },
             {
