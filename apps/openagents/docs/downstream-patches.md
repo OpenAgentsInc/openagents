@@ -716,19 +716,23 @@ links remain readable. Upstream fixes now require manual ports.
   Account linking now rejects a client that is not the current account's client
   generation. A synthetic unit test accepts the current account client and
   rejects a stale generation or a different client; it does not exercise server
-  authorization. `CoreClient::forget_device_channel`
-  remains the existing pairing revocation operation. Project invitation links
-  are recognized but return a closed unsupported operation without exposing the
-  token. The mobile/client/
-  sync crates have no project-invitation acceptance API. The missing contract is
-  a Rust-owned `CoreAccount` operation that accepts a project invitation for
-  the active account, with server-checked expiry, authorization, and wrong-
-  account refusals plus an offline fake-server test seam. No route is inferred
-  from the invitation URL. Server-authorized pairing, account-link, and website
-  approval cases, plus persisted-grant restart coverage, also remain pending.
-  `cargo test --locked -p openagents-mobile app_links` from `apps/openagents`
-  and `scripts/android/build-core.sh` remain unrun below the 100 GiB build
-  floor. The latter generates bindings and builds arm64 then x86_64. The
+  authorization. `CoreClient::forget_device_channel` remains the existing
+  pairing revocation operation. The account service already exposes project
+  invitation preview and acceptance at `/v1/projects/invitations/preview` and
+  `/v1/projects/invitations/accept`; the website handler authenticates the
+  active bearer before forwarding each request. `CoreAccount` now exposes
+  separate preview and explicit-accept methods. Both validate the exact
+  `openagents.com/projects/join/` URL in Rust and keep the invitation code out
+  of the dispatch record. Preview data is a typed record, and acceptance
+  returns only the project ID. Synthetic fake-server fixtures cover success,
+  expiry, wrong-account refusal, and replay refusal; requests use the active
+  session bearer and do not retry. Server-authorized pairing, account-link, and
+  website approval cases, plus persisted-grant restart coverage, remain pending.
+  `cargo test --locked -p openagents-mobile app_links` and
+  `cargo test --locked -p openagents-mobile project_invitation` from
+  `apps/openagents` remain unrun below the 100 GiB build floor.
+  `scripts/android/build-core.sh` also remains unrun; it generates bindings and
+  builds arm64 then x86_64. The
   scanner instrumentation test remains unrun pending the capacity gate and
   B1's Activity shell integration. #12082 and #12091 remain native blockers.
   Release-certificate verification is an owner-only After-close check in

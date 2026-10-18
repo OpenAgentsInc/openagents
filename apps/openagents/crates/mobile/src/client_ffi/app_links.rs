@@ -2,7 +2,7 @@
 //!
 //! A matching URL is only a candidate action. The existing pairing and
 //! website-login APIs still check the account and server-side grant. Project
-//! invitations have no acceptance API in this mobile core yet.
+//! invitations are previewed and accepted by the active Rust account.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -35,11 +35,11 @@ pub struct AndroidAppLink {
 pub enum AndroidAppLinkOperation {
     PairComputer,
     ReviewWebsiteSignIn,
-    ProjectInvitationUnsupported,
+    ReviewProjectInvitation,
 }
 
 /// Rust's decision about which existing core flow may receive a scanned link.
-/// `code` is absent for unsupported operations and must never be logged.
+/// `code` is absent when the Rust account API consumes the original link.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct AndroidAppLinkDispatch {
     pub operation: AndroidAppLinkOperation,
@@ -60,8 +60,8 @@ pub fn classify_android_app_link(url: String) -> Option<AndroidAppLink> {
 /// Computer links go to `CoreClient::connect_computer`. Website sign-in links
 /// go first to `CoreAccount::scanned_login`, which returns the browser for the
 /// confirmation step; approval remains a separate explicit call. Project
-/// invitations are recognized but rejected here because the mobile core has no
-/// invitation acceptance API yet.
+/// invitations go to the active account's preview and explicit acceptance
+/// methods; the opaque code is not returned to the platform.
 #[uniffi::export]
 pub fn dispatch_android_app_link(url: String) -> Option<AndroidAppLinkDispatch> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
@@ -73,7 +73,7 @@ fn dispatch_android_app_link_at(url: &str, now: u64) -> Option<AndroidAppLinkDis
         let (operation, code) = match link.kind {
             AndroidAppLinkKind::Connect => (AndroidAppLinkOperation::PairComputer, Some(link.code)),
             AndroidAppLinkKind::ProjectInvitation => {
-                (AndroidAppLinkOperation::ProjectInvitationUnsupported, None)
+                (AndroidAppLinkOperation::ReviewProjectInvitation, None)
             }
         };
         return Some(AndroidAppLinkDispatch { operation, code });
@@ -99,6 +99,18 @@ fn classify_android_app_link_at(url: &str, now: u64) -> Option<AndroidAppLink> {
         });
     }
 
+    let code = project_invitation_code(url)?;
+
+    Some(AndroidAppLink {
+        kind: AndroidAppLinkKind::ProjectInvitation,
+        code,
+    })
+}
+
+pub(super) fn project_invitation_code(url: &str) -> Option<String> {
+    if url.is_empty() || url.len() > MAX_APP_LINK_BYTES || !url.is_ascii() {
+        return None;
+    }
     let code = url.strip_prefix(PROJECT_INVITE_PREFIX)?;
     let token = code.strip_prefix("prjinv_")?;
     if code.len() > MAX_PROJECT_INVITATION_BYTES
@@ -109,11 +121,7 @@ fn classify_android_app_link_at(url: &str, now: u64) -> Option<AndroidAppLink> {
     {
         return None;
     }
-
-    Some(AndroidAppLink {
-        kind: AndroidAppLinkKind::ProjectInvitation,
-        code: code.to_owned(),
-    })
+    Some(code.to_owned())
 }
 
 #[cfg(test)]
@@ -185,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn project_invitation_is_recognized_but_has_no_acceptance_route() {
+    fn project_invitation_dispatches_to_account_review_without_returning_code() {
         let dispatch = dispatch_android_app_link_at(
             "https://openagents.com/projects/join/prjinv_fixture-token_01",
             100,
@@ -193,7 +201,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             dispatch.operation,
-            AndroidAppLinkOperation::ProjectInvitationUnsupported
+            AndroidAppLinkOperation::ReviewProjectInvitation
         );
         assert_eq!(dispatch.code, None);
     }
