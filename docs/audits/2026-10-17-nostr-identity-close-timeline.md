@@ -206,3 +206,89 @@ short of `main`, and nothing was working on it.
   disk-full memory note). A build sweep that keeps 100 GiB free landed on
   `main` in 58559c745b.
 - **Never restart the owner's running desktop app.**
+
+## Addendum: what our own system should have done
+
+The 4 hours 45 minutes above happened because one bare Claude Code session
+in a terminal on the owner's Mac did all the coordination itself. It held
+every build, every merge, and the only copy of the plan. Nothing outside it
+could see it, steer it, or take over. Nearly every primitive that would
+have stopped the waste already exists in this repository. This session used
+none of them.
+
+### What went wrong, and the primitive that covers it
+
+| What went wrong | Primitive that covers it | Used today? |
+| --- | --- | --- |
+| Every build ran on the owner's Mac, filled the disk to 0 bytes, and was limited to two lanes. | **GCE pool** (`openagents cloud up`, `chat work --on gce`, [gce-pool.md](../cloud/gce-pool.md)): spot `c3-standard-8` hosts from the daily `oa-coder-host` image, two slots each, hosts delete themselves after 10 idle minutes. "Nothing is built on" the orchestrating computer. The pool grant `gce:pb22a59` (epoch 4) was live all day with 0 hosts. | No |
+| The coordinator rebased, tested, and merged branch after branch by hand, one at a time. | **Landing queue** (`openagents land submit --issue N`, [land-queue.md](../cloud/land-queue.md)): one integrator on `oa-dev-env-1` (22 vCPUs, shared build cache). Documents land in seconds; unrelated code lands side by side; overlapping code lands in order; `main` moves one push at a time; `--issue N` closes the issue and moves the board. Measured 2026-10-10: a docs entry in 38 s, code entries in 10–28 min side by side. | No |
+| Agent branches arrived never compiled, so their errors turned up during integration. | **Briefed agent with `verify`** ([work-on-issues.md](../cloud/work-on-issues.md), `scripts/work/work_issue.py`): the agent compiles, tests, and formats its own change, and the driver replays `cargo fmt` and `cargo test` on the real diff. A run passes only with every check green. Bare Claude Code is the fallback, and it is judged the same way. | No. Agents were bare Claude Code subagents told *not* to build (the 14:33 rule). |
+| The session stopped for 71 minutes with a rebase half done, and nothing noticed. | **Foreman** ([foreman.md](../agent-lab/foreman.md)): check-ins every 10 minutes, a status even when nothing changed, `record_decision` into a decision log, and with **standing authority** it messages, starts, steers, and stops chats on the owner's computers. | Partly. Foreman flagged that nothing had happened for a while, but it could only see the session's claim markers. A terminal session is not a chat in the app, so Foreman had nothing to message and nothing to restart. |
+| The owner could not nudge the session from the phone. | **App chats on `coder-sync`**: chats that run in the desktop app's engine show up on the phone, the website, and Foreman's agent tools, and the phone can send to them. NIP-HOST grants decide which device may join. | No. The session ran in a terminal, outside the app. |
+| Whether a branch was "really done", or whether a red `main` mattered, was the coordinator's guess. | **System One decisions** (`POST /v1/systemone`, Jev): typed judgments over a state, cheap and fast, with receipts. Questions such as "is this failure also on `main`?", "does this entry overlap that one?", and "has this session made progress since its last check-in?" are exactly what it is for. `coder::permit` and `land_plan` already decide from typed state, not from what a model says. | No |
+| The disk-full event, and the third lane that caused it. | **Host broker and build sweep** ([leases.md](../coder/runtime/leases.md), the `build` and `disk` counted leases, and the build sweep that keeps 100 GiB free, `58559c745b`). | Afterward. The session wrote its own disk guard script instead. |
+| Nobody could take over the work when the session ran out of context. | **Coder task inbox** (`coder task`, [tasks.md](../coder/guides/tasks.md)) and **runs** (`agent-run.py`): durable, inspectable records any host or agent can pick up, independent of one session's memory. | No. The plan lived only in the session's context and a summary. |
+
+### The path that should have been taken
+
+```mermaid
+flowchart TD
+    A[13:54 Owner settles the design<br/>issues filed with blockers on the board] --> B[Foreman check-in sees new unclaimed issues]
+    B --> C["openagents chat work --on gce --issues 11994,...,12011<br/>briefed agent per issue, on GCE spot hosts"]
+    C --> D[Each agent: brief, change, verify<br/>cargo check, test, fmt on its own host]
+    D -->|checks green| E["openagents land submit --issue N"]
+    D -->|verify fails 4 times| F[Escalate to bare Claude Code,<br/>same checks]
+    F --> E
+    E --> G{Integrator on oa-dev-env-1<br/>land_plan}
+    G -->|docs only| H[Fast lane: seconds]
+    G -->|unrelated code| I[Code slots side by side]
+    G -->|overlapping code, the identity stack| J[In order, or one combined entry]
+    H --> K[One push at a time to main<br/>issue closed, board to Done]
+    I --> K
+    J --> K
+    K --> L[After-close checks: deploy lane]
+    B -.->|every 10 min| M{Foreman: any chat or entry<br/>silent too long?}
+    M -->|yes, standing authority| N[Message or restart the chat,<br/>record_decision, tell the owner]
+    M -.->|owner on phone| O[Owner steers any chat from the phone]
+```
+
+The same afternoon, on that path:
+
+| Time (CDT) | Should have happened |
+| --- | --- |
+| 13:54–14:00 | Issues filed with their native blockers. Foreman's issue-opened check-in lists them as can-start or waiting. |
+| 14:00 | `openagents cloud up --hosts 4` and one `chat work --on gce` for every can-start issue. The Mac only orchestrates, so its disk is not touched. |
+| 14:35–15:06 | Agents finish as they actually did, but each change is compiled and tested on its own host before it is handed off. The compile errors found at 15:05, 16:08, 16:22, 17:00, 17:12, and 17:53 are fixed here, by the agent that wrote them, in parallel. |
+| 14:35–15:10 | Each finished branch is submitted to the landing queue. Docs-only and independent changes (#12007's site, #12010, #12011, the Design Lab work) land side by side. The overlapping identity stack goes in as one entry, or in order. |
+| By about 15:45 | The identity stack's one code run finishes on the 22-vCPU integrator; at the measured 10–28 minutes an entry, and with nothing on the Mac's disk, it lands by about 15:45. `--issue N` closes each issue and moves the board. |
+| Whenever silent | Foreman's check-in sees a chat or a queue entry with no progress, and, with standing authority, messages or restarts it. The owner sees the same from the phone and can steer any chat directly. A 71-minute stall cannot happen without someone being told within 10 minutes. |
+
+So the 11 issues close about **four hours earlier**, the owner's Mac stays
+free for the owner's own work (no disk-full event, and no restart of the
+owner's desktop app for a capture), and the owner can steer from the phone
+at any time.
+
+### Why it didn't happen, and what to switch over
+
+These pieces exist, but the work today went around them. To use them by
+default:
+
+1. **No coordinating sessions outside the app.** A coordinator runs as an
+   app chat (Foreman, or a chat Foreman starts) so the phone, the website,
+   and Foreman can all see and steer it. A terminal Claude Code session is
+   for one-off local work, not for coordinating issues.
+2. **Issues are worked through `chat work`, not ad hoc subagents.** The
+   briefed agent with `verify` is already the default "work on an issue"
+   engine. Subagents launched from a terminal session bypass it.
+3. **Every code change lands through `openagents land submit`.** No hand
+   rebases and pushes of agent branches from the Mac.
+4. **Builds go to the GCE pool or `oa-dev-env-1`.** The Mac builds only what
+   the owner runs on it, such as the desktop app.
+5. **Turn on Foreman's standing authority with check-ins**, and finish its
+   live check (#11965 in After-close checks). Add a stall rule: a claimed
+   issue whose chat or queue entry has shown no progress for 20 minutes gets
+   a message. If that doesn't move it, Foreman restarts the chat and tells
+   the owner.
+6. **Ask System One, not a model's guess**, for the typed judgments
+   integration needs: whether a failure is on `main` too, whether two entries
+   overlap, and whether a session has made progress since the last check-in.
