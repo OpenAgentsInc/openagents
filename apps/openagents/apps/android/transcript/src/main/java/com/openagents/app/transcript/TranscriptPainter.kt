@@ -30,6 +30,7 @@ class TranscriptPainter(
     private val palette: TranscriptPalette,
     private val widgets: TranscriptWidgets? = null,
 ) {
+    companion object { const val REVEAL_DURATION_MS: UInt = 200u }
     private data class Key(val key: ULong, val version: ULong, val width: Float)
     private data class Line(val run: TextRun, val shaped: AndroidShapedText)
     private var styles = emptyList<StyleDesc>()
@@ -49,7 +50,7 @@ class TranscriptPainter(
 
     fun clear() { prepared.clear(); styles = emptyList(); styleTable = emptyMap() }
 
-    fun draw(canvas: Canvas, row: RowDisplay, density: Float, horizontalOffset: (UInt) -> Float) {
+    fun draw(canvas: Canvas, row: RowDisplay, density: Float, elapsedSinceSampleMs: Long = 0, reducedMotion: Boolean = true, horizontalOffset: (UInt) -> Float) {
         val key = Key(row.key, row.version, row.width)
         val lines = prepared[key] ?: row.runs.map { run ->
             val start = run.start.toInt()
@@ -60,18 +61,18 @@ class TranscriptPainter(
             val style = styleTable.getValue(run.style)
             Line(run, AndroidShapedText(row.text.substring(start, end), fonts.paint(style.face, style.size, style.ligatures)))
         }.also { prepared[key] = it }
-        drawLayer(canvas, row, lines, null, density)
+        drawLayer(canvas, row, lines, null, density, elapsedSinceSampleMs, reducedMotion)
         row.scrollers.forEachIndexed { index, scroller ->
             val save = canvas.save()
             canvas.clipRect(scroller.x, scroller.y, scroller.x + scroller.w, scroller.y + scroller.h)
             val offset = horizontalOffset(index.toUInt()).coerceIn(0f, (scroller.contentWidth - scroller.w).coerceAtLeast(0f))
             canvas.translate(scroller.x - offset, scroller.y)
-            drawLayer(canvas, row, lines, index.toUInt(), density)
+            drawLayer(canvas, row, lines, index.toUInt(), density, elapsedSinceSampleMs, reducedMotion)
             canvas.restoreToCount(save)
         }
     }
 
-    private fun drawLayer(canvas: Canvas, row: RowDisplay, lines: List<Line>, layer: UInt?, density: Float) {
+    private fun drawLayer(canvas: Canvas, row: RowDisplay, lines: List<Line>, layer: UInt?, density: Float, elapsedSinceSampleMs: Long, reducedMotion: Boolean) {
         val hairline = 1f / density
         for (box in row.boxes) {
             if (box.scroller != layer || box.w <= 0 || box.h <= 0) continue
@@ -88,18 +89,20 @@ class TranscriptPainter(
         val assigned = lines.filter { it.run.scroller == layer }.groupBy { line ->
             fades.indexOfFirst { fade -> line.run.baseline > fade.y && line.run.baseline <= fade.y + fade.h + .5f }
         }
-        assigned[-1].orEmpty().forEach { drawLine(canvas, it, hairline) }
+        assigned[-1].orEmpty().forEach { drawLine(canvas, it, hairline, if (reducedMotion) 1f else transcriptRevealAlpha(row.revealAgeMs, it.run.revealMs, elapsedSinceSampleMs, REVEAL_DURATION_MS)) }
         fades.forEachIndexed { index, fade ->
             val group = assigned[index].orEmpty()
             if (group.isEmpty() || fade.w <= 0 || fade.h <= 0) return@forEachIndexed
-            drawFaded(canvas, fade) { group.forEach { drawLine(canvas, it, hairline) } }
+            drawFaded(canvas, fade) { group.forEach { drawLine(canvas, it, hairline, if (reducedMotion) 1f else transcriptRevealAlpha(row.revealAgeMs, it.run.revealMs, elapsedSinceSampleMs, REVEAL_DURATION_MS)) } }
         }
         widgets?.draw(canvas, row, layer)
     }
 
-    private fun drawLine(canvas: Canvas, line: Line, hairline: Float) {
+    private fun drawLine(canvas: Canvas, line: Line, hairline: Float, alpha: Float) {
         val run = line.run
-        line.shaped.paint.color = palette.color(run.color)
+        val color = palette.color(run.color)
+        line.shaped.paint.color = Color.argb((Color.alpha(color) * alpha).toInt().coerceIn(0, 255),
+            Color.red(color), Color.green(color), Color.blue(color))
         line.shaped.draw(canvas, run.x, run.baseline)
         if (run.decoration != Decoration.NONE) {
             brush.style = Paint.Style.FILL

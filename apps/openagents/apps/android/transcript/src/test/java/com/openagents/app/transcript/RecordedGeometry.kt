@@ -158,6 +158,6 @@ internal class FixtureFrame(
     override fun display(index: UInt): RowDisplay? {
         val row = placement(index) ?: return null
         displayCalls++
-        return RowDisplay(row.key, row.version, width, row.height, "", emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), "")
+        return RowDisplay(row.key, row.version, width, row.height, "", emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), "", revealAgeMs = null)
     }
 }

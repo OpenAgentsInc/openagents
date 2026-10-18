@@ -1032,3 +1032,10 @@ links remain readable. Upstream fixes now require manual ports.
   waiting for its first asynchronous state snapshot. Voice JVM source roots are
   registered; all new host/voice checks and matching bindings remain unrun.
 
+
+- #12100: Consume C2's sampled row age in the C1 painter with local elapsed
+  time, a 200 ms paint fade, and reduced-motion bypass. Cache each display's
+  local sample time with that display; frame/width changes never compare Rust
+  and Android clock origins. The C2 unchanged-prefix producer correction and
+  matching binding generation remain pending. New sample-cache fixtures are
+  authored but unrun.
