@@ -221,18 +221,39 @@ fn http_err(err: reqwest::Error) -> SyncError {
     SyncError::WebSocket(err.to_string())
 }
 
+/// Skip the request while the sync server is shedding load (#12128).
+fn shed_check(url: &str) -> std::result::Result<(), SyncError> {
+    match openagents_sync::dial::shedding_url(url) {
+        Some(left) => Err(SyncError::TemporarilyUnavailable(format!(
+            "sync unavailable (server busy); retrying in {}s",
+            left.as_secs().max(1)
+        ))),
+        None => Ok(()),
+    }
+}
+
+fn note_status(url: &str, response: &reqwest::Response) {
+    let retry_after = response
+        .headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok());
+    openagents_sync::dial::note_http_status(url, response.status().as_u16(), retry_after);
+}
+
 impl RegistryTransport for RegistryHttp {
     fn fetch(&self, since: u64) -> BoxFuture<'static, std::result::Result<String, SyncError>> {
         let bearer = self.bearer.clone();
         let url = urls::registry_rows(&self.edge, &self.org_id, &self.device_id, since);
         Box::pin(async move {
             let token = bearer.get().await?;
+            shed_check(&url)?;
             let response = crate::auth::http()
-                .get(url)
+                .get(&url)
                 .bearer_auth(token)
                 .send()
                 .await
                 .map_err(http_err)?;
+            note_status(&url, &response);
             if !response.status().is_success() {
                 return Err(SyncError::Protocol(format!(
                     "registry pull http {}",
@@ -248,14 +269,16 @@ impl RegistryTransport for RegistryHttp {
         let url = urls::registry_push(&self.edge, &self.org_id, &self.device_id);
         Box::pin(async move {
             let token = bearer.get().await?;
+            shed_check(&url)?;
             let response = crate::auth::http()
-                .post(url)
+                .post(&url)
                 .bearer_auth(token)
                 .header("content-type", "application/json")
                 .body(body)
                 .send()
                 .await
                 .map_err(http_err)?;
+            note_status(&url, &response);
             if !response.status().is_success() {
                 return Err(SyncError::Protocol(format!(
                     "registry push http {}",
