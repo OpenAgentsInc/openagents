@@ -694,9 +694,41 @@ links remain readable. Upstream fixes now require manual ports.
   request contract; `apps/openagents/apps/android/voice/src/test` contains
   offline fake-driver tests. Kotlin receives bounded media operations and
   returns platform results; Rust retains call, signaling, and session state.
-  No WebRTC artifact is pinned in this source checkpoint. The current
-  `webrtc-sdk/android`
-  publication metadata and repository do not yet establish the exact AAR
-  build provenance and complete bundled third-party license set needed for an
-  app dependency. Permission prompts, peer connections, audio routing,
-  lifecycle handling, Gradle integration, and device checks remain pending.
+  No WebRTC artifact is pinned. The candidate Maven coordinate is
+  `io.github.webrtc-sdk:android:150.7871.01`. Maven Central publishes its POM,
+  SHA-256 sidecars, and an ASCII-armored PGP signature; the AAR sidecar reports
+  `0a1627b1a48c2bc17d9a40d62fc47bd45166f44a311e95917f147c402de379b0`.
+  The GitHub `webrtc-sdk/android` release `v150.7871.01` was published on
+  2026-08-31 by its release workflow and lists three AARs. GitHub reports their
+  SHA-256 digests as `8ad5e5fd02f0177743ddb566bea329006bef7689b944f6351717cd1d018958c0`
+  (`libwebrtc.aar`),
+  `ba675271b758c7506bc71c75392d5ecc21c9748180643292d3880acb2498ac51`
+  (`libwebrtc_prefixed.aar`), and
+  `9ea512a9b3c76fbec83c4ad4160650b2f741618c0ab467774ceb74d6017710d2`
+  (`libwebrtc_prefixed_stripped.aar`). None matches the Maven AAR sidecar.
+  The release notes attribute the release to `cloudwebrtc`; the Maven POM names
+  `webrtc-sdk` as developer and links the Android wrapper repository. The
+  release list shows multiple upstream-version releases, but does not promise a
+  fixed cadence. The available records do not map the Maven AAR bytes to a
+  specific release asset or explain the repackaging step. The AAR itself was
+  not downloaded, so its bytes were not checked against the Maven digest, and
+  the PGP signature's signing key was not independently identified or trusted.
+  Keep the coordinate unselected until that artifact-to-release provenance is
+  verified.
+
+  The Android wrapper repository declares MIT. The `webrtc-sdk/webrtc` M150
+  source declares the Google WebRTC BSD license and says its fork patches from
+  Shiguredo and LiveKit are Apache 2.0. The Maven POM labels the publication
+  BSD-3-Clause. No complete third-party notice inventory tied to the Maven AAR
+  was found, so the app's redistribution notices cannot yet be established.
+  Do not treat the POM's single license label as the full payload license set.
+
+  Existing fake-driver tests cover permission denial, startup buffering, and
+  ignored duplicate replies and replies received after close. They do not
+  explicitly cover cancellation of a pending permission prompt, close racing
+  an in-flight callback, or independent repeated call lifetimes. The bridge
+  contract has no audio-route,
+  audio-focus/interruption, or network-transition event, so fake tests do not
+  cover headset/Bluetooth/speaker routing or interruption and network recovery.
+  Android permission prompts, peer connections, platform audio routing/focus,
+  lifecycle wiring, Gradle integration, and device checks remain pending.
