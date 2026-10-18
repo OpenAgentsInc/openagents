@@ -8630,6 +8630,11 @@ fn agent_message_display(text: &str) -> String {
     let Some((label, id)) = header
         .rsplit_once(". Reply to it with the OpenAgents `send_message` tool, chat ")
         .or_else(|| header.rsplit_once(". Reply to it with the Zeron `send_message` tool, chat "))
+        .or_else(|| {
+            header.rsplit_once(
+                ". Reply only if it asks you something or you need something from it, with the OpenAgents `send_message` tool, chat ",
+            )
+        })
     else {
         return text.to_owned();
     };
@@ -8650,6 +8655,8 @@ fn previous_agent_messages_keep_their_display() {
         );
         assert_eq!(agent_message_display(&prompt), "Message from Helper\n\nDone.");
     }
+    let prompt = "[Message from OpenAgents chat Helper (chat-1). Reply only if it asks you something or you need something from it, with the OpenAgents `send_message` tool, chat chat-1.]\n\nDone.";
+    assert_eq!(agent_message_display(prompt), "Message from Helper\n\nDone.");
 }
 
 /// The bubble text's runs: body text in the sans font, chips as labels in it

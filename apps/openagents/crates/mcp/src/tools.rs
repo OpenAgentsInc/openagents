@@ -252,7 +252,7 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "send_message",
-            description: "Send a message to a chat. Messages are attributed to your chat. mode 'auto' starts a turn when the chat is idle, steers a running turn through its live mailbox (at the next supported input boundary without interrupting the agent). Use mode 'queue' only to explicitly hold a message for later. With wait=true, blocks until the turn finishes and returns the assistant's reply. For parallel work use send_messages, or send to all chats with wait=false before waiting.",
+            description: "Send a message to a chat. Messages are attributed to your chat. mode 'auto' starts a turn when the chat is idle, steers a running turn through its live mailbox (at the next supported input boundary without interrupting the agent). Use mode 'queue' only to explicitly hold a message for later. With wait=true, blocks until the turn finishes and returns the assistant's reply. Don't send a message that only thanks or acknowledges another chat; one sent in reply to an acknowledgement is refused. For parallel work use send_messages, or send to all chats with wait=false before waiting.",
             input_schema: chat_key_schema(json!({
                 "text": { "type": "string" },
                 "mode": { "type": "string", "enum": ["auto", "run", "steer", "queue"], "default": "auto" },
@@ -1579,14 +1579,19 @@ impl Tools {
         } else {
             args.mode.as_deref().unwrap_or("auto")
         };
-        // Only the newest ids matter: a reply is a message not seen here.
-        let message_ids = self
+        // Only the newest messages matter: a reply is a message not seen
+        // here, and the closing check reads only the last few.
+        let target_transcript = self
             .openagents
             .recent_transcript_on(&chat.id, Some(&chat.device_id))
-            .await?
-            .into_iter()
-            .map(|m| m.id)
-            .collect();
+            .await?;
+        if !voice {
+            let refusal = self.closing_refusal(&chat, &target_transcript, text);
+            if let Some(refusal) = refusal.await {
+                anyhow::bail!(refusal);
+            }
+        }
+        let message_ids = target_transcript.into_iter().map(|m| m.id).collect();
         let body = if voice {
             let mut body = format!("Spoken:\n\n{text}");
             if let Some(id) = context["chatId"].as_str() {
@@ -1922,10 +1927,29 @@ impl Tools {
             }
             _ => short(origin_id).to_owned(),
         };
-        format!(
-            "[Message from OpenAgents chat {label}. Reply to it with the OpenAgents `send_message` tool, chat {}.]\n\n{text}",
-            origin_id
-        )
+        crate::chat_exchange::attributed(&label, origin_id, text)
+    }
+
+    /// Stop an exchange of thanks between two agent chats (#12124): refuse
+    /// `text` when `target`'s last message to the calling chat only
+    /// acknowledged and `text` would only acknowledge it back. A transcript
+    /// that can't be read never blocks a send.
+    async fn closing_refusal(
+        &self,
+        target: &Chat,
+        target_transcript: &[openagents_doc::SessionMessageEntry],
+        text: &str,
+    ) -> Option<String> {
+        let origin = self.openagents.origin();
+        let origin_id = origin.chat_id.as_deref()?;
+        let own = self
+            .openagents
+            .recent_transcript_on(origin_id, origin.device_id.as_deref())
+            .await
+            .ok()?;
+        let received = crate::chat_exchange::messages_from(&own, &target.id);
+        let sent = crate::chat_exchange::messages_from(target_transcript, origin_id);
+        crate::chat_exchange::closing_refusal(&sent, &received, text, short(&target.id))
     }
 
     /// Pick and perform the delivery the composer would.
@@ -2202,6 +2226,9 @@ mod tests {
         /// Where a new message for chat-beta-2 shows up mid-wait:
         /// "transcript" or "queue".
         new_message_in: Option<&'static str>,
+        /// When set, each chat's transcript is the run and steer prompts
+        /// queued for it, so chats can message each other (#12124).
+        live_transcripts: Option<Mutex<HashMap<String, Vec<Value>>>>,
     }
 
     /// `first` now, `then` a moment later, and the stream stays open.
@@ -2332,6 +2359,12 @@ mod tests {
                         "issuedBy": "dev-local", "issuedAt": 3 }] }),
                 ),
                 methods::WATCH_QUEUE => stream(json!({ "items": [] })),
+                methods::WATCH_DOC_MESSAGES if self.live_transcripts.is_some() => {
+                    let chat = params["chatId"].as_str().unwrap_or_default();
+                    let live = self.live_transcripts.as_ref().unwrap().lock().unwrap();
+                    let entries = live.get(chat).cloned().unwrap_or_default();
+                    stream(json!({ "reset": entries }))
+                }
                 methods::WATCH_DOC_MESSAGES => stream(json!({ "reset": [
                     { "id": "u1", "role": "user", "createdAt": 1, "deviceId": "dev-local",
                       "parts": [{ "kind": "text", "id": "t", "text": "hi" }] },
@@ -2389,6 +2422,20 @@ mod tests {
                     RpcReply::Value(json!({ "ok": true }))
                 }
                 methods::MUTATE | methods::QUEUE_COMMAND | methods::QUEUE_MESSAGE => {
+                    if let Some(live) = &self.live_transcripts {
+                        let command = &params["command"];
+                        let prompt = command["request"]["prompt"]
+                            .as_str()
+                            .or(command["prompt"].as_str());
+                        if let (Some(chat), Some(prompt)) = (params["chatId"].as_str(), prompt) {
+                            let mut live = live.lock().unwrap();
+                            let entries = live.entry(chat.to_owned()).or_default();
+                            let n = entries.len() as i64 + 1;
+                            entries.push(json!({ "id": format!("u{n}"), "role": "user",
+                                "createdAt": n, "deviceId": "dev-local",
+                                "parts": [{ "kind": "text", "id": "t", "text": prompt }] }));
+                        }
+                    }
                     self.writes
                         .lock()
                         .unwrap()
@@ -3210,6 +3257,54 @@ mod tests {
         assert_eq!(params["command"]["request"]["cwd"], "/repo/comet");
         assert_eq!(params["command"]["request"]["harness"], "claude-code");
         assert_eq!(params["command"]["request"]["model"], "opus");
+    }
+
+    /// #12124: two chats that thank each other stop within two turns, and
+    /// a real request still goes through afterwards.
+    #[tokio::test]
+    async fn chats_stop_thanking_each_other() {
+        async fn send(from: &Tools, to: &str, text: &str) -> Result<Value, String> {
+            from.call("send_message", json!({ "chat": to, "text": text }))
+                .await
+        }
+        let world = Arc::new(World {
+            live_transcripts: Some(Mutex::default()),
+            ..Default::default()
+        });
+        let chat = |id: &str| {
+            tools(
+                world.clone(),
+                Origin {
+                    chat_id: Some(id.into()),
+                    device_id: Some("dev-local".into()),
+                },
+            )
+        };
+        let (alpha, beta) = (chat("chat-alpha-1"), chat("chat-beta-2"));
+        send(&alpha, "beta", "Build passed").await.unwrap();
+        let live = world.live_transcripts.as_ref().unwrap().lock().unwrap();
+        let header = live["chat-beta-2"][0]["parts"][0]["text"].to_string();
+        drop(live);
+        assert!(
+            header.contains("Reply only if it asks you something"),
+            "{header}"
+        );
+        send(&beta, "alpha", "Thanks!").await.unwrap();
+        let error = send(&alpha, "beta", "You're welcome.").await.unwrap_err();
+        assert!(error.contains("conversation is finished"), "{error}");
+        let error = send(&alpha, "beta", "Acknowledged, thanks!")
+            .await
+            .unwrap_err();
+        assert!(error.contains("conversation is finished"), "{error}");
+        send(&alpha, "beta", "Can you also rebase onto main?")
+            .await
+            .unwrap();
+        send(&beta, "alpha", "Rebased; the branch is at 1a2b3c.")
+            .await
+            .unwrap();
+        send(&alpha, "beta", "Thanks!").await.unwrap();
+        let error = send(&beta, "alpha", "You're welcome!").await.unwrap_err();
+        assert!(error.contains("conversation is finished"), "{error}");
     }
 
     #[tokio::test]

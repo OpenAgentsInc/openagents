@@ -27,6 +27,7 @@
 //! originating chat, and a chat can never message itself.
 
 mod changed_paths;
+mod chat_exchange;
 #[cfg(unix)]
 mod build_status;
 mod judge;
