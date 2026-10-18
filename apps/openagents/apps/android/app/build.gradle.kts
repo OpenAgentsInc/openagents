@@ -25,9 +25,24 @@ val platformVerifierAndroidVersion = Regex(
 val pushEnabled = file("google-services.json").exists()
 if (pushEnabled) apply(plugin = "com.google.gms.google-services")
 
+configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.rustls" && requested.name == "rustls-platform-verifier") {
+            useVersion(platformVerifierAndroidVersion)
+            because("The Android verifier version must match Cargo.lock")
+        }
+    }
+}
+
 android {
     namespace = appId
     compileSdk = 35
+    buildToolsVersion = "35.0.0"
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = JavaVersion.VERSION_17.toString() }
 
     defaultConfig {
         applicationId = appId
@@ -45,6 +60,11 @@ android {
 
     sourceSets["main"].assets.srcDir("../../ios/OpenAgents/Fonts")
     sourceSets["main"].java.srcDir("../platform")
+    sourceSets["main"].java.exclude("tests/**")
+    sourceSets["main"].java.srcDir("../transcript/src/main/java")
+    sourceSets["test"].java.srcDir("../transcript/src/test/java")
+    sourceSets["androidTest"].java.srcDir("../transcript/src/androidTest/java")
+    sourceSets["androidTest"].java.srcDir("../platform/tests")
     sourceSets["main"].java.srcDir(if (pushEnabled) "src/push/java" else "src/nopush/java")
     sourceSets["main"].jniLibs.srcDir("$cargoTargetDir/android-core/jniLibs")
 
@@ -63,13 +83,14 @@ android {
 dependencies {
     implementation("net.java.dev.jna:jna:5.14.0@aar")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("androidx.activity:activity-ktx:1.13.0")
-    implementation("androidx.camera:camera-camera2:1.6.2")
-    implementation("androidx.camera:camera-lifecycle:1.6.2")
-    implementation("androidx.camera:camera-view:1.6.2")
+    implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.camera:camera-camera2:1.5.3")
+    implementation("androidx.camera:camera-lifecycle:1.5.3")
+    implementation("androidx.camera:camera-view:1.5.3")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("com.google.zxing:core:3.5.4")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
-    implementation("rustls:rustls-platform-verifier:$platformVerifierAndroidVersion")
+    implementation("org.rustls:rustls-platform-verifier")
     implementation("com.google.android.play:integrity:1.5.0")
     if (pushEnabled) implementation("com.google.firebase:firebase-messaging:24.1.0")
     testImplementation("junit:junit:4.13.2")

@@ -11,6 +11,12 @@ sealed interface AndroidAttachmentResult {
     data class Document(val uri: Uri) : AndroidAttachmentResult
     data class CameraCapture(val uri: Uri, val saved: Boolean) : AndroidAttachmentResult
     data class CameraPermission(val granted: Boolean) : AndroidAttachmentResult
+    data class Cancelled(val source: PickerSource) : AndroidAttachmentResult
+}
+
+enum class PickerSource {
+    PHOTO,
+    DOCUMENT,
 }
 
 /** Owns Activity Result launchers for media selection and camera permission. */
@@ -22,11 +28,17 @@ class AndroidAttachmentActivityResultOwner(
 
     private val photoPicker = activity.registerForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
-    ) { uri -> uri?.let { dispatch(AndroidAttachmentResult.Photo(it)) } }
+    ) { uri ->
+        if (uri == null) dispatch(AndroidAttachmentResult.Cancelled(PickerSource.PHOTO))
+        else dispatch(AndroidAttachmentResult.Photo(uri))
+    }
 
     private val documentPicker = activity.registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let { dispatch(AndroidAttachmentResult.Document(it)) } }
+    ) { uri ->
+        if (uri == null) dispatch(AndroidAttachmentResult.Cancelled(PickerSource.DOCUMENT))
+        else dispatch(AndroidAttachmentResult.Document(uri))
+    }
 
     private var cameraOutput: Uri? = null
     private val cameraCapture = activity.registerForActivityResult(

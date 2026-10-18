@@ -8,6 +8,7 @@ class BoundedComposerStubCore(initial: ComposerFrame) : ComposerCorePort {
     private var text = initial.initialDraft
     val events = ArrayList<String>()
     val displayedViews = ArrayList<Pair<String, Long>>()
+    val currentDraft: String get() = text
     var acceptNextSubmit = true
 
     init {

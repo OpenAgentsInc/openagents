@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
         onFailure: (Exception) -> Unit,
     ): Boolean {
         if (scannerPresentation != null) return false
-        val presentation = AndroidScannerPresentationBoundary { rawText ->
+        val presentation = AndroidScannerPresentationBoundary(classifyWithRust = { rawText ->
             try {
                 classifyWithRust(rawText)
             } finally {
@@ -123,7 +123,7 @@ class MainActivity : ComponentActivity() {
                 scannerPresentation = null
                 scannerPreview = null
             }
-        }
+        })
         val session = presentation.requestPermission() ?: return false
         scannerPresentation = presentation
         scannerPreview = previewView

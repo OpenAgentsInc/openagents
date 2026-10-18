@@ -1,0 +1,80 @@
+{
+  "schema": "openagents.android.attachment-results.v1",
+  "limits": {
+    "per_file_bytes": 25165824,
+    "aggregate_bytes": 50331648,
+    "files": 10
+  },
+  "cases": [
+    {
+      "source": "photo",
+      "result": "cancelled",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    },
+    {
+      "source": "document",
+      "result": "cancelled",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    },
+    {
+      "source": "camera",
+      "result": "permission_denied",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    },
+    {
+      "source": "camera",
+      "result": "cancelled",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    },
+    {
+      "source": "photo",
+      "result": "oversized",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    },
+    {
+      "source": "document",
+      "result": "oversized",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    },
+    {
+      "source": "camera",
+      "result": "oversized",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    },
+    {
+      "source": "photo",
+      "result": "read_failed",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    },
+    {
+      "source": "document",
+      "result": "upload_failed",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 1
+    },
+    {
+      "source": "photo",
+      "result": "stale_owner_callback",
+      "draft_preserved": true,
+      "attachments_preserved": true,
+      "send_count": 0
+    }
+  ]
+}
