@@ -58,6 +58,21 @@ Keep fork-specific changes here so upstream updates can review each integration.
   and API 26 launch remain unverified. Evidence is in the isolated scratch
   directory `android-runtime-12083/evidence`.
 
+- OpenAgents #12094: Rust keeps voice signaling and call lifecycle in the
+  existing `openagents_voice_session` path. The mobile FFI owns typed audio
+  route, focus, network, and proximity state; the Android bridge forwards
+  media requests and platform events without taking ownership of call state.
+  No WebRTC artifact is pinned. The upstream
+  [`webrtc-sdk/android` release](https://github.com/webrtc-sdk/android/releases/tag/v150.7871.01)
+  points to source commit `7b6390f`, and its Maven POM points to that GitHub
+  repository. The earlier exact-byte review found that its Maven AAR digest
+  did not match any published GitHub AAR digest. The Maven signature exists,
+  but its signer identity is unverified; the AAR and source tree do not provide
+  a complete third-party notice inventory tied to those bytes. The real media
+  driver, route and focus controls, RTC teardown, lifecycle checks, and device
+  call checks remain pending while this dependency review and build admission
+  are unresolved.
+
 - OpenAgents #12081: Android startup initializes the JVM context and platform
   certificate verifier before any live Rust client can start. Kotlin retries
   after failed setup, ignores repeated successful callbacks, and rejects calls
