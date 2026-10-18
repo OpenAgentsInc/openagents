@@ -86,6 +86,10 @@ flowchart TD
   no settings change, and the decision log shows the grant. Turning
   authority off makes the next check-in say it can only report.
 - **Size:** S.
+- **Status:** built in #12030, keyed by the definition rather than the name:
+  an agent definition's `autonomy` declares `check_ins`, `every_minutes`,
+  and `authority`, and the host picks the one declaring chat on the
+  computer.
 
 ### 3. Coordinating sessions run as app chats
 

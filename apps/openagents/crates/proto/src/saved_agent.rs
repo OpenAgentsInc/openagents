@@ -7,11 +7,40 @@ use crate::{ChatConfig, HarnessId};
 pub const ASSIGNMENT: &str = "openagentsAssignment";
 /// The saved agent's name, kept on the chat config for display.
 pub const AGENT_NAME: &str = "openagentsAgentName";
+/// The saved agent's definition ID, kept on the chat config so hosts key
+/// what they do for the agent by its definition, never by its name.
+pub const AGENT: &str = "openagentsAgent";
+/// What the agent's definition declares about running on its own
+/// ([`Declared`]), kept on the chat config so the host can read it offline.
+pub const AUTONOMY: &str = "openagentsAutonomy";
 /// The longest one shell command of a saved agent's turn may run, in
 /// milliseconds, from its definition's autonomy settings (#12029). A run
 /// option: the runtime applies it (Claude Code's `BASH_DEFAULT_TIMEOUT_MS`
 /// and `BASH_MAX_TIMEOUT_MS`).
 pub const SHELL_TIMEOUT_MS: &str = "openagentsShellTimeoutMs";
+
+/// The part of a saved agent's declared autonomy a host acts on (#12030):
+/// turn check-ins on for its chat without being asked, how often, and
+/// whether it asks for standing authority with them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Declared {
+    pub check_ins: bool,
+    pub every_minutes: Option<u32>,
+    pub authority: bool,
+}
+
+/// What a saved-agent chat's definition declares, from its config. `None`
+/// for ordinary chats and agents that declare nothing.
+pub fn declared(config: Option<&ChatConfig>) -> Option<Declared> {
+    let config = config.filter(|c| is_agent_chat(Some(c)))?;
+    serde_json::from_value(config.model_options.get(AUTONOMY)?.clone()).ok()
+}
+
+/// Whether the chat's agent asks hosts to turn check-ins on for it.
+pub fn declares_check_ins(config: Option<&ChatConfig>) -> bool {
+    declared(config).is_some_and(|d| d.check_ins)
+}
 
 /// Whether the chat runs a saved agent.
 pub fn is_agent_chat(config: Option<&ChatConfig>) -> bool {
@@ -102,6 +131,29 @@ mod tests {
             Some("Foreman")
         );
         assert_eq!(agent_name(Some(&old), Some("  ")).as_deref(), Some("Agent"));
+    }
+
+    #[test]
+    fn check_ins_come_from_the_declaration_not_the_name() {
+        let declaring = config(serde_json::json!({
+            ASSIGNMENT: "a",
+            AGENT_NAME: "Night shift",
+            AUTONOMY: {"checkIns": true, "everyMinutes": 10, "authority": true},
+        }));
+        assert_eq!(
+            declared(Some(&declaring)),
+            Some(Declared {
+                check_ins: true,
+                every_minutes: Some(10),
+                authority: true,
+            })
+        );
+        assert!(declares_check_ins(Some(&declaring)));
+        let named = config(serde_json::json!({ASSIGNMENT: "a", AGENT_NAME: "Foreman"}));
+        assert!(!declares_check_ins(Some(&named)));
+        // Only saved-agent chats count.
+        let plain = config(serde_json::json!({AUTONOMY: {"checkIns": true}}));
+        assert!(!declares_check_ins(Some(&plain)));
     }
 
     #[test]

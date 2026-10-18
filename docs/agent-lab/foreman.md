@@ -55,7 +55,9 @@ full `openagents` checkout is over the copy limit
 
 ## Let Foreman run on its own
 
-In the desktop app, open **Settings → General → Foreman** on the computer that runs Foreman's chat ([#11965](https://github.com/OpenAgentsInc/openagents/issues/11965)):
+**On by default** ([#12030](https://github.com/OpenAgentsInc/openagents/issues/12030)): Foreman's definition asks for check-ins every 10 minutes and standing authority. When a computer has exactly one chat of a saved agent whose definition asks for this, and no chat is chosen yet, it picks that chat, turns both on, logs the grant, and says so in that chat. The agent's name doesn't matter, only its definition: a fork that keeps the setting gets the same, and an agent named Foreman without it doesn't. With two or more such chats, the computer picks none and the card asks you to choose. If check-ins are off for an agent that asks for them, every answer it gives starts with "Check-ins are off on this computer, so I only wake when you ask."
+
+In the desktop app, open **Settings → General → Foreman** on the computer that runs Foreman's chat ([#11965](https://github.com/OpenAgentsInc/openagents/issues/11965)) to change any of this:
 
 1. **Foreman's chat**: pick the chat you started with **Use agent**.
 2. **Check-ins**: choose how often (every 10 minutes by default, up to 4 hours) and turn them on. Every check-in posts a short status in Foreman's chat, even when nothing changed. The schedule is saved to your account and also appears at [openagents.com/settings/schedules](https://openagents.com/settings/schedules), where you can pause or delete it. The computer runs it, not a server.

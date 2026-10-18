@@ -147,6 +147,10 @@ pub struct ForemanStatus {
     pub next_check_in: Option<i64>,
     /// Something the owner should know, in plain words.
     pub problem: Option<String>,
+    /// Unix ms when this computer turned check-ins on for the chosen chat by
+    /// itself, because its agent's definition asks for them (#12030).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turned_on_at: Option<i64>,
     /// The latest entries, oldest first.
     pub decisions: Vec<DecisionEntry>,
 }

@@ -4,7 +4,9 @@
 //! app sends one, so the existing ledger runs it and a retry never doubles
 //! it. See `crate::foreman` for the state, log and coalescing.
 use super::*;
-use crate::foreman::{CLAIMS_QUERY, Foreman, GhIssue, Wake, claim_issues, tool_label};
+use crate::foreman::{
+    Adopt, CLAIMS_QUERY, Declaring, Foreman, GhIssue, Wake, claim_issues, tool_label,
+};
 use openagents_account::{
     Lease,
     openagents::schedules::{self, Schedule},
@@ -118,6 +120,7 @@ impl DocHost {
                 next_check_in: None,
                 problem: Some("Foreman isn't available on this computer.".into()),
                 decisions: Vec::new(),
+                turned_on_at: None,
             };
         };
         let state = foreman.state();
@@ -148,12 +151,13 @@ impl DocHost {
                     .find(|c| &c.id == id)
                     .map(|c| c.title.clone().unwrap_or_else(|| "Untitled".into()))
             }),
-            settings: state.settings,
+            settings: state.settings.clone(),
             candidates,
             authority: state.authority,
             next_check_in: foreman.next_scheduled(),
             problem: foreman.problem(),
             decisions: foreman.read(crate::foreman::STATUS_ENTRIES),
+            turned_on_at: state.turned_on_at,
         }
     }
 
@@ -246,6 +250,9 @@ impl DocHost {
         let Some(foreman) = self.foreman().cloned() else {
             return Ok(());
         };
+        if foreman.chat().is_none() {
+            self.foreman_adopt(&foreman, now_ms())?;
+        }
         let Some(chat) = foreman.chat() else {
             return Ok(());
         };
@@ -288,6 +295,47 @@ impl DocHost {
         self.foreman_wake(&chat, busy, now, |text| {
             self.request_from_chat_row(&chat, text)
         })?;
+        Ok(())
+    }
+
+    /// On by default (#12030): with no chat chosen, pick the one chat on this
+    /// computer whose agent declares check-ins, and tell that chat so.
+    fn foreman_adopt(&self, foreman: &Foreman, now: i64) -> Result<(), EngineError> {
+        let Some(workspace) = self.workspace() else {
+            return Ok(());
+        };
+        let chats = workspace.watch_chats().borrow().clone();
+        let declaring = declaring_chats(&chats, &self.inner.config.device_id);
+        match foreman.adopt(&declaring, now)? {
+            Adopt::Nothing => {}
+            Adopt::Choose(titles) => foreman.set_problem(Some(format!(
+                "{} saved agents on this computer ask to check in on their own: {}. Choose the one that does in Foreman's chat above.",
+                titles.len(),
+                titles.join(", ")
+            ))),
+            Adopt::Picked(pick) => {
+                foreman.set_problem(None);
+                let state = foreman.state();
+                let what = if state.authority.is_some() {
+                    "check-ins and standing authority"
+                } else {
+                    "check-ins"
+                };
+                let text = format!(
+                    "This computer turned on {what} for {}, because its definition asks for them: it checks in every {} minutes{}. Turn either off in Settings → General → Foreman.",
+                    pick.title,
+                    state.settings.every_minutes,
+                    if state.authority.is_some() {
+                        " and may message, start, steer and stop chats without asking"
+                    } else {
+                        ""
+                    }
+                );
+                if let Err(e) = self.runtime_note(&pick.chat_id, text) {
+                    tracing::warn!(error = %e, "foreman: couldn't tell the chosen chat");
+                }
+            }
+        }
         Ok(())
     }
 
@@ -471,6 +519,34 @@ impl DocHost {
     }
 }
 
+/// This computer's unarchived saved-agent chats whose agent's definition
+/// declares check-ins. Read from the chat config the host stamps from the
+/// definition, never from the chat's or agent's name.
+fn declaring_chats(chats: &[openagents_proto::Chat], device: &str) -> Vec<Declaring> {
+    chats
+        .iter()
+        .filter(|c| c.device_id == device && !c.archived)
+        .filter_map(|c| {
+            let declared = openagents_proto::saved_agent::declared(c.config.as_ref())?;
+            declared.check_ins.then(|| Declaring {
+                chat_id: c.id.clone(),
+                title: c
+                    .title
+                    .clone()
+                    .filter(|t| !t.trim().is_empty())
+                    .unwrap_or_else(|| "Untitled".into()),
+                agent: c
+                    .config
+                    .as_ref()
+                    .and_then(|k| k.model_options.get(openagents_proto::saved_agent::AGENT))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
+                declared,
+            })
+        })
+        .collect()
+}
+
 /// Ask the host's GitHub CLI what changed. A missing or signed-out `gh`
 /// leaves only chat and schedule wake-ups.
 async fn look_at_github(foreman: &Foreman) {
@@ -586,6 +662,57 @@ mod tests {
             background_tasks: 0,
             last_output_at: None,
         }
+    }
+
+    fn chat(
+        id: &str,
+        device: &str,
+        title: &str,
+        options: serde_json::Value,
+    ) -> openagents_proto::Chat {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "deviceId": device,
+            "title": title,
+            "archived": false,
+            "createdAt": "2026-10-17T00:00:00Z",
+            "config": {
+                "harness": "claude-code",
+                "modelOptions": options,
+                "sandbox": "danger-full-access"
+            }
+        }))
+        .unwrap()
+    }
+
+    /// #12030: only this computer's chats whose agent declares check-ins
+    /// count, whatever they're called.
+    #[test]
+    fn declaring_chats_come_from_the_definition_not_the_name() {
+        use openagents_proto::saved_agent::{AGENT, AGENT_NAME, ASSIGNMENT, AUTONOMY};
+        let declares = serde_json::json!({
+            ASSIGNMENT: "a1", AGENT_NAME: "Night shift", AGENT: "def-1",
+            AUTONOMY: {"checkIns": true, "everyMinutes": 10, "authority": true}
+        });
+        let mut archived = chat("c4", "mac", "Old", declares.clone());
+        archived.archived = true;
+        let chats = [
+            chat(
+                "c1",
+                "mac",
+                "Foreman",
+                serde_json::json!({ASSIGNMENT: "a0", AGENT_NAME: "Foreman"}),
+            ),
+            chat("c2", "mac", "Night shift", declares.clone()),
+            chat("c3", "other-mac", "Night shift", declares.clone()),
+            archived,
+            chat("c5", "mac", "Plain", serde_json::json!({})),
+        ];
+        let found = declaring_chats(&chats, "mac");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].chat_id, "c2");
+        assert_eq!(found[0].agent.as_deref(), Some("def-1"));
+        assert_eq!(found[0].declared.every_minutes, Some(10));
     }
 
     fn interrupts(host: &DocHost) -> usize {

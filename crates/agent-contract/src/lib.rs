@@ -24,6 +24,18 @@ pub struct AgentSpec {
 /// fields are ignored so later settings don't break older readers.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Autonomy {
+    /// Hosts turn timed check-ins on for this agent's chat without being
+    /// asked (#12030): when a computer has exactly one chat of an agent that
+    /// declares this and no chat is chosen yet, it picks that chat.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub check_ins: bool,
+    /// Minutes between check-ins when the host turns them on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub every_minutes: Option<u32>,
+    /// The agent asks for standing authority over other chats with its
+    /// check-ins. The host grants it, logged, and the owner can turn it off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub authority: bool,
     /// The longest one shell command may run, in seconds. The host hands it
     /// to the runtime (Claude Code's `BASH_DEFAULT_TIMEOUT_MS` and
     /// `BASH_MAX_TIMEOUT_MS`), so a probe with no timeout of its own can't
@@ -32,6 +44,9 @@ pub struct Autonomy {
     pub shell_timeout_secs: Option<u32>,
 }
 
+/// The allowed range of [`Autonomy::every_minutes`].
+pub const MIN_CHECK_IN_MINUTES: u32 = 5;
+pub const MAX_CHECK_IN_MINUTES: u32 = 24 * 60;
 /// The allowed range of [`Autonomy::shell_timeout_secs`].
 pub const MIN_SHELL_TIMEOUT_SECS: u32 = 10;
 pub const MAX_SHELL_TIMEOUT_SECS: u32 = 3600;
@@ -102,6 +117,12 @@ impl AgentSpec {
                 .is_some_and(|t| !(MIN_SHELL_TIMEOUT_SECS..=MAX_SHELL_TIMEOUT_SECS).contains(&t))
         {
             return Err("Choose a shell timeout between 10 seconds and an hour.");
+        }
+        if let Some(a) = &self.autonomy
+            && a.every_minutes
+                .is_some_and(|m| !(MIN_CHECK_IN_MINUTES..=MAX_CHECK_IN_MINUTES).contains(&m))
+        {
+            return Err("Choose check-ins between every 5 minutes and once a day.");
         }
         if self.fallbacks.len() > MAX_FALLBACKS {
             return Err("Choose fewer fallback runtimes.");
@@ -231,19 +252,39 @@ mod tests {
         assert!(serde_json::to_value(&s).unwrap().get("autonomy").is_none());
         let plain = s.clone();
         s.autonomy = Some(Autonomy {
+            check_ins: true,
+            every_minutes: Some(10),
+            authority: true,
             shell_timeout_secs: Some(120),
         });
         s.validate().unwrap();
         assert!(s.same_identity(&plain), "a setting, not identity");
         let json = serde_json::to_value(&s).unwrap();
         assert_eq!(json["autonomy"]["shell_timeout_secs"], 120);
+        assert_eq!(json["autonomy"]["check_ins"], true);
         assert_eq!(serde_json::from_value::<AgentSpec>(json).unwrap(), s);
         for bad in [0, 9, 3601] {
             s.autonomy = Some(Autonomy {
                 shell_timeout_secs: Some(bad),
+                ..Autonomy::default()
             });
             assert!(s.validate().is_err(), "{bad}");
         }
+        for bad in [4, 1441] {
+            s.autonomy = Some(Autonomy {
+                every_minutes: Some(bad),
+                ..Autonomy::default()
+            });
+            assert!(s.validate().is_err(), "{bad}");
+        }
+        // Unset flags stay off the wire, and unknown settings are ignored.
+        let shell_only = serde_json::json!({"shell_timeout_secs": 60, "later": 1});
+        let read: Autonomy = serde_json::from_value(shell_only).unwrap();
+        assert!(!read.check_ins && !read.authority);
+        assert_eq!(
+            serde_json::to_value(&read).unwrap(),
+            serde_json::json!({"shell_timeout_secs": 60})
+        );
     }
 
     #[test]

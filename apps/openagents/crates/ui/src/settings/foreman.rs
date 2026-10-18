@@ -222,12 +222,15 @@ impl Render for ForemanCard {
         let configured = status.settings.chat_id.is_some();
         let on = !status.settings.paused;
 
-        let chat_meta = if configured {
-            "Foreman checks in on its own and when the chats it manages need it."
-        } else if status.candidates.is_empty() {
-            "Start Foreman from Agent Lab and use it once, then choose its chat here."
-        } else {
-            "Choose the chat Foreman answers in."
+        let chat_meta = match (configured, status.turned_on_at) {
+            (true, Some(at)) => turned_on_line(at, status.authority.is_some()),
+            (true, None) => {
+                "Foreman checks in on its own and when the chats it manages need it.".into()
+            }
+            (false, _) if status.candidates.is_empty() => {
+                "Start Foreman from Agent Lab and use it once, then choose its chat here.".into()
+            }
+            (false, _) => "Choose the chat Foreman answers in.".to_string(),
         };
         let chat_row = widgets::card_row(&theme, true)
             .child(
@@ -375,6 +378,20 @@ impl Render for ForemanCard {
     }
 }
 
+/// Says this computer turned check-ins on by itself (#12030), and that
+/// either switch below turns them off.
+fn turned_on_line(at: i64, authority: bool) -> String {
+    format!(
+        "This computer turned on {} for this agent at {}, because its definition asks for them. Turn either off below.",
+        if authority {
+            "check-ins and standing authority"
+        } else {
+            "check-ins"
+        },
+        local_time(at)
+    )
+}
+
 fn every_label(minutes: u32) -> String {
     match minutes {
         m if m % 60 == 0 && m >= 120 => format!("{} hours", m / 60),
@@ -459,6 +476,10 @@ mod tests {
         ];
         for entry in &entries {
             let line = entry_line(entry);
+            assert!(oa_copy::violations(&line, &[]).is_empty(), "{line}");
+        }
+        for authority in [true, false] {
+            let line = turned_on_line(0, authority);
             assert!(oa_copy::violations(&line, &[]).is_empty(), "{line}");
         }
         assert_eq!(every_label(60), "1 hour");

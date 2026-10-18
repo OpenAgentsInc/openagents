@@ -5,7 +5,7 @@ use openagents_account::{
     Lease,
     openagents::agents::{Access, assignments::*},
 };
-use openagents_proto::saved_agent::AGENT_NAME;
+use openagents_proto::saved_agent::{AGENT, AGENT_NAME, AUTONOMY, Declared};
 use openagents_proto::{AgentEvent, DoneStatus, SandboxLevel};
 use std::sync::Arc;
 
@@ -178,7 +178,7 @@ impl DocHost {
             async move { runtime::check(&registry, &sign_ins, h, m.as_deref()).await }
         })
         .await?;
-        self.apply_runtime(&workspace, &chat, spec, &resolved)?;
+        self.apply_runtime(&workspace, &chat, &a.spec.agent, spec, &resolved)?;
         let harness = resolved.harness;
         if chat.config.as_ref().map(|c| c.harness) != Some(harness) {
             request.reasoning = None;
@@ -220,6 +220,11 @@ impl DocHost {
                 .ok_or_else(|| error("Choose a folder for this conversation."))?
         };
         bind_agent_request(&mut request, spec, harness, &id, chat_id)?;
+        let check_ins_on = self.foreman().is_some_and(|f| {
+            let s = f.state().settings;
+            s.chat_id.as_deref() == Some(chat_id) && !s.paused
+        });
+        note_check_ins_off(&mut request, spec, check_ins_on);
         Ok((harness, request))
     }
 
@@ -230,6 +235,7 @@ impl DocHost {
         &self,
         workspace: &crate::workspace_host::WorkspaceHost,
         chat: &openagents_proto::Chat,
+        agent: &str,
         spec: &openagents_account::openagents::agents::AgentSpec,
         resolved: &runtime::Resolved,
     ) -> Result<(), EngineError> {
@@ -244,9 +250,7 @@ impl DocHost {
         }
         config.harness = resolved.harness;
         config.model = resolved.model.clone();
-        config
-            .model_options
-            .insert(AGENT_NAME.into(), spec.name.clone().into());
+        stamp_agent(&mut config.model_options, agent, spec);
         if chat.config.as_ref() != Some(&config) {
             workspace.set_chat_config(&chat.id, &config)?;
         }
@@ -263,7 +267,7 @@ impl DocHost {
         Ok(())
     }
 
-    fn runtime_note(&self, chat_id: &str, text: String) -> Result<(), EngineError> {
+    pub(super) fn runtime_note(&self, chat_id: &str, text: String) -> Result<(), EngineError> {
         let handle = self.open(chat_id)?;
         let writer = handle.writer();
         writer.push_message(&openagents_doc::SessionMessageEntry {
@@ -419,14 +423,14 @@ impl DocHost {
         let sessions = self
             .sessions()
             .ok_or_else(|| error("This computer is not ready."))?;
-        // Chats from before #11966 learn their agent's name for display.
+        // Older chats learn their agent's name (#11966), definition and
+        // declared autonomy (#12030) once, before any turn; each turn then
+        // refreshes them from the agent's current settings.
         if let Some(mut config) = workspace.chat(&a.chat)?.and_then(|c| c.config).filter(|c| {
             c.model_options.get(ASSIGNMENT).and_then(|v| v.as_str()) == Some(a.id.as_str())
-                && !c.model_options.contains_key(AGENT_NAME)
+                && !c.model_options.contains_key(AGENT)
         }) {
-            config
-                .model_options
-                .insert(AGENT_NAME.into(), a.definition.spec.name.clone().into());
+            stamp_agent(&mut config.model_options, &a.spec.agent, &a.definition.spec);
             workspace.set_chat_config(&a.chat, &config)?;
         }
         let pending: Vec<_> = a
@@ -547,10 +551,12 @@ impl DocHost {
                 harness: resolved.harness,
                 model: resolved.model.clone(),
                 reasoning: None,
-                model_options: serde_json::Map::from_iter([
-                    (ASSIGNMENT.into(), a.id.clone().into()),
-                    (AGENT_NAME.into(), a.definition.spec.name.clone().into()),
-                ]),
+                model_options: {
+                    let mut options =
+                        serde_json::Map::from_iter([(ASSIGNMENT.into(), a.id.clone().into())]);
+                    stamp_agent(&mut options, &a.spec.agent, spec);
+                    options
+                },
                 sandbox: SandboxLevel::DangerFullAccess,
             };
             workspace.create_chat(
@@ -618,6 +624,53 @@ impl DocHost {
         Ok(())
     }
 }
+/// Record on a chat config which agent it runs: its name for display, its
+/// definition ID, and what the definition declares about running on its own,
+/// so the host can act for the agent without a network read or a name check.
+fn stamp_agent(
+    options: &mut serde_json::Map<String, serde_json::Value>,
+    agent: &str,
+    spec: &openagents_account::openagents::agents::AgentSpec,
+) {
+    options.insert(AGENT_NAME.into(), spec.name.clone().into());
+    options.insert(AGENT.into(), agent.into());
+    let declared = spec
+        .autonomy
+        .as_ref()
+        .map(|a| Declared {
+            check_ins: a.check_ins,
+            every_minutes: a.every_minutes,
+            authority: a.authority,
+        })
+        .filter(|d| *d != Declared::default());
+    match declared.and_then(|d| serde_json::to_value(d).ok()) {
+        Some(value) => options.insert(AUTONOMY.into(), value),
+        None => options.remove(AUTONOMY),
+    };
+}
+
+/// The line a declaring agent starts its answer with while check-ins are off.
+pub(crate) const CHECK_INS_OFF: &str =
+    "Check-ins are off on this computer, so I only wake when you ask.";
+
+/// "Not set up" is never silent (#12030): an agent that asks for check-ins
+/// hears, on every turn while they're off for its chat, to say so first.
+fn note_check_ins_off(
+    request: &mut openagents_proto::RunRequest,
+    spec: &openagents_account::openagents::agents::AgentSpec,
+    check_ins_on: bool,
+) {
+    if check_ins_on || !spec.autonomy.as_ref().is_some_and(|a| a.check_ins) {
+        return;
+    }
+    let note = format!(
+        "\n\nNote from this computer: check-ins are off here, so you only wake when someone asks. Start your answer with this line: \"{CHECK_INS_OFF}\""
+    );
+    if let Some(serde_json::Value::String(text)) = request.model_options.get_mut(INSTRUCTIONS) {
+        text.push_str(&note);
+    }
+}
+
 /// Bind the settings selected for this turn to the existing runner request.
 fn bind_agent_request(
     request: &mut openagents_proto::RunRequest,
@@ -959,6 +1012,7 @@ mod tests {
         );
         a.definition.spec.autonomy = Some(openagents_account::openagents::agents::Autonomy {
             shell_timeout_secs: Some(120),
+            ..Default::default()
         });
         bind_agent_request(
             &mut request,
@@ -971,6 +1025,65 @@ mod tests {
         assert_eq!(
             request.model_options[openagents_proto::saved_agent::SHELL_TIMEOUT_MS],
             120_000
+        );
+    }
+
+    #[test]
+    fn a_declaring_agent_says_check_ins_are_off_until_they_are_on() {
+        let (mut a, mut request) = fixture();
+        a.definition.spec.autonomy = Some(openagents_account::openagents::agents::Autonomy {
+            check_ins: true,
+            ..Default::default()
+        });
+        let bind = |a: &Assignment, request: &mut openagents_proto::RunRequest, on: bool| {
+            bind_agent_request(
+                request,
+                &a.definition.spec,
+                HarnessId::ClaudeCode,
+                &a.id,
+                &a.chat,
+            )
+            .unwrap();
+            note_check_ins_off(request, &a.definition.spec, on);
+            request.model_options[INSTRUCTIONS]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
+        let off = bind(&a, &mut request, false);
+        assert!(off.starts_with(&a.definition.spec.instructions));
+        assert!(off.contains(&format!(
+            "Start your answer with this line: \"{CHECK_INS_OFF}\""
+        )));
+        assert_eq!(bind(&a, &mut request, true), a.definition.spec.instructions);
+        // An agent that declares nothing hears nothing.
+        a.definition.spec.autonomy = None;
+        assert_eq!(bind(&a, &mut request, false), a.definition.spec.instructions);
+    }
+
+    #[test]
+    fn a_chat_config_carries_its_agents_definition_and_declaration() {
+        let (mut a, _) = fixture();
+        let mut options = serde_json::Map::new();
+        stamp_agent(&mut options, &a.spec.agent, &a.definition.spec);
+        assert_eq!(options[AGENT], a.spec.agent.as_str());
+        assert!(!options.contains_key(AUTONOMY), "nothing declared");
+        a.definition.spec.autonomy = Some(openagents_account::openagents::agents::Autonomy {
+            check_ins: true,
+            every_minutes: Some(10),
+            authority: true,
+            shell_timeout_secs: Some(120),
+        });
+        stamp_agent(&mut options, &a.spec.agent, &a.definition.spec);
+        assert_eq!(
+            options[AUTONOMY],
+            serde_json::json!({"checkIns": true, "everyMinutes": 10, "authority": true})
+        );
+        a.definition.spec.autonomy = None;
+        stamp_agent(&mut options, &a.spec.agent, &a.definition.spec);
+        assert!(
+            !options.contains_key(AUTONOMY),
+            "a removed declaration is dropped"
         );
     }
 

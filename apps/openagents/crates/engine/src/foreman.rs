@@ -16,6 +16,7 @@ use openagents_proto::foreman::{
     Authority, DecisionEntry, ForemanSettings, MAX_EVERY_MINUTES, MAX_STUCK_MINUTES,
     MIN_EVERY_MINUTES, MIN_STUCK_MINUTES, Scope, WakeReason,
 };
+use openagents_proto::saved_agent::Declared;
 use openagents_proto::{Session, SessionStatus, ToolCall};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -177,6 +178,13 @@ pub(crate) struct State {
     pub last_github: i64,
     /// The last turn the host stopped for being stuck.
     pub stuck: Option<Stuck>,
+    /// Chats this host picked by itself because their agent declares
+    /// check-ins; never picked again once the owner changes the choice.
+    adopted: BTreeSet<String>,
+    /// When this host picked the current chat by itself, and its agent's
+    /// definition ID. Cleared when the owner picks another chat.
+    pub turned_on_at: Option<i64>,
+    pub agent: Option<String>,
 }
 
 impl Default for State {
@@ -197,8 +205,32 @@ impl Default for State {
             stale: BTreeSet::new(),
             last_github: 0,
             stuck: None,
+            adopted: BTreeSet::new(),
+            turned_on_at: None,
+            agent: None,
         }
     }
+}
+
+/// A saved-agent chat on this host whose agent declares check-ins.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Declaring {
+    pub chat_id: String,
+    pub title: String,
+    /// The agent's definition ID.
+    pub agent: Option<String>,
+    pub declared: Declared,
+}
+
+/// What [`Foreman::adopt`] did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Adopt {
+    /// A chat is already chosen, or no agent here declares check-ins.
+    Nothing,
+    /// The one declaring chat now checks in.
+    Picked(Declaring),
+    /// Two or more declaring chats: the owner chooses. Their titles.
+    Choose(Vec<String>),
 }
 
 /// A check-in to start: the message id (a deterministic UUID, so a retry
@@ -333,6 +365,8 @@ impl Foreman {
                 || s.settings.every_minutes != settings.every_minutes
                 || s.settings.paused != settings.paused;
             if s.settings.chat_id != settings.chat_id {
+                s.turned_on_at = None;
+                s.agent = None;
                 s.managed.clear();
                 s.pending.clear();
                 s.open_wake = None;
@@ -365,6 +399,51 @@ impl Foreman {
             })?;
         }
         Ok(())
+    }
+
+    /// On by default (#12030): with no chat chosen yet, pick the one chat on
+    /// this host whose agent's definition declares check-ins, whatever its
+    /// name, and turn on check-ins and, when it asks, standing authority,
+    /// logged like a grant from the card. Two or more such chats pick none:
+    /// the owner chooses. A chat picked once is never picked again, so an
+    /// owner who changes the choice keeps it.
+    pub fn adopt(&self, declaring: &[Declaring], now: i64) -> Result<Adopt, EngineError> {
+        let s = self.state();
+        if s.settings.chat_id.is_some() {
+            return Ok(Adopt::Nothing);
+        }
+        let fresh: Vec<&Declaring> = declaring
+            .iter()
+            .filter(|d| d.declared.check_ins && !s.adopted.contains(&d.chat_id))
+            .collect();
+        let pick = match fresh.as_slice() {
+            [] => return Ok(Adopt::Nothing),
+            [one] => (*one).clone(),
+            many => {
+                return Ok(Adopt::Choose(
+                    many.iter().map(|d| d.title.clone()).collect(),
+                ));
+            }
+        };
+        self.set(
+            ForemanSettings {
+                chat_id: Some(pick.chat_id.clone()),
+                every_minutes: pick
+                    .declared
+                    .every_minutes
+                    .unwrap_or(s.settings.every_minutes),
+                paused: false,
+                authority: pick.declared.authority,
+                ..s.settings
+            },
+            now,
+        )?;
+        self.update(|st| {
+            st.adopted.insert(pick.chat_id.clone());
+            st.turned_on_at = Some(now);
+            st.agent = pick.agent.clone();
+        })?;
+        Ok(Adopt::Picked(pick))
     }
 
     /// Whether Foreman's chat may do `scope` to another chat. Turns the
@@ -773,7 +852,7 @@ pub(crate) fn prompt(
             clock(a.granted_at)
         )),
         None => text.push_str(
-            "You don't have standing authority right now: look and report, but don't message, start, steer or stop other chats.\n",
+            "You don't have standing authority right now, so you can only report: look and report, but don't message, start, steer or stop other chats.\n",
         ),
     }
     text.push_str(
@@ -1335,6 +1414,88 @@ mod tests {
             }),
             "`wait_for_turn`"
         );
+    }
+
+    fn declaring(chat: &str, title: &str, check_ins: bool) -> Declaring {
+        Declaring {
+            chat_id: chat.into(),
+            title: title.into(),
+            agent: Some(format!("def-{chat}")),
+            declared: Declared {
+                check_ins,
+                every_minutes: Some(10),
+                authority: true,
+            },
+        }
+    }
+
+    /// #12030: the chat whose agent declares check-ins is picked whatever
+    /// its name; one named "Foreman" without the declaration is not.
+    #[test]
+    fn the_declaring_agent_is_picked_whatever_its_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = Foreman::open(dir.path());
+        let chats = [
+            declaring("plain", "Foreman", false),
+            declaring("night", "Night shift", true),
+        ];
+        let Adopt::Picked(pick) = f.adopt(&chats, 5 * MIN).unwrap() else {
+            panic!("picked");
+        };
+        assert_eq!(pick.chat_id, "night");
+        let s = f.state();
+        assert_eq!(s.settings.chat_id.as_deref(), Some("night"));
+        assert_eq!(s.settings.every_minutes, 10);
+        assert!(!s.settings.paused);
+        assert_eq!(s.turned_on_at, Some(5 * MIN));
+        assert_eq!(s.agent.as_deref(), Some("def-night"));
+        assert!(f.admits(Scope::Steer, true).is_ok(), "authority is on");
+        assert_eq!(f.next_scheduled(), Some(15 * MIN), "first check-in in 10");
+        // The grant is logged like one from the card.
+        assert!(matches!(
+            &f.read(10)[..],
+            [DecisionEntry::Authority { granted: true, scopes, .. }] if *scopes == Scope::ALL
+        ));
+        let wake = f.due(false, 15 * MIN).unwrap().expect("first check-in");
+        assert!(wake.text.contains("standing authority (since"));
+        // The owner turns authority off: the next check-in can only report.
+        let mut off = f.state().settings;
+        off.authority = false;
+        f.set(off, 16 * MIN).unwrap();
+        let wake = f.due(false, 25 * MIN).unwrap().expect("next check-in");
+        assert!(wake.text.contains("so you can only report"));
+        // Choosing another chat clears the mark, and the old one is never
+        // picked again.
+        let mut none = f.state().settings;
+        none.chat_id = None;
+        f.set(none, 26 * MIN).unwrap();
+        assert_eq!(f.state().turned_on_at, None);
+        assert_eq!(f.adopt(&chats, 27 * MIN).unwrap(), Adopt::Nothing);
+        assert_eq!(f.state().settings.chat_id, None);
+        // A name alone never picks.
+        let dir = tempfile::tempdir().unwrap();
+        let f = Foreman::open(dir.path());
+        assert_eq!(
+            f.adopt(&[declaring("plain", "Foreman", false)], 0).unwrap(),
+            Adopt::Nothing
+        );
+    }
+
+    /// #12030: two declaring chats on one host pick none.
+    #[test]
+    fn two_declaring_chats_pick_none_and_ask() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = Foreman::open(dir.path());
+        let chats = [
+            declaring("a", "Foreman", true),
+            declaring("b", "Release Foreman", true),
+        ];
+        assert_eq!(
+            f.adopt(&chats, 0).unwrap(),
+            Adopt::Choose(vec!["Foreman".into(), "Release Foreman".into()])
+        );
+        assert_eq!(f.state().settings.chat_id, None);
+        assert!(f.read(10).is_empty(), "nothing granted");
     }
 
     #[test]
