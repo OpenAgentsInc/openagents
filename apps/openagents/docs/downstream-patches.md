@@ -727,3 +727,8 @@ links remain readable. Upstream fixes now require manual ports.
   The app owns client creation, foreground suppression, notification routing,
   and tap handling. Android channel setup and permission checks live in
   `platform/AndroidPushNotifications.kt`.
+- [OpenAgents #12082](https://github.com/OpenAgentsInc/openagents/issues/12082):
+  Android stores opaque encrypted values through Android Keystore and an
+  atomic private-file adapter. Rust owns the account, identity, wallet-seed,
+  and paired-grant records and decides when they may be created or replaced;
+  cloud backup and device transfer exclude the encrypted store.
