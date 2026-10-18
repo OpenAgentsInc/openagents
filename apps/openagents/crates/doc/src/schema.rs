@@ -514,6 +514,35 @@ impl SessionDoc {
         Ok(join_continuation_entries(entries))
     }
 
+    /// A window of message rows counted from the newest: skip `offset` rows
+    /// from the end, then take up to `limit` older ones, oldest first. Returns
+    /// the total row count and the window, reading only those rows from the
+    /// containers. Rows are doc rows, so a turn split by continuations counts
+    /// once per segment; the window's segments are joined as usual.
+    pub fn read_window(
+        &self,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(usize, Vec<SessionMessageEntry>), DocError> {
+        use loro::{Container, ValueOrContainer};
+        let messages = self.doc.get_list("messages");
+        let total = messages.len();
+        let end = total.saturating_sub(offset);
+        let start = end.saturating_sub(limit);
+        let mut entries = Vec::with_capacity(end - start);
+        for index in start..end {
+            let Some(ValueOrContainer::Container(Container::Map(map))) = messages.get(index) else {
+                continue;
+            };
+            let value = map.get_deep_value().to_json_value();
+            match entry_from_json(value) {
+                Ok(entry) => entries.push(entry),
+                Err(err) => tracing::warn!(error = %err, "skipping unsalvageable transcript entry"),
+            }
+        }
+        Ok((total, join_continuation_entries(entries)))
+    }
+
     /// Read the commands ledger.
     ///
     /// Same skip-not-fail policy as `read_entries`: any device can append
@@ -1494,6 +1523,36 @@ mod tests {
             doc.export_snapshot().unwrap(),
             "preview never mutates storage"
         );
+    }
+
+    #[test]
+    fn read_window_pages_from_the_newest_row() {
+        let doc = SessionDoc::init("window").unwrap();
+        for n in 0..10 {
+            doc.push_message(&SessionMessageEntry {
+                id: format!("m{n}"),
+                role: MessageRole::User,
+                parts: vec![MessagePart::Text {
+                    id: format!("t{n}"),
+                    text: "body".into(),
+                }],
+                created_at: n,
+                device_id: "device".into(),
+                status: None,
+                continuation_of: None,
+                duration_ms: None,
+            })
+            .unwrap();
+        }
+        let ids = |limit, offset| {
+            let (total, rows) = doc.read_window(limit, offset).unwrap();
+            assert_eq!(total, 10);
+            rows.into_iter().map(|e| e.id).collect::<Vec<_>>()
+        };
+        assert_eq!(ids(3, 0), ["m7", "m8", "m9"]);
+        assert_eq!(ids(3, 3), ["m4", "m5", "m6"]);
+        assert_eq!(ids(5, 8), ["m0", "m1"]);
+        assert!(ids(5, 20).is_empty());
     }
 
     #[test]
