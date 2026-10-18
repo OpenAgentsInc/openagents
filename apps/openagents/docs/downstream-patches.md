@@ -698,3 +698,15 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+- [OpenAgents #12092](https://github.com/OpenAgentsInc/openagents/issues/12092):
+  Read the retired Android Spark seed before the wallet's add-only creation path.
+  Rust validates and migrates the unchanged entropy into the current encrypted
+  store; Kotlin only reads the `spark-v1-key.bin` AES-GCM envelope from
+  `noBackupFilesDir` with the retired Keystore alias and AAD. The old file and
+  key are never changed. `AndroidWalletSurface` passes the Rust wallet snapshot
+  and typed actions to the shared Rust Native adapter. Synthetic Rust fixtures
+  cover absence, invalid and unreadable legacy data, locked and failed reads,
+  interrupted migration, retries, repeated reads, and a competing stored seed.
+  The Kotlin surface depends on the #12088 Rust Native adapter, and its UniFFI
+  interfaces depend on #12082; generated bindings and Android compilation are
+  pending capacity-gated validation.

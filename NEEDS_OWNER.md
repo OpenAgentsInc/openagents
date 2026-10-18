@@ -44,6 +44,23 @@ internal-testing handoff:
   verified links, push wakes, background/recreated sessions, voice routing
   and ongoing-call controls, and a tablet layout. Authorize any funded
   payment or real call separately. Remove test resources when finished.
+- For #12092, install the signed current app over the retired app without
+  uninstalling it or clearing its data. Open Wallet and confirm the existing
+  balance and activity appear. Lock the device during startup and confirm the
+  app offers a retry without creating another wallet. Do not make a funded
+  payment as part of this upgrade check.
+- For #12092, the source checkpoint has synthetic Rust fixtures for absent,
+  locked, failed, corrupt, and invalid seed storage; interrupted migration;
+  retries and repeated reads; and a competing current seed. These fixtures have
+  not run. After safe build capacity returns, run
+  `cd apps/openagents && cargo test -p openagents-mobile client_ffi::android_wallet_migration`,
+  then `apps/openagents/scripts/android/build-core.sh` to regenerate UniFFI
+  bindings and compile both Android targets. After the B1 Gradle shell and
+  #12088 Rust Native adapter are integrated, run the app's debug compile and
+  the signed in-place upgrade check above. The current main branch has no
+  Android Gradle project, so its compile task is not available in this source
+  checkpoint. No Cargo, UniFFI generation, Gradle, or device check ran because
+  free disk remained below the 100 GiB floor.
 
 Close implementation issues when their code is merged with focused checks
 passing. List remaining deploy/device/store evidence in the handoff and
