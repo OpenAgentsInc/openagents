@@ -36,6 +36,7 @@ pub enum AndroidHostRoute {
     Chat,
     Sessions,
     Settings,
+    Recovery,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -70,6 +71,7 @@ pub struct AndroidHostSnapshot {
     pub history: Option<Arc<CoreSavedHistory>>,
     pub account: Option<Arc<CoreAccount>>,
     pub anchor: Option<AndroidTranscriptAnchor>,
+    pub recovery: Option<Arc<CoreAndroidRecovery>>,
 }
 enum Content {
     Cloud(Arc<CoreCloudChat>),
@@ -128,10 +130,12 @@ impl State {
 #[derive(uniffi::Object)]
 pub struct CoreAndroidHost {
     account: Option<Arc<CoreAccount>>,
+    recovery: Option<Arc<CoreAndroidRecovery>>,
     config: CoreConfig,
     events: Arc<Events>,
     state: Mutex<State>,
     started: AtomicBool,
+    start_failed: AtomicBool,
 }
 impl CoreAndroidHost {
     fn refresh(&self, state: &mut State) -> CoreResult<()> {
@@ -164,7 +168,9 @@ impl CoreAndroidHost {
                 .content_revision
                 .checked_add(1)
                 .ok_or(CoreError::Closed)?;
-            state.route = AndroidHostRoute::Chat;
+            if state.route != AndroidHostRoute::Recovery {
+                state.route = AndroidHostRoute::Chat;
+            }
         }
         if matches!(snapshot.state, AccountState::SignedIn { .. }) && state.client.is_none() {
             let core = account.connect(self.config.clone(), self.events.clone())?;
@@ -236,9 +242,17 @@ impl CoreAndroidHost {
         let sessions = CoreAndroidSessions::new(account.clone(), events.clone());
         let cloud = sessions.default_chat()?;
         let composer = CoreAndroidComposer::cloud(cloud.clone(), Some(account.clone()));
+        let onboarding = CoreOnboarding::new(data_dir.clone());
+        let route = if onboarding.should_show() {
+            AndroidHostRoute::Recovery
+        } else {
+            AndroidHostRoute::Chat
+        };
+        let recovery = CoreAndroidRecovery::new(account.clone(), onboarding);
         composer.bind_listener(events.0.clone());
         Ok(Arc::new(Self {
             account: Some(account),
+            recovery: Some(recovery),
             config: CoreConfig {
                 edge_url: production_edge_url(),
                 data_dir,
@@ -253,7 +267,7 @@ impl CoreAndroidHost {
                 anchor: None,
                 generation,
                 content_revision: 1,
-                route: AndroidHostRoute::Chat,
+                route,
                 sessions: Some(sessions),
                 client: None,
                 history: None,
@@ -261,6 +275,7 @@ impl CoreAndroidHost {
                 composer: Some(composer),
             }),
             started: AtomicBool::new(false),
+            start_failed: AtomicBool::new(false),
         }))
     }
     #[uniffi::constructor]
@@ -271,6 +286,7 @@ impl CoreAndroidHost {
         composer.bind_listener(events.0.clone());
         Arc::new(Self {
             account: None,
+            recovery: None,
             config: CoreConfig {
                 edge_url: String::new(),
                 data_dir: String::new(),
@@ -293,13 +309,18 @@ impl CoreAndroidHost {
                 composer: Some(composer),
             }),
             started: AtomicBool::new(false),
+            start_failed: AtomicBool::new(false),
         })
     }
     /// Called by the Application once. Activity recreation never starts another identity flow.
     pub fn start(&self) {
         if !self.started.swap(true, Ordering::AcqRel) {
-            if let Some(account) = &self.account {
-                account.start_identity(self.config.device_name.clone());
+            if let Some(recovery) = &self.recovery {
+                // Recovery owns the once-only identity-first start and existing seed policy.
+                if recovery.start(self.config.device_name.clone()).is_err() {
+                    self.start_failed.store(true, Ordering::Release);
+                    self.events.0.on_android_host_changed();
+                }
             }
         }
     }
@@ -316,7 +337,12 @@ impl CoreAndroidHost {
             Some(AccountState::Starting | AccountState::Restoring) => Some("Signing in…".into()),
             Some(AccountState::Waiting { .. }) => Some("Finish signing in to continue.".into()),
             _ => None,
-        };
+        }
+        .or_else(|| {
+            self.start_failed
+                .load(Ordering::Acquire)
+                .then(|| "Couldn't start the app. Reopen it to try again.".into())
+        });
         Ok(AndroidHostSnapshot {
             generation: s.generation,
             route: s.route,
@@ -340,6 +366,7 @@ impl CoreAndroidHost {
             history: s.history.clone(),
             account: self.account.clone(),
             anchor: s.anchor.clone(),
+            recovery: self.recovery.clone(),
         })
     }
     pub fn save_transcript_anchor(
@@ -472,6 +499,25 @@ impl CoreAndroidHost {
         }
         s.route = AndroidHostRoute::Chat;
         drop(s);
+        self.events.0.on_android_host_changed();
+        Ok(())
+    }
+    /// Preserve the exact cloud object returned by this account's session action.
+    pub fn select_cloud_chat(&self, chat: Arc<CoreCloudChat>) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        state.begin_navigation()?;
+        let owned = state
+            .sessions
+            .as_ref()
+            .ok_or(CoreError::Closed)?
+            .default_chat()?;
+        if !Arc::ptr_eq(&chat, &owned) {
+            return Err(CoreError::Closed);
+        }
+        let composer = CoreAndroidComposer::cloud(chat.clone(), self.account.clone());
+        self.replace(&mut state, Content::Cloud(chat), Some(composer))?;
+        drop(state);
         self.events.0.on_android_host_changed();
         Ok(())
     }

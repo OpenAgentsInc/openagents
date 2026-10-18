@@ -62,6 +62,8 @@ android {
     sourceSets["main"].assets.srcDir("../../ios/OpenAgents/Fonts")
     sourceSets["main"].java.srcDir("../transcript/src/main/java")
     sourceSets["main"].java.srcDir("../sessions")
+    sourceSets["main"].java.srcDir("../onboarding")
+    sourceSets["androidTest"].java.srcDir("../onboarding/tests")
     sourceSets["main"].java.srcDir("../drawer/src/main/java")
     sourceSets["test"].java.srcDir("../drawer/src/test/java")
     sourceSets["main"].java.srcDir("../settings/src/main/java")
@@ -89,7 +91,8 @@ android {
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     if (name == "compileDebugKotlin" || name == "compileReleaseKotlin") {
         exclude { element ->
-            element.file.toPath().startsWith(file("../platform/tests").toPath())
+            element.file.toPath().startsWith(file("../platform/tests").toPath()) ||
+                element.file.toPath().startsWith(file("../onboarding/tests").toPath())
         }
     }
 }

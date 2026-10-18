@@ -17,7 +17,7 @@ interface RecoveryPort : AutoCloseable {
     fun authenticated(token: ULong, accepted: Boolean): RecoveryFrame
     fun redact()
 }
-class CoreRecoveryPort(private val core: CoreAndroidRecovery) : RecoveryPort {
+class CoreRecoveryPort(private val core: CoreAndroidRecovery, private val ownsCore: Boolean = true) : RecoveryPort {
     override fun start(device: String) = core.start(device)
     override fun render() = core.render()
     override fun acknowledge(instance: String, revision: Long) = core.acknowledge(instance, revision.toULong())
@@ -25,7 +25,7 @@ class CoreRecoveryPort(private val core: CoreAndroidRecovery) : RecoveryPort {
     override fun change(instance: String, revision: Long, key: String, value: String) = core.change(instance, revision.toULong(), key, value)
     override fun authenticated(token: ULong, accepted: Boolean) = core.authenticated(token, accepted)
     override fun redact() = core.redact()
-    override fun close() { core.close(); core.destroy() }
+    override fun close() { if (ownsCore) { core.close(); core.destroy() } else core.redact() }
 }
 
 /** A screen, not an Activity. Supply one bounded serial worker owned by the Android shell. */
