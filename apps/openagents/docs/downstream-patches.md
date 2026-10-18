@@ -7,6 +7,15 @@ Keep fork-specific changes here so upstream updates can review each integration.
   long prompt previews before attachment parsing, and builds reply previews
   and row lookups in linear time. Attachment headers match without copying
   and lowercasing entire messages.
+- OpenAgents #12084: add an isolated Kotlin Views transcript renderer over
+  Rust row placements and display lists, with shared fallback shaping,
+  bounded row caches, and stable viewport anchors. Recorded synthetic Rust
+  geometry backs nine passing JVM tests. Debug Kotlin, unit-test Kotlin, and
+  transcript Android-test Kotlin compile against B1's actual Android binding;
+  Android glyph checks and emulator performance evidence remain queued.
+  Resume on verified B1 Android checkpoint `69fa3b1b50`: port transcript source
+  roots, exact Geist assets, and existing instrumentation-test wiring without
+  changing generated bindings or scanner/configuration fixes.
 
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
   UniFFI callback on the existing key sign-in controller. Rust binds its
@@ -15,6 +24,49 @@ Keep fork-specific changes here so upstream updates can review each integration.
   B1 integration; it is not registered by an Android shell yet. The shared
   sign-in flow reserves event and challenge before making an account, so
   concurrent replays create no account as a side effect.
+
+- OpenAgents #12083: the Android Views shell in `apps/android` uses the shared
+  Rust mobile core, brand and version metadata, and both Android ABIs. The
+  offline demo uses Rust's chat fixture with the bundled Geist fonts and
+  `oa-tokens` colors; local commands live in `scripts/android/app.sh`. The app
+  wires the shared push coordinator through its signed-in client provider and
+  selects the Firebase or no-push source set from local Firebase configuration.
+  Backup rules exclude encrypted account storage from cloud backup and device
+  transfer. The app owns one encrypted storage adapter and exposes it to the
+  Rust account and wallet integration. The `ComponentActivity` owns typed photo,
+  document, camera, and permission results; QR scanning forwards bounded raw
+  text through a Rust classifier callback. `scripts/android/build-core.sh`
+  builds both Android ABIs, then generates Kotlin from the arm64 Android ELF
+  metadata. UniFFI 0.32.2 reads metadata from the library file without loading
+  it. `crates/mobile/uniffi.toml` gives Kotlin-only names to the exported
+  `close` methods and error `message` fields that conflict with Kotlin's
+  `AutoCloseable` and `Throwable` APIs; Rust and Swift names stay unchanged.
+  The Android-generated binding includes the secure-storage, wallet-store,
+  and push-wake APIs. `CoreAndroidSessions` is not in this Rust source set yet,
+  so its binding remains pending D3 integration.
+  The offline API 35 emulator cold-started the debug Activity successfully:
+  `am start -W -n com.openagents.app.debug/com.openagents.app.MainActivity`
+  returned `Status: ok` and `LaunchState: COLD`; the window showed “OpenAgents”
+  and “A private demo, ready to explore.” The direct AndroidJUnitRunner passed
+  all 11 tests (2 SemanticViewAdapter and 9 scanner tests), including denial,
+  cancellation, retry, ZXing frame, and callback-fencing fixtures. The
+  permission-denial fixture checks `NOT_SCANNING` before denial, then
+  `STALE_SESSION` and no classifier call after denial. Debug and AndroidTest
+  APK certificates match. The connected Gradle task could not resolve its
+  uncached offline UTP host artifact, but direct instrumentation ran the same
+  test APK successfully. Activity recreation, live camera permission flow,
+  and API 26 launch remain unverified. Evidence is in the isolated scratch
+  directory `android-runtime-12083/evidence`.
+
+- OpenAgents #12081: Android startup initializes the JVM context and platform
+  certificate verifier before any live Rust client can start. Kotlin retries
+  after failed setup, ignores repeated successful callbacks, and rejects calls
+  that arrive before initialization.
+
+- OpenAgents #12081: Android startup initializes the JVM context and platform
+  certificate verifier before any live Rust client can start. Kotlin retries
+  after failed setup, ignores repeated successful callbacks, and rejects calls
+  that arrive before initialization.
 
 - [OpenAgents #12075](https://github.com/OpenAgentsInc/openagents/issues/12075):
   Queued messages publish their ID after attachments and delivery settings, so
@@ -783,3 +835,15 @@ links remain readable. Upstream fixes now require manual ports.
   row version. The SDK and server changes land together. Indexed transcript reads
   keep shared-project authorization; no legacy-ID join or second room path is
   added. New source fixtures and binding/integration checks remain unrun.
+  The Rust mobile FFI bounds all URLs before trying a route parser. It routes
+  computer links to the existing pairing flow and website sign-in links to
+  review before approval. Invitation links go to the active account's preview
+  and explicit acceptance methods; Rust keeps the invitation code out of the
+  dispatcher record. `CoreAccount::project_invitation_share` returns a typed
+  chooser title and text after the same URL validation; the full link appears
+  only in the text field. Account linking checks that the client belongs to
+  the current account generation. Invitation requests use the active session
+  bearer, and the server checks recipient authorization, expiry, and replay.
+  Fake-server fixtures cover invitation success, expiry, wrong-account
+  refusal, and replay refusal. Focused Rust tests remain pending coordinator
+  build admission.

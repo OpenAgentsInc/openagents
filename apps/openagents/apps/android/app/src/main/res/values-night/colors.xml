@@ -1,0 +1,8 @@
+<resources>
+    <color name="oa_background">#0A0A0A</color>
+    <color name="oa_surface">#101010</color>
+    <color name="oa_text">#EDEDED</color>
+    <color name="oa_secondary">#818181</color>
+    <color name="oa_accent">#EDEDED</color>
+    <color name="oa_hairline">#2C2C2C</color>
+</resources>

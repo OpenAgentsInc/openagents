@@ -1,0 +1,13 @@
+[bindings.kotlin.rename]
+"CoreOwnComputerOffer.close" = "dismiss"
+"TranscriptView.close" = "shutdown"
+"CoreError.NotFound.message" = "detail"
+"CoreError.InvalidArgument.message" = "detail"
+"CoreError.HostUnavailable.message" = "detail"
+"CoreError.Unsupported.message" = "detail"
+"CoreError.HostError.message" = "detail"
+"CoreError.Network.message" = "detail"
+"CoreError.Auth.message" = "detail"
+"CoreError.Storage.message" = "detail"
+"CoreError.NotImplemented.message" = "detail"
+"CoreError.Internal.message" = "detail"

@@ -1,0 +1,9 @@
+{
+  "project": {
+    "id": "prj_fixture_01",
+    "name": "Synthetic project"
+  },
+  "role": "editor",
+  "expires_at": "2030-01-01T00:00:00Z",
+  "member": false
+}

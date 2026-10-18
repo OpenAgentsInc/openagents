@@ -21,6 +21,10 @@ mod owner_notifications;
 pub use owner_notifications::*;
 mod account_delete;
 pub use account_delete::*;
+mod app_links;
+pub use app_links::*;
+mod project_invitation;
+pub use project_invitation::ProjectInvitationShare;
 mod agent_lab;
 mod chat_homes;
 mod cloud_chat;
@@ -144,6 +148,7 @@ impl CoreClient {
         credentials: Credentials,
         listener: Arc<dyn ClientListener>,
     ) -> CoreResult<Arc<Self>> {
+        crate::android_bootstrap::ensure_initialized()?;
         let client = zc::Client::new(
             config.into(),
             credentials.into(),

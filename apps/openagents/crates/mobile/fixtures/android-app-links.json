@@ -1,0 +1,22 @@
+{
+  "now": 100,
+  "cases": [
+    {
+      "url": "https://openagents.com/connect#AXm-Zn753LusVaBilc6HCwcCm_zbLc4o2VnygVsW-BeY11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURoiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIjMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzAAAAAAAAAAEAAAAAAAABLQAAAA",
+      "kind": "connect",
+      "code": "openagents-connect:AXm-Zn753LusVaBilc6HCwcCm_zbLc4o2VnygVsW-BeY11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURoiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIjMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzAAAAAAAAAAEAAAAAAAABLQAAAA"
+    },
+    {
+      "url": "https://openagents.com/projects/join/prjinv_fixture-token_01",
+      "kind": "project_invitation",
+      "code": "prjinv_fixture-token_01"
+    },
+    { "url": "http://openagents.com/projects/join/prjinv_fixture-token_01" },
+    { "url": "https://openagents.com.evil/projects/join/prjinv_fixture-token_01" },
+    { "url": "https://openagents.com:443/projects/join/prjinv_fixture-token_01" },
+    { "url": "https://openagents.com/projects/join/prjinv_fixture-token_01/extra" },
+    { "url": "https://openagents.com/projects/join/prjinv_fixture-token_01?next=https://evil.invalid" },
+    { "url": "https://openagents.com/connect#not-a-connect-payload" },
+    { "url": "https://openagents.com/projects/join/not-an-invitation" }
+  ]
+}
