@@ -1649,7 +1649,12 @@ mod tests {
                 .env("HOME", home.path())
                 .env(
                     "PATH",
-                    format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+                    format!(
+                        "{}:{}",
+                        bin.display(),
+                        std::env::var("PATH")
+                            .unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into())
+                    ),
                 )
                 .output()
                 .unwrap();
