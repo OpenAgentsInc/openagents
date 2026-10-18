@@ -33,6 +33,8 @@ use serde_json::{Value, json};
 use crate::out::{Output, table};
 use crate::{Args, EXIT_FAILURE, runtime};
 
+#[path = "chat_archil.rs"]
+mod archil;
 #[path = "chat_boat.rs"]
 mod boat;
 #[path = "chat_coder.rs"]
@@ -127,7 +129,7 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         build's command tree declares it; one that changes something here
         waits for this; one that moves money or shows a secret never runs
         from the chat.
-  work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|briefed:codex|briefed:opencode|briefed:gemini|bare] [--agent ID]
+  work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce|archil] [--engine briefed|briefed:codex|briefed:opencode|briefed:gemini|bare] [--agent ID]
         Work several issues: NUMBERS such as 10050,10051, or a LABEL's open
         issues. By default the briefed agent works each one (--engine
         briefed): a briefing of the files the issue needs, the agent with
@@ -186,6 +188,14 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         that reaches the per-run cap is stopped. --agent ID (or
         OPENAGENTS_AGENT_ID) names the agent definition this runs for; an
         agent grows the pool only under its own grant; docs/cloud/gce-pool.md.
+        --on archil runs each issue in an Archil sandbox of its own, forked
+        from a warm template (--parallel up to 16; briefed engines only:
+        on Claude by default, on Codex with --engine-fallback's OpenAI API
+        key, with Claude Code as the fallback on the operator's Claude Code
+        token). The sandbox pushes a land/archil-* branch, and
+        this computer submits it to the landing queue (or opens the pull
+        request with --land pr), then deletes the sandbox. The cloud
+        budget's caps hold at Archil's list price; docs/cloud/archil.md.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
