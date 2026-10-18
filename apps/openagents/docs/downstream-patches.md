@@ -821,4 +821,15 @@ links remain readable. Upstream fixes now require manual ports.
   `TranscriptVirtualActionDelegate` to the existing selection host so Q1 can
   forward Rust paging actions without adding another accessibility provider.
   Its new synthetic instrumentation fixture is authored but unrun; the earlier
-  results apply to the source at `199177cc72` only.
+  results apply to the source at `199177cc72` only. This source checkpoint
+  adds a Rust monotonic reveal-age sample to each streaming row display, and a
+  Kotlin alpha helper that combines that Rust age with local elapsed time
+  without comparing clock origins. Unchanged row cores preserve their reveal
+  origin through width changes; changed streaming text starts a new row reveal.
+  A thin image loader reads transcript attachments and Lab card images through
+  `CoreSavedHistory.attachmentBytes`, `labCard`, and `labMedia`, then presents
+  bounded image bytes in a zoomable, dismissible Android view. The source
+  fixtures are authored but unrun. The new `RowDisplay.revealAgeMs` field still
+  needs real UniFFI regeneration; generated Kotlin was not edited. No new C2
+  Rust, Kotlin, Android-test, or runtime checks have run, and the earlier
+  results still apply to `199177cc72` only.
