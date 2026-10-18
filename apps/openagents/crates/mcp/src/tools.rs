@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use openagents_doc::SessionCommandPayload;
 use openagents_proto::{
     Chat, ChatConfig, HarnessId, ReasoningLevel, RunRequest, SandboxLevel, Session, SessionStatus,
-    Space, UserInputAnswer,
+    SidebarPinChange, SidebarPreferencesState, Space, UserInputAnswer,
 };
 
 use crate::inbox::Inbox;
@@ -179,7 +179,7 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "list_chats",
-            description: "Chats with their project, host device, harness/model, harness session id (the id issue claims name), live status, and last activity. Newest activity first.",
+            description: "Chats with their project, host device, harness/model, harness session id (the id issue claims name), pinned and archived states, live status, and last activity. Newest activity first. Pinned is null while sidebar pins are loading.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -192,7 +192,7 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "get_chat",
-            description: "One chat's metadata, live status, and any question its agent is currently blocked on.",
+            description: "One chat's metadata, pinned state, live status, and any question its agent is currently blocked on. Pinned is null while sidebar pins are loading.",
             input_schema: chat_key_schema(json!({})),
         },
         ToolDef {
@@ -290,9 +290,16 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "archive_chat",
-            description: "Archive a chat (hide it from the active sidebar list); pass archived=false to restore. Use it to tidy up chats you created.",
+            description: "Archive or restore any chat, for example when the owner asks. Archiving hides it from the active sidebar list; pass archived=false to restore.",
             input_schema: chat_key_schema(json!({
                 "archived": { "type": "boolean", "default": true }
+            })),
+        },
+        ToolDef {
+            name: "pin_chat",
+            description: "Pin or unpin any chat in the sidebar, for example when the owner asks. Pass pinned=false to unpin it. New pins go at the end; pinning an already pinned chat keeps its position.",
+            input_schema: chat_key_schema(json!({
+                "pinned": { "type": "boolean", "default": true }
             })),
         },
         ToolDef {
@@ -743,6 +750,12 @@ struct ArchiveArgs {
 }
 
 #[derive(Deserialize)]
+struct PinArgs {
+    chat: String,
+    pinned: Option<bool>,
+}
+
+#[derive(Deserialize)]
 struct PlanMoveArgs {
     #[serde(default)]
     chats: Vec<String>,
@@ -835,7 +848,12 @@ fn status_of(session: Option<&Session>) -> (String, Option<i64>) {
     (label.into(), Some(age.num_seconds().max(0)))
 }
 
-fn summarize_chat(chat: &Chat, spaces: &[Space], sessions: &[Session]) -> Value {
+fn summarize_chat(
+    chat: &Chat,
+    spaces: &[Space],
+    sessions: &[Session],
+    sidebar: &SidebarPreferencesState,
+) -> Value {
     let space = chat
         .space_id
         .as_deref()
@@ -857,6 +875,7 @@ fn summarize_chat(chat: &Chat, spaces: &[Space], sessions: &[Session]) -> Value 
         "model": chat.config.as_ref().and_then(|c| c.model.clone()),
         "reasoning": chat.config.as_ref().and_then(|c| c.reasoning),
         "archived": chat.archived,
+        "pinned": sidebar.can_edit().then(|| sidebar.pinned_session_ids.contains(&chat.id)),
         // The harness's own session id (Claude Code session, Codex thread):
         // the id an issue claim marker names (`session=claude-code:ID`).
         // An empty id is the engine's "do not resume" tombstone, not a session.
@@ -929,6 +948,11 @@ impl Tools {
     /// `Ok` is the tool's structured result; `Err` is a message the model
     /// should read (surfaced as `isError`, never as a protocol error).
     pub async fn call(&self, name: &str, args: Value) -> Result<Value, String> {
+        // Keep callers' futures small as tools add more concurrent reads.
+        Box::pin(self.dispatch(name, args)).await
+    }
+
+    async fn dispatch(&self, name: &str, args: Value) -> Result<Value, String> {
         if self.voice_relay() && !Self::voice_tool(name) {
             return Err("Voice can only ask your chosen agent and wait for its answer.".into());
         }
@@ -961,6 +985,7 @@ impl Tools {
             "interrupt_chat" => self.interrupt_chat(parse(args)?).await,
             "respond_to_input" => self.respond_to_input(parse(args)?).await,
             "archive_chat" => self.archive_chat(parse(args)?).await,
+            "pin_chat" => self.pin_chat(parse(args)?).await,
             "plan_move" => self.plan_move(parse(args)?).await,
             "start_move" => self.start_move(parse(args)?).await,
             "move_status" => self.move_status(parse(args)?).await,
@@ -1051,9 +1076,12 @@ impl Tools {
         let chat = match origin.chat_id.as_deref() {
             Some(id) => match self.openagents.resolve_chat(id).await {
                 Ok(chat) => {
-                    let (spaces, sessions) =
-                        tokio::try_join!(self.openagents.spaces(), self.openagents.sessions())?;
-                    summarize_chat(&chat, &spaces, &sessions)
+                    let (spaces, sessions, sidebar) = tokio::try_join!(
+                        self.openagents.spaces(),
+                        self.openagents.sessions(),
+                        self.openagents.sidebar_preferences()
+                    )?;
+                    summarize_chat(&chat, &spaces, &sessions, &sidebar)
                 }
                 Err(_) => json!({ "id": id }),
             },
@@ -1144,10 +1172,11 @@ impl Tools {
     }
 
     async fn list_chats(&self, args: ListChatsArgs) -> anyhow::Result<Value> {
-        let (mut chats, spaces, sessions) = tokio::try_join!(
+        let (mut chats, spaces, sessions, sidebar) = tokio::try_join!(
             self.openagents.chats(),
             self.openagents.spaces(),
-            self.openagents.sessions()
+            self.openagents.sessions(),
+            self.openagents.sidebar_preferences()
         )?;
         if let Some(project) = args.project.as_deref() {
             let (space, _) = self
@@ -1174,20 +1203,22 @@ impl Tools {
         Ok(json!({
             "total": total,
             "chats": chats.iter().take(limit)
-                .map(|c| summarize_chat(c, &spaces, &sessions))
+                .map(|c| summarize_chat(c, &spaces, &sessions, &sidebar))
                 .collect::<Vec<_>>()
         }))
     }
 
     async fn get_chat(&self, args: ChatArgs) -> anyhow::Result<Value> {
         let chat = self.openagents.resolve_chat(&args.chat).await?;
-        let (spaces, sessions, entries) = tokio::try_join!(
+        let (spaces, sessions, entries, sidebar) = tokio::try_join!(
             self.openagents.spaces(),
             self.openagents.sessions(),
-            self.openagents.transcript_on(&chat.id, Some(&chat.device_id))
+            self.openagents
+                .transcript_on(&chat.id, Some(&chat.device_id)),
+            self.openagents.sidebar_preferences()
         )?;
         let rendered = render_entries(&entries, RenderOptions::default());
-        let mut summary = summarize_chat(&chat, &spaces, &sessions);
+        let mut summary = summarize_chat(&chat, &spaces, &sessions, &sidebar);
         summary["messageCount"] = json!(rendered.len());
         summary["pendingInput"] = last_pending_input(&rendered).unwrap_or(Value::Null);
         summary["lastMessage"] = rendered.last().map(|m| json!(m)).unwrap_or(Value::Null);
@@ -1599,6 +1630,33 @@ impl Tools {
             .mutate(json!({ "op": "setChatArchived", "chatId": chat.id, "archived": archived }))
             .await?;
         Ok(json!({ "chatId": chat.id, "title": chat.title, "archived": archived }))
+    }
+
+    async fn pin_chat(&self, args: PinArgs) -> anyhow::Result<Value> {
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
+        let pinned = args.pinned.unwrap_or(true);
+        let sidebar = self.openagents.sidebar_preferences().await?;
+        anyhow::ensure!(
+            sidebar.can_edit(),
+            "Sidebar pins are still loading. Try again."
+        );
+        if sidebar.pinned_session_ids.contains(&chat.id) != pinned {
+            let change = if pinned {
+                SidebarPinChange::Pin {
+                    session_id: chat.id.clone(),
+                    after: None,
+                    before: None,
+                }
+            } else {
+                SidebarPinChange::Unpin {
+                    session_id: chat.id.clone(),
+                }
+            };
+            self.openagents
+                .mutate(json!({ "op": "changeSidebarPin", "change": change }))
+                .await?;
+        }
+        Ok(json!({ "chatId": chat.id, "title": chat.title, "pinned": pinned }))
     }
 
     async fn plan_move(&self, args: PlanMoveArgs) -> anyhow::Result<Value> {
@@ -2100,6 +2158,9 @@ mod tests {
     #[derive(Default)]
     struct World {
         writes: Mutex<Vec<(String, Value)>>,
+        pins: Mutex<Vec<String>>,
+        pins_unknown: bool,
+        pin_error: Option<&'static str>,
         voice_target: Mutex<Value>,
         sessions: Vec<Session>,
         dispatch_barrier: Option<tokio::sync::Barrier>,
@@ -2208,6 +2269,11 @@ mod tests {
                     stream(chats)
                 }
                 methods::WATCH_SESSIONS => stream(json!(self.sessions)),
+                methods::WATCH_SIDEBAR_PREFERENCES => stream(json!({
+                    "initialized": !self.pins_unknown,
+                    "synced": false,
+                    "pinnedSessionIds": *self.pins.lock().unwrap(),
+                })),
                 methods::LIST_HARNESSES if remote => RpcReply::Value(json!([
                     {"id":"codex", "name":"Remote Codex", "installed":true},
                     {"id":"cursor", "name":"Disabled Cursor", "installed":true, "enabled":false}
@@ -2281,6 +2347,16 @@ mod tests {
                         .unwrap()
                         .push((method.to_owned(), params));
                     RpcReply::Value(json!({ "recorded": true }))
+                }
+                methods::MUTATE if params["op"] == "changeSidebarPin" => {
+                    let change: SidebarPinChange = serde_json::from_value(params["change"].clone())
+                        .map_err(|error| RpcError::BadParams(error.to_string()))?;
+                    self.writes.lock().unwrap().push((method.into(), params));
+                    if let Some(error) = self.pin_error {
+                        return Err(RpcError::Failed(error.into()));
+                    }
+                    change.project(&mut self.pins.lock().unwrap());
+                    RpcReply::Value(json!({ "ok": true }))
                 }
                 methods::MUTATE | methods::QUEUE_COMMAND | methods::QUEUE_MESSAGE => {
                     self.writes
@@ -2685,6 +2761,8 @@ mod tests {
         assert_eq!(listed["total"], 2);
         // Newest activity first: Beta was created later.
         assert_eq!(listed["chats"][0]["title"], "Beta");
+        assert_eq!(listed["chats"][0]["pinned"], false);
+        assert_eq!(listed["chats"][0]["archived"], false);
         assert_eq!(listed["chats"][1]["project"]["name"], "comet");
         assert_eq!(listed["chats"][1]["status"], "idle");
         // Claim markers name this id, so an agent can map a claimed issue to its chat.
@@ -2708,6 +2786,156 @@ mod tests {
         assert_eq!(read["returned"], 1);
         assert_eq!(read["olderRemaining"], 1);
         assert_eq!(read["messages"][0]["id"], "a1");
+    }
+
+    #[tokio::test]
+    async fn pin_chat_preserves_order_and_reports_pin_and_archive_states() {
+        let original = vec![
+            "pin-before".to_owned(),
+            "chat-alpha-1".to_owned(),
+            "archived-chat".to_owned(),
+        ];
+        let world = Arc::new(World {
+            pins: Mutex::new(original.clone()),
+            extra_chats: vec![json!({
+                "id": "archived-chat", "title": "Archived", "deviceId": "dev-local",
+                "archived": true, "createdAt": "2026-08-01T00:00:00Z"
+            })],
+            ..Default::default()
+        });
+        let tools = tools(world.clone(), Origin::default());
+        let def = tools
+            .list()
+            .into_iter()
+            .find(|def| def.name == "pin_chat")
+            .unwrap();
+        assert_eq!(def.input_schema["properties"]["pinned"]["default"], true);
+        assert_eq!(def.input_schema["required"], json!(["chat"]));
+
+        // Repeating a pin must not move it behind the other existing pins.
+        let pinned = tools
+            .call("pin_chat", json!({ "chat": "Alpha" }))
+            .await
+            .unwrap();
+        assert_eq!(pinned["chatId"], "chat-alpha-1");
+        assert_eq!(pinned["pinned"], true);
+        assert!(world.writes.lock().unwrap().is_empty());
+        assert_eq!(*world.pins.lock().unwrap(), original);
+
+        let pinned = tools
+            .call("pin_chat", json!({ "chat": "chat-beta" }))
+            .await
+            .unwrap();
+        assert_eq!(pinned["chatId"], "chat-beta-2");
+        assert_eq!(pinned["pinned"], true);
+        let mut appended = original.clone();
+        appended.push("chat-beta-2".into());
+        assert_eq!(*world.pins.lock().unwrap(), appended);
+        tools
+            .call("pin_chat", json!({ "chat": "chat-beta-2", "pinned": true }))
+            .await
+            .unwrap();
+        assert_eq!(world.writes.lock().unwrap().len(), 1);
+        let listed = tools
+            .call("list_chats", json!({ "include_archived": true }))
+            .await
+            .unwrap();
+        assert_eq!(listed["chats"][0]["id"], "chat-beta-2");
+        assert_eq!(listed["chats"][0]["pinned"], true);
+        assert_eq!(listed["chats"][0]["archived"], false);
+        let archived = listed["chats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|chat| chat["id"] == "archived-chat")
+            .unwrap();
+        assert_eq!(archived["pinned"], true);
+        assert_eq!(archived["archived"], true);
+        let shown = tools
+            .call("get_chat", json!({ "chat": "Beta" }))
+            .await
+            .unwrap();
+        assert_eq!(shown["pinned"], true);
+
+        let unpinned = tools
+            .call("pin_chat", json!({ "chat": "Beta", "pinned": false }))
+            .await
+            .unwrap();
+        assert_eq!(unpinned["pinned"], false);
+        assert_eq!(*world.pins.lock().unwrap(), original);
+        let listed = tools.call("list_chats", json!({})).await.unwrap();
+        assert_eq!(listed["total"], 2);
+        assert_eq!(listed["chats"][0]["pinned"], false);
+        assert_eq!(listed["chats"][1]["pinned"], true);
+        let shown = tools
+            .call("get_chat", json!({ "chat": "chat-beta" }))
+            .await
+            .unwrap();
+        assert_eq!(shown["pinned"], false);
+        tools
+            .call("pin_chat", json!({ "chat": "Beta", "pinned": false }))
+            .await
+            .unwrap();
+        assert_eq!(
+            world.writes.lock().unwrap().as_slice(),
+            &[
+                (
+                    methods::MUTATE.into(),
+                    json!({ "op": "changeSidebarPin", "change": {
+                        "action": "pin", "sessionId": "chat-beta-2", "after": null, "before": null
+                    }})
+                ),
+                (
+                    methods::MUTATE.into(),
+                    json!({ "op": "changeSidebarPin", "change": {
+                        "action": "unpin", "sessionId": "chat-beta-2"
+                    }})
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_sidebar_pins_stay_unknown_and_cannot_be_changed() {
+        let world = Arc::new(World {
+            pins_unknown: true,
+            ..Default::default()
+        });
+        let tools = tools(world.clone(), Origin::default());
+        let listed = tools.call("list_chats", json!({})).await.unwrap();
+        assert!(listed["chats"][0]["pinned"].is_null());
+        let shown = tools
+            .call("get_chat", json!({ "chat": "Alpha" }))
+            .await
+            .unwrap();
+        assert!(shown["pinned"].is_null());
+        for pinned in [true, false] {
+            let error = tools
+                .call("pin_chat", json!({ "chat": "Alpha", "pinned": pinned }))
+                .await
+                .unwrap_err();
+            assert!(error.contains("still loading"), "{error}");
+        }
+        assert!(world.writes.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn pin_chat_reports_a_refused_pin_without_changing_the_list() {
+        let world = Arc::new(World {
+            pin_error: Some("You can pin up to 200 sessions"),
+            ..Default::default()
+        });
+        let tools = tools(world.clone(), Origin::default());
+        let error = tools
+            .call("pin_chat", json!({ "chat": "Beta" }))
+            .await
+            .unwrap_err();
+        assert!(error.contains("You can pin up to 200 sessions"), "{error}");
+        let shown = tools
+            .call("get_chat", json!({ "chat": "Beta" }))
+            .await
+            .unwrap();
+        assert_eq!(shown["pinned"], false);
     }
 
     #[tokio::test]

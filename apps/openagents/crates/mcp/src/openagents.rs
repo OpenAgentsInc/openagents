@@ -14,7 +14,8 @@ use openagents_doc::{
     SessionCommandPayload, SessionMessageEntry, TranscriptFrame, apply_transcript_frame,
 };
 use openagents_proto::{
-    Chat, Device, HarnessId, Model, ReasoningLevel, Session, SessionStatus, Space, SteeringMode,
+    Chat, Device, HarnessId, Model, ReasoningLevel, Session, SessionStatus,
+    SidebarPreferencesState, Space, SteeringMode,
 };
 use openagents_rpc::{RpcClient, RpcError, RpcSubscription, connect_ws, methods};
 use serde::Deserialize;
@@ -239,6 +240,11 @@ impl OpenAgents {
 
     pub async fn chats(&self) -> anyhow::Result<Vec<Chat>> {
         self.snapshot_as(methods::WATCH_CHATS, json!({})).await
+    }
+
+    pub async fn sidebar_preferences(&self) -> anyhow::Result<SidebarPreferencesState> {
+        self.snapshot_as(methods::WATCH_SIDEBAR_PREFERENCES, json!({}))
+            .await
     }
 
     pub async fn sessions(&self) -> anyhow::Result<Vec<Session>> {
