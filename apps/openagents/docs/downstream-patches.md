@@ -693,6 +693,15 @@ links remain readable. Upstream fixes now require manual ports.
   and project invitations in the Rust mobile FFI. The existing connect-code
   parser checks shape and expiry; the server still authorizes invitation use.
   Synthetic fixtures cover the connect fragment, project path, and rejected
-  URL forms. Cargo tests and generated Kotlin bindings remain pending below the
-  100 GiB build floor; #12082 and #12091 are native blockers. Release-certificate
+  URL forms. `AndroidScannerPresentationBoundary.kt` adds bounded raw-text
+  handoff, permission denial/cancel/retry states, and duplicate/late callback
+  fencing; synthetic fake-camera cases verify that it calls only its Rust
+  classifier callback. It does not implement CameraX or link approval. The
+  Android app source set and CameraX integration are not wired or compiled.
+  `cargo test --locked -p openagents-mobile app_links` from `apps/openagents`
+  and `scripts/android/build-core.sh` remain unrun below the 100 GiB build
+  floor. The latter generates bindings and builds arm64 then x86_64. The
+  scanner instrumentation test cannot run until B1 wires the Android app
+  source set and CameraX adapter; no Gradle test command exists in this source
+  shell. #12082 and #12091 remain native blockers. Release-certificate
   verification is an owner-only After-close check in `NEEDS_OWNER.md`.
