@@ -688,3 +688,10 @@ links remain readable. Upstream fixes now require manual ports.
   connect the bridge and provide transcript, composer, Markdown, and local
   surface adapters. This baseline has no Gradle app shell; Android compilation,
   device input, TalkBack, deployment, and store checks have not run.
+- [OpenAgents #12085](https://github.com/OpenAgentsInc/openagents/issues/12085):
+  Add a C2 interaction model over the C1 `TranscriptFrame` contract. It resolves
+  link and widget taps against Rust-provided hit rectangles and preserves text
+  selections by row key and UTF-16 offset across frame updates. Synthetic JVM
+  fixtures cover history insertion, stream growth, removed rows, surrogate
+  boundaries, and links. Android shell gesture and system-action wiring remains
+  pending integration with C1 and B1.
