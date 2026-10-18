@@ -89,7 +89,6 @@ dependencies {
     implementation("androidx.camera:camera-view:1.5.3")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("com.google.zxing:core:3.5.4")
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("org.rustls:rustls-platform-verifier")
     implementation("com.google.android.play:integrity:1.5.0")
     if (pushEnabled) implementation("com.google.firebase:firebase-messaging:24.1.0")

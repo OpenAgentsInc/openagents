@@ -755,31 +755,28 @@ links remain readable. Upstream fixes now require manual ports.
   URL forms. `AndroidScannerPresentationBoundary.kt` adds bounded raw-text
   handoff, permission denial/cancel/retry states, and duplicate/late callback
   fencing. `CameraXQrScannerDriver.kt` uses `ImageAnalysis` with
-  `KEEP_ONLY_LATEST`, a 1280×720 target, and QR-only ML Kit decoding; decoded
-  raw text goes to the Rust classifier callback. Synthetic fake analyzer and
-  decoder cases cover duplicates and late results. It does not perform link
-  approval. B1 owns the Gradle and manifest changes. The official CameraX
-  release page lists 1.6.2 as stable, and the official ML Kit page documents
-  bundled `com.google.mlkit:barcode-scanning:17.3.0` ([CameraX](https://developer.android.com/jetpack/androidx/releases/camera),
-  [ML Kit](https://developers.google.com/ml-kit/vision/barcode-scanning/android)).
-  Both production files now live in the app source set under
+  `KEEP_ONLY_LATEST`, a 1280×720 target, and ZXing core 3.5.4 QR decoding.
+  The driver compacts bounded Y-plane data using row and pixel strides, applies
+  CameraX rotation, and sends exact raw text to the Rust classifier callback.
+  Synthetic QR matrix tests cover stride handling, rotation, decoder close,
+  invalid frames, and exact text. The boundary does not approve links. B1 owns
+  the Gradle and manifest changes. Both production files now live in the app
+  source set under
   `apps/android/app/src/main/java/com/openagents/app/scanner/`, with synthetic
   instrumentation coverage under `apps/android/app/src/androidTest/java/com/openagents/app/scanner/`.
   B1 owns `MainActivity.startQrScanner(previewView, classifyWithRust, onFailure)`,
-  permission-result handling, the Activity shell wiring, and pins CameraX 1.6.2
-  with bundled ML Kit 17.3.0. The app manifest requests camera permission.
-  Scanning sends bounded raw text only to the Rust classifier callback; Kotlin
-  does not classify or authorize links. Neither dependency has been resolved in
-  an Android build.
+  permission-result handling, the Activity shell wiring, CameraX 1.5.3, and
+  `com.google.zxing:core:3.5.4`. The app manifest requests camera permission.
+  Kotlin does not classify or authorize links. ML Kit has been removed from the
+  Gradle dependency set.
   `scripts/android/app.sh compile` runs the debug and release Kotlin compile,
-  compiles scanner instrumentation sources, and runs debug JVM tests; it remains
-  unrun below the 100 GiB build floor. The scanner instrumentation test still
-  needs a device run through `:app:connectedDebugAndroidTest`. The release check
-  (`scripts/android/app.sh check`) and API 26 install/run check remain pending. The Rust classifier
-  fixture check (`cargo test --locked -p openagents-mobile app_links`) and
-  `scripts/android/build-core.sh` also remain unrun; the latter generates
-  bindings and builds arm64 then x86_64. #12082 and #12091 remain native blockers.
-  Release-certificate
+  compiles scanner instrumentation sources, and runs debug JVM tests. The prior
+  Gradle compile failed in Kotlin on scanner Barcode imports and stale UniFFI
+  symbols; the ZXing replacement is integrated, but F1 bindings remain pending.
+  No tests ran in that compile. The next compile, instrumentation device run,
+  release check (`scripts/android/app.sh check`), and API 26 install/run check
+  remain pending. Rust classifier fixtures and binding regeneration also
+  remain pending until the assigned integrated validation. Release-certificate
   verification is an owner-only After-close check in `NEEDS_OWNER.md`.
 
 - [OpenAgents #12090](https://github.com/OpenAgentsInc/openagents/issues/12090):
@@ -791,7 +788,8 @@ links remain readable. Upstream fixes now require manual ports.
   the transcript's new viewport size when the keyboard changes available space.
   The app build includes transcript main, unit-test, and instrumentation source
   roots, and routes Android platform tests to instrumentation tests. It pins
-  ZXing core 3.5.4 for A3's scanner replacement while retaining CameraX 1.5.3.
+  ZXing core 3.5.4 for the integrated A3 QR scanner while retaining CameraX
+  1.5.3.
   A bounded fixture core covers send choices and attachment intake outcomes.
   The mobile FFI now has a versioned draft store keyed by hashed account ID and
   Rust session ID, plus a closed `SessionViewIntent` registry. It accepts only
@@ -814,9 +812,10 @@ links remain readable. Upstream fixes now require manual ports.
   is an explicit no-op, camera cancellation uses `saved=false`, and stale
   owner callbacks are fenced. Approval actions remain outside the mobile intent
   set. Fixtures cover denial, cancellation, oversize, stream failure, stale
-  callbacks, and failed-send retry. Rust tests, UniFFI binding regeneration,
-  Kotlin/JUnit, and device input checks remain pending. Integrate A3's ZXing
-  scanner source and F1's regenerated bindings before the next Gradle check.
+  callbacks, and failed-send retry. The app branch integrates A3's ZXing QR
+  scanner source. Rust tests, UniFFI binding regeneration, Kotlin/JUnit, and
+  device input checks remain pending. Integrate F1's regenerated bindings
+  before the next Gradle check.
   The C1 viewport snapshot commit
   `6668ece8130ecadac82168f9a7c27f8e04f5acc6` is coordinated but not yet in
   `origin/main`; D2 will integrate it after it lands.

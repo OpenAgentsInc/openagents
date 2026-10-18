@@ -14,11 +14,14 @@ import androidx.camera.view.PreviewView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
-import com.google.mlkit.vision.barcode.Barcode
-import com.google.mlkit.vision.barcode.BarcodeScanner
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.common.InputImage
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
+import com.google.zxing.MultiFormatReader
+import com.google.zxing.NotFoundException
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.common.HybridBinarizer
+import java.nio.ByteBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -36,9 +39,7 @@ class CameraXQrScannerDriver(
     private val appContext = context.applicationContext
     private val mainExecutor: Executor = Executor { command -> Handler(Looper.getMainLooper()).post(command) }
     private val analyzerExecutor = Executors.newSingleThreadExecutor()
-    private val scanner: BarcodeScanner = BarcodeScanning.getClient(
-        BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build(),
-    )
+    private val scanner = ZxingQrDecoder()
     private val preview = Preview.Builder().build()
     private val analysis = ImageAnalysis.Builder()
         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -137,16 +138,21 @@ class CameraXQrScannerDriver(
                 imageProxy.close()
                 return@setAnalyzer
             }
-            val mediaImage = imageProxy.image
-            if (mediaImage == null) {
-                imageProxy.close()
-                return@setAnalyzer
-            }
             try {
-                scanner.process(InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees))
-                    .addOnSuccessListener(mainExecutor) { barcodes ->
-                        if (!isCurrent(startGeneration)) return@addOnSuccessListener
-                        val rawText = barcodes.firstNotNullOfOrNull { it.rawValue }
+                val yPlane = imageProxy.planes.firstOrNull()
+                val rawText = yPlane?.let {
+                    scanner.decode(
+                        it.buffer,
+                        imageProxy.width,
+                        imageProxy.height,
+                        it.rowStride,
+                        it.pixelStride,
+                        imageProxy.imageInfo.rotationDegrees,
+                    )
+                }
+                if (rawText != null && isCurrent(startGeneration)) {
+                    mainExecutor.execute {
+                        if (!isCurrent(startGeneration)) return@execute
                         try {
                             decodedText.onDecoded(rawText)
                         } catch (error: Exception) {
@@ -154,11 +160,11 @@ class CameraXQrScannerDriver(
                             onFailure(error)
                         }
                     }
-                    .addOnFailureListener(mainExecutor) { error -> fail(startGeneration, error) }
-                    .addOnCompleteListener(mainExecutor) { imageProxy.close() }
+                }
             } catch (error: Exception) {
+                mainExecutor.execute { fail(startGeneration, error) }
+            } finally {
                 imageProxy.close()
-                fail(startGeneration, error)
             }
         }
         cameraProvider?.bindToLifecycle(
@@ -187,6 +193,116 @@ class CameraXQrScannerDriver(
     private companion object {
         const val MAX_FRAME_WIDTH = 1280
         const val MAX_FRAME_HEIGHT = 720
+    }
+}
+
+/** Decodes bounded CameraX Y-plane frames with the ZXing core library. */
+internal class ZxingQrDecoder : AutoCloseable {
+    private val reader = MultiFormatReader().apply {
+        setHints(
+            mapOf(
+                DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+            ),
+        )
+    }
+    private var closed = false
+
+    @Synchronized
+    fun decode(
+        yPlane: ByteBuffer,
+        width: Int,
+        height: Int,
+        rowStride: Int,
+        pixelStride: Int,
+        rotationDegrees: Int,
+    ): String? {
+        val frame = compactAndRotateYPlane(yPlane, width, height, rowStride, pixelStride, rotationDegrees) ?: return null
+        if (closed) return null
+        val source = PlanarYUVLuminanceSource(
+            frame.bytes,
+            frame.width,
+            frame.height,
+            0,
+            0,
+            frame.width,
+            frame.height,
+            false,
+        )
+        return try {
+            reader.decodeWithState(BinaryBitmap(HybridBinarizer(source))).text
+        } catch (_: NotFoundException) {
+            null
+        } finally {
+            reader.reset()
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        if (closed) return
+        closed = true
+        reader.reset()
+    }
+
+    internal data class GrayFrame(val bytes: ByteArray, val width: Int, val height: Int)
+
+    internal fun compactAndRotateYPlane(
+        yPlane: ByteBuffer,
+        width: Int,
+        height: Int,
+        rowStride: Int,
+        pixelStride: Int,
+        rotationDegrees: Int,
+    ): GrayFrame? {
+        if (width !in 1..MAX_FRAME_DIMENSION || height !in 1..MAX_FRAME_DIMENSION) return null
+        if (width * height > MAX_FRAME_PIXELS) return null
+        if (rowStride <= 0 || pixelStride <= 0 || rotationDegrees !in setOf(0, 90, 180, 270)) return null
+        if (rowStride < (width - 1) * pixelStride + 1) return null
+        val lastOffset = (height - 1L) * rowStride + (width - 1L) * pixelStride
+        val input = yPlane.duplicate()
+        if (lastOffset >= input.remaining()) return null
+
+        val compact = ByteArray(width * height)
+        val base = input.position()
+        for (y in 0 until height) {
+            val inputRow = base + y * rowStride
+            val outputRow = y * width
+            for (x in 0 until width) {
+                compact[outputRow + x] = input.get(inputRow + x * pixelStride)
+            }
+        }
+
+        if (rotationDegrees == 0) return GrayFrame(compact, width, height)
+        val rotatedWidth = if (rotationDegrees == 180) width else height
+        val rotatedHeight = if (rotationDegrees == 180) height else width
+        val rotated = ByteArray(rotatedWidth * rotatedHeight)
+        for (y in 0 until rotatedHeight) {
+            for (x in 0 until rotatedWidth) {
+                val sourceX: Int
+                val sourceY: Int
+                when (rotationDegrees) {
+                    90 -> {
+                        sourceX = y
+                        sourceY = height - 1 - x
+                    }
+                    180 -> {
+                        sourceX = width - 1 - x
+                        sourceY = height - 1 - y
+                    }
+                    else -> {
+                        sourceX = width - 1 - y
+                        sourceY = x
+                    }
+                }
+                rotated[y * rotatedWidth + x] = compact[sourceY * width + sourceX]
+            }
+        }
+        return GrayFrame(rotated, rotatedWidth, rotatedHeight)
+    }
+
+    private companion object {
+        const val MAX_FRAME_DIMENSION = 1280
+        const val MAX_FRAME_PIXELS = 1280 * 720
     }
 }
 
