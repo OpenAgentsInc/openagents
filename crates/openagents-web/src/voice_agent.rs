@@ -190,6 +190,7 @@ mod tests {
                 crate::agent_assignments::Change::Create {
                     body: CreateAssignment {
                         request_id: format!("{:032x}{:032x}", n + 1, n + 1),
+                        chat: None,
                         spec: AssignmentSpec {
                             agent: definition.id.clone(),
                             agent_revision: definition.revision,
