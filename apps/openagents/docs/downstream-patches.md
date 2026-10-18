@@ -695,3 +695,12 @@ links remain readable. Upstream fixes now require manual ports.
   fixtures cover history insertion, stream growth, removed rows, surrogate
   boundaries, and links. Android shell gesture and system-action wiring remains
   pending integration with C1 and B1.
+
+- 2026-10-18 (#12085 follow-up): add stamped Android selection, ICU text
+  geometry, native handles/action mode, read-only system text actions, and
+  accessible selection/copy over the same bounded Rust row ranges. Reconcile
+  streaming/history changes without moving fixed endpoints, and retire callbacks
+  across frame replacement, cancellation, and account/room teardown. Source-only
+  fixtures cover lifecycle, long transcripts, and provided stop/error/retry/fade
+  states; native/JVM checks and the Rust temporal-reveal clock contract remain
+  pending. C1's additive read-only snapshot hook is kept separate from behavior.

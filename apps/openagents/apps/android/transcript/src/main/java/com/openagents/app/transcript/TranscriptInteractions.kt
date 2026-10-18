@@ -11,7 +11,21 @@ data class TranscriptTextPoint(val rowKey: ULong, val utf16Offset: Int)
 data class TranscriptTextSelection(val anchor: TranscriptTextPoint, val focus: TranscriptTextPoint)
 
 /** Keeps a user's selection attached to row identity as Rust publishes new frames. */
-class TranscriptSelectionState {
+fun interface TranscriptTextBoundaries {
+    fun boundary(text: String, offset: Int, roundUp: Boolean): Int
+}
+
+/** JVM fixtures use the JDK character iterator; Android supplies its ICU iterator. */
+object TranscriptCharacterBoundaries : TranscriptTextBoundaries {
+    override fun boundary(text: String, offset: Int, roundUp: Boolean): Int {
+        val value = offset.coerceIn(0, text.length)
+        val iterator = java.text.BreakIterator.getCharacterInstance(java.util.Locale.ROOT)
+        iterator.setText(text)
+        if (iterator.isBoundary(value)) return value
+        return if (roundUp) iterator.following(value) else iterator.preceding(value)
+    }
+}
+class TranscriptSelectionState(private val boundaries: TranscriptTextBoundaries = TranscriptCharacterBoundaries) {
     var selection: TranscriptTextSelection? = null
         private set
 
@@ -64,14 +78,19 @@ class TranscriptSelectionState {
         val last = if (first == current.anchor) current.focus else current.anchor
         val firstIndex = minOf(anchorIndex, focusIndex)
         val lastIndex = maxOf(anchorIndex, focusIndex)
+        if (lastIndex - firstIndex >= 4096) return null
         val pieces = ArrayList<String>(lastIndex - firstIndex + 1)
+        var bytes = 0
         for (index in firstIndex..lastIndex) {
             val row = frame.placement(index.toUInt()) ?: return null
             val display = frame.display(index.toUInt()) ?: return null
             val start = if (row.key == first.rowKey) boundary(display.text, first.utf16Offset, roundUp = false) else 0
             val end = if (row.key == last.rowKey) boundary(display.text, last.utf16Offset, roundUp = true) else display.text.length
             if (start > end) return null
-            pieces += display.text.substring(start, end)
+            val piece = display.text.substring(start, end)
+            bytes += piece.toByteArray(Charsets.UTF_8).size + if (pieces.isEmpty()) 0 else 1
+            if (bytes > 64 * 1024) return null
+            pieces += piece
         }
         return pieces.joinToString("\n")
     }
@@ -83,11 +102,7 @@ class TranscriptSelectionState {
     }
 
     private fun boundary(text: String, offset: Int, roundUp: Boolean): Int {
-        var value = offset.coerceIn(0, text.length)
-        if (value in 1 until text.length && text[value].isLowSurrogate()) {
-            value += if (roundUp) 1 else -1
-        }
-        return value
+        return boundaries.boundary(text, offset, roundUp).coerceIn(0, text.length)
     }
 }
 
@@ -107,6 +122,7 @@ object TranscriptHitTester {
     ): TranscriptHitTarget? {
         if (!x.isFinite() || !y.isFinite() || !verticalOffset.isFinite()) return null
         val absoluteY = y + verticalOffset
+        if (!absoluteY.isFinite()) return null
         val index = frame.indexAt(absoluteY) ?: return null
         val placement = frame.placement(index) ?: return null
         val display = frame.display(index) ?: return null
@@ -157,7 +173,9 @@ object TranscriptHitTester {
         if (scrollerIndex == null) return x to y
         val scroller = display.scrollers.getOrNull(scrollerIndex.toInt()) ?: return null
         if (x < scroller.x || x >= scroller.x + scroller.w || y < scroller.y || y >= scroller.y + scroller.h) return null
-        val offset = (horizontalOffsets[scrollerIndex] ?: 0f).coerceIn(0f, (scroller.contentWidth - scroller.w).coerceAtLeast(0f))
+        val requested = horizontalOffsets[scrollerIndex] ?: 0f
+        if (!requested.isFinite()) return null
+        val offset = requested.coerceIn(0f, (scroller.contentWidth - scroller.w).coerceAtLeast(0f))
         return (x - scroller.x + offset) to (y - scroller.y)
     }
 }
