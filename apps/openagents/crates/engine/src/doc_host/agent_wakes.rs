@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 const SCHEDULE_EVERY_MS: i64 = 60_000;
 const GRANTS_EVERY_MS: i64 = 60_000;
+const DECISIONS_EVERY_MS: i64 = 20_000;
 const GITHUB_EVERY_MS: i64 = 5 * 60_000;
 const REPO: &str = "OpenAgentsInc/openagents";
 
@@ -672,6 +673,9 @@ impl DocHost {
         }
         self.adopt_declaring(&wakes, &chats, now_ms())?;
         for engine in wakes.all() {
+            if engine.throttle("decisions", DECISIONS_EVERY_MS, now_ms()) {
+                self.mirror_decisions(&engine, lease).await;
+            }
             let Some(chat) = engine.chat() else {
                 continue;
             };
@@ -724,6 +728,18 @@ impl DocHost {
             .await?;
         }
         Ok(())
+    }
+
+    /// Keep the agent's decision log and the account's the same (#12046).
+    /// The account is the shared copy, so a failure only waits for the next
+    /// pass.
+    async fn mirror_decisions(&self, engine: &WakeEngine, lease: &Lease) {
+        let Ok(agents) = lease.client().agents(lease.session()) else {
+            return;
+        };
+        if let Err(e) = engine.mirror_decisions(&agents, &lease.cancel).await {
+            tracing::warn!(error = %e, "agent wakes: decision log not mirrored");
+        }
     }
 
     /// State saved before #12044 moves under its agent's definition ID once
@@ -1731,6 +1747,85 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// #12046: a decision recorded on one host reaches the account, and a new
+    /// host for the same agent starts with the account's log.
+    #[tokio::test]
+    async fn a_decision_reaches_the_account_and_a_new_host_starts_with_it() {
+        use axum::{
+            Json, Router,
+            extract::{Query, State},
+            routing::get,
+        };
+        use openagents_account::{
+            Controller,
+            desktop::{self, MemoryStore},
+            openagents::{Client, Deployment},
+        };
+        use serde_json::{Value, json};
+        use std::collections::HashMap;
+        use std::sync::Mutex;
+
+        type Log = Arc<Mutex<Vec<Value>>>;
+        async fn record(State(log): State<Log>, Json(body): Json<Value>) -> Json<Value> {
+            let mut log = log.lock().unwrap();
+            if !log.iter().any(|e| e["request_id"] == body["request_id"]) {
+                let cursor = (log.len() + 1).to_string();
+                log.push(json!({"cursor": cursor, "request_id": body["request_id"], "entry": body["entry"]}));
+            }
+            Json(json!({"recorded": true}))
+        }
+        async fn page(State(log): State<Log>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
+            let after: usize = q.get("after").and_then(|a| a.parse().ok()).unwrap_or(0);
+            let data: Vec<Value> = log.lock().unwrap().iter().skip(after).cloned().collect();
+            Json(json!({"data": data, "next": null}))
+        }
+        let log = Log::default();
+        let path = format!("/v1/agent-definitions/{AGENT}/decisions");
+        let api = Router::new()
+            .route(
+                "/v1/account",
+                get(|| async {
+                    Json(json!({"account": {"id": "acct_mirror_fixture", "label": "Mirror"}, "workspaces": []}))
+                }),
+            )
+            .route(&path, get(page).post(record))
+            .with_state(log.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+        let root = tempfile::tempdir().unwrap();
+        let controller = Controller::new(
+            Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap(),
+            Arc::new(MemoryStore::default()),
+            root.path().join("account/signed-out"),
+        );
+        controller.import_credential(format!("sess_{:064x}", 9046)).await;
+        desktop::register(root.path(), &controller);
+        let lease = controller.lease().expect("signed in");
+        let agents = lease.client().agents(lease.session()).unwrap();
+
+        let first = WakeEngine::open(&root.path().join("host-a"), AGENT);
+        first.record("saw a", "decided a", "did a", vec![], 1).unwrap();
+        first.record("saw b", "decided b", "did b", vec![], 2).unwrap();
+        first.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        // Repeating changes nothing on the account or in the file.
+        first.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        assert_eq!(log.lock().unwrap().len(), 2);
+        assert_eq!(first.read(10).len(), 2);
+
+        let second = WakeEngine::open(&root.path().join("host-b"), AGENT);
+        assert!(second.read(10).is_empty());
+        second.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        assert_eq!(second.read(10), first.read(10));
+        second.record("saw c", "decided c", "did c", vec![], 3).unwrap();
+        second.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        first.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        assert_eq!(log.lock().unwrap().len(), 3);
+        assert_eq!(decisions_saw(&first), ["saw a", "saw b", "saw c"]);
+        assert_eq!(decisions_saw(&second), decisions_saw(&first));
+        server.abort();
     }
 
     /// #12045: any saved agent keeps its own decision log, keyed by its
