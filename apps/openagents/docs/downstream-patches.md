@@ -1025,6 +1025,12 @@ links remain readable. Upstream fixes now require manual ports.
   binding generation remain unrun; media viewer routing remains a separate C2
   integration step.
 
+- OpenAgents #12085 source follow-up `06085048` adds a Rust monotonic
+  row reveal-age sample and a thin bounded image viewer over the existing
+  Rust attachment/Lab media APIs. New Rust/Kotlin fixtures and generated binding
+  updates remain unrun. Changed rows currently restart their whole reveal;
+  preserving unchanged text during streaming appends remains source acceptance
+  work. No earlier test receipt applies to this follow-up.
 - #12100: Wire the selected live session's Rust-authorized voice target to F2's
   RTC bridge and F3's Rust Native capsule/screen. The process owns media/service
   resources across Activity recreation; Rust owns the call and rejects stale
