@@ -639,6 +639,10 @@ pub struct ChatDocHandle {
     /// A threshold checkpoint POST is in flight (review H1: the quiesce
     /// tick must not stack concurrent full-snapshot uploads).
     checkpointing: Arc<AtomicBool>,
+    /// After a failed checkpoint: no new one before this time (ms), and how
+    /// long the last wait was. A 33 MB snapshot refused on every quiesce
+    /// tick took the uplink from the chat's own traffic (#12137).
+    checkpoint_retry: Arc<(AtomicI64, AtomicI64)>,
     /// Set when a chat2 seed replaced this handle's lineage on disk: every
     /// further snapshot save from this handle is a stale FAT doc that would
     /// clobber the thin one — retired handles never persist again (unless no
@@ -1660,6 +1664,7 @@ impl DocHost {
             room_gen,
             retired: AtomicBool::new(false),
             checkpointing: Arc::new(AtomicBool::new(false)),
+            checkpoint_retry: Arc::new((AtomicI64::new(0), AtomicI64::new(0))),
             chat2: Mutex::new(None),
             sync_started: AtomicBool::new(false),
             sync_requested: AtomicBool::new(false),
@@ -2922,6 +2927,9 @@ impl DocHost {
             None => return,
         };
         let chat_id = handle.chat_id.clone();
+        if now_ms() < handle.checkpoint_retry.0.load(Ordering::Acquire) {
+            return;
+        }
         if handle
             .checkpointing
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -2930,6 +2938,14 @@ impl DocHost {
             return;
         }
         let in_flight = handle.checkpointing.clone();
+        let retry = handle.checkpoint_retry.clone();
+        // 1 min doubling to 1 h; a success clears it.
+        let back_off = move || {
+            let wait = (retry.1.load(Ordering::Acquire) * 2).clamp(60_000, 3_600_000);
+            retry.1.store(wait, Ordering::Release);
+            retry.0.store(now_ms() + wait, Ordering::Release);
+        };
+        let retry = handle.checkpoint_retry.clone();
         let publication_store = self.inner.store.clone();
         let snapshot_doc = handle.doc.clone();
         let seq_covered = stats.cursor;
@@ -2968,19 +2984,11 @@ impl DocHost {
                 return;
             };
             let size = snapshot.len() as u64;
-            match http
-                .post(&url)
-                .timeout(std::time::Duration::from_secs(300))
-                .bearer_auth(&bearer)
-                .header(
-                    "x-chat2-frontier",
-                    base64::engine::general_purpose::STANDARD.encode(&frontier),
-                )
-                .body(snapshot)
-                .send()
-                .await
-            {
+            let frontier = base64::engine::general_purpose::STANDARD.encode(&frontier);
+            match post_chat2_checkpoint(&http, &url, &bearer, &frontier, snapshot).await {
                 Ok(res) if res.status().is_success() => {
+                    retry.0.store(0, Ordering::Release);
+                    retry.1.store(0, Ordering::Release);
                     tracing::info!(chat = %chat_id, seq_covered, reason, "chat2 checkpoint posted");
                     for batch_id in &covered_rejections {
                         if let Err(err) = publication_store.acknowledge_chat_update(&chat_id,batch_id) {
@@ -2995,10 +3003,12 @@ impl DocHost {
                     }
                 }
                 Ok(res) => {
+                    back_off();
                     tracing::warn!(chat = %chat_id, status = res.status().as_u16(),
                         "chat2 checkpoint rejected");
                 }
                 Err(err) => {
+                    back_off();
                     let err = describe_http_error(err);
                     tracing::warn!(chat = %chat_id, error = %err, "chat2 checkpoint POST failed");
                 }
@@ -6799,3 +6809,45 @@ mod sync_lifecycle_tests;
 
 #[path = "doc_host_delivery.rs"]
 mod remote_delivery;
+
+/// Largest checkpoint posted in one request; Cloud Run refuses HTTP/1
+/// requests over 32 MiB at its frontend with 413 (#12137).
+const CHAT2_CHECKPOINT_WHOLE_MAX: usize = 24 * 1024 * 1024;
+/// Size of each part of a larger checkpoint.
+const CHAT2_CHECKPOINT_PART: usize = 16 * 1024 * 1024;
+
+/// Post a chat2 checkpoint, whole or in parts to `/checkpoint/part`; the
+/// answer is the whole post's, the last part's, or the first refusal.
+async fn post_chat2_checkpoint(
+    http: &reqwest::Client,
+    url: &str,
+    bearer: &str,
+    frontier: &str,
+    snapshot: Vec<u8>,
+) -> reqwest::Result<reqwest::Response> {
+    let send = |url: String, body: Vec<u8>| {
+        http.post(url)
+            .timeout(std::time::Duration::from_secs(300))
+            .bearer_auth(bearer)
+            .header("x-chat2-frontier", frontier)
+            .body(body)
+            .send()
+    };
+    if snapshot.len() <= CHAT2_CHECKPOINT_WHOLE_MAX {
+        return send(url.to_owned(), snapshot).await;
+    }
+    let (path, query) = url.split_once('?').unwrap_or((url, ""));
+    let upload = uuid::Uuid::new_v4();
+    let chunks: Vec<&[u8]> = snapshot.chunks(CHAT2_CHECKPOINT_PART).collect();
+    let parts = chunks.len();
+    for (part, chunk) in chunks.iter().enumerate().take(parts - 1) {
+        let url = format!("{path}/part?{query}&upload={upload}&part={part}&parts={parts}");
+        let response = send(url, chunk.to_vec()).await?;
+        if !response.status().is_success() {
+            return Ok(response);
+        }
+    }
+    let last = parts - 1;
+    let url = format!("{path}/part?{query}&upload={upload}&part={last}&parts={parts}");
+    send(url, chunks[last].to_vec()).await
+}
