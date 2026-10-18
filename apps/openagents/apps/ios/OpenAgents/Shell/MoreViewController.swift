@@ -3,6 +3,14 @@ import UserNotifications
 
 /// Settings & utilities: account, devices, appearance, archive, diagnostics.
 final class MoreViewController: UIViewController, UICollectionViewDelegate {
+    /// "Version 1.0.0 (1013)" under About.
+    private static var versionText: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? ""
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        return build.isEmpty ? "Version \(version)" : "Version \(version) (\(build))"
+    }
+
     private let app: AppModel
     private var collectionView: UICollectionView!
     private var dataSource: UICollectionViewDiffableDataSource<String, Row>!
@@ -239,7 +247,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             Row(id: "archived", title: "Archived Sessions", symbol: "archivebox"),
         ])
         s.appendSections(["About"])
-        s.appendItems([Row(id: "about", title: "OpenAgents", subtitle: "Based on Zeron by Wing, MIT", symbol: "info.circle")])
+        s.appendItems([Row(id: "about", title: "OpenAgents", subtitle: Self.versionText, symbol: "info.circle")])
         if app.isSignedIn, !app.isDemo {
             s.appendSections([" "])
             s.appendItems([
@@ -264,9 +272,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
                 present(alert, animated: true)
             }
         case "about":
-            let about = UIAlertController(title: "OpenAgents", message: Bundle.main.url(forResource: "OpenAgents-MIT", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) }, preferredStyle: .alert)
-            about.addAction(UIAlertAction(title: "Done", style: .default))
-            present(about, animated: true)
+            navigationController?.pushViewController(AboutViewController(version: Self.versionText), animated: true)
         case "wallet": router?.showWallet()
         case "voice": navigationController?.pushViewController(VoiceViewController(app: app), animated: true)
         case "scan-code":

@@ -405,11 +405,13 @@ mod about_panel {
         // Empty build version: CFBundleVersion equals the marketing version, and
         // AppKit would otherwise render "Version 0.2.61 (0.2.61)".
         let build = NSString::from_str("");
-        // Coder Desktop: the formal name and the upstream attribution.
+        // Our name and copyright only: nothing the user sees names the
+        // upstream project (owner, 2026-10-17). Its MIT notice ships in
+        // `LICENSE` and `THIRD_PARTY_NOTICES.md`.
         let credits = NSAttributedString::from_nsstring(&NSString::from_str(&format!(
             "{}\n{}",
             openagents_brand::LONG_NAME,
-            openagents_brand::ATTRIBUTION
+            openagents_brand::COPYRIGHT
         )));
         let values: [&AnyObject; 4] = [&name, &version, &build, &credits];
         unsafe {

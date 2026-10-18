@@ -10,9 +10,9 @@ pub const NAME: &str = "OpenAgents";
 /// The formal product name: the About panel's long name, docs, and the repo.
 pub const LONG_NAME: &str = "OpenAgents";
 
-/// Upstream attribution shown in About and the README (MIT notice is kept in
-/// `LICENSE` and `THIRD_PARTY_NOTICES.md`).
-pub const ATTRIBUTION: &str = "Based on Zeron by Wing, MIT";
+/// The copyright line About shows. The app is Apache-2.0; the MIT notice for
+/// the code it is based on ships in `LICENSE` and `THIRD_PARTY_NOTICES.md`.
+pub const COPYRIGHT: &str = "© 2026 OpenAgents, Inc.";
 
 /// macOS bundle identifier of packaged builds (owner, 2026-10-16): the
 /// OpenAgents desktop app's own identifier, which this app takes over from
@@ -103,7 +103,12 @@ mod tests {
 
     #[test]
     fn identity_keeps_desktop_and_phone_separate() {
-        for id in [BUNDLE_ID, DEV_BUNDLE_ID, LAUNCHD_LABEL, BACKGROUND_ENGINE_LABEL] {
+        for id in [
+            BUNDLE_ID,
+            DEV_BUNDLE_ID,
+            LAUNCHD_LABEL,
+            BACKGROUND_ENGINE_LABEL,
+        ] {
             assert!(!id.starts_with("sh.zeron"));
             assert!(id.starts_with("com.openagents.desktop"));
             assert_ne!(id, "com.openagents.app");

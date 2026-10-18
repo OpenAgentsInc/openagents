@@ -54,7 +54,7 @@
         <true/>
     </dict>
     <key>NSHumanReadableCopyright</key>
-    <string>OpenAgents. Based on Zeron by Wing, MIT.</string>
+    <string>© 2026 OpenAgents, Inc.</string>
     <!-- gpui renders via Metal. -->
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
