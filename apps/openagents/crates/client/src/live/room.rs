@@ -28,6 +28,14 @@ use crate::lock;
 pub(crate) const CHAT2_DOC_EPOCH: u32 = 2;
 /// Snapshot flush cadence while rows stream in.
 const SAVE_INTERVAL: Duration = Duration::from_secs(1);
+/// How often the live-poll task checks whether a catch-up is due.
+const LIVE_POLL_TICK: Duration = Duration::from_millis(250);
+/// A catch-up that never completes (gap repair, redial) is retried after this.
+const LIVE_POLL_STALE: Duration = Duration::from_secs(10);
+/// Live-poll cadence while a send waits on the host or a turn runs.
+pub(crate) const LIVE_POLL_ACTIVE: Duration = Duration::from_secs(2);
+/// Live-poll cadence while the chat is on screen but quiet.
+pub(crate) const LIVE_POLL_IDLE: Duration = Duration::from_secs(10);
 
 /// Loaded local state for a chat (instant open).
 pub(crate) struct LocalDoc {
@@ -503,6 +511,8 @@ pub(crate) struct Room {
     pub(crate) status: Arc<RoomStatus>,
     pub(crate) persister: Arc<Persister>,
     cancel: CancellationToken,
+    /// Live-poll cadence in milliseconds (0 = off); see [`Room::set_live_poll`].
+    live_poll_ms: Arc<AtomicU64>,
     _local_updates: loro::Subscription,
 }
 
@@ -572,10 +582,63 @@ impl Room {
             status: Arc::new(RoomStatus::default()),
             persister,
             cancel,
+            live_poll_ms: Arc::new(AtomicU64::new(0)),
             _local_updates: local_updates,
         });
         room.spawn_join(doc, deps);
+        room.spawn_live_poll();
         room
+    }
+
+    /// Ask the room for rows on a cadence while someone needs this chat live
+    /// (`None` stops it). Rooms on the sync server fan out only within one
+    /// server instance (#12120), so a host connected to another instance
+    /// never reaches this socket live: without a pull, its rows waited for
+    /// our next push's ACK gap or the 15-minute quiet probe (#12132).
+    pub(crate) fn set_live_poll(&self, every: Option<Duration>) {
+        let ms = every.map_or(0, |d| d.as_millis().max(1) as u64);
+        self.live_poll_ms.store(ms, Ordering::Release);
+    }
+
+    fn spawn_live_poll(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        let cancel = self.cancel.clone();
+        let every = self.live_poll_ms.clone();
+        crate::runtime::shared().spawn(async move {
+            // (ticket, sent at) of the last catch-up this task requested.
+            let mut last: Option<(u64, tokio::time::Instant)> = None;
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => return,
+                    _ = tokio::time::sleep(LIVE_POLL_TICK) => {}
+                }
+                let ms = every.load(Ordering::Acquire);
+                if ms == 0 {
+                    continue;
+                }
+                let Some(room) = weak.upgrade() else { return };
+                let slot = lock(&room.slot);
+                let Some(client) = slot.client.as_ref() else {
+                    continue;
+                };
+                // A dropped socket has its own HTTP pull on every backoff.
+                if !client.stats().connected {
+                    continue;
+                }
+                let now = tokio::time::Instant::now();
+                let due = match last {
+                    None => true,
+                    Some((ticket, at)) => {
+                        let elapsed = now.duration_since(at);
+                        elapsed >= Duration::from_millis(ms)
+                            && (client.catch_up_completed(ticket) || elapsed >= LIVE_POLL_STALE)
+                    }
+                };
+                if due {
+                    last = Some((client.request_catch_up(), now));
+                }
+            }
+        });
     }
 
     fn spawn_join(self: &Arc<Self>, doc: &Arc<SessionDoc>, deps: RoomDeps) {

@@ -291,6 +291,22 @@ impl MockEdge {
         seq
     }
 
+    /// Append a host-authored update WITHOUT the live broadcast: the host is
+    /// connected to another sync-server instance, whose room fan-out never
+    /// reaches this one's sockets (#12120). Readers see it only by asking.
+    pub fn inject_elsewhere(&self, chat: &str, device: &str, bytes: Vec<u8>) -> u64 {
+        let mut rooms = self.shared.rooms.lock().unwrap();
+        let room = rooms.entry(chat.to_owned()).or_default();
+        let seq = room.rows.len() as u64 + 1;
+        room.rows.push(Row {
+            seq,
+            device: device.to_owned(),
+            batch_id: format!("host-{seq}"),
+            bytes,
+        });
+        seq
+    }
+
     pub fn chat_sockets(&self, chat: &str) -> usize {
         self.shared
             .sockets

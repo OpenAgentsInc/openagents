@@ -402,6 +402,166 @@ async fn session_send_round_trips_through_the_chat_room() {
     offline.shutdown();
 }
 
+/// #12132: the host streams a turn through another sync-server instance,
+/// so none of its rows reach the phone's socket live. The phone must still
+/// show each streamed row, and clear "Sending to host…" on the host's
+/// acknowledgement, while the turn runs and without writing anything itself.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_turn_streamed_through_another_instance_reaches_the_phone_before_it_ends() {
+    let edge = MockEdge::start().await;
+    let _host = HostRegistry::start(&edge).await;
+    let dir = tempfile::tempdir().unwrap();
+    let client = phone(&edge, dir.path());
+    tokio::task::spawn_blocking({
+        let client = client.clone();
+        move || {
+            wait_for("chat row", Duration::from_secs(10), || {
+                client.workspace().device(HOST).is_some_and(|d| d.online)
+                    && client.workspace().session(CHAT).is_some()
+            })
+        }
+    })
+    .await
+    .unwrap();
+    let session = client.open_session(CHAT).unwrap();
+    session.set_view_attached(true);
+    tokio::task::spawn_blocking({
+        let session = session.clone();
+        move || {
+            wait_for("hydrated from the room", Duration::from_secs(10), || {
+                session.snapshot().hydrated
+            })
+        }
+    })
+    .await
+    .unwrap();
+    let SendOutcome::Started { message_id } = session.send(SendRequest::text("hi host")).unwrap()
+    else {
+        panic!("idle chat starts a turn");
+    };
+
+    // The host reads the command and acknowledges it with the first
+    // streamed reply, through an instance this socket never hears from.
+    let host_doc = LoroDoc::new();
+    let start = Instant::now();
+    let (command_id, prompt) = loop {
+        for row in edge.rows(CHAT) {
+            let _ = host_doc.import(&row.bytes);
+        }
+        let commands = SessionDoc::from_doc(host_doc.clone())
+            .read_commands()
+            .unwrap_or_default();
+        if let Some(found) = commands.iter().find_map(|c| match &c.payload {
+            SessionCommandPayload::Run { request, .. } => {
+                Some((c.id.clone(), request.prompt.clone()))
+            }
+            _ => None,
+        }) {
+            break found;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "command never reached the room"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    let host = SessionDoc::from_doc(host_doc.clone());
+    let now = openagents_client_now();
+    let entry = |id: &str, role, device: &str, text: &str, status| SessionMessageEntry {
+        id: id.into(),
+        role,
+        parts: vec![MessagePart::Text {
+            id: "t0".into(),
+            text: text.into(),
+        }],
+        created_at: now,
+        device_id: device.into(),
+        status: Some(status),
+        continuation_of: None,
+        duration_ms: None,
+    };
+    let before = host_doc.oplog_vv();
+    host.set_command_status(&command_id, SessionCommandStatus::Applied, None)
+        .unwrap();
+    host.push_message(&entry(
+        &message_id,
+        MessageRole::User,
+        "ios-live",
+        &prompt,
+        openagents_doc::MessageStatus::Complete,
+    ))
+    .unwrap();
+    host.push_message(&entry(
+        "reply-1",
+        MessageRole::Assistant,
+        HOST,
+        "Reading the plan.",
+        openagents_doc::MessageStatus::Streaming,
+    ))
+    .unwrap();
+    host_doc.commit();
+    edge.inject_elsewhere(
+        CHAT,
+        HOST,
+        host_doc.export(ExportMode::updates(&before)).unwrap(),
+    );
+    let phone_rows = || {
+        edge.rows(CHAT)
+            .iter()
+            .filter(|r| r.device == "ios-live")
+            .count()
+    };
+    let phone_rows_after_send = phone_rows();
+
+    tokio::task::spawn_blocking({
+        let session = session.clone();
+        let message_id = message_id.clone();
+        move || {
+            wait_for("first streamed row", Duration::from_secs(8), || {
+                let snap = session.snapshot();
+                snap.entry("reply-1").is_some()
+                    && snap.entry(&message_id).is_some_and(|e| e.echo.is_none())
+                    && session.composer().send_state.is_none()
+            })
+        }
+    })
+    .await
+    .unwrap();
+
+    // The turn keeps streaming; the next row arrives the same way.
+    let before = host_doc.oplog_vv();
+    host.push_message(&entry(
+        "reply-2",
+        MessageRole::Assistant,
+        HOST,
+        "Running the tests.",
+        openagents_doc::MessageStatus::Streaming,
+    ))
+    .unwrap();
+    host_doc.commit();
+    edge.inject_elsewhere(
+        CHAT,
+        HOST,
+        host_doc.export(ExportMode::updates(&before)).unwrap(),
+    );
+    tokio::task::spawn_blocking({
+        let session = session.clone();
+        move || {
+            wait_for("second streamed row", Duration::from_secs(8), || {
+                session.snapshot().entry("reply-2").is_some()
+            })
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        phone_rows(),
+        phone_rows_after_send,
+        "the phone saw the turn without a write of its own (Stop's ACK gap)"
+    );
+    client.shutdown();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sends_survive_a_room_outage_and_deliver_on_rejoin() {
     let edge = MockEdge::start().await;

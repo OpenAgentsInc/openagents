@@ -551,6 +551,16 @@ impl SessionCore {
             last_submitted_message_id: st.last_submitted.clone(),
             context_usage: st.context_usage,
         };
+        if let Some(room) = self.room() {
+            let active = next.live.turn_running || !next.pending_sends.is_empty();
+            room.set_live_poll(if active {
+                Some(crate::live::room::LIVE_POLL_ACTIVE)
+            } else if self.view_attached() {
+                Some(crate::live::room::LIVE_POLL_IDLE)
+            } else {
+                None
+            });
+        }
         let current = self.composer();
         next.revision = current.revision;
         if *current == next {
@@ -971,6 +981,12 @@ impl SessionHandle {
         }
         if attached && !was {
             self.mark_seen();
+        }
+        if attached != was
+            && let Ok(client) = self.core.client()
+        {
+            // Starts or stops the on-screen room poll.
+            self.core.recompute_composer(&client);
         }
     }
 
