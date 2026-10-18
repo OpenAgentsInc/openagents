@@ -98,6 +98,17 @@ Chicago time, result). If the new app doesn't start within three minutes,
 the previous bundle is put back and opened. Agents use the `upgrade_host`
 tool, which needs the `host.upgrade` scope.
 
+Rebuilds and upgrades never ask for the Keychain password (#12069). The
+Keychain trusts the app's designated requirement, so every build is signed
+with the same identity: `scripts/run-macos-dev.sh` picks the Apple
+Development identity on the OpenAgents team (`OPENAGENTS_DEV_TEAM_ID`,
+default `HQWSG26L43`), never just the first one installed, and the host
+upgrade refuses a build that doesn't meet the running app's requirement.
+Without an Apple Development identity the bundle is signed ad hoc and macOS
+asks again after every rebuild. Processes that outlive the app, keepers and
+`openagents mcp`, must not read the Keychain: once a rebuild or the next
+upgrade replaces or deletes their binary, macOS no longer trusts them.
+
 Update and relaunch by hand (quit the app first):
 
 ```sh

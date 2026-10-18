@@ -337,6 +337,7 @@ impl Host for SystemHost {
         if !signed.ok {
             return Err(format!("its signature doesn't verify: {}", signed.tail()));
         }
+        keeps_keychain_access(&self.layout.bundle, staged)?;
         let plist = staged.join("Contents").join("Info.plist");
         let data = plist_value(&plist, "LSEnvironment.OPENAGENTS_DATA_DIR")?;
         if Path::new(&data) != self.layout.data_dir {
@@ -643,6 +644,46 @@ fn plist_value(plist: &Path, key: &str) -> Result<String, String> {
     }
 }
 
+/// Whether `staged` meets the designated requirement of the app at `bundle`.
+/// The app's Keychain items trust that requirement, so a build that misses
+/// it makes macOS ask for the Keychain password as soon as it starts (#12069).
+/// An ad-hoc signed app has no requirement a rebuild can meet, and a missing
+/// one has none to keep.
+fn keeps_keychain_access(bundle: &Path, staged: &Path) -> Result<(), String> {
+    let mut printed = Command::new("codesign");
+    printed.args(["-d", "-r-"]).arg(bundle);
+    let Some(requirement) = run(printed, CODESIGN_LIMIT, None)
+        .ok()
+        .filter(|output| output.ok)
+        .and_then(|output| designated_requirement(&output.stdout))
+    else {
+        return Ok(());
+    };
+    let mut check = Command::new("codesign");
+    check
+        .args(["--verify", "-R"])
+        .arg(format!("={requirement}"))
+        .arg(staged);
+    if run(check, CODESIGN_LIMIT, None)?.ok {
+        Ok(())
+    } else {
+        Err(
+            "it isn't signed like the running app, so macOS would ask for the Keychain \
+             password; set OPENAGENTS_DEV_CODESIGN_IDENTITY to the running app's identity"
+                .into(),
+        )
+    }
+}
+
+/// The requirement in `codesign -d -r-` output, unless it names a cdhash.
+fn designated_requirement(printed: &str) -> Option<String> {
+    let requirement = printed
+        .lines()
+        .find_map(|line| line.strip_prefix("designated => "))?
+        .trim();
+    (!requirement.is_empty() && !requirement.contains("cdhash")).then(|| requirement.to_owned())
+}
+
 fn free_port() -> Result<u16, String> {
     std::net::TcpListener::bind("127.0.0.1:0")
         .and_then(|listener| listener.local_addr())
@@ -846,6 +887,62 @@ mod tests {
         let output = run(quick, Duration::from_secs(10), None).unwrap();
         assert!(output.ok);
         assert_eq!(output.stdout.trim(), "hi");
+    }
+
+    /// A copy of `/usr/bin/true` signed ad hoc as `identifier`, with a
+    /// requirement of its own when `requirement` is set.
+    fn signed_copy(dir: &Path, name: &str, identifier: &str, requirement: Option<&str>) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::copy("/usr/bin/true", &path).unwrap();
+        let mut codesign = Command::new("codesign");
+        codesign.args(["--force", "--sign", "-", "--identifier", identifier]);
+        if let Some(requirement) = requirement {
+            codesign.arg(format!("-r=designated => {requirement}"));
+        }
+        assert!(codesign.arg(&path).status().unwrap().success());
+        path
+    }
+
+    #[test]
+    fn a_build_the_keychain_would_not_trust_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let installed = signed_copy(
+            dir.path(),
+            "installed",
+            "dev.app",
+            Some(r#"identifier "dev.app""#),
+        );
+        let same = signed_copy(dir.path(), "same", "dev.app", None);
+        let other = signed_copy(dir.path(), "other", "other.app", None);
+        assert_eq!(keeps_keychain_access(&installed, &same), Ok(()));
+        let err = keeps_keychain_access(&installed, &other).unwrap_err();
+        assert!(err.contains("Keychain password"), "{err}");
+        // Ad hoc (a cdhash requirement) and a missing app have nothing to keep.
+        let ad_hoc = signed_copy(dir.path(), "ad-hoc", "dev.app", None);
+        assert_eq!(keeps_keychain_access(&ad_hoc, &other), Ok(()));
+        assert_eq!(
+            keeps_keychain_access(&dir.path().join("missing"), &other),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn reads_the_designated_requirement() {
+        let printed =
+            "designated => identifier \"com.openagents.desktop.dev\" and anchor apple generic\n";
+        assert_eq!(
+            designated_requirement(printed).as_deref(),
+            Some("identifier \"com.openagents.desktop.dev\" and anchor apple generic")
+        );
+        assert_eq!(
+            designated_requirement("designated => cdhash H\"0e06\"\n"),
+            None
+        );
+        assert_eq!(
+            designated_requirement("# designated => cdhash H\"0e06\"\n"),
+            None
+        );
+        assert_eq!(designated_requirement(""), None);
     }
 
     #[test]

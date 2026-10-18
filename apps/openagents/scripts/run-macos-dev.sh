@@ -55,18 +55,38 @@ git -C "$ROOT" rev-parse HEAD >"$CONTENTS/Resources/openagents-commit" 2>/dev/nu
 # app icon); see FORK.md.
 install -m 644 "$ROOT/dist/openagents/openagents.icns" "$CONTENTS/Resources/openagents.icns"
 
-# A real Apple Development identity gives TCC a stable signing requirement
-# across rebuilds. Set OPENAGENTS_DEV_CODESIGN_IDENTITY explicitly when more than
-# one identity is installed; otherwise fall back to an ad-hoc signature.
+# A real Apple Development identity gives TCC and the Keychain a stable
+# signing requirement across rebuilds and host upgrades, so neither asks again
+# (#12069). Every build must pick the same identity: prefer the one on the
+# OpenAgents team (OPENAGENTS_DEV_TEAM_ID), never just the first listed. An
+# identity on another team changes the requirement the app's Keychain items
+# trust, and its key can make codesign itself ask for the Keychain password.
+# OPENAGENTS_DEV_CODESIGN_IDENTITY overrides; with no identity the bundle is
+# signed ad hoc.
+DEV_TEAM="${OPENAGENTS_DEV_TEAM_ID:-HQWSG26L43}"
+team_of() {
+  security find-certificate -c "$1" -p 2>/dev/null | openssl x509 -noout -subject 2>/dev/null |
+    grep -o 'OU *= *[A-Z0-9]*' | head -1 | sed 's/.*= *//'
+}
 IDENTITY="${OPENAGENTS_DEV_CODESIGN_IDENTITY:-}"
 if [[ -z "$IDENTITY" ]]; then
-  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -1)"
+  CANDIDATES="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | sort -u)"
+  while IFS= read -r candidate; do
+    if [[ -n "$candidate" && "$(team_of "$candidate")" == "$DEV_TEAM" ]]; then
+      IDENTITY="$candidate"
+      break
+    fi
+  done <<<"$CANDIDATES"
+  if [[ -z "$IDENTITY" && -n "$CANDIDATES" ]]; then
+    IDENTITY="$(head -1 <<<"$CANDIDATES")"
+    echo "warning: no Apple Development identity on team $DEV_TEAM; signing with \"$IDENTITY\". Set OPENAGENTS_DEV_CODESIGN_IDENTITY so every rebuild uses the same one." >&2
+  fi
 fi
 if [[ -n "$IDENTITY" ]]; then
   codesign --entitlements "$ROOT/dist/macos/OpenAgents.entitlements" --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
 else
   codesign --entitlements "$ROOT/dist/macos/OpenAgents.entitlements" --force --sign - --identifier "$BUNDLE_ID" "$APP"
-  echo "warning: no Apple Development signing identity found; macOS may ask for permissions again after a rebuild" >&2
+  echo "warning: no Apple Development signing identity found; macOS will ask for permissions and the Keychain password again after each rebuild" >&2
 fi
 
 if [[ "${OPENAGENTS_DEV_BUILD_ONLY:-0}" == "1" ]]; then

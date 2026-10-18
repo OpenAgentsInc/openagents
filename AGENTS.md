@@ -322,7 +322,10 @@ ends (`coder task archive TASK_ID --reason ...` on the host, or NIP-HOST
 Better still, don't use the owner's host at all: run a scratch host with
 `--state`, `--root`, and `--tasks` under a temporary directory and a
 temporary `HOME`, and never install units or agents, write keychain items,
-or pair test devices on the owner's computers. Cargo tests must never reach
+or pair test devices on the owner's computers. Don't read the owner's
+Keychain items either, such as the desktop app's sign-in with `security
+find-generic-password -w`: macOS shows the owner a Keychain password prompt
+(#12069). Use an agent token of your own. Cargo tests must never reach
 the real home; `coder_service::adopt::Paths::under`, `coder host`'s home,
 and the desktop's `migrate::start` panic under `cfg(test)` when they do.
 
