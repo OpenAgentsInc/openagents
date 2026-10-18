@@ -14,7 +14,11 @@ change on top of upstream.
 
 This is its own Cargo workspace (its own `Cargo.lock`, profiles and
 `rust-toolchain.toml`, Rust 1.98.1). The root workspace does not include it.
-Run commands from this directory:
+Run commands from this directory.
+
+On NixOS, first run `nix-shell shell-linux.nix` to make the Linux desktop's
+native development libraries available to `pkg-config`, including OpenSSL,
+Fontconfig, and ALSA. Keep the build and launch commands in that shell.
 
 ```sh
 cargo build -p openagents
