@@ -31,6 +31,10 @@ final class VoiceStageViewController: UIViewController {
     private lazy var transcript = Glass.circleButton(symbol: "text.bubble", size: 44, pointSize: 16, action: UIAction { [weak self] _ in
         self?.openTranscript()
     })
+    private lazy var agentPicker = Glass.circleButton(symbol: "person.crop.circle", size: 44, pointSize: 16, action: UIAction { [weak self] _ in
+        guard let self, let picker = app.voiceAgent else { return }
+        present(UINavigationController(rootViewController: AgentFormController(app: app, voiceAgent: picker)), animated: true)
+    })
     private let badge = UIView()
     private let bar = Glass.surface()
     private let controls = UIStackView()
@@ -127,7 +131,9 @@ final class VoiceStageViewController: UIViewController {
         controls.spacing = 14
         controls.alignment = .center
         controls.translatesAutoresizingMaskIntoConstraints = false
-        for v in [mute, routeWell, end, retry, close] { controls.addArrangedSubview(v) }
+        agentPicker.accessibilityLabel = "Choose voice agent"
+        agentPicker.accessibilityIdentifier = "voice-agent-picker"
+        for v in [agentPicker, mute, routeWell, end, retry, close] { controls.addArrangedSubview(v) }
         bar.contentView.addSubview(controls)
         bar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(bar)
@@ -238,7 +244,8 @@ final class VoiceStageViewController: UIViewController {
             }
         }
         let ended = !voice.live
-        for v in [mute, routeWell, end] { v.isHidden = ended }
+        agentPicker.isEnabled = app.voiceAgent != nil
+        for v in [agentPicker, mute, routeWell, end] { v.isHidden = ended }
         for v in [retry, close] { v.isHidden = !ended }
         if shownMuted != voice.muted {
             shownMuted = voice.muted
@@ -422,6 +429,11 @@ extension UIViewController {
                 }
             }
             var items: [UIMenuElement] = []
+            if let picker = app.voiceAgent {
+                items.append(UIAction(title: "Voice agent", image: UIImage(systemName: "person.crop.circle")) { [weak self] _ in
+                    self?.present(UINavigationController(rootViewController: AgentFormController(app: app, voiceAgent: picker)), animated: true)
+                })
+            }
             if !hosts.isEmpty { items.append(UIMenu(title: "Codex runs on", options: .displayInline, children: hosts)) }
             items.append(UIMenu(title: "Voice", subtitle: voice.selectedStyle?.capitalized ?? "Codex default", image: UIImage(systemName: "person.wave.2"), children: styles))
             items.append(UIAction(title: "Voice Settings", image: UIImage(systemName: "gearshape")) { _ in

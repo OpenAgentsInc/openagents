@@ -725,6 +725,19 @@ impl Shell {
             .text_color(popup.text)
             .child(clock)
             .child(divider())
+            .child(
+                div()
+                    .id("voice-bar-agent")
+                    .role(gpui::Role::Button)
+                    .aria_label("Choose voice agent")
+                    .tab_index(0)
+                    .cursor_pointer()
+                    .px(px(8.))
+                    .child("Voice agent")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.open_settings(crate::shell::SettingsSection::General, cx)
+                    })),
+            )
             .child(mic)
             .children(transcript)
             .child(end)

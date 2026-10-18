@@ -5,6 +5,11 @@ Keep fork-specific changes here so upstream updates can review each integration.
 - OpenAgents #12071: agent builds disable incremental compilation and keep
   Cargo fingerprints under each manifest's path hash within a shared target.
 
+- OpenAgents #12061: the SDK stores the account's voice agent by definition,
+  chat, and host IDs. A shared Rust Native picker supplies desktop Settings
+  and the phone form, reached from both call controls. Voice reads the choice
+  again before each question.
+
 - OpenAgents #12060: each voice call uses a fresh chat and isolated Codex home,
   copies authentication only, refuses messages after hang-up, and keeps
   compaction notices out of assistant text.

@@ -41,6 +41,8 @@ pub use saved::*;
 mod session;
 mod voice_usage;
 pub use voice_usage::*;
+mod voice_agent;
+pub use voice_agent::*;
 mod voice;
 pub use voice::*;
 mod types;

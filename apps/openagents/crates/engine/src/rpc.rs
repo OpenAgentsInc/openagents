@@ -1559,6 +1559,7 @@ fn forwardable(method: &str) -> bool {
             | methods::SET_WORKTREE_SETTINGS
             // Foreman's schedule, authority and log live on its chat's host.
             | methods::GET_FOREMAN
+            | methods::GET_VOICE_AGENT
             | methods::SET_FOREMAN
             | methods::LIST_DRIVES
             | methods::SEARCH_HOME_FOLDERS
@@ -3185,6 +3186,14 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&serde_json::json!({ "branch": branch }))
             }
             methods::GET_WORKTREE_SETTINGS => RpcReply::value(&self.repos.worktree_settings()),
+            methods::GET_VOICE_AGENT => {
+                let choice = self
+                    .doc_host
+                    .voice_agent()
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&choice)
+            }
             methods::GET_FOREMAN => RpcReply::value(&self.doc_host.foreman_status()),
             methods::SET_FOREMAN => {
                 let settings: openagents_proto::foreman::ForemanSettings = parse_params(params)?;

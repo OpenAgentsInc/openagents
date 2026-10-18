@@ -19,6 +19,7 @@
 mod agent_lab;
 mod continuations;
 mod custom_agents;
+mod voice_agent;
 mod foreman;
 mod session_index;
 mod transfer;

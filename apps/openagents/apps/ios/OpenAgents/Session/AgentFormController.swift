@@ -5,8 +5,9 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     private let app: AppModel
     private let agents: CoreAgents?
     private let lab: CoreAgentLab?
+    private let voiceAgent: CoreVoiceAgent?
     private let sharing: CoreSharing?
-    private var prefix: String { sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
+    private var prefix: String { if voiceAgent != nil { return "voice-agent" }; return sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
     private let stack = UIStackView()
     private var observation: AnyObject?
     private var instance = ""
@@ -15,6 +16,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     private var fieldKeys: [ObjectIdentifier: String] = [:]
 
     init(app: AppModel, agents: CoreAgents) {
+        self.voiceAgent = nil
         self.app = app
         self.agents = agents
         self.lab = nil
@@ -22,6 +24,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         super.init(nibName: nil, bundle: nil)
     }
     init(app: AppModel, lab: CoreAgentLab) {
+        self.voiceAgent = nil
         self.app = app
         self.agents = nil
         self.lab = lab
@@ -29,17 +32,27 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         super.init(nibName: nil, bundle: nil)
     }
     init(app: AppModel, sharing: CoreSharing) {
+        self.voiceAgent = nil
         self.app = app
         self.agents = nil
         self.lab = nil
         self.sharing = sharing
         super.init(nibName: nil, bundle: nil)
     }
+    init(app: AppModel, voiceAgent: CoreVoiceAgent) {
+        self.app = app
+        self.agents = nil
+        self.lab = nil
+        self.sharing = nil
+        self.voiceAgent = voiceAgent
+        super.init(nibName: nil, bundle: nil)
+    }
+
     required init?(coder: NSCoder) { fatalError() }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
+        title = voiceAgent != nil ? "Voice agent" : sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
         view.backgroundColor = .systemBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         let scroll = UIScrollView()
@@ -67,18 +80,20 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     }
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        voiceAgent?.setVisible(visible: true)
         lab?.setVisible(visible: true)
         sharing?.setVisible(visible: true)
     }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        voiceAgent?.setVisible(visible: false)
         lab?.setVisible(visible: false)
         sharing?.setVisible(visible: false)
         if lab != nil { app.customAgents?.refresh() }
     }
     private func render() {
         let snapshot = agents?.snapshot()
-        guard let json = sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
+        guard let json = voiceAgent.flatMap({ try? $0.snapshot() }) ?? sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
         guard let data = json.data(using: .utf8), let form = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let root = form["root"] as? [String: Any] else { return }
         instance = form["instance"] as? String ?? ""
         revision = (form["revision"] as? NSNumber)?.uint64Value ?? 0
@@ -180,6 +195,17 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         render()
     }
     private func activate(_ key: String) {
+        if let voiceAgent {
+            let currentInstance = instance
+            let currentRevision = revision
+            Task { @MainActor [weak self] in
+                do {
+                    try await voiceAgent.activate(instance: currentInstance, revision: currentRevision, key: key)
+                    self?.render()
+                } catch { self?.showError(error) }
+            }
+            return
+        }
         if let sharing {
             let currentInstance = instance
             let currentRevision = revision

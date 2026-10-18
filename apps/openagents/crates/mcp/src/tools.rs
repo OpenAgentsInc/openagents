@@ -848,6 +848,11 @@ impl Tools {
         let in_chat = self.openagents.origin().chat_id.is_some();
         catalog()
             .into_iter()
+            .chain(std::iter::once(ToolDef {
+                name: "get_voice_agent",
+                description: "Read the account's selected saved agent and chat for the next spoken question. Re-read before each send so a change during the call takes effect.",
+                input_schema: json!({"type":"object","properties":{},"additionalProperties":false}),
+            }))
             .filter(|tool| in_chat || (tool.name != SHOW_VISUAL && tool.name != RECORD_DECISION))
             .chain(crate::video_lab::tools().iter().cloned())
             .chain(build_status_tool())
@@ -865,6 +870,11 @@ impl Tools {
     /// should read (surfaced as `isError`, never as a protocol error).
     pub async fn call(&self, name: &str, args: Value) -> Result<Value, String> {
         let result = match name {
+            "get_voice_agent" => {
+                self.openagents
+                    .call(openagents_rpc::methods::GET_VOICE_AGENT, json!({}))
+                    .await
+            }
             "whoami" => self.whoami().await,
             "list_devices" => self.list_devices().await,
             "list_projects" => self.list_projects(parse(args)?).await,
@@ -1939,6 +1949,7 @@ mod tests {
     #[derive(Default)]
     struct World {
         writes: Mutex<Vec<(String, Value)>>,
+        voice_target: Mutex<Value>,
         dispatch_barrier: Option<tokio::sync::Barrier>,
         beta_parent: Option<String>,
         beta_remote: bool,
@@ -1991,6 +2002,9 @@ mod tests {
             }
             let remote = params["targetDeviceId"] == "dev-remote";
             Ok(match method {
+                methods::GET_VOICE_AGENT => {
+                    RpcReply::Value(self.voice_target.lock().unwrap().clone())
+                }
                 methods::LOCAL_DEVICE => RpcReply::Value(json!({ "deviceId": "dev-local" })),
                 methods::ENGINE_INFO => RpcReply::Value(json!({
                     "deviceId": "dev-local", "workspaceScope": "local"
@@ -2128,6 +2142,26 @@ mod tests {
     fn tools(world: Arc<World>, origin: Origin) -> Tools {
         let client = memory_client(world);
         Tools::new(Arc::new(OpenAgents::with_client(client, origin)))
+    }
+
+    #[tokio::test]
+    async fn voice_choice_is_read_again_for_the_next_question() {
+        let world = Arc::new(World::default());
+        let tools = tools(
+            world.clone(),
+            Origin {
+                chat_id: Some("voice-orchestrator-fixture".into()),
+                device_id: Some("dev-local".into()),
+            },
+        );
+        for chat in ["chat-alpha-1", "chat-beta-2"] {
+            *world.voice_target.lock().unwrap() = json!({"revision":1,"target":{"agent_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","chat_id":chat,"host_id":"dev-local"}});
+            let selected = tools.call("get_voice_agent", json!({})).await.unwrap();
+            assert_eq!(selected["target"]["chat_id"], chat);
+            tools.call("send_message", json!({"chat":selected["target"]["chat_id"],"text":"My next question","wait":false})).await.unwrap();
+            let writes = world.writes.lock().unwrap();
+            assert!(writes.last().unwrap().1.to_string().contains(chat));
+        }
     }
 
     #[tokio::test]

@@ -2,6 +2,7 @@
 pub mod assignments;
 pub mod place;
 pub mod runner;
+pub mod voice;
 use crate::{CancellationToken, Client, Deployment, Error, Session};
 use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};

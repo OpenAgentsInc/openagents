@@ -668,6 +668,11 @@
       "line": 58
     },
     {
+      "path": "/v1/voice-agent",
+      "source": "crates/openagents-web/src/voice_agent.rs",
+      "line": 109
+    },
+    {
       "path": "/v1/web-sign-in/{request}",
       "source": "crates/openagents-web/src/web_sign_in.rs",
       "line": 92

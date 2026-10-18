@@ -62,6 +62,7 @@ mod continuations_openapi;
 mod session_moves;
 mod session_index;
 mod custom_agents;
+mod voice_agent;
 mod custom_agents_openapi;
 mod dashboard;
 mod dashboard_openapi;
@@ -643,6 +644,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(labs_api::routes(&app))
         .merge(lab_card_view::routes())
         .merge(custom_agents::routes())
+        .merge(voice_agent::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())
         .merge(agent_lab_page::routes())

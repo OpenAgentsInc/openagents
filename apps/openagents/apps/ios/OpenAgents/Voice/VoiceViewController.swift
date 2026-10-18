@@ -184,7 +184,7 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
             }, toSection: .hosts)
         }
         s.appendItems(usageRows(usageSnapshot), toSection: .usage)
-        s.appendItems([Row(id: "style", title: "Voice", subtitle: voice.selectedStyle?.capitalized ?? "Codex default", symbol: "person.wave.2")], toSection: .voice)
+        s.appendItems([Row(id: "agent", title: "Voice agent", subtitle: "Choose a saved agent and chat", symbol: "person.crop.circle", enabled: app.voiceAgent != nil), Row(id: "style", title: "Voice", subtitle: voice.selectedStyle?.capitalized ?? "Codex default", symbol: "person.wave.2")], toSection: .voice)
         s.appendItems([
             Row(id: "tip-ear", title: "Hold it to your ear", subtitle: "The screen turns off and Codex plays through the earpiece.", symbol: "ear", enabled: true),
             Row(id: "tip-lock", title: "Lock your iPhone", subtitle: "The call keeps going. An incoming call ends it.", symbol: "lock", enabled: true),
@@ -247,12 +247,16 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
 
     func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt path: IndexPath) -> Bool {
         guard let row = dataSource.itemIdentifier(for: path) else { return false }
-        return (row.id.hasPrefix("host-") && row.enabled) || row.id == "style" || row.id == "usage-refresh"
+        return (row.id.hasPrefix("host-") && row.enabled) || row.id == "style" || (row.id == "agent" && row.enabled) || row.id == "usage-refresh"
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
         collectionView.deselectItem(at: path, animated: true)
         guard let row = dataSource.itemIdentifier(for: path) else { return }
+        if row.id == "agent", let picker = app.voiceAgent {
+            present(UINavigationController(rootViewController: AgentFormController(app: app, voiceAgent: picker)), animated: true)
+            return
+        }
         if row.id == "usage-refresh" {
             usage?.refresh()
             return

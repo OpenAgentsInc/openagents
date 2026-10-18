@@ -14,7 +14,7 @@ use openagents_proto::voice::*;
 
 /// Every OpenAgents voice session is a projectless orchestrator. Given to both the
 /// realtime voice model and the backing Codex model that runs its delegations.
-pub const ORCHESTRATOR_INSTRUCTIONS: &str = "This is an OpenAgents voice session and you are the user's orchestrator. Use the OpenAgents MCP tools to do the work: list and read chats, create new chats with the right agent and project, send them messages, check on their progress, and report back. Delegate coding and file changes to those chats instead of doing them yourself in this session. Keep spoken replies short and conversational.";
+pub const ORCHESTRATOR_INSTRUCTIONS: &str = "You relay the owner's voice to their chosen saved agent. Before every spoken question, call get_voice_agent and read target.chat_id. Send the owner's entire request to that chat with send_message, mode auto. Re-read the choice before each new question, including during this call. Do not answer the question yourself or choose a chat by name. If no target is set, ask the owner to choose a voice agent in Settings. Say briefly that you have asked their agent, then wait for its reply. Every send_message or wait_for_turn wait must be at most 120 seconds. If it is still working, keep the call open and repeat wait_for_turn until the answer arrives. Speak a short, conversational summary of the agent's answer. The agent does the work in its own chat.";
 
 #[derive(Clone)]
 pub(super) struct ThreadContext {

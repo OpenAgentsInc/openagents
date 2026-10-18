@@ -254,6 +254,12 @@ impl CoreAccount {
             .join("sharing");
         super::CoreSharing::new(lease, &directory, listener)
     }
+    pub fn voice_agent(
+        &self,
+        listener: Arc<dyn super::VoiceAgentListener>,
+    ) -> Arc<super::CoreVoiceAgent> {
+        super::CoreVoiceAgent::new(self.controller.clone(), listener)
+    }
     pub fn agent_lab(
         &self,
         listener: Arc<dyn super::AgentLabListener>,

@@ -23,6 +23,7 @@ pub mod composer;
 pub mod devices;
 pub mod files;
 mod foreman;
+pub(crate) mod voice_agent;
 pub mod harnesses;
 pub mod notifications;
 pub mod shortcuts;

@@ -86,6 +86,7 @@ pub struct ShortcutsPage {
     thread_naming: Entity<crate::settings::thread_naming::ThreadNamingCard>,
     worktrees: Entity<super::worktrees::WorktreeSettingsCard>,
     foreman: Entity<super::foreman::ForemanCard>,
+    voice_agent: Entity<super::voice_agent::VoiceAgentCard>,
     _state: Entity<AppState>,
 }
 
@@ -132,6 +133,7 @@ impl ShortcutsPage {
             },
             worktrees: cx.new(|cx| super::worktrees::WorktreeSettingsCard::new(state.clone(), cx)),
             foreman: cx.new(|cx| super::foreman::ForemanCard::new(state.clone(), cx)),
+            voice_agent: cx.new(super::voice_agent::VoiceAgentCard::new),
             _state: state,
         }
     }
@@ -945,6 +947,7 @@ impl Render for ShortcutsPage {
                             .child(
                                 widgets::page_column()
                                     .child(widgets::page_header(&theme, "General", None))
+                                    .child(self.voice_agent.clone())
                                     .child(
                                         widgets::section_card(&theme)
                                             .child(send_behavior_row)

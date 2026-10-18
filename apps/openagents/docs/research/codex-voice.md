@@ -70,8 +70,8 @@ pending start reservations as well as existing leases. The physical Codex
 release is pinned before spawning app-server so an installer symlink change
 cannot select a different helper for a warm runtime. A reader identity change
 also permanently invalidates the voice bridge before any new token can be
-installed. A fresh explicit request can renew that idle runtime after cleanup;
-continuing delegated work is preserved and must finish before renewal.
+installed. After cleanup, a fresh explicit request starts another runtime;
+work in the agent's chat continues independently.
 
 Voice protects the runtime from idle reaping and updates. Hanging up retires
 the voice-only runtime. Work in other chats continues. Account/profile retirement, engine/window owner
@@ -91,18 +91,16 @@ promotion uses the existing Codex task transcript; it does not resubmit a spoken
 request or create another task response. Native `turn/started` publishes the
 engine turn boundary before its text/tools, including on an idle bootstrap.
 
-Every session is an orchestrator. `thread/realtime/start` carries one short
-English instruction, as `realtimeStartInstructions` for the backing Codex model
-and as a developer `initialItems` entry for the voice model: use the OpenAgents MCP
-to create, message and monitor chats, and delegate coding work to them.
+Every session relays to the chosen saved agent. `thread/realtime/start` carries
+one short English instruction, as `realtimeStartInstructions` for the backing
+Codex model and as a developer `initialItems` entry for the voice model: read
+the account's voice choice before each question, send the question to that
+chat, wait for its answer, and speak a short summary.
 
-The voice agent uses the shared OpenAgents MCP. Creating chats, sending
-messages and delegating tasks use the normal provider selection, authentication
-and device routing. A Codex voice session can create a Grok, Claude Code or other
-available provider session; those children use their own provider credentials.
-Codex/ChatGPT authentication and local-host checks apply to starting voice itself,
-not to the sessions it controls through MCP. Ending voice does not restrict
-continuing tasks or their children.
+Messages use the shared OpenAgents MCP and its normal device routing. The
+chosen agent runs with its own provider and credentials. Codex/ChatGPT
+authentication and local-host checks apply to starting voice itself. Ending
+voice leaves the chosen agent's work running in its own chat.
 
 ## Interface and packaging
 
@@ -236,3 +234,10 @@ servers, skills, and instructions are excluded. The runtime home is removed
 when its process ends. Hanging up retires that runtime. Calls never resume an
 earlier call's thread. Messages to a voice chat after its call ends are refused. Compaction notices stay out
 of assistant text.
+
+The voice-agent choice is stored on the account through the SDK's
+`agents().voice_agent` and `set_voice_agent` calls. Settings and call controls
+open the same Rust picker on desktop and phone. Choices identify a saved
+agent definition, its chat, and its host; display names carry no authority.
+Before each spoken question, the relay reads the choice again and sends the
+request to that chat. A changed choice takes effect during the same call.

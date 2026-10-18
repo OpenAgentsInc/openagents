@@ -2084,6 +2084,8 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func storedLoginPresent() throws  -> Bool
     
+    func voiceAgent(listener: VoiceAgentListener)  -> CoreVoiceAgent
+    
     /**
      * Delete the signed-in account and sign this app out. Call it only
      * after the person confirmed the warning; with `forfeit_balance`,
@@ -2409,6 +2411,16 @@ open func storedLoginPresent()throws  -> Bool  {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_coreaccount_stored_login_present(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func voiceAgent(listener: VoiceAgentListener) -> CoreVoiceAgent  {
+    return try!  FfiConverterTypeCoreVoiceAgent_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_voice_agent(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeVoiceAgentListener_lower(listener),uniffiCallStatus
     )
 })
 }
@@ -5888,6 +5900,152 @@ public func FfiConverterTypeCoreSharing_lift(_ handle: UInt64) throws -> CoreSha
 #endif
 public func FfiConverterTypeCoreSharing_lower(_ value: CoreSharing) -> UInt64 {
     return FfiConverterTypeCoreSharing.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreVoiceAgentProtocol: AnyObject, Sendable {
+    
+    func activate(instance: String, revision: UInt64, key: String) async throws 
+    
+    func setVisible(visible: Bool) 
+    
+    func snapshot() throws  -> String
+    
+}
+open class CoreVoiceAgent: CoreVoiceAgentProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corevoiceagent(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corevoiceagent(handle, $0) }
+    }
+
+    
+
+    
+open func activate(instance: String, revision: UInt64, key: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corevoiceagent_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func setVisible(visible: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corevoiceagent_set_visible(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(visible),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corevoiceagent_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreVoiceAgent: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreVoiceAgent
+
+    public static func lift(_ handle: UInt64) throws -> CoreVoiceAgent {
+        return CoreVoiceAgent(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreVoiceAgent) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreVoiceAgent {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreVoiceAgent, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreVoiceAgent_lift(_ handle: UInt64) throws -> CoreVoiceAgent {
+    return try FfiConverterTypeCoreVoiceAgent.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreVoiceAgent_lower(_ value: CoreVoiceAgent) -> UInt64 {
+    return FfiConverterTypeCoreVoiceAgent.lower(value)
 }
 
 
@@ -9716,6 +9874,201 @@ public func FfiConverterTypeVisualSession_lift(_ handle: UInt64) throws -> Visua
 #endif
 public func FfiConverterTypeVisualSession_lower(_ value: VisualSession) -> UInt64 {
     return FfiConverterTypeVisualSession.lower(value)
+}
+
+
+
+
+
+
+public protocol VoiceAgentListener: AnyObject, Sendable {
+    
+    func onVoiceAgentChanged() 
+    
+}
+open class VoiceAgentListenerImpl: VoiceAgentListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_voiceagentlistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_voiceagentlistener(handle, $0) }
+    }
+
+    
+
+    
+open func onVoiceAgentChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voiceagentlistener_on_voice_agent_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceVoiceAgentListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceVoiceAgentListener = UniffiVTableCallbackInterfaceVoiceAgentListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeVoiceAgentListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface VoiceAgentListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeVoiceAgentListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface VoiceAgentListener: handle missing in uniffiClone")
+            }
+        },
+        onVoiceAgentChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeVoiceAgentListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onVoiceAgentChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceVoiceAgentListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceVoiceAgentListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitVoiceAgentListener() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_voiceagentlistener(UniffiCallbackInterfaceVoiceAgentListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVoiceAgentListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<VoiceAgentListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = VoiceAgentListener
+
+    public static func lift(_ handle: UInt64) throws -> VoiceAgentListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return VoiceAgentListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: VoiceAgentListener) -> UInt64 {
+         if let rustImpl = value as? VoiceAgentListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VoiceAgentListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: VoiceAgentListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceAgentListener_lift(_ handle: UInt64) throws -> VoiceAgentListener {
+    return try FfiConverterTypeVoiceAgentListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceAgentListener_lower(_ value: VoiceAgentListener) -> UInt64 {
+    return FfiConverterTypeVoiceAgentListener.lower(value)
 }
 
 
@@ -26508,6 +26861,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_stored_login_present() != 54303) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_voice_agent() != 19803) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_delete_account() != 60111) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -26835,6 +27191,18 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_voicesessionlistener_on_voice_closed() != 59201) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_corevoiceagent_activate() != 29829) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corevoiceagent_set_visible() != 20598) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corevoiceagent_snapshot() != 1926) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_voiceagentlistener_on_voice_agent_changed() != 44992) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_corevoiceusage_refresh() != 39150) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27060,6 +27428,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitSharingListener()
     uniffiCallbackInitUploadProgress()
     uniffiCallbackInitVisualListener()
+    uniffiCallbackInitVoiceAgentListener()
     uniffiCallbackInitVoiceMediaListener()
     uniffiCallbackInitVoiceSessionListener()
     uniffiCallbackInitVoiceUsageListener()

@@ -36,6 +36,12 @@ passing. List remaining deploy/device/store evidence in the handoff and
 report later defects as new issues; these steps do not hold code-complete
 work open.
 
+## Check the voice-agent picker (#12061)
+
+After deploying the voice-agent account route and updating both apps, choose
+an agent and a fork from Settings and call controls. Check that both devices
+show the choice and that the next spoken question reaches the chosen chat.
+
 ## Check fresh voice calls (#12060)
 
 After updating the app, make two voice calls. Check that each starts fresh,

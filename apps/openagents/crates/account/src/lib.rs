@@ -27,6 +27,7 @@ mod platform;
 pub mod reader;
 pub mod turns;
 pub mod video_editor;
+pub mod voice_agent;
 pub use key_session::{Attestation, Attester, RENEW_WITHIN};
 pub use platform::PlatformStore;
 

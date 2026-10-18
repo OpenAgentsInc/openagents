@@ -40,6 +40,7 @@ final class AppModel {
     @MainActor lazy var voice = RemoteVoiceController(app: self)
     private(set) var projectSharing: CoreSharing?
     private lazy var sharingBridge = ProjectSharingBridge(app: self)
+    private(set) var voiceAgent: CoreVoiceAgent?
     private(set) var agentLab: CoreAgentLab?
     private lazy var labBridge = LabBridge(app: self)
     private(set) var customAgents: CoreAgents?
@@ -263,6 +264,7 @@ final class AppModel {
     fileprivate func handleAccount(_ snapshot: AccountSnapshot) {
         guard snapshot.generation >= accountGeneration else { return }
         if snapshot.generation != accountGeneration {
+            voiceAgent = nil
             projectSharing = nil
             cloudHost = nil
             cloudHostBusy = false
@@ -273,6 +275,9 @@ final class AppModel {
         if isDemo { return }
         switch snapshot.state {
         case let .signedIn(_, name):
+            if voiceAgent == nil, let account {
+                voiceAgent = account.voiceAgent(listener: VoiceAgentBridge(app: self))
+            }
             if client == nil, let account {
                 do {
                     let config = CoreConfig(edgeUrl: Self.edgeURL, dataDir: Self.coreDir.path, deviceId: Self.deviceId, deviceName: UIDevice.current.name, platform: "ios", appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0")
@@ -1153,4 +1158,10 @@ private final class ProjectSharingBridge: SharingListener {
 struct ComputerConnectError: LocalizedError {
     let message: String
     var errorDescription: String? { message }
+}
+
+private final class VoiceAgentBridge: VoiceAgentListener, @unchecked Sendable {
+    weak var app: AppModel?
+    init(app: AppModel) { self.app = app }
+    func onVoiceAgentChanged() { DispatchQueue.main.async { [weak self] in self?.app?.notifyChanged() } }
 }
