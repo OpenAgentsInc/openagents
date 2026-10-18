@@ -31,11 +31,13 @@ if pgrep -f -x "$CONTENTS/MacOS/openagents" >/dev/null 2>&1; then
 fi
 
 cd "$ROOT"
-cargo build -p openagents
+# Optimized profile: the unoptimized dev build made every frame slow (#12152).
+PROFILE="${OPENAGENTS_DEV_PROFILE:-dev-opt}"
+cargo build --profile "$PROFILE" -p openagents
 
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$DATA_DIR"
 TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
-install -m 755 "$TARGET_DIR/debug/openagents" "$CONTENTS/MacOS/openagents"
+install -m 755 "$TARGET_DIR/$([ "$PROFILE" = dev ] && echo debug || echo "$PROFILE")/openagents" "$CONTENTS/MacOS/openagents"
 sed "s/__VERSION__/$VERSION/g" "$ROOT/dist/macos/Info-dev.plist" >"$CONTENTS/Info.plist"
 plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$CONTENTS/Info.plist"
 plutil -replace LSEnvironment.OPENAGENTS_DATA_DIR -string "$DATA_DIR" "$CONTENTS/Info.plist"

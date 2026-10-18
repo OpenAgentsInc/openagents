@@ -94,6 +94,8 @@ Upgrade to the newest `main` without quitting (#12056):
 "$HOME/work/openagents-app/apps/openagents/target/macos-dev/OpenAgents Dev.app/Contents/MacOS/openagents" host-upgrade --reason "newest main"
 ```
 
+The bundle is built with the `dev-opt` profile (our crates at `opt-level 2`,
+debug info and incremental kept); plain `cargo build` stays unoptimized.
 It fetches `main` into `~/work/openagents-app`, builds the bundle beside the
 running one in `~/work/openagents-target-app` (waiting for a build slot like
 an agent's build), and checks it: the signature, the data folder and port
