@@ -33,6 +33,7 @@ class TranscriptCanvas(
     private val horizontal = object : LinkedHashMap<ScrollerKey, Float>(16, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ScrollerKey, Float>?) = size > 96
     }
+    private var pendingAnchor: TranscriptViewportAnchor? = null
     private var tracker: VelocityTracker? = null
     private var pointer = -1
     private var downX = 0f
@@ -55,12 +56,25 @@ class TranscriptCanvas(
         if (old === frame) return
         fling.abortAnimation()
         viewport.submit(frame)
+        pendingAnchor?.let { if (viewport.restoreAnchor(it)) pendingAnchor = null }
         painter.setStyles(frame.styles())
         (old as? AutoCloseable)?.close()
         invalidate()
     }
 
-    fun followTail() { fling.abortAnimation(); viewport.followTail(); invalidate() }
+    fun saveViewportAnchor(): TranscriptViewportAnchor? {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        return pendingAnchor ?: viewport.exportAnchor()
+    }
+
+    fun restoreViewportAnchor(anchor: TranscriptViewportAnchor) {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        fling.abortAnimation()
+        pendingAnchor = if (viewport.restoreAnchor(anchor)) null else anchor
+        invalidate()
+    }
+
+    fun followTail() { pendingAnchor = null; fling.abortAnimation(); viewport.followTail(); invalidate() }
 
     fun refreshViewport() {
         onViewportChanged?.invoke(((width - paddingLeft - paddingRight) / density).coerceAtLeast(0f), resources.configuration.fontScale)
@@ -98,6 +112,7 @@ class TranscriptCanvas(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                pendingAnchor = null
                 fling.abortAnimation()
                 tracker?.recycle()
                 tracker = VelocityTracker.obtain()
@@ -186,7 +201,7 @@ class TranscriptCanvas(
         onRelease = null
         try { release?.invoke() } finally {
             (viewport.frame as? AutoCloseable)?.close()
-            viewport.clear(); painter.clear(); horizontal.clear()
+            viewport.clear(); painter.clear(); horizontal.clear(); pendingAnchor = null
             onViewportChanged = null; onPaintStats = null
         }
     }

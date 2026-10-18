@@ -7,6 +7,32 @@ import uniffi.openagents_core.RowKind
 import uniffi.openagents_core.RowPlacement
 
 class TranscriptViewportTest {
+    @Test fun recreationRestoresTheRustRowAfterItsFrameArrives() {
+        val old = TranscriptViewport()
+        old.resize(120f); old.submit(RecordedGeometry.frame("initial")); old.userScrollTo(220f, true)
+        val anchor = requireNotNull(old.exportAnchor())
+        val replacement = TranscriptViewport()
+        replacement.resize(180f)
+        assertFalse(replacement.restoreAnchor(anchor))
+        replacement.submit(RecordedGeometry.frame("history_prepend"))
+        assertTrue(replacement.restoreAnchor(anchor))
+        val restored = requireNotNull(replacement.exportAnchor())
+        assertEquals(anchor.row, restored.row)
+        assertEquals(anchor.inside, restored.inside, .001f)
+        assertFalse(replacement.following)
+    }
+
+    @Test fun recreationKeepsFollowTailThroughStreamGrowth() {
+        val old = TranscriptViewport()
+        old.resize(120f); old.submit(RecordedGeometry.frame("initial"))
+        val anchor = requireNotNull(old.exportAnchor())
+        val replacement = TranscriptViewport()
+        replacement.resize(180f); replacement.submit(RecordedGeometry.frame("stream_growth"))
+        assertTrue(replacement.restoreAnchor(anchor))
+        assertTrue(replacement.following)
+        assertEquals(replacement.maxOffset, replacement.offset, .001f)
+    }
+
     @Test fun historyInsertionPreservesTheCapturedRowAndOffset() {
         val old = RecordedGeometry.frame("initial")
         val next = RecordedGeometry.frame("history_prepend")
