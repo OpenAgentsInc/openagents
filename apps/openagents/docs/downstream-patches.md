@@ -805,3 +805,16 @@ links remain readable. Upstream fixes now require manual ports.
   app_links`) and an end-to-end rerun of `scripts/android/build-core.sh` were
   not run by this chat. Release-certificate verification remains an owner-only
   step in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
+
+- [OpenAgents #12091](https://github.com/OpenAgentsInc/openagents/issues/12091):
+  add an isolated Android settings presentation directory and a shared Rust
+  Native settings owner. Reuse account deletion, device rename, cloud, and
+  sharing contracts; fence deletion completion and stale confirmations to the
+  account generation that began them. Rust stores presentation preferences;
+  Kotlin reports widget identities and Android picker/chooser results. Source
+  fixtures cover deletion outcomes, account switching, persistence, and surface
+  lifetime. `CoreAccount::project_invitation_share` accepts only the bounded
+  canonical project-invitation URL form and returns chooser text with the URL
+  embedded in that text; it exposes no separate invitation code. Bindings,
+  lockfile resolution, app wiring, and executable checks remain pending.
+  Android push registration belongs to F1.
