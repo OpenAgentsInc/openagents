@@ -37,6 +37,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
         18,
         include_str!("../migrations/0018_free_allowance_tiers.sql"),
     ),
+    (19, include_str!("../migrations/0019_turn_request_keys.sql")),
 ];
 
 #[derive(Debug)]

@@ -40,6 +40,8 @@ pub const MAX_OUTPUT: usize = 256 * 1024;
 pub const MAX_COMMAND: usize = 64 * 1024;
 pub const MAX_ENV: usize = 16;
 pub const MAX_ENV_VALUE: usize = 64 * 1024;
+/// A request key already names a different turn body.
+pub const CONFLICT_ERROR: &str = "idempotency_conflict";
 /// The longest turn.
 pub const MAX_SECONDS: u64 = 3600;
 
@@ -161,17 +163,48 @@ impl Store {
         timeout: i32,
         env_names: &[String],
     ) -> Result<(), crate::db::DbError> {
+        self.add_turn_keyed(id, computer, owner, command, cwd, timeout, env_names, None)
+            .await
+            .map(|_| ())
+    }
+
+    /// Adds a turn, or with a request key returns the turn that key already
+    /// names. `Ok((turn, false))` is a repeat; a different body under the
+    /// same key is `CONFLICT_ERROR`.
+    pub async fn add_turn_keyed(
+        &self,
+        id: &str,
+        computer: &str,
+        owner: &str,
+        command: &str,
+        cwd: Option<&str>,
+        timeout: i32,
+        env_names: &[String],
+        key: Option<(&str, &str)>,
+    ) -> Result<(String, bool), crate::db::DbError> {
         let mut c = self.db.independent().await?;
         let tx = c.transaction().await?;
         crate::usage::lock(&tx).await?;
         if tx.query_opt("SELECT id FROM computers.computers WHERE id=$1 AND owner=$2 AND desired<>'deleted' FOR UPDATE", &[&computer,&owner]).await?.is_none() {
             return Err(crate::db::DbError("No such computer.".into()));
         }
+        let (request_key, request_digest) = match key {
+            Some((k, d)) => (Some(k), Some(d)),
+            None => (None, None),
+        };
+        if let Some(k) = request_key {
+            if let Some(r) = tx.query_opt("SELECT id, request_digest FROM computers.turns WHERE owner=$1 AND computer=$2 AND request_key=$3", &[&owner,&computer,&k]).await? {
+                if r.get::<_, Option<String>>(1).as_deref() != request_digest {
+                    return Err(crate::db::DbError(CONFLICT_ERROR.into()));
+                }
+                return Ok((r.get(0), false));
+            }
+        }
         crate::usage::check_turn(&tx, owner, timeout).await?;
         tx.execute(
-            "INSERT INTO computers.turns (id, computer, owner, state, command, cwd, timeout_seconds, env_names)
-             VALUES ($1, $2, $3, 'queued', $4, $5, $6, $7)",
-            &[&id, &computer, &owner, &command, &cwd, &timeout, &env_names],
+            "INSERT INTO computers.turns (id, computer, owner, state, command, cwd, timeout_seconds, env_names, request_key, request_digest)
+             VALUES ($1, $2, $3, 'queued', $4, $5, $6, $7, $8, $9)",
+            &[&id, &computer, &owner, &command, &cwd, &timeout, &env_names, &request_key, &request_digest],
         ).await?;
         tx.execute(
             "UPDATE computers.computers SET desired = 'running', intent_generation = intent_generation + 1, usage_intent_generation = intent_generation + 1, next_attempt_at = now(), attempts = 0
@@ -180,7 +213,7 @@ impl Store {
         ).await?;
         crate::usage::record_intent(&tx, owner, computer).await?;
         tx.commit().await?;
-        Ok(())
+        Ok((id.to_owned(), true))
     }
 
     pub async fn turn(
@@ -426,6 +459,35 @@ async fn add(
             return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again.");
         }
     }
+    let request_key = match headers.get("idempotency-key").map(|v| v.to_str()) {
+        None => None,
+        Some(Ok(k))
+            if !k.is_empty()
+                && k.len() <= 128
+                && k.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b)) =>
+        {
+            Some(k.to_owned())
+        }
+        Some(_) => {
+            return err(
+                StatusCode::BAD_REQUEST,
+                "invalid_request_key",
+                "An Idempotency-Key is letters, digits, dots, dashes and underscores.",
+            );
+        }
+    };
+    let digest = request_key.as_ref().map(|_| {
+        use sha2::{Digest, Sha256};
+        let mut env: Vec<(&String, &String)> = body.env.iter().collect();
+        env.sort();
+        format!(
+            "{:x}",
+            Sha256::digest(
+                serde_json::to_vec(&json!([body.command, body.cwd, timeout, env])).unwrap()
+            )
+        )
+    });
     let turn = new_id();
     let names: Vec<String> = body.env.keys().cloned().collect();
     let secrets: BTreeMap<String, Secret> = body
@@ -434,9 +496,9 @@ async fn add(
         .map(|(k, v)| (k, Secret::new(v)))
         .collect();
     api.turns.put(&turn, secrets);
-    if let Err(e) = api
+    let added = api
         .store
-        .add_turn(
+        .add_turn_keyed(
             &turn,
             &id,
             &owner,
@@ -444,20 +506,39 @@ async fn add(
             body.cwd.as_deref(),
             timeout,
             &names,
+            request_key.as_deref().zip(digest.as_deref()),
         )
-        .await
-    {
-        api.turns.take(&turn);
-        if e.0 == crate::usage::QUOTA_ERROR {
-            return err(
-                StatusCode::TOO_MANY_REQUESTS,
-                "quota_exhausted",
-                crate::usage::QUOTA_ERROR,
-            );
+        .await;
+    let turn = match added {
+        Ok((original, true)) => original,
+        Ok((original, false)) => {
+            api.turns.take(&turn);
+            return (
+                StatusCode::ACCEPTED,
+                Json(json!({"id": original, "computer": id, "state": "queued", "env_names": names})),
+            )
+                .into_response();
         }
-        eprintln!("oa-computers: turn: {e}");
-        return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again.");
-    }
+        Err(e) => {
+            api.turns.take(&turn);
+            if e.0 == CONFLICT_ERROR {
+                return err(
+                    StatusCode::CONFLICT,
+                    CONFLICT_ERROR,
+                    "That request key already names a different command.",
+                );
+            }
+            if e.0 == crate::usage::QUOTA_ERROR {
+                return err(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "quota_exhausted",
+                    crate::usage::QUOTA_ERROR,
+                );
+            }
+            eprintln!("oa-computers: turn: {e}");
+            return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again.");
+        }
+    };
     (
         StatusCode::ACCEPTED,
         Json(json!({"id": turn, "computer": id, "state": "queued", "env_names": names})),
@@ -855,6 +936,47 @@ pub async fn run_next<D: Driver + Clone + 'static>(
 #[cfg(test)]
 mod output_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_repeated_request_key_returns_the_first_turn_and_a_changed_body_conflicts() {
+        let Ok(admin) = std::env::var("OA_COMPUTERS_TEST_DATABASE_URL") else {
+            return;
+        };
+        let (db, _) = crate::Db::scratch(&admin).await.unwrap();
+        let store = Store::new(db);
+        let caps =
+            computer_driver::Capabilities::new("fake", computer_driver::Profile::ALL, &["small"]);
+        let record = crate::api::admit_create(
+            &caps,
+            "key-test",
+            &crate::registry::CreateIntent::default(),
+        )
+        .unwrap();
+        let (entry, _) = store
+            .create(&crate::store::NewComputer {
+                owner: "key-test",
+                chat: None,
+                idempotency_key: Some("turn-keys"),
+                driver: "fake",
+                image: None,
+                record: &record,
+            })
+            .await
+            .unwrap();
+        let add = |id: &'static str, cmd: &'static str, digest: &'static str| {
+            let store = store.clone();
+            let computer = entry.id.clone();
+            async move {
+                store
+                    .add_turn_keyed(id, &computer, "key-test", cmd, None, 30, &[], Some(("k1", digest)))
+                    .await
+            }
+        };
+        assert_eq!(add("first", "true", "d1").await.unwrap(), ("first".into(), true));
+        assert_eq!(add("second", "true", "d1").await.unwrap(), ("first".into(), false));
+        let e = add("third", "false", "d2").await.unwrap_err();
+        assert_eq!(e.0, CONFLICT_ERROR);
+    }
 
     #[tokio::test]
     async fn uncertain_completion_keeps_partial_output_and_late_reads_cannot_rewind_it() {
