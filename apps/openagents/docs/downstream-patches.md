@@ -692,3 +692,13 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+
+- [OpenAgents #12099](https://github.com/OpenAgentsInc/openagents/issues/12099):
+  add isolated Android onboarding/recovery presentation over shared Rust account,
+  identity, wallet recovery, and tutorial APIs. Rust Native owns the cards,
+  confirmation requirements, callback revisions, and authentication scope. New
+  Kotlin onboarding files supply device credentials, secret-screen protection,
+  lifecycle redaction, and explicit sensitive clipboard copy. A3 storage, D5
+  settings, and B1 Activity/Gradle files are unchanged. Source fixtures are unrun;
+  binding/host integration remains pending. The additive generation-fenced restore
+  API commits under the shared account-switch lock; its race fixtures are unrun.

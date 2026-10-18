@@ -19,6 +19,8 @@
 //! digest instead. Provider refusal or unavailability still uses proof of
 //! work. The controller tries the plain sign-in first, so a key that already has an
 //! account never pays for a proof.
+mod recovery;
+
 use crate::identity::Identity;
 use crate::{Controller, Phase, Ticket, cancelled, invalid_login, storage_message};
 use openagents::{CredentialRecord, Error, KeySignIn, Session, StorageError};

@@ -11,6 +11,8 @@
 //! through [`CoreClient::session_handle`] → [`openagents_client::SessionHandle`]
 //! (`snapshot()` / `subscribe()`), never over FFI.
 
+mod android_recovery;
+pub use android_recovery::*;
 mod account;
 mod android_storage;
 pub use android_storage::{
