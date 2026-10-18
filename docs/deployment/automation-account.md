@@ -111,8 +111,17 @@ GCP call. Each one needs a permission the automation account already holds:
 `coder-openai-api-key` (Codex's API key for `--engine-fallback` only) doesn't
 exist; runs use the ChatGPT login copy instead.
 
-The hosts themselves run as `oa-coder-host@` (the sccache bucket, and the
-delete of their own instance through a role on that instance alone). The
+The hosts themselves run as `oa-coder-host@`: the sccache bucket, the
+delete of their own instance through a role on that instance alone, and,
+since 2026-10-18 02:27 CDT, the landing queue. That's
+`roles/storage.objectUser` on `gs://openagentsgemini-coder-artifacts`
+with the IAM condition `land-queue-only`, which covers the
+`land-queue/` objects and listings under that prefix and nothing else in
+the bucket. Without it, a pool run's `openagents land submit` was refused
+(`storage.objects.get`) and the change stayed a local commit. The
+integrator's VM (`oa-dev-env-1`) isn't the hosts' to start: when it's
+stopped, the orchestrator starts it as the automation account
+(`roles/compute.admin`). The
 `--on boat` path (`POST /v1/work`) authenticates to openagents.com with the
 computer's sign-in, not gcloud. Its work hosts run as the automation account.
 The Computers service (`oa-computers`) runs as the production runtime account
@@ -133,3 +142,25 @@ Three things still reached for the person's login, and all three are fixed:
    every later gcloud and ssh/IAP call of the pool uses it. `cloud up` warns
    when gcloud is signed in as a person, and `cloud status` names the
    account.
+
+## The live proof (2026-10-18)
+
+The proof ran from a shell whose only gcloud configuration was the
+automation account's (`gcloud auth list` showed only
+`oa-mvp-automation@`), with the CLI built from `main`:
+
+| Step | Result |
+| --- | --- |
+| `openagents cloud up --hosts 2` | 00:15:50 to 00:24:43 CDT: two spot `c3-standard-8` hosts created, ready, reached over IAP, and built `e0ea6ed25f` (526 s). `cloud status` named the account and showed "about $0.12 of $300.00 spent over the last 24 hours". |
+| `openagents chat work --on gce --issues 12098 --land queue` | 02:28 to 02:39 CDT: the briefed agent on Codex worked [#12098](https://github.com/OpenAgentsInc/openagents/issues/12098) on host `oa-pool-pb22a59-5bd5`. Checks were replayed 2/2 (`cargo fmt`, `cargo test -p openagents-cli`), and the change was queued as entry `20261018T073841Z-oa-pool-pb22a59-5bd5-5d65`, at about $0.018 of host time. The integrator (`oa-dev-env-1`, started as the automation account) landed it on `main` as `9a70ce012b` at 03:10 CDT and closed the issue. |
+| Idle shutdown | Every host deleted itself after 10 idle minutes. |
+| `openagents cloud down` | 02:52 CDT: the grant was revoked, and "Leak check: no pool host is left". Spend over the 24 hours was about $0.62, every attempt included. |
+
+The proof found five faults on `main`, all fixed in this change:
+- `cloud up` had failed on every host since `d765f537cb` (2026-10-10). The
+  build stamped `tree: unknown`, and the install refused it.
+- The briefed engine's built-in scripts lacked `kinds`, `acceptance` and
+  the rest of its bench modules.
+- The bundled CLI tree went stale with the new help.
+- A template test assumed umask 022, but pool runs use 077.
+- Pool hosts couldn't reach the landing queue.
