@@ -25,9 +25,12 @@
 //! directory, or one of its arguments lies inside it, or when a build holds
 //! one of a profile's cargo locks. When the process table can't be read,
 //! every target counts as held. Artifacts go only while the sweep holds
-//! their profile's cargo locks itself, so a build never loses a file
-//! mid-compile: it waits the few seconds the removal takes, then rebuilds
-//! what's missing.
+//! their profile's Cargo locks itself. The scheduled sweep queues a kernel
+//! waiter for each busy profile, then rescans after the next lock handoff
+//! instead of skipping another five-minute interval (#12104). Other idle
+//! profiles are trimmed while that build runs. Below the floor, cap cleanup
+//! also uses the shorter idle window and the scheduled sweep runs bounded
+//! `kache gc`.
 //!
 //! "Untouched" needs care on macOS, which updates a file's access time on a
 //! read only when it is older than the file's change time: a new artifact,
@@ -415,6 +418,16 @@ pub trait Host {
     fn now(&self) -> SystemTime;
     /// `at` as the log shows it, in Chicago time.
     fn stamp(&self, at: SystemTime) -> String;
+    /// Run bounded cache collection when free disk is below the floor.
+    /// Other hosts can leave cache management to their caller.
+    fn cache_gc(&self) -> Option<Result<(), String>> {
+        None
+    }
+    /// Actual free space after a removal, when the host can observe changes.
+    /// Test hosts can retain deterministic before-plus-removed accounting.
+    fn observed_free(&self, _: &Path) -> Option<u64> {
+        None
+    }
 }
 
 /// This Mac: `ps` and `lsof`, `statvfs`, and the clock.
@@ -457,6 +470,48 @@ impl Host for System {
 
     fn stamp(&self, at: SystemTime) -> String {
         chicago(at)
+    }
+
+    fn cache_gc(&self) -> Option<Result<(), String>> {
+        let home = user_home::home_in(|name| std::env::var_os(name));
+        let installed = home.map(|home| home.join(".cargo/bin/kache"));
+        let program = installed
+            .filter(|path| path.is_file())
+            .unwrap_or_else(|| "kache".into());
+        Some(bounded_gc(&program, Duration::from_secs(30)))
+    }
+
+    fn observed_free(&self, path: &Path) -> Option<u64> {
+        self.free(path).ok()
+    }
+}
+
+fn bounded_gc(program: &Path, timeout: Duration) -> Result<(), String> {
+    let mut child = std::process::Command::new(program)
+        .arg("gc")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|error| format!("kache gc: {error}"))?;
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return Ok(()),
+            Ok(Some(status)) => return Err(format!("kache gc: {status}")),
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("kache gc: {error}"));
+            }
+            Ok(None) => {}
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("kache gc exceeded {}s", timeout.as_secs()));
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -618,7 +673,7 @@ pub struct Report {
     pub dry_run: bool,
     /// Free bytes when it started, when the volume could be read.
     pub free_before: Option<u64>,
-    /// Free bytes after, estimated as before plus what it removed.
+    /// Free bytes after: observed by the system host, estimated for dry runs.
     pub free_after: Option<u64>,
     pub freed: u64,
     /// When the sweep began watching artifact use, in Chicago time.
@@ -707,6 +762,111 @@ fn span(duration: Duration) -> String {
 /// nothing and reports what it would remove.
 #[must_use]
 pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -> Report {
+    sweep_with_locks(layout, policy, host, dry_run, BTreeMap::new())
+}
+
+/// Sweep idle profiles immediately, then queue for busy profiles' next Cargo
+/// lock handoff. Each handoff rescans artifacts and their last use under the
+/// lock; a running build's pending units must never be inferred from rustc's
+/// currently visible arguments. The callback records progress while waiting.
+pub fn sweep_waiting(
+    layout: &Layout,
+    policy: &Policy,
+    host: &dyn Host,
+    dry_run: bool,
+    mut report: impl FnMut(&Report),
+) {
+    let mut immediate = policy.clone();
+    immediate.lock_wait = Duration::ZERO;
+    let mut first = maintenance_pass(layout, &immediate, host, dry_run);
+    let pending: std::collections::BTreeSet<_> = first
+        .actions
+        .iter()
+        .filter(|action| action.verb == "skipped")
+        .map(|action| action.path.clone())
+        .collect();
+    report(&first);
+    if dry_run || pending.is_empty() {
+        return;
+    }
+
+    let (send, receive) = std::sync::mpsc::channel();
+    for profile in pending {
+        let send = send.clone();
+        std::thread::spawn(move || {
+            let locks = queue_profile(&profile);
+            let _ = send.send((profile, locks));
+        });
+    }
+    drop(send);
+    loop {
+        let (profile, locks) = match receive.recv_timeout(Duration::from_secs(300)) {
+            Ok(held) => held,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // launchd does not start a second instance while one waits.
+                // Keep its normal five-minute maintenance cadence ourselves.
+                first = maintenance_pass(layout, &immediate, host, false);
+                report(&first);
+                continue;
+            }
+        };
+        let Some(locks) = locks else {
+            continue;
+        };
+        let held = BTreeMap::from([(profile.clone(), Some(locks))]);
+        let mut next = sweep_with_locks(layout, &immediate, host, false, held);
+        next.actions.insert(
+            0,
+            Action {
+                verb: "lock handoff".into(),
+                path: profile,
+                bytes: 0,
+                reason: "Cargo finished; rescanned artifacts under its locks before trimming"
+                    .into(),
+                at: host.stamp(host.now()),
+            },
+        );
+        report(&next);
+    }
+}
+
+fn maintenance_pass(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -> Report {
+    let gc = if !dry_run
+        && host
+            .free(&layout.work)
+            .is_ok_and(|free| free < policy.floor)
+    {
+        host.cache_gc()
+    } else {
+        None
+    };
+    let mut first = sweep(layout, policy, host, dry_run);
+    if let Some(result) = gc {
+        first.actions.insert(
+            0,
+            Action {
+                verb: "cache gc".into(),
+                path: "kache".into(),
+                bytes: 0,
+                reason: result.map_or_else(
+                    |error| error,
+                    |()| "kache gc completed below the disk floor".into(),
+                ),
+                at: host.stamp(host.now()),
+            },
+        );
+    }
+    first
+}
+
+fn sweep_with_locks(
+    layout: &Layout,
+    policy: &Policy,
+    host: &dyn Host,
+    dry_run: bool,
+    locks: BTreeMap<PathBuf, Option<Vec<std::fs::File>>>,
+) -> Report {
     let now = host.now();
     let free_before = host.free(&layout.work).ok();
     let procs = host.processes();
@@ -754,10 +914,15 @@ pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -
         free: free_before,
         freed: 0,
         actions: Vec::new(),
-        locks: BTreeMap::new(),
+        locks,
     };
     let critical = free_before.is_some_and(|free| free < policy.critical);
     let touchable = |target: &Target| target.kind != Kind::DevApp || critical;
+    let cap_idle = if free_before.is_some_and(|free| free < policy.floor) {
+        policy.idle.min(policy.low_idle)
+    } else {
+        policy.idle
+    };
 
     // Source-keyed compiler state is bounded independently of the target cap.
     // Keep Cargo lock files and their directories: unlinking a held lock would
@@ -820,7 +985,9 @@ pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -
             };
             let units = std::mem::take(&mut target.units);
             for unit in units {
-                if unit.profile.starts_with(&state) && run.remove_unit(&unit, reason.clone()) {
+                if unit.profile.starts_with(&state)
+                    && run.remove_unit(&unit, reason.clone(), Duration::ZERO)
+                {
                     target.bytes = target.bytes.saturating_sub(unit.bytes);
                 } else {
                     target.units.push(unit);
@@ -891,15 +1058,14 @@ pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -
         let mut kept = Vec::new();
         for unit in units {
             let idle = ago(now, unit.used);
-            if target.bytes > low_water && idle >= policy.idle && !state_held(&unit.profile, &procs)
-            {
+            if target.bytes > low_water && idle >= cap_idle && !state_held(&unit.profile, &procs) {
                 let reason = format!(
                     "the target held {}, over its {} cap; untouched {}",
                     size(held),
                     size(policy.cap),
                     span(idle)
                 );
-                if run.remove_unit(&unit, reason) {
+                if run.remove_unit(&unit, reason, cap_idle) {
                     target.bytes = target.bytes.saturating_sub(unit.bytes);
                 } else {
                     kept.push(unit);
@@ -941,7 +1107,7 @@ pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -
                 size(policy.floor),
                 span(idle)
             );
-            if !run.remove_unit(&unit, reason) {
+            if !run.remove_unit(&unit, reason, policy.low_idle) {
                 kept.push((kind, unit));
                 continue;
             }
@@ -1020,6 +1186,13 @@ struct Run<'a> {
 }
 
 impl Run<'_> {
+    fn account(&mut self, bytes: u64) {
+        self.freed += bytes;
+        self.free = self.free.map(|free| free.saturating_add(bytes));
+        if !self.dry_run {
+            self.free = self.host.observed_free(&self.layout.work).or(self.free);
+        }
+    }
     fn flag(&mut self, path: &Path, bytes: u64, reason: String) {
         self.push("flagged", path, bytes, reason);
     }
@@ -1058,8 +1231,7 @@ impl Run<'_> {
                 return false;
             }
         }
-        self.freed += bytes;
-        self.free = self.free.map(|free| free + bytes);
+        self.account(bytes);
         let verb = if self.dry_run {
             "would remove"
         } else {
@@ -1085,10 +1257,9 @@ impl Run<'_> {
         if !self.locks.contains_key(profile) {
             let guard = lock_profile(profile, self.lock_wait);
             if guard.is_none() {
-                let reason = format!(
-                    "a build held its cargo lock the {}s the sweep waited; its artifacts wait for the next run",
-                    self.lock_wait.as_secs()
-                );
+                let reason =
+                    "a build holds its Cargo locks; eligible artifacts await a lock handoff"
+                        .to_owned();
                 self.push("skipped", profile, 0, reason);
             }
             self.locks.insert(profile.to_owned(), guard);
@@ -1098,11 +1269,20 @@ impl Run<'_> {
 
     /// Removes a unit's files under its profile's cargo locks, and whether
     /// it did.
-    fn remove_unit(&mut self, unit: &Unit, reason: String) -> bool {
+    fn remove_unit(&mut self, unit: &Unit, reason: String, idle: Duration) -> bool {
         let Some(first) = unit.paths.first() else {
             return false;
         };
         if self.layout.protected(first) || !self.locked(&unit.profile) {
+            return false;
+        }
+        // A build may have finished between the initial scan and this lock.
+        // Refresh use under the guard even on the immediate (unqueued) pass.
+        if unit
+            .paths
+            .iter()
+            .any(|path| ago(self.host.now(), measure(path).used) < idle)
+        {
             return false;
         }
         let mut removed = 0;
@@ -1122,8 +1302,7 @@ impl Run<'_> {
         if !self.dry_run && removed == 0 {
             return false;
         }
-        self.freed += unit.bytes;
-        self.free = self.free.map(|free| free + unit.bytes);
+        self.account(unit.bytes);
         let verb = if self.dry_run {
             "would remove"
         } else {
@@ -1183,6 +1362,52 @@ fn lock_profile(profile: &Path, wait: Duration) -> Option<Vec<std::fs::File>> {
 
 #[cfg(not(unix))]
 fn lock_profile(_: &Path, _: Duration) -> Option<Vec<std::fs::File>> {
+    Some(Vec::new())
+}
+
+/// Queue in the kernel rather than polling a busy lock and losing every gap
+/// to Cargo's already queued builders. Never wait on a second lock while
+/// holding another: Cargo can acquire these in a different order.
+#[cfg(unix)]
+fn queue_profile(profile: &Path) -> Option<Vec<std::fs::File>> {
+    use std::os::unix::io::AsRawFd as _;
+    let mut files: Vec<_> = LOCKS
+        .iter()
+        .map(|name| {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(profile.join(name))
+        })
+        .collect::<Result<_, _>>()
+        .ok()?;
+    loop {
+        // SAFETY: all descriptors stay open until their guards are returned.
+        while unsafe { libc::flock(files[0].as_raw_fd(), libc::LOCK_EX) } != 0 {
+            if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+                return None;
+            }
+        }
+        let busy = (1..files.len()).find(|&index| {
+            // SAFETY: as above; a nonblocking attempt cannot deadlock.
+            (unsafe { libc::flock(files[index].as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) }) != 0
+        });
+        if let Some(index) = busy {
+            for file in &files {
+                // SAFETY: unlocking descriptors owned by this function.
+                unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+            }
+            files.swap(0, index);
+        } else {
+            return Some(files);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn queue_profile(_: &Path) -> Option<Vec<std::fs::File>> {
     Some(Vec::new())
 }
 

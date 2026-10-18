@@ -195,6 +195,49 @@ fn every_worktree_shares_one_target_folder_per_workspace() {
 }
 
 #[test]
+fn explicit_shared_targets_stay_without_keep_target_dir() {
+    let machine = Machine::new();
+    let ws = machine.root().join("ws");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(ws.join("Cargo.lock"), "").unwrap();
+    let granted = machine.root().join("work/allowed-target");
+    let grants = machine.root().join("leases/agent-target-grants");
+    std::fs::create_dir_all(grants.parent().unwrap()).unwrap();
+    std::fs::write(
+        &grants,
+        format!("# Shared target\n {} # allowed\n", granted.display()),
+    )
+    .unwrap();
+    for target in [
+        machine.root().join("work/openagents-target-1"),
+        machine.root().join("work/openagents-target-1-app"),
+        machine.gate.targets.join("existing-workspace"),
+        granted,
+    ] {
+        let output = machine.cargo(
+            &ws,
+            &["build"],
+            &[
+                ("CARGO_TARGET_DIR", target.to_str().unwrap()),
+                ("CARGO_INCREMENTAL", "1"),
+            ],
+        );
+        assert!(output.status.success(), "{output:?}");
+        let line = stdout(&output);
+        assert!(
+            line.ends_with(&format!("target={}", target.display())),
+            "{line}"
+        );
+        assert!(
+            line.contains(&format!("build_dir={}/worktrees/", target.display())),
+            "{line}"
+        );
+        assert!(line.contains("incremental=0"), "{line}");
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("building in the shared folder"));
+    }
+}
+
+#[test]
 fn a_build_below_the_disk_floor_does_not_start() {
     let machine = Machine::new();
     let output = machine.cargo(&machine.root(), &["build"], &[(FLOOR_VAR, "999999999")]);

@@ -245,10 +245,12 @@ shim prepares the build before it runs the real `cargo`:
   workspace and `apps/openagents` each get one. The directory name uses the
   Git common directory plus the workspace's relative path, never the agent's
   ID or the worktree's name. Cargo locks each build directory while compiling.
-  A `CARGO_TARGET_DIR` the agent set is replaced, and the shim says so;
-  `OPENAGENTS_KEEP_TARGET_DIR=1` keeps it. On the owner's Mac, keep the existing
-  shared `~/work/openagents-target-1` and `~/work/openagents-target-1-app`
-  with that variable instead of creating another set under `agent-targets`.
+  An explicit shared `CARGO_TARGET_DIR` stays: `~/work/openagents-target-1`,
+  `~/work/openagents-target-1-app`, a folder directly under the gate targets,
+  or a path in `agent-target-grants`. Other targets are replaced and the shim
+  says so; `OPENAGENTS_KEEP_TARGET_DIR=1` keeps any explicit target. On the
+  owner's Mac, use the existing shared targets rather than creating another
+  set under `agent-targets` (#12104).
 - **Source-path identity.** The shim loads
   [`cargo-build-env.sh`](../../../scripts/dev/cargo-build-env.sh). The helper
   hashes the physical workspace manifest path with SHA-256 and sets
@@ -353,6 +355,7 @@ minutes (`com.openagents.build-sweep`). Each run, in order:
 4. **The cap.** A target over 120 GiB loses its least recently used
    artifacts in `deps` (a crate's files with its fingerprint), `build`, and
    `incremental` that nothing read or wrote for 2 hours, down to 90 GiB.
+   Below the disk floor, this pass also uses the 30-minute idle window.
 5. **Still below the floor**, it does the same across every target for
    artifacts untouched 30 minutes, until 100 GiB is free.
 
@@ -361,10 +364,22 @@ process holds a target when its `CARGO_TARGET_DIR` (from `ps -E`), its
 working directory (`lsof -a -d cwd -p PIDS`), or an argument lies inside
 it, and so does a build holding one of a profile's cargo locks. If the
 process table can't be read, every target counts as held. The sweep removes
-artifacts only while it holds the profile's cargo locks itself, waiting up
-to 20 seconds for a build to let go, so a build never loses a file
-mid-compile: a build that starts meanwhile waits a few seconds, then
-rebuilds what's missing.
+artifacts only while it holds the profile's Cargo locks itself. It first
+trims idle profiles whose locks are available, then queues a blocking kernel
+waiter for each busy profile instead of giving up after 20 seconds. At the
+next lock handoff it rescans artifacts and their last-use times under the
+lock before trimming. Cargo builds already running finish with their pending
+link and test inputs intact; new builds wait for that cleanup and rebuild
+what is missing. A current `rustc` command alone cannot identify every unit
+that Cargo plans to use later, so the sweep does not guess safe hashes under
+a lock another build still owns (#12104). Progress is logged before waiting
+and after each handoff. A sweep can span several five-minute launchd intervals;
+launchd keeps one instance running, and that instance continues maintenance
+every five minutes while waiting.
+
+Below the floor, the sweep also runs `kache gc` before measuring targets. It
+uses `~/.cargo/bin/kache` even under launchd's limited `PATH`, bounds the
+command to 30 seconds, and records success or failure. Dry runs never run GC.
 
 macOS records a read in a file's access time only when that time is older
 than the file's change time, so a fresh artifact never shows a read. After
@@ -393,7 +408,8 @@ as JSON.
 | Critical level (the dev app may go) | 40 GiB | `OPENAGENTS_BUILD_SWEEP_CRITICAL_GIB` |
 | Untouched before a capped target loses it | 120 minutes | `OPENAGENTS_BUILD_SWEEP_IDLE_MINUTES` |
 
-- Install or update: `scripts/dev/install-build-sweep.sh`.
+- Install or update: `scripts/dev/install-build-sweep.sh` builds the release
+  binary in the shared target, outside the busy debug-profile queue.
 - See what a run would remove, removing nothing:
   `~/.openagents/bin/openagents-build-sweep --dry-run`.
 - Pause: `touch ~/.openagents/build-sweep.off`; resume: `rm` it.

@@ -40,14 +40,20 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::SUCCESS;
     }
     let policy = sweep::Policy::from(&|name| std::env::var(name).ok());
-    let report = sweep::sweep(&layout, &policy, &sweep::System, dry_run);
-    if dry_run {
-        for line in report.lines() {
-            println!("{line}");
+    let mut failed = false;
+    sweep::sweep_waiting(&layout, &policy, &sweep::System, dry_run, |report| {
+        if dry_run {
+            for line in report.lines() {
+                println!("{line}");
+            }
+        } else if let Err(error) = sweep::record(&layout, report) {
+            eprintln!("openagents-build-sweep: the log can't be written: {error}");
+            failed = true;
         }
-    } else if let Err(error) = sweep::record(&layout, &report) {
-        eprintln!("openagents-build-sweep: the log can't be written: {error}");
-        return std::process::ExitCode::FAILURE;
+    });
+    if failed {
+        std::process::ExitCode::FAILURE
+    } else {
+        std::process::ExitCode::SUCCESS
     }
-    std::process::ExitCode::SUCCESS
 }

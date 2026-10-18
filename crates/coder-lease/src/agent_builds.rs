@@ -11,7 +11,8 @@
 //!   [`TARGETS_VAR`] (`~/work/agent-targets` by default). Every worktree of a
 //!   repository shares the folder for the same workspace, and Cargo's own
 //!   lock keeps two builds in it from colliding. `OPENAGENTS_KEEP_TARGET_DIR=1`
-//!   keeps the caller's `CARGO_TARGET_DIR` instead.
+//!   keeps the caller's `CARGO_TARGET_DIR` instead. Explicit recognized shared
+//!   targets already stay without that override (#12104).
 //! - Keys intermediate compiler state by Cargo's workspace manifest path hash
 //!   under the shared target, and disables incremental compilation, including
 //!   builds already inside a lease (#12071).
@@ -140,7 +141,30 @@ else
 fi
 [ -z "$ws" ] || build_dir=$ws
 targets=${OPENAGENTS_AGENT_TARGETS:-}
-if [ -n "$targets" ] && [ "${OPENAGENTS_KEEP_TARGET_DIR:-}" != 1 ]; then
+keep_target=${OPENAGENTS_KEEP_TARGET_DIR:-}
+# Explicit shared targets already have the sweep's disk allowance. Sending
+# them to another target set doubles the cache footprint (#12104).
+if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+  requested=$CARGO_TARGET_DIR
+  if [ -d "$requested" ]; then
+    requested=$(CDPATH= cd -- "$requested" && pwd -P) || exit 1
+  fi
+  case $requested in
+    "$HOME/work/openagents-target-1"|"$HOME/work/openagents-target-1-app") keep_target=1 ;;
+  esac
+  if [ -n "$targets" ] && [ "$(dirname -- "$requested")" = "$targets" ]; then
+    keep_target=1
+  fi
+  grants=${OPENAGENTS_LEASE_ROOT:-$HOME/.openagents/leases}/agent-target-grants
+  if [ -f "$grants" ]; then
+    while IFS= read -r grant || [ -n "$grant" ]; do
+      grant=$(printf '%s' "$grant" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')
+      case $grant in '~/'*) grant=$HOME/${grant#\~/} ;; esac
+      [ "$requested" != "$grant" ] || keep_target=1
+    done < "$grants"
+  fi
+fi
+if [ -n "$targets" ] && [ "$keep_target" != 1 ]; then
   if [ -n "$ws" ]; then
     name=$(basename -- "$ws")
     key=$ws

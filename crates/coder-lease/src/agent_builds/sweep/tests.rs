@@ -220,6 +220,174 @@ fn artifacts_touched_recently_stay_even_over_the_cap() {
 }
 
 #[test]
+fn below_the_floor_cap_cleanup_uses_the_shorter_idle_window() {
+    let home = Home::new();
+    let target = home.work("openagents-target-1");
+    home.unit(&target, "old-01", 800, 0.75);
+    home.unit(&target, "fresh-02", 100, 0.1);
+    let held = cargo(1, Some(&target), None, &["cargo", "build"]);
+    let report = sweep(
+        &home.layout(),
+        &policy(500, 100, 0),
+        &fake(0, vec![held]),
+        false,
+    );
+    assert_eq!(removed(&report), ["libold-01.*"]);
+    assert!(
+        report
+            .actions
+            .iter()
+            .any(|action| action.reason.contains("cap; untouched 45m"))
+    );
+    assert!(target.join("debug/deps/libfresh-02.rlib").exists());
+}
+
+#[test]
+fn queued_cleanup_rescans_after_the_build_finishes() {
+    use std::os::unix::io::AsRawFd as _;
+    let home = Home::new();
+    let target = home.work("openagents-target-1");
+    home.unit(&target, "old-01", 800, 10.0);
+    home.unit(&target, "rebuilt-02", 800, 10.0);
+    let lock = File::create(target.join("debug/.cargo-lock")).unwrap();
+    // SAFETY: the test owns this descriptor until the simulated build ends.
+    assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+    let layout = home.layout();
+    let build_target = target.clone();
+    let (send, receive) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let held = cargo(1, Some(&build_target), None, &["cargo", "build"]);
+        sweep_waiting(
+            &layout,
+            &policy(500, 0, 0),
+            &fake(u64::MAX / 2, vec![held]),
+            false,
+            |report| send.send(report.clone()).unwrap(),
+        );
+    });
+    let initial = receive.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(removed(&initial).is_empty());
+    // The queued sweep must discard its stale scan of this now rebuilt unit.
+    home.unit(&target, "rebuilt-02", 800, 0.1);
+    drop(lock);
+    let next = receive.recv_timeout(Duration::from_secs(5)).unwrap();
+    worker.join().unwrap();
+    assert_eq!(removed(&next), ["libold-01.*"]);
+    assert!(target.join("debug/deps/librebuilt-02.rlib").exists());
+    assert!(
+        next.actions
+            .iter()
+            .any(|action| action.verb == "lock handoff")
+    );
+}
+
+#[test]
+fn cache_gc_is_bounded() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let home = Home::new();
+    let program = home.root.join("kache");
+    std::fs::write(&program, "#!/bin/sh\n[ \"$1\" = gc ] || exit 1\nexit 0\n").unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(bounded_gc(&program, Duration::from_secs(1)).is_ok());
+    std::fs::write(&program, "#!/bin/sh\nexec sleep 5\n").unwrap();
+    let started = std::time::Instant::now();
+    assert!(
+        bounded_gc(&program, Duration::from_millis(50))
+            .unwrap_err()
+            .contains("exceeded")
+    );
+    assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+#[test]
+fn cache_gc_runs_below_the_floor_but_never_during_a_dry_run() {
+    struct CacheHost {
+        machine: Fake,
+        calls: std::cell::Cell<u32>,
+    }
+    impl Host for CacheHost {
+        fn processes(&self) -> Result<Vec<Proc>, String> {
+            self.machine.processes()
+        }
+        fn free(&self, path: &Path) -> std::io::Result<u64> {
+            self.machine.free(path)
+        }
+        fn now(&self) -> SystemTime {
+            self.machine.now()
+        }
+        fn stamp(&self, at: SystemTime) -> String {
+            self.machine.stamp(at)
+        }
+        fn cache_gc(&self) -> Option<Result<(), String>> {
+            self.calls.set(self.calls.get() + 1);
+            Some(Ok(()))
+        }
+    }
+    let home = Home::new();
+    let mut host = CacheHost {
+        machine: fake(0, vec![]),
+        calls: std::cell::Cell::new(0),
+    };
+    let policy = policy(500, 100, 0);
+    sweep_waiting(&home.layout(), &policy, &host, true, |_| {});
+    assert_eq!(host.calls.get(), 0);
+    let mut reports = Vec::new();
+    sweep_waiting(&home.layout(), &policy, &host, false, |report| {
+        reports.push(report.clone())
+    });
+    assert_eq!(host.calls.get(), 1);
+    assert!(
+        reports[0]
+            .actions
+            .iter()
+            .any(|action| action.verb == "cache gc")
+    );
+    host.machine.free = Some(u64::MAX / 2);
+    sweep_waiting(&home.layout(), &policy, &host, false, |_| {});
+    assert_eq!(host.calls.get(), 1);
+}
+
+#[test]
+fn actual_free_space_overrides_estimates_of_removed_bytes() {
+    struct Actual(Fake);
+    impl Host for Actual {
+        fn processes(&self) -> Result<Vec<Proc>, String> {
+            self.0.processes()
+        }
+        fn free(&self, path: &Path) -> std::io::Result<u64> {
+            self.0.free(path)
+        }
+        fn now(&self) -> SystemTime {
+            self.0.now()
+        }
+        fn stamp(&self, at: SystemTime) -> String {
+            self.0.stamp(at)
+        }
+        // Unlinked files can remain open, or other builds can consume space.
+        fn observed_free(&self, _: &Path) -> Option<u64> {
+            Some(0)
+        }
+    }
+    let home = Home::new();
+    let target = home.work("openagents-target-1");
+    home.unit(&target, "old-01", 400, 3.0);
+    home.unit(&target, "older-02", 400, 4.0);
+    let held = cargo(1, Some(&target), None, &["cargo", "build"]);
+    let report = sweep(
+        &home.layout(),
+        &policy(10000, 100, 0),
+        &Actual(fake(0, vec![held])),
+        false,
+    );
+    assert_eq!(
+        removed(&report).len(),
+        2,
+        "don't stop at an estimated floor"
+    );
+    assert_eq!(report.free_after, Some(0));
+}
+
+#[test]
 fn a_dry_run_reports_the_same_removals_and_removes_nothing() {
     let home = Home::new();
     let target = home.work("openagents-target-1");

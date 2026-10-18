@@ -172,9 +172,11 @@ Reuse one long-lived shared Cargo target directory per Cargo workspace, across
 worktrees and agents; never copy one per agent or task. On the owner's Mac,
 use `~/work/openagents-target-1` for root crates and
 `~/work/openagents-target-1-app` for `apps/openagents`. Set
-`OPENAGENTS_KEEP_TARGET_DIR=1` with that explicit `CARGO_TARGET_DIR`; otherwise
-the desktop agent build gate replaces it with its one shared folder per
-workspace under `~/work/agent-targets` (`OPENAGENTS_AGENT_TARGETS`). Don't
+`CARGO_TARGET_DIR` explicitly; the gate keeps recognized shared targets without
+requiring `OPENAGENTS_KEEP_TARGET_DIR=1` (#12104). The desktop agent build gate
+replaces other targets with its one shared folder per workspace under
+`~/work/agent-targets` (`OPENAGENTS_AGENT_TARGETS`); use
+`OPENAGENTS_KEEP_TARGET_DIR=1` only to keep another explicit target. Don't
 create both sets for the same workspace or delete a shared target at task end.
 
 Every agent build in a shared target must use `CARGO_INCREMENTAL=0` and

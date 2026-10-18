@@ -2,7 +2,8 @@
 # Installs the build sweep (coder_lease::agent_builds::sweep, #12023) as a
 # launchd agent on this Mac.
 #
-# It builds openagents-build-sweep in the shared root target, copies it to
+# It builds the release openagents-build-sweep in the shared root target
+# (independent of the debug profile's build queue), copies it to
 # ~/.openagents/bin/openagents-build-sweep (so it keeps running whatever
 # checkout is on disk), and loads com.openagents.build-sweep, which runs it
 # every 5 minutes with no agent session. Each run keeps 100 GiB free: it caps
@@ -38,9 +39,9 @@ target=${CARGO_TARGET_DIR:-$HOME/work/openagents-target-1}
   cd "$repo"
   export OPENAGENTS_KEEP_TARGET_DIR=1 CARGO_TARGET_DIR="$target"
   . ./scripts/dev/cargo-build-env.sh
-  cargo build -q -p coder-lease --bin openagents-build-sweep
+  cargo build --release -q -p coder-lease --bin openagents-build-sweep
 )
-built=$target/debug/openagents-build-sweep
+built=$target/release/openagents-build-sweep
 
 if [ "${1:-}" = "--dry-run" ]; then
   exec "$built" --dry-run
