@@ -393,10 +393,13 @@ and build output in the shared target. Rust target names are
 for Rust 1.98.1.
 
 A1's first cross-build completed on 2026-10-18 from commit `f575cf3b8c`. The
-build used machine status before and after the cross-build; free space changed
-from 179.79 GiB to 143.81 GiB. The post-build reading included a separate H1
-Cargo job. The first arm64 attempt found that the Android shell's generic
-`CC` selected NDK clang for host C build scripts; `build-core.sh` now clears
+`machine_status` sample before the build (`observed_at_ms=1792334639763`) showed
+179.7935 GiB free. The post-build sample (`observed_at_ms=1792335599275`)
+showed 143.8127 GiB free. A later sample (`observed_at_ms=1792335716158`)
+showed 140.5112 GiB free while a separate H1 Cargo job was active; it is not
+the immediate post-build sample. The first arm64 attempt found that the
+Android shell's generic `CC` selected NDK clang for host C build scripts;
+`build-core.sh` now clears
 generic `CC`, `CXX`, and `AR` before Cargo runs. The retry built arm64 and then
 x86_64 successfully. Rust dependencies including Luau, tree-sitter, `ring`,
 Breez's SQLite, `iroh`, and `wgpu` compiled without additional workarounds.
@@ -407,8 +410,12 @@ Breez's SQLite, `iroh`, and `wgpu` compiled without additional workarounds.
 | `x86_64` | 667,602,464 bytes | `0x4000` for all segments |
 
 The Kotlin package and native library name were checked against both generated
-outputs. Each ELF segment meets the 16 KiB alignment requirement. The generated
-Kotlin file is committed at
+outputs. A no-account host FFI smoke called `core_version` through the completed
+host library and returned `0.2.113`. This confirms the host library's UniFFI
+entry point, but does not invoke the generated Kotlin wrapper. The Android app
+shell does not yet include a Gradle project or JVM Kotlin runner, so the Kotlin
+binding invocation remains unverified. Each ELF segment meets the 16 KiB
+alignment requirement. The generated Kotlin file is committed at
 `apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt`.
 
 ### CoderOS verification, 2026-10-18 (#12079)
@@ -438,9 +445,10 @@ free space. Existing app and root targets measured 4.3 GiB and 86 GiB before
 these checks; A0 does not compile the Rust app.
 
 Keep **100 GiB free**. Before each build, check `machine_status`; start no
-build below the floor or if its expected growth would cross it.
-With only 1.60 GiB above the floor, check capacity before starting A1's cold
-build. Do not delete the Nix store, another agent's targets, or
+build below the floor or if its expected growth would cross it. The 101.60 GiB
+reading above is from the earlier #12079 environment checks and is historical.
+A1's cold build is complete; take a fresh `machine_status` reading before the
+next build. Do not delete the Nix store, another agent's targets, or
 `~/openagents/target/release` to make room. Leave both the legacy Coder host
 and `openagents-native-target.service` unchanged.
 
