@@ -415,10 +415,11 @@ fn status_text(pool: &Pool, hosts: &[Host], activity: &[Activity]) -> String {
 
 fn status(output: Output) -> Result<u8, String> {
     let Some(pool) = Pool::load() else {
-        let value = json!({"event": "cloud_status", "pool": null});
-        output.emit(&value, |_| {
-            "No GCE pool on this computer; `openagents cloud up` grants one.".into()
-        });
+        let budget = Budget::load();
+        let spent = Ledger::load().spent(now(), None);
+        let value = json!({"event": "cloud_status", "pool": null,
+            "budget": budget, "spent_usd": spent});
+        output.emit(&value, |_| no_pool_status_text(&budget, spent));
         return Ok(0);
     };
     let hosts = list_hosts(&pool.project, Some(&pool.pool))?;
@@ -428,4 +429,23 @@ fn status(output: Output) -> Result<u8, String> {
         "spent_usd": Ledger::load().spent(now(), None)});
     output.emit(&value, |_| status_text(&pool, &hosts, &activity));
     Ok(0)
+}
+
+fn no_pool_status_text(budget: &Budget, spent: f64) -> String {
+    format!(
+        "No GCE pool on this computer; `openagents cloud up` grants one.\n{}",
+        budget_text(budget, spent)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_pool_status_shows_budget() {
+        let text = no_pool_status_text(&Budget::default(), 1.25);
+        assert!(text.contains("grants one.\nBudget:"), "{text}");
+        assert!(text.contains("$1.25"), "{text}");
+    }
 }
