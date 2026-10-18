@@ -762,3 +762,35 @@ wake event for that agent. A continuing shortage raises no second event;
 recovery followed by another shortage raises a new one. An unavailable
 reading preserves the previous alert state. Automatic prompt and wake wiring
 belongs in the check-in host; the tool and these APIs do not change it.
+
+
+`owner_wait` in the same block lists `NEEDS_OWNER.md` headings and pending
+owner or device/store steps in the After-close table. Agent-run checks alone
+are excluded. Start owner-only After-close steps with `Owner:`; device and
+store steps are also recognized by their names. Each entry has its source path and line, the Git commit time
+of that heading or row, and `age_seconds`. An uncommitted or unreadable line
+has no known age; changing another entry does not reset it. Missing files in an available checkout
+mean no entries; an unavailable checkout or a read failure stays in `errors`.
+
+The deploy fact uses the host's explicit `CLOUDSDK_CONFIG`, the pool's pinned
+configuration, or its automation configuration. It never falls back to a
+person's default login. The only IAM request is
+[`testIamPermissions`](https://docs.cloud.google.com/iam/docs/reference/rest/v1/projects.serviceAccounts/testIamPermissions)
+for `iam.serviceAccounts.actAs`: a read-only POST, with a 10-second deadline,
+no redirects, and no token in the facts. A successful refusal adds
+"production deploy: owner only". A credential, network, or response error
+leaves permission unknown. This one permission does not certify every other
+permission a deploy might need. The duration of an existing permission block
+is unknown; no first-seen file is created.
+
+Any agent can select `repository`, `after_close`, `deploy_project`, and
+`deploy_service_account` in the tool call. Defaults use the current checkout
+(or `OPENAGENTS_FACTS_REPOSITORY`), this repository's After-close document, and
+OpenAgents' production runtime account. The deploy defaults can also be set
+with `OPENAGENTS_DEPLOY_PROJECT` and `OPENAGENTS_DEPLOY_SERVICE_ACCOUNT`.
+Hosts use `collect_with(agent_id, OwnerOptions)` for these same inputs and
+append `Status::prompt_block()` on every check-in. Keep a `NewEntries` value
+in the host, call `observe(agent_id, &status.owner_wait)`, and send its new
+entries through the granted owner-notification primitive (#12040). Failed
+sources preserve notification state. Neither collection nor observation sends
+a notification or grants permission to deploy.

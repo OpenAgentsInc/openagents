@@ -291,8 +291,10 @@ flowchart TD
   item 8 pushes new entries to the phone.
 - **Why:** On 2026-10-17 nobody, Foreman included, knew a production deploy
   needed the owner's `actAs` permission until one was refused.
-- **Where:** the check-in facts (item 7), `NEEDS_OWNER.md`, the deploy
-  scripts' permission check.
+- **Where:** the `machine_status.owner_wait` check-in facts (item 7),
+  `coder_cloud::owner_status`, and `NEEDS_OWNER.md`. The public reader and
+  per-agent new-entry tracker are implemented in #12036; hosts append the
+  shared prompt block and use item 8 to notify.
 - **Acceptance:** A check-in on a host without deploy permission lists
   "production deploy: owner only" before anyone tries one.
 - **Size:** S.

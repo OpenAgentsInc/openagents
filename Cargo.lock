@@ -3531,6 +3531,7 @@ dependencies = [
  "libc",
  "microcoder-loop",
  "openagents-sdk",
+ "reqwest 0.12.28",
  "secret-screen",
  "serde",
  "serde_json",

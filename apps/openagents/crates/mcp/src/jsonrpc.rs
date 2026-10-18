@@ -46,7 +46,7 @@ ids when names/paths repeat. Without project or device, creation uses the local 
 If a chat is `awaitingInput`, answer it with `respond_to_input`. \
 Agent builds on this computer share a few build slots and wait for one on their own; \
 `build_status` shows how many run and wait and the free disk, and sets the limit. \
-`machine_status` reads disk, builds, sweep, grants, capacity, queues, pool, and health; use it at each check-in instead of shell probes. \
+`machine_status` reads disk, builds, sweep, grants, capacity, queues, pool, health, and owner steps with source, age, and a read-only deploy permission test; use it at each check-in instead of shell probes. \
 For an issue claim whose session matches no app chat, use `list_runs` on this computer. \
 Match its harness and bare session id. Report a live run with recent activity; \
 with authority to manage claims, release a dead or stalled holder with a note and dispatch its issue. \

@@ -18,6 +18,7 @@ pub mod gce_backend;
 pub mod machine_status;
 pub mod operator;
 mod operator_adapters;
+pub mod owner_status;
 pub mod pool;
 pub mod release;
 pub mod runtime;
