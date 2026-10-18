@@ -59,6 +59,8 @@ pub trait AccountListener: Send + Sync {
     fn on_account_changed(&self, snapshot: AccountSnapshot);
 }
 type Clients = Arc<Mutex<Vec<(u64, Weak<CoreClient>)>>>;
+const PUSH_REVOKE_TIMEOUT: Duration = Duration::from_secs(2);
+
 fn close_clients(clients: &Clients, keep: Option<u64>) {
     clients.lock().unwrap().retain(|(generation, client)| {
         let Some(client) = client.upgrade() else {
@@ -71,6 +73,40 @@ fn close_clients(clients: &Clients, keep: Option<u64>) {
             false
         }
     });
+}
+
+fn close_clients_from_sign_out(clients: &Clients, generations: &[u64]) {
+    clients.lock().unwrap().retain(|(generation, client)| {
+        let Some(client) = client.upgrade() else {
+            return false;
+        };
+        if client_generation_was_signed_out(*generation, generations) {
+            client.client.shutdown();
+            false
+        } else {
+            true
+        }
+    });
+}
+
+fn client_generation_was_signed_out(generation: u64, sign_out_generations: &[u64]) -> bool {
+    sign_out_generations.contains(&generation)
+}
+
+async fn bounded_push_revocation<F>(revoke: F, timeout: Duration)
+where
+    F: std::future::Future<Output = ()> + Send,
+{
+    let _ = tokio::time::timeout(timeout, revoke).await;
+}
+
+async fn finish_sign_out<Revoke, Cleanup>(revoke: Revoke, timeout: Duration, cleanup: Cleanup)
+where
+    Revoke: std::future::Future<Output = ()> + Send,
+    Cleanup: FnOnce(),
+{
+    bounded_push_revocation(revoke, timeout).await;
+    cleanup();
 }
 fn auth_error() -> CoreError {
     CoreError::Auth {
@@ -417,8 +453,30 @@ impl CoreAccount {
     }
     pub fn sign_out(&self) {
         let task = self.controller.sign_out();
-        close_clients(&self.clients, None);
         openagents_client::runtime::shared().spawn(task);
+        let clients = self.clients.clone();
+        let revocation_clients = clients
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(generation, client)| client.upgrade().map(|client| (*generation, client)))
+            .collect::<Vec<_>>();
+        let sign_out_generations = revocation_clients
+            .iter()
+            .map(|(generation, _)| *generation)
+            .collect::<Vec<_>>();
+        openagents_client::runtime::shared().spawn(async move {
+            finish_sign_out(
+                async move {
+                    for (_, client) in revocation_clients {
+                        let _ = crate::push::unregister(&client.client).await;
+                    }
+                },
+                PUSH_REVOKE_TIMEOUT,
+                || close_clients_from_sign_out(&clients, &sign_out_generations),
+            )
+            .await;
+        });
     }
     /// A native diagnostic checks only this app/profile/deployment's own entry.
     pub fn stored_login_present(&self) -> CoreResult<bool> {
@@ -551,6 +609,33 @@ impl CoreAccount {
 mod tests {
     use super::*;
     use openagents_account::openagents::{CredentialRecord, StorageError};
+
+    #[tokio::test]
+    async fn sign_out_cleanup_finishes_after_push_revocation_times_out() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let cleaned_up = Arc::new(AtomicBool::new(false));
+        let cleanup_flag = cleaned_up.clone();
+        let old_generation = 4;
+        let new_generation = 5;
+        let sign_out_generations = [old_generation];
+        let mut live_generations = vec![old_generation, new_generation];
+        finish_sign_out(
+            std::future::pending::<()>(),
+            Duration::from_millis(5),
+            move || {
+                live_generations.retain(|generation| {
+                    !client_generation_was_signed_out(*generation, &sign_out_generations)
+                });
+                cleanup_flag.store(true, Ordering::SeqCst);
+            },
+        )
+        .await;
+
+        assert!(cleaned_up.load(Ordering::SeqCst));
+        assert_eq!(live_generations, [new_generation]);
+    }
+
     struct Memory;
     impl CredentialStore for Memory {
         fn load(&self, _: &Deployment) -> Result<Option<CredentialRecord>, StorageError> {

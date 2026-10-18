@@ -339,9 +339,10 @@ pub async fn register(
 /// Stop session notifications: the sync server forgets the grant, and the
 /// gateway forgets the token.
 pub async fn unregister(client: &zc::Client) -> Result<(), zc::ClientError> {
-    let result = client.remove_push_grant().await;
     let dir = state_dir(client);
     let state = State::load(&dir);
+    State::remove(&dir);
+    let result = client.remove_push_grant().await;
     if let (Some(held), Ok(secret)) = (&state.installation, state.key()) {
         if let Ok(gateway) = GatewayClient::new(&held.registration) {
             let _ = gateway
@@ -356,7 +357,6 @@ pub async fn unregister(client: &zc::Client) -> Result<(), zc::ClientError> {
                 .await;
         }
     }
-    State::remove(&dir);
     result
 }
 
@@ -483,6 +483,38 @@ mod tests {
         // No token text is kept, only its digest.
         let saved = serde_json::to_string(&state).unwrap();
         assert!(!saved.contains("00ff00ff"));
+    }
+
+    #[tokio::test]
+    async fn an_expired_installation_is_replaced_before_a_new_grant() {
+        let gateway = Fake::default();
+        let mut state = State::fresh();
+        state.installation = Some(Installation {
+            registration: "https://push.example.com".into(),
+            profile: "app.ios".into(),
+            handle: "old-installation".into(),
+            epoch: 4,
+            token_digest: push_gateway::sha256_hex(TOKEN.as_bytes()),
+            expires_at: NOW,
+        });
+        state.grant = Some(Grant {
+            delegate: "b".repeat(64),
+            epoch: 4,
+            grant: "expired-grant".into(),
+            expires_at: NOW,
+        });
+
+        let renewed = run(&mut state, &gateway, TOKEN, NOW).await;
+
+        assert_eq!(renewed.epoch, 1);
+        assert_eq!(renewed.grant, "pg1_1");
+        assert_eq!(
+            *gateway.calls.lock().unwrap(),
+            [
+                format!("register app.ios {TOKEN}"),
+                format!("delegate {} 1 1", "b".repeat(64))
+            ]
+        );
     }
 
     #[tokio::test]
