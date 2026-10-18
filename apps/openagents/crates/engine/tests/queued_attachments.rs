@@ -356,7 +356,7 @@ async fn queued_row_waits_for_attachment_bytes_then_sends_resolved_paths() {
         .rename_chat(CHAT, "Pre-titled")
         .expect("rename chat");
     core.workspace
-        .set_chat_cwd(CHAT, "~")
+        .set_chat_cwd(CHAT, tmp.path().to_str().unwrap())
         .expect("set chat cwd");
 
     // A clean-text row (attachments ride the row, not the text) whose bytes

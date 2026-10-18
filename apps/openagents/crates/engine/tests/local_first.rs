@@ -313,6 +313,39 @@ async fn clean_local_auth_construction_does_not_probe_edge_health() {
     edge_task.abort();
 }
 
+#[cfg(not(feature = "upstream-workos"))]
+#[tokio::test]
+async fn inherited_workos_session_stays_local_and_is_preserved() {
+    let dir = tempfile::tempdir().unwrap();
+    let legacy = dir.path().join("session.json");
+    let saved = r#"{"refreshToken":"legacy-fixture","user":{"id":"legacy-user","email":"fixture@example.com"},"orgId":"legacy-org"}"#;
+    std::fs::write(&legacy, saved).unwrap();
+    let (edge_url, requests, edge_task) = rejecting_edge().await;
+    let config = config(dir.path(), edge_url, Some("inherited-client"), None);
+    let auth = Engine::build_auth(&config).await;
+
+    assert!(!auth.workos_enabled());
+    assert!(!auth.loaded_workos_session());
+    assert_eq!(auth.state(), AuthState::SignedOut);
+    assert!(auth.start_headless_sign_in().is_empty());
+    let scope = Engine::initial_workspace_scope(&auth);
+    assert_eq!(scope, WorkspaceScope::Local);
+    let profile = Engine::resolve_profile(&config, &auth, scope)
+        .unwrap()
+        .expect("local profile is ready");
+    assert_eq!(profile.store_root(), dir.path().join("profiles/local"));
+    let runtime = Engine::assemble_runtime(&config, auth, profile)
+        .await
+        .unwrap();
+    assert!(runtime.core().links().is_none());
+    runtime.shutdown().await;
+
+    assert_eq!(std::fs::read_to_string(legacy).unwrap(), saved);
+    assert!(!dir.path().join("orgs/legacy-org/legacy-user").exists());
+    assert_eq!(requests.load(Ordering::SeqCst), 0);
+    edge_task.abort();
+}
+
 #[tokio::test]
 async fn local_runtime_checks_public_releases_without_starting_edge_links() {
     let dir = tempfile::tempdir().unwrap();
@@ -350,6 +383,7 @@ async fn local_runtime_checks_public_releases_without_starting_edge_links() {
     edge_task.abort();
 }
 
+#[cfg(feature = "upstream-workos")]
 #[tokio::test]
 async fn revoked_captured_session_stays_on_its_synced_cache() {
     let dir = tempfile::tempdir().unwrap();
@@ -391,6 +425,7 @@ async fn revoked_captured_session_stays_on_its_synced_cache() {
     edge_task.abort();
 }
 
+#[cfg(feature = "upstream-workos")]
 #[tokio::test]
 async fn transient_refresh_failure_keeps_synced_recovery_supervisors_alive() {
     let dir = tempfile::tempdir().unwrap();
@@ -431,6 +466,7 @@ async fn transient_refresh_failure_keeps_synced_recovery_supervisors_alive() {
     runtime.shutdown().await;
 }
 
+#[cfg(feature = "upstream-workos")]
 #[tokio::test]
 async fn workspace_recovers_from_an_unreachable_edge_without_restarting() {
     let edge = DaemonEdge::start().await;
@@ -613,6 +649,7 @@ async fn headless_stop_rpc_drains_the_daemon_and_releases_ipc() {
         .expect("headless IPC port remained occupied after shutdown");
 }
 
+#[cfg(feature = "upstream-workos")]
 #[tokio::test]
 async fn headless_sign_out_closes_joined_edge_rooms_and_stops_daemon() {
     let dir = tempfile::tempdir().unwrap();

@@ -765,15 +765,31 @@ async fn target_device_id_routes_over_the_relay() {
     assert_eq!(remote_image, local_image);
     assert_eq!(remote_image["mimeType"], "image/png");
     assert_eq!(remote_image["done"], true);
-    assert!(
-        client
-            .call(
-                methods::READ_ATTACHMENT_CHUNK,
-                serde_json::json!({"path": source, "offset": 0, "targetDeviceId": "device-b"})
-            )
-            .await
-            .is_err()
-    );
+    // Screenshots under the system temp directory can also be read directly.
+    let remote_source = client
+        .call(
+            methods::READ_ATTACHMENT_CHUNK,
+            serde_json::json!({"path": source, "offset": 0, "targetDeviceId": "device-b"}),
+        )
+        .await
+        .expect("read temporary image on B");
+    assert_eq!(remote_source["data"], remote_image["data"]);
+    assert_eq!(remote_source["mimeType"], "image/png");
+
+    // Temp access remains image-only; paths outside the allowed roots fail too.
+    let text = generated_root.join("notes.txt");
+    std::fs::write(&text, b"private notes").unwrap();
+    for path in [text.to_str().unwrap(), "outside-upload-cache.png"] {
+        assert!(
+            client
+                .call(
+                    methods::READ_ATTACHMENT_CHUNK,
+                    serde_json::json!({"path": path, "offset": 0, "targetDeviceId": "device-b"}),
+                )
+                .await
+                .is_err()
+        );
+    }
 
     // The add-space picker's exact call: browse a folder ON B from A's IPC
     // surface (ListFolders + targetDeviceId, relay-forwarded).

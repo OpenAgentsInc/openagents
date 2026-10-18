@@ -3,12 +3,17 @@
 use std::path::Path;
 use std::sync::{Arc, Barrier, Mutex};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use openagents_account::{
+    Controller,
+    desktop::{self, MemoryStore},
+    openagents::{Client, Deployment},
+};
 use openagents_engine::{
     AuthState, Engine, EngineConfig, EngineCore, EngineProfile, HarnessId, WorkspaceScope,
     default_registry,
 };
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 
 fn config(
     data_dir: &Path,
@@ -320,6 +325,7 @@ async fn synced_accounts_isolate_uploads_and_assign_the_legacy_cache_once() {
     shutdown(core).await;
 }
 
+#[cfg(feature = "upstream-workos")]
 #[tokio::test]
 async fn existing_session_opens_the_historical_cloud_layout_in_place() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -422,13 +428,12 @@ async fn handle_edge_request(mut stream: tokio::net::TcpStream, requests: Arc<Mu
     };
     requests.lock().expect("requests lock").push(target.clone());
     let path = target.split('?').next().unwrap_or("");
-    let (status, body) = if path == "/auth/exchange" {
+    let (status, body) = if path == "/v1/account" {
         (
             "200 OK",
             serde_json::json!({
-                "user": { "id": "cloud-user", "email": "cloud@example.com" },
-                "accessToken": fake_jwt("cloud-org"),
-                "refreshToken": "refresh-1",
+                "account": { "id": "acct_local_profile", "label": "Local profile fixture" },
+                "workspaces": [],
             })
             .to_string(),
         )
@@ -475,51 +480,18 @@ async fn read_request(stream: &mut tokio::net::TcpStream) -> Option<(String, Str
     Some((target, String::from_utf8_lossy(&body).into_owned()))
 }
 
-fn fake_jwt(org_id: &str) -> String {
-    let claims = serde_json::json!({
-        "iat": 1_000,
-        "exp": 4_600,
-        "org_id": org_id,
-    });
-    format!("e30.{}.sig", base64url(claims.to_string().as_bytes()))
-}
-
-fn base64url(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let mut output = String::new();
-    for chunk in bytes.chunks(3) {
-        let bytes = [
-            chunk[0],
-            *chunk.get(1).unwrap_or(&0),
-            *chunk.get(2).unwrap_or(&0),
-        ];
-        let value = (u32::from(bytes[0]) << 16) | (u32::from(bytes[1]) << 8) | u32::from(bytes[2]);
-        output.push(ALPHABET[(value >> 18) as usize & 63] as char);
-        output.push(ALPHABET[(value >> 12) as usize & 63] as char);
-        if chunk.len() > 1 {
-            output.push(ALPHABET[(value >> 6) as usize & 63] as char);
-        }
-        if chunk.len() > 2 {
-            output.push(ALPHABET[value as usize & 63] as char);
-        }
-    }
-    output
-}
-
-fn query_param(url: &str, key: &str) -> Option<String> {
-    url.split_once('?')?
-        .1
-        .split('&')
-        .filter_map(|part| part.split_once('='))
-        .find(|(name, _)| *name == key)
-        .map(|(_, value)| value.to_string())
-}
-
 #[tokio::test]
 async fn signing_in_does_not_activate_sync_for_the_running_local_profile() {
     let edge = RecordingEdge::start().await;
     let dir = tempfile::tempdir().expect("tempdir");
-    let config = config(dir.path(), edge.url.clone(), Some("client_test"), None);
+    let deployment = Deployment::new(&format!("{}/v1", edge.url), &edge.url).unwrap();
+    let controller = Controller::new(
+        Client::new(deployment).unwrap(),
+        Arc::new(MemoryStore::default()),
+        dir.path().join("account/signed-out"),
+    );
+    desktop::register(dir.path(), &controller);
+    let config = config(dir.path(), edge.url.clone(), None, None);
     let auth = Engine::build_auth(&config).await;
     let scope = Engine::initial_workspace_scope(&auth);
     let profile = Engine::resolve_profile(&config, &auth, scope)
@@ -532,14 +504,18 @@ async fn signing_in_does_not_activate_sync_for_the_running_local_profile() {
     assert_eq!(scope, WorkspaceScope::Local);
     assert!(runtime.core().links().is_none());
 
-    let sign_in_url = auth.start_headless_sign_in();
-    let state = query_param(&sign_in_url, "state").expect("sign-in state");
-    auth.complete_sign_in(&format!("{state}.authorization-code"))
-        .await
-        .expect("complete sign in");
+    controller
+        .import_credential(format!("sess_{:064x}", 9004))
+        .await;
+    assert!(controller.lease().is_some());
     assert!(
-        matches!(auth.state(), AuthState::SignedIn { org_id: Some(org), .. } if org == "cloud-org")
+        matches!(auth.state(), AuthState::SignedIn { org_id: Some(org), .. } if org == "acct_local_profile")
     );
+    assert_eq!(
+        Engine::initial_workspace_scope(&auth),
+        WorkspaceScope::Synced
+    );
+    assert!(!dir.path().join("session.json").exists());
 
     runtime
         .core()
@@ -586,19 +562,21 @@ async fn signing_in_does_not_activate_sync_for_the_running_local_profile() {
     assert!(runtime.core().links().is_none());
     assert!(Path::new(&upload).starts_with(dir.path().join("profiles/local/uploads")));
     let requests = edge.requests.lock().expect("requests lock").clone();
-    assert_eq!(
-        requests
-            .iter()
-            .filter(|target| target.starts_with("/auth/exchange"))
-            .count(),
-        1,
-        "the sign-in exchange itself is expected: {requests:?}"
+    assert!(
+        requests.iter().any(|target| target == "/v1/account"),
+        "the SDK must check the account during sign-in: {requests:?}"
     );
     assert!(
         requests.iter().all(|target| {
-            !["/registry/", "/session/", "/device/", "/attachments/"]
-                .iter()
-                .any(|prefix| target.starts_with(prefix))
+            ![
+                "/auth/",
+                "/registry/",
+                "/session/",
+                "/device/",
+                "/attachments/",
+            ]
+            .iter()
+            .any(|prefix| target.starts_with(prefix))
         }),
         "the captured local runtime attempted an online write: {requests:?}"
     );

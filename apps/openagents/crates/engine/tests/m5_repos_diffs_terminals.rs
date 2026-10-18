@@ -352,12 +352,17 @@ async fn repository_identity_spans_worktrees_and_clones() {
     .await;
     git(
         &shallow,
-        &["remote", "set-url", "origin", "https://GitHub.com/OpenAgentsSH/OpenAgents.git"],
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            "https://GitHub.com/ExampleOrg/ExampleRepo.git",
+        ],
     )
     .await;
     assert_eq!(
         repos.repository_identity(&shallow).await.unwrap(),
-        "github.com/OpenAgentsInc/openagents"
+        "github.com/exampleorg/examplerepo"
     );
 
     // No commits yet: the remote (origin, else the first), then a

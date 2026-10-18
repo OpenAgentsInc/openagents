@@ -337,7 +337,6 @@ fn index_of(queue: &loro::LoroMovableList, id: &str) -> Option<usize> {
 }
 
 fn write_queued_map(map: &loro::LoroMap, item: &QueuedMessage) -> Result<(), DocError> {
-    map.insert("id", item.id.as_str())?;
     map.insert("text", item.text.as_str())?;
     map.insert("issuedBy", item.issued_by.as_str())?;
     map.insert("issuedAt", item.issued_at)?;
@@ -359,6 +358,9 @@ fn write_queued_map(map: &loro::LoroMap, item: &QueuedMessage) -> Result<(), Doc
             crate::schema::loro_value_from_json(&serde_json::to_value(gate)?),
         )?;
     }
+    // Readers require the ID. Publish it after every field is ready so a
+    // concurrent drain cannot mistake a partial row for an attachment-free send.
+    map.insert("id", item.id.as_str())?;
     Ok(())
 }
 
@@ -466,6 +468,110 @@ mod tests {
         doc.push_queued(&first).unwrap();
         doc.push_queued(&item("q2", "second")).unwrap();
         assert_eq!(doc.read_queue().unwrap(), vec![first, item("q2", "second")]);
+    }
+
+    #[test]
+    fn concurrent_queue_reads_never_observe_partially_written_rows() {
+        const ROUNDS: usize = 64;
+        const READS_PER_ROUND: usize = 32;
+        let doc = doc();
+        let retained = item("retained", "already queued");
+        doc.push_queued(&retained).unwrap();
+        let mut queued = item("racing", "send all of these attachments");
+        queued.attachments = (0..1_024)
+            .map(|index| {
+                format!("pending://upload-{index}/image-with-a-long-file-name-{index}.png")
+            })
+            .collect();
+        queued.hold_for_turn_end = true;
+        queued.edited_at = Some(2_000);
+        queued.delivery_gate = Some(QueueDeliveryGate::ReviewRequired {
+            previous_lease_id: "lease-1".into(),
+            owner_device_id: "device-a".into(),
+            since_ms: 2_000,
+            base_text_hash: "hash".into(),
+        });
+
+        let (write_failure, read_failure) = std::thread::scope(|scope| {
+            // Each round races one write against a fixed number of reads.
+            // Channels also unblock the other thread if either side exits.
+            let (start_tx, start_rx) = std::sync::mpsc::sync_channel::<()>(0);
+            let (done_tx, done_rx) = std::sync::mpsc::sync_channel::<()>(0);
+            let reader_doc = &doc;
+            let reader_retained = &retained;
+            let reader_queued = &queued;
+            let reader = scope.spawn(move || {
+                let mut failure = None;
+                for round in 0..ROUNDS {
+                    if start_rx.recv().is_err() {
+                        break;
+                    }
+                    for _ in 0..READS_PER_ROUND {
+                        match reader_doc.read_queue() {
+                            Ok(rows) => {
+                                for row in rows {
+                                    let expected = if row.id == reader_retained.id {
+                                        reader_retained
+                                    } else {
+                                        reader_queued
+                                    };
+                                    if row != *expected && failure.is_none() {
+                                        failure = Some(format!(
+                                            "round {round}: incomplete row {}: attachments={}, \
+                                             hold_for_turn_end={}, edited_at={:?}, delivery_gate={:?}",
+                                            row.id,
+                                            row.attachments.len(),
+                                            row.hold_for_turn_end,
+                                            row.edited_at,
+                                            row.delivery_gate,
+                                        ));
+                                    }
+                                }
+                            }
+                            Err(error) if failure.is_none() => failure = Some(error.to_string()),
+                            Err(_) => {}
+                        }
+                        std::thread::yield_now();
+                    }
+                    if done_tx.send(()).is_err() {
+                        break;
+                    }
+                }
+                failure
+            });
+            let mut failure = None;
+            for round in 0..ROUNDS {
+                if start_tx.send(()).is_err() {
+                    break;
+                }
+                let result = if round % 2 == 0 {
+                    doc.push_queued(&queued)
+                } else {
+                    doc.insert_queued(0, &queued)
+                };
+                if let Err(error) = result {
+                    failure.get_or_insert_with(|| error.to_string());
+                }
+                if done_rx.recv().is_err() {
+                    break;
+                }
+                if let Err(error) = doc.remove_queued(&queued.id) {
+                    failure.get_or_insert_with(|| error.to_string());
+                }
+            }
+            drop(start_tx);
+            drop(done_rx);
+            (failure, reader.join().expect("queue reader did not panic"))
+        });
+        assert!(
+            write_failure.is_none(),
+            "queue write failed: {write_failure:?}"
+        );
+        assert!(
+            read_failure.is_none(),
+            "partial queue row: {read_failure:?}"
+        );
+        assert_eq!(doc.read_queue().unwrap(), vec![retained]);
     }
 
     #[test]

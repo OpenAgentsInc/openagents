@@ -2,6 +2,12 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- [OpenAgents #12075](https://github.com/OpenAgentsInc/openagents/issues/12075):
+  Queued messages publish their ID after attachments and delivery settings, so
+  concurrent drains read complete rows. Engine fixtures use SDK sign-in,
+  retain WorkOS cases behind its compatibility feature, and check temporary
+  image reads and lowercase repository identities.
+
 - OpenAgents #12071: agent builds disable incremental compilation and keep
   Cargo fingerprints under each manifest's path hash within a shared target.
 
