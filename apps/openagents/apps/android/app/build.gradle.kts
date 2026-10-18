@@ -44,6 +44,9 @@ android {
     buildFeatures { buildConfig = true }
 
     sourceSets["main"].assets.srcDir("../../ios/OpenAgents/Fonts")
+    sourceSets["main"].java.srcDir("../transcript/src/main/java")
+    sourceSets["test"].java.srcDir("../transcript/src/test/java")
+    sourceSets["androidTest"].java.srcDir("../transcript/src/androidTest/java")
     sourceSets["main"].java.srcDir("../platform")
     sourceSets["main"].java.srcDir(if (pushEnabled) "src/push/java" else "src/nopush/java")
     sourceSets["main"].jniLibs.srcDir("$cargoTargetDir/android-core/jniLibs")
@@ -68,4 +71,6 @@ dependencies {
     implementation("com.google.android.play:integrity:1.5.0")
     if (pushEnabled) implementation("com.google.firebase:firebase-messaging:24.1.0")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

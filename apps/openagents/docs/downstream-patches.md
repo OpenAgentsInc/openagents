@@ -5,7 +5,9 @@ Keep fork-specific changes here so upstream updates can review each integration.
 - OpenAgents #12084: add an isolated Kotlin Views transcript renderer over
   Rust row placements and display lists, with shared fallback shaping,
   bounded row caches, and stable viewport anchors. Recorded synthetic Rust
-  geometry backs stub-core tests; B1 integration, Kotlin execution, Android
+  geometry backs stub-core tests. The Android app includes its production,
+  fixture-test, and instrumentation-test source roots and packages the 12
+  Geist assets used by Rust and Android shaping. Kotlin execution, Android
   glyph checks, and emulator performance evidence remain queued.
 
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
