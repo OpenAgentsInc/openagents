@@ -698,3 +698,7 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+- [OpenAgents #12133](https://github.com/OpenAgentsInc/openagents/issues/12133):
+  keep the new-chat computer visible beside the model on iPhone, offer all
+  online computers, and remember the selection before sending. The shared
+  mobile core puts online Macs first for drafts without a saved choice.

@@ -1,9 +1,11 @@
 import XCTest
 @testable import OpenAgents
 
-/// "Run on" with a project picked still offers OpenAgents Cloud (#12020).
-final class RunOnCloudHostTests: XCTestCase {
+/// Picking a project leaves every online computer available (#12133).
+final class RunOnComputerTests: XCTestCase {
     private let mac = HostOption(id: "mac", name: "Studio Mac", online: true)
+    private let server = HostOption(id: "server", name: "coderos", online: true)
+    private let offline = HostOption(id: "offline", name: "MacBook", online: false)
     private let cloud = HostOption(id: "cloud", name: AppModel.cloudHostName, online: true)
 
     private func checkout(on device: String) -> ProjectOption {
@@ -12,21 +14,25 @@ final class RunOnCloudHostTests: XCTestCase {
     }
 
     func testCloudIsOfferedBesidesAProjectsCheckouts() {
-        let pick = HostOption.cloudBesides([checkout(on: "mac")], in: [mac, cloud], continuationDevice: nil)
-        XCTAssertEqual(pick, cloud)
-        XCTAssertEqual(pick?.displayName, "OpenAgents Cloud")
+        let picks = HostOption.besides([checkout(on: "mac")], in: [mac, cloud], selectedDevice: "mac", continuationDevice: nil)
+        XCTAssertEqual(picks, [cloud])
+        XCTAssertEqual(picks.first?.displayName, "OpenAgents Cloud")
     }
 
-    func testOtherComputersAreNotAdded() {
-        XCTAssertNil(HostOption.cloudBesides([checkout(on: "mac")], in: [mac], continuationDevice: nil))
+    func testEveryOnlineComputerWithoutACheckoutIsOffered() {
+        XCTAssertEqual(HostOption.besides([checkout(on: "mac")], in: [mac, server, cloud, offline], selectedDevice: "mac", continuationDevice: nil), [server, cloud])
+    }
+
+    func testSelectedOfflineComputerStaysVisible() {
+        XCTAssertEqual(HostOption.besides([], in: [mac, offline], selectedDevice: "offline", continuationDevice: nil), [mac, offline])
     }
 
     func testCloudWithItsOwnCheckoutIsListedOnce() {
-        XCTAssertNil(HostOption.cloudBesides([checkout(on: "mac"), checkout(on: "cloud")], in: [mac, cloud], continuationDevice: nil))
+        XCTAssertTrue(HostOption.besides([checkout(on: "mac"), checkout(on: "cloud")], in: [mac, cloud], selectedDevice: "mac", continuationDevice: nil).isEmpty)
     }
 
     func testAContinuationStaysOnItsComputer() {
-        XCTAssertNil(HostOption.cloudBesides([checkout(on: "mac")], in: [mac, cloud], continuationDevice: "mac"))
-        XCTAssertEqual(HostOption.cloudBesides([], in: [mac, cloud], continuationDevice: "cloud"), cloud)
+        XCTAssertTrue(HostOption.besides([checkout(on: "mac")], in: [mac, server, cloud], selectedDevice: "mac", continuationDevice: "mac").isEmpty)
+        XCTAssertEqual(HostOption.besides([], in: [mac, cloud], selectedDevice: "cloud", continuationDevice: "cloud"), [cloud])
     }
 }
