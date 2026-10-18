@@ -17,6 +17,7 @@ use std::process::ExitCode;
 // `connect`, `labor`, `pay`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
 // (see the dispatch below); Windows builds the rest.
 mod account_threads;
+mod accounts;
 mod agent;
 mod agents;
 mod approval_gate;
@@ -315,6 +316,7 @@ Models (the OpenAgents API):
                Also `inference models` and `inference rates`.
 
 Your account:
+  accounts     Read an agent account's cached quota on a selected device.
   login        Log in with a login key from Settings (login --key), read
                from standard input, never the command line.
   keys         Your login keys (an agent acting as you) and API keys: list,
@@ -515,6 +517,7 @@ fn main() -> ExitCode {
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
+        "accounts" => accounts::run(&output, &rest),
         "agents" => agents::run(&output, &rest),
         "projects" => projects::run(&output, &rest),
         "connections" => connections::run(&output, &rest),

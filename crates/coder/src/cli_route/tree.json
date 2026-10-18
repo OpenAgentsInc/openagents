@@ -29174,6 +29174,121 @@
       ]
     },
     {
+      "name": "accounts",
+      "summary": "Read an agent account's cached quota on a selected device.",
+      "children": [
+        {
+          "name": "usage",
+          "leaf": {
+            "path": [
+              "accounts",
+              "usage"
+            ],
+            "usage": [
+              "usage --device HOST [--harness codex] [--account active|ID] [--refresh] [--ipc-port PORT]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "usage"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "device",
+                    "value": "HOST",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "harness",
+                    "value": "codex",
+                    "choices": [
+                      "codex"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "account",
+                    "value": "active|ID",
+                    "choices": [
+                      "active"
+                    ],
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "refresh",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ipc-port",
+                    "value": "PORT",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read Codex account quota from the running OpenAgents app engine. HOST is local or an exact device UUID; account defaults to active. Use --json for one JSON document. Cached reads never request a quota refresh. --refresh asks the engine to refresh all accounts on HOST, honoring its 30-second minimum interval and provider retry delays. A refresh request can return the same cached observation.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "device",
+          "value": "HOST",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "harness",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "account",
+          "value": "active|ID",
+          "choices": [
+            "active"
+          ],
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "refresh",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "ipc-port",
+          "value": "PORT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "login",
       "summary": "Log in with a login key from Settings (login --key), read from standard input, never the command line.",
       "leaf": {

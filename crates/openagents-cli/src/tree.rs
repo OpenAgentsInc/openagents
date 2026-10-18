@@ -316,6 +316,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
         group("studio", Some(crate::studio::USAGE), crate::studio::EFFECTS),
         group("agent", Some(crate::agent::USAGE), crate::agent::EFFECTS),
         group("agents", Some(crate::agents::USAGE), crate::agents::EFFECTS),
+        group(
+            "accounts",
+            Some(crate::accounts::USAGE),
+            crate::accounts::EFFECTS,
+        ),
         group("shadow", Some(crate::shadow::USAGE), crate::shadow::EFFECTS),
         group(
             "efficiency",

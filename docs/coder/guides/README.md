@@ -9,6 +9,7 @@ plans or analysis, not alternative operating instructions.
 
 | Document | Topic |
 | --- | --- |
+| [account-usage](account-usage.md) | Read a Codex account's cached quota and its freshness with `openagents accounts usage` |
 | [activity](activity.md) | Check whether a running `coder` has work in flight before you close its window |
 | [artifact-verification](artifact-verification.md) | Verify a retained artifact |
 | [coder-one-ask](coder-one-ask.md) | Ask Coder One a question about runs, answered from the Gym with checked citations |

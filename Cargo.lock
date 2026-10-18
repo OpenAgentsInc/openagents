@@ -12338,6 +12338,7 @@ dependencies = [
  "acp-client",
  "actors",
  "agent-fleet",
+ "async-trait",
  "atif",
  "atif-nostr",
  "axum 0.8.9",
@@ -12390,10 +12391,13 @@ dependencies = [
  "nostr-relay",
  "oa-copy",
  "oa-vault",
+ "openagents-brand",
  "openagents-chat",
  "openagents-chat-app",
  "openagents-connect",
  "openagents-login",
+ "openagents-proto",
+ "openagents-rpc",
  "openagents-sdk",
  "openagents-spark",
  "openagents-terminal",
@@ -12617,6 +12621,25 @@ dependencies = [
  "pulldown-cmark 0.12.2",
  "serde",
  "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "openagents-rpc"
+version = "0.2.113"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures",
+ "openagents-brand",
+ "openagents-proto",
+ "openagents-sync",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-tungstenite 0.24.0",
+ "tracing",
  "uuid",
 ]
 

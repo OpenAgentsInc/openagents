@@ -365,6 +365,14 @@ coding agents Coder may use and their order, whether a coding reply runs at
 once or asks first, the usage threshold, the project folders, and what a
 local run's commands may reach. See [settings.md](settings.md).
 
+## Codex account quota (`openagents accounts`)
+
+`openagents accounts usage --device local|UUID [--account active|ID] --json`
+reads a Codex account's quota windows from the running app engine's shared
+cache, with `cachedAt`, `ageMs`, `state`, and a `stale` flag. `--refresh` asks
+that engine for its throttled refresh and reports `cached` when nothing newer
+arrived. See [the account usage guide](../coder/guides/account-usage.md).
+
 ## Knowledge entries (NIP-KB)
 
 Use `openagents kb` to work with local knowledge entries and NIP-KB relay
