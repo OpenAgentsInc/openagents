@@ -2,7 +2,7 @@
 
 C1 (#12084) paints the shared Rust layout with Android Views. This directory
 uses B1's generated Android binding and existing app setup. The C1 port is
-based on final B1 checkpoint `e32f8e736b5ebc79a8a171ced64a1f09776f528a`;
+based on B1 startup fix `0219cf0002b1da0ce44ff8781d32c9e9db8a9912`;
 B1 (#12083) remains the native issue blocker for app integration.
 
 `TranscriptCanvas` is one View, regardless of history length. It asks the
@@ -53,17 +53,17 @@ path and real Android fallback behavior still need the queued device checks.
 
 ## Check status and handoff
 
-The resumed port passed these focused checks on CoderOS over B1 checkpoint
-`e32f8e736b5ebc79a8a171ced64a1f09776f528a` with the actual generated
-Android binding. Each Gradle operation used at most two workers:
+The integrated port passed this focused check on CoderOS over B1 checkpoint
+`0219cf0002b1da0ce44ff8781d32c9e9db8a9912` with the actual generated
+Android binding and at most two Gradle workers:
 
 ```sh
-gradle :app:compileDebugKotlin :app:compileDebugUnitTestKotlin
-gradle :app:testDebugUnitTest --tests com.openagents.app.transcript.TranscriptViewportTest
-gradle :app:compileDebugAndroidTestKotlin
+scripts/android/app.sh compile
 ```
 
-The JVM result is nine tests, zero failures, errors, or skips. The three
+The check passed in 18 seconds (48 tasks), including debug/release Kotlin,
+Android-test compilation, and 15 JVM tests: nine transcript, four bootstrap,
+and two push tests, with zero failures, errors, or skips. The three
 instrumentation methods compile but have not run. No C1 native rebuild, APK
 assembly, emulator, or performance run took place. Final B1 narrows its
 `platform/tests` exclusion to production compilation; Android-test compilation
