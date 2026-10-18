@@ -83,6 +83,7 @@ async fn two_rust_clients_converge_through_a_real_registry_do() {
             last_completed_turn: None,
             running_subagents: 0,
             background_tasks: 0,
+            last_output_at: None,
             chat_id: "chat-live".into(),
             device_id: "dev-live-a".into(),
             status: SessionStatus::Working,
@@ -201,6 +202,7 @@ async fn cursor_delta_and_churn_stay_bounded_on_a_real_do() {
             d.upsert_session(&Session {
                 last_completed_turn: None,
                 running_subagents: 0,
+                last_output_at: None,
                 background_tasks: 0,
                 chat_id: "chat-churn".into(),
                 device_id: "dev-churn".into(),

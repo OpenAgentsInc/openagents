@@ -4028,6 +4028,7 @@ mod tests {
             last_completed_turn: None,
             running_subagents: 0,
             background_tasks: 0,
+            last_output_at: None,
             chat_id: chat_id.into(),
             device_id: "dev".into(),
             status,
@@ -4273,6 +4274,7 @@ mod tests {
         let mut row = Session {
             last_completed_turn: None,
             running_subagents: 0,
+            last_output_at: None,
             background_tasks: 0,
             chat_id: "chat".into(),
             device_id: "host".into(),
@@ -4305,6 +4307,7 @@ mod tests {
         let now = Utc::now();
         state.sessions = vec![Session {
             last_completed_turn: None,
+            last_output_at: None,
             running_subagents: 0,
             background_tasks: 0,
             chat_id: "chat".into(),

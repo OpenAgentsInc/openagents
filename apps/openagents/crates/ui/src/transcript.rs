@@ -13701,6 +13701,7 @@ mod tests {
                             last_completed_turn: None,
                             running_subagents: 0,
                             background_tasks: 0,
+                            last_output_at: None,
                             chat_id: "chat".into(),
                             device_id: "test".into(),
                             status: openagents_proto::SessionStatus::Working,

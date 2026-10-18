@@ -14,7 +14,9 @@ pub(crate) fn extend(doc: &mut Value) {
   "model":{"type":["string","null"],"minLength":1,"maxLength":256},"access":{"enum":["host_default","read_only","workspace_write"]},
   "fallbacks":{"type":"array","maxItems":4,"description":"Runtimes to try in order when `runtime` isn't installed, turned on, or signed in on the computer; then the computer's own default. Each runtime appears once and is not `sdk` or `any`. Omitted when empty.","items":{"type":"object","additionalProperties":false,"required":["runtime"],"properties":{
     "runtime":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_.:-]+$"},
-    "model":{"type":"string","minLength":1,"maxLength":256}}}}}});
+    "model":{"type":"string","minLength":1,"maxLength":256}}}},
+  "autonomy":{"type":"object","description":"How the agent runs on its own. Not part of the agent's identity. Omitted when unset; unknown fields are ignored.","properties":{
+    "shell_timeout_secs":{"type":"integer","minimum":10,"maximum":3600,"description":"The longest one shell command may run, in seconds. The host passes it to the runtime."}}}}});
     let schemas = json!({
      "CustomAgentSpec":spec,
      "CustomAgentDefinition":{"type":"object","additionalProperties":false,"required":["id","revision","spec","deleted"],"properties":{"id":id,"revision":revision,"spec":r("Spec"),"deleted":{"type":"boolean"}}},

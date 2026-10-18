@@ -512,6 +512,7 @@ pub fn starter() -> Experiment {
                 model: None,
                 access: agent_contract::Access::ReadOnly,
                 fallbacks: vec![],
+                autonomy: None,
             },
             source: None,
             components: vec![],

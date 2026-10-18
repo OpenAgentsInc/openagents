@@ -1510,6 +1510,17 @@ impl Inner {
         }
     }
 
+    /// The turn produced output (text, reasoning, a tool call or result, or
+    /// subagent traffic): stamp `last_output_at`, which the heartbeat never
+    /// moves, so a watcher can tell a turn stuck in one call from a busy one.
+    /// Published with the next freshness touch.
+    fn note_output(&self, chat_id: &str) {
+        if let Some(entry) = lock(&self.statuses).get_mut(chat_id) {
+            entry.last_output_at = Some(Utc::now());
+        }
+        self.touch_session(chat_id);
+    }
+
     fn set_status(&self, chat_id: &str, status: SessionStatus, fresh_start: bool) {
         self.set_status_with_completion(chat_id, status, fresh_start, None);
     }
@@ -1597,6 +1608,7 @@ impl Inner {
                     updated_at: now,
                     running_subagents: 0,
                     background_tasks: 0,
+                    last_output_at: None,
                 });
             // `started_at` is the elapsed-timer base and must only ever mean
             // "this turn". Entering Working from a settled state always
@@ -1616,6 +1628,7 @@ impl Inner {
             match status {
                 SessionStatus::Working if fresh_start || !was_active => {
                     entry.started_at = Some(now);
+                    entry.last_output_at = Some(now);
                 }
                 SessionStatus::Working | SessionStatus::AwaitingInput => {}
                 SessionStatus::Idle | SessionStatus::Errored => {
@@ -2910,7 +2923,7 @@ async fn drive_run(
             // traffic for minutes: keep the row (and its count) inside the
             // UI's staleness window while any is live.
             if !subagents.is_empty() {
-                inner.touch_session(&chat_id);
+                inner.note_output(&chat_id);
             }
             let is_steer = matches!(
                 sub_event.as_ref(),
@@ -3071,7 +3084,7 @@ async fn drive_run(
         // Any stream activity proves the run is alive — keep the session's
         // freshness inside the UI's 45s staleness window (throttled), and
         // push the quiesce watchdog's window out.
-        inner.touch_session(&chat_id);
+        inner.note_output(&chat_id);
         last_stream_activity = tokio::time::Instant::now();
         // The engine's input bridge is the sole authority on input requests:
         // it mints the id and parks the resolver BEFORE emitting the event,

@@ -14280,6 +14280,7 @@ mod tests {
             updated_at,
             running_subagents: 0,
             background_tasks: 0,
+            last_output_at: None,
         }
     }
 

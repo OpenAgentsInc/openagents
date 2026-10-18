@@ -20,7 +20,8 @@ is never proof that the signer controls that account.
 The JSON object contains exactly `schema` (`openagents.agent.definition.v1`)
 and `definition`. The definition contains `id` (64 lowercase hexadecimal
 characters), `revision` (positive integer), `spec`, and `deleted` (boolean).
-`spec` contains the fields below; `fallbacks` may be omitted when empty:
+`spec` contains the fields below; `fallbacks` may be omitted when empty, and
+`autonomy` when unset:
 
 | Field | Contract |
 | --- | --- |
@@ -31,9 +32,10 @@ characters), `revision` (positive integer), `spec`, and `deleted` (boolean).
 | `model` | Null or 1–256 UTF-8 bytes without control characters. |
 | `access` | `host_default`, `read_only`, or `workspace_write`. A request that the executing host must enforce or refuse. |
 | `fallbacks` | Optional array of at most 4 `{runtime, model?}` objects, tried in order when `runtime` is not ready on the host. Each runtime uses the `runtime` rules, appears once, differs from `runtime`, and is not `sdk` or `any`. |
+| `autonomy` | Optional object: how the agent runs on its own. `shell_timeout_secs` (10–3600) is the longest one shell command may run; the host passes it to the runtime. Readers ignore fields they don't know. |
 
 `runtime` `any` (with a null model) leaves the choice to the host. The runtime,
-model, and fallbacks are settings of the agent, not part of its identity: a
+model, fallbacks, and autonomy are settings of the agent, not part of its identity: a
 revision that changes only them is the same agent, and an assigned conversation
 uses the new order from its next turn. The identity fields are `name`,
 `description`, `instructions`, and `access`.

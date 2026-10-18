@@ -4,7 +4,7 @@
 //! app sends one, so the existing ledger runs it and a retry never doubles
 //! it. See `crate::foreman` for the state, log and coalescing.
 use super::*;
-use crate::foreman::{CLAIMS_QUERY, Foreman, GhIssue, Wake, claim_issues};
+use crate::foreman::{CLAIMS_QUERY, Foreman, GhIssue, Wake, claim_issues, tool_label};
 use openagents_account::{
     Lease,
     openagents::schedules::{self, Schedule},
@@ -283,10 +283,49 @@ impl DocHost {
                 }
             }
         }
-        self.foreman_wake(&chat, sessions.turn_in_flight(&chat), now, |text| {
+        let busy = sessions.turn_in_flight(&chat);
+        self.foreman_watch(&chat, busy, now)?;
+        self.foreman_wake(&chat, busy, now, |text| {
             self.request_from_chat_row(&chat, text)
         })?;
         Ok(())
+    }
+
+    /// The host watchdog over the chat's own turn (#12029): a turn that went
+    /// the stuck window with no output is interrupted once, and the next
+    /// check-in says which call was stuck and for how long. Returns whether
+    /// it stopped a turn.
+    fn foreman_watch(&self, chat: &str, busy: bool, now: i64) -> Result<bool, EngineError> {
+        let Some(foreman) = self.foreman().cloned() else {
+            return Ok(false);
+        };
+        let Some(stuck) = foreman.watchdog(busy, now, || self.waiting_tool(chat))? else {
+            return Ok(false);
+        };
+        tracing::warn!(chat = %chat, since = stuck.since, "foreman: stopping a stuck turn");
+        if let Err(e) = self.queue_command(chat, SessionCommandPayload::Interrupt {}) {
+            foreman.set_problem(Some(format!("A stuck turn couldn't be stopped: {e}")));
+            return Err(e);
+        }
+        Ok(true)
+    }
+
+    /// The tool call the chat's current turn is waiting on: the last
+    /// unresolved tool in its newest assistant message.
+    fn waiting_tool(&self, chat: &str) -> Option<String> {
+        let entries = self.open(chat).ok()?.doc.read_entries().ok()?;
+        let reply = entries
+            .iter()
+            .rev()
+            .find(|e| e.role == openagents_doc::MessageRole::Assistant)?;
+        reply.parts.iter().rev().find_map(|p| match p {
+            openagents_doc::MessagePart::Tool {
+                call,
+                resolved: false,
+                ..
+            } => Some(tool_label(call)),
+            _ => None,
+        })
     }
 
     /// Start the check-in that is due, if any, as a message queued into
@@ -545,7 +584,136 @@ mod tests {
             updated_at: chrono::Utc::now(),
             running_subagents: 0,
             background_tasks: 0,
+            last_output_at: None,
         }
+    }
+
+    fn interrupts(host: &DocHost) -> usize {
+        host.open(FOREMAN)
+            .unwrap()
+            .doc()
+            .read_commands()
+            .unwrap()
+            .into_iter()
+            .filter(|c| matches!(c.payload, SessionCommandPayload::Interrupt {}))
+            .count()
+    }
+
+    /// #12029's fixture: the chat stays `working` with no output for 10
+    /// minutes while its turn waits on one `curl`. The host interrupts it
+    /// once, starts exactly one check-in that names the call and how long it
+    /// ran, and logs the stopped turn as `stuck`.
+    #[tokio::test]
+    async fn a_stuck_turn_is_interrupted_once_and_checked_in_with_its_tool() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(openagents_sync::DocsStore::open(root.path()).unwrap());
+        let host = DocHost::new(
+            store,
+            DocHostConfig {
+                device_id: "fixture-mac".into(),
+                default_harness: HarnessId::Mock,
+                edge: None,
+            },
+        );
+        host.start_foreman(root.path().join("foreman"));
+        let foreman = host.foreman().unwrap().clone();
+        foreman
+            .set(
+                ForemanSettings {
+                    chat_id: Some(FOREMAN.into()),
+                    every_minutes: 60,
+                    ..ForemanSettings::default()
+                },
+                0,
+            )
+            .unwrap();
+        let cwd = root.path().to_string_lossy().into_owned();
+        // The turn's reply so far: one shell call with no result.
+        let tool: MessagePart = serde_json::from_value(serde_json::json!({
+            "kind": "tool",
+            "id": "toolu_1",
+            "call": {"kind": "exec", "command": "curl -s https://openagents.com/api/health"},
+            "resolved": false
+        }))
+        .unwrap();
+        host.open(FOREMAN)
+            .unwrap()
+            .writer()
+            .push_message(&SessionMessageEntry {
+                id: "reply-1".into(),
+                role: MessageRole::Assistant,
+                parts: vec![tool],
+                created_at: 2 * MIN,
+                device_id: "fixture-mac".into(),
+                status: Some(MessageStatus::Streaming),
+                continuation_of: None,
+                duration_ms: None,
+            })
+            .unwrap();
+        let working = Session {
+            started_at: chrono::DateTime::from_timestamp_millis(2 * MIN),
+            last_output_at: chrono::DateTime::from_timestamp_millis(2 * MIN),
+            ..row(FOREMAN, SessionStatus::Working, None)
+        };
+        let title = |_: &str| "Foreman".to_string();
+        foreman
+            .observe(std::slice::from_ref(&working), |_| false, title, 2 * MIN)
+            .unwrap();
+        assert!(!host.foreman_watch(FOREMAN, true, 11 * MIN).unwrap());
+        assert!(host.foreman_watch(FOREMAN, true, 12 * MIN).unwrap());
+        assert_eq!(interrupts(&host), 1);
+        // The interrupt takes a while to land: no second stop, no check-in.
+        for minute in [13, 20, 25] {
+            foreman
+                .observe(
+                    std::slice::from_ref(&working),
+                    |_| false,
+                    title,
+                    minute * MIN,
+                )
+                .unwrap();
+            assert!(!host.foreman_watch(FOREMAN, true, minute * MIN).unwrap());
+            assert_eq!(
+                host.foreman_wake(FOREMAN, true, minute * MIN, request(&cwd))
+                    .unwrap(),
+                None
+            );
+        }
+        assert_eq!(interrupts(&host), 1);
+        foreman
+            .observe(
+                &[row(FOREMAN, SessionStatus::Idle, None)],
+                |_| false,
+                title,
+                26 * MIN,
+            )
+            .unwrap();
+        let id = host
+            .foreman_wake(FOREMAN, false, 26 * MIN, request(&cwd))
+            .unwrap()
+            .expect("one check-in");
+        let queued = runs(&host);
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].0, id);
+        assert!(queued[0].1.contains(
+            "Your last turn was stuck in `Bash` (`curl -s https://openagents.com/api/health`) for 10 minutes, so the host stopped it."
+        ), "{}", queued[0].1);
+        assert_eq!(
+            host.foreman_wake(FOREMAN, false, 27 * MIN, request(&cwd))
+                .unwrap(),
+            None
+        );
+        let log = host.foreman_status().decisions;
+        assert_eq!(
+            log.iter()
+                .filter(|e| matches!(e, DecisionEntry::Outcome { status, .. } if status == "stuck"))
+                .count(),
+            1
+        );
+        assert!(matches!(
+            log.last(),
+            Some(DecisionEntry::Wake { reason: WakeReason::Stuck, id: w, .. }) if *w == id
+        ));
     }
 
     /// #11965's fixture: a schedule tick and a chat finishing each queue one
@@ -571,6 +739,7 @@ mod tests {
                     every_minutes: 20,
                     paused: false,
                     authority: false,
+                    ..ForemanSettings::default()
                 },
                 0,
             )
@@ -712,6 +881,7 @@ mod tests {
                     every_minutes: 20,
                     paused: false,
                     authority: true,
+                    ..ForemanSettings::default()
                 },
                 31 * MIN,
             )

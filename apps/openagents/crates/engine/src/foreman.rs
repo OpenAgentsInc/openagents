@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
 use openagents_proto::foreman::{
-    Authority, DecisionEntry, ForemanSettings, MAX_EVERY_MINUTES, MIN_EVERY_MINUTES, Scope,
-    WakeReason,
+    Authority, DecisionEntry, ForemanSettings, MAX_EVERY_MINUTES, MAX_STUCK_MINUTES,
+    MIN_EVERY_MINUTES, MIN_STUCK_MINUTES, Scope, WakeReason,
 };
-use openagents_proto::{Session, SessionStatus};
+use openagents_proto::{Session, SessionStatus, ToolCall};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -112,6 +112,42 @@ struct Pending {
     event: Event,
 }
 
+/// A turn of the chat's own that the host stopped for going the stuck
+/// window with no output (#12029). Kept until its check-in starts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Stuck {
+    /// The turn, by its start time: one stop per turn.
+    pub turn: i64,
+    /// Its last output, Unix ms.
+    pub since: i64,
+    /// When the host stopped it.
+    pub at: i64,
+    /// The tool call it was waiting on, in plain words.
+    pub tool: Option<String>,
+    pub checked_in: bool,
+}
+
+impl Stuck {
+    /// The check-in's first line.
+    fn line(&self) -> String {
+        let minutes = (self.at - self.since).max(0) / 60_000;
+        let minutes = if minutes == 1 {
+            "1 minute".to_owned()
+        } else {
+            format!("{minutes} minutes")
+        };
+        match &self.tool {
+            Some(tool) => {
+                format!("Your last turn was stuck in {tool} for {minutes}, so the host stopped it.")
+            }
+            None => {
+                format!("Your last turn produced no output for {minutes}, so the host stopped it.")
+            }
+        }
+    }
+}
+
 /// The saved part of Foreman's state on this host.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -139,6 +175,8 @@ pub(crate) struct State {
     /// Stale claims already reported, as `number:since`.
     stale: BTreeSet<String>,
     pub last_github: i64,
+    /// The last turn the host stopped for being stuck.
+    pub stuck: Option<Stuck>,
 }
 
 impl Default for State {
@@ -158,6 +196,7 @@ impl Default for State {
             issues: BTreeMap::new(),
             stale: BTreeSet::new(),
             last_github: 0,
+            stuck: None,
         }
     }
 }
@@ -177,6 +216,30 @@ struct Mark {
     completed: Option<String>,
 }
 
+/// The chat's own turn while it works: its start and its last output, Unix
+/// ms. Not saved: a restart ends the run anyway.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OwnTurn {
+    turn: i64,
+    last_output: i64,
+}
+
+/// A working row's turn start and last output, falling back to what was
+/// seen of the same turn before, then to `now`.
+fn own_turn(row: &Session, before: Option<OwnTurn>, now: i64) -> OwnTurn {
+    let started = row.started_at.map(|t| t.timestamp_millis());
+    let output = row.last_output_at.map(|t| t.timestamp_millis());
+    let turn = started.or(before.map(|o| o.turn)).unwrap_or(now);
+    let before = before.filter(|o| o.turn == turn);
+    let last_output = output
+        .into_iter()
+        .chain(started)
+        .chain(before.map(|o| o.last_output))
+        .max()
+        .unwrap_or(now);
+    OwnTurn { turn, last_output }
+}
+
 pub(crate) struct Foreman {
     root: PathBuf,
     state: Mutex<State>,
@@ -184,6 +247,8 @@ pub(crate) struct Foreman {
     marks: Mutex<HashMap<String, Mark>>,
     /// Foreman's own chat was seen working since the open check-in began.
     wake_seen_working: Mutex<bool>,
+    /// The chat's own turn, while it works.
+    own: Mutex<Option<OwnTurn>>,
     problem: Mutex<Option<String>>,
     /// When each throttled job last ran, Unix ms.
     ran: Mutex<HashMap<&'static str, i64>>,
@@ -204,6 +269,7 @@ impl Foreman {
             state: Mutex::new(state),
             marks: Mutex::new(HashMap::new()),
             wake_seen_working: Mutex::new(false),
+            own: Mutex::new(None),
             problem: Mutex::new(None),
             ran: Mutex::new(HashMap::new()),
         }
@@ -257,6 +323,9 @@ impl Foreman {
                 .every_minutes
                 .clamp(MIN_EVERY_MINUTES, MAX_EVERY_MINUTES),
             chat_id: settings.chat_id.filter(|c| !c.trim().is_empty()),
+            stuck_minutes: settings
+                .stuck_minutes
+                .clamp(MIN_STUCK_MINUTES, MAX_STUCK_MINUTES),
             ..settings
         };
         let change = self.update(|s| {
@@ -366,8 +435,12 @@ impl Foreman {
                 completed: row.last_completed_turn.clone(),
             };
             if row.chat_id == foreman {
+                let mut own = lock(&self.own);
                 if mark.status == SessionStatus::Working {
                     *lock(&self.wake_seen_working) = true;
+                    *own = Some(own_turn(row, *own, now));
+                } else {
+                    *own = None;
                 }
                 continue;
             }
@@ -420,6 +493,49 @@ impl Foreman {
         self.push_events(events, now)
     }
 
+    /// The watchdog over the chat's own turn (#12029). When the chat is busy
+    /// and its turn has gone the stuck window with no output, record the
+    /// stop once for that turn, log the stopped turn as `stuck`, and return
+    /// it: the caller interrupts the turn, and `due` starts the check-in that
+    /// says why once the chat is idle. A turn that keeps producing output is
+    /// never stopped. `tool` names the call the turn waits on.
+    pub fn watchdog(
+        &self,
+        busy: bool,
+        now: i64,
+        tool: impl FnOnce() -> Option<String>,
+    ) -> Result<Option<Stuck>, EngineError> {
+        let Some(own) = *lock(&self.own) else {
+            return Ok(None);
+        };
+        let s = self.state();
+        if !busy || s.settings.chat_id.is_none() || s.settings.paused {
+            return Ok(None);
+        }
+        let window = i64::from(s.settings.stuck_minutes) * 60_000;
+        if now - own.last_output < window || s.stuck.as_ref().is_some_and(|k| k.turn == own.turn) {
+            return Ok(None);
+        }
+        let stuck = Stuck {
+            turn: own.turn,
+            since: own.last_output,
+            at: now,
+            tool: tool().map(|t| bounded(&t, 200)),
+            checked_in: false,
+        };
+        let stopped = self.update(|st| {
+            st.stuck = Some(stuck.clone());
+            st.open_wake.take()
+        })?;
+        *lock(&self.wake_seen_working) = false;
+        self.append(&DecisionEntry::Outcome {
+            at: now,
+            id: stopped.unwrap_or_else(|| format!("turn:{}", own.turn)),
+            status: "stuck".into(),
+        })?;
+        Ok(Some(stuck))
+    }
+
     /// When the next scheduled check-in is due.
     pub fn next_scheduled(&self) -> Option<i64> {
         let s = lock(&self.state);
@@ -441,6 +557,7 @@ impl Foreman {
         if s.settings.paused {
             return Ok(None);
         }
+        let stuck = s.stuck.clone().filter(|k| !k.checked_in);
         let scheduled = self.next_scheduled().is_some_and(|at| now >= at);
         let events_ready = !s.pending.is_empty() && {
             let first = s.pending.iter().map(|p| p.at).min().unwrap_or(now);
@@ -448,10 +565,12 @@ impl Foreman {
             (now - last >= QUIET_MS || now - first >= MAX_WAIT_MS)
                 && now - s.last_check_in >= MIN_GAP_MS
         };
-        if !scheduled && !events_ready {
+        if stuck.is_none() && !scheduled && !events_ready {
             return Ok(None);
         }
-        let reason = if scheduled {
+        let reason = if stuck.is_some() {
+            WakeReason::Stuck
+        } else if scheduled {
             WakeReason::Schedule
         } else {
             WakeReason::Events
@@ -460,14 +579,26 @@ impl Foreman {
         let slot = match reason {
             WakeReason::Schedule => format!("schedule:{}", s.last_scheduled),
             WakeReason::Events => format!("events:{}", s.pending[0].at),
+            WakeReason::Stuck => format!("stuck:{}", stuck.as_ref().map_or(0, |k| k.turn)),
         };
         let id = uuid_from(&format!("foreman:{chat}:{slot}"));
         let recent = self.read(PROMPT_ENTRIES);
-        let text = prompt(reason, now, &events, s.authority.as_ref(), &recent);
+        let lead = stuck.as_ref().map(Stuck::line);
+        let text = prompt(
+            reason,
+            now,
+            lead.as_deref(),
+            &events,
+            s.authority.as_ref(),
+            &recent,
+        );
         self.update(|st| {
             st.pending.clear();
             st.last_check_in = now;
-            if reason == WakeReason::Schedule {
+            if let Some(k) = st.stuck.as_mut() {
+                k.checked_in = true;
+            }
+            if scheduled {
                 st.last_scheduled = now;
             }
             if !st.wakes.contains(&id) {
@@ -607,6 +738,7 @@ impl Foreman {
 pub(crate) fn prompt(
     reason: WakeReason,
     now: i64,
+    lead: Option<&str>,
     events: &[String],
     authority: Option<&Authority>,
     recent: &[DecisionEntry],
@@ -617,8 +749,15 @@ pub(crate) fn prompt(
         match reason {
             WakeReason::Schedule => "scheduled",
             WakeReason::Events => "something changed",
+            WakeReason::Stuck => "your turn was stuck",
         }
     );
+    if let Some(lead) = lead {
+        text.push_str(lead);
+        text.push_str(
+            " Put a timeout on every probe (`timeout 60 CMD`, `curl -m 20`) and carry on.\n\n",
+        );
+    }
     if events.is_empty() {
         text.push_str("Nothing new was reported since the last check-in.\n");
     } else {
@@ -743,6 +882,34 @@ fn stale_claim(issue: &GhClaimIssue, now: i64) -> Option<(String, i64)> {
     Some((session, since))
 }
 
+/// A tool call in plain words for the stuck check-in: the tool and, for a
+/// shell command, URL or search, its start, like ``Bash` (`curl …`)`.
+pub(crate) fn tool_label(call: &ToolCall) -> String {
+    let (name, detail): (&str, Option<&str>) = match call {
+        ToolCall::Exec { command } => ("Bash", Some(command)),
+        ToolCall::ReadFile { path } => ("Read", Some(path)),
+        ToolCall::WriteFile { path, .. } => ("Write", Some(path)),
+        ToolCall::EditFile { path, .. } => ("Edit", Some(path)),
+        ToolCall::ApplyPatch { path } => ("ApplyPatch", path.as_deref()),
+        ToolCall::Search { pattern, .. } => ("Grep", Some(pattern)),
+        ToolCall::Glob { pattern } => ("Glob", Some(pattern)),
+        ToolCall::WebFetch { url, .. } => ("WebFetch", Some(url)),
+        ToolCall::WebSearch { query } => ("WebSearch", Some(query)),
+        ToolCall::Todo { .. } => ("TodoWrite", None),
+        ToolCall::Mcp { tool, .. } => (tool, None),
+        ToolCall::Unknown { name, .. } => (name, None),
+    };
+    let name = name.replace('`', "'");
+    match detail.map(|d| d.lines().next().unwrap_or("").trim().replace('`', "'")) {
+        Some(d) if !d.is_empty() => {
+            let cut: String = d.chars().take(60).collect();
+            let more = if cut.len() < d.len() { " …" } else { "" };
+            format!("`{name}` (`{cut}{more}`)")
+        }
+        _ => format!("`{name}`"),
+    }
+}
+
 fn uuid_from(seed: &str) -> String {
     let hash = Sha256::digest(seed.as_bytes());
     let mut bytes = [0u8; 16];
@@ -801,6 +968,7 @@ mod tests {
             updated_at: chrono::Utc::now(),
             running_subagents: 0,
             background_tasks: 0,
+            last_output_at: None,
         }
     }
 
@@ -812,6 +980,7 @@ mod tests {
                 every_minutes: 20,
                 paused: false,
                 authority: false,
+                ..ForemanSettings::default()
             },
             0,
         )
@@ -930,6 +1099,7 @@ mod tests {
             prompt(
                 WakeReason::Schedule,
                 6,
+                None,
                 &[],
                 f.state().authority.as_ref(),
                 &[]
@@ -1023,6 +1193,148 @@ mod tests {
         assert!(quiet.text.contains("Nothing new was reported"));
         assert!(quiet.text.contains("post a short status of 3 to 6 lines"));
         assert!(f.due(false, 20 * MIN).unwrap().is_some(), "and again");
+    }
+
+    /// The chat's own row while it works, with its turn start and last
+    /// output in minutes.
+    fn own(status: SessionStatus, started: i64, output: i64) -> Session {
+        let at = |m: i64| chrono::DateTime::from_timestamp_millis(m * MIN);
+        Session {
+            started_at: at(started),
+            last_output_at: at(output),
+            ..row("foreman", status, None)
+        }
+    }
+
+    fn stuck_outcomes(f: &Foreman) -> usize {
+        f.read(50)
+            .iter()
+            .filter(|e| matches!(e, DecisionEntry::Outcome { status, .. } if status == "stuck"))
+            .count()
+    }
+
+    /// #12029: a turn that stays `working` with no output for 10 minutes is
+    /// stopped once, even while the interrupt takes a while to land, and
+    /// exactly one check-in names the tool and how long it ran.
+    #[test]
+    fn a_turn_with_no_output_for_ten_minutes_is_stopped_once_and_checked_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let title = |c: &str| c.to_owned();
+        let curl = || Some("`Bash` (`curl https://openagents.com/api/health`)".to_owned());
+        // A scheduled check-in starts, and its turn hangs in one call at 1 min.
+        f.observe(&[own(SessionStatus::Working, 1, 1)], |_| false, title, MIN)
+            .unwrap();
+        assert_eq!(f.watchdog(true, 10 * MIN, curl).unwrap(), None, "9 minutes");
+        assert_eq!(f.watchdog(false, 11 * MIN, curl).unwrap(), None, "not busy");
+        let stuck = f.watchdog(true, 11 * MIN, curl).unwrap().expect("stopped");
+        assert_eq!((stuck.turn, stuck.since), (MIN, MIN));
+        // The interrupt takes minutes to land; nothing fires again.
+        for minute in [12, 15, 30] {
+            f.observe(
+                &[own(SessionStatus::Working, 1, 1)],
+                |_| false,
+                title,
+                minute * MIN,
+            )
+            .unwrap();
+            assert_eq!(f.watchdog(true, minute * MIN, curl).unwrap(), None);
+            assert_eq!(
+                f.due(true, minute * MIN).unwrap(),
+                None,
+                "never over a turn"
+            );
+        }
+        assert_eq!(stuck_outcomes(&f), 1);
+        // Once the chat is idle, one check-in says why.
+        f.observe(
+            &[own(SessionStatus::Idle, 1, 1)],
+            |_| false,
+            title,
+            31 * MIN,
+        )
+        .unwrap();
+        let wake = f.due(false, 31 * MIN).unwrap().expect("a check-in");
+        assert!(wake.text.contains("(your turn was stuck)"), "{}", wake.text);
+        assert!(wake.text.contains(
+            "Your last turn was stuck in `Bash` (`curl https://openagents.com/api/health`) for 10 minutes, so the host stopped it."
+        ));
+        assert!(wake.text.contains("Put a timeout on every probe"));
+        assert_eq!(f.due(false, 32 * MIN).unwrap(), None, "exactly one");
+        let stuck_wakes = f
+            .read(50)
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    DecisionEntry::Wake {
+                        reason: WakeReason::Stuck,
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(stuck_wakes, 1);
+        assert_eq!(stuck_outcomes(&f), 1);
+        // The schedule slot that was also due counts as served.
+        assert_eq!(f.next_scheduled(), Some(51 * MIN));
+        // A new turn that hangs is its own stop.
+        f.observe(
+            &[own(SessionStatus::Working, 40, 41)],
+            |_| false,
+            title,
+            40 * MIN,
+        )
+        .unwrap();
+        assert!(f.watchdog(true, 51 * MIN, || None).unwrap().is_some());
+        assert_eq!(stuck_outcomes(&f), 2);
+    }
+
+    /// #12029: a busy turn that keeps producing output is left alone.
+    #[test]
+    fn a_busy_turn_that_keeps_producing_output_is_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        for minute in 1..=30 {
+            // A long build that prints, or a wait loop with progress lines.
+            let output = minute - minute % 4;
+            f.observe(
+                &[own(SessionStatus::Working, 0, output)],
+                |_| false,
+                |c| c.to_owned(),
+                minute * MIN,
+            )
+            .unwrap();
+            assert_eq!(f.watchdog(true, minute * MIN, || None).unwrap(), None);
+        }
+        assert_eq!(stuck_outcomes(&f), 0);
+        // A chat waiting for the owner's answer isn't stuck either.
+        f.observe(
+            &[own(SessionStatus::AwaitingInput, 0, 0)],
+            |_| false,
+            |c| c.to_owned(),
+            60 * MIN,
+        )
+        .unwrap();
+        assert_eq!(f.watchdog(true, 60 * MIN, || None).unwrap(), None);
+    }
+
+    #[test]
+    fn tool_labels_are_short_and_plain() {
+        let exec = ToolCall::Exec {
+            command: format!("curl -s {}\nlsof", "x".repeat(80)),
+        };
+        let label = tool_label(&exec);
+        assert!(label.starts_with("`Bash` (`curl -s xxx"));
+        assert!(label.ends_with(" …`)") && !label.contains("lsof"));
+        assert_eq!(
+            tool_label(&ToolCall::Mcp {
+                server: "openagents".into(),
+                tool: "wait_for_turn".into(),
+                input: None
+            }),
+            "`wait_for_turn`"
+        );
     }
 
     #[test]

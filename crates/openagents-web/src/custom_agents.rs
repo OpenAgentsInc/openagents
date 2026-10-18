@@ -415,6 +415,7 @@ mod tests {
             model: None,
             access: openagents_sdk::agents::Access::ReadOnly,
             fallbacks: vec![],
+            autonomy: None,
         }
     }
     fn create(n: u8) -> Mutation {

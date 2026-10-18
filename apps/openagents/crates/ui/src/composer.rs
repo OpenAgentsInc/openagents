@@ -12777,6 +12777,7 @@ mod tests {
                 updated_at: updated,
                 running_subagents: 0,
                 background_tasks: 0,
+                last_output_at: None,
             }];
             state.selected_chat = Some("c".into());
             state.watch_clock_transitions(cx);

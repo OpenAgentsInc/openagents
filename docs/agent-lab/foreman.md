@@ -67,6 +67,8 @@ Foreman also checks in, at most once every few minutes and never over a turn it'
 - an issue in `OpenAgentsInc/openagents` opens or closes;
 - a claim has had no new comment for six hours.
 
+**If its own turn gets stuck** ([#12029](https://github.com/OpenAgentsInc/openagents/issues/12029)): when Foreman's chat has been working for 10 minutes with no output (no text, thinking, or tool call or result), the computer stops that turn once and starts a check-in that names the call it was stuck in and for how long, for example "Your last turn was stuck in `Bash` (`curl …`) for 12 minutes, so the host stopped it." A turn that keeps printing, such as a long wait with progress lines, is left alone. The Decision log shows the stopped turn as stuck. Separately, Foreman's definition caps every shell command at 2 minutes (`autonomy.shell_timeout_secs`), and any saved agent can set the same cap.
+
 The computer's `gh` reports the issue and claim events. Each check-in asks Foreman to call `record_decision` with what it saw, decided and did. The **Decision log** in the same card lists check-ins, those records, how each check-in ended, and authority changes. The log is a file in the app's data folder (`foreman/decisions.jsonl`), kept across restarts, and the next check-in includes the latest entries.
 
 ## What it is

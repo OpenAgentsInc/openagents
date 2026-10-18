@@ -332,6 +332,11 @@ pub struct Session {
     /// through `view::background_working`. Not a turn: sending stays open.
     #[serde(default)]
     pub background_tasks: u32,
+    /// When the turn last produced output: text, reasoning, a tool call or a
+    /// tool result. `updated_at` also moves on the liveness heartbeat, so a
+    /// turn stuck in one tool call keeps a fresh `updated_at` but not this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_output_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

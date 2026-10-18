@@ -111,6 +111,7 @@ mod tests {
                 model: Some("review".into()),
                 access: super::super::Access::HostDefault,
                 fallbacks: vec![],
+                autonomy: None,
             },
             task: "Review patch".into(),
             cwd: "/workspace".into(),

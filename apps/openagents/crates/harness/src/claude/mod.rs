@@ -312,6 +312,17 @@ impl ClaudeHarness {
         if !request.cwd.is_empty() {
             cmd.current_dir(&request.cwd);
         }
+        // A saved agent's shell cap (#12029): every Bash call gets it as its
+        // default, and none may ask for longer.
+        if let Some(ms) = request
+            .model_options
+            .get(openagents_proto::saved_agent::SHELL_TIMEOUT_MS)
+            .and_then(Value::as_u64)
+            .filter(|ms| *ms > 0)
+        {
+            cmd.env("BASH_DEFAULT_TIMEOUT_MS", ms.to_string())
+                .env("BASH_MAX_TIMEOUT_MS", ms.to_string());
+        }
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -1672,5 +1683,40 @@ mod fork_session_tests {
         assert!(forked.iter().any(|a| a == "--fork-session"));
         request.resume = None;
         assert!(!args(&request).iter().any(|a| a == "--fork-session"));
+    }
+
+    /// A saved agent with a shell cap gets both Claude Code timeouts (#12029).
+    #[test]
+    fn a_saved_agents_shell_cap_sets_both_bash_timeouts() {
+        let env = |request: &RunRequest| -> Vec<(String, String)> {
+            let cmd = ClaudeHarness::new().build_command(&PathBuf::from("claude"), request);
+            cmd.as_std()
+                .get_envs()
+                .filter_map(|(k, v)| {
+                    let k = k.to_string_lossy().into_owned();
+                    k.starts_with("BASH_")
+                        .then(|| (k, v.unwrap_or_default().to_string_lossy().into_owned()))
+                })
+                .collect()
+        };
+        let mut request: RunRequest = serde_json::from_value(serde_json::json!({
+            "prompt":"Check the issues", "cwd":"/workspace", "model":null, "reasoning":null,
+            "resume":null, "sandbox":"danger-full-access"
+        }))
+        .unwrap();
+        assert!(env(&request).is_empty(), "no cap unless the agent sets one");
+        request.model_options.insert(
+            openagents_proto::saved_agent::SHELL_TIMEOUT_MS.into(),
+            120_000.into(),
+        );
+        let mut got = env(&request);
+        got.sort();
+        assert_eq!(
+            got,
+            [
+                ("BASH_DEFAULT_TIMEOUT_MS".to_owned(), "120000".to_owned()),
+                ("BASH_MAX_TIMEOUT_MS".to_owned(), "120000".to_owned()),
+            ]
+        );
     }
 }

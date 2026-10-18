@@ -399,11 +399,13 @@ fn entry_line(entry: &DecisionEntry) -> String {
             (WakeReason::Schedule, n) => format!("Scheduled check-in with {n} updates."),
             (WakeReason::Events, 1) => format!("Checked in: {}", events[0]),
             (WakeReason::Events, n) => format!("Checked in on {n} updates."),
+            (WakeReason::Stuck, _) => "Checked in after stopping a stuck turn.".into(),
         },
         DecisionEntry::Decision { decided, did, .. } => format!("Decided: {decided} Did: {did}"),
         DecisionEntry::Outcome { status, .. } => match status.as_str() {
             "finished" => "Check-in finished.".into(),
             "errored" => "Check-in stopped with an error.".into(),
+            "stuck" => "Stopped a turn that had stopped producing output.".into(),
             _ => "A check-in couldn't start.".into(),
         },
         DecisionEntry::Authority { granted: true, .. } => "Standing authority turned on.".into(),
@@ -442,6 +444,17 @@ mod tests {
                 at: 0,
                 id: "w".into(),
                 status: "not started".into(),
+            },
+            DecisionEntry::Outcome {
+                at: 0,
+                id: "w".into(),
+                status: "stuck".into(),
+            },
+            DecisionEntry::Wake {
+                at: 0,
+                id: "s".into(),
+                reason: WakeReason::Stuck,
+                events: vec![],
             },
         ];
         for entry in &entries {

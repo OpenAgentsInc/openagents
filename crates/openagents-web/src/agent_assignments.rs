@@ -422,6 +422,7 @@ mod tests {
                 model: None,
                 access: openagents_sdk::agents::Access::ReadOnly,
                 fallbacks: vec![],
+                autonomy: None,
             },
         }
     }

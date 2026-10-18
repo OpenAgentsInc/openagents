@@ -83,6 +83,7 @@ mod tests {
                 model: None,
                 access: Access::ReadOnly,
                 fallbacks: vec![],
+                autonomy: None,
             },
         })
         .unwrap();

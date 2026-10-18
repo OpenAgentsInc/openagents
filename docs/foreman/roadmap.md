@@ -63,6 +63,9 @@ flowchart TD
   check-in, and logs a `stuck` outcome. A second test: a busy turn that
   keeps producing output is left alone.
 - **Size:** S.
+- **Status:** built in #12029. The window is `stuck_minutes` in the wake
+  settings (default 10); the shell cap is `autonomy.shell_timeout_secs` on
+  the agent definition, so any agent can have both.
 
 ### 2. Check-ins and standing authority on by default
 

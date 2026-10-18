@@ -262,6 +262,7 @@ mod tests {
                     model: None,
                 })
                 .collect(),
+            autonomy: None,
         }
     }
     async fn run(

@@ -489,6 +489,7 @@ impl WorkspaceDoc {
         row.insert("updatedAt", session.updated_at.timestamp_millis())?;
         row.insert("runningSubagents", i64::from(session.running_subagents))?;
         row.insert("backgroundTasks", i64::from(session.background_tasks))?;
+        set_opt_ms(&row, "lastOutputAt", session.last_output_at)?;
         self.doc.commit();
         Ok(())
     }
@@ -788,6 +789,8 @@ pub(crate) struct RawSession {
     running_subagents: u32,
     #[serde(default)]
     background_tasks: u32,
+    #[serde(default)]
+    last_output_at: Option<i64>,
 }
 
 impl From<RawSession> for Session {
@@ -801,6 +804,7 @@ impl From<RawSession> for Session {
             updated_at: dt(raw.updated_at),
             running_subagents: raw.running_subagents,
             background_tasks: raw.background_tasks,
+            last_output_at: raw.last_output_at.map(dt),
         }
     }
 }
@@ -911,6 +915,7 @@ mod tests {
             updated_at: ts(3_500),
             running_subagents: 0,
             background_tasks: 0,
+            last_output_at: None,
         }
     }
 

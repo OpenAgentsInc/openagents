@@ -7,7 +7,8 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 pub use agent_contract::{
-    ANY_RUNTIME, Access, AgentDefinition, AgentSpec, MAX_FALLBACKS, Profile, RuntimeChoice, valid_id,
+    ANY_RUNTIME, Access, AgentDefinition, AgentSpec, Autonomy, MAX_FALLBACKS, Profile,
+    RuntimeChoice, valid_id,
 };
 /// The request body that saves a new agent definition.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -231,6 +232,7 @@ mod tests {
             model: None,
             access: Access::ReadOnly,
             fallbacks: vec![],
+            autonomy: None,
         };
         assert!(spec.validate().is_ok());
         for runtime in [

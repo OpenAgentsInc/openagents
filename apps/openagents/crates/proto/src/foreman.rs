@@ -10,6 +10,15 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_EVERY_MINUTES: u32 = 10;
 pub const MIN_EVERY_MINUTES: u32 = 5;
 pub const MAX_EVERY_MINUTES: u32 = 24 * 60;
+/// How long the agent's own turn may go with no output before the host
+/// stops it and checks in (#12029), and the allowed range.
+pub const DEFAULT_STUCK_MINUTES: u32 = 10;
+pub const MIN_STUCK_MINUTES: u32 = 2;
+pub const MAX_STUCK_MINUTES: u32 = 120;
+
+fn default_stuck_minutes() -> u32 {
+    DEFAULT_STUCK_MINUTES
+}
 
 /// What a standing authority lets Foreman do in other chats without asking.
 /// Money, keys, secrets, deploys and closing other agents' issues are never
@@ -48,6 +57,10 @@ pub struct ForemanSettings {
     pub every_minutes: u32,
     pub paused: bool,
     pub authority: bool,
+    /// Minutes the chat's turn may go with no output before the host stops
+    /// it and starts a check-in that says why.
+    #[serde(default = "default_stuck_minutes")]
+    pub stuck_minutes: u32,
 }
 
 impl Default for ForemanSettings {
@@ -57,6 +70,7 @@ impl Default for ForemanSettings {
             every_minutes: DEFAULT_EVERY_MINUTES,
             paused: false,
             authority: false,
+            stuck_minutes: DEFAULT_STUCK_MINUTES,
         }
     }
 }
@@ -74,6 +88,9 @@ pub struct ForemanCandidate {
 pub enum WakeReason {
     Schedule,
     Events,
+    /// The host stopped the chat's own turn after it went the stuck window
+    /// with no output (#12029).
+    Stuck,
 }
 
 /// One line of the decision log, oldest first.

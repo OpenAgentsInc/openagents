@@ -381,6 +381,7 @@ mod tests {
                 model: None,
                 access: Access::HostDefault,
                 fallbacks: vec![],
+                autonomy: None,
             },
             deleted: false,
         }

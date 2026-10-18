@@ -643,6 +643,12 @@ fn bind_agent_request(
     request
         .model_options
         .insert(INSTRUCTIONS.into(), spec.instructions.clone().into());
+    if let Some(secs) = spec.autonomy.as_ref().and_then(|a| a.shell_timeout_secs) {
+        request.model_options.insert(
+            openagents_proto::saved_agent::SHELL_TIMEOUT_MS.into(),
+            (u64::from(secs) * 1000).into(),
+        );
+    }
     request.sandbox = match spec.access {
         Access::HostDefault => SandboxLevel::DangerFullAccess,
         Access::ReadOnly => SandboxLevel::ReadOnly,
@@ -849,6 +855,7 @@ mod tests {
                     model: None,
                     access: Access::ReadOnly,
                     fallbacks: vec![],
+                    autonomy: None,
                 },
             },
             chat: "chat".into(),
@@ -932,6 +939,39 @@ mod tests {
             assert_eq!(pinned, &a.definition.spec);
             assert_eq!(a.spec.agent_revision, a.definition.revision);
         }
+    }
+
+    #[test]
+    fn an_agents_shell_cap_rides_its_claude_code_turn() {
+        let (mut a, mut request) = fixture();
+        bind_agent_request(
+            &mut request,
+            &a.definition.spec,
+            HarnessId::ClaudeCode,
+            &a.id,
+            &a.chat,
+        )
+        .unwrap();
+        assert!(
+            !request
+                .model_options
+                .contains_key(openagents_proto::saved_agent::SHELL_TIMEOUT_MS)
+        );
+        a.definition.spec.autonomy = Some(openagents_account::openagents::agents::Autonomy {
+            shell_timeout_secs: Some(120),
+        });
+        bind_agent_request(
+            &mut request,
+            &a.definition.spec,
+            HarnessId::ClaudeCode,
+            &a.id,
+            &a.chat,
+        )
+        .unwrap();
+        assert_eq!(
+            request.model_options[openagents_proto::saved_agent::SHELL_TIMEOUT_MS],
+            120_000
+        );
     }
 
     #[test]

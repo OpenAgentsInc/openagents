@@ -14,7 +14,27 @@ pub struct AgentSpec {
     /// Not part of the agent's identity ([`AgentSpec::same_identity`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallbacks: Vec<RuntimeChoice>,
+    /// How the agent runs on its own. Not part of the agent's identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autonomy: Option<Autonomy>,
 }
+
+/// How a saved agent runs on its own (#12029). Any agent can declare it;
+/// hosts read it from the definition, never from the agent's name. Unknown
+/// fields are ignored so later settings don't break older readers.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Autonomy {
+    /// The longest one shell command may run, in seconds. The host hands it
+    /// to the runtime (Claude Code's `BASH_DEFAULT_TIMEOUT_MS` and
+    /// `BASH_MAX_TIMEOUT_MS`), so a probe with no timeout of its own can't
+    /// hang the agent's turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell_timeout_secs: Option<u32>,
+}
+
+/// The allowed range of [`Autonomy::shell_timeout_secs`].
+pub const MIN_SHELL_TIMEOUT_SECS: u32 = 10;
+pub const MAX_SHELL_TIMEOUT_SECS: u32 = 3600;
 
 /// One runtime the host may use for an agent, with its model.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +97,12 @@ impl AgentSpec {
         if self.runtime == ANY_RUNTIME && self.model.is_some() {
             return Err("Choose a runtime before choosing a model.");
         }
+        if let Some(a) = &self.autonomy
+            && a.shell_timeout_secs
+                .is_some_and(|t| !(MIN_SHELL_TIMEOUT_SECS..=MAX_SHELL_TIMEOUT_SECS).contains(&t))
+        {
+            return Err("Choose a shell timeout between 10 seconds and an hour.");
+        }
         if self.fallbacks.len() > MAX_FALLBACKS {
             return Err("Choose fewer fallback runtimes.");
         }
@@ -109,8 +135,8 @@ impl AgentSpec {
             .collect()
     }
 
-    /// Whether two specs describe the same agent. The runtime, model and
-    /// fallbacks are settings of the agent, not part of who it is.
+    /// Whether two specs describe the same agent. The runtime, model,
+    /// fallbacks and autonomy are settings of the agent, not part of who it is.
     pub fn same_identity(&self, other: &Self) -> bool {
         self.name == other.name
             && self.description == other.description
@@ -171,6 +197,7 @@ mod tests {
             model: Some("claude-opus-5-5".into()),
             access: Access::HostDefault,
             fallbacks: vec![],
+            autonomy: None,
         }
     }
     fn choice(runtime: &str) -> RuntimeChoice {
@@ -196,6 +223,27 @@ mod tests {
         s.fallbacks.clear();
         s.validate().unwrap();
         assert!(s.runtime_order().is_empty());
+    }
+
+    #[test]
+    fn autonomy_is_an_optional_setting_with_a_bounded_shell_timeout() {
+        let mut s = spec();
+        assert!(serde_json::to_value(&s).unwrap().get("autonomy").is_none());
+        let plain = s.clone();
+        s.autonomy = Some(Autonomy {
+            shell_timeout_secs: Some(120),
+        });
+        s.validate().unwrap();
+        assert!(s.same_identity(&plain), "a setting, not identity");
+        let json = serde_json::to_value(&s).unwrap();
+        assert_eq!(json["autonomy"]["shell_timeout_secs"], 120);
+        assert_eq!(serde_json::from_value::<AgentSpec>(json).unwrap(), s);
+        for bad in [0, 9, 3601] {
+            s.autonomy = Some(Autonomy {
+                shell_timeout_secs: Some(bad),
+            });
+            assert!(s.validate().is_err(), "{bad}");
+        }
     }
 
     #[test]

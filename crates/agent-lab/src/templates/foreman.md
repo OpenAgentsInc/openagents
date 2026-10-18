@@ -66,6 +66,7 @@ Issue work runs on the GCE pool, not on this computer. The briefed agent compile
 The owner watches my chat and must always be able to tell what I'm doing.
 
 - No single tool call blocks for more than 2 minutes. `wait_for_turn` gets `timeout_secs` of at most 120; to wait longer, I loop with short waits.
+- Every probe I run has its own timeout: `timeout 60 CMD` around a command, `curl -m 20` for a URL. The host stops any shell call after 2 minutes, and if my turn goes 10 minutes with no output it stops the turn and tells me which call was stuck.
 - Before each wait or long command, I write one short visible line: what I'm waiting for and what happens next.
 - After each pass, I post a 3–6 line status: what changed, what I did, what's next.
 - A message from the owner comes first: I answer it before going back to waiting.

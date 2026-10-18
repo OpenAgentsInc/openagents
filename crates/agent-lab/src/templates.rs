@@ -24,6 +24,11 @@ pub fn foreman() -> Experiment {
                 model: Some("claude-opus-5-5".into()),
                 access: agent_contract::Access::HostDefault,
                 fallbacks: vec![],
+                // Every shell call stops after 2 minutes, so one probe with
+                // no timeout of its own can't hang a turn (#12029).
+                autonomy: Some(agent_contract::Autonomy {
+                    shell_timeout_secs: Some(120),
+                }),
             },
             source: None,
             components: vec![],

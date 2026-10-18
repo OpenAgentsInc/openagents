@@ -7,6 +7,11 @@ use crate::{ChatConfig, HarnessId};
 pub const ASSIGNMENT: &str = "openagentsAssignment";
 /// The saved agent's name, kept on the chat config for display.
 pub const AGENT_NAME: &str = "openagentsAgentName";
+/// The longest one shell command of a saved agent's turn may run, in
+/// milliseconds, from its definition's autonomy settings (#12029). A run
+/// option: the runtime applies it (Claude Code's `BASH_DEFAULT_TIMEOUT_MS`
+/// and `BASH_MAX_TIMEOUT_MS`).
+pub const SHELL_TIMEOUT_MS: &str = "openagentsShellTimeoutMs";
 
 /// Whether the chat runs a saved agent.
 pub fn is_agent_chat(config: Option<&ChatConfig>) -> bool {

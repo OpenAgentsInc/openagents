@@ -105,6 +105,7 @@ mod tests {
                 model: model.map(Into::into),
                 access: Access::HostDefault,
                 fallbacks: vec![],
+                autonomy: None,
             },
             deleted: false,
         }
