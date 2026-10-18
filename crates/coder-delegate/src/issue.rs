@@ -1467,21 +1467,22 @@ pub fn changed_packages(workdir: &Path, diff: &str) -> Vec<String> {
                 // listed in the root's `exclude`) can't be tested by name from
                 // the root: `cargo test -p openagents-mobile` fails with
                 // "cannot specify features for packages outside of workspace".
-                if text.lines().any(|l| l.trim() == "[workspace]")
-                    || excluded.contains(&format!("\"{}\"", at.display()))
+                // A member of a nested workspace, such as
+                // apps/openagents/crates/sync, is kept: its commands name it
+                // through that workspace's manifest ([`manifest_of`], #12129).
+                let workspace = |a: &Path| {
+                    std::fs::read_to_string(workdir.join(a).join("Cargo.toml"))
+                        .is_ok_and(|t| t.lines().any(|l| l.trim() == "[workspace]"))
+                };
+                let mut above = at.ancestors().filter(|a| !a.as_os_str().is_empty());
+                let nested = above.clone().skip(1).any(workspace);
+                if workspace(at)
+                    || (!nested
+                        && above.any(|a| excluded.contains(&format!("\"{}\"", a.display()))))
                 {
                     break;
                 }
-                let name = text
-                    .lines()
-                    .skip_while(|l| l.trim() != "[package]")
-                    .find_map(|l| {
-                        l.trim()
-                            .strip_prefix("name")
-                            .and_then(|rest| rest.trim().strip_prefix('='))
-                            .map(|v| v.trim().trim_matches('"').to_string())
-                    });
-                if let Some(name) = name
+                if let Some(name) = package_name(&text)
                     && !packages.contains(&name)
                 {
                     packages.push(name);
@@ -1492,6 +1493,61 @@ pub fn changed_packages(workdir: &Path, diff: &str) -> Vec<String> {
         }
     }
     packages
+}
+
+/// The `name` in a manifest's `[package]` table.
+fn package_name(manifest: &str) -> Option<String> {
+    manifest
+        .lines()
+        .skip_while(|l| l.trim() != "[package]")
+        .find_map(|l| {
+            l.trim()
+                .strip_prefix("name")
+                .and_then(|rest| rest.trim().strip_prefix('='))
+                .map(|v| v.trim().trim_matches('"').to_string())
+        })
+}
+
+/// The manifest, relative to `workdir`, of the nested workspace that holds
+/// `package`, such as `apps/openagents/Cargo.toml` for `openagents-engine`;
+/// `None` for a package of the root workspace or one no manifest names.
+/// Cargo can't select a nested workspace's package by name from the root
+/// (#12129), so its commands pass `--manifest-path` with this.
+pub fn manifest_of(workdir: &Path, package: &str) -> Option<String> {
+    let listed = command(
+        workdir,
+        "git",
+        &[
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "Cargo.toml",
+            "*/Cargo.toml",
+        ],
+    )
+    .ok()?;
+    let read = |dir: &Path| std::fs::read_to_string(workdir.join(dir).join("Cargo.toml")).ok();
+    let mut nested = None;
+    for manifest in listed.lines() {
+        let at = Path::new(manifest).parent().unwrap_or(Path::new(""));
+        if read(at).as_deref().and_then(package_name).as_deref() != Some(package) {
+            continue;
+        }
+        // The nearest folder whose manifest has a `[workspace]` table.
+        let workspace = at
+            .ancestors()
+            .find(|dir| {
+                read(dir).is_some_and(|text| text.lines().any(|l| l.trim() == "[workspace]"))
+            })
+            .unwrap_or(Path::new(""));
+        if workspace.as_os_str().is_empty() {
+            return None;
+        }
+        nested.get_or_insert_with(|| workspace.join("Cargo.toml").display().to_string());
+    }
+    nested
 }
 
 /// Figures the change adds to prose or to strings, such as `$0.0041` or
@@ -2157,6 +2213,54 @@ mod tests {
         }
         let diff = "+++ b/crates/inside/src/lib.rs\n+++ b/crates/excluded/src/lib.rs\n+++ b/crates/own/src/lib.rs\n";
         assert_eq!(changed_packages(root, diff), vec!["inside".to_string()]);
+    }
+
+    #[test]
+    fn nested_workspace_packages_run_through_their_workspace_manifest() {
+        // #12129: `cargo test -p openagents-engine --all-features` from the
+        // root fails with "cannot specify features for packages outside of
+        // workspace"; the app's crates are tested through its manifest.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/inside\"]\nexclude = [\"apps/app\"]\n",
+        )
+        .unwrap();
+        for (folder, manifest) in [
+            ("crates/inside", "[package]\nname = \"inside\"\n"),
+            ("apps/app", "[workspace]\nmembers = [\"crates/engine\"]\n"),
+            ("apps/app/crates/engine", "[package]\nname = \"engine\"\n"),
+        ] {
+            std::fs::create_dir_all(root.join(folder)).unwrap();
+            std::fs::write(root.join(folder).join("Cargo.toml"), manifest).unwrap();
+        }
+        command(root, "git", &["init", "-q"]).unwrap();
+        let diff = "+++ b/apps/app/crates/engine/src/lib.rs\n+++ b/crates/inside/src/lib.rs\n";
+        let packages = changed_packages(root, diff);
+        assert_eq!(packages, vec!["engine".to_string(), "inside".to_string()]);
+        let commands: Vec<String> = packages
+            .iter()
+            .map(|package| {
+                let manifest = manifest_of(root, package);
+                confined::Suite::Tests
+                    .args(package, manifest.as_deref())
+                    .join(" ")
+            })
+            .collect();
+        assert_eq!(
+            commands,
+            vec![
+                "test -q -p engine --manifest-path apps/app/Cargo.toml",
+                "test -q -p inside --all-features",
+            ]
+        );
+        let lints = confined::Suite::Clippy.args("engine", Some("apps/app/Cargo.toml"));
+        assert_eq!(
+            lints.join(" "),
+            "clippy -q -p engine --all-targets --manifest-path apps/app/Cargo.toml -- -D warnings"
+        );
+        assert_eq!(manifest_of(root, "missing"), None);
     }
 
     #[test]
