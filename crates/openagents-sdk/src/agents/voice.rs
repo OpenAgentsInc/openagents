@@ -13,6 +13,7 @@ pub struct VoiceTarget {
     pub host_id: String,
 }
 impl VoiceTarget {
+    /// Checks that the agent, chat, and host IDs are bounded identifiers.
     pub fn validate(&self) -> bool {
         valid_id(&self.agent_id)
             && !self.chat_id.is_empty()

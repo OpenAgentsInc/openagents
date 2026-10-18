@@ -577,6 +577,12 @@
               "calls": []
             },
             {
+              "name": "assignment_request_for_chat",
+              "doc": "Like [`Self::assignment_request`], but the agent runs in the existing\nchat `chat` (a UUID) on the spec's computer: it binds that chat to the\nagent's definition, and `spec.task` is the chat's next turn.",
+              "declaration": "pub fn assignment_request_for_chat(\n    &self,\n    spec: AssignmentSpec,\n    chat: &str,\n) -> Result<AgentRequest<CreateAssignment>, Error>",
+              "calls": []
+            },
+            {
               "name": "command_request",
               "doc": "Checks `action` and prepares a request that sends it to an assignment.",
               "declaration": "pub fn command_request(\n    &self,\n    action: AssignmentAction,\n) -> Result<AgentRequest<AssignmentCommand>, Error>",
@@ -640,6 +646,34 @@
                 {
                   "method": "POST",
                   "path": "/v1/agent-assignments/*/report"
+                }
+              ]
+            },
+            {
+              "name": "voice_agent",
+              "doc": "Reads the same voice choice on every device signed in to this account.",
+              "declaration": "pub async fn voice_agent(\n    &self,\n    cancel: &CancellationToken,\n) -> Result<VoiceAgent, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/voice-agent"
+                }
+              ]
+            },
+            {
+              "name": "voice_agent_request",
+              "doc": "Prepares a change without starting an agent or a call.",
+              "declaration": "pub fn voice_agent_request(\n    &self,\n    expected_revision: u64,\n    target: Option<VoiceTarget>,\n) -> Result<AgentRequest<SetVoiceAgent>, Error>",
+              "calls": []
+            },
+            {
+              "name": "set_voice_agent",
+              "doc": "Saves a prepared voice choice. A stale revision must be reloaded before retrying.",
+              "declaration": "pub async fn set_voice_agent(\n    &self,\n    request: &AgentRequest<SetVoiceAgent>,\n    cancel: &CancellationToken,\n) -> Result<VoiceAgent, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/voice-agent"
                 }
               ]
             },
@@ -841,7 +875,14 @@
           "kind": "struct",
           "name": "CreateAssignment",
           "doc": "The request body that assigns a task to an agent.",
-          "declaration": "pub struct CreateAssignment {\n    pub request_id: String,\n    pub spec: AssignmentSpec,\n}"
+          "declaration": "pub struct CreateAssignment {\n    pub request_id: String,\n    pub spec: AssignmentSpec,\n    pub chat: Option<String>,\n}"
+        },
+        {
+          "kind": "fn",
+          "name": "valid_chat",
+          "doc": "Whether `id` is a chat ID: a hyphenated UUID.",
+          "declaration": "pub fn valid_chat(id: &str) -> bool",
+          "calls": []
         }
       ],
       "reexports": []
@@ -934,6 +975,39 @@
           "name": "VERSION",
           "doc": "The schema version a runner request must carry.",
           "declaration": "pub const VERSION: &str = \"openagents.agent.runner.v1\";"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "agents::voice",
+      "doc": "The account's saved agent and chat used for voice conversations.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "SetVoiceAgent",
+          "doc": "A retryable change to the account's voice choice.",
+          "declaration": "pub struct SetVoiceAgent {\n    pub request_id: String,\n    pub expected_revision: u64,\n    pub target: Option<VoiceTarget>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "VoiceAgent",
+          "doc": "The current voice choice. Revision zero means no choice has been saved.",
+          "declaration": "pub struct VoiceAgent {\n    pub revision: u64,\n    pub target: Option<VoiceTarget>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "VoiceTarget",
+          "doc": "A saved agent's chat, identified independently of its display name.",
+          "declaration": "pub struct VoiceTarget {\n    pub agent_id: String,\n    pub chat_id: String,\n    pub host_id: String,\n}",
+          "methods": [
+            {
+              "name": "validate",
+              "doc": "Checks that the agent, chat, and host IDs are bounded identifiers.",
+              "declaration": "pub fn validate(&self) -> bool",
+              "calls": []
+            }
+          ]
         }
       ],
       "reexports": []
