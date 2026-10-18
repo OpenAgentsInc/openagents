@@ -1575,6 +1575,74 @@ impl Client {
             .map(|_| ())
     }
 
+    /// Fetch the newest unread owner note for this device after an attention wake.
+    pub async fn owner_notification(&self) -> Result<Option<serde_json::Value>> {
+        self.owner_note_request(reqwest::Method::GET, None).await
+    }
+
+    pub async fn read_owner_notification(&self, request_id: &str) -> Result<()> {
+        if request_id.len() != 64
+            || !request_id
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
+            return Err(ClientError::HostError(
+                "Couldn't read this notification.".into(),
+            ));
+        }
+        self.owner_note_request(reqwest::Method::POST, Some(request_id))
+            .await
+            .map(|_| ())
+    }
+
+    async fn owner_note_request(
+        &self,
+        method: reqwest::Method,
+        id: Option<&str>,
+    ) -> Result<Option<serde_json::Value>> {
+        let Some(live) = self.inner.live() else {
+            return Ok(None);
+        };
+        let path = id
+            .map(|id| format!("/v1/notify/{id}/read"))
+            .unwrap_or_else(|| "/v1/notify".into());
+        let url = format!(
+            "{}{}?device={}",
+            live.edge.trim_end_matches('/'),
+            path,
+            crate::live::urls::encode(&self.inner.config.device_id)
+        );
+        let token = self.inner.tokens.bearer().await?;
+        let mut response = crate::auth::http()
+            .request(method, url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| ClientError::Network("Couldn't read this notification.".into()))?;
+        if !response.status().is_success() {
+            return Err(ClientError::HostError(
+                "Couldn't read this notification.".into(),
+            ));
+        }
+        let mut bytes = Vec::new();
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) if bytes.len() + chunk.len() <= 16384 => {
+                    bytes.extend_from_slice(&chunk)
+                }
+                Ok(None) => break,
+                _ => {
+                    return Err(ClientError::HostError(
+                        "Couldn't read this notification.".into(),
+                    ));
+                }
+            }
+        }
+        let value = serde_json::from_slice(&bytes)
+            .map_err(|_| ClientError::HostError("Couldn't read this notification.".into()))?;
+        Ok(Some(value))
+    }
+
     pub async fn list_refs(&self, device_id: &str, repo_path: &str) -> Result<Vec<RepoRef>> {
         match self.inner.backend() {
             Backend::Demo(demo) => demo.list_refs(repo_path).await,

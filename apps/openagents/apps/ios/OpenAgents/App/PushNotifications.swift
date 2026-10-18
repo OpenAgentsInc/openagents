@@ -62,14 +62,28 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().delegate = self
     }
 
-    // Push registration stays off until #11853.
-    func signedIn() {}
+    func signedIn() {
+        Task {
+            guard enabled, Self.allowed(await authorizationStatus()) else { return }
+            UIApplication.shared.registerForRemoteNotifications()
+            await sync()
+        }
+    }
 
-    // Keep call sites intact without asking for notification permission.
-    func askAfterFirstSession() {}
+    func askAfterFirstSession() {
+        guard !defaults.bool(forKey: Self.askedKey) else { return }
+        Task { _ = await requestPermission() }
+    }
 
     @discardableResult
-    func requestPermission() async -> Bool { false }
+    func requestPermission() async -> Bool {
+        guard app?.isDemo == false, let client = app?.client,
+              (try? await client.pushAvailable()) == true else { return false }
+        defaults.set(true, forKey: Self.askedKey)
+        let allowed = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])) == true
+        if allowed { UIApplication.shared.registerForRemoteNotifications() }
+        return allowed
+    }
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
@@ -82,6 +96,8 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
     /// Signing out: this phone stops getting the account's notifications.
     func signingOut(client: CoreClient?) {
         token = nil
+        pendingChat = nil
+        pendingAttention = false
         if let client { Task.detached { try? await client.unregisterPushTarget() } }
         UIApplication.shared.unregisterForRemoteNotifications()
     }
@@ -132,13 +148,14 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
     // Completion-handler forms, on the main queue: the async variants
     // complete off the main thread, which UIKit asserts on (crash on tap).
 
-    /// In the app: no banner (the list and the session already show it).
+    /// Attention stays visible when the owner is reading another chat.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([])
+        let attention = notification.request.content.userInfo["wake"] as? String == "attention"
+        completionHandler(attention ? [.banner, .sound] : [])
     }
 
     /// Tapped: open that session.
@@ -148,12 +165,47 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let chatId = response.notification.request.content.userInfo["chatId"] as? String
+        let attention = response.notification.request.content.userInfo["wake"] as? String == "attention"
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
-                if let chatId { self.open(chatId) }
+                if attention { self.openAttention() }
+                else if let chatId { self.open(chatId) }
             }
             completionHandler()
         }
+    }
+
+    private var pendingAttention = false
+
+    private func openAttention() {
+        guard let client = app?.client else { pendingAttention = true; return }
+        Task {
+            do {
+                guard let note = try await client.ownerNotification() else {
+                    self.pendingAttention = false
+                    return
+                }
+                guard self.app?.client === client else { return }
+                self.openChatLink(note.deepLink)
+                // Rust supplies the note copy and destination. UIKit only presents it.
+                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   var controller = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+                    while let presented = controller.presentedViewController { controller = presented }
+                    let alert = UIAlertController(title: note.title, message: note.body, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    controller.present(alert, animated: true)
+                }
+                try await client.readOwnerNotification(requestId: note.requestId)
+                self.pendingAttention = false
+            } catch {
+                self.pendingAttention = true
+            }
+        }
+    }
+
+    /// Rust checks the destination; the shell can queue it until sign-in finishes.
+    func openChatLink(_ link: String) {
+        if let chatId = ownerNotificationChatFromLink(link: link) { open(chatId) }
     }
 
     private func open(_ chatId: String) {
@@ -162,6 +214,7 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     /// The shell is up: open a chat tapped before it was.
     func shellReady() {
+        if pendingAttention { openAttention() }
         guard let chat = pendingChat else { return }
         pendingChat = nil
         _ = openChat?(chat)

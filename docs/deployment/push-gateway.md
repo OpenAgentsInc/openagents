@@ -197,7 +197,48 @@ Then set `CODER_SYNC_PUSH_GATEWAY` (the delivery listener),
 The phone reads these settings from `GET /registry/{org}/push-config`,
 registers its token with the gateway, delegates a grant to the `coder-sync`
 key, and stores only that grant through `POST /registry/{org}/push-grant`.
-The iOS app turns this on only in builds with `CODER_IOS_PUSH` set.
+The iOS app asks for notification permission only when the server has push configured.
+
+## An agent notifies its owner
+
+The public SDK exposes `Client::notify_owner(session, request_id, OwnerNote,
+cancel)` at `POST /v1/notify` (#12040). `OwnerNote` has an agent definition
+ID, chat ID, title (under 120 UTF-8 bytes), and body (up to 1,024 bytes).
+Both text fields pass `oa-copy`. The account first enables that agent with
+`Client::set_owner_notification_grant(session, agent_id, true, cancel)`;
+passing `false` revokes it. Permission starts off for every agent.
+
+The web API forwards these calls to coder-sync, where phone delivery grants
+already live. `OPENAGENTS_NOTIFY_SERVICE` overrides the sync service address
+on the web server; its default is `https://sync.openagents.com`. The sync
+service checks the account bearer, stores the note, and accepts at most six
+new notes per account and agent in a rolling hour. Reusing a request ID with
+the same note resumes delivery; changing the note returns `409`. New requests
+remove that account's notes older than seven days. Test-marked requests store
+nothing and send nothing.
+
+Attention uses the existing delivery signer, phone grants, and gateway on
+`/v1/deliveries/apns/attention` and `/v1/deliveries/fcm/attention`. These
+private routes accept the same four-member delivery body as session wakes.
+Only the registered `attention` constant reaches APNs or FCM. The APNs
+banner says “Your agent needs you” and asks the person to open the chat;
+the private title, body, and chat ID never enter the platform payload.
+The phone fetches the newest unread note for its device, shows its title
+and body, and opens the note's chat. The generated link is
+`openagents://chat/{chat_id}`. The phone's input-notification choice also
+controls attention notifications; turning notifications off removes its
+delivery grant.
+
+Host callers use
+`DocHost::notify_owner(agent_id, request_id, chat_id, title, body)`. The
+stall ladder, alarms, and owner questions each supply a stable 64-character
+hexadecimal request ID per event. The host checks the chat's saved-agent
+assignment, agent definition ID, and computer. `NotifyOwner` RPC and the
+app's `notify_owner` tool infer that identity from the calling chat. The
+tool cannot choose another agent or enable its own permission. No name has
+special meaning. If the host already has the chat ID, call
+`DocHost::notify_owner_from_chat(chat_id, request_id, title, body)` to resolve
+its saved agent ID and perform the same checks.
 
 ## Limits
 

@@ -74,6 +74,7 @@ mod door_route;
 mod environments;
 mod runs;
 mod runs_openapi;
+mod owner_notifications;
 mod sand_gallery;
 /// Staging's stand-in for a GitHub App (#11226).
 pub use environments::push::StandIn as StagingPush;
@@ -358,6 +359,8 @@ pub struct Config {
     pub chat: Arc<dyn ask::Chat>,
     /// Durable public conversations, independent of a browser connection.
     pub chat_store: Arc<chat_store::Store>,
+    /// Sync service that stores owner notes and phone delivery grants.
+    pub owner_notifications_url: String,
     /// Small Rust/Wasm input and scroll adapter.
     pub chat_build: Option<PathBuf>,
     /// The sand garden browser build.
@@ -505,6 +508,8 @@ impl Config {
     #[must_use]
     pub fn development(store: PathBuf) -> Self {
         Self {
+            owner_notifications_url: std::env::var("OPENAGENTS_NOTIFY_SERVICE")
+                .unwrap_or_else(|_| "https://sync.openagents.com".into()),
             lab_backend: None,
             project_uploads: ProjectUploadPolicy::default(),
             chat_store: Arc::new(chat_store::Store::local(store.with_file_name("web-chats"))),
@@ -636,6 +641,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(device::routes())
         .merge(web_sign_in::routes())
         .merge(coder_sync::routes())
+        .merge(owner_notifications::routes())
         .merge(phone_api::routes())
         .merge(visitor_api::routes())
         .merge(history_api::routes())

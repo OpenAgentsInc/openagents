@@ -329,7 +329,7 @@ async fn notes(
         at,
     ))
 }
-async fn grants(state: &StateData, account: &str) -> Result<Vec<push::Target>> {
+pub(super) async fn grants(state: &StateData, account: &str) -> Result<Vec<push::Target>> {
     let db = state.database.connect().await?;
     Ok(db
         .query(

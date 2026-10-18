@@ -124,6 +124,11 @@ fn device_schema() -> Value {
 fn catalog() -> Vec<ToolDef> {
     let mut tools = vec![
         ToolDef {
+            name: "notify_owner",
+            description: "Ask your owner to open your chat for an alarm or a question. Requires permission for your saved agent. Use one stable request_id for each event; retries reuse it. At most six new notes per hour.",
+            input_schema: json!({"type":"object","additionalProperties":false,"properties":{"request_id":{"type":"string","description":"Stable 64-character lowercase hexadecimal event ID."},"title":{"type":"string","description":"Plain words under 120 bytes."},"body":{"type":"string","description":"What happened or what you need, up to 1024 bytes."}},"required":["request_id","title","body"]}),
+        },
+        ToolDef {
             name: "whoami",
             description: "Which chat and device this server speaks for, plus the engine's workspace mode. Call this first when you need to know your own chat id.",
             input_schema: json!({ "type": "object", "properties": {} }),
@@ -871,7 +876,12 @@ impl Tools {
                 description: "Read the account's selected saved agent and chat for the next spoken question. Re-read before each send so a change during the call takes effect.",
                 input_schema: json!({"type":"object","properties":{},"additionalProperties":false}),
             }))
-            .filter(|tool| in_chat || (tool.name != SHOW_VISUAL && tool.name != RECORD_DECISION))
+            .filter(|tool| {
+                in_chat
+                    || (tool.name != SHOW_VISUAL
+                        && tool.name != RECORD_DECISION
+                        && tool.name != "notify_owner")
+            })
             .chain(crate::video_lab::tools().iter().cloned())
             .chain(build_status_tool())
             .chain(machine_action_tool())
@@ -916,6 +926,23 @@ impl Tools {
             "bring_back" => self.bring_back(parse(args)?).await,
             SHOW_VISUAL => self.show_visual(parse(args)?).await,
             RECORD_DECISION => self.record_decision(parse(args)?).await,
+            "notify_owner" => {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Note {
+                    request_id: String,
+                    title: String,
+                    body: String,
+                }
+                let note: Note = parse(args)?;
+                let chat = self
+                    .openagents
+                    .origin()
+                    .chat_id
+                    .as_ref()
+                    .ok_or_else(|| "Choose a saved agent's chat.".to_owned())?;
+                self.openagents.call(openagents_rpc::methods::NOTIFY_OWNER, json!({"originChatId":chat,"requestId":note.request_id,"title":note.title,"body":note.body})).await
+            }
             #[cfg(unix)]
             crate::build_status::NAME => return crate::build_status::call(args),
             #[cfg(unix)]
@@ -2132,7 +2159,7 @@ mod tests {
                         RpcReply::Value(plan)
                     }
                 }
-                methods::RECORD_FOREMAN_DECISION => {
+                methods::RECORD_FOREMAN_DECISION | methods::NOTIFY_OWNER => {
                     self.writes
                         .lock()
                         .unwrap()
@@ -2310,6 +2337,30 @@ mod tests {
             );
         }
         assert!(world.writes.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn notify_owner_uses_the_calling_chat_and_cannot_select_another_agent() {
+        let world = Arc::new(World::default());
+        let outside = tools(world.clone(), Origin::default());
+        assert!(!outside.has("notify_owner"));
+        let inside = tools(
+            world.clone(),
+            Origin {
+                chat_id: Some("chat-alpha-1".into()),
+                device_id: Some("dev-local".into()),
+            },
+        );
+        assert!(inside.has("notify_owner"));
+        let note = json!({"request_id":"a".repeat(64),"title":"I need your help","body":"The computer stopped answering."});
+        inside.call("notify_owner", note.clone()).await.unwrap();
+        let mut spoofed = note;
+        spoofed["agent"] = json!("other");
+        assert!(inside.call("notify_owner", spoofed).await.is_err());
+        let writes = world.writes.lock().unwrap();
+        let (method, params) = writes.last().unwrap();
+        assert_eq!(method, methods::NOTIFY_OWNER);
+        assert_eq!(params["originChatId"], "chat-alpha-1");
     }
 
     #[tokio::test]

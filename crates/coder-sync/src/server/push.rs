@@ -505,12 +505,26 @@ impl Push {
     /// Send one wake. A `503` or a connection failure is tried once more;
     /// the stable request ID makes that safe.
     pub async fn send(&self, account: &str, wake: &Wake) -> Outcome {
+        self.send_kind(account, wake, None).await
+    }
+
+    /// Send the registered attention wake through this same gateway and grant.
+    pub async fn send_attention(&self, account: &str, wake: &Wake, expires_at: u64) -> Outcome {
+        self.send_kind(account, wake, Some(expires_at)).await
+    }
+
+    async fn send_kind(
+        &self,
+        account: &str,
+        wake: &Wake,
+        attention_expiry: Option<u64>,
+    ) -> Outcome {
         let mut outcome = Outcome::Failed("not sent".into());
         for attempt in 0..2 {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
-            let (retry, result) = self.attempt(wake).await;
+            let (retry, result) = self.attempt(wake, attention_expiry).await;
             outcome = result;
             if !retry {
                 break;
@@ -529,9 +543,11 @@ impl Push {
         outcome
     }
 
-    async fn attempt(&self, wake: &Wake) -> (bool, Outcome) {
+    async fn attempt(&self, wake: &Wake, attention_expiry: Option<u64>) -> (bool, Outcome) {
         let now = push_gateway::unix_now();
         let path = match wake.transport {
+            Transport::Apns if attention_expiry.is_some() => wire::APNS_ATTENTION_PATH,
+            Transport::Fcm if attention_expiry.is_some() => wire::FCM_ATTENTION_PATH,
             Transport::Apns => wire::APNS_DELIVERY_PATH,
             Transport::Fcm => wire::FCM_DELIVERY_PATH,
         };
@@ -540,7 +556,7 @@ impl Push {
             v: wire::WIRE_VERSION,
             endpoint_grant: wake.grant.clone(),
             request_id: wake.request_id.clone(),
-            expires_at: now + WAKE_SECONDS,
+            expires_at: attention_expiry.unwrap_or(now + WAKE_SECONDS),
         })
         .expect("delivery request serializes");
         let Ok(authorization) = push_gateway::nip98::sign(&self.settings.secret, &url, &body, now)

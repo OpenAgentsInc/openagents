@@ -46,6 +46,10 @@ impl Database {
             (5, include_str!("../../migrations/0005_blobs.sql")),
             (6, include_str!("../../migrations/0006_push_grants.sql")),
             (7, include_str!("../../migrations/0007_device_proofs.sql")),
+            (
+                8,
+                include_str!("../../migrations/0008_owner_notifications.sql"),
+            ),
         ] {
             // Re-running ALTER TABLE, including IF NOT EXISTS, takes schema
             // locks that can deadlock with live rooms during a rollout.

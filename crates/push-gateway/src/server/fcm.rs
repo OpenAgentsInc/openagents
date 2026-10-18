@@ -140,10 +140,20 @@ impl Fcm {
     /// Send one wake. A rejected access token permits one refresh and one
     /// retry; a connection failure permits one retry.
     pub async fn send(&self, device_token: &str, expires_at: u64, now: u64) -> Outcome {
+        self.send_wake(device_token, expires_at, now, false).await
+    }
+
+    pub(super) async fn send_wake(
+        &self,
+        device_token: &str,
+        expires_at: u64,
+        now: u64,
+        attention: bool,
+    ) -> Outcome {
         let ttl = expires_at
             .saturating_sub(now)
             .clamp(1, self.max_ttl_seconds);
-        let body = message(device_token, ttl);
+        let body = wake_message(device_token, ttl, attention);
         let mut force = false;
         let mut connection_retried = false;
         let mut token_retried = false;
@@ -190,15 +200,27 @@ impl Fcm {
 /// The complete FCM request body for one wake.
 #[must_use]
 pub fn message(device_token: &str, ttl_seconds: u64) -> Value {
-    let data: Value = serde_json::from_str(nostr::push_lease::FCM_DATA)
-        .expect("the registered FCM constant is JSON");
-    json!({
+    wake_message(device_token, ttl_seconds, false)
+}
+
+fn wake_message(device_token: &str, ttl_seconds: u64, attention: bool) -> Value {
+    let constant = if attention {
+        crate::wire::ATTENTION_FCM_DATA
+    } else {
+        nostr::push_lease::FCM_DATA
+    };
+    let data: Value = serde_json::from_str(constant).expect("the registered FCM constant is JSON");
+    let mut message = json!({
         "message": {
             "token": device_token,
             "data": data,
             "android": {"priority": "high", "ttl": format!("{ttl_seconds}s")},
         }
-    })
+    });
+    if attention {
+        message["message"]["android"]["collapse_key"] = json!(crate::wire::ATTENTION);
+    }
+    message
 }
 
 /// The FCM error code from `error.details[].errorCode`, else `error.status`.
@@ -236,6 +258,16 @@ fn classify(status: u16, code: &str) -> Option<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attention_contains_only_the_registered_wake() {
+        let body = wake_message("phone", 60, true);
+        assert_eq!(
+            body["message"]["data"],
+            serde_json::json!({"wake":crate::wire::ATTENTION})
+        );
+        assert!(body["message"].get("notification").is_none());
+    }
 
     #[test]
     fn the_message_data_is_exactly_the_registered_constant() {

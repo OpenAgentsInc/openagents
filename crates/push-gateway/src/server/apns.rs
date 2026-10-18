@@ -1,6 +1,6 @@
 //! The APNs sender: HTTP/2 with token-based authentication.
 //!
-//! Every attempt posts the PL constant [`nostr::push_lease::APNS_BODY`] to
+//! Each attempt posts a registered PL or attention constant to
 //! `/3/device/<token>`. The topic, push type `alert`, and priority `10` come
 //! from configuration; `apns-id` is the relay's job UUID, and
 //! `apns-expiration` is the request's expiry capped by a gateway ceiling. No
@@ -81,6 +81,23 @@ impl Apns {
         expires_at: u64,
         now: u64,
     ) -> Outcome {
+        self.send_wake(device_token, request_id, expires_at, now, false)
+            .await
+    }
+
+    pub(super) async fn send_wake(
+        &self,
+        device_token: &str,
+        request_id: &str,
+        expires_at: u64,
+        now: u64,
+        attention: bool,
+    ) -> Outcome {
+        let body = if attention {
+            crate::wire::ATTENTION_APNS_BODY
+        } else {
+            nostr::push_lease::APNS_BODY
+        };
         let expiration = expires_at.min(now.saturating_add(self.max_expiration_seconds));
         let url = format!("{}/3/device/{device_token}", self.base);
         let mut force = false;
@@ -90,7 +107,7 @@ impl Apns {
             let Ok(token) = self.provider_token(now, force).await else {
                 return Outcome::ConfigurationFault;
             };
-            let response = self
+            let request = self
                 .http
                 .post(&url)
                 .header("authorization", format!("bearer {token}"))
@@ -100,9 +117,13 @@ impl Apns {
                 .header("apns-id", request_id)
                 .header("apns-expiration", expiration.to_string())
                 .header("content-type", "application/json")
-                .body(nostr::push_lease::APNS_BODY)
-                .send()
-                .await;
+                .body(body);
+            let request = if attention {
+                request.header("apns-collapse-id", crate::wire::ATTENTION)
+            } else {
+                request
+            };
+            let response = request.send().await;
             let response = match response {
                 Ok(response) => response,
                 Err(_) if !connection_retried => {

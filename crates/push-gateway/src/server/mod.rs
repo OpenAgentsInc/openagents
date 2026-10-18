@@ -171,11 +171,11 @@ impl Service {
         now: u64,
     ) -> Reply {
         match (listener, path) {
-            (Listener::Delivery, wire::APNS_DELIVERY_PATH) => {
+            (Listener::Delivery, wire::APNS_DELIVERY_PATH | wire::APNS_ATTENTION_PATH) => {
                 self.deliver(Transport::Apns, path, authorization, body, now)
                     .await
             }
-            (Listener::Delivery, wire::FCM_DELIVERY_PATH) => {
+            (Listener::Delivery, wire::FCM_DELIVERY_PATH | wire::FCM_ATTENTION_PATH) => {
                 self.deliver(Transport::Fcm, path, authorization, body, now)
                     .await
             }
@@ -328,10 +328,24 @@ impl Service {
 
         let outcome = match (transport, &self.apns, &self.fcm) {
             (Transport::Apns, Some(apns), _) => {
-                apns.send(&token, &request.request_id, request.expires_at, now)
-                    .await
+                apns.send_wake(
+                    &token,
+                    &request.request_id,
+                    request.expires_at,
+                    now,
+                    path == wire::APNS_ATTENTION_PATH,
+                )
+                .await
             }
-            (Transport::Fcm, _, Some(fcm)) => fcm.send(&token, request.expires_at, now).await,
+            (Transport::Fcm, _, Some(fcm)) => {
+                fcm.send_wake(
+                    &token,
+                    request.expires_at,
+                    now,
+                    path == wire::FCM_ATTENTION_PATH,
+                )
+                .await
+            }
             _ => Outcome::ConfigurationFault,
         };
         drop(token);

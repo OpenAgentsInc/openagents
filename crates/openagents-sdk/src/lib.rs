@@ -12,6 +12,7 @@ pub mod dashboard;
 pub mod generated;
 pub mod history;
 pub mod labs;
+pub mod owner_notifications;
 mod payment;
 pub mod rooms;
 pub mod runs;

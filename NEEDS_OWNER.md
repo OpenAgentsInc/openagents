@@ -2914,3 +2914,5 @@ ID `com.openagents.app` (team `HQWSG26L43`), then regenerate the provisioning
 profiles. The app's entitlements need `com.apple.developer.devicecheck.appattest-environment`
 set to `production`. The server already checks attestations against Apple's
 root; without the capability, phone sign-ups fall back to the proof of work.
+
+- #12040: On a test phone signed in to the dedicated test account, allow notifications and grant the saved agent permission with `Client::set_owner_notification_grant`. After the deployment check in the master delegation, force one final-rung stall, confirm one banner, and tap it to check the title, body, and chat. This requires a configured APNs app profile and gateway credentials (#11853); automated tests use fake gateways only.

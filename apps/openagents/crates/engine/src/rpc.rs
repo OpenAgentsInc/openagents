@@ -3194,6 +3194,22 @@ impl RpcService for EngineRpc {
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&choice)
             }
+            methods::NOTIFY_OWNER => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase", deny_unknown_fields)]
+                struct Params {
+                    origin_chat_id: String,
+                    request_id: String,
+                    title: String,
+                    body: String,
+                }
+                let p: Params = parse_params(params)?;
+                self.doc_host
+                    .notify_owner_from_chat(&p.origin_chat_id, &p.request_id, &p.title, &p.body)
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&serde_json::json!({"notified":true}))
+            }
             methods::GET_FOREMAN => RpcReply::value(&self.doc_host.foreman_status()),
             methods::SET_FOREMAN => {
                 let settings: openagents_proto::foreman::ForemanSettings = parse_params(params)?;

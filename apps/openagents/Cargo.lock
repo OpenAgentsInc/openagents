@@ -11364,6 +11364,7 @@ dependencies = [
  "getrandom 0.4.3",
  "httpdate",
  "lab-kit",
+ "oa-copy",
  "openagents-dashboard",
  "openagents-login",
  "reqwest 0.12.28",

@@ -3087,6 +3087,18 @@
               "calls": []
             },
             {
+              "name": "notify_owner",
+              "doc": "Notify once for `request_id`. Reuse the same ID and note after a failed request.\nThe account must have enabled notifications for this agent. At most six\nnew notes per agent per hour are accepted, including across host restarts.",
+              "declaration": "pub async fn notify_owner(\n    &self,\n    session: &Session,\n    request_id: &str,\n    note: OwnerNote,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": []
+            },
+            {
+              "name": "set_owner_notification_grant",
+              "doc": "Enable or revoke this agent's permission to notify the owner. Disabled by default.",
+              "declaration": "pub async fn set_owner_notification_grant(\n    &self,\n    session: &Session,\n    agent: &str,\n    enabled: bool,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": []
+            },
+            {
               "name": "schedules",
               "doc": "Returns a client for the scheduled prompts on the session's account.",
               "declaration": "pub fn schedules<'a>(&'a self, session: &'a Session) -> Result<Schedules<'a>, Error>",
@@ -3518,6 +3530,52 @@
           "name": "protocol"
         }
       ]
+    },
+    {
+      "path": "owner_notifications",
+      "doc": "An agent asks its owner to return to its chat. Grant this separately for each agent.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "NotifyOwner",
+          "doc": "A notification request whose ID stays the same across retries.",
+          "declaration": "pub struct NotifyOwner {\n    pub request_id: String,\n    pub note: OwnerNote,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "OwnerNote",
+          "doc": "Private note fetched by the phone; none of these fields enter the push payload.",
+          "declaration": "pub struct OwnerNote {\n    pub agent: String,\n    pub chat: String,\n    pub title: String,\n    pub body: String,\n}",
+          "methods": [
+            {
+              "name": "validate",
+              "doc": "Check identifiers, byte limits, and the app's plain-language copy rules.",
+              "declaration": "pub fn validate(&self) -> Result<(), Error>",
+              "calls": []
+            },
+            {
+              "name": "deep_link",
+              "doc": "App link generated from the checked chat ID, never a caller-supplied URL.",
+              "declaration": "pub fn deep_link(&self) -> String",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "OwnerNotification",
+          "doc": "An account-private note fetched by a phone after an attention wake.",
+          "declaration": "pub struct OwnerNotification {\n    pub request_id: String,\n    pub note: OwnerNote,\n    pub deep_link: String,\n}"
+        },
+        {
+          "kind": "fn",
+          "name": "chat_from_deep_link",
+          "doc": "Return the chat ID from an OpenAgents chat link. Refuse other destinations.",
+          "declaration": "pub fn chat_from_deep_link(link: &str) -> Option<&str>",
+          "calls": []
+        }
+      ],
+      "reexports": []
     },
     {
       "path": "rooms",

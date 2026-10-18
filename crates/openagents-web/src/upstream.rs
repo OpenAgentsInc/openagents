@@ -207,6 +207,8 @@ pub fn owned(path: &str) -> bool {
         || crate::phone_api::owns(path)
         || path == "/v1/agent-assignments"
         || path.starts_with("/v1/agent-assignments/")
+        || path == "/v1/notify"
+        || path.starts_with("/v1/notify/")
         || path == "/v1/agent-definitions"
         || path.starts_with("/v1/agent-definitions/")
         || path.starts_with("/v1/home/")

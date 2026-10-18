@@ -11,6 +11,7 @@ schema = ["dep:schemars", "openagents-dashboard/schema"]
 labs-cad = ["dep:cad"]
 
 [dependencies]
+oa-copy = { path = "../oa-copy" }
 agent-lab = { path = "../agent-lab" }
 chat-home = { path = "../chat-home" }
 agent-contract = { path = "../agent-contract" }
@@ -39,7 +40,6 @@ lab-api = { path = "../lab-api" }
 lab-store = { path = "../lab-store" }
 nostr = { path = "../nostr" }
 futures-util = "0.3"
-oa-copy = { path = "../oa-copy" }
 axum = "0.8"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt", "test-util"] }

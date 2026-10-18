@@ -65,6 +65,80 @@ async fn delegate(
         .await
 }
 
+#[tokio::test]
+async fn attention_is_a_registered_constant_and_retries_do_not_repeat_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let apns = Fake::start(Scripted::new(200, "")).await;
+    let (pem, _) = es256_key();
+    let secret = device(90);
+    let relay = relay();
+    let running = push_gateway::server::start(common::config(
+        dir.path(),
+        relay.pubkey(),
+        Some((&apns.base, &pem)),
+        None,
+    ))
+    .await
+    .unwrap();
+    let client = GatewayClient::new(&format!("http://{}", running.registration_addr)).unwrap();
+    let owner = device(1);
+    let installation = client
+        .register(&owner, APNS_PROFILE, APNS_TOKEN, unix_now() + 86400)
+        .await
+        .unwrap();
+    let grant = delegate(
+        &client,
+        &owner,
+        &installation.installation_handle,
+        1,
+        1,
+        relay.pubkey(),
+    )
+    .await
+    .unwrap();
+    let request = wire::DeliveryRequest {
+        v: 1,
+        endpoint_grant: grant,
+        request_id: wire::random_uuid(),
+        expires_at: unix_now() + 120,
+    };
+    let body = serde_json::to_vec(&request).unwrap();
+    let url = format!("http://{}{}", running.delivery_addr, wire::APNS_ATTENTION_PATH);
+    let authorization = push_gateway::nip98::sign(&secret, &url, &body, unix_now()).unwrap();
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("authorization", authorization)
+        .header("content-type", "application/json")
+        .body(body.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let sent = apns.received();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].body, wire::ATTENTION_APNS_BODY.as_bytes());
+    let value: serde_json::Value = serde_json::from_slice(&sent[0].body).unwrap();
+    assert_eq!(value["wake"], wire::ATTENTION);
+    assert!(value["aps"]["alert"]["title"].as_str().unwrap().len() > 0);
+    // A new signed expiry permits a distinct authorization in the same second.
+    let body = serde_json::to_vec(&wire::DeliveryRequest {
+        expires_at: request.expires_at + 1,
+        ..request
+    })
+    .unwrap();
+    let authorization = push_gateway::nip98::sign(&secret, &url, &body, unix_now()).unwrap();
+    let response = reqwest::Client::new()
+        .post(url)
+        .header("authorization", authorization)
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(apns.received().len(), 1);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn apns_delivery_is_fixed_idempotent_bounded_and_typed() {
     let dir = tempfile::tempdir().unwrap();

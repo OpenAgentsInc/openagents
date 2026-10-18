@@ -34,6 +34,17 @@ pub const APNS_DELIVERY_PATH: &str = "/v1/deliveries/apns";
 /// FCM delivery route.
 pub const FCM_DELIVERY_PATH: &str = "/v1/deliveries/fcm";
 
+/// Attention delivery routes keep the relay's four-member body unchanged.
+pub const APNS_ATTENTION_PATH: &str = "/v1/deliveries/apns/attention";
+/// FCM attention delivery route.
+pub const FCM_ATTENTION_PATH: &str = "/v1/deliveries/fcm/attention";
+/// Registered wake for an agent asking its owner to open the app.
+pub const ATTENTION: &str = "attention";
+/// Fixed APNs attention alert; the phone fetches the private note after a tap.
+pub const ATTENTION_APNS_BODY: &str = r#"{"aps":{"alert":{"title":"Your agent needs you","body":"Open your chat to see what needs your attention."},"mutable-content":1},"wake":"attention"}"#;
+/// Fixed FCM attention data.
+pub const ATTENTION_FCM_DATA: &str = r#"{"wake":"attention"}"#;
+
 /// A platform transport with a registered wake constant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -485,6 +485,8 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12040: After deploying the web proxy, coder-sync migration 8, and the push gateway attention routes, use the dedicated test account and a test device to grant a saved agent notification permission, force the last stall rung once, and confirm exactly one attention banner. Tap it and verify the private title and body appear and its chat opens. No push to the owner's devices is part of automated testing.
+
 Deploys and live checks that no longer hold an issue open. Lane 0 works through them in order, after each production deploy. Add a row when you close an issue with a check still to run. When a check passes, mark it done with the evidence. When it fails, open a new issue and link it.
 
 | Issue (closed or closing) | Check | Status |

@@ -22,6 +22,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             router.openSession(chatId)
             return true
         }
+        for context in connectionOptions.urlContexts { push.openChatLink(context.url.absoluteString) }
         app.onSignedIn = { [weak self] in
             self?.showRoot(animated: true)
             self?.shellShown()
@@ -144,6 +145,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// `openagents://voice` (the call's Live Activity) returns to the stage.
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for context in URLContexts { PushNotifications.shared.openChatLink(context.url.absoluteString) }
         guard URLContexts.contains(where: { $0.url.scheme == "openagents" && $0.url.host == "voice" }),
               app.voice.live, let root = window?.rootViewController
         else { return }

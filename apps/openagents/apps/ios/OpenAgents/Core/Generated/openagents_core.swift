@@ -3551,6 +3551,12 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
      */
     func availableChatConfig(deviceId: String, config: ChatConfig) async throws  -> ChatConfig?
     
+    func ownerNotification() async throws  -> OwnerNoteView?
+    
+    func pushAvailable() async throws  -> Bool
+    
+    func readOwnerNotification(requestId: String) async throws 
+    
     /**
      * Returns immediately. Callbacks are dispatched on the core runtime; the
      * platform must hop to its media/UI executor and call complete_media.
@@ -4473,6 +4479,54 @@ open func availableChatConfig(deviceId: String, config: ChatConfig)async throws 
             completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
             freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeChatConfig.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func ownerNotification()async throws  -> OwnerNoteView?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreclient_owner_notification(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeOwnerNoteView.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func pushAvailable()async throws  -> Bool  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreclient_push_available(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_i8,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_i8,
+            freeFunc: ffi_openagents_mobile_rust_future_free_i8,
+            liftFunc: FfiConverterBool.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func readOwnerNotification(requestId: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreclient_read_owner_notification(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(requestId)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
             errorHandler: FfiConverterTypeCoreError_lift
         )
 }
@@ -14682,6 +14736,72 @@ public func FfiConverterTypeOwnComputerCard_lower(_ value: OwnComputerCard) -> R
 }
 
 
+public struct OwnerNoteView: Equatable, Hashable {
+    public var requestId: String
+    public var chatId: String
+    public var title: String
+    public var body: String
+    public var deepLink: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(requestId: String, chatId: String, title: String, body: String, deepLink: String) {
+        self.requestId = requestId
+        self.chatId = chatId
+        self.title = title
+        self.body = body
+        self.deepLink = deepLink
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension OwnerNoteView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOwnerNoteView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OwnerNoteView {
+        return
+            try OwnerNoteView(
+                requestId: FfiConverterString.read(from: &buf), 
+                chatId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                deepLink: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OwnerNoteView, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.requestId, into: &buf)
+        FfiConverterString.write(value.chatId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterString.write(value.deepLink, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOwnerNoteView_lift(_ buf: RustBuffer) throws -> OwnerNoteView {
+    return try FfiConverterTypeOwnerNoteView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOwnerNoteView_lower(_ value: OwnerNoteView) -> RustBuffer {
+    return FfiConverterTypeOwnerNoteView.lower(value)
+}
+
+
 public struct ParsedUserMessage: Equatable, Hashable {
     /**
      * Visible prompt (trailer + Appshot context stripped).
@@ -24484,6 +24604,30 @@ fileprivate struct FfiConverterOptionTypeLabCardFiles: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeOwnerNoteView: FfiConverterRustBuffer {
+    typealias SwiftType = OwnerNoteView?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeOwnerNoteView.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeOwnerNoteView.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeProjectRef: FfiConverterRustBuffer {
     typealias SwiftType = ProjectRef?
 
@@ -26363,6 +26507,17 @@ public func forgetDemoData(demoDir: String) -> Bool  {
 })
 }
 /**
+ * Check a chat link before the shell opens it, including a cold launch.
+ */
+public func ownerNotificationChatFromLink(link: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_owner_notification_chat_from_link(
+        FfiConverterString.lower(link),uniffiCallStatus
+    )
+})
+}
+/**
  * The canonical mention link the host understands (`[name](openagents-file:path)`).
  */
 public func fileMentionLink(path: String, isDir: Bool) -> String  {
@@ -26574,6 +26729,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_forget_demo_data() != 38035) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_owner_notification_chat_from_link() != 17687) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_file_mention_link() != 21705) {
@@ -26805,6 +26963,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_available_chat_config() != 58721) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_owner_notification() != 14038) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_push_available() != 58372) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_read_owner_notification() != 1528) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_start_voice() != 63530) {

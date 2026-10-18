@@ -632,3 +632,9 @@ links remain readable. Upstream fixes now require manual ports.
   machine, capacity, landing, and pool readers. Expose
   `machine_status::collect`, `Status::prompt_block`, and resource alerts for
   check-in hosts.
+
+- [OpenAgents #12040](https://github.com/OpenAgentsInc/openagents/issues/12040):
+  saved agents can notify their owner through the public SDK and the existing
+  push gateway. The engine checks the calling assignment; the mobile core
+  fetches private owner notes, and the iOS shell shows the note and opens its
+  chat, including on a cold launch.

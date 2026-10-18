@@ -5,6 +5,7 @@ pub mod config;
 pub mod db;
 pub mod device;
 pub mod notifications;
+pub mod owner_notifications;
 pub mod proof;
 pub mod push;
 pub mod registry;
@@ -65,6 +66,20 @@ pub fn router(state: StateData) -> Router {
     let state = Arc::new(state);
     Router::new()
         .route("/health", get(health))
+        .route(
+            "/v1/notify",
+            get(owner_notifications::latest)
+                .post(owner_notifications::notify)
+                .layer(axum::extract::DefaultBodyLimit::max(8192)),
+        )
+        .route(
+            "/v1/notify/grants/{agent}",
+            axum::routing::put(owner_notifications::grant),
+        )
+        .route(
+            "/v1/notify/{id}/read",
+            axum::routing::post(owner_notifications::read),
+        )
         .route("/blob/{id}/{part}", get(blob::read).put(blob::put))
         .route(
             "/attachments/{*path}",

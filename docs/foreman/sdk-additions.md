@@ -368,12 +368,18 @@ APNs and FCM, on relay-presented delivery grants
 impl Client {
     pub async fn notify_owner(&self, session: &Session, request_id: &str, note: OwnerNote, cancel: &CancellationToken) -> Result<(), Error>;
 }
-pub struct OwnerNote { pub chat: String, pub title: String } // plain words, under 120 bytes
+pub struct OwnerNote {
+    pub agent: String, // saved agent definition ID
+    pub chat: String,
+    pub title: String, // plain words, under 120 UTF-8 bytes
+    pub body: String, // plain words, up to 1,024 UTF-8 bytes
+}
 ```
 
-Route: `POST /v1/notify`. Rate-limited per agent (for example 6 an hour), so
-a confused agent can't flood the phone. The push carries only the constant;
-the phone fetches the note.
+Route: `POST /v1/notify`. The account grants each agent permission with
+`Client::set_owner_notification_grant`; permission starts off. The limit is
+six new notes per account and agent in a rolling hour. The push carries only
+the constant; the phone fetches the note.
 
 ## S11. Typed judgments for coordination
 
