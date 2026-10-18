@@ -159,11 +159,23 @@ def google_key_file():
     return None
 
 
+# A GCE VM names itself here; the pool's hosts (#12058) set no GCE_METADATA_HOST.
+GCE_PRODUCT = "/sys/class/dmi/id/product_name"
+
+
+def on_gce():
+    try:
+        with open(GCE_PRODUCT) as f:
+            return f.read().strip() == "Google Compute Engine"
+    except OSError:
+        return False
+
+
 class GoogleToken:
     """A Google OAuth access token, found the way inference::upstream::google::TokenSource
     finds one: VERTEX_ACCESS_TOKEN, VERTEX_TOKEN_FILE, GOOGLE_APPLICATION_CREDENTIALS (a
     service-account or authorized-user JSON; else `google_key_file`), the GCE metadata server when GCE_METADATA_HOST
-    or K_SERVICE is set, else `gcloud auth print-access-token` (honours CLOUDSDK_CONFIG).
+    or K_SERVICE is set or this is a GCE VM, else `gcloud auth print-access-token` (honours CLOUDSDK_CONFIG).
     Cached until five minutes before it expires. Never printed."""
 
     def __init__(self):
@@ -180,7 +192,7 @@ class GoogleToken:
             return "file"
         if google_key_file():
             return "adc"
-        if os.environ.get("GCE_METADATA_HOST") or os.environ.get("K_SERVICE"):
+        if os.environ.get("GCE_METADATA_HOST") or os.environ.get("K_SERVICE") or on_gce():
             return "metadata"
         import shutil
         if shutil.which("gcloud") and os.environ.get(EMBEDDINGS_VAR) == "vertex":
