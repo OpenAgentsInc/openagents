@@ -34,6 +34,7 @@ rust-native = { path = "../../../../crates/rust-native", default-features = fals
 lab-kit = { path = "../../../../crates/lab-kit" }
 lab-ui = { path = "../../../../crates/lab-ui" }
 openagents-account.workspace = true
+openagents-connect = { path = "../../../../crates/openagents-connect" }
 sha2.workspace = true
 reqwest = { workspace = true, optional = true }
 openagents-voice-session.workspace = true

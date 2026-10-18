@@ -688,3 +688,11 @@ links remain readable. Upstream fixes now require manual ports.
   connect the bridge and provide transcript, composer, Markdown, and local
   surface adapters. This baseline has no Gradle app shell; Android compilation,
   device input, TalkBack, deployment, and store checks have not run.
+- [OpenAgents #12096](https://github.com/OpenAgentsInc/openagents/issues/12096):
+  classify only bounded HTTPS links on `openagents.com` for computer pairing
+  and project invitations in the Rust mobile FFI. The existing connect-code
+  parser checks shape and expiry; the server still authorizes invitation use.
+  Synthetic fixtures cover the connect fragment, project path, and rejected
+  URL forms. Cargo tests and generated Kotlin bindings remain pending below the
+  100 GiB build floor; #12082 and #12091 are native blockers. Release-certificate
+  verification is an owner-only After-close check in `NEEDS_OWNER.md`.

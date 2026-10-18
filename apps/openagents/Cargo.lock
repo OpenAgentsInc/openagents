@@ -11267,6 +11267,7 @@ dependencies = [
  "oa-copy",
  "openagents-account",
  "openagents-client",
+ "openagents-connect",
  "openagents-doc",
  "openagents-markdown",
  "openagents-orb",

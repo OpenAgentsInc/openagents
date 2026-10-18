@@ -16,6 +16,8 @@ mod owner_notifications;
 pub use owner_notifications::*;
 mod account_delete;
 pub use account_delete::*;
+mod app_links;
+pub use app_links::*;
 mod agent_lab;
 mod chat_homes;
 mod cloud_chat;

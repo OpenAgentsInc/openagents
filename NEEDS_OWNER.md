@@ -43,6 +43,15 @@ passing. List remaining deploy/device/store evidence in the handoff and
 report later defects as new issues; these steps do not hold code-complete
 work open.
 
+## Verify Android App Links for account pairing (#12096)
+
+After the E3 link classifier lands, the owner must verify
+`https://openagents.com/connect` and `/projects/join/*` on a release-signed
+`com.openagents.app` build. Confirm the deployed `assetlinks.json` fingerprint
+matches the certificate devices receive, then test valid and malformed links
+on a dedicated device. This check needs the release signing identity and is
+not established by source fixtures or an unsigned build.
+
 ## Check the voice-agent picker (#12061)
 
 After deploying the voice-agent account route and updating both apps, choose
