@@ -982,6 +982,8 @@ links remain readable. Upstream fixes now require manual ports.
   The later `b681a34567` follow-up adds an optional
   `TranscriptVirtualActionDelegate` for Rust paging actions through the existing
   accessibility provider. Its new instrumentation fixture remains unrun.
+  Kotlin-only UniFFI names map the recovery and accessibility objects’ explicit
+  `close` methods to `shutdown`, keeping their generated cleanup methods distinct.
 
 - [OpenAgents #12100](https://github.com/OpenAgentsInc/openagents/issues/12100):
   attach default cloud chat and the offline demo directly to the shared Rust
