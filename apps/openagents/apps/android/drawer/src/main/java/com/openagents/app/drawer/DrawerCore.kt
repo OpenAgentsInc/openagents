@@ -16,13 +16,19 @@ data class DrawerRow(
     val pinned: Boolean,
     val archived: Boolean,
     val actions: Set<DrawerAction>,
+    val moveEarlier: DrawerPinMove? = null,
+    val moveLater: DrawerPinMove? = null,
 )
+data class DrawerPinMove(val after: DrawerKey?, val before: DrawerKey?, val revision: ULong? = null)
+
 data class DrawerRequest(
     val tab: DrawerTab = DrawerTab.LIVE,
     val query: String = "",
     val archived: Boolean = false,
     val projectId: String? = null,
 )
+data class DrawerProject(val id: String, val name: String)
+
 data class DrawerFrame(
     val rows: List<DrawerRow>,
     val selected: DrawerKey?,
@@ -31,6 +37,8 @@ data class DrawerFrame(
     val offline: Boolean = false,
     val reconnecting: Boolean = false,
     val error: String? = null,
+    val projects: List<DrawerProject> = emptyList(),
+    val hasMoreProjects: Boolean = false,
 ) {
     init {
         require(rows.size <= 5_000) { "Drawer frame exceeds its view limit" }
@@ -43,7 +51,8 @@ sealed interface DrawerIntent {
     data class Archive(val key: DrawerKey, val archived: Boolean) : DrawerIntent
     data class Rename(val key: DrawerKey, val title: String) : DrawerIntent
     /** Drag geometry supplies neighbours; only Rust commits their order. */
-    data class MovePin(val key: DrawerKey, val after: DrawerKey?, val before: DrawerKey?) : DrawerIntent
+    data class MovePin(val key: DrawerKey, val after: DrawerKey?, val before: DrawerKey?, val revision: ULong? = null) : DrawerIntent
+    data object MoreProjects : DrawerIntent
     data object More : DrawerIntent
     data object Refresh : DrawerIntent
 }

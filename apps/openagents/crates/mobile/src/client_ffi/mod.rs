@@ -45,6 +45,8 @@ mod sharing;
 pub use sharing::*;
 mod saved;
 pub use saved::*;
+mod drawer;
+pub use drawer::*;
 mod session;
 mod voice_usage;
 pub use voice_usage::*;

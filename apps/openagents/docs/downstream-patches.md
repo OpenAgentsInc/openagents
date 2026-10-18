@@ -771,6 +771,7 @@ links remain readable. Upstream fixes now require manual ports.
   Add an isolated Android Views drawer and synthetic presenter fixtures over
   Rust-owned session/history intents. Add bounded saved-title search and owned
   rename to the server and SDK, with account-fenced UniFFI pin/archive/rename.
-  Saved metadata without a Rust source stays optional. Durable saved pin order,
-  shell wiring, binding regeneration, and executable checks remain open; see
+  Save pin order in one owner-scoped CAS record and project typed Rust move hints
+  for live and saved rows. Saved metadata without a verified Rust source stays
+  optional. Shell wiring, binding regeneration, and executable checks remain open; see
   `apps/android/drawer/README.md`. No checks requiring a build have passed yet.

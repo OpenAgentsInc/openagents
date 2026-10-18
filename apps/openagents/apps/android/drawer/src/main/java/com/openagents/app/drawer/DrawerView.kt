@@ -43,6 +43,11 @@ class DrawerView(context: Context) : LinearLayout(context) {
         setOnClickListener { onIntent(DrawerIntent.More) }
     }
 
+    private val moreProjects = Button(context).apply {
+        text = "Load more projects"
+        setOnClickListener { onIntent(DrawerIntent.MoreProjects) }
+    }
+
     init {
         orientation = VERTICAL
         val tabs = LinearLayout(context)
@@ -56,11 +61,25 @@ class DrawerView(context: Context) : LinearLayout(context) {
             text = "Archived"
             setOnClickListener { change(request.copy(archived = !request.archived)) }
         })
-        addView(tabs)
+        tabs.addView(Button(context).apply {
+            text = "Projects"
+            setOnClickListener {
+                val projects = frame.projects
+                val names = arrayOf("All chats", *projects.map { it.name }.toTypedArray())
+                AlertDialog.Builder(context).setTitle("Projects").setItems(names) { _, position ->
+                    change(request.copy(projectId = if (position == 0) null else projects[position - 1].id))
+                }.show()
+            }
+        })
+        addView(android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(tabs)
+        })
         addView(search)
         addView(notice)
         addView(list, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         addView(more)
+        addView(moreProjects)
         addView(Button(context).apply {
             text = "Try again"
             setOnClickListener { onIntent(DrawerIntent.Refresh) }
@@ -85,6 +104,7 @@ class DrawerView(context: Context) : LinearLayout(context) {
         }
         more.visibility = if (next.hasMore) View.VISIBLE else View.GONE
         more.isEnabled = !next.loading
+        moreProjects.visibility = if (next.hasMoreProjects) View.VISIBLE else View.GONE
         notice.text = next.error ?: when {
             next.loading -> "Loading chats…"
             next.offline -> "Offline"
@@ -103,6 +123,12 @@ class DrawerView(context: Context) : LinearLayout(context) {
             if (DrawerAction.ARCHIVE in row.actions) menu.add(if (row.archived) "Restore" else "Archive").setOnMenuItemClickListener {
                 onIntent(DrawerIntent.Archive(row.key, !row.archived)); true
             }
+            row.moveEarlier?.let { move -> menu.add("Move up").setOnMenuItemClickListener {
+                onIntent(DrawerIntent.MovePin(row.key, move.after, move.before, move.revision)); true
+            } }
+            row.moveLater?.let { move -> menu.add("Move down").setOnMenuItemClickListener {
+                onIntent(DrawerIntent.MovePin(row.key, move.after, move.before, move.revision)); true
+            } }
             if (DrawerAction.RENAME in row.actions) menu.add("Rename").setOnMenuItemClickListener {
                 val input = EditText(context).apply { setText(row.title); isSingleLine = true }
                 AlertDialog.Builder(context).setTitle("Rename chat").setView(input)

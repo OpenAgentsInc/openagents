@@ -539,3 +539,125 @@ async fn saved_search_retains_a_cursor_for_an_empty_authorized_page() {
     assert_eq!(last["data"][0]["title"], "Needle");
     assert!(last["next"].is_null());
 }
+
+#[tokio::test]
+async fn saved_pin_moves_use_one_owner_cas_without_changing_conversations() {
+    let world = world().await;
+    let api = signed_in(&world, "octo-local").await;
+    let owner = crate::chat_store::account_owner(&world.account_of("octo-local"));
+    let ids: Vec<_> = (0..3)
+        .map(|n| format!("{n:08x}-1234-4234-8234-123456789abc"))
+        .collect();
+    for (n, id) in ids.iter().enumerate() {
+        let mut c = chat(id, &owner, "Pinned", None);
+        c.pinned_unix = Some(n as u64 + 1);
+        world.store.create(&c).await.unwrap();
+    }
+    let (_, initial) = api
+        .json(&world, "GET", "/v1/history/pins", Value::Null)
+        .await;
+    assert_eq!(initial, json!({"revision":0,"ids":[ids[2],ids[1],ids[0]]}));
+    let change = json!({"revision":0,"id":ids[0],"after":null,"before":ids[2]});
+    let (one, two) = tokio::join!(
+        api.json(&world, "PATCH", "/v1/history/pins", change.clone()),
+        api.json(&world, "PATCH", "/v1/history/pins", change.clone()),
+    );
+    assert_eq!(
+        [one.0, two.0]
+            .iter()
+            .filter(|status| **status == StatusCode::OK)
+            .count(),
+        1
+    );
+    assert_eq!(
+        [one.0, two.0]
+            .iter()
+            .filter(|status| **status == StatusCode::CONFLICT)
+            .count(),
+        1
+    );
+    let (_, current) = api
+        .json(&world, "GET", "/v1/history/pins", Value::Null)
+        .await;
+    assert_eq!(current, json!({"revision":1,"ids":[ids[0],ids[2],ids[1]]}));
+    for (n, id) in ids.iter().enumerate() {
+        let c = world
+            .store
+            .load(&owner, id)
+            .await
+            .unwrap()
+            .unwrap()
+            .conversation;
+        assert_eq!(c.revision, 1);
+        assert_eq!(c.pinned_unix, Some(n as u64 + 1));
+        assert_eq!(c.title, "Pinned");
+    }
+    let key = crate::chat_store::Store::owner_key(&owner, "history/pins.json").unwrap();
+    let persisted: Value =
+        serde_json::from_slice(&world.store.read_key(&key).await.unwrap().unwrap().0).unwrap();
+    assert_eq!(persisted["revision"], 1);
+    let other = signed_in(&world, "quiet-local").await;
+    let (_, theirs) = other
+        .json(&world, "GET", "/v1/history/pins", Value::Null)
+        .await;
+    assert_eq!(theirs, json!({"revision":0,"ids":[]}));
+    assert_eq!(
+        other
+            .json(&world, "PATCH", "/v1/history/pins", change)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        Api { token: None }
+            .json(&world, "GET", "/v1/history/pins", Value::Null)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let before = current.clone();
+    assert_eq!(
+        api.json(
+            &world,
+            "PATCH",
+            "/v1/history/pins",
+            json!({"revision":1,"id":ids[0],"after":ids[1],"before":ids[2]})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        api.json(&world, "GET", "/v1/history/pins", Value::Null)
+            .await
+            .1,
+        before
+    );
+    // Unpin/repin changes placement identity; it cannot revive the old order.
+    assert_eq!(
+        api.json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{}", ids[1]),
+            json!({"pinned":false})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        api.json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{}", ids[1]),
+            json!({"pinned":true})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, repinned) = api
+        .json(&world, "GET", "/v1/history/pins", Value::Null)
+        .await;
+    assert_eq!(repinned["ids"][0], ids[1]);
+}
