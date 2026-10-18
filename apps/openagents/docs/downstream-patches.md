@@ -711,9 +711,25 @@ links remain readable. Upstream fixes now require manual ports.
   scanner's Rust classifier callback with raw text only; Kotlin does not
   classify or authorize links. Neither dependency has been resolved in an
   Android build.
+  Rust's typed dispatcher routes connect links to the existing computer-pairing
+  flow and website sign-in links to the existing review-before-approval flow.
+  Account linking now rejects a client that is not the current account's client
+  generation. A synthetic unit test accepts the current account client and
+  rejects a stale generation or a different client; it does not exercise server
+  authorization. `CoreClient::forget_device_channel`
+  remains the existing pairing revocation operation. Project invitation links
+  are recognized but return a closed unsupported operation without exposing the
+  token. The mobile/client/
+  sync crates have no project-invitation acceptance API. The missing contract is
+  a Rust-owned `CoreAccount` operation that accepts a project invitation for
+  the active account, with server-checked expiry, authorization, and wrong-
+  account refusals plus an offline fake-server test seam. No route is inferred
+  from the invitation URL. Server-authorized pairing, account-link, and website
+  approval cases, plus persisted-grant restart coverage, also remain pending.
   `cargo test --locked -p openagents-mobile app_links` from `apps/openagents`
   and `scripts/android/build-core.sh` remain unrun below the 100 GiB build
   floor. The latter generates bindings and builds arm64 then x86_64. The
   scanner instrumentation test remains unrun pending the capacity gate and
-  B1's Activity shell integration. #12082 and #12091 remain native blockers. Release-certificate
-  verification is an owner-only After-close check in `NEEDS_OWNER.md`.
+  B1's Activity shell integration. #12082 and #12091 remain native blockers.
+  Release-certificate verification is an owner-only After-close check in
+  `NEEDS_OWNER.md`.

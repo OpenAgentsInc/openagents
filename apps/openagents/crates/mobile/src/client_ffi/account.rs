@@ -54,6 +54,14 @@ pub trait AccountListener: Send + Sync {
     fn on_account_changed(&self, snapshot: AccountSnapshot);
 }
 type Clients = Arc<Mutex<Vec<(u64, Weak<CoreClient>)>>>;
+fn is_current_client<T>(clients: &[(u64, Weak<T>)], generation: u64, candidate: &Arc<T>) -> bool {
+    clients.iter().any(|(client_generation, client)| {
+        *client_generation == generation
+            && client
+                .upgrade()
+                .is_some_and(|current| Arc::ptr_eq(&current, candidate))
+    })
+}
 fn close_clients(clients: &Clients, keep: Option<u64>) {
     clients.lock().unwrap().retain(|(generation, client)| {
         let Some(client) = client.upgrade() else {
@@ -223,6 +231,9 @@ impl CoreAccount {
     ) -> CoreResult<String> {
         let api_base = {
             let lease = self.controller.lease().ok_or_else(auth_error)?;
+            if !is_current_client(&self.clients.lock().unwrap(), lease.generation, &client) {
+                return Err(auth_error());
+            }
             lease.client().deployment().api_base().to_string()
         };
         let client = client.client.clone();
@@ -473,6 +484,18 @@ impl CoreAccount {
 mod tests {
     use super::*;
     use openagents_account::openagents::{CredentialRecord, StorageError};
+
+    #[test]
+    fn computer_link_accepts_only_the_current_accounts_client() {
+        let current = Arc::new(());
+        let other_account = Arc::new(());
+        let clients = vec![(7, Arc::downgrade(&current))];
+
+        assert!(is_current_client(&clients, 7, &current));
+        assert!(!is_current_client(&clients, 8, &current));
+        assert!(!is_current_client(&clients, 7, &other_account));
+    }
+
     struct Memory;
     impl CredentialStore for Memory {
         fn load(&self, _: &Deployment) -> Result<Option<CredentialRecord>, StorageError> {
