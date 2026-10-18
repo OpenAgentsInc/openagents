@@ -26,7 +26,7 @@ use crate::EXIT_FAILURE;
 use crate::out::Output;
 
 /// The engine's scripts, as this binary was built with them.
-const SCRIPTS: [(&str, &str); 4] = [
+const SCRIPTS: [(&str, &str); 6] = [
     (
         "scripts/work/work_issue.py",
         include_str!("../../../scripts/work/work_issue.py"),
@@ -43,7 +43,23 @@ const SCRIPTS: [(&str, &str); 4] = [
         "scripts/bench/briefed-ab/common.py",
         include_str!("../../../scripts/bench/briefed-ab/common.py"),
     ),
+    // The kinds briefing and the second attempt, both on the default path
+    // (#12058: a pool host without the repository's scripts stopped with
+    // "No module named 'kinds'").
+    (
+        "scripts/bench/briefed-ab/kinds.py",
+        include_str!("../../../scripts/bench/briefed-ab/kinds.py"),
+    ),
+    (
+        "scripts/bench/briefed-ab/rebrief.py",
+        include_str!("../../../scripts/bench/briefed-ab/rebrief.py"),
+    ),
 ];
+
+/// Bench modules the scripts import only under levers the engine never
+/// sets, so they are not built in.
+#[cfg(test)]
+const LEVER_ONLY: [&str; 4] = ["haiku_briefer", "briefer_arms", "acceptance", "ab"];
 
 /// How a green change lands, as the engine reads it.
 pub(super) fn land_word(given: Option<&str>, policy_main: bool) -> Result<&'static str, String> {
@@ -518,6 +534,33 @@ mod tests {
         assert_eq!(land_word(Some("pr"), true), Ok("pr"));
         assert_eq!(land_word(Some("none"), true), Ok("none"));
         assert!(land_word(Some("push"), true).is_err());
+    }
+
+    #[test]
+    fn every_bench_module_the_engine_imports_is_built_in() {
+        let bench =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/bench/briefed-ab");
+        for (_, text) in SCRIPTS {
+            for line in text.lines() {
+                let line = line.trim_start();
+                let module = line
+                    .strip_prefix("import ")
+                    .or_else(|| line.strip_prefix("from "))
+                    .and_then(|rest| rest.split([' ', ',', '.']).next())
+                    .unwrap_or_default();
+                if module.is_empty()
+                    || LEVER_ONLY.contains(&module)
+                    || !bench.join(format!("{module}.py")).exists()
+                {
+                    continue;
+                }
+                let path = format!("scripts/bench/briefed-ab/{module}.py");
+                assert!(
+                    SCRIPTS.iter().any(|(name, _)| *name == path),
+                    "{path} is imported by the engine but not built in"
+                );
+            }
+        }
     }
 
     #[test]
