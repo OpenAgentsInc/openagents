@@ -218,7 +218,8 @@ the calling tool returns, using the existing durable GCE backend.
 The GCE host service accepts `on: gce` and refuses other placements. It uses
 the same pool and budget checks as the CLI, with an explicit agent ID for
 each request instead of a process-wide actor. Warm hosts also require that
-agent's budget. Each remote run has a budget-derived timeout. `Pool::up`
+agent's budget. The bare engine requires queue or PR landing; `land: none`
+requires a briefed engine. Each remote run has a budget-derived timeout. `Pool::up`
 can grow an existing grant within its limits; it cannot create a grant or
 raise a budget. Refusals carry `owner_command` for the owner to run.
 

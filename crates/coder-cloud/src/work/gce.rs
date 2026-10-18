@@ -32,6 +32,7 @@ impl Runner for System {
                 "This connection owns the GCE pool. Connect to the requested computer to start work there.",
             ));
         }
+        issue_command(request)?;
         admission(&request.agent)?;
         pool::Pool::granted().map_err(|message| {
             let mut error = refused(message);
@@ -270,20 +271,28 @@ impl crate::Backend for Issue {
     }
 }
 
+fn issue_command(request: &WorkRequest) -> Result<String, Error> {
+    let engine = request.engine.as_deref().unwrap_or("briefed:codex");
+    let land = match request.land {
+        LandMode::Queue => "queue",
+        LandMode::Pr => "pr",
+        LandMode::None if engine.starts_with("briefed") => "none",
+        LandMode::None => {
+            return Err(Error::invalid(
+                "Choose queue or pr for this engine; it cannot leave work unlanded.",
+            ));
+        }
+    };
+    pool::issue_command(request.issue, Some(land), engine).map_err(refused)
+}
+
 fn issue_body(
     record: &Record,
     request: &WorkRequest,
     slots: u64,
     cap: Duration,
 ) -> crate::Result<String> {
-    let engine = request.engine.as_deref().unwrap_or("briefed:codex");
-    let land = match request.land {
-        LandMode::Queue => Some("queue"),
-        LandMode::Pr => Some("pr"),
-        LandMode::None if engine.starts_with("briefed") => Some("none"),
-        LandMode::None => None,
-    };
-    let command = pool::issue_command(request.issue, land, engine)?;
+    let command = issue_command(request).map_err(|error| error.to_string())?;
     let dir = boat::shell_quote(&gce_backend::directory(record));
     let url = boat::shell_quote(&format!("https://github.com/{}.git", request.repo));
     let command = boat::shell_quote(&command);
@@ -474,6 +483,16 @@ mod tests {
             .unwrap();
         assert!(child.wait().unwrap().success());
     }
+    #[test]
+    fn an_unlanded_request_never_falls_back_to_repository_policy() {
+        let mut request = request();
+        request.land = LandMode::None;
+        assert!(issue_command(&request).unwrap().ends_with("--land none"));
+        request.engine = Some("bare".into());
+        assert!(issue_command(&request).is_err());
+        assert_eq!(System.admit(&request).unwrap_err().code, "invalid");
+    }
+
     #[test]
     fn a_remote_codex_login_never_carries_the_refresh_token() {
         let access = format!(
