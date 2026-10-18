@@ -7,6 +7,8 @@ stuck, or where the boards disagree with reality. It reads by default and
 changes things (board status, a message to a chat, a new agent chat) only
 when you ask, or on its own check-ins once you give it standing authority. Tracked in [#11926](https://github.com/OpenAgentsInc/openagents/issues/11926).
 
+For the review of Foreman's first two days, lessons learned, and the roadmap, see [`docs/foreman/`](../foreman/README.md).
+
 ## Get Foreman
 
 On the phone or at [openagents.com/labs/agent](https://openagents.com/labs/agent):
