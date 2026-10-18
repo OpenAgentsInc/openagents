@@ -13,8 +13,8 @@ import com.google.android.play.core.integrity.model.StandardIntegrityErrorCode
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import uniffi.openagents_mobile.PlayIntegrityAttester
-import uniffi.openagents_mobile.PlayIntegrityResult
+import uniffi.openagents_core.PlayIntegrityAttester
+import uniffi.openagents_core.PlayIntegrityResult
 
 /**
  * H1 platform adapter. B1 must include this source directory and
