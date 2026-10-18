@@ -60,9 +60,8 @@ cat >"$PLIST" <<EOF
   <array><string>$BIN</string></array>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
-  <key>LowPriorityIO</key><true/>
-  <key>Nice</key><integer>10</integer>
-  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><false/>
+  <key>ProcessType</key><string>Standard</string>
   <key>EnvironmentVariables</key>
   <dict><key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
   <key>StandardOutPath</key><string>$HOME/.openagents/logs/build-sweep.launchd.log</string>

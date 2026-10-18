@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "partial_tests.rs"]
+mod partial_tests;
+
 use std::fs::{File, FileTimes};
 use std::time::UNIX_EPOCH;
 

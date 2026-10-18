@@ -33,6 +33,13 @@
 //! and cap cleanup use the shorter idle window and the sweep runs bounded
 //! `kache gc`.
 //!
+//! The installed runner gives each target an owned worker process and kills
+//! and reaps a stalled worker before visiting the next target. Scans yield
+//! between complete artifact units and resume from saved cursors. Cached
+//! sizes are estimates only: partial targets cannot be removed wholesale,
+//! and every artifact candidate is measured again under its Cargo locks.
+//! The pass deadline still produces a summary when a scan is incomplete.
+//!
 //! "Untouched" needs care on macOS, which updates a file's access time on a
 //! read only when it is older than the file's change time: a new artifact,
 //! whose two times are equal, never shows a read, and one read once keeps
@@ -59,6 +66,56 @@ use std::time::{Duration, SystemTime};
 use serde::{Deserialize, Serialize};
 
 use super::GIB;
+
+mod scan;
+pub mod worker;
+
+/// Cooperative work limit inside the process watchdog.
+struct Budget {
+    started: std::time::Instant,
+    limit: Duration,
+    #[cfg(test)]
+    steps: std::cell::Cell<Option<usize>>,
+}
+
+impl Budget {
+    fn new(limit: Duration) -> Self {
+        Self {
+            started: std::time::Instant::now(),
+            limit,
+            #[cfg(test)]
+            steps: std::cell::Cell::new(None),
+        }
+    }
+
+    fn unlimited() -> Self {
+        Self::new(Duration::MAX)
+    }
+
+    #[cfg(test)]
+    fn with_steps(steps: usize) -> Self {
+        let budget = Self::unlimited();
+        budget.steps.set(Some(steps));
+        budget
+    }
+
+    fn expired(&self) -> bool {
+        #[cfg(test)]
+        if let Some(left) = self.steps.get() {
+            self.steps.set(Some(left.saturating_sub(1)));
+            return left == 0;
+        }
+        self.started.elapsed() >= self.limit
+    }
+
+    fn remaining(&self) -> Duration {
+        self.limit.saturating_sub(self.started.elapsed())
+    }
+}
+
+fn complete_default() -> bool {
+    true
+}
 
 /// Overrides the per-target cap, in GiB.
 pub const CAP_VAR: &str = "OPENAGENTS_BUILD_SWEEP_CAP_GIB";
@@ -98,7 +155,7 @@ const BUILDERS: [&str; 7] = [
 ];
 
 /// The sizes and ages the sweep keeps to.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Policy {
     /// The size, in bytes, above which a target loses its least recently
     /// used artifacts.
@@ -164,7 +221,7 @@ impl Policy {
 }
 
 /// Where the targets, the protected places, and the log are.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Layout {
     /// The folder of `openagents-target-*` folders, `~/work`.
     pub work: PathBuf,
@@ -274,7 +331,7 @@ fn paths_in(file: &Path, home: &Path) -> Vec<PathBuf> {
 }
 
 /// What a target folder is to the sweep.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Kind {
     /// A copy beyond the shared targets, removed first.
@@ -683,16 +740,6 @@ impl Unit {
         }
     }
 
-    fn add(&mut self, path: PathBuf, measured: Measured) {
-        if self.paths.is_empty() {
-            self.shown.clone_from(&path);
-        }
-        self.paths.push(path);
-        self.bytes += measured.bytes;
-        self.used = self.used.max(measured.used);
-        self.arm.extend(measured.arm);
-    }
-
     fn key(&self) -> String {
         self.paths
             .first()
@@ -708,6 +755,12 @@ struct Watch {
     since: u64,
     /// Each unit's last use, in Unix seconds, by its first path.
     used: BTreeMap<String, u64>,
+    /// Last attempted unit in each target; partial passes resume after it.
+    #[serde(default)]
+    cursors: BTreeMap<String, String>,
+    /// Advisory sizes for unvisited units, never permission to remove them.
+    #[serde(default)]
+    sizes: BTreeMap<String, u64>,
 }
 
 fn unix(at: SystemTime) -> u64 {
@@ -729,10 +782,11 @@ struct Target {
     units: Vec<Unit>,
     holder: Option<String>,
     gone: bool,
+    complete: bool,
 }
 
 /// What the sweep did, or would do, to one path.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Action {
     /// `removed`, `would remove`, or `flagged`.
     pub verb: String,
@@ -744,17 +798,20 @@ pub struct Action {
 }
 
 /// A target's size after the run.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetSize {
     pub path: PathBuf,
     pub kind: Kind,
     pub bytes: u64,
     /// What holds it, such as `cargo 4211`, when something does.
     pub holder: Option<String>,
+    /// Whether all entries were measured during this pass.
+    #[serde(default = "complete_default")]
+    pub complete: bool,
 }
 
 /// One run of the sweep.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Report {
     /// When it finished, in Chicago time.
     pub at: String,
@@ -771,6 +828,9 @@ pub struct Report {
     pub policy: Policy,
     pub actions: Vec<Action>,
     pub targets: Vec<TargetSize>,
+    /// False when any target exhausted its scan or process budget.
+    #[serde(default = "complete_default")]
+    pub complete: bool,
 }
 
 impl Report {
@@ -787,13 +847,21 @@ impl Report {
                     |name| name.to_string_lossy().into_owned(),
                 );
                 match &target.holder {
-                    Some(holder) => format!("{name} {} (held by {holder})", size(target.bytes)),
-                    None => format!("{name} {}", size(target.bytes)),
+                    Some(holder) => format!(
+                        "{name} {}{} (held by {holder})",
+                        size(target.bytes),
+                        if target.complete { "" } else { " (partial)" }
+                    ),
+                    None => format!(
+                        "{name} {}{}",
+                        size(target.bytes),
+                        if target.complete { "" } else { " (partial)" }
+                    ),
                 }
             })
             .collect();
         let mut lines = vec![format!(
-            "{}  {}  free {} -> {}, freed {}; artifact use watched since {}; targets: {}; completed in {:.1}s",
+            "{}  {}  free {} -> {}, freed {}; artifact use watched since {}; targets: {}; {} in {:.1}s",
             self.at,
             if self.dry_run { "dry run" } else { "sweep" },
             free(self.free_before),
@@ -804,6 +872,11 @@ impl Report {
                 "none".to_owned()
             } else {
                 sizes.join(", ")
+            },
+            if self.complete {
+                "completed"
+            } else {
+                "partial pass completed"
             },
             self.elapsed.as_secs_f64()
         )];
@@ -853,7 +926,38 @@ fn span(duration: Duration) -> String {
 /// nothing and reports what it would remove.
 #[must_use]
 pub fn sweep(layout: &Layout, policy: &Policy, host: &dyn Host, dry_run: bool) -> Report {
-    sweep_with_locks(layout, policy, host, dry_run, BTreeMap::new())
+    sweep_with_locks(
+        layout,
+        policy,
+        host,
+        dry_run,
+        BTreeMap::new(),
+        None,
+        &Budget::unlimited(),
+        None,
+    )
+}
+
+/// Measure and maintain one target within the worker's cooperative budget.
+/// The worker process watchdog also bounds stalled filesystem calls.
+#[must_use]
+pub fn sweep_target(
+    layout: &Layout,
+    policy: &Policy,
+    host: &dyn Host,
+    dry_run: bool,
+    target: &Path,
+) -> Report {
+    sweep_with_locks(
+        layout,
+        policy,
+        host,
+        dry_run,
+        BTreeMap::new(),
+        Some(target),
+        &Budget::new(Duration::from_secs(15)),
+        None,
+    )
 }
 
 /// Run one bounded maintenance pass and record its summary. Unlocked targets
@@ -906,14 +1010,40 @@ fn sweep_with_locks(
     host: &dyn Host,
     dry_run: bool,
     locks: BTreeMap<PathBuf, Option<Vec<std::fs::File>>>,
+    selected: Option<&Path>,
+    budget: &Budget,
+    scan_budget_override: Option<&Budget>,
 ) -> Report {
     let started = std::time::Instant::now();
     let now = host.now();
     let free_before = host.free(&layout.work).ok();
     let procs = host.processes();
+    // Process discovery has its own bounded subprocesses. Give metadata work
+    // its allowance after that snapshot; the outer watchdog bounds both.
+    let metadata_budget = Budget::new(Duration::from_secs(15));
+    let budget = if selected.is_some() {
+        &metadata_budget
+    } else {
+        budget
+    };
+    let mut watch = std::fs::read(&layout.state)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Watch>(&bytes).ok())
+        .unwrap_or_else(|| Watch {
+            since: unix(now),
+            ..Watch::default()
+        });
+    // Leave five seconds for guarded cleanup and saving incremental progress.
+    let scan_budget = Budget::new(if selected.is_some() {
+        budget.remaining().saturating_sub(Duration::from_secs(5))
+    } else {
+        Duration::MAX
+    });
+    let scan_budget = scan_budget_override.unwrap_or(&scan_budget);
     let mut targets: Vec<Target> = layout
         .targets()
         .into_iter()
+        .filter(|(path, _)| selected.is_none_or(|selected| path == selected))
         .map(|(path, kind)| {
             let holder = match &procs {
                 Ok(procs) => procs
@@ -923,7 +1053,7 @@ fn sweep_with_locks(
                     .or_else(|| cargo_locked(&path).then(|| "a build's cargo lock".to_owned())),
                 Err(error) => Some(format!("unknown, the process table can't be read: {error}")),
             };
-            scan(path, kind, holder, layout)
+            scan::scan(path, kind, holder, layout, scan_budget, &mut watch)
         })
         .collect();
     // Probe each profile once, not once per comparison while sorting the
@@ -946,13 +1076,6 @@ fn sweep_with_locks(
             .units
             .sort_by_key(|unit| busy_profiles.contains(&unit.profile));
     }
-    let watch = std::fs::read(&layout.state)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Watch>(&bytes).ok())
-        .unwrap_or_else(|| Watch {
-            since: unix(now),
-            used: BTreeMap::new(),
-        });
     for unit in targets
         .iter_mut()
         .flat_map(|target| target.units.iter_mut())
@@ -978,7 +1101,43 @@ fn sweep_with_locks(
         freed: 0,
         actions: Vec::new(),
         locks,
+        budget,
+        removed: std::collections::BTreeSet::new(),
+        progress: std::env::var_os("OPENAGENTS_BUILD_SWEEP_PROGRESS").map(|path| Progress {
+            path: path.into(),
+            last: std::time::Instant::now(),
+            report: Report {
+                at: host.stamp(now),
+                elapsed: Duration::ZERO,
+                dry_run,
+                free_before,
+                free_after: free_before,
+                freed: 0,
+                watching_since: host.stamp(at_unix(watch.since)),
+                policy: policy.clone(),
+                actions: Vec::new(),
+                targets: targets
+                    .iter()
+                    .map(|target| TargetSize {
+                        path: target.path.clone(),
+                        kind: target.kind,
+                        bytes: target.bytes,
+                        holder: target.holder.clone(),
+                        complete: false,
+                    })
+                    .collect(),
+                complete: false,
+            },
+        }),
     };
+    run.checkpoint(true);
+    if !dry_run && let Err(error) = save(&layout.state, &watch) {
+        run.flag(
+            &layout.state,
+            0,
+            format!("scan progress can't be written: {error}"),
+        );
+    }
     let critical = free_before.is_some_and(|free| free < policy.critical);
     let touchable = |target: &Target| target.kind != Kind::DevApp || critical;
     let cap_idle = if free_before.is_some_and(|free| free < policy.floor) {
@@ -996,11 +1155,20 @@ fn sweep_with_locks(
     // Source-keyed compiler state is bounded independently of the target cap.
     // Keep Cargo lock files and their directories: unlinking a held lock would
     // let a waiting Cargo use a different inode and race the next builder.
-    for target in targets.iter_mut().filter(|target| touchable(target)) {
+    for target in targets
+        .iter_mut()
+        .filter(|target| target.complete && touchable(target))
+    {
+        if budget.expired() {
+            break;
+        }
         let Ok(processes) = &procs else {
             continue;
         };
         for state in worktree_states(&target.path) {
+            if budget.expired() {
+                break;
+            }
             if layout.protected(&state)
                 || processes.iter().any(|process| process.holds(&state))
                 || cargo_locked(&state)
@@ -1076,7 +1244,7 @@ fn sweep_with_locks(
                 "a target copy beyond the shared ones, held by {holder}; build in the shared targets"
             );
             run.flag(&target.path, target.bytes, reason);
-        } else if idle >= policy.stray_idle && !cargo_locked(&target.path) {
+        } else if target.complete && idle >= policy.stray_idle && !cargo_locked(&target.path) {
             let reason = format!(
                 "a target copy beyond the shared ones, untouched {}",
                 span(idle)
@@ -1094,7 +1262,12 @@ fn sweep_with_locks(
 
     // 2. Below the floor: whole targets no build holds.
     let mut order: Vec<usize> = (0..targets.len())
-        .filter(|&i| !targets[i].gone && targets[i].holder.is_none() && touchable(&targets[i]))
+        .filter(|&i| {
+            targets[i].complete
+                && !targets[i].gone
+                && targets[i].holder.is_none()
+                && touchable(&targets[i])
+        })
         .collect();
     order.sort_by_key(|&i| (targets[i].kind, targets[i].used));
     for i in order {
@@ -1205,23 +1378,50 @@ fn sweep_with_locks(
 
     // Builds wait no longer than the removals took.
     run.locks.clear();
+    run.checkpoint(true);
     if !dry_run {
-        let mut used = BTreeMap::new();
+        let retained: std::collections::BTreeSet<_> = targets
+            .iter()
+            .filter(|target| !target.gone)
+            .flat_map(|target| target.units.iter().map(Unit::key))
+            .collect();
+        watch.used.retain(|key, _| {
+            !run.removed.contains(key)
+                && !targets.iter().any(|target| {
+                    Path::new(key).starts_with(&target.path)
+                        && (target.gone || (target.complete && !retained.contains(key)))
+                })
+        });
+        watch.sizes.retain(|key, _| {
+            !run.removed.contains(key)
+                && !targets
+                    .iter()
+                    .any(|target| target.gone && Path::new(key).starts_with(&target.path))
+        });
         for target in targets.iter().filter(|target| !target.gone) {
             for unit in &target.units {
-                used.insert(unit.key(), unix(unit.used));
-                if touchable(target) {
-                    unit.arm.iter().for_each(|path| rearm(path));
-                }
+                watch.used.insert(unit.key(), unix(unit.used));
             }
         }
-        let watch = Watch {
-            since: watch.since,
-            used,
-        };
         if let Err(error) = save(&layout.state, &watch) {
             let reason = format!("the sweep's record of artifact use can't be written: {error}");
             run.flag(&layout.state, 0, reason);
+        } else {
+            // Preserve observed reads before resetting atimes: a watchdog
+            // exit during rearming must not discard that evidence of use.
+            for target in targets
+                .iter()
+                .filter(|target| !target.gone && touchable(target))
+            {
+                for unit in &target.units {
+                    for path in &unit.arm {
+                        if budget.expired() {
+                            break;
+                        }
+                        rearm(path);
+                    }
+                }
+            }
         }
     }
 
@@ -1235,6 +1435,7 @@ fn sweep_with_locks(
         watching_since: host.stamp(at_unix(watch.since)),
         policy: policy.clone(),
         actions: run.actions,
+        complete: targets.iter().all(|target| target.complete) && !budget.expired(),
         targets: targets
             .into_iter()
             .filter(|target| !target.gone)
@@ -1243,6 +1444,7 @@ fn sweep_with_locks(
                 kind: target.kind,
                 bytes: target.bytes,
                 holder: target.holder,
+                complete: target.complete,
             })
             .collect(),
     }
@@ -1252,6 +1454,7 @@ struct Run<'a> {
     layout: &'a Layout,
     host: &'a dyn Host,
     dry_run: bool,
+    budget: &'a Budget,
     lock_wait: Duration,
     deadlines: BTreeMap<PathBuf, std::time::Instant>,
     targets: Vec<PathBuf>,
@@ -1261,9 +1464,32 @@ struct Run<'a> {
     /// The cargo locks the sweep holds, by profile; `None` when a build
     /// kept them.
     locks: BTreeMap<PathBuf, Option<Vec<std::fs::File>>>,
+    removed: std::collections::BTreeSet<String>,
+    progress: Option<Progress>,
+}
+
+struct Progress {
+    path: PathBuf,
+    last: std::time::Instant,
+    report: Report,
 }
 
 impl Run<'_> {
+    fn checkpoint(&mut self, force: bool) {
+        let Some(progress) = &mut self.progress else {
+            return;
+        };
+        if !force && progress.last.elapsed() < Duration::from_millis(500) {
+            return;
+        }
+        progress.report.at = self.host.stamp(self.host.now());
+        progress.report.elapsed = self.budget.started.elapsed();
+        progress.report.free_after = self.free;
+        progress.report.freed = self.freed;
+        progress.report.actions.clone_from(&self.actions);
+        let _ = save(&progress.path, &progress.report);
+        progress.last = std::time::Instant::now();
+    }
     fn account(&mut self, bytes: u64) {
         self.freed += bytes;
         self.free = self.free.map(|free| free.saturating_add(bytes));
@@ -1283,11 +1509,15 @@ impl Run<'_> {
             reason,
             at: self.host.stamp(self.host.now()),
         });
+        self.checkpoint(false);
     }
 
     /// Removes `path`, unless it is protected or a link, and counts it.
     fn remove(&mut self, path: &Path, bytes: u64, reason: String) -> bool {
-        if self.layout.protected(path) || !path.starts_with(&self.layout.work) {
+        if self.budget.expired()
+            || self.layout.protected(path)
+            || !path.starts_with(&self.layout.work)
+        {
             return false;
         }
         let Ok(meta) = std::fs::symlink_metadata(path) else {
@@ -1329,6 +1559,9 @@ impl Run<'_> {
     /// Whether the sweep holds `profile`'s cargo locks, taking them when it
     /// doesn't yet. A dry run takes none.
     fn locked(&mut self, profile: &Path) -> bool {
+        if self.budget.expired() {
+            return false;
+        }
         if self.dry_run {
             return true;
         }
@@ -1343,7 +1576,9 @@ impl Run<'_> {
                 .deadlines
                 .entry(target.clone())
                 .or_insert_with(|| std::time::Instant::now() + self.lock_wait);
-            let wait = deadline.saturating_duration_since(std::time::Instant::now());
+            let wait = deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .min(self.budget.remaining());
             // Native Cargo separates intermediate and final-output locks.
             // Once every Cargo on this target uses source-keyed state, only
             // its legacy intermediate build lock protects these old units.
@@ -1377,12 +1612,13 @@ impl Run<'_> {
         }
         // A build may have finished between the initial scan and this lock.
         // Refresh use under the guard even on the immediate (unqueued) pass.
-        if unit
-            .paths
-            .iter()
-            .any(|path| ago(self.host.now(), measure(path).used) < idle)
-        {
-            return false;
+        for path in &unit.paths {
+            let Some(measured) = scan::measure(path, self.budget) else {
+                return false;
+            };
+            if ago(self.host.now(), measured.used) < idle {
+                return false;
+            }
         }
         let mut removed = 0;
         for path in &unit.paths {
@@ -1408,6 +1644,7 @@ impl Run<'_> {
             "removed"
         };
         self.push(verb, &unit.shown, unit.bytes, reason);
+        self.removed.insert(unit.key());
         true
     }
 }
@@ -1529,11 +1766,11 @@ fn rearm(path: &Path) {
     }
 }
 
-fn save(path: &Path, watch: &Watch) -> std::io::Result<()> {
+fn save(path: &Path, value: &impl Serialize) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let json = serde_json::to_vec(watch).map_err(std::io::Error::other)?;
+    let json = serde_json::to_vec(value).map_err(std::io::Error::other)?;
     let staging = path.with_extension(format!("json.{}.new", std::process::id()));
     std::fs::write(&staging, json)?;
     std::fs::rename(&staging, path)
@@ -1623,15 +1860,6 @@ fn dirs(dir: &Path) -> Vec<PathBuf> {
     found
 }
 
-fn entries(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut found: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
-    found.sort();
-    found
-}
-
 /// What [`measure`] found under a path.
 #[derive(Clone, Debug)]
 struct Measured {
@@ -1711,140 +1939,6 @@ fn unit_name(file: &str) -> String {
     match stem.strip_prefix("lib") {
         Some(rest) if library && !rest.is_empty() => rest.to_owned(),
         _ => stem.to_owned(),
-    }
-}
-
-/// Measures a target and groups its artifacts into units.
-fn scan(path: PathBuf, kind: Kind, holder: Option<String>, layout: &Layout) -> Target {
-    let mut target = Target {
-        path,
-        kind,
-        bytes: 0,
-        used: SystemTime::UNIX_EPOCH,
-        units: Vec::new(),
-        holder,
-        gone: false,
-    };
-    let profiles = profiles(&target.path);
-    let mut loose = vec![target.path.clone()];
-    // The target folder itself and everything outside the profiles.
-    let mut stack = Vec::new();
-    while let Some(dir) = loose.pop() {
-        let Ok(meta) = std::fs::symlink_metadata(&dir) else {
-            continue;
-        };
-        target.bytes += allocated(&meta);
-        for child in entries(&dir) {
-            if profiles.contains(&child) {
-                continue;
-            }
-            let is_dir = std::fs::symlink_metadata(&child).is_ok_and(|meta| meta.is_dir());
-            if is_dir && profiles.iter().any(|profile| profile.starts_with(&child)) {
-                loose.push(child);
-            } else {
-                stack.push(child);
-            }
-        }
-    }
-    for path in stack {
-        let measured = measure(&path);
-        target.bytes += measured.bytes;
-        target.used = target.used.max(measured.used);
-    }
-    for profile in profiles {
-        scan_profile(&profile, &mut target, layout);
-    }
-    target
-}
-
-fn scan_profile(profile: &Path, target: &mut Target, layout: &Layout) {
-    let name_of = |path: &Path| {
-        path.file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    };
-    let mut fingerprints: BTreeMap<String, (PathBuf, Measured)> = BTreeMap::new();
-    for path in entries(&profile.join(".fingerprint")) {
-        let measured = measure(&path);
-        fingerprints.insert(name_of(&path), (path, measured));
-    }
-    let mut units: Vec<(Option<String>, Unit)> = Vec::new();
-    let mut deps: BTreeMap<String, Unit> = BTreeMap::new();
-    for child in entries(profile) {
-        let name = name_of(&child);
-        let is_dir = std::fs::symlink_metadata(&child).is_ok_and(|meta| meta.is_dir());
-        if name == ".fingerprint" {
-            continue;
-        } else if name == "deps" && is_dir {
-            for file in entries(&child) {
-                let measured = measure(&file);
-                let unit = deps
-                    .entry(unit_name(&name_of(&file)))
-                    .or_insert_with(|| Unit::new(profile));
-                unit.add(file, measured);
-            }
-        } else if name == "build" && is_dir {
-            for dir in entries(&child) {
-                let mut unit = Unit::new(profile);
-                let key = name_of(&dir);
-                unit.add(dir.clone(), measure(&dir));
-                units.push((Some(key), unit));
-            }
-        } else if name.starts_with("incremental") && is_dir {
-            for session in entries(&child) {
-                // kache keeps its sessions one level down, in `v1/`.
-                let nested = !name_of(&session).contains('-')
-                    && std::fs::symlink_metadata(&session).is_ok_and(|meta| meta.is_dir());
-                let sessions = if nested {
-                    entries(&session)
-                } else {
-                    vec![session]
-                };
-                for session in sessions {
-                    let mut unit = Unit::new(profile);
-                    unit.add(session.clone(), measure(&session));
-                    units.push((None, unit));
-                }
-            }
-        } else {
-            let measured = measure(&child);
-            target.bytes += measured.bytes;
-            target.used = target.used.max(measured.used);
-        }
-    }
-    for unit in deps.values_mut() {
-        // A crate unit's files share the name before the first `.`.
-        let stem = name_of(&unit.shown)
-            .split('.')
-            .next()
-            .unwrap_or("")
-            .to_owned();
-        unit.shown = unit.shown.with_file_name(format!("{stem}.*"));
-    }
-    units.extend(deps.into_iter().map(|(name, unit)| (Some(name), unit)));
-    for (name, mut unit) in units {
-        if let Some((path, measured)) = name.and_then(|name| fingerprints.remove(&name)) {
-            unit.add(path, measured);
-        }
-        target.bytes += unit.bytes;
-        target.used = target.used.max(unit.used);
-        if !unit.paths.iter().any(|path| layout.protected(path)) {
-            target.units.push(unit);
-        }
-    }
-    // Fingerprints without a remaining deps/build entry are intermediate
-    // artifacts too; otherwise migrated top-level state can never be cleared.
-    for (_, (path, measured)) in fingerprints {
-        let mut unit = Unit::new(profile);
-        unit.add(path, measured);
-        target.bytes += unit.bytes;
-        target.used = target.used.max(unit.used);
-        if !unit.paths.iter().any(|path| layout.protected(path)) {
-            target.units.push(unit);
-        }
-    }
-    if let Ok(meta) = std::fs::symlink_metadata(profile) {
-        target.bytes += allocated(&meta);
     }
 }
 
