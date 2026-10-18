@@ -979,6 +979,9 @@ links remain readable. Upstream fixes now require manual ports.
   passed Kotlin compilation, 26 JVM tests, paired APK assembly, and 17 direct
   offline API 35 instrumentation tests. Host mounting, media viewing, and
   streaming fade remain unfinished; no combined integration pass is claimed.
+  The later `b681a34567` follow-up adds an optional
+  `TranscriptVirtualActionDelegate` for Rust paging actions through the existing
+  accessibility provider. Its new instrumentation fixture remains unrun.
 
 - [OpenAgents #12100](https://github.com/OpenAgentsInc/openagents/issues/12100):
   attach default cloud chat and the offline demo directly to the shared Rust

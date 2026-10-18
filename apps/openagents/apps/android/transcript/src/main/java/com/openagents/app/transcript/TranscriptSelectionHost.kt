@@ -27,6 +27,13 @@ interface TranscriptSelectionCallbacks {
     fun onSystemTextAction(intent: Intent)
 }
 
+/** Adds paging actions to C2's existing virtual rows without installing another node provider. */
+interface TranscriptVirtualActionDelegate {
+    fun actions(revision: ULong, anchorRow: ULong): List<AccessibilityNodeInfo.AccessibilityAction>
+    fun perform(actionId: Int, revision: ULong, anchorRow: ULong): Boolean
+    fun retire()
+}
+
 /** Wrap C1's view. The registered supplier borrows C1's actual viewport and frame. */
 class TranscriptSelectionHost(
     context: Context,
@@ -43,6 +50,8 @@ class TranscriptSelectionHost(
     private var actionMode: ActionMode? = null
     private var menuToken: TranscriptSelectionToken? = null
     private var gestureToken: TranscriptSelectionToken? = null
+    private var virtualActionDelegate: TranscriptVirtualActionDelegate? = null
+    private var virtualActionStamp: Pair<ULong, ULong>? = null
     private var draggingAnchor: Boolean? = null
     private var longPressed = false
     private val processorTargets = mutableMapOf<Int, ComponentName>()
@@ -128,17 +137,29 @@ class TranscriptSelectionHost(
     fun observer(accountConversation: String): TranscriptInteractionObserver = object : TranscriptInteractionObserver {
         override fun beforeFrameReplacement(next: TranscriptFrame) { this@TranscriptSelectionHost.beforeFrameReplacement(next, accountConversation) }
         override fun viewportChanged() = this@TranscriptSelectionHost.viewportChanged()
-        override fun beforeFrameClose() { contentReleased = true; retireBorrow() }
+        override fun beforeFrameClose() { contentReleased = true; retireVirtualActions(); retireBorrow() }
+    }
+    /** Install Q1 paging callbacks on C2's provider; the host remains the sole virtual delegate. */
+    fun setVirtualActionDelegate(delegate: TranscriptVirtualActionDelegate?) {
+        check(android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
+        if (virtualActionDelegate === delegate) return
+        retireVirtualActions()
+        virtualActionDelegate = delegate
+        sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
     }
     /** Call BEFORE replacing/closing the old C1 frame; never close the borrowed frame here. */
     fun beforeFrameReplacement(next: TranscriptFrame, accountConversation: String): Boolean {
         check(android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
+        retireVirtualActions()
         val accepted = model.submit(next, accountConversation)
         if (accepted) { gestureToken = null; draggingAnchor = null; longPressed = false }
         return accepted
     }
     /** Call on C1 scroll, resize, or horizontal movement, after its viewport changes. */
-    fun viewportChanged() { overlay.invalidate(); actionMode?.invalidate(); accessibleRows.clear() }
+    fun viewportChanged() {
+        retireVirtualActions()
+        overlay.invalidate(); actionMode?.invalidate(); accessibleRows.clear()
+    }
     fun bookmark() = model.bookmark()
     fun restore(bookmark: TranscriptSelectionBookmark): Boolean = model.restore(model.token, bookmark)
     private fun x(value: Float) = (value - content.paddingLeft) / density
@@ -251,7 +272,15 @@ class TranscriptSelectionHost(
             if (id == View.NO_ID) return AccessibilityNodeInfo.obtain(this@TranscriptSelectionHost).apply {
                 className = FrameLayout::class.java.name
                 text = model.selectedText(model.token)
-                value.frame.rowsIn(value.top, value.top + value.height).take(64).forEachIndexed { index, _ -> addChild(this@TranscriptSelectionHost, index + 1) }
+                val rows = value.frame.rowsIn(value.top, value.top + value.height).take(64)
+                rows.forEachIndexed { index, _ -> addChild(this@TranscriptSelectionHost, index + 1) }
+                val anchor = rows.firstOrNull()?.key
+                val delegate = virtualActionDelegate
+                virtualActionStamp = if (anchor == null || delegate == null) null else {
+                    val revision = value.frame.revision
+                    delegate.actions(revision, anchor).take(2).forEach(::addAction)
+                    revision to anchor
+                }
             }
             val row = value.frame.rowsIn(value.top, value.top + value.height).take(64).getOrNull(id - 1) ?: return null
             val display = value.frame.display(row.index) ?: return null
@@ -276,6 +305,13 @@ class TranscriptSelectionHost(
             }
         }
         override fun performAction(id: Int, action: Int, arguments: Bundle?): Boolean {
+            if (id == View.NO_ID) {
+                val value = current() ?: return false
+                val stamp = virtualActionStamp ?: return false
+                val anchor = value.frame.rowsIn(value.top, value.top + value.height).firstOrNull()?.key ?: return false
+                if (stamp != (value.frame.revision to anchor)) return false
+                return virtualActionDelegate?.perform(action, stamp.first, stamp.second) ?: false
+            }
             val (token, key) = accessibleRows[id] ?: return false
             if (!model.accepts(token)) return false
             return when (action) {
@@ -315,7 +351,13 @@ class TranscriptSelectionHost(
             accessibilityFocus = null
         }
     }
+    private fun retireVirtualActions() {
+        virtualActionStamp = null
+        virtualActionDelegate?.retire()
+    }
     override fun close() {
+        retireVirtualActions()
+        virtualActionDelegate = null
         if (contentReleased) { retireBorrow(); return }
         contentReleased = true
         try { retireBorrow() } finally { (content as? AutoCloseable)?.close() }
