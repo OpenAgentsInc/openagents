@@ -960,6 +960,12 @@
         },
         {
           "kind": "struct",
+          "name": "Filing",
+          "doc": "Whether a chat is pinned and archived, as the service reports it after\n[`set_pinned`] or [`set_archived`].",
+          "declaration": "pub struct Filing {\n    pub pinned: bool,\n    pub archived: bool,\n}"
+        },
+        {
+          "kind": "struct",
           "name": "Refusal",
           "doc": "A refused turn: its code, a message to show, and when to try again.",
           "declaration": "pub struct Refusal {\n    pub code: RefusalCode,\n    pub message: String,\n    pub retry_after_ms: Option<u64>,\n}"
@@ -1089,6 +1095,20 @@
               "path": "/v1/threads/*/messages"
             }
           ]
+        },
+        {
+          "kind": "fn",
+          "name": "set_archived",
+          "doc": "Archive the chat (`true`) or restore it (`false`), as the web's sidebar\ndoes (`PATCH /v1/threads/{id}`). Archiving also removes the cloud\ncomputers that ran it. Repeating the call changes nothing more.",
+          "declaration": "pub async fn set_archived(\n    client: &Client,\n    session: &Session,\n    chat: &ChatRef,\n    archived: bool,\n    cancel: &CancellationToken,\n) -> Result<Filing, Error>",
+          "calls": []
+        },
+        {
+          "kind": "fn",
+          "name": "set_pinned",
+          "doc": "Pin the chat (`true`) or unpin it (`false`), as the web's sidebar does\n(`PATCH /v1/threads/{id}`). A new pin goes after every earlier one.\nRepeating the call changes nothing more.",
+          "declaration": "pub async fn set_pinned(\n    client: &Client,\n    session: &Session,\n    chat: &ChatRef,\n    pinned: bool,\n    cancel: &CancellationToken,\n) -> Result<Filing, Error>",
+          "calls": []
         },
         {
           "kind": "fn",

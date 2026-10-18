@@ -39,6 +39,8 @@ pub struct CloudChatSnapshot {
     pub error: Option<String>,
     /// The open chat is the account's (it shows in the account's chats).
     pub account_chat: bool,
+    /// The open chat is pinned in the account's chats.
+    pub pinned: bool,
 }
 
 impl From<Snapshot> for CloudChatSnapshot {
@@ -50,6 +52,7 @@ impl From<Snapshot> for CloudChatSnapshot {
             unsent: s.unsent,
             error: s.error,
             account_chat: s.account_chat,
+            pinned: s.pinned,
         }
     }
 }
@@ -67,6 +70,13 @@ fn line(l: Line) -> CloudChatLine {
 
 /// Called on a background thread with each new snapshot: hop to the main
 /// thread before touching the interface.
+/// Called once with how a pin or archive went: `None` when it worked, else
+/// a line to show.
+#[uniffi::export(with_foreign)]
+pub trait CloudChatDone: Send + Sync {
+    fn on_done(&self, error: Option<String>);
+}
+
 #[uniffi::export(with_foreign)]
 pub trait CloudChatListener: Send + Sync {
     fn on_cloud_chat_changed(&self, snapshot: CloudChatSnapshot);
@@ -190,6 +200,41 @@ impl CoreCloudChat {
             Chat::Demo(chat) => chat.stop(),
         }
     }
+    /// Pin (`true`) or unpin the open chat. `done` hears how it went.
+    pub fn set_pinned(&self, pinned: bool, done: Arc<dyn CloudChatDone>) {
+        match &self.chat {
+            Chat::Live(chat) => {
+                let call = chat.set_pinned(pinned);
+                drop(openagents_client::runtime::shared().spawn(async move {
+                    done.on_done(call.await.err());
+                }));
+            }
+            Chat::Demo(chat) => {
+                chat.set_pinned(pinned);
+                done.on_done(None);
+            }
+        }
+    }
+    /// Archive the open chat, then start a new one. `done` hears how it
+    /// went; on an error the chat stays open.
+    pub fn archive(&self, done: Arc<dyn CloudChatDone>) {
+        match &self.chat {
+            Chat::Live(chat) => {
+                let call = chat.archive();
+                drop(openagents_client::runtime::shared().spawn(async move {
+                    done.on_done(call.await.err());
+                }));
+            }
+            Chat::Demo(chat) => {
+                chat.archive();
+                done.on_done(None);
+            }
+        }
+    }
+    /// The chat's lines as plain text, for Copy Transcript.
+    pub fn transcript(&self) -> String {
+        self.raw_snapshot().transcript()
+    }
     /// Start over with an empty chat.
     pub fn new_chat(&self) {
         match &self.chat {
@@ -245,6 +290,7 @@ mod tests {
             unsent: None,
             error: Some("e".into()),
             account_chat: false,
+            pinned: true,
         };
         let view = CloudChatSnapshot::from(snapshot);
         assert_eq!(view.chat.as_deref(), Some("c"));
@@ -254,5 +300,39 @@ mod tests {
         );
         assert!(view.answering);
         assert_eq!(view.error.as_deref(), Some("e"));
+        assert!(view.pinned);
+    }
+
+    struct Heard(std::sync::Mutex<Vec<Option<String>>>);
+    impl CloudChatDone for Heard {
+        fn on_done(&self, error: Option<String>) {
+            self.0.lock().unwrap().push(error);
+        }
+    }
+    struct Quiet;
+    impl CloudChatListener for Quiet {
+        fn on_cloud_chat_changed(&self, _: CloudChatSnapshot) {}
+    }
+
+    #[test]
+    fn the_demo_pins_copies_and_archives_without_a_server() {
+        let chat = CoreCloudChat::demo(Arc::new(Quiet));
+        let Chat::Demo(demo) = &chat.chat else {
+            unreachable!()
+        };
+        drop(openagents_client::runtime::shared().block_on(demo.send("Hello".into())));
+        let heard = Arc::new(Heard(Default::default()));
+        chat.set_pinned(true, heard.clone());
+        assert!(chat.snapshot().pinned);
+        let transcript = chat.transcript();
+        assert!(
+            transcript.starts_with("You:\nHello\n\n---\n\nOpenAgents:\n"),
+            "{transcript}"
+        );
+        chat.archive(heard.clone());
+        let after = chat.snapshot();
+        assert!(after.lines.is_empty() && !after.pinned);
+        assert_eq!(chat.transcript(), "");
+        assert_eq!(*heard.0.lock().unwrap(), [None, None]);
     }
 }

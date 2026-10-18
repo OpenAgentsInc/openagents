@@ -980,10 +980,13 @@ pub(crate) async fn threads_in(
     }
 }
 
-/// `PATCH /v1/threads/{id}` `{project}` (#11541): move the thread into one
-/// of the caller's projects (its id, or `name:NAME`), or out of any
-/// project (`null`). The person's move: sync no longer files the thread
-/// ([`Conversation::filed`]). Answers the `Thread`.
+/// `PATCH /v1/threads/{id}` `{project?, pinned?, archived?}`: change the
+/// caller's own chat. `project` (#11541) moves the thread into one of the
+/// caller's projects (its id, or `name:NAME`), or out of any project
+/// (`null`); the person's move, so sync no longer files the thread
+/// ([`Conversation::filed`]). `pinned` and `archived` (#12026) pin or
+/// archive it as the web's sidebar does, with the same pin order, archive
+/// stamp, and computer cleanup. Answers the `Thread`.
 pub(crate) async fn move_thread(
     State(app): State<App>,
     headers: HeaderMap,
@@ -994,34 +997,39 @@ pub(crate) async fn move_thread(
         Ok(found) => found,
         Err(response) => return response,
     };
-    let reference = match body.as_ref().map(|body| body.get("project")) {
-        Ok(Some(Value::Null)) => None,
-        Ok(Some(Value::String(reference))) => Some(reference.trim().to_owned()),
-        _ => {
-            return refused(
-                StatusCode::BAD_REQUEST,
-                "invalid_request",
-                "Send {\"project\": ID} to move the chat into a project, or {\"project\": null} to take it out.",
-            );
-        }
+    let Some(change) = body.ok().and_then(|body| ThreadChange::read(&body)) else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send {\"project\": ID} or {\"project\": null} to file the chat, {\"pinned\": true or false} to pin it, or {\"archived\": true or false} to archive it.",
+        );
     };
-    let project = match reference {
+    let project = match change.project.clone() {
         None => None,
-        Some(reference) => {
+        Some(None) => Some(None),
+        Some(Some(reference)) => {
             let status = match status(service, &token).await {
                 Ok(status) => status,
                 Err(response) => return response,
             };
             match named(&status.projects, &reference) {
                 Ok(project) if !role_of(project).edits() => return role_refused(),
-                Ok(project) => Some(project.clone()),
+                Ok(project) => Some(Some(project.clone())),
                 Err(response) => return response,
             }
         }
     };
-    let target = project.clone();
-    let project = project.map(|p| p.id);
+    let target = project.clone().flatten();
+    let project = project.map(|p| p.map(|p| p.id));
     let owner = account_owner(&account);
+    let pin_stamp = match change.pinned {
+        Some(true) => match crate::pages::chat::sidebar::pin_stamp(&app, &owner).await {
+            Ok(stamp) => stamp,
+            Err(error) => return stored(&error),
+        },
+        _ => 0,
+    };
+    let archive_stamp = now();
     let store = &app.config.chat_store;
     for _ in 0..3 {
         let loaded = match store.load(&owner, &id).await {
@@ -1032,26 +1040,82 @@ pub(crate) async fn move_thread(
             Err(error) => return stored(&error),
         };
         let current = &loaded.conversation;
-        if current.project == project && current.filed {
+        let mut next = current.clone();
+        let mut moved = false;
+        if let Some(project) = &project {
+            if next.project != *project {
+                next.branch = None;
+            }
+            moved = next.project != *project || !next.filed;
+            next.project.clone_from(project);
+            next.filed = true;
+        }
+        let pinned = change
+            .pinned
+            .is_some_and(|pin| crate::pages::chat::sidebar::set_pinned(&mut next, pin, pin_stamp));
+        let archived = change.archived.is_some_and(|archive| {
+            crate::pages::chat::sidebar::set_archived(&mut next, archive, archive_stamp)
+        });
+        if !moved && !pinned && !archived {
             return answer(StatusCode::OK, thread_object(current));
         }
-        let mut moved = current.clone();
-        if moved.project != project {
-            moved.branch = None;
-        }
-        moved.project.clone_from(&project);
-        moved.filed = true;
-        moved.revision += 1;
-        match store.compare_and_swap(&loaded, &moved).await {
+        next.revision += 1;
+        match store.compare_and_swap(&loaded, &next).await {
             Ok(_) => {
-                crate::pages::chat::note_shared(&app, target.as_ref(), &owner, &moved).await;
-                return answer(StatusCode::OK, thread_object(&moved));
+                if moved {
+                    crate::pages::chat::note_shared(&app, target.as_ref(), &owner, &next).await;
+                }
+                if archived && next.archived_unix.is_some() {
+                    crate::pages::chat::sidebar::archived_cleanup(&app, &headers, &owner, &id)
+                        .await;
+                }
+                return answer(StatusCode::OK, thread_object(&next));
             }
             Err(Error::Conflict) => continue,
             Err(error) => return stored(&error),
         }
     }
     stored(&Error::Conflict)
+}
+
+/// What a `PATCH /v1/threads/{id}` body asks for; `None` from [`Self::read`]
+/// when it asks for nothing or names a field with the wrong type.
+struct ThreadChange {
+    /// `Some(None)` takes the chat out of any project.
+    project: Option<Option<String>>,
+    pinned: Option<bool>,
+    archived: Option<bool>,
+}
+
+impl ThreadChange {
+    fn read(body: &Value) -> Option<Self> {
+        let body = body.as_object()?;
+        let project = match body.get("project") {
+            None => None,
+            Some(Value::Null) => Some(None),
+            Some(Value::String(reference)) => Some(Some(reference.trim().to_owned())),
+            Some(_) => return None,
+        };
+        let flag = |name: &str| match body.get(name) {
+            None => Ok(None),
+            Some(Value::Bool(value)) => Ok(Some(*value)),
+            Some(_) => Err(()),
+        };
+        let pinned = flag("pinned").ok()?;
+        let archived = flag("archived").ok()?;
+        (project.is_some() || pinned.is_some() || archived.is_some()).then_some(Self {
+            project,
+            pinned,
+            archived,
+        })
+    }
+}
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 /// `GET /v1/threads/{id}/messages`: the thread's messages, oldest first.

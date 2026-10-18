@@ -634,6 +634,124 @@ async fn synced_chats_file_under_their_repository_and_move_with_the_token() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+/// #12026: the sign-in token pins and archives a chat with
+/// `PATCH /v1/threads/{id}`, as the web's sidebar does: pins keep the
+/// order they were made in, and an empty or mistyped body is refused.
+#[tokio::test]
+async fn the_token_pins_and_archives_a_chat_like_the_sidebar() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let me = Api::of(&browser);
+    let mut ids = vec![];
+    for name in ["s-first", "s-second"] {
+        let (status, body) = me
+            .json(
+                &world,
+                "PUT",
+                &format!("/v1/threads/synced/{name}"),
+                json!({"computer": "Studio", "title": "Fix the build",
+                       "messages": [{"role": "user", "text": "Fix it"}]}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        ids.push(body["chat"].as_str().unwrap().to_owned());
+    }
+    let owner = account_owner_of(&world, "octo-local");
+    let pinned_at = |id: &str| {
+        let store = world.store.clone();
+        let owner = owner.clone();
+        let id = id.to_owned();
+        async move {
+            let saved = store.load(&owner, &id).await.unwrap().unwrap();
+            (
+                saved.conversation.pinned_unix,
+                saved.conversation.archived_unix,
+            )
+        }
+    };
+    for id in &ids {
+        let (status, body) = me
+            .json(
+                &world,
+                "PATCH",
+                &format!("/v1/threads/{id}"),
+                json!({"pinned": true}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["pinned"], true);
+        assert_eq!(body["archived"], false);
+    }
+    let (first, _) = pinned_at(&ids[0]).await;
+    let (second, _) = pinned_at(&ids[1]).await;
+    assert!(second.unwrap() > first.unwrap(), "{first:?} {second:?}");
+    // Pinning again changes nothing.
+    let (status, _) = me
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{}", ids[0]),
+            json!({"pinned": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(pinned_at(&ids[0]).await.0, first);
+
+    // Archive and unpin at once, then restore.
+    let (status, body) = me
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{}", ids[0]),
+            json!({"pinned": false, "archived": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        (body["pinned"].clone(), body["archived"].clone()),
+        (json!(false), json!(true))
+    );
+    let (pin, archived) = pinned_at(&ids[0]).await;
+    assert!(pin.is_none() && archived.is_some());
+    let (_, listed) = me.json(&world, "GET", "/v1/threads", Value::Null).await;
+    assert!(
+        !listed.to_string().contains(ids[0].as_str()),
+        "an archived chat leaves the list: {listed}"
+    );
+    let (status, body) = me
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{}", ids[0]),
+            json!({"archived": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["archived"], false);
+    assert!(pinned_at(&ids[0]).await.1.is_none());
+
+    // Nothing asked, a mistyped flag, or another account's token.
+    for bad in [json!({}), json!({"pinned": "yes"}), json!({"archived": 1})] {
+        let (status, body) = me
+            .json(&world, "PATCH", &format!("/v1/threads/{}", ids[1]), bad)
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    let mut stranger = Browser::default();
+    stranger.sign_in(&world, "quiet-local").await;
+    let (status, _) = Api::of(&stranger)
+        .json(
+            &world,
+            "PATCH",
+            &format!("/v1/threads/{}", ids[1]),
+            json!({"archived": true}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(pinned_at(&ids[1]).await.1.is_none());
+}
+
 /// 2026-10-13: a project needs no repository; it can hold several, one the
 /// primary; the same repository can be in several projects; names may
 /// repeat, and a name two projects share asks which one.

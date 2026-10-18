@@ -1625,16 +1625,218 @@ public func FfiConverterTypeClientListener_lower(_ value: ClientListener) -> UIn
 /**
  * Called on a background thread with each new snapshot: hop to the main
  * thread before touching the interface.
+ * Called once with how a pin or archive went: `None` when it worked, else
+ * a line to show.
  */
-public protocol CloudChatListener: AnyObject, Sendable {
+public protocol CloudChatDone: AnyObject, Sendable {
     
-    func onCloudChatChanged(snapshot: CloudChatSnapshot) 
+    func onDone(error: String?) 
     
 }
 /**
  * Called on a background thread with each new snapshot: hop to the main
  * thread before touching the interface.
+ * Called once with how a pin or archive went: `None` when it worked, else
+ * a line to show.
  */
+open class CloudChatDoneImpl: CloudChatDone, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_cloudchatdone(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_cloudchatdone(handle, $0) }
+    }
+
+    
+
+    
+open func onDone(error: String?)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_cloudchatdone_on_done(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(error),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceCloudChatDone {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceCloudChatDone = UniffiVTableCallbackInterfaceCloudChatDone(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeCloudChatDone.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface CloudChatDone: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeCloudChatDone.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface CloudChatDone: handle missing in uniffiClone")
+            }
+        },
+        onDone: { (
+            uniffiHandle: UInt64,
+            error: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeCloudChatDone.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onDone(
+                     error: try FfiConverterOptionString.lift(error)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceCloudChatDone> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceCloudChatDone>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitCloudChatDone() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_cloudchatdone(UniffiCallbackInterfaceCloudChatDone.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudChatDone: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<CloudChatDone>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = CloudChatDone
+
+    public static func lift(_ handle: UInt64) throws -> CloudChatDone {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return CloudChatDoneImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: CloudChatDone) -> UInt64 {
+         if let rustImpl = value as? CloudChatDoneImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudChatDone {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CloudChatDone, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatDone_lift(_ handle: UInt64) throws -> CloudChatDone {
+    return try FfiConverterTypeCloudChatDone.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatDone_lower(_ value: CloudChatDone) -> UInt64 {
+    return FfiConverterTypeCloudChatDone.lower(value)
+}
+
+
+
+
+
+
+public protocol CloudChatListener: AnyObject, Sendable {
+    
+    func onCloudChatChanged(snapshot: CloudChatSnapshot) 
+    
+}
 open class CloudChatListenerImpl: CloudChatListener, @unchecked Sendable {
     fileprivate let handle: UInt64
 
@@ -4343,6 +4545,12 @@ public func FfiConverterTypeCoreClient_lower(_ value: CoreClient) -> UInt64 {
 public protocol CoreCloudChatProtocol: AnyObject, Sendable {
     
     /**
+     * Archive the open chat, then start a new one. `done` hears how it
+     * went; on an error the chat stays open.
+     */
+    func archive(done: CloudChatDone) 
+    
+    /**
      * Start over with an empty chat.
      */
     func newChat() 
@@ -4353,12 +4561,22 @@ public protocol CoreCloudChatProtocol: AnyObject, Sendable {
      */
     func send(text: String) 
     
+    /**
+     * Pin (`true`) or unpin the open chat. `done` hears how it went.
+     */
+    func setPinned(pinned: Bool, done: CloudChatDone) 
+    
     func snapshot()  -> CloudChatSnapshot
     
     /**
      * Stop the answer being written.
      */
     func stop() 
+    
+    /**
+     * The chat's lines as plain text, for Copy Transcript.
+     */
+    func transcript()  -> String
     
 }
 open class CoreCloudChat: CoreCloudChatProtocol, @unchecked Sendable {
@@ -4427,6 +4645,19 @@ public static func demo(listener: CloudChatListener) -> CoreCloudChat  {
 
     
     /**
+     * Archive the open chat, then start a new one. `done` hears how it
+     * went; on an error the chat stays open.
+     */
+open func archive(done: CloudChatDone)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecloudchat_archive(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCloudChatDone_lower(done),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Start over with an empty chat.
      */
 open func newChat()  {try! rustCall() {
@@ -4450,6 +4681,19 @@ open func send(text: String)  {try! rustCall() {
 }
 }
     
+    /**
+     * Pin (`true`) or unpin the open chat. `done` hears how it went.
+     */
+open func setPinned(pinned: Bool, done: CloudChatDone)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecloudchat_set_pinned(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(pinned),
+        FfiConverterTypeCloudChatDone_lower(done),uniffiCallStatus
+    )
+}
+}
+    
 open func snapshot() -> CloudChatSnapshot  {
     return try!  FfiConverterTypeCloudChatSnapshot_lift(try! rustCall() {
         uniffiCallStatus in
@@ -4468,6 +4712,18 @@ open func stop()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * The chat's lines as plain text, for Copy Transcript.
+     */
+open func transcript() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecloudchat_transcript(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 
@@ -11235,6 +11491,10 @@ public struct CloudChatSnapshot: Equatable, Hashable {
      * The open chat is the account's (it shows in the account's chats).
      */
     public var accountChat: Bool
+    /**
+     * The open chat is pinned in the account's chats.
+     */
+    public var pinned: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -11250,13 +11510,17 @@ public struct CloudChatSnapshot: Equatable, Hashable {
          */unsent: String?, error: String?, 
         /**
          * The open chat is the account's (it shows in the account's chats).
-         */accountChat: Bool) {
+         */accountChat: Bool, 
+        /**
+         * The open chat is pinned in the account's chats.
+         */pinned: Bool) {
         self.chat = chat
         self.lines = lines
         self.answering = answering
         self.unsent = unsent
         self.error = error
         self.accountChat = accountChat
+        self.pinned = pinned
     }
 
     
@@ -11280,7 +11544,8 @@ public struct FfiConverterTypeCloudChatSnapshot: FfiConverterRustBuffer {
                 answering: FfiConverterBool.read(from: &buf), 
                 unsent: FfiConverterOptionString.read(from: &buf), 
                 error: FfiConverterOptionString.read(from: &buf), 
-                accountChat: FfiConverterBool.read(from: &buf)
+                accountChat: FfiConverterBool.read(from: &buf), 
+                pinned: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -11291,6 +11556,7 @@ public struct FfiConverterTypeCloudChatSnapshot: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.unsent, into: &buf)
         FfiConverterOptionString.write(value.error, into: &buf)
         FfiConverterBool.write(value.accountChat, into: &buf)
+        FfiConverterBool.write(value.pinned, into: &buf)
     }
 }
 
@@ -26297,7 +26563,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_start() != 37618) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_cloudchatdone_on_done() != 48276) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_cloudchatlistener_on_cloud_chat_changed() != 606) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecloudchat_archive() != 40104) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_corecloudchat_new_chat() != 53526) {
@@ -26306,10 +26578,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_corecloudchat_send() != 29543) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_corecloudchat_set_pinned() != 18716) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_corecloudchat_snapshot() != 41654) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_corecloudchat_stop() != 12415) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecloudchat_transcript() != 12692) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreagents_activate() != 20375) {
@@ -26740,6 +27018,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitAgentLabListener()
     uniffiCallbackInitAppAttester()
     uniffiCallbackInitClientListener()
+    uniffiCallbackInitCloudChatDone()
     uniffiCallbackInitCloudChatListener()
     uniffiCallbackInitCustomAgentsListener()
     uniffiCallbackInitKeyStore()

@@ -617,6 +617,52 @@ async fn changed(
     crate::chat_html::protect(Redirect::to(&back).into_response())
 }
 
+/// The stamp a new pin gets: after every earlier pin of `owner`'s, even
+/// within one second, so pins list in the order they were made.
+pub(crate) async fn pin_stamp(app: &App, owner: &str) -> Result<u64, Error> {
+    let last = app
+        .config
+        .chat_store
+        .list(owner)
+        .await?
+        .iter()
+        .filter_map(|c| c.pinned_unix)
+        .max();
+    Ok(now().max(last.map_or(0, |last| last + 1)))
+}
+
+/// Pins (with `stamp`, from [`pin_stamp`]) or unpins `chat`; whether that
+/// changed it.
+pub(crate) fn set_pinned(chat: &mut Conversation, pin: bool, stamp: u64) -> bool {
+    if pin == chat.pinned_unix.is_some() {
+        return false;
+    }
+    chat.pinned_unix = pin.then_some(stamp);
+    true
+}
+
+/// Archives (at `stamp`) or restores `chat`; whether that changed it.
+pub(crate) fn set_archived(chat: &mut Conversation, archive: bool, stamp: u64) -> bool {
+    if archive == chat.archived_unix.is_some() {
+        return false;
+    }
+    chat.archived_unix = archive.then_some(stamp);
+    true
+}
+
+/// After a chat is archived: remove the cloud computers that ran it.
+/// A failure is logged; the chat stays archived.
+pub(crate) async fn archived_cleanup(app: &App, headers: &HeaderMap, owner: &str, id: &str) {
+    if crate::computers::client().is_some() && app.config.cloud.is_some() {
+        if crate::computer_runs::archive(app, headers, owner, id)
+            .await
+            .is_err()
+        {
+            eprintln!("openagents-web: archived chat computer cleanup failed");
+        }
+    }
+}
+
 async fn pin(
     State(app): State<App>,
     headers: HeaderMap,
@@ -628,24 +674,15 @@ async fn pin(
         Err(r) => return r,
     };
     let pin = form.pinned == "1";
-    // Pin order: a new pin goes after every earlier one, even within a second.
     let stamp = if pin {
-        let last = match app.config.chat_store.list(&owner).await {
-            Ok(rows) => rows.iter().filter_map(|c| c.pinned_unix).max(),
+        match pin_stamp(&app, &owner).await {
+            Ok(stamp) => stamp,
             Err(error) => return unavailable(error),
-        };
-        now().max(last.map_or(0, |last| last + 1))
+        }
     } else {
         0
     };
-    let result = update(&app, &owner, &id, |chat| {
-        if pin == chat.pinned_unix.is_some() {
-            return false;
-        }
-        chat.pinned_unix = pin.then_some(stamp);
-        true
-    })
-    .await;
+    let result = update(&app, &owner, &id, |chat| set_pinned(chat, pin, stamp)).await;
     match result {
         Ok(_) => changed(&app, &headers, &owner, &form, None, html! {}).await,
         Err(r) => r,
@@ -664,20 +701,11 @@ async fn archive(
     };
     let archive = form.archived == "1";
     let stamp = now();
-    let result = update(&app, &owner, &id, |chat| {
-        if archive == chat.archived_unix.is_some() {
-            return false;
-        }
-        chat.archived_unix = archive.then_some(stamp);
-        true
-    })
-    .await;
+    let result = update(&app, &owner, &id, |chat| set_archived(chat, archive, stamp)).await;
     match result {
         Ok(_) => {
-            if archive && crate::computers::client().is_some() && app.config.cloud.is_some() {
-                if let Err(_) = crate::computer_runs::archive(&app, &headers, &owner, &id).await {
-                    eprintln!("openagents-web: archived chat computer cleanup failed");
-                }
+            if archive {
+                archived_cleanup(&app, &headers, &owner, &id).await;
             }
             let notice = archive.then_some(id.as_str());
             changed(&app, &headers, &owner, &form, notice, html! {}).await

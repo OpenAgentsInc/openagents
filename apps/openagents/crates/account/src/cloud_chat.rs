@@ -20,6 +20,11 @@ use tokio::sync::watch;
 const SIGN_IN_WAIT: Duration = Duration::from_secs(20);
 /// What a send says when the account isn't ready yet.
 const NOT_READY: &str = "We're still setting up your account. Try again in a moment.";
+/// What pin or archive says before the chat's first message has gone.
+const NOT_STARTED: &str = "Wait for the chat to start, then try again.";
+const PIN_FAILED: &str = "We couldn't pin this chat. Try again.";
+const UNPIN_FAILED: &str = "We couldn't unpin this chat. Try again.";
+const ARCHIVE_FAILED: &str = "We couldn't archive this chat. Try again.";
 
 /// Who a line is from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,6 +52,28 @@ pub struct Snapshot {
     pub error: Option<String>,
     /// The open chat is the account's. Always so once a message was sent.
     pub account_chat: bool,
+    /// The open chat is pinned in the account's chats.
+    pub pinned: bool,
+}
+
+impl Snapshot {
+    /// The chat's lines as plain text for Copy Transcript: each message
+    /// under who wrote it, messages apart as the session's copy has them.
+    pub fn transcript(&self) -> String {
+        self.lines
+            .iter()
+            .filter(|l| !l.text.trim().is_empty())
+            .map(|l| {
+                let who = match l.role {
+                    Role::User => "You",
+                    Role::Assistant => "OpenAgents",
+                    Role::Tool => "Tool",
+                };
+                format!("{who}:\n{}", l.text.trim_end())
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n")
+    }
 }
 
 struct State {
@@ -57,6 +84,12 @@ struct State {
     slots: BTreeMap<usize, usize>,
     /// The request being answered, to stop it.
     answering: Option<(String, String)>,
+}
+
+/// A pin or archive of the open chat.
+enum Change {
+    Pin(bool),
+    Archive,
 }
 
 pub struct CloudChat {
@@ -336,6 +369,68 @@ impl CloudChat {
             s.snapshot.error = error;
         }
         self.publish(&s);
+    }
+
+    /// Pin (`true`) or unpin the open chat in the account's chats. `Err`
+    /// is a line to show.
+    pub fn set_pinned(
+        self: &Arc<Self>,
+        pinned: bool,
+    ) -> impl Future<Output = Result<(), String>> + Send + 'static {
+        let this = self.clone();
+        async move {
+            let failed = if pinned { PIN_FAILED } else { UNPIN_FAILED };
+            let Some(chat) = this.snapshot().chat else {
+                return Err(NOT_STARTED.into());
+            };
+            let filing = this
+                .file(&chat, Change::Pin(pinned))
+                .await
+                .map_err(|e| e.unwrap_or_else(|| failed.into()))?;
+            let mut s = this.state.lock().unwrap();
+            if s.snapshot.chat.as_deref() == Some(chat.as_str()) {
+                s.snapshot.pinned = filing.pinned;
+                this.publish(&s);
+            }
+            Ok(())
+        }
+    }
+
+    /// Archive the open chat, then start a new one. Before the chat's
+    /// first message has gone there's nothing to archive: it only starts
+    /// over. `Err` is a line to show; the chat stays open.
+    pub fn archive(self: &Arc<Self>) -> impl Future<Output = Result<(), String>> + Send + 'static {
+        let this = self.clone();
+        async move {
+            let Some(chat) = this.snapshot().chat else {
+                this.new_chat();
+                return Ok(());
+            };
+            this.file(&chat, Change::Archive)
+                .await
+                .map_err(|e| e.unwrap_or_else(|| ARCHIVE_FAILED.into()))?;
+            if this.snapshot().chat.as_deref() == Some(chat.as_str()) {
+                this.new_chat();
+            }
+            Ok(())
+        }
+    }
+
+    /// One pin or archive call on `chat`; `Err(Some(line))` when the
+    /// account isn't ready, `Err(None)` when the call failed.
+    async fn file(&self, chat: &str, change: Change) -> Result<chats::Filing, Option<String>> {
+        let cancel = CancellationToken::new();
+        let lease = self
+            .lease(&cancel)
+            .await
+            .ok_or_else(|| Some(NOT_READY.to_owned()))?;
+        let (client, session) = (lease.client(), lease.session());
+        let chat = client.chat(session, chat).map_err(|_| None)?;
+        match change {
+            Change::Pin(pinned) => chats::set_pinned(client, session, &chat, pinned, &cancel).await,
+            Change::Archive => chats::set_archived(client, session, &chat, true, &cancel).await,
+        }
+        .map_err(|_| None)
     }
 
     /// Stop the answer being written.

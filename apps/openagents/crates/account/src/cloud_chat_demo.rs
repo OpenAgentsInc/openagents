@@ -64,6 +64,18 @@ impl DemoChat {
         self.updates.send_replace(s.1.clone());
     }
 
+    /// Pin or unpin, on this phone only: the demo has no account.
+    pub fn set_pinned(&self, pinned: bool) {
+        let mut s = self.state.lock().unwrap();
+        s.1.pinned = pinned;
+        self.updates.send_replace(s.1.clone());
+    }
+
+    /// Archive: the demo keeps nothing, so it only starts over.
+    pub fn archive(&self) {
+        self.new_chat();
+    }
+
     /// Stop the reply being written; what's written so far stays.
     pub fn stop(&self) {
         let mut s = self.state.lock().unwrap();

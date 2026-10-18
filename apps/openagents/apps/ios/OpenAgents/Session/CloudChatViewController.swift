@@ -38,6 +38,16 @@ final class CloudChatModel {
     func send(_ text: String) { core.send(text: text) }
     func stop() { core.stop() }
     func newChat() { core.newChat() }
+    /// Pin or unpin the open chat; `done` gets nil, or a line to show.
+    func setPinned(_ pinned: Bool, done: @escaping (String?) -> Void) {
+        core.setPinned(pinned: pinned, done: CloudChatDoneBridge(done))
+    }
+    /// Archive the open chat and start a new one; `done` as for `setPinned`.
+    func archive(done: @escaping (String?) -> Void) {
+        core.archive(done: CloudChatDoneBridge(done))
+    }
+    /// The chat as plain text, for Copy Transcript.
+    func transcript() -> String { core.transcript() }
     /// Start a new chat with `text` (New session, with no computer online).
     func start(_ text: String) {
         core.newChat()
@@ -61,6 +71,16 @@ private final class CloudChatBridge: CloudChatListener, @unchecked Sendable {
     weak var model: CloudChatModel?
     func onCloudChatChanged(snapshot: CloudChatSnapshot) {
         DispatchQueue.main.async { [weak self] in self?.model?.changed(snapshot) }
+    }
+}
+
+/// Hands a pin or archive result back on the main thread.
+private final class CloudChatDoneBridge: CloudChatDone, @unchecked Sendable {
+    private let done: (String?) -> Void
+    init(_ done: @escaping (String?) -> Void) { self.done = done }
+    func onDone(error: String?) {
+        let done = self.done
+        DispatchQueue.main.async { done(error) }
     }
 }
 
@@ -211,6 +231,14 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         return fresh
     }()
 
+    /// The ⋯ menu, made once so a streaming answer doesn't close it.
+    private lazy var moreItem: UIBarButtonItem = {
+        let more = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: chatMenu())
+        more.accessibilityLabel = "More"
+        more.accessibilityIdentifier = "cloud-chat-menu"
+        return more
+    }()
+
     private func renderBar() {
         syncBarItems()
         renderOwnComputerCard()
@@ -218,13 +246,38 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
 
     private func syncBarItems() {
         var items: [UIBarButtonItem] = []
-        if !chat.snapshot.lines.isEmpty { items.append(freshItem) }
+        if !chat.snapshot.lines.isEmpty { items.append(contentsOf: [moreItem, freshItem]) }
         if let voiceBar, voiceBar.visible { items.append(voiceBar.item) }
         // Voice level frames land here too: only touch the bar when it changes.
         let shown = navigationItem.rightBarButtonItems ?? []
         if shown.count != items.count || !zip(shown, items).allSatisfy({ $0 === $1 }) {
             navigationItem.rightBarButtonItems = items
         }
+    }
+
+    /// The session's ⋯ menu, for a cloud chat: Pin, Copy Transcript, and
+    /// Archive. Runs on… comes later (#12020).
+    private func chatMenu() -> UIMenu {
+        UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
+            guard let self else { return done([]) }
+            let pinned = self.chat.snapshot.pinned
+            done([
+                UIAction(title: pinned ? "Unpin" : "Pin", image: UIImage(systemName: pinned ? "pin.slash" : "pin")) { [weak self] _ in
+                    self?.chat.setPinned(!pinned) { error in
+                        if let error { Toast.show(error, in: self?.view.window) }
+                    }
+                },
+                UIAction(title: "Copy Transcript", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in
+                    guard let self else { return }
+                    UIPasteboard.general.string = self.chat.transcript()
+                },
+                UIAction(title: "Archive", image: UIImage(systemName: "archivebox"), attributes: .destructive) { [weak self] _ in
+                    self?.chat.archive { error in
+                        if let error { Toast.show(error, in: self?.view.window) }
+                    }
+                },
+            ])
+        }])
     }
 
     private func render() {

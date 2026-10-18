@@ -287,6 +287,78 @@ pub async fn send(
     }
     Ok(())
 }
+/// Whether a chat is pinned and archived, as the service reports it after
+/// [`set_pinned`] or [`set_archived`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Filing {
+    /// The chat is pinned to the top of the list.
+    pub pinned: bool,
+    /// The chat is archived: out of the list until restored.
+    pub archived: bool,
+}
+/// Pin the chat (`true`) or unpin it (`false`), as the web's sidebar does
+/// (`PATCH /v1/threads/{id}`). A new pin goes after every earlier one.
+/// Repeating the call changes nothing more.
+pub async fn set_pinned(
+    client: &Client,
+    session: &Session,
+    chat: &ChatRef,
+    pinned: bool,
+    cancel: &CancellationToken,
+) -> Result<Filing, Error> {
+    file(client, session, chat, json!({ "pinned": pinned }), cancel).await
+}
+/// Archive the chat (`true`) or restore it (`false`), as the web's sidebar
+/// does (`PATCH /v1/threads/{id}`). Archiving also removes the cloud
+/// computers that ran it. Repeating the call changes nothing more.
+pub async fn set_archived(
+    client: &Client,
+    session: &Session,
+    chat: &ChatRef,
+    archived: bool,
+    cancel: &CancellationToken,
+) -> Result<Filing, Error> {
+    file(
+        client,
+        session,
+        chat,
+        json!({ "archived": archived }),
+        cancel,
+    )
+    .await
+}
+async fn file(
+    client: &Client,
+    session: &Session,
+    chat: &ChatRef,
+    body: Value,
+    cancel: &CancellationToken,
+) -> Result<Filing, Error> {
+    Turn {
+        chat: chat.clone(),
+        request_id: String::new(),
+    }
+    .check(client, session)?;
+    let future = async {
+        client
+            .request::<Value>(
+                Method::PATCH,
+                &["threads", chat.id()],
+                &[],
+                Some(body),
+                Some(session.token()),
+            )
+            .await
+    };
+    let value = tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),result=future=>result?};
+    if value["id"] != chat.id() {
+        return Err(Error::InvalidResponse);
+    }
+    Ok(Filing {
+        pinned: value["pinned"].as_bool().ok_or(Error::InvalidResponse)?,
+        archived: value["archived"].as_bool().ok_or(Error::InvalidResponse)?,
+    })
+}
 /// The service's answer to a stop request.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Stopped {
