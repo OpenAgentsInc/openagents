@@ -1,6 +1,8 @@
 // Copyright OpenAgents contributors. SPDX-License-Identifier: MIT
 package com.openagents.app.voice
 
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -60,6 +62,110 @@ class AndroidVoiceMediaBridgeTest {
         assertEquals(1, driver.requests.size)
     }
 
+    @Test
+    fun closeCancelsPendingPermissionRequestAndFencesItsReply() {
+        val driver = FakeVoiceMediaDriver()
+        val bridge = AndroidVoiceMediaBridge(driver)
+        val completed = mutableListOf<ULong>()
+        bridge.bind(VoiceMediaCompleter { requestId, _, _, _, _ -> completed += requestId })
+        bridge.`onRequest`(request(3u, VoiceMediaOperation.PREPARE))
+
+        bridge.`onRequest`(request(4u, VoiceMediaOperation.CLOSE))
+        driver.reply(3uL, VoiceMediaResult(failure = VoiceMediaFailure.PERMISSION_DENIED))
+
+        assertTrue(completed.isEmpty())
+        assertEquals(1, driver.closeCount)
+    }
+
+    @Test
+    fun closeWaitsForAnAlreadyRunningCompletionAndRejectsLaterReply() {
+        val driver = FakeVoiceMediaDriver()
+        val bridge = AndroidVoiceMediaBridge(driver)
+        val callbackEntered = CountDownLatch(1)
+        val allowCallbackToFinish = CountDownLatch(1)
+        val closeReturned = CountDownLatch(1)
+        val completed = mutableListOf<ULong>()
+        bridge.bind(
+            VoiceMediaCompleter { requestId, _, _, _, _ ->
+                callbackEntered.countDown()
+                assertTrue(allowCallbackToFinish.await(2, TimeUnit.SECONDS))
+                completed += requestId
+            },
+        )
+        bridge.`onRequest`(request(6u))
+
+        val callback = Thread { driver.reply(6uL, VoiceMediaResult(sdp = "fixture-answer")) }
+        callback.start()
+        assertTrue(callbackEntered.await(2, TimeUnit.SECONDS))
+        val close = Thread {
+            bridge.close()
+            closeReturned.countDown()
+        }
+        close.start()
+
+        assertFalse(closeReturned.await(50, TimeUnit.MILLISECONDS))
+        allowCallbackToFinish.countDown()
+        callback.join(2_000)
+        close.join(2_000)
+        driver.reply(6uL, VoiceMediaResult(sdp = "late-answer"))
+
+        assertFalse(callback.isAlive)
+        assertFalse(close.isAlive)
+        assertEquals(0L, closeReturned.count)
+        assertEquals(listOf(6uL), completed)
+        assertEquals(1, driver.closeCount)
+    }
+
+    @Test
+    fun separateCallsKeepCompletionsAndCloseStateIndependent() {
+        val firstDriver = FakeVoiceMediaDriver()
+        val secondDriver = FakeVoiceMediaDriver()
+        val firstBridge = AndroidVoiceMediaBridge(firstDriver)
+        val secondBridge = AndroidVoiceMediaBridge(secondDriver)
+        val completed = mutableListOf<ULong>()
+        val completer = VoiceMediaCompleter { requestId, _, _, _, _ -> completed += requestId }
+        firstBridge.bind(completer)
+        secondBridge.bind(completer)
+        firstBridge.`onRequest`(request(8u))
+        secondBridge.`onRequest`(request(9u))
+
+        firstBridge.close()
+        firstDriver.reply(8uL, VoiceMediaResult(sdp = "late-first-offer"))
+        secondDriver.reply(9uL, VoiceMediaResult(sdp = "second-offer"))
+
+        assertEquals(listOf(9uL), completed)
+        assertEquals(1, firstDriver.closeCount)
+        assertEquals(0, secondDriver.closeCount)
+        secondBridge.close()
+        assertEquals(1, secondDriver.closeCount)
+    }
+
+    @Test
+    fun forwardsTypedRouteFocusAndNetworkEventsAndFencesThemAfterClose() {
+        val driver = FakeVoiceMediaDriver()
+        val events = mutableListOf<VoiceMediaPlatformEvent>()
+        val bridge = AndroidVoiceMediaBridge(driver, events::add)
+
+        driver.emit(VoiceMediaPlatformEvent.RouteChanged(VoiceAudioRoute.BLUETOOTH))
+        driver.emit(VoiceMediaPlatformEvent.AudioFocusChanged(VoiceAudioFocusState.LOST_TRANSIENT))
+        driver.emit(VoiceMediaPlatformEvent.NetworkChanged(VoiceNetworkState.LOST))
+        driver.emit(VoiceMediaPlatformEvent.NetworkChanged(VoiceNetworkState.AVAILABLE))
+        val afterRecovery = events.toList()
+        bridge.close()
+        driver.emitLate(VoiceMediaPlatformEvent.RouteChanged(VoiceAudioRoute.SPEAKER))
+
+        assertEquals(
+            listOf(
+                VoiceMediaPlatformEvent.RouteChanged(VoiceAudioRoute.BLUETOOTH),
+                VoiceMediaPlatformEvent.AudioFocusChanged(VoiceAudioFocusState.LOST_TRANSIENT),
+                VoiceMediaPlatformEvent.NetworkChanged(VoiceNetworkState.LOST),
+                VoiceMediaPlatformEvent.NetworkChanged(VoiceNetworkState.AVAILABLE),
+            ),
+            afterRecovery,
+        )
+        assertEquals(afterRecovery, events)
+    }
+
     private fun request(
         requestId: ULong,
         operation: VoiceMediaOperation = VoiceMediaOperation.OFFER,
@@ -68,6 +174,8 @@ class AndroidVoiceMediaBridgeTest {
     private class FakeVoiceMediaDriver : VoiceMediaDriver {
         val requests = mutableListOf<VoiceMediaRequest>()
         private val callbacks = mutableMapOf<ULong, (VoiceMediaResult) -> Unit>()
+        private var eventListener: ((VoiceMediaPlatformEvent) -> Unit)? = null
+        private var previousEventListener: ((VoiceMediaPlatformEvent) -> Unit)? = null
         var closeCount = 0
             private set
 
@@ -76,8 +184,21 @@ class AndroidVoiceMediaBridgeTest {
             callbacks[request.requestId] = complete
         }
 
+        override fun setEventListener(listener: ((VoiceMediaPlatformEvent) -> Unit)?) {
+            if (listener != null) previousEventListener = listener
+            eventListener = listener
+        }
+
         fun reply(requestId: ULong, result: VoiceMediaResult) {
             callbacks[requestId]?.invoke(result)
+        }
+
+        fun emit(event: VoiceMediaPlatformEvent) {
+            eventListener?.invoke(event)
+        }
+
+        fun emitLate(event: VoiceMediaPlatformEvent) {
+            previousEventListener?.invoke(event)
         }
 
         override fun close() {

@@ -18,7 +18,40 @@ data class VoiceMediaResult(
 /** Platform media work runs on its own executor and never owns call signaling state. */
 interface VoiceMediaDriver {
     fun execute(request: VoiceMediaRequest, complete: (VoiceMediaResult) -> Unit)
+    fun setEventListener(listener: ((VoiceMediaPlatformEvent) -> Unit)?)
     fun close()
+}
+
+/** Android audio routes reported by the platform media layer. */
+enum class VoiceAudioRoute {
+    EARPIECE,
+    SPEAKER,
+    WIRED_HEADSET,
+    BLUETOOTH,
+    UNKNOWN,
+}
+
+/** Android audio focus state reported by the platform media layer. */
+enum class VoiceAudioFocusState {
+    GAINED,
+    LOST,
+    LOST_TRANSIENT,
+    LOST_TRANSIENT_CAN_DUCK,
+}
+
+/** Network availability reported by the platform media layer. */
+enum class VoiceNetworkState {
+    AVAILABLE,
+    LOST,
+}
+
+/** Platform-only events; call and signaling state remain in Rust. */
+sealed interface VoiceMediaPlatformEvent {
+    data class RouteChanged(val route: VoiceAudioRoute) : VoiceMediaPlatformEvent
+
+    data class AudioFocusChanged(val state: VoiceAudioFocusState) : VoiceMediaPlatformEvent
+
+    data class NetworkChanged(val state: VoiceNetworkState) : VoiceMediaPlatformEvent
 }
 
 /** Completes one Rust-owned media request. */
@@ -33,12 +66,19 @@ fun interface VoiceMediaCompleter {
 }
 
 /** Adapts Rust media requests to an Android media driver without moving call state into Kotlin. */
-class AndroidVoiceMediaBridge(private val driver: VoiceMediaDriver) : VoiceMediaListener, AutoCloseable {
+class AndroidVoiceMediaBridge(
+    private val driver: VoiceMediaDriver,
+    private val platformEventHandler: (VoiceMediaPlatformEvent) -> Unit = {},
+) : VoiceMediaListener, AutoCloseable {
     private val lock = Any()
     private val waitingForBinding = ArrayDeque<VoiceMediaRequest>()
     private val inFlight = mutableSetOf<ULong>()
     private var completer: VoiceMediaCompleter? = null
     private var closed = false
+
+    init {
+        driver.setEventListener(::receivePlatformEvent)
+    }
 
     /** Binds the returned UniFFI call handle and drains any requests received during startup. */
     fun bind(call: VoiceCall): Boolean = bind(
@@ -104,17 +144,24 @@ class AndroidVoiceMediaBridge(private val driver: VoiceMediaDriver) : VoiceMedia
         current: VoiceMediaCompleter,
         result: VoiceMediaResult,
     ) {
-        val shouldComplete = synchronized(lock) {
-            !closed && completer === current && inFlight.remove(request.requestId)
+        synchronized(lock) {
+            if (closed || completer !== current || !inFlight.remove(request.requestId)) return
+            // Keep close behind the callback so a result cannot arrive after close returns.
+            current.complete(
+                request.requestId,
+                result.failure,
+                result.sdp,
+                result.microphone,
+                result.speaker,
+            )
         }
-        if (!shouldComplete) return
-        current.complete(
-            request.requestId,
-            result.failure,
-            result.sdp,
-            result.microphone,
-            result.speaker,
-        )
+    }
+
+    private fun receivePlatformEvent(event: VoiceMediaPlatformEvent) {
+        synchronized(lock) {
+            if (closed) return
+            platformEventHandler.invoke(event)
+        }
     }
 
     override fun close() {
@@ -125,6 +172,9 @@ class AndroidVoiceMediaBridge(private val driver: VoiceMediaDriver) : VoiceMedia
             inFlight.clear()
             true
         }
-        if (shouldCloseDriver) driver.close()
+        if (shouldCloseDriver) {
+            driver.setEventListener(null)
+            driver.close()
+        }
     }
 }
