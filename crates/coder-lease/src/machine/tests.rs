@@ -138,50 +138,40 @@ fn grants_go_to_one_agent_id_replace_earlier_ones_and_end() {
 }
 
 #[test]
-fn a_prune_without_the_scope_is_refused_and_logged() {
+fn a_prune_needs_an_agent_and_a_reason_but_no_grant() {
     let h = home();
     let fixture = Fixture::default();
     let target = h.home.join("work/openagents-target-7");
     let action = Action::Prune(target.clone());
-    let entry = act(
-        &h.root,
-        &h.layout,
-        &fixture,
-        "chat-a",
-        &action,
-        "disk at 30 GiB",
-    )
-    .unwrap();
+    let entry = act(&h.root, &h.layout, &fixture, " ", &action, "disk at 30 GiB").unwrap();
     assert_eq!(entry.outcome, Outcome::Refused);
     assert!(
-        entry.detail.contains("holds no build.prune grant"),
+        entry.detail.contains("needs the agent ID"),
         "{}",
         entry.detail
     );
-    assert!(target.is_dir());
-
-    grant(&h.root, "chat-b", &[Scope::BuildPrune], None).unwrap();
-    let entry = act(
-        &h.root,
-        &h.layout,
-        &fixture,
-        "chat-a",
-        &action,
-        "disk at 30 GiB",
-    )
-    .unwrap();
-    assert_eq!(entry.outcome, Outcome::Refused, "another agent's grant");
-    let entry = act(&h.root, &h.layout, &fixture, "chat-b", &action, " ").unwrap();
+    let entry = act(&h.root, &h.layout, &fixture, "chat-a", &action, " ").unwrap();
     assert_eq!(entry.outcome, Outcome::Refused);
     assert!(entry.detail.contains("needs a reason"));
     assert!(target.is_dir());
 
+    // No grant on record: the prune still goes ahead (#12135).
+    let entry = act(
+        &h.root,
+        &h.layout,
+        &fixture,
+        "chat-a",
+        &action,
+        "disk at 30 GiB",
+    )
+    .unwrap();
+    assert_ne!(entry.outcome, Outcome::Refused, "{}", entry.detail);
+
     let logged = read_log(&h.root, 10).unwrap();
     assert_eq!(logged.len(), 3);
-    assert!(logged.iter().all(|entry| entry.outcome == Outcome::Refused));
-    assert_eq!(logged[0].agent, "chat-a");
-    assert_eq!(logged[0].at, "2026-10-17 9:12:00 PM CDT");
-    assert_eq!(logged[0].path.as_deref(), Some(target.as_path()));
+    assert_eq!(logged[1].agent, "chat-a");
+    assert_eq!(logged[1].at, "2026-10-17 9:12:00 PM CDT");
+    assert_eq!(logged[1].path.as_deref(), Some(target.as_path()));
 }
 
 #[test]
@@ -329,7 +319,7 @@ fn a_granted_prune_still_refuses_what_the_sweep_never_touches() {
 }
 
 #[test]
-fn a_stop_needs_the_scope_and_never_takes_a_deploy_init_or_the_caller() {
+fn a_stop_never_takes_a_deploy_init_or_the_caller() {
     let h = home();
     let proc = |pid: u32, command: &str, ours: bool| ProcInfo {
         pid,
@@ -351,19 +341,7 @@ fn a_stop_needs_the_scope_and_never_takes_a_deploy_init_or_the_caller() {
         ],
         ..Fixture::default()
     };
-    let entry = act(
-        &h.root,
-        &h.layout,
-        &fixture,
-        "chat-a",
-        &Action::Stop(700),
-        "hung",
-    )
-    .unwrap();
-    assert_eq!(entry.outcome, Outcome::Refused);
-    assert!(entry.detail.contains("holds no process.stop grant"));
-
-    grant(&h.root, "chat-a", &[Scope::ProcessStop], None).unwrap();
+    // No grant is needed (#12135); the safety refusals still hold.
     for (pid, why) in [
         (36662, "deploys are the owner's"),
         (36663, "deploys are the owner's"),

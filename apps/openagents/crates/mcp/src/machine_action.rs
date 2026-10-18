@@ -169,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn prunes_only_under_this_chats_grant_and_logs_it() {
+    fn prunes_with_this_chats_proof_and_logs_it() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().canonicalize().unwrap();
         let root = home.join(".openagents/leases");
@@ -181,15 +181,8 @@ mod tests {
         let b = proof::proof_for(&root, "chat-b").unwrap();
         let (a, b) = (Some(a.as_str()), Some(b.as_str()));
 
-        let out = call_at(&root, &layout, &Fixture, Some("chat-a"), a, prune.clone()).unwrap();
-        assert_eq!(out["outcome"], "refused");
-        assert!(target.is_dir());
         assert!(call_at(&root, &layout, &Fixture, None, None, prune.clone()).is_err());
-
-        machine::grant(&root, "chat-a", &[Scope::BuildPrune], None).unwrap();
-        let out = call_at(&root, &layout, &Fixture, Some("chat-b"), b, prune.clone()).unwrap();
-        assert_eq!(out["outcome"], "refused", "the grant is chat-a's alone");
-        // A server started with chat-a's ID copied, but no proof or chat-b's.
+        // No grant is needed (#12135), but the proof still is. A server started with chat-a's ID copied, but no proof or chat-b's.
         for forged in [None, b] {
             let err = call_at(
                 &root,
@@ -216,7 +209,7 @@ mod tests {
             json!({"action": "grants"}),
         )
         .unwrap();
-        assert_eq!(grants["scopes"], json!(["build.prune"]));
+        assert_eq!(grants["scopes"], json!([]));
         let log = call_at(
             &root,
             &layout,
@@ -231,13 +224,6 @@ mod tests {
         assert_eq!(entries[1]["agent"], "chat-a");
         assert_eq!(entries[1]["outcome"], "done");
         assert_eq!(entries[1]["at"], "2026-10-17 9:30:00 PM CDT");
-        // The owner revokes it: the real chat, proof and all, is refused.
-        machine::revoke(&root, "chat-a").unwrap();
-        std::fs::create_dir_all(target.join("debug/deps")).unwrap();
-        let prune = json!({"action": "prune", "path": target, "reason": "disk at 30 GiB"});
-        let out = call_at(&root, &layout, &Fixture, Some("chat-a"), a, prune).unwrap();
-        assert_eq!(out["outcome"], "refused");
-        assert!(target.is_dir());
         assert!(
             call_at(
                 &root,

@@ -6,7 +6,7 @@
 
 use coder_lease::machine::proof;
 pub use coder_lease::machine::proof::{Caller, PROOF_VAR};
-use coder_lease::machine::{self, Entry, Grants, Scope};
+use coder_lease::machine::{self, Entry, Scope};
 
 /// Who asks for an upgrade. `named` is the `--agent` flag. The owner at a
 /// terminal is the owner, even naming a chat; an agent must carry the
@@ -68,33 +68,14 @@ fn refused(root: &std::path::Path, agent: &str, reason: &str, why: String) -> St
     why
 }
 
-/// Whether `agent` may start an upgrade now. A refusal is logged.
+/// Whether `agent` may start an upgrade now: always.
 ///
 /// # Errors
-/// The agent holds no live `host.upgrade` grant, or the grants can't be read.
-pub fn check(agent: &str, reason: &str) -> Result<(), String> {
-    let (root, _) = machine::here()?;
-    let grants = Grants::load(&root)?;
-    check_in(&root, &grants, agent, reason)
-}
-
-fn check_in(
-    root: &std::path::Path,
-    grants: &Grants,
-    agent: &str,
-    reason: &str,
-) -> Result<(), String> {
-    if grants.allows(agent, Scope::HostUpgrade, crate::now_ms()) {
-        return Ok(());
-    }
-    let mut entry = Entry::new(&machine::System, agent, Scope::HostUpgrade, reason);
-    entry.outcome = machine::Outcome::Refused;
-    entry.command = Some("host-upgrade".into());
-    entry.detail = format!(
-        "{agent} holds no host.upgrade grant; ask the owner to run `openagents lease grant machine {agent} --scope upgrade`"
-    );
-    let _ = machine::log(root, &entry);
-    Err(entry.detail)
+/// None today; the signature stays for callers.
+pub fn check(_agent: &str, _reason: &str) -> Result<(), String> {
+    // No grant is needed (owner, 2026-10-18, #12135); `record` still logs
+    // every upgrade an agent asks for.
+    Ok(())
 }
 
 /// Log a finished upgrade an agent asked for in the machine-action log.
@@ -123,31 +104,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_a_granted_agent_may_upgrade_and_refusals_are_logged() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        let err = check_in(root, &Grants::default(), "chat-1", "newest main").unwrap_err();
-        assert!(err.contains("holds no host.upgrade grant"), "{err}");
-        let log = machine::read_log(root, 10).unwrap();
-        assert_eq!(log.len(), 1);
-        assert_eq!(
-            (log[0].scope, log[0].outcome, log[0].agent.as_str()),
-            (Scope::HostUpgrade, machine::Outcome::Refused, "chat-1")
-        );
-
-        machine::grant(root, "chat-1", &[Scope::HostUpgrade], None).unwrap();
-        let grants = Grants::load(root).unwrap();
-        assert!(check_in(root, &grants, "chat-1", "newest main").is_ok());
-        assert!(check_in(root, &grants, "chat-2", "newest main").is_err());
-        // Another scope isn't this one.
-        machine::grant(root, "chat-3", &[Scope::BuildPrune], None).unwrap();
-        let grants = Grants::load(root).unwrap();
-        assert!(check_in(root, &grants, "chat-3", "newest main").is_err());
-
-        // The owner takes it back.
-        machine::revoke(root, "chat-1").unwrap();
-        let grants = Grants::load(root).unwrap();
-        assert!(check_in(root, &grants, "chat-1", "newest main").is_err());
+    fn any_agent_may_upgrade_without_a_grant() {
+        assert!(check("chat-1", "newest main").is_ok());
     }
 
     #[test]

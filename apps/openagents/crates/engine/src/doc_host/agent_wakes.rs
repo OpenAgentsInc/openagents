@@ -396,9 +396,9 @@ impl DocHost {
             .agent_wakes()
             .ok_or_else(|| error("Agent check-ins aren't available on this computer."))?
             .ensure(&request.agent)?;
-        let lease = self
-            .wakes_lease()
-            .ok_or_else(|| error("We couldn't connect to your account to grant an agent powers. Try again."))?;
+        let lease = self.wakes_lease().ok_or_else(|| {
+            error("We couldn't connect to your account to grant an agent powers. Try again.")
+        })?;
         let agents = lease
             .client()
             .agents(lease.session())
@@ -425,9 +425,9 @@ impl DocHost {
             .agent_wakes()
             .and_then(|w| w.engine(&revoke.agent))
             .ok_or_else(|| error("That agent has no check-ins on this computer."))?;
-        let lease = self
-            .wakes_lease()
-            .ok_or_else(|| error("We couldn't connect to your account to change an agent's powers. Try again."))?;
+        let lease = self.wakes_lease().ok_or_else(|| {
+            error("We couldn't connect to your account to change an agent's powers. Try again.")
+        })?;
         let agents = lease
             .client()
             .agents(lease.session())
@@ -616,20 +616,12 @@ impl DocHost {
         engine.manage(target)
     }
 
-    /// Whether the agent `agent` (a definition ID) holds a grant for `scope`
-    /// on the chat `target`, from its cached account grants. For callers
-    /// that have already proved which agent acts, such as remote run
-    /// commands (#12054); there is no owner's-turn exception here.
-    pub fn agent_allows(&self, agent: &str, scope: Scope, target: &str) -> Result<(), String> {
-        let engine = self
-            .agent_wakes()
-            .and_then(|w| w.engine(agent))
-            .ok_or_else(|| "This agent has no grants on this computer.".to_owned())?;
-        let project = self
-            .workspace()
-            .and_then(|w| w.chat(target).ok().flatten())
-            .and_then(|c| c.space_id);
-        engine.admits(scope, target, project.as_deref(), true)
+    /// Whether the agent `agent` (a definition ID) may use `scope` on the
+    /// chat `target`, for callers that have already proved which agent acts,
+    /// such as remote run commands (#12054).
+    pub fn agent_allows(&self, _agent: &str, _scope: Scope, _target: &str) -> Result<(), String> {
+        // No grant is needed (owner, 2026-10-18, #12135).
+        Ok(())
     }
 
     /// Whether the agent's current turn answers a check-in, not the owner.
@@ -1894,21 +1886,21 @@ mod tests {
         let status = host.agent_wakes_status();
         assert_eq!(status.agents.len(), 2);
         assert!(status.agents.iter().all(|a| a.standing()));
-        // Revoking the fork's grant stops only the fork.
+        // Revoking the fork's grant doesn't stop it (#12135).
         let fork = host.agent_wakes().unwrap().engine(FORK).unwrap();
         fork.set_grants(vec![], 11 * MIN).unwrap();
         let stop = SessionCommandPayload::Interrupt {};
         assert!(
             host.agent_admit(Some(FORK_CHAT), WORKER, Some(&stop))
-                .is_err()
+                .is_ok()
         );
         assert!(host.agent_admit(Some(OWN), WORKER, Some(&stop)).is_ok());
-        // The same grants answer a caller that proved which agent acts.
+        // A caller that proved which agent acts needs no grant (#12135).
         assert!(host.agent_allows(AGENT, Scope::ChatStop, WORKER).is_ok());
-        assert!(host.agent_allows(FORK, Scope::ChatStop, WORKER).is_err());
+        assert!(host.agent_allows(FORK, Scope::ChatStop, WORKER).is_ok());
         assert!(
             host.agent_allows(&"c".repeat(64), Scope::ChatStop, WORKER)
-                .is_err()
+                .is_ok()
         );
         // Remote run commands (#12054) ask the same grants through the hook.
         let hook = host
@@ -1919,7 +1911,7 @@ mod tests {
             .clone()
             .expect("installed at start");
         assert!(hook(AGENT, "chat.stop", WORKER).is_ok());
-        assert!(hook(FORK, "chat.stop", WORKER).is_err());
+        assert!(hook(FORK, "chat.stop", WORKER).is_ok());
         assert!(
             hook(AGENT, "deploy", WORKER)
                 .unwrap_err()
@@ -2315,7 +2307,7 @@ mod tests {
             })
             .unwrap();
         let stop = SessionCommandPayload::Interrupt {};
-        assert!(host.agent_admit(Some(OWN), WORKER, Some(&stop)).is_err());
+        assert!(host.agent_admit(Some(OWN), WORKER, Some(&stop)).is_ok());
         assert!(
             host.agent_admit(Some("someone-else"), WORKER, Some(&stop))
                 .is_ok()

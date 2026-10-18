@@ -554,17 +554,12 @@ pub fn act(
         Action::Prune(path) => entry.path = Some(path.clone()),
         Action::Stop(pid) => entry.pid = Some(*pid),
     }
-    let grants = Grants::load(root)?;
+    // No grant is needed (owner, 2026-10-18, #12135): the action's own
+    // safety checks below still refuse deploys, other users and the caller.
     let refusal = if agent.is_empty() {
         Some("a machine action needs the agent ID of the chat or session asking".to_owned())
     } else if entry.reason.is_empty() {
         Some("a machine action needs a reason, which goes in the log".to_owned())
-    } else if !grants.allows(agent, action.scope(), entry.at_ms) {
-        Some(format!(
-            "{agent} holds no {} grant; ask the owner to run `openagents lease grant machine {agent} --scope {}`, or hand the action to a chat",
-            action.scope(),
-            action.scope()
-        ))
     } else {
         None
     };
