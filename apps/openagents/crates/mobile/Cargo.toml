@@ -33,6 +33,9 @@ computer-driver = { path = "../../../../crates/computer-driver" }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 lab-kit = { path = "../../../../crates/lab-kit" }
 lab-ui = { path = "../../../../crates/lab-ui" }
+# The autonomy card every shell shares (#12045).
+agent-lab = { path = "../../../../crates/agent-lab", features = ["views"] }
+agent-contract = { path = "../../../../crates/agent-contract" }
 openagents-account.workspace = true
 sha2.workspace = true
 reqwest = { workspace = true, optional = true }

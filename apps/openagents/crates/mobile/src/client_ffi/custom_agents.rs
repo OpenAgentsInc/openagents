@@ -1125,9 +1125,174 @@ fn private_write(path: &std::path::Path, bytes: &[u8]) -> CoreResult<()> {
     std::fs::rename(pending, path).map_err(|_| failed("The request could not be saved."))
 }
 
+/// The autonomy card's view instance for one agent (#12045).
+fn card_instance(id: &str) -> String {
+    format!("agent-card-{}", &id[..id.len().min(24)])
+}
+
+fn card_json(card: &agent_lab::autonomy::Card) -> CoreResult<String> {
+    let view = card
+        .view(&card_instance(&card.agent), 1)
+        .map_err(|_| failed("This agent's card couldn't be shown."))?;
+    view.to_json()
+        .ok()
+        .and_then(|b| String::from_utf8(b).ok())
+        .ok_or_else(|| failed("This agent's card couldn't be shown."))
+}
+
+/// The card from the account: the definition and its grants. The chat and
+/// decision log live on the computer that runs it.
+async fn account_card(
+    lease: &Lease,
+    id: &str,
+) -> Result<agent_lab::autonomy::Card, openagents::Error> {
+    let agents = lease.client().agents(lease.session())?;
+    let definition = agents.get(id, None, &lease.cancel).await?;
+    let grants = agents.grants(id, &lease.cancel).await?;
+    Ok(agent_lab::autonomy::Card {
+        agent: id.to_owned(),
+        name: definition.spec.name,
+        autonomy: definition.spec.autonomy,
+        grants,
+        here: None,
+    })
+}
+
+#[uniffi::export]
+impl CoreAgents {
+    /// One saved agent's autonomy card as Rust Native view JSON (#12045).
+    pub async fn autonomy_card(&self, id: String) -> CoreResult<String> {
+        let lease = self.lease()?;
+        let card = openagents_client::runtime::shared()
+            .spawn(async move { account_card(&lease, &id).await })
+            .await
+            .map_err(|_| failed("This agent's card couldn't load."))?
+            .map_err(|e| failed(&e.to_string()))?;
+        card_json(&card)
+    }
+
+    /// Carry out what the card asked for through the account, and return
+    /// the fresh card.
+    pub async fn act_on_card(
+        &self,
+        id: String,
+        instance: String,
+        revision: u64,
+        node: String,
+    ) -> CoreResult<String> {
+        use agent_lab::autonomy::Intent;
+        let lease = self.lease()?;
+        let card = openagents_client::runtime::shared()
+            .spawn(async move {
+                let card = account_card(&lease, &id).await?;
+                let view = card
+                    .view(&card_instance(&id), 1)
+                    .map_err(|_| openagents::Error::InvalidReference)?;
+                let intent = view
+                    .activate(&Activation {
+                        instance,
+                        revision,
+                        node,
+                    })
+                    .map_err(|_| openagents::Error::InvalidReference)?
+                    .clone();
+                let agents = lease.client().agents(lease.session())?;
+                match intent {
+                    Intent::Log { on: true } => {
+                        agents
+                            .grant(
+                                &id,
+                                vec![agent_contract::GrantScope::LogWrite.word().to_owned()],
+                                agent_contract::GrantOver::Account,
+                                &lease.cancel,
+                            )
+                            .await?;
+                    }
+                    Intent::Log { on: false } => {
+                        for grant in card.log_grants() {
+                            agents.revoke_grant(&id, &grant, &lease.cancel).await?;
+                        }
+                    }
+                    Intent::Revoke { grant } => {
+                        agents.revoke_grant(&id, &grant, &lease.cancel).await?;
+                    }
+                }
+                account_card(&lease, &id).await
+            })
+            .await
+            .map_err(|_| failed("That change didn't go through."))?
+            .map_err(|e| failed(&e.to_string()))?;
+        card_json(&card)
+    }
+}
+
+/// A sample agent's card for the offline demo and Design Lab (#12045).
+#[uniffi::export]
+pub fn demo_autonomy_card() -> String {
+    use agent_contract::{AgentGrant, Autonomy, GrantOver, GrantScope, WakeEvent};
+    let card = agent_lab::autonomy::Card {
+        agent: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3".into(),
+        name: "Release reviewer".into(),
+        autonomy: Some(Autonomy {
+            check_ins: true,
+            every_minutes: Some(30),
+            wakes: vec![WakeEvent::ChatFinished, WakeEvent::IssueClosed],
+            ..Autonomy::default()
+        }),
+        grants: vec![
+            AgentGrant {
+                id: "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1".into(),
+                scopes: vec![GrantScope::ChatMessage, GrantScope::ChatSteer],
+                over: GrantOver::Chats(vec!["a".into(), "b".into()]),
+                granted_at: 0,
+            },
+            AgentGrant {
+                id: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1".into(),
+                scopes: vec![GrantScope::LogWrite],
+                over: GrantOver::Account,
+                granted_at: 0,
+            },
+        ],
+        here: None,
+    };
+    card_json(&card).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #12045: the phone shows the shared card for any saved agent.
+    #[test]
+    fn the_demo_card_is_the_shared_view_in_plain_words() {
+        let json: serde_json::Value = serde_json::from_str(&demo_autonomy_card()).unwrap();
+        let text = json.to_string();
+        assert!(
+            text.contains("Release reviewer") && text.contains("Decision log: on"),
+            "{text}"
+        );
+        assert!(text.contains("Its chat and decision log are on the computer that runs it."));
+        let mut labels = Vec::new();
+        fn walk(v: &serde_json::Value, out: &mut Vec<String>) {
+            match v {
+                serde_json::Value::Object(m) => {
+                    for (k, v) in m {
+                        if (k == "value" || k == "label") && v.is_string() {
+                            out.push(v.as_str().unwrap().to_owned());
+                        }
+                        walk(v, out);
+                    }
+                }
+                serde_json::Value::Array(a) => a.iter().for_each(|v| walk(v, out)),
+                _ => {}
+            }
+        }
+        walk(&json, &mut labels);
+        assert!(!labels.is_empty());
+        for label in labels {
+            assert!(oa_copy::violations(&label, &[]).is_empty(), "{label}");
+        }
+    }
     fn form() -> Form {
         Form {
             instance: "fixture".into(),

@@ -1,5 +1,7 @@
 //! Settings → General → Check-ins: every saved agent's check-ins, grants
-//! and decision log on this computer (#11965, #12044). Any agent whose
+//! and decision log on this computer (#11965, #12044). The grants, the
+//! Decision log switch and the log are the shared autonomy card
+//! (`agent_lab::autonomy`, #12045) that the phone and the website show too. Any agent whose
 //! definition declares wakes appears here, keyed by its definition ID; the
 //! engine that hosts its chat keeps all three, and grants go through the
 //! account.
@@ -36,8 +38,82 @@ pub(super) struct AgentWakesCard {
     _refresh: Task<()>,
 }
 
+/// The status Design Lab's offscreen tour shows instead of asking an engine.
+static FIXTURE: std::sync::OnceLock<WakesStatus> = std::sync::OnceLock::new();
+
+/// Show `status` in every Check-ins card, for Design Lab captures.
+pub fn install_fixture(status: WakesStatus) {
+    let _ = FIXTURE.set(status);
+}
+
+/// A saved agent that isn't Foreman, with a grant, its log on, and two
+/// decisions: the autonomy card as Design Lab shows it (#12045).
+pub fn fixture_status() -> WakesStatus {
+    use openagents_proto::agent_wakes::{Grant, Wake};
+    WakesStatus {
+        agents: vec![AgentWakeStatus {
+            agent: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3".into(),
+            agent_name: "Release reviewer".into(),
+            settings: WakeSettings {
+                chat_id: Some("fixture-chat".into()),
+                every_minutes: 30,
+                ..WakeSettings::default()
+            },
+            chat_title: Some("Release review".into()),
+            wakes: vec![Wake::ChatFinished, Wake::IssueClosed],
+            grants: vec![
+                Grant {
+                    id: "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1".into(),
+                    scopes: vec![Scope::ChatMessage, Scope::ChatSteer],
+                    over: Over::Chats(vec!["a".into(), "b".into()]),
+                    granted_at: 1_792_340_000_000,
+                },
+                Grant {
+                    id: "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1".into(),
+                    scopes: vec![Scope::LogWrite],
+                    over: Over::Account,
+                    granted_at: 1_792_340_000_000,
+                },
+            ],
+            next_check_in: Some(1_792_345_400_000),
+            problem: None,
+            turned_on_at: None,
+            decisions: vec![
+                DecisionEntry::Decision {
+                    at: 1_792_341_000_000,
+                    saw: "the release build finished".into(),
+                    decided: "to review the notes".into(),
+                    did: "asked the build chat for its changelog".into(),
+                    judgments: vec![],
+                },
+                DecisionEntry::Decision {
+                    at: 1_792_342_800_000,
+                    saw: "the changelog".into(),
+                    decided: "it reads well".into(),
+                    did: "nothing".into(),
+                    judgments: vec![],
+                },
+            ],
+            log_kept_before_grant: false,
+        }],
+        candidates: vec![],
+        problem: None,
+    }
+}
+
 impl AgentWakesCard {
     pub fn new(state: Entity<AppState>, cx: &mut Context<Self>) -> Self {
+        if let Some(status) = FIXTURE.get() {
+            return Self {
+                state,
+                status: Loadable::Ready(status.clone()),
+                error: None,
+                saving: false,
+                selects: HashMap::new(),
+                task: None,
+                _refresh: Task::ready(()),
+            };
+        }
         let refresh = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(REFRESH).await;
@@ -166,6 +242,60 @@ impl AgentWakesCard {
                     agent: agent.agent.clone(),
                     scopes: Scope::CHAT.iter().map(|s| s.word().to_owned()).collect(),
                     over: Over::Account,
+                })
+                .unwrap_or_default(),
+            ),
+        };
+        self.request(Some(change), cx);
+    }
+
+    /// Carry out what the shared card asked for, against the card as it is
+    /// drawn now.
+    fn act(
+        &mut self,
+        agent: &AgentWakeStatus,
+        activation: &rust_native::Activation,
+        cx: &mut Context<Self>,
+    ) {
+        use agent_lab::autonomy::Intent;
+        if self.saving {
+            return;
+        }
+        let card = autonomy_card(agent);
+        let Ok(view) = card.view(&card_instance(&agent.agent), 1) else {
+            return;
+        };
+        let Ok(intent) = view.activate(activation) else {
+            return;
+        };
+        let change = match intent {
+            Intent::Log { on: true } => (
+                methods::GRANT_AGENT,
+                serde_json::to_value(GrantRequest {
+                    agent: agent.agent.clone(),
+                    scopes: vec![Scope::LogWrite.word().to_owned()],
+                    over: Over::Account,
+                })
+                .unwrap_or_default(),
+            ),
+            Intent::Log { on: false } => {
+                let Some(grant) = card.log_grants().into_iter().next() else {
+                    return;
+                };
+                (
+                    methods::REVOKE_AGENT_GRANT,
+                    serde_json::to_value(RevokeGrant {
+                        agent: agent.agent.clone(),
+                        grant,
+                    })
+                    .unwrap_or_default(),
+                )
+            }
+            Intent::Revoke { grant } => (
+                methods::REVOKE_AGENT_GRANT,
+                serde_json::to_value(RevokeGrant {
+                    agent: agent.agent.clone(),
+                    grant: grant.clone(),
                 })
                 .unwrap_or_default(),
             ),
@@ -440,20 +570,18 @@ impl AgentWakesCard {
                     .when(!interactive, |el| el.opacity(0.5)),
             );
 
-        let mut log = div().flex().flex_col().gap(px(6.0));
-        let entries: Vec<&DecisionEntry> = agent.decisions.iter().rev().take(SHOWN).collect();
-        if entries.is_empty() {
-            log = log.child(description(
-                theme,
-                "Nothing yet. Each check-in adds what it saw, decided and did.",
-            ));
-        }
-        for entry in entries {
-            log = log.child(description(
-                theme,
-                &format!("{}  {}", local_time(entry.at()), entry_line(entry)),
-            ));
-        }
+        // The grants, the Decision log switch and the log: the autonomy
+        // card the phone and the website show too (#12045).
+        let shared = autonomy_card(agent)
+            .view(&card_instance(&agent.agent), 1)
+            .map(|view| {
+                let agent = agent.clone();
+                crate::native_actions::mount(
+                    &view,
+                    move |card: &mut Self, activation, cx| card.act(&agent, &activation, cx),
+                    cx,
+                )
+            });
         let log_row = widgets::card_row(theme, false).child(
             div()
                 .flex_1()
@@ -461,8 +589,7 @@ impl AgentWakesCard {
                 .flex()
                 .flex_col()
                 .gap(px(8.0))
-                .child(widgets::row_title(theme, "Decision log"))
-                .child(log),
+                .children(shared.ok()),
         );
         div()
             .flex()
@@ -550,6 +677,57 @@ impl Render for AgentWakesCard {
     }
 }
 
+fn card_instance(agent: &str) -> String {
+    format!("agent-card-{}", &agent[..agent.len().min(24)])
+}
+
+/// The shared autonomy card for one agent on this computer (#12045).
+fn autonomy_card(agent: &AgentWakeStatus) -> agent_lab::autonomy::Card {
+    // The app's types and the account's share one JSON shape.
+    fn same<T: serde::de::DeserializeOwned>(v: serde_json::Value) -> Option<T> {
+        serde_json::from_value(v).ok()
+    }
+    let configured = agent.settings.chat_id.is_some();
+    let next = match (configured, !agent.settings.paused, agent.next_check_in) {
+        (false, _, _) => None,
+        (true, false, _) => Some("Check-ins are paused.".to_owned()),
+        (true, true, Some(at)) => Some(format!("Next check-in at {}.", local_time(at))),
+        (true, true, None) => Some("Checking in soon.".to_owned()),
+    };
+    agent_lab::autonomy::Card {
+        agent: agent.agent.clone(),
+        name: agent.agent_name.clone(),
+        autonomy: Some(agent_contract::Autonomy {
+            check_ins: configured && !agent.settings.paused,
+            every_minutes: Some(agent.settings.every_minutes),
+            wakes: agent
+                .wakes
+                .iter()
+                .filter_map(|w| same(serde_json::to_value(w).ok()?))
+                .collect(),
+            ..agent_contract::Autonomy::default()
+        }),
+        grants: agent
+            .grants
+            .iter()
+            .filter_map(|g| same(serde_json::to_value(g).ok()?))
+            .collect(),
+        here: Some(agent_lab::autonomy::Here {
+            chat: agent.chat_title.clone(),
+            next_check_in: next,
+            log: agent
+                .decisions
+                .iter()
+                .rev()
+                .take(SHOWN)
+                .rev()
+                .map(|e| format!("{}  {}", local_time(e.at()), entry_line(e)))
+                .collect(),
+            log_kept_before_grant: agent.log_kept_before_grant,
+        }),
+    }
+}
+
 /// Says this computer turned check-ins on by itself (#12030).
 fn turned_on_line(at: i64) -> String {
     format!(
@@ -606,17 +784,63 @@ fn entry_line(entry: &DecisionEntry) -> String {
     }
 }
 
-fn description(theme: &Theme, text: &str) -> gpui::Div {
-    div()
-        .text_size(crate::typography::ui_rems(widgets::ROW_DESCRIPTION_SIZE))
-        .line_height(crate::typography::ui_rems(16.0))
-        .text_color(theme.text_muted)
-        .child(text.to_owned())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #12045: any saved agent gets the shared autonomy card here, with
+    /// its grants, Decision log switch and log, in plain words.
+    #[test]
+    fn any_agent_gets_the_shared_autonomy_card() {
+        use openagents_proto::agent_wakes::{Grant, Wake};
+        let agent = AgentWakeStatus {
+            agent: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3".into(),
+            agent_name: "Release reviewer".into(),
+            settings: WakeSettings {
+                chat_id: Some("chat-1".into()),
+                every_minutes: 30,
+                ..WakeSettings::default()
+            },
+            chat_title: Some("Release review".into()),
+            wakes: vec![Wake::ChatFinished],
+            grants: vec![Grant {
+                id: "g1".into(),
+                scopes: vec![Scope::LogWrite],
+                over: Over::Account,
+                granted_at: 0,
+            }],
+            next_check_in: None,
+            problem: None,
+            turned_on_at: None,
+            decisions: vec![DecisionEntry::Decision {
+                at: 0,
+                saw: "the build finished".into(),
+                decided: "to merge".into(),
+                did: "nothing".into(),
+                judgments: vec![],
+            }],
+            log_kept_before_grant: false,
+        };
+        let card = autonomy_card(&agent);
+        assert!(card.log_on());
+        assert_eq!(card.log_grants(), ["g1"]);
+        let view = card.view(&card_instance(&agent.agent), 1).unwrap();
+        let texts = agent_lab::autonomy::texts(&view);
+        assert!(texts.contains(&"Decision log: on".to_owned()), "{texts:?}");
+        assert!(
+            texts.contains(&"Runs in “Release review”".to_owned()),
+            "{texts:?}"
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.ends_with("Decided: to merge Did: nothing")),
+            "{texts:?}"
+        );
+        for text in &texts {
+            assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
+        }
+    }
 
     #[test]
     fn card_text_is_plain() {

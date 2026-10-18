@@ -3264,6 +3264,7 @@ impl RpcService for EngineRpc {
                 let record: openagents_proto::agent_wakes::RecordDecision = parse_params(params)?;
                 self.doc_host
                     .record_agent_decision(record)
+                    .await
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&serde_json::json!({ "recorded": true }))
             }

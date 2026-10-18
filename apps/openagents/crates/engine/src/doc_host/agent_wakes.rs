@@ -31,6 +31,11 @@ fn error(message: &str) -> EngineError {
     EngineError::Other(message.into())
 }
 
+/// `record_decision` from a chat that doesn't run a saved agent.
+const NOT_AN_AGENT: &str = "Only a saved agent's own chat can write its decision log.";
+/// `record_decision` from an agent without `log.write` (#12045).
+pub(crate) const NO_LOG_GRANT: &str = "This agent can't keep a decision log yet. Turn on Decision log on its card in Settings, then try again.";
+
 /// A chat's saved agent: its definition ID, from the chat config the host
 /// stamps from the definition.
 fn chat_agent(chat: &openagents_proto::Chat) -> Option<String> {
@@ -329,6 +334,12 @@ impl DocHost {
                     problem: engine.problem(),
                     turned_on_at: state.turned_on_at,
                     decisions: engine.read(crate::agent_wakes::STATUS_ENTRIES),
+                    log_kept_before_grant: !state.log_grant_moved
+                        && !state
+                            .grants
+                            .iter()
+                            .any(|g| g.scopes.contains(&Scope::LogWrite))
+                        && engine.kept_a_log(),
                     settings: state.settings,
                 }
             })
@@ -468,27 +479,55 @@ impl DocHost {
                 s.wants_standing = false;
             })?;
         }
-        let grants = agents
+        let mut grants: Vec<Grant> = agents
             .grants(engine.agent(), &lease.cancel)
             .await
             .map_err(EngineError::AgentService)?
             .into_iter()
             .filter_map(from_account)
             .collect();
+        // A log kept here before `log.write` existed becomes that grant
+        // once (#12045). An account that can't take it yet leaves the log
+        // open and the rest of the refresh goes on; the next one tries again.
+        let has_log = |g: &[Grant]| g.iter().any(|g| g.scopes.contains(&Scope::LogWrite));
+        if !engine.state().log_grant_moved && !has_log(&grants) && engine.kept_a_log() {
+            match agents
+                .grant(
+                    engine.agent(),
+                    vec![Scope::LogWrite.word().to_owned()],
+                    openagents_account::openagents::agents::GrantOver::Account,
+                    &lease.cancel,
+                )
+                .await
+            {
+                Ok(_) => {
+                    engine.update(|s| s.log_grant_moved = true)?;
+                    grants = agents
+                        .grants(engine.agent(), &lease.cancel)
+                        .await
+                        .map_err(EngineError::AgentService)?
+                        .into_iter()
+                        .filter_map(from_account)
+                        .collect();
+                }
+                Err(e) => tracing::warn!(error = %e, "agent decision log: grant not moved yet"),
+            }
+        } else if has_log(&grants) && !engine.state().log_grant_moved {
+            engine.update(|s| s.log_grant_moved = true)?;
+        }
         engine.set_grants(grants, now_ms())
     }
 
-    /// An agent's own record of a check-in; only its chat may write it.
-    pub fn record_agent_decision(&self, record: RecordDecision) -> Result<(), EngineError> {
-        let engine = record
-            .origin_chat_id
-            .as_deref()
-            .and_then(|chat| self.wake_engine_for_chat(chat))
-            .ok_or_else(|| {
-                error(
-                    "Only an agent's own chat, with check-ins set up, can write its decision log.",
-                )
-            })?;
+    /// An agent's own record of a check-in (#12045). Any saved agent's chat
+    /// may write to that agent's log, keyed by its definition ID, while the
+    /// account grants it `log.write`; nothing here reads its name.
+    pub async fn record_agent_decision(&self, record: RecordDecision) -> Result<(), EngineError> {
+        let engine = self
+            .decision_log_for(record.origin_chat_id.as_deref())
+            .await?;
+        if !engine.may_log() {
+            return Err(error(NO_LOG_GRANT));
+        }
         let now = now_ms();
         if let (Some(items), Some(chat)) = (record.working, record.origin_chat_id.as_deref()) {
             self.save_working_state(chat, items, now)?;
@@ -500,6 +539,36 @@ impl DocHost {
             record.judgments,
             now,
         )
+    }
+
+    /// The wake engine whose decision log the chat `chat` writes: the agent
+    /// with check-ins in it, else the saved agent the chat runs, whose
+    /// grants are read from the account the first time.
+    async fn decision_log_for(&self, chat: Option<&str>) -> Result<Arc<WakeEngine>, EngineError> {
+        let chat = chat.ok_or_else(|| error(NOT_AN_AGENT))?;
+        if let Some(engine) = self.wake_engine_for_chat(chat) {
+            return Ok(engine);
+        }
+        let row = self
+            .workspace()
+            .ok_or_else(|| error("This computer is not ready."))?
+            .chat(chat)?
+            .filter(|row| row.device_id == self.inner.config.device_id)
+            .ok_or_else(|| error(NOT_AN_AGENT))?;
+        let agent = chat_agent(&row).ok_or_else(|| error(NOT_AN_AGENT))?;
+        let wakes = self
+            .agent_wakes()
+            .ok_or_else(|| error("Agent check-ins aren't available on this computer."))?;
+        if let Some(engine) = wakes.engine(&agent) {
+            return Ok(engine);
+        }
+        let engine = wakes.ensure(&agent)?;
+        if let Some(lease) = self.wakes_lease()
+            && let Err(e) = self.refresh_grants(&engine, &lease).await
+        {
+            tracing::warn!(error = %e, "agent decision log: grants not read");
+        }
+        Ok(engine)
     }
 
     /// Whether a command `origin` sends to `target` is within the grants of
@@ -643,7 +712,7 @@ impl DocHost {
             }
             let busy = sessions.turn_in_flight(&chat);
             self.watch_own_turn(&engine, &chat, busy, now)?;
-            self.tell_owner(&engine, &chat, now);
+            self.tell_owner(&engine, &chat, now).await;
             self.start_check_in(&engine, &chat, busy, now, |text| {
                 self.request_from_chat_row(&chat, text)
             })
@@ -1626,6 +1695,114 @@ mod tests {
         host
     }
 
+    fn grant_log(engine: &WakeEngine) {
+        let mut grants = engine.state().grants;
+        grants.push(Grant {
+            id: format!("log-{}", engine.agent()),
+            scopes: vec![Scope::LogWrite],
+            over: Over::Account,
+            granted_at: 0,
+        });
+        engine.set_grants(grants, 0).unwrap();
+    }
+
+    fn decision(chat: &str, saw: &str) -> RecordDecision {
+        RecordDecision {
+            origin_chat_id: Some(chat.into()),
+            saw: saw.into(),
+            decided: "carry on".into(),
+            did: "nothing".into(),
+            working: None,
+            judgments: Vec::new(),
+        }
+    }
+
+    fn decisions_saw(engine: &WakeEngine) -> Vec<String> {
+        engine
+            .read(100)
+            .into_iter()
+            .filter_map(|e| match e {
+                DecisionEntry::Decision { saw, .. } => Some(saw),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// #12045: any saved agent keeps its own decision log, keyed by its
+    /// definition ID, only while it holds `log.write`; a log kept before
+    /// the grant existed stays open until the account takes that grant.
+    #[tokio::test]
+    async fn each_agent_keeps_its_own_log_under_its_log_grant() {
+        const OTHER: &str = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3";
+        const OTHER_CHAT: &str = "f0000000-0000-4000-8000-000000000004";
+        let root = tempfile::tempdir().unwrap();
+        let host = fixture_host(root.path());
+        let mut engines = Vec::new();
+        for (agent, chat) in [(AGENT, OWN), (OTHER, OTHER_CHAT)] {
+            let engine = host.agent_wakes().unwrap().ensure(agent).unwrap();
+            engine
+                .set(
+                    WakeSettings {
+                        chat_id: Some(chat.into()),
+                        ..WakeSettings::default()
+                    },
+                    0,
+                )
+                .unwrap();
+            engines.push(engine);
+        }
+
+        // No grant and no earlier log: refused, in plain words.
+        let refused = host
+            .record_agent_decision(decision(OWN, "first look"))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains(NO_LOG_GRANT), "{refused}");
+        assert!(decisions_saw(&engines[0]).is_empty());
+
+        // With the grant, each chat writes to its own agent's log only.
+        for engine in &engines {
+            grant_log(engine);
+        }
+        host.record_agent_decision(decision(OWN, "own"))
+            .await
+            .unwrap();
+        host.record_agent_decision(decision(OTHER_CHAT, "other"))
+            .await
+            .unwrap();
+        assert_eq!(decisions_saw(&engines[0]), ["own"]);
+        assert_eq!(decisions_saw(&engines[1]), ["other"]);
+        assert!(
+            root.path()
+                .join("agent-wakes")
+                .join(OTHER)
+                .join("decisions.jsonl")
+                .is_file()
+        );
+
+        // Revoked: refused again once the log grant has been the account's.
+        engines[1].update(|s| s.log_grant_moved = true).unwrap();
+        engines[1].set_grants(Vec::new(), 1).unwrap();
+        assert!(
+            host.record_agent_decision(decision(OTHER_CHAT, "late"))
+                .await
+                .is_err()
+        );
+        // A log kept here before the grant existed stays open until then.
+        engines[0].set_grants(Vec::new(), 1).unwrap();
+        assert!(engines[0].kept_a_log() && engines[0].may_log());
+        host.record_agent_decision(decision(OWN, "still logging"))
+            .await
+            .unwrap();
+        // A chat that runs no saved agent is refused.
+        assert!(
+            host.record_agent_decision(decision(WORKER, "x"))
+                .await
+                .is_err()
+        );
+    }
+
     /// #12044: a never-list scope is refused by the host before anything
     /// reaches the account, for every agent.
     #[tokio::test]
@@ -1794,6 +1971,7 @@ mod tests {
                 .any(|(id, text)| *id == first && text.contains("no saved working state yet"))
         );
         // The record_decision call is stamped at the host's clock.
+        grant_log(&engine);
         host.record_agent_decision(RecordDecision {
             origin_chat_id: Some(OWN.into()),
             saw: "#12071 is on a chat".into(),
@@ -1808,6 +1986,7 @@ mod tests {
             }]),
             judgments: Vec::new(),
         })
+        .await
         .unwrap();
         drop(host);
 
@@ -1836,6 +2015,7 @@ mod tests {
                 working: Some(vec![]),
                 judgments: Vec::new(),
             })
+            .await
             .is_err(),
             "only the checked-in chat writes its working state"
         );
@@ -2074,7 +2254,8 @@ mod tests {
                 .contains("Chat \"Fix the build\" (f0000000) finished its turn.")
         );
 
-        // Both turns are in the log, which only Foreman's chat may add to.
+        // Both turns are in the log, which only the agent's own chat may add to.
+        grant_log(&engine);
         host.record_agent_decision(RecordDecision {
             origin_chat_id: Some(OWN.into()),
             saw: "the build chat finished".into(),
@@ -2083,6 +2264,7 @@ mod tests {
             working: None,
             judgments: Vec::new(),
         })
+        .await
         .unwrap();
         assert!(
             host.record_agent_decision(RecordDecision {
@@ -2093,6 +2275,7 @@ mod tests {
                 working: None,
                 judgments: Vec::new(),
             })
+            .await
             .is_err()
         );
         let log = host.agent_wakes_status().agents[0].decisions.clone();

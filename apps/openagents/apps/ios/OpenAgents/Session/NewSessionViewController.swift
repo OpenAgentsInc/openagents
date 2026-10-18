@@ -509,6 +509,10 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             }
             if let selected = snapshot.selected {
                 actions.append(UIAction(title: "Edit agent…", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.openAgentForm(id: selected.id) })
+                actions.append(UIAction(title: "Agent card…", image: UIImage(systemName: "person.text.rectangle")) { [weak self] _ in
+                    guard let self else { return }
+                    self.present(UINavigationController(rootViewController: AgentCardController(agents: agents, agentId: selected.id)), animated: true)
+                })
             }
             sections.insert(personal, at: 0)
             sections.insert(UIMenu(options: .displayInline, children: actions), at: 0)

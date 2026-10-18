@@ -91,6 +91,9 @@ pub enum GrantScope {
     LandSubmit,
     #[serde(rename = "work.dispatch")]
     WorkDispatch,
+    /// Keep its own decision log (#12045).
+    #[serde(rename = "log.write")]
+    LogWrite,
 }
 
 /// Powers no agent can be granted: money, keys, secrets, deploys, and
@@ -102,13 +105,14 @@ pub const NEVER_GRANTED_REFUSAL: &str =
     "Money, keys, secrets, deploys and closing other agents' issues can't be granted to any agent.";
 
 impl GrantScope {
-    pub const ALL: [GrantScope; 6] = [
+    pub const ALL: [GrantScope; 7] = [
         GrantScope::ChatMessage,
         GrantScope::ChatStart,
         GrantScope::ChatSteer,
         GrantScope::ChatStop,
         GrantScope::LandSubmit,
         GrantScope::WorkDispatch,
+        GrantScope::LogWrite,
     ];
 
     pub fn word(self) -> &'static str {
@@ -119,6 +123,7 @@ impl GrantScope {
             GrantScope::ChatStop => "chat.stop",
             GrantScope::LandSubmit => "land.submit",
             GrantScope::WorkDispatch => "work.dispatch",
+            GrantScope::LogWrite => "log.write",
         }
     }
 

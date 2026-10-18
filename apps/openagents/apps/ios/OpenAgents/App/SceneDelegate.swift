@@ -63,6 +63,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         #if DEBUG
+        if args.contains("-agent-card") {
+            DispatchQueue.main.async {
+                window.rootViewController?.present(UINavigationController(rootViewController: AgentCardController(json: demoAutonomyCard())), animated: false)
+            }
+        }
         if args.contains("-voice-preview") {
             app.voice.preview()
             if args.contains("-voice-stage") {

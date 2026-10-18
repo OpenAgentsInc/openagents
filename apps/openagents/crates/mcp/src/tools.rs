@@ -345,7 +345,7 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: RECORD_DECISION,
-            description: "For a saved agent with check-ins: add one entry to your decision log, which the owner sees in the app and your next check-in reads. Call it once per check-in with what you saw, what you decided and what you did. It works only from the agent's own chat.",
+            description: "For a saved agent: add one entry to your decision log, which the owner sees on your card in the app and your next check-in reads. Call it once per check-in with what you saw, what you decided and what you did. It works only from the agent's own chat, and only while the owner lets you keep a log (Decision log on your card); otherwise it's refused and says so.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
