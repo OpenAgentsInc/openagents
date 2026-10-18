@@ -7,6 +7,7 @@ enum class AndroidScannerState {
     SCANNING,
     PERMISSION_DENIED,
     CANCELLED,
+    CAMERA_ERROR,
     SUBMITTED,
     CLOSED,
 }
@@ -51,7 +52,12 @@ class AndroidScannerPresentationBoundary(
 
     /** Retry after an explicit denial or cancellation. The shell requests permission again. */
     fun retry(): Long? = synchronized(lock) {
-        if (currentState !in setOf(AndroidScannerState.PERMISSION_DENIED, AndroidScannerState.CANCELLED)) {
+        if (currentState !in setOf(
+                AndroidScannerState.PERMISSION_DENIED,
+                AndroidScannerState.CANCELLED,
+                AndroidScannerState.CAMERA_ERROR,
+            )
+        ) {
             return@synchronized null
         }
         beginPermissionRequest()
@@ -66,8 +72,21 @@ class AndroidScannerPresentationBoundary(
 
     /** Record denial without starting or retaining camera work. */
     fun permissionDenied(session: Long): Boolean = synchronized(lock) {
-        if (session != activeSession || currentState != AndroidScannerState.PERMISSION_PENDING) return@synchronized false
+        if (session != activeSession || currentState !in setOf(
+                AndroidScannerState.PERMISSION_PENDING,
+                AndroidScannerState.SCANNING,
+            )
+        ) return@synchronized false
         currentState = AndroidScannerState.PERMISSION_DENIED
+        activeSession = null
+        true
+    }
+
+    /** Record a camera or decoder failure so the presentation can offer a retry. */
+    fun captureFailed(session: Long): Boolean = synchronized(lock) {
+        if (session != activeSession || currentState != AndroidScannerState.SCANNING) return@synchronized false
+        currentState = AndroidScannerState.CAMERA_ERROR
+        activeSession = null
         true
     }
 

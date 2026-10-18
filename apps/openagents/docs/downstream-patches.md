@@ -695,9 +695,16 @@ links remain readable. Upstream fixes now require manual ports.
   Synthetic fixtures cover the connect fragment, project path, and rejected
   URL forms. `AndroidScannerPresentationBoundary.kt` adds bounded raw-text
   handoff, permission denial/cancel/retry states, and duplicate/late callback
-  fencing; synthetic fake-camera cases verify that it calls only its Rust
-  classifier callback. It does not implement CameraX or link approval. The
-  Android app source set and CameraX integration are not wired or compiled.
+  fencing. `CameraXQrScannerDriver.kt` uses `ImageAnalysis` with
+  `KEEP_ONLY_LATEST`, a 1280×720 target, and QR-only ML Kit decoding; decoded
+  raw text goes to the Rust classifier callback. Synthetic fake analyzer and
+  decoder cases cover duplicates and late results. It does not perform link
+  approval. B1 owns the Gradle and manifest changes. The official CameraX
+  release page lists 1.6.2 as stable, and the official ML Kit page documents
+  bundled `com.google.mlkit:barcode-scanning:17.3.0` ([CameraX](https://developer.android.com/jetpack/androidx/releases/camera),
+  [ML Kit](https://developers.google.com/ml-kit/vision/barcode-scanning/android)).
+  Neither dependency has been resolved in an Android build. The Android app
+  source set and CameraX integration are not wired or compiled.
   `cargo test --locked -p openagents-mobile app_links` from `apps/openagents`
   and `scripts/android/build-core.sh` remain unrun below the 100 GiB build
   floor. The latter generates bindings and builds arm64 then x86_64. The
