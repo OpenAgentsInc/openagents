@@ -688,3 +688,4 @@ links remain readable. Upstream fixes now require manual ports.
   connect the bridge and provide transcript, composer, Markdown, and local
   surface adapters. This baseline has no Gradle app shell; Android compilation,
   device input, TalkBack, deployment, and store checks have not run.
+- 2026-10-18 (#12089): add Android presentation glue for Lab Rust Native cards and Rust-owned visual frames. The Lab bridge mounts through `SemanticViewAdapter`, bounds JSON size, preserves revision-bound activations and field changes, and ignores queued events after a card is replaced. Fixture coverage uses bounded synthetic views; Android compilation and device input remain unverified.
