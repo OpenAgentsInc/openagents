@@ -61,6 +61,37 @@ pub const GIB: u64 = 1 << 30;
 /// Shared settings for direct builds and both Cargo shims.
 pub const BUILD_ENV_SCRIPT: &str = include_str!("../../../scripts/dev/cargo-build-env.sh");
 
+/// Keeps Spotlight out of an existing build target on macOS.
+/// Other platforms leave the folder unchanged.
+///
+/// # Errors
+/// The marker cannot be written or an existing marker is not a regular file.
+pub fn exclude_from_spotlight(target: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let marker = target.join(".metadata_never_index");
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&marker)
+        {
+            Ok(_) => Ok(()),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::AlreadyExists
+                    && std::fs::symlink_metadata(&marker)?.is_file() =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = target;
+        Ok(())
+    }
+}
+
 /// The agent `cargo` shim's text.
 pub const AGENT_CARGO_SHIM: &str = r#"#!/bin/sh
 # OpenAgents build gate for agent chats, written by the coder-lease crate.

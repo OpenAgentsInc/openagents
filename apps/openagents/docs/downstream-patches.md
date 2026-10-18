@@ -698,3 +698,6 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+- [OpenAgents #12125](https://github.com/OpenAgentsInc/openagents/issues/12125):
+  mark desktop and iOS build targets before building so Spotlight skips them
+  on macOS.

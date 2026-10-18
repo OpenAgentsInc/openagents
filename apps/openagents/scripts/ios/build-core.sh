@@ -23,8 +23,13 @@ esac
 PROFILE=mobile
 if [[ "${CONFIGURATION:-Debug}" == "Release" ]]; then PROFILE=mobile-dist; fi
 
+cd "$ROOT"
 CARGO_OUT="${CARGO_TARGET_DIR:-$ROOT/target}"
 OUT="$ROOT/target/ios-core/$PLATFORM"
+if [[ "$(uname -s)" == Darwin ]]; then
+  mkdir -p "$CARGO_OUT" "$ROOT/target"
+  touch "$CARGO_OUT/.metadata_never_index" "$ROOT/target/.metadata_never_index"
+fi
 mkdir -p "$OUT/include"
 
 CORE_FEATURES=()
@@ -62,7 +67,6 @@ run_cargo() {
     ${jobs_env[@]+"${jobs_env[@]}"} cargo "$@"
 }
 
-cd "$ROOT"
 run_cargo build --locked -p openagents-mobile --lib --profile "$PROFILE" --target "$TARGET" ${CORE_FEATURES[@]+"${CORE_FEATURES[@]}"}
 run_cargo build --locked -p openagents-mobile --bin uniffi-bindgen --features bindgen --profile mobile
 

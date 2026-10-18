@@ -249,6 +249,13 @@ fn discover(path: &Path, budget: &Budget) -> Option<Vec<Descriptor>> {
     while let Some(dir) = stack.pop() {
         descriptors.push(Descriptor::loose(dir.clone(), true));
         for child in entries(&dir, budget)? {
+            if child
+                .file_name()
+                .is_some_and(|name| name == ".metadata_never_index")
+            {
+                descriptors.push(Descriptor::loose(child, true));
+                continue;
+            }
             if profile_set.contains(&child) {
                 continue;
             }

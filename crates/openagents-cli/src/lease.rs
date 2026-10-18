@@ -672,6 +672,16 @@ fn hold(output: &Output, words: &[String], run: bool) -> u8 {
             slot.path.display().to_string(),
         ));
     }
+    if hold.resource == Resource::Build
+        && slot.is_none()
+        && let Some(target) = std::env::var_os("CARGO_TARGET_DIR").filter(|dir| !dir.is_empty())
+        && let Err(error) = prepare_kept_target(std::path::Path::new(&target))
+    {
+        return output.fail(
+            "lease",
+            &format!("cannot prepare the build folder: {error}"),
+        );
+    }
     let (exit, failure) = run_command(&hold.command, &env);
     // Measure while the slot is still this build's.
     let slot_path = slot.as_ref().map(|slot| slot.path.clone());
@@ -712,6 +722,12 @@ fn hold(output: &Output, words: &[String], run: bool) -> u8 {
         Some(code) => u8::try_from(code & 0xff).unwrap_or(crate::EXIT_FAILURE),
         None => crate::EXIT_FAILURE,
     }
+}
+
+fn prepare_kept_target(target: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    std::fs::create_dir_all(target)?;
+    coder_lease::agent_builds::exclude_from_spotlight(target)
 }
 
 /// Runs a job placed on another computer and reports it as a local one
@@ -1071,6 +1087,31 @@ mod signals {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kept_target_is_created_and_marked_only_on_macos() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("custom-target");
+        prepare_kept_target(&target).unwrap();
+        assert_eq!(target.exists(), cfg!(target_os = "macos"));
+        assert_eq!(
+            target.join(".metadata_never_index").is_file(),
+            cfg!(target_os = "macos")
+        );
+    }
+
+    #[test]
+    fn existing_kept_target_preserves_artifacts_and_marks_only_on_macos() {
+        let dir = tempfile::tempdir().unwrap();
+        let artifact = dir.path().join("cached.rlib");
+        std::fs::write(&artifact, b"cached").unwrap();
+        prepare_kept_target(dir.path()).unwrap();
+        assert_eq!(std::fs::read(&artifact).unwrap(), b"cached");
+        assert_eq!(
+            dir.path().join(".metadata_never_index").is_file(),
+            cfg!(target_os = "macos")
+        );
+    }
 
     #[cfg(unix)]
     #[test]

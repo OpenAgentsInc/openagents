@@ -31,10 +31,14 @@ if pgrep -f -x "$CONTENTS/MacOS/openagents" >/dev/null 2>&1; then
 fi
 
 cd "$ROOT"
+TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+if [[ "$(uname -s)" == Darwin ]]; then
+  mkdir -p "$TARGET_DIR" "$ROOT/target"
+  touch "$TARGET_DIR/.metadata_never_index" "$ROOT/target/.metadata_never_index"
+fi
 cargo build -p openagents
 
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$DATA_DIR"
-TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 install -m 755 "$TARGET_DIR/debug/openagents" "$CONTENTS/MacOS/openagents"
 sed "s/__VERSION__/$VERSION/g" "$ROOT/dist/macos/Info-dev.plist" >"$CONTENTS/Info.plist"
 plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$CONTENTS/Info.plist"
