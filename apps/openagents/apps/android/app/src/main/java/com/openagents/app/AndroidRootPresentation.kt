@@ -247,7 +247,7 @@ internal class AndroidRootPresentation(
         if (!requested.canStartVoice) return
         microphoneRequest?.close()
         microphoneRequest = activity.requestVoiceMicrophone { granted ->
-            if (!closed && foreground && granted) guarded { application.startVoice(owner, requested) }
+            if (!closed && foreground && granted) guarded { application.startVoice(owner, requested); activity.requestCallNotifications() }
         }
     }
 

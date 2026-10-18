@@ -1053,3 +1053,10 @@ links remain readable. Upstream fixes now require manual ports.
   retires old review actions on account/navigation changes, and fences late
   results. Android mounts the review and forwards identity-only events. New
   confirmation/replacement fixtures, bindings, and integrated checks are unrun.
+
+- #12100: Retire call resources from the Application's account-generation
+  listener even with no visible Activity. Clear the native resource holder before
+  teardown so a late terminal callback cannot remove a replacement. Ask once
+  contextually for API 33+ notification permission after foreground call start;
+  denial preserves the call, required FGS notification posting, and in-app
+  controls. Native generation/denial fixtures are authored but unrun.

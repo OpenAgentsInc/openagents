@@ -12,6 +12,17 @@ import com.openagents.app.scanner.CameraXQrScannerDriver
 
 class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val callNotificationLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { /* Denial leaves the call and in-app controls available. */ }
+    internal fun requestCallNotifications() {
+        val preferences = getSharedPreferences("android-permissions", MODE_PRIVATE)
+        if (!shouldRequestCallNotifications(android.os.Build.VERSION.SDK_INT,
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+                preferences.getBoolean("call-notifications-requested", false))) return
+        preferences.edit().putBoolean("call-notifications-requested", true).apply()
+        runCatching { callNotificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+    }
     private var microphoneResult: ((Boolean) -> Unit)? = null
     private var microphonePending = false
     private val microphoneLauncher = registerForActivityResult(
