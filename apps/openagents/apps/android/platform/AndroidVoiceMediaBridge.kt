@@ -59,6 +59,8 @@ sealed interface VoiceMediaPlatformEvent {
     data class NetworkChanged(val state: VoiceNetworkState) : VoiceMediaPlatformEvent
 
     data class ProximityChanged(val near: Boolean) : VoiceMediaPlatformEvent
+
+    data object ConnectionEnded : VoiceMediaPlatformEvent
 }
 
 /** Completes one Rust-owned media request. */
@@ -131,6 +133,7 @@ class AndroidVoiceMediaBridge(
                 },
             )
             is VoiceMediaPlatformEvent.ProximityChanged -> call.updateProximity(event.near)
+            VoiceMediaPlatformEvent.ConnectionEnded -> call.stop()
         }
         platformEventHandler(event)
     }

@@ -89,9 +89,15 @@ Keep fork-specific changes here so upstream updates can review each integration.
   [`webrtc-sdk/android` release](https://github.com/webrtc-sdk/android/releases/tag/v150.7871.01)
   points to source commit `7b6390f`. The Rust-owned media contract and fake
   bridge cover request delivery, typed platform state, callback fencing, and
-  closure. A WebRTC-backed driver, Android permission and route integration,
-  interruption and network handling, reconnect and repeated-call checks, and
-  device calls remain pending.
+  closure. `AndroidWebRtcMediaDriver` maps Rust media operations to a
+  call-scoped peer, while `AndroidVoiceAudioMonitor` reports focus, route,
+  network, and proximity changes and applies speaker routing near or away
+  from the phone. The bridge stops the Rust call when the RTC connection ends.
+  A fake RTC session covers request mapping. These sources still need the
+  coordinator-owned dependency and manifest permission entries. The current
+  Android manifest lacks `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, and
+  `ACCESS_NETWORK_STATE`; add them before runtime checks. Focused JVM tests,
+  Kotlin compilation, and lifecycle/device validation remain unrun.
 
 - OpenAgents #12081: Android startup initializes the JVM context and platform
   certificate verifier before any live Rust client can start. Kotlin retries
