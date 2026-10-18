@@ -12,9 +12,11 @@ class AndroidScannerPresentationBoundaryTest : InstrumentationTestCase() {
         val scanner = AndroidScannerPresentationBoundary(classifyWithRust = { classified.add(it) })
         val deniedRequest = scanner.requestPermission()!!
 
+        assertEquals(AndroidScanResult.NOT_SCANNING, scanner.onScanText(deniedRequest, FakeCameraScan.CONNECT))
         assertTrue(scanner.permissionDenied(deniedRequest))
         assertEquals(AndroidScannerState.PERMISSION_DENIED, scanner.state)
-        assertEquals(AndroidScanResult.NOT_SCANNING, scanner.onScanText(deniedRequest, FakeCameraScan.CONNECT))
+        assertEquals(AndroidScanResult.STALE_SESSION, scanner.onScanText(deniedRequest, FakeCameraScan.CONNECT))
+        assertEquals(emptyList<String>(), classified)
 
         val retryRequest = scanner.retry()!!
         assertFalse(scanner.permissionGranted(deniedRequest))
