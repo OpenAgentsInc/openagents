@@ -880,7 +880,9 @@ async fn focused_waiter_displaces_one_running_writer_without_stopping_local_writ
     host.shutdown_workers().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Keep synchronous fixture setup on one runtime thread: expose the cold
+// backlog, the unprotected victim, and the focus before the dispatcher polls.
+#[tokio::test]
 async fn interactive_handoff_prefers_an_unprotected_slot_over_a_view() {
     let _budget_guard = SYNC_TEST_LOCK.lock().await;
     let relay = relay(Hold::Backfill).await;
@@ -901,25 +903,39 @@ async fn interactive_handoff_prefers_an_unprotected_slot_over_a_view() {
         let id = format!("existing-{n:02}");
         store.initialize_chat_outbox(&id, &[]).unwrap();
         let h = host.open(&id).unwrap();
-        if n > 0 {
-            views.push(h.watch_messages());
-        }
+        views.push(h.watch_messages());
         handles.push(h);
     }
     until(|| {
         handles
             .iter()
-            .all(|h| lock(&h.chat2).as_ref().is_some_and(|c| c.caught_up()))
+            .all(|h| {
+                lock(&h.chat2).as_ref().is_some_and(|c| c.caught_up())
+                    && !store.has_pending_chat_updates(h.chat_id()).unwrap()
+            })
     })
     .await;
-    for h in &handles {
-        h.last_access.store(now_ms() - 1000, Ordering::Relaxed);
-    }
     for n in 0..32 {
         host.enqueue_wakeup(&format!("cold-{n}")).unwrap();
     }
+    let ready_at = now_ms();
+    for h in &handles {
+        h.last_access.store(ready_at - 1000, Ordering::Relaxed);
+        h.sync_last_started.store(ready_at, Ordering::Release);
+    }
+    // Bootstrap keeps every resident viewed. Only now expose the intended
+    // unprotected victim, after the slow setup and before any handoff starts.
+    drop(views.remove(0));
     host.focus_chat("new-view").unwrap();
+    // Navigation may precede watch attachment. Force eviction in that gap
+    // instead of relying on a lucky dispatcher interleaving to exercise it.
+    host.evict_over_budget();
     let fresh = host.open("new-view").unwrap();
+    assert_eq!(
+        fresh.last_focus.load(Ordering::Acquire),
+        host.inner.focus_clock.load(Ordering::Acquire),
+        "navigation lost its priority before watch attachment"
+    );
     let _view = fresh.watch_messages();
     until(|| lock(&fresh.chat2).as_ref().is_some_and(|c| c.caught_up())).await;
     tokio::time::sleep(Duration::from_millis(500)).await;

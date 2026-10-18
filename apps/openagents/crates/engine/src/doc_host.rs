@@ -1395,6 +1395,9 @@ impl DocHost {
     /// `open` instead. The sequence also orders focuses in the same millisecond.
     pub fn focus_chat(&self, chat_id: &str) -> Result<(), EngineError> {
         let handle = self.open_local(chat_id)?;
+        // Eviction must not check the old focus and then observe the caller
+        // releasing its handle after navigation has already been published.
+        let _handles = lock(&self.inner.handles);
         let focus = self.inner.focus_clock.fetch_add(1, Ordering::AcqRel) + 1;
         handle.last_focus.fetch_max(focus, Ordering::AcqRel);
         self.activate_sync(&handle);
@@ -3039,6 +3042,7 @@ impl DocHost {
     /// resident estimate exceeds `DOC_LRU_BYTE_BUDGET`, close the
     /// least-recently-touched unpinned docs. Pinned (never evicted):
     /// - watched docs (`messages_tx` has receivers — a UI transcript);
+    /// - the latest navigation waiting for a sync connection;
     /// - docs with a live writer (`Arc<SessionDoc>` held outside the handle —
     ///   a run streaming into it);
     /// - host-side docs with pending commands (the executor owes them work).
@@ -3115,6 +3119,16 @@ impl DocHost {
 
     fn pinned(&self, handle: &Arc<ChatDocHandle>) -> bool {
         if handle.sync_started.load(Ordering::Acquire) {
+            return true;
+        }
+        // Focus can arrive before the viewport attaches its watch. Retain
+        // only the latest unserved navigation until it acquires a client;
+        // older requests must remain evictable under the document budget.
+        let focus = handle.last_focus.load(Ordering::Acquire);
+        if handle.sync_requested.load(Ordering::Acquire)
+            && focus > handle.sync_focus_served.load(Ordering::Acquire)
+            && focus == self.inner.focus_clock.load(Ordering::Acquire)
+        {
             return true;
         }
         // Durable batches may outlive this handle. Only failed disk writes
@@ -6615,6 +6629,54 @@ mod publication_eviction_tests {
         drop(watch);
         host.open_local("overflow").unwrap();
         assert!(!lock(&host.inner.handles).contains_key("held"));
+        host.shutdown_workers().await;
+    }
+
+    #[tokio::test]
+    async fn latest_unserved_focus_survives_eviction_without_pinning_old_focuses() {
+        let _budget_guard = SYNC_TEST_LOCK.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let host = DocHost::new(
+            Arc::new(DocsStore::open(dir.path()).unwrap()),
+            DocHostConfig {
+                device_id: "host".into(),
+                default_harness: HarnessId::Mock,
+                edge: Some(EdgeConfig::with_static_token("http://127.0.0.1:1", "test")),
+            },
+        );
+        let _residents: Vec<_> = (0..WARM_DOC_CAP)
+            .map(|n| host.open_local(&format!("resident-{n}")).unwrap())
+            .collect();
+
+        // This runtime has not yielded: admission cannot hide the eviction
+        // between the focus RPC and the viewport's later watch attachment.
+        host.focus_chat("focused").unwrap();
+        let original = Arc::downgrade(lock(&host.inner.handles).get("focused").unwrap());
+        host.evict_over_budget();
+        let viewed = host.open_local("focused").unwrap();
+        assert!(
+            std::sync::Weak::ptr_eq(&original, &Arc::downgrade(&viewed)),
+            "eviction lost the focus before admission or watch attachment"
+        );
+        assert!(viewed.last_focus.load(Ordering::Acquire) > 0);
+        drop(viewed);
+
+        // Only the latest pending navigation needs this extra retention.
+        for n in 0..32 {
+            let id = format!("next-{n}");
+            host.focus_chat(&id).unwrap();
+            host.evict_over_budget();
+            let handles = lock(&host.inner.handles);
+            assert!(handles.contains_key(&id));
+            assert_eq!(handles.len(), WARM_DOC_CAP + 1);
+        }
+        let latest = host.open_local("next-31").unwrap();
+        latest
+            .sync_focus_served
+            .store(latest.last_focus.load(Ordering::Acquire), Ordering::Release);
+        drop(latest);
+        host.evict_over_budget();
+        assert_eq!(lock(&host.inner.handles).len(), WARM_DOC_CAP);
         host.shutdown_workers().await;
     }
 
