@@ -35,8 +35,25 @@ private const val MAX_DISPLAY_TEXT = 512 * 1024
 private const val MAX_PAINT_SHAPES = 4096
 private const val MAX_PATH_POINTS = 32768
 
+private fun isBoundedVisualPaint(paint: VisualPaint): Boolean {
+    if (paint.text.length > MAX_DISPLAY_TEXT || paint.shapes.size > MAX_PAINT_SHAPES || paint.runs.size > 8192) return false
+    if (paint.shapes.filterIsInstance<VisualShape.Path>().sumOf { it.points.size.toLong() } > MAX_PATH_POINTS) return false
+    return paint.shapes.all { shape ->
+        when (shape) {
+            is VisualShape.Rect -> listOf(shape.x, shape.y, shape.w, shape.h, shape.radius).all(Float::isFinite)
+            is VisualShape.Path -> shape.points.size <= MAX_PATH_POINTS && shape.points.size % 2 == 0 && shape.points.all(Float::isFinite)
+        }
+    }
+}
+internal fun isBoundedVisualDisplay(display: VisualDisplay): Boolean =
+    display.width.isFinite() && display.height.isFinite() && display.width in 0f..16384f && display.height in 0f..16384f &&
+        display.surfaces.size <= MAX_PENDING_SURFACES && display.controls.size <= 4096 && display.styles.size <= 8192 &&
+        isBoundedVisualPaint(display.paint) && display.surfaces.all {
+            listOf(it.x, it.y, it.w, it.h).all(Float::isFinite) && it.w in 0f..16384f && it.h in 0f..16384f
+        }
+
 internal fun isBoundedVisualFrame(frame: SurfaceFrame): Boolean {
-    if (frame.paint.text.length > MAX_DISPLAY_TEXT || frame.paint.shapes.size > MAX_PAINT_SHAPES || frame.paint.runs.size > 8192) return false
+    if (!isBoundedVisualPaint(frame.paint) || frame.styles.size > 8192) return false
     val image = frame.image ?: return true
     if (image.width == 0u || image.height == 0u || image.width > MAX_IMAGE_SIDE.toUInt() || image.height > MAX_IMAGE_SIDE.toUInt()) return false
     val pixels = image.width.toLong() * image.height.toLong()
@@ -47,10 +64,16 @@ internal fun isBoundedVisualFrame(frame: SurfaceFrame): Boolean {
 class AndroidVisualView(context: Context) : View(context) {
     private data class Raster(val frame: SurfaceFrame, val bitmap: Bitmap?, val bytes: Int)
 
-    private val pendingFrames = LinkedHashMap<ULong, SurfaceFrame>()
     private val frames = LinkedHashMap<ULong, Raster>(8, 0.75f, true)
-    private val scheduled = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val generation = java.util.concurrent.atomic.AtomicLong(0)
+    private val delivery = VisualFrameMailbox<SurfaceFrame>(MAX_PENDING_SURFACES,
+        post = { action -> post { action() } },
+        receive = { epoch, frame ->
+            if (deliveryIsCurrent(epoch)) { storeFrame(epoch, frame); invalidate() }
+        },
+        maxWeight = MAX_CACHED_BYTES.toLong(),
+        weight = { frame -> (frame.image?.bgra?.size?.toLong() ?: 0L) + frame.paint.text.length * 2L + 2 * 1024 * 1024 },
+    )
+    private fun deliveryIsCurrent(epoch: Long): Boolean = delivery.isCurrent(epoch)
     private val typefaces = mutableMapOf<FaceRole, Typeface>()
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
     private val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -61,6 +84,7 @@ class AndroidVisualView(context: Context) : View(context) {
     private var display: VisualDisplay? = null
     private var dark = false
     private var reduceMotion = false
+    private var layoutSize: Pair<Float, Float>? = null
     private var activeSurface: VisualSurface? = null
     private var activeControl: VisualControl? = null
     private var downX = 0f
@@ -71,36 +95,65 @@ class AndroidVisualView(context: Context) : View(context) {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
     }
 
-    /** Binds a session owned by the transcript controller. */
+    /** Transfers one native handle; other views must use their own Rust handle. */
     fun bind(value: VisualSession, isDark: Boolean, reducedMotion: Boolean) {
         requireMainThread()
-        detachListener()
-        clearFrames()
-        generation.incrementAndGet()
-        session = value
-        dark = isDark
-        reduceMotion = reducedMotion
-        if (isAttachedToWindow) attachListener()
+        try {
+            delivery.reset()
+            val previous = session
+            try { detachListener() } finally {
+                session = null
+                display = null
+                clearFrames()
+                if (previous !== value) previous?.close()
+            }
+            session = value
+            layoutSize = null
+            dark = isDark
+            reduceMotion = reducedMotion
+            if (isAttachedToWindow) attachListener()
+            invalidate()
+            requestLayout()
+        } catch (error: Throwable) {
+            try { release() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+            try { value.close() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+            throw error
+        }
     }
 
     /** Requests a Rust layout in logical points. */
     fun layoutAt(width: Float, textScale: Float) {
         requireMainThread()
-        if (width.isFinite() && width in 1f..16384f && textScale.isFinite() && textScale in 0.5f..4f) {
-            session?.layout(width, textScale)
+        if (!width.isFinite() || width !in 1f..16384f || !textScale.isFinite() || textScale !in 0.5f..4f) return
+        val core = session ?: return
+        val size = width to textScale
+        if (layoutSize == size) return
+        delivery.reset()
+        try {
+            detachListener()
+            display = null
+            clearFrames()
+            core.layout(width, textScale)
+            layoutSize = size
+            if (isAttachedToWindow) attachListener()
+        } catch (error: Throwable) {
+            try { release() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+            throw error
         }
     }
 
     /** Releases this view's listener, bitmaps, and shared Rust handle. */
     fun release() {
         requireMainThread()
-        generation.incrementAndGet()
-        detachListener()
-        session?.close()
-        session = null
-        listener = null
-        display = null
-        clearFrames()
+        delivery.reset()
+        val previous = session
+        try { detachListener() } finally {
+            session = null
+            listener = null
+            display = null
+            clearFrames()
+            previous?.close()
+        }
         invalidate()
         requestLayout()
     }
@@ -111,10 +164,15 @@ class AndroidVisualView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
-        detachListener()
-        generation.incrementAndGet()
-        clearFrames()
-        super.onDetachedFromWindow()
+        delivery.reset()
+        try { detachListener() } catch (error: Throwable) {
+            try { release() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+            throw error
+        } finally {
+            display = null
+            clearFrames()
+            super.onDetachedFromWindow()
+        }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -144,6 +202,7 @@ class AndroidVisualView(context: Context) : View(context) {
                     shapePaint,
                 )
             }
+            canvas.translate(surface.x, surface.y)
             drawPaint(canvas, raster.frame.paint, raster.frame.styles.associateBy { it.id })
             canvas.restore()
         }
@@ -157,6 +216,7 @@ class AndroidVisualView(context: Context) : View(context) {
         val x = event.x / density
         val y = event.y / density
         val core = session ?: return false
+        if (!x.isFinite() || !y.isFinite() || x !in -16384f..16384f || y !in -16384f..16384f) return false
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -231,12 +291,12 @@ class AndroidVisualView(context: Context) : View(context) {
     private fun attachListener() {
         val core = session ?: return
         if (listenerAttached) return
-        val epoch = generation.get()
+        val epoch = delivery.current()
         val callbacks = object : VisualListener {
             override fun display(value: VisualDisplay) {
-                if (generation.get() != epoch || value.paint.text.length > MAX_DISPLAY_TEXT) return
+                if (!delivery.isCurrent(epoch) || !isBoundedVisualDisplay(value)) return
                 post {
-                    if (generation.get() != epoch) return@post
+                    if (!delivery.isCurrent(epoch)) return@post
                     val old = display
                     if (old != null && value.revision < old.revision) return@post
                     display = value
@@ -249,58 +309,42 @@ class AndroidVisualView(context: Context) : View(context) {
             }
 
             override fun frame(value: SurfaceFrame) {
-                if (generation.get() != epoch || !validFrame(value)) return
-                synchronized(pendingFrames) {
-                    if (!pendingFrames.containsKey(value.surface) && pendingFrames.size >= MAX_PENDING_SURFACES) {
-                        pendingFrames.remove(pendingFrames.keys.first())
-                    }
-                    pendingFrames[value.surface] = value
-                }
-                if (scheduled.compareAndSet(false, true)) {
-                    post {
-                        drainFrames(epoch)
-                    }
-                }
+                if (!delivery.isCurrent(epoch) || !validFrame(value)) return
+                delivery.offer(epoch, value.surface, value)
             }
         }
         listener = callbacks
         listenerAttached = true
-        core.attach(callbacks, dark, reduceMotion)
+        try {
+            core.attach(callbacks, dark, reduceMotion)
+        } catch (error: Throwable) {
+            try { release() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+            throw error
+        }
     }
 
     private fun detachListener() {
         if (!listenerAttached) return
         listenerAttached = false
-        session?.detach()
+        val core = session
         listener = null
+        core?.detach()
     }
 
-    private fun drainFrames(epoch: Long) {
-        if (generation.get() != epoch) {
-            synchronized(pendingFrames) { pendingFrames.clear() }
-            scheduled.set(false)
-            return
+    private fun storeFrame(epoch: Long, frame: SurfaceFrame) {
+        if (!delivery.isCurrent(epoch)) return
+        val bitmap = frame.image?.let { image ->
+            visualRasterOrFallback(
+                allocate = { Bitmap.createBitmap(image.width.toInt(), image.height.toInt(), Bitmap.Config.ARGB_8888) },
+                copy = { it.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(image.bgra)) },
+                dispose = { it.recycle() },
+            )
         }
-        val batch = synchronized(pendingFrames) {
-            pendingFrames.values.toList().also { pendingFrames.clear() }
-        }
-        for (frame in batch) storeFrame(frame)
-        scheduled.set(false)
-        if (synchronized(pendingFrames) { pendingFrames.isNotEmpty() } && scheduled.compareAndSet(false, true)) {
-            post { drainFrames(epoch) }
-        }
-        invalidate()
-    }
-
-    private fun storeFrame(frame: SurfaceFrame) {
-        val image = frame.image
-        val bitmap = image?.let {
-            Bitmap.createBitmap(it.width.toInt(), it.height.toInt(), Bitmap.Config.ARGB_8888).also { created ->
-                created.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(it.bgra))
-            }
-        }
+        if (!delivery.isCurrent(epoch)) { bitmap?.recycle(); return }
         frames.remove(frame.surface)?.bitmap?.recycle()
-        val bytes = bitmap?.byteCount ?: 0
+        val bytes = (bitmap?.byteCount ?: 0) + (frame.image?.bgra?.size ?: 0) + frame.paint.text.length * 2 +
+            frame.paint.runs.size * 64 + frame.paint.shapes.size * 64 + frame.styles.size * 64 +
+            frame.paint.shapes.filterIsInstance<VisualShape.Path>().sumOf { it.points.size * 4 }
         frames[frame.surface] = Raster(frame, bitmap, bytes)
         trimFrames()
     }
@@ -332,8 +376,6 @@ class AndroidVisualView(context: Context) : View(context) {
     }
 
     private fun clearFrames() {
-        synchronized(pendingFrames) { pendingFrames.clear() }
-        scheduled.set(false)
         frames.values.forEach { it.bitmap?.recycle() }
         frames.clear()
         activeSurface = null
@@ -421,7 +463,7 @@ class AndroidVisualView(context: Context) : View(context) {
 
     private fun updateControl(core: VisualSession, control: VisualControl, x: Float) {
         val slider = control.kind as? ControlKind.Slider ?: return
-        val fraction = ((x - slider.trackX) / slider.trackW.coerceAtLeast(1f)).coerceIn(0f, 1f)
+        val fraction = boundedSliderFraction(x, slider.trackX, slider.trackW) ?: return
         core.slide(control.id, fraction)
     }
 
@@ -445,4 +487,10 @@ class AndroidVisualView(context: Context) : View(context) {
     private fun requireMainThread() {
         check(Looper.myLooper() == Looper.getMainLooper()) { "Visual views must be updated on the main thread" }
     }
+}
+
+internal fun boundedSliderFraction(x: Float, trackX: Float, trackW: Float): Float? {
+    if (!x.isFinite() || !trackX.isFinite() || !trackW.isFinite() || trackW <= 0f) return null
+    val fraction = (x - trackX) / trackW
+    return if (fraction.isFinite()) fraction.coerceIn(0f, 1f) else null
 }
