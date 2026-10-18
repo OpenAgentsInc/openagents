@@ -557,14 +557,32 @@ fn bounded_output(program: &str, args: &[&str], timeout: Duration) -> Result<Str
 }
 
 fn bounded_gc(program: &Path, timeout: Duration) -> Result<(), String> {
-    let mut child = std::process::Command::new(program)
+    let mut child = start_gc(program)?;
+    let started = std::time::Instant::now();
+    wait_for_gc(
+        &mut child,
+        timeout,
+        || started.elapsed(),
+        std::thread::sleep,
+    )
+}
+
+fn start_gc(program: &Path) -> Result<std::process::Child, String> {
+    std::process::Command::new(program)
         .arg("gc")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|error| format!("kache gc: {error}"))?;
-    let deadline = std::time::Instant::now() + timeout;
+        .map_err(|error| format!("kache gc: {error}"))
+}
+
+fn wait_for_gc(
+    child: &mut std::process::Child,
+    timeout: Duration,
+    mut elapsed: impl FnMut() -> Duration,
+    mut pause: impl FnMut(Duration),
+) -> Result<(), String> {
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
@@ -576,12 +594,12 @@ fn bounded_gc(program: &Path, timeout: Duration) -> Result<(), String> {
             }
             Ok(None) => {}
         }
-        if std::time::Instant::now() >= deadline {
+        if elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!("kache gc exceeded {}s", timeout.as_secs()));
         }
-        std::thread::sleep(Duration::from_millis(50));
+        pause(Duration::from_millis(50));
     }
 }
 

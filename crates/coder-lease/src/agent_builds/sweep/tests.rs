@@ -290,21 +290,72 @@ fn bounded_cleanup_rescans_after_the_build_finishes() {
 }
 
 #[test]
-fn cache_gc_is_bounded() {
+fn cache_gc_preserves_completed_helper_status() {
     use std::os::unix::fs::PermissionsExt as _;
     let home = Home::new();
     let program = home.root.join("kache");
-    std::fs::write(&program, "#!/bin/sh\n[ \"$1\" = gc ] || exit 1\nexit 0\n").unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(bounded_gc(&program, Duration::from_secs(1)).is_ok());
-    std::fs::write(&program, "#!/bin/sh\nexec sleep 5\n").unwrap();
-    let started = std::time::Instant::now();
+    for code in [0, 7] {
+        std::fs::write(
+            &program,
+            format!("#!/bin/sh\n[ \"$1\" = gc ] || exit 1\nexit {code}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut child = start_gc(&program).unwrap();
+        let status = child.wait().unwrap();
+        assert_eq!(status.code(), Some(code));
+        let outcome = wait_for_gc(
+            &mut child,
+            Duration::from_secs(1),
+            || panic!("A completed helper must not check the deadline"),
+            |_| panic!("A completed helper must not pause"),
+        );
+        if code == 0 {
+            assert!(outcome.is_ok());
+        } else {
+            assert_eq!(outcome.unwrap_err(), format!("kache gc: {status}"));
+        }
+    }
+}
+
+#[test]
+fn cache_gc_is_bounded() {
+    use std::cell::Cell;
+    use std::os::unix::process::ExitStatusExt as _;
+
+    // An open input pipe keeps this child running without a timed helper.
+    let mut child = std::process::Command::new("/bin/cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let elapsed = Cell::new(Duration::ZERO);
+    let pauses = Cell::new(0);
+    let timeout = Duration::from_millis(150);
     assert!(
-        bounded_gc(&program, Duration::from_millis(50))
-            .unwrap_err()
-            .contains("exceeded")
+        wait_for_gc(
+            &mut child,
+            timeout,
+            || elapsed.get(),
+            |duration| {
+                assert_eq!(duration, Duration::from_millis(50));
+                elapsed.set(elapsed.get() + duration);
+                pauses.set(pauses.get() + 1);
+            },
+        )
+        .unwrap_err()
+        .contains("exceeded")
     );
-    assert!(started.elapsed() < Duration::from_secs(2));
+    assert_eq!(pauses.get(), 3);
+    assert_eq!(elapsed.get(), timeout);
+    let mut status = 0;
+    // SAFETY: this is our child's PID and a valid output pointer. WNOHANG cannot block.
+    let waited = unsafe { libc::waitpid(child.id() as libc::pid_t, &mut status, libc::WNOHANG) };
+    let error = std::io::Error::last_os_error();
+    assert_eq!(waited, -1);
+    assert_eq!(error.raw_os_error(), Some(libc::ECHILD));
+    assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGKILL));
 }
 
 #[test]
