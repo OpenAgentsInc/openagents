@@ -311,13 +311,23 @@ function el(cls, x, y, w, h, text) {
   return d;
 }
 
-// One section per area. Inside, each screen is its versions side by side
-// under the screen's name, and screens wrap into rows.
+// The board shows each screen's newest version only: its light picture,
+// then its dark one when that was captured. Older versions stay in the viewer.
+function shots(screen) {
+  const i = screen.versions.length - 1;
+  const v = screen.versions[i];
+  const out = [{ v, i, mode: "light", src: "img/" + v.image }];
+  if (v.dark) out.push({ v, i, mode: "dark", src: "img/" + v.dark });
+  return out;
+}
+
+// One section per area. Inside, each screen is its light and dark pictures
+// side by side under the screen's name, and screens wrap into rows.
 function section(area, screens) {
   const items = [];
   let x = PAD, y = HEAD, rowH = 0, w = 0;
   for (const screen of screens) {
-    const sizes = screen.versions.map((v) => Math.round(Math.min(PIC * aspect(v, screen), PIC * 2.2)));
+    const sizes = shots(screen).map(({ v }) => Math.round(Math.min(PIC * aspect(v, screen), PIC * 2.2)));
     const gw = Math.max(sizes.reduce((a, b) => a + b, 0) + GAP * (sizes.length - 1), 220);
     if (x > PAD && x + gw > WRAP) { x = PAD; y += rowH + ROWGAP; rowH = 0; }
     items.push({ screen, sizes, x, y });
@@ -334,7 +344,7 @@ function layout() {
   world.textContent = "";
   frames = [];
   const byArea = new Map();
-  let shown = 0, versions = 0;
+  let shown = 0;
   let inApp = 0;
   for (const screen of board.screens) {
     if (appOf(screen) === app) inApp++;
@@ -345,7 +355,6 @@ function layout() {
     if (!byArea.has(screen.area)) byArea.set(screen.area, []);
     byArea.get(screen.area).push(screen);
     shown++;
-    versions += screen.versions.length;
   }
   const sections = [...byArea].map(([a, list]) => section(a, list));
   const mockList = mocks.mocks.filter((m) => !q || m.title.toLowerCase().includes(q));
@@ -362,16 +371,16 @@ function layout() {
     for (const it of s.items) {
       const label = el("screen", it.x, it.y, 0, 0, it.screen.title);
       const small = document.createElement("small");
-      const n = it.screen.versions.length;
-      small.textContent = n === 1 ? "1 version" : n + " versions";
+      small.textContent = "v" + it.screen.versions.length + " · " + when(it.screen.versions[it.screen.versions.length - 1].unix);
       label.appendChild(small);
       box.appendChild(label);
       let fx = it.x;
-      it.screen.versions.forEach((v, i) => {
-        const fw = it.sizes[i];
+      shots(it.screen).forEach((s, k) => {
+        const { v, i } = s;
+        const fw = it.sizes[k];
         const fy = it.y + NAME;
         const f = el("frame", fx, fy, fw, PIC);
-        const name = el("name", 0, 0, 0, 0, "v" + (i + 1) + " · " + when(v.unix));
+        const name = el("name", 0, 0, 0, 0, s.mode === "dark" ? "Dark" : "Light");
         const openNotes = notesOn(it.screen.id, v).filter((n) => !n.resolved).length;
         if (openNotes) {
           const badge = document.createElement("span");
@@ -382,10 +391,14 @@ function layout() {
         f.appendChild(name);
         const pic = el("pic", 0, 0);
         pic.style.position = "static";
-        pic.addEventListener("click", () => { if (!moved) open(it.screen, i); });
+        pic.addEventListener("click", () => {
+          if (moved) return;
+          if (mode !== s.mode) setMode(s.mode);
+          open(it.screen, i);
+        });
         f.appendChild(pic);
         box.appendChild(f);
-        frames.push({ el: pic, src: picUrl(v), x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
+        frames.push({ el: pic, src: s.src, x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
         fx += fw + GAP;
       });
     }
@@ -395,7 +408,7 @@ function layout() {
     shelf = Math.max(shelf, s.h);
   }
   bounds = { w: Math.max(w, 1), h: Math.max(y + shelf, 1) };
-  document.getElementById("count").textContent = shown + " screens · " + versions + " versions";
+  document.getElementById("count").textContent = shown + " screens";
   const empty = document.getElementById("empty");
   empty.textContent = inApp ? "No screens match."
     : "No " + appInfo(app).name.toLowerCase() + " screens yet. Run " + appInfo(app).capture + " to capture them.";
