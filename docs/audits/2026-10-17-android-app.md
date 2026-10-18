@@ -1,5 +1,10 @@
 # Android version of the current mobile app
 
+The [October 18 parity sprint](2026-10-18-android-parity-sprint.md) turns this
+assessment into tracked work and updates the identity dependencies, CoderOS
+build plan, and full-parity acceptance. The branch statuses and owner
+recommendations below describe the October 17 assessment.
+
 Status: assessment, 2026-10-17, against `origin/main` at `c5ced8869f` and the
 open branches for the Nostr identity epic (#12006). Owner request: "audit how
 much needs doing to do android version of current mobile app".

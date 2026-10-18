@@ -23,7 +23,15 @@ scripts/run-macos-dev.sh            # build and open the macOS development bundl
 scripts/ios/build-core.sh           # the phone core for the iOS simulator
 ```
 
-The phone core is arm64 only. For an Xcode simulator build, name an
+Android implementation is planned in the
+[Android parity sprint](../../docs/audits/2026-10-18-android-parity-sprint.md)
+(epic #12077). It targets `apps/android` over this workspace's shared Rust
+core, with builds and isolated emulator checks on CoderOS. The existing
+`scripts/android/build-core.sh` is not yet exercised; the sprint tracks that
+first build, the Kotlin shell, and the release path. Do not use the retired
+Android app as the current build target.
+
+The iOS core build is arm64 only. For an Xcode simulator build, name an
 Apple-silicon simulator and pass `ARCHS=arm64` (a generic simulator
 destination also links x86_64 and fails). Sign locally (`CODE_SIGN_IDENTITY=-`):
 an unsigned build can't reach the Keychain and shows "Couldn't save or restore

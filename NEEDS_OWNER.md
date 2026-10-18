@@ -1,3 +1,41 @@
+## Android parity: account, signing, and device handoff (#12077)
+
+The [Android sprint](docs/audits/2026-10-18-android-parity-sprint.md) is a
+documentation-only plan with implementation issues on project 22. No app,
+build environment, credential, or service was changed. These steps belong
+to the later implementation and internal-testing handoff:
+
+- Confirm the Android minimum version and distribution channel. Preserve
+  API 26 and the existing `com.openagents.app` signing identity until a
+  different decision is recorded. Voice and adaptive layouts remain in the
+  full-parity scope; an earlier beta does not complete it.
+- Use the existing release key for an in-place upgrade from the retired
+  Android app. Confirm Play App Signing continuity and retain access to the
+  signing key; keep all credentials outside Git. Verify App Links with the
+  certificate that devices actually receive.
+- Create or confirm the Play Console app, internal testers, privacy policy,
+  Data safety, and content rating before upload. This plan does not publish
+  an APK or AAB or create a store account.
+- Create or confirm Firebase configuration for `com.openagents.app`. Supply
+  `google-services.json` and the FCM service credential through protected
+  files or Secret Manager. The deploy lane configures the push gateway and
+  `coder-sync`; an agent does not shift production traffic from an Android
+  feature issue.
+- On dedicated test devices/accounts, check signed upgrade and synthetic
+  wallet-seed preservation, Keystore/biometric behavior, TalkBack, camera and
+  verified links, push wakes, background/recreated sessions, voice routing
+  and ongoing-call controls, and a tablet layout. Authorize any funded
+  payment or real call separately. Remove test resources when finished.
+- CoderOS is reachable over Tailscale and SSH, but is not yet a target in
+  this app's device list. #12078 tracks a native headless build/package and
+  a fresh named per-computer sign-in key. Do not copy the Mac credential or
+  replace the running legacy Coder service to register it.
+
+Close implementation issues when their code is merged with focused checks
+passing. List remaining deploy/device/store evidence in the handoff and
+report later defects as new issues; these steps do not hold code-complete
+work open.
+
 ## Check fresh voice calls (#12060)
 
 After updating the app, make two voice calls. Check that each starts fresh,
