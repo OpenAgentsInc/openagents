@@ -1,4 +1,32 @@
-# OpenAgents 1.0.0 (1013)
+# OpenAgents 1.0.0 (1014)
+
+No sign-in. The app makes your account the first time it opens, from 12 words
+it keeps on this phone. The same 12 words open your wallet, so one backup
+covers both: Settings > Back up your account shows them after Face ID, and
+Restore from 12 words brings an account back on a new phone. A wallet you
+already had keeps its own words and balance.
+
+Connect a computer by scanning the code OpenAgents shows on it (Settings >
+Connect a computer). The computer signs in as you.
+
+Also in this build:
+- Cloud chats have the same ... menu as computer chats: Pin, Copy Transcript,
+  and Archive.
+- A chat that runs a custom agent, such as Foreman, says so under its title
+  and in the composer.
+- Run on offers OpenAgents Cloud when a project is picked.
+- Working shows while a saved account chat answers.
+- The voice screen shows the computer's Codex usage and your saved voice, and
+  a chat links back to a live call.
+- Settings > About shows the version and opens an About page.
+- The demo is no longer offered.
+
+Check a fresh install (no sign-in, a chat answers), Back up your account and
+Restore from 12 words with a dedicated test install, that an existing wallet
+still shows its balance after updating over your installation, scanning a
+computer's code, and the cloud chat menu. Check light and dark appearance.
+
+OpenAgents 1.0.0 (1013)
 
 The wallet now uses separate screens for receiving bitcoin, sending, payment
 review, activity, and wallet information. The balance page keeps Send and
