@@ -35,6 +35,7 @@ pub mod host_rpc;
 mod http_error;
 pub mod instance_lock;
 pub mod local_import;
+pub mod peer_direct;
 mod model_catalogs;
 pub mod profile;
 pub mod project_actions;
@@ -478,6 +479,16 @@ impl EngineCore {
     /// warm-open chat docs on nudges (§7 cold-chat command delivery). The token source
     /// re-reads auth on every (re)dial, so token refreshes take effect at reconnect.
     pub fn start_host_relay(&self, edge_url: &str) -> openagents_rpc::HostRelay {
+        self.start_host_relay_serving(edge_url, self.rpc_service())
+    }
+
+    /// [`Self::start_host_relay`] serving `service` (the engine's RPC surface,
+    /// possibly wrapped, such as with direct peer routes).
+    pub fn start_host_relay_serving(
+        &self,
+        edge_url: &str,
+        service: Arc<dyn RpcService>,
+    ) -> openagents_rpc::HostRelay {
         let auth = self.auth();
         let config =
             openagents_rpc::HostRelayConfig::new(edge_url, self.device_id.clone(), Arc::new(auth));
@@ -491,7 +502,7 @@ impl EngineCore {
                 }
             }
         });
-        openagents_rpc::HostRelay::spawn(config, self.rpc_service(), on_nudge)
+        openagents_rpc::HostRelay::spawn(config, service, on_nudge)
     }
 
     pub fn rpc_service(&self) -> Arc<EngineRpc> {
@@ -590,9 +601,16 @@ pub struct Engine {
 /// A fully assembled identity-scoped engine plus the relay handle whose lifetime
 /// keeps this device reachable. Used by both the headless server and the headed
 /// in-process engine so their production authentication paths cannot diverge.
+/// How peers reach this computer: the device-room relay, and the direct
+/// listener when it runs. Dropping it closes both.
+struct PeerHosting {
+    _relay: openagents_rpc::HostRelay,
+    _direct: Option<Arc<peer_direct::DirectHost>>,
+}
+
 pub struct EngineRuntime {
     core: EngineCore,
-    host_relay: std::sync::Mutex<Option<openagents_rpc::HostRelay>>,
+    host_relay: std::sync::Mutex<Option<PeerHosting>>,
     nip_host: std::sync::Mutex<Option<host_rpc::Hosted>>,
     /// The running device connection's connect codes, for the Connect your
     /// phone window.
@@ -948,6 +966,7 @@ impl Engine {
 
         let preview_org = profile.org_id().to_string();
         let nip_host_root = profile.device_root().join("device-channel");
+        let peer_direct_root = profile.device_root().join("peer-direct");
         let core = match lock {
             Some(lock) => EngineCore::assemble_with_profile_locked(
                 profile,
@@ -1007,9 +1026,54 @@ impl Engine {
         // never waits on — or dies inside — an npm run.
         openagents_harness::acp::prewarm_managed_adapters();
 
+        // Direct peer routes (#12130): reach this account's other computers
+        // over LAN, Tailscale, or our iroh relay while sync is down.
+        let direct_on = edge.is_some()
+            && peer_direct::enabled(
+                openagents_brand::env_var(peer_direct::ENV_VAR)
+                    .ok()
+                    .as_deref(),
+            );
+        let account: peer_direct::AccountProbe = {
+            let auth = auth.clone();
+            Arc::new(move || {
+                if auth.state().is_signed_in() {
+                    auth.user_id()
+                } else {
+                    None
+                }
+            })
+        };
+        let direct_host = if direct_on {
+            match peer_direct::DirectHost::start(
+                peer_direct::DirectHostConfig::new(&peer_direct_root),
+                account.clone(),
+                Arc::new(auth.clone()),
+            )
+            .await
+            {
+                Ok(host) => Some(host),
+                Err(error) => {
+                    tracing::warn!(%error, "direct peer routes didn't start");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let direct_peers = direct_on.then(|| {
+            peer_direct::DirectPeers::open(peer_direct::DirectPeersConfig::new(
+                &peer_direct_root,
+                core.device_id.clone(),
+                account.clone(),
+            ))
+        });
         let host_relay = edge.as_ref().map(|edge| {
             let mut link_config =
                 openagents_rpc::LinkCacheConfig::new(edge.url.clone(), Arc::new(auth.clone()));
+            link_config.direct = direct_peers
+                .clone()
+                .map(|peers| peers as Arc<dyn openagents_rpc::DirectRoutes>);
             // Registry-dark dial gate: devices with no recent presence fail
             // fast with zero dials; presence returning un-parks them (the
             // peer-alive hook below clears any cooldown at the same moment).
@@ -1024,7 +1088,19 @@ impl Engine {
                     links_for_presence.reset_cooldown(device_id);
                 }));
             core.set_links(links);
-            core.start_host_relay(&edge.url)
+            let service: Arc<dyn RpcService> = core.rpc_service();
+            let service = match &direct_host {
+                Some(direct) => {
+                    let service = direct.wrap(service);
+                    direct.serve(service.clone());
+                    service
+                }
+                None => service,
+            };
+            PeerHosting {
+                _relay: core.start_host_relay_serving(&edge.url, service),
+                _direct: direct_host.clone(),
+            }
         });
 
         let mut runtime = EngineRuntime {
