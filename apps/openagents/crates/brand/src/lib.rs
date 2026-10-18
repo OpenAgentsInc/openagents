@@ -19,6 +19,9 @@ pub const COPYRIGHT: &str = "© 2026 OpenAgents, Inc.";
 /// the earlier Rust Native desktop (`crates/openagents-desktop`).
 pub const BUNDLE_ID: &str = "com.openagents.desktop";
 
+/// Android and iOS bundle identifier for the OpenAgents mobile app.
+pub const MOBILE_BUNDLE_ID: &str = "com.openagents.app";
+
 /// Bundle identifier of the isolated development bundle
 /// (`scripts/run-macos-dev.sh`).
 pub const DEV_BUNDLE_ID: &str = "com.openagents.desktop.dev";
