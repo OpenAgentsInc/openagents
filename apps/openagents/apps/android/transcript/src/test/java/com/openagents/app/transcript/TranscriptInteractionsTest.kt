@@ -40,7 +40,7 @@ class TranscriptInteractionsTest {
         val display = RowDisplay(
             row.key, row.version, 200f, 40f, "link", emptyList(), emptyList(),
             listOf(LinkHit(10f, 4f, 40f, 20f, "https://example.test", null)),
-            emptyList(), emptyList(), emptyList(), "link",
+            emptyList(), emptyList(), emptyList(), revealAgeMs = null, copyText = "link",
         )
         val current = FixtureFrame(listOf(row), mapOf(0u to display))
         assertEquals(
@@ -65,7 +65,7 @@ class TranscriptInteractionsTest {
         val displays = rows.mapIndexed { index, row ->
             index.toUInt() to RowDisplay(
                 row.key, row.version, 200f, 20f, text[index], emptyList(), emptyList(),
-                emptyList(), emptyList(), emptyList(), emptyList(), text[index],
+                emptyList(), emptyList(), emptyList(), emptyList(), revealAgeMs = null, copyText = text[index],
             )
         }.toMap()
         return FixtureFrame(rows, displays)

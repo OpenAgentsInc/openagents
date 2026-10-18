@@ -30,7 +30,7 @@ class TranscriptSelectionLifecycleTest {
             reads++
             val at = index.toInt(); val key = keys.getOrNull(at) ?: return null
             return RowDisplay(key, revision, width, 24f, texts[at], emptyList(), emptyList(), emptyList(),
-                emptyList(), overlays[at].orEmpty(), fades[at].orEmpty(), texts[at])
+                emptyList(), overlays[at].orEmpty(), fades[at].orEmpty(), revealAgeMs = null, copyText = texts[at])
         }
     }
     private fun frame(revision: ULong, vararg text: String) = Frame(revision, text.indices.map { it.toULong() + 20uL }, text.toList())

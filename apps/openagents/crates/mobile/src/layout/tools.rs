@@ -653,6 +653,7 @@ fn prepare_thought(ctx: &mut Ctx, st: &Styles, lines: &[Vec<InlineRun>], more: b
             lh: st.out_lh,
             base: baseline(st.out_lh, st.label),
             paints,
+            reveal_ms: vec![None; spans.len()],
             links: Vec::new(),
             chip: (0.0, 0.0),
             badges: Vec::new(),

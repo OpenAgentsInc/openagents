@@ -19,7 +19,7 @@ use openagents_text::WhiteSpace;
 
 use super::display::{ColorRole, DisplayBuilder, FadeEdge, TextRun, WidgetKind};
 use super::file_icons::file_icon_asset;
-use super::markdown::{Ctx, PBlock, PText, Px, place, place_text, prepare_block, prepare_plain};
+use super::markdown::{Ctx, PBlock, PText, Px, apply_reveal_history, place, place_text, prepare_block, prepare_plain};
 use super::style::{Family, TYPE, Weight};
 use super::tools::{ThoughtState, ToolGroup, place_tools};
 
@@ -548,7 +548,24 @@ impl RowBuilder {
                 .map(|(_, core)| core.clone());
             let core = reuse.unwrap_or_else(|| {
                 let id = format!("{pkey}.{bi}");
-                let content = prepare_block(ctx, &block.block, 0, false);
+                let previous_core = state.blocks.get(bi).map(|(_, core)| core.as_ref());
+                let previous_block = previous_core.and_then(|core| match &core.content {
+                    Content::Block { block, .. } => Some(block),
+                    _ => None,
+                });
+                let reveal_started = if streaming {
+                    Some(
+                        previous_core
+                            .and_then(RowCore::reveal_started)
+                            .unwrap_or_else(std::time::Instant::now),
+                    )
+                } else {
+                    None
+                };
+                let mut content = prepare_block(ctx, &block.block, 0, false);
+                let reveal_age_ms = reveal_started
+                    .map(|started| started.elapsed().as_millis().min(u32::MAX as u128) as u32);
+                apply_reveal_history(ctx, previous_block, &mut content, reveal_age_ms);
                 Arc::new(RowCore {
                     key: row_key(&id),
                     version: next_version(),
@@ -556,7 +573,7 @@ impl RowBuilder {
                     entry_id: Arc::from(pkey.split('#').next().unwrap_or("")),
                     content: Content::Block {
                         block: content,
-                        reveal_started: streaming.then(std::time::Instant::now),
+                        reveal_started,
                     },
                     copy_text: copy.to_owned(),
                 })
@@ -765,6 +782,7 @@ fn prepare_user_text(ctx: &mut Ctx, body: &str, style: super::style::Resolved, l
         lh,
         base: super::style::baseline(lh, style),
         paints,
+        reveal_ms: vec![None; spans.len()],
         links,
         chip: ((lh - chip_h) / 2.0, chip_h),
         badges,

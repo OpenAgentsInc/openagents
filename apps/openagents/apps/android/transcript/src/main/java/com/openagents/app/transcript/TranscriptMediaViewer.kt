@@ -39,40 +39,75 @@ suspend fun showTranscriptMedia(context: Context, history: CoreSavedHistory, tar
     return TranscriptMediaViewer(context, bytes).show()
 }
 
-/** Shows one Rust-loaded image. Zoom stays in the view; dismissal closes the dialog. */
-class TranscriptMediaViewer(context: Context, private val imageBytes: ByteArray) {
+/** Shows one Rust-loaded image. The owner closes it when the view leaves the screen. */
+class TranscriptMediaViewer(context: Context, imageBytes: ByteArray) : AutoCloseable {
     private val dialog = Dialog(context)
+    private var imageBytes: ByteArray? = imageBytes
     private var bitmap: Bitmap? = null
+    private var imageView: ImageView? = null
+    private var closed = false
 
     fun show(): Boolean {
-        if (boundedTranscriptImage(imageBytes, maxAttachmentBytes()) == null) return false
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight)
-        }
-        bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options) ?: return false
+        if (closed) return false
+        if (dialog.isShowing) return true
+        return try {
+            val bytes = imageBytes ?: return false
+            if (boundedTranscriptImage(bytes, maxAttachmentBytes()) == null) return failShow()
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return failShow()
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight)
+            }
+            bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return failShow()
 
-        val image = ZoomableImageView(dialog.context).apply {
-            setImageBitmap(bitmap)
-            contentDescription = "Image"
-            setOnClickListener { dialog.dismiss() }
+            val image = ZoomableImageView(dialog.context).apply {
+                setImageBitmap(bitmap)
+                contentDescription = "Image"
+                setOnClickListener { dialog.dismiss() }
+            }
+            imageView = image
+            dialog.setContentView(FrameLayout(dialog.context).apply {
+                addView(image, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
+                setOnClickListener { dialog.dismiss() }
+            })
+            dialog.window?.setBackgroundDrawableResource(android.R.color.black)
+            dialog.window?.setLayout(-1, -1)
+            dialog.setOnDismissListener { close() }
+            dialog.show()
+            if (!dialog.isShowing) return failShow()
+            dialog.window?.setLayout(-1, -1)
+            true
+        } catch (_: RuntimeException) {
+            failShow()
+        } catch (_: OutOfMemoryError) {
+            failShow()
         }
-        dialog.setContentView(FrameLayout(dialog.context).apply {
-            addView(image, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
-            setOnClickListener { dialog.dismiss() }
-        })
-        dialog.window?.setBackgroundDrawableResource(android.R.color.black)
-        dialog.window?.setLayout(-1, -1)
-        dialog.setOnDismissListener {
-            image.setImageDrawable(null)
-            bitmap?.recycle()
-            bitmap = null
+    }
+
+    /** Dismisses the viewer and releases its decoded image. Safe to call more than once. */
+    override fun close() {
+        if (closed) return
+        closed = true
+        try {
+            if (dialog.isShowing) dialog.dismiss()
+        } finally {
+            releaseImage()
         }
-        dialog.show()
-        dialog.window?.setLayout(-1, -1)
-        return true
+    }
+
+    private fun failShow(): Boolean {
+        close()
+        return false
+    }
+
+    private fun releaseImage() {
+        imageView?.setImageDrawable(null)
+        imageView = null
+        bitmap?.let { if (!it.isRecycled) it.recycle() }
+        bitmap = null
+        imageBytes?.fill(0)
+        imageBytes = null
     }
 
     private fun sampleSize(width: Int, height: Int): Int {
