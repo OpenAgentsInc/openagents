@@ -15,6 +15,11 @@ Keep fork-specific changes here so upstream updates can review each integration.
   offline demo uses Rust's chat fixture with the bundled Geist fonts and
   `oa-tokens` colors; local commands live in `scripts/android/app.sh`.
 
+- OpenAgents #12081: Android startup initializes the JVM context and platform
+  certificate verifier before any live Rust client can start. Kotlin retries
+  after failed setup, ignores repeated successful callbacks, and rejects calls
+  that arrive before initialization.
+
 - [OpenAgents #12075](https://github.com/OpenAgentsInc/openagents/issues/12075):
   Queued messages publish their ID after attachments and delivery settings, so
   concurrent drains read complete rows. Engine fixtures use SDK sign-in,
