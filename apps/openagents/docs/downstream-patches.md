@@ -16,6 +16,11 @@ Keep fork-specific changes here so upstream updates can review each integration.
   sign-in flow reserves event and challenge before making an account, so
   concurrent replays create no account as a side effect.
 
+- OpenAgents #12083: the Android Views shell in `apps/android` uses the shared
+  Rust mobile core, brand and version metadata, and both Android ABIs. The
+  offline demo uses Rust's chat fixture with the bundled Geist fonts and
+  `oa-tokens` colors; local commands live in `scripts/android/app.sh`.
+
 - [OpenAgents #12075](https://github.com/OpenAgentsInc/openagents/issues/12075):
   Queued messages publish their ID after attachments and delivery settings, so
   concurrent drains read complete rows. Engine fixtures use SDK sign-in,

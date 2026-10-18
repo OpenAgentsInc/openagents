@@ -33,8 +33,30 @@ Android implementation is tracked in the
 and generated the UniFFI Kotlin source at
 `apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt`.
 `scripts/android/build-core.sh` syncs that source and builds both ABIs. B1
-adds the Kotlin shell and release path, with isolated emulator checks on
-CoderOS. Do not use the retired Android app as the current build target.
+adds the Kotlin shell and release path. Do not use the retired Android app as
+the current build target.
+
+Enter the pinned Android shell with `nix develop ./os#android` from the
+repository root. The shell pins JDK 17, Gradle 8.14.4, Android API 35, and
+NDK 27.1.12297006. From `apps/openagents/`, use `scripts/android/app.sh` for
+the local Android commands:
+
+```sh
+scripts/android/app.sh core     # build the Rust core and both Android ABIs
+scripts/android/app.sh apk      # build the debug APK
+scripts/android/app.sh install  # install the debug APK on the selected device
+scripts/android/app.sh run      # launch the debug app
+scripts/android/app.sh bundle   # build the release Android App Bundle
+scripts/android/app.sh check    # compile debug and release variants
+```
+
+The script runs Gradle with a clean environment and two workers. Gradle can
+download its pinned public dependencies; the demo itself makes no network
+requests. Set `CARGO_TARGET_DIR` to the shared app target before building the
+core.
+The debug application uses an isolated `com.openagents.app.debug` ID; release
+uses the mobile ID from `crates/brand` and version metadata shared with iOS.
+No GitHub workflow builds or publishes the Android app.
 
 The iOS core build is arm64 only. For an Xcode simulator build, name an
 Apple-silicon simulator and pass `ARCHS=arm64` (a generic simulator
