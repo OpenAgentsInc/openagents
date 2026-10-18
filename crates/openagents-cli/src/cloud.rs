@@ -10,7 +10,7 @@
 //!   under a live grant; `cloud down` deletes every host and revokes it.
 //!   Nothing else places work on the pool, and the pool never stands in
 //!   for another computer.
-//! - **Hosts.** Spot `c3-standard-8` VMs (200 GB pd-balanced, no external
+//! - **Hosts.** Spot `c3-standard-8` VMs (300 GB pd-balanced, no external
 //!   address, service account `oa-coder-host@` that reaches only the
 //!   sccache bucket) from image family `oa-coder-host`. Each zone of the
 //!   region is tried in turn, then on demand, as the image bake does. Two
