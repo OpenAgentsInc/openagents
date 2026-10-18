@@ -71,6 +71,7 @@ pub(crate) fn extend(doc: &mut Value) {
                 parameters.push(json!({"name":"revision","in":"query","description":"Required with after. A changed transcript returns 409; restart without after.","schema":{"type":"integer","minimum":1}}));
             }
             if schema == "List" {
+                parameters.push(json!({"name":"query","in":"query","description":"Case-insensitive saved-title search. Continue next even when a matched page is empty; change the query only when restarting from the first page.","schema":{"type":"string","maxLength":200}}));
                 parameters.push(json!({"name":"project","in":"query","description":"A currently authorized shared project ID. Omit for all owned chats, including archived.","schema":{"type":"string"}}));
             }
         }
@@ -85,4 +86,24 @@ pub(crate) fn extend(doc: &mut Value) {
         }
         doc["paths"][path] = json!({"get":{"operationId":id,"description":description,"tags":["Saved history"],"security":[{"appBearer":[]}],"parameters":parameters,"responses":responses}});
     }
+    doc["components"]["schemas"]["SavedPinOrder"] = json!({
+        "type":"object","required":["revision","ids"],"properties":{
+            "revision":{"type":"integer","minimum":0},
+            "ids":{"type":"array","maxItems":4096,"uniqueItems":true,"items":{"type":"string","format":"uuid"}}
+        }
+    });
+    let response = json!({"description":"Confirmed owner pin order.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/SavedPinOrder"}}}});
+    doc["paths"]["/v1/history/pins"] = json!({
+        "get":{"operationId":"readSavedPinOrder","tags":["Saved history"],"security":[{"appBearer":[]}],
+            "description":"Read your saved pins. Discovery scans at most 10,000 chats in 200-row pages, keeps at most 4,096 pins, and times out after 10 seconds. Failure is not an empty order.",
+            "responses":{"200":response.clone(),"401":{"description":"Signed out."},"503":{"description":"Discovery limit or timeout; retain the last known order."}}},
+        "patch":{"operationId":"moveSavedPin","tags":["Saved history"],"security":[{"appBearer":[]}],
+            "description":"Move one of your saved pins into an exact gap after removing that pin. Supply the last read revision and both neighbours (null at an edge). One owner-scoped CAS commits the order without changing chats. A stale revision or gap returns 409; refresh before retrying.",
+            "requestBody":{"required":true,"content":{"application/json":{"schema":{
+                "type":"object","required":["revision","id"],"additionalProperties":false,"properties":{
+                    "revision":{"type":"integer","minimum":0},"id":{"type":"string","format":"uuid"},
+                    "after":{"type":["string","null"],"format":"uuid"},"before":{"type":["string","null"],"format":"uuid"}
+                }
+            }}}},"responses":{"200":response,"400":{"description":"Invalid request."},"401":{"description":"Signed out."},"409":{"description":"pin_order_changed; no order was written."},"503":{"description":"Pinned chats could not be loaded; no order was written."}}}
+    });
 }

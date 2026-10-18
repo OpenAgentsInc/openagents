@@ -541,3 +541,156 @@ async fn history_session_continuation_waits_for_the_computer_and_transcript_is_o
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[tokio::test]
+async fn indexed_read_markers_are_viewer_scoped_and_reject_stale_activity() {
+    let world = world().await;
+    let api = signed_in(&world, "octo-local").await;
+    let other = signed_in(&world, "quiet-local").await;
+    let publish = json!({"name":"Synthetic","sessions":[row(ONE,"Example",10,None)]});
+    assert_eq!(
+        api.json(
+            &world,
+            "PUT",
+            "/v1/history/sessions/computers/device-a",
+            publish
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, first) = api
+        .json(&world, "GET", "/v1/history/sessions", Value::Null)
+        .await;
+    let revision = first["data"][0]["activity_revision"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(first["data"][0]["unseen"], true);
+    let record = first["data"][0]["record_key"].as_str().unwrap();
+    let route = format!("/v1/history/sessions/{ONE}/seen?record={record}");
+    let body = json!({"activity_revision":revision});
+    assert_eq!(
+        other.json(&world, "PUT", &route, body.clone()).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        api.json(&world, "PUT", &route, body.clone()).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        api.json(&world, "PUT", &route, body.clone()).await.0,
+        StatusCode::OK,
+        "same rendered revision is idempotent"
+    );
+    let (_, seen) = api
+        .json(&world, "GET", "/v1/history/sessions", Value::Null)
+        .await;
+    assert_eq!(seen["data"][0]["unseen"], false);
+    let publish = json!({"name":"Synthetic","sessions":[row(ONE,"Example",11,None)]});
+    assert_eq!(
+        api.json(
+            &world,
+            "PUT",
+            "/v1/history/sessions/computers/device-a",
+            publish
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, error) = api.json(&world, "PUT", &route, body).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(error["error"]["code"], "activity_changed");
+    let (_, changed) = api.json(&world, "GET", "/v1/history", Value::Null).await;
+    assert_eq!(changed["sessions"][0]["unseen"], true);
+    assert_ne!(changed["sessions"][0]["activity_revision"], json!(revision));
+}
+
+#[tokio::test]
+async fn indexed_shared_read_marker_changes_only_the_viewer_and_requires_project_scope() {
+    let world = world().await;
+    let owner = signed_in(&world, "octo-local").await;
+    let viewer = signed_in(&world, "quiet-local").await;
+    let (_, made) = owner
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({"name":"Synthetic sessions"}),
+        )
+        .await;
+    let project = made["id"].as_str().unwrap();
+    let (_, invited) = owner
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/projects/{project}/invitations"),
+            json!({"role":"viewer"}),
+        )
+        .await;
+    assert_eq!(
+        viewer
+            .json(
+                &world,
+                "POST",
+                "/v1/projects/invitations/accept",
+                json!({"code":invited["code"]})
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let publish = json!({"name":"Synthetic","sessions":[row(ONE,"Example",10,Some(project))]});
+    assert_eq!(
+        owner
+            .json(
+                &world,
+                "PUT",
+                "/v1/history/sessions/computers/device-a",
+                publish
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (_, list) = viewer
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/history/sessions?project={project}"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(list["data"][0]["project"], project);
+    let body = json!({"activity_revision":list["data"][0]["activity_revision"]});
+    let record = list["data"][0]["record_key"].as_str().unwrap();
+    let route = format!("/v1/history/sessions/{ONE}/seen?record={record}");
+    assert_eq!(
+        viewer.json(&world, "PUT", &route, body.clone()).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        viewer
+            .json(&world, "PUT", &format!("{route}&project={project}"), body)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (_, seen) = viewer
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/history/sessions?project={project}"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(seen["data"][0]["unseen"], false);
+    let (_, own) = owner
+        .json(&world, "GET", "/v1/history/sessions", Value::Null)
+        .await;
+    assert_eq!(
+        own["data"][0]["unseen"], true,
+        "another viewer never acknowledges the owner's row"
+    );
+}

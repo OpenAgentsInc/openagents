@@ -26,8 +26,13 @@ pub struct Snapshot {
     pub signed_in: bool,
     pub login_required: bool,
     pub rows: Vec<ChatSummary>,
+    /// Authorized indexed computer sessions, never joined to legacy Conversation IDs.
+    pub sessions: Vec<openagents::sessions::SessionSummary>,
     pub projects: Vec<HistoryProject>,
     pub project: Option<HistoryProject>,
+    pub query: String,
+    pub pin_order: Option<openagents::history::SavedPinOrder>,
+    pub pin_order_state: LoadState,
     pub state: LoadState,
     pub projects_state: LoadState,
     pub has_more: bool,
@@ -42,13 +47,26 @@ impl Snapshot {
             .filter(|r| r.archived_unix.is_some() == archived && r.links.continued_by.is_none())
             .cloned()
             .collect::<Vec<_>>();
+        let positions: std::collections::BTreeMap<_, _> = self
+            .pin_order
+            .as_ref()
+            .filter(|_| self.project.is_none())
+            .into_iter()
+            .flat_map(|order| order.ids().iter().enumerate())
+            .map(|(at, id)| (id.as_str(), at))
+            .collect();
         rows.sort_by(|a, b| {
             a.pinned_unix
                 .is_none()
                 .cmp(&b.pinned_unix.is_none())
                 .then_with(|| {
                     if a.pinned_unix.is_some() && b.pinned_unix.is_some() {
-                        b.pinned_unix.cmp(&a.pinned_unix)
+                        match (positions.get(a.chat.id()), positions.get(b.chat.id())) {
+                            (Some(a), Some(b)) => a.cmp(b),
+                            (None, Some(_)) => std::cmp::Ordering::Less,
+                            (Some(_), None) => std::cmp::Ordering::Greater,
+                            _ => b.pinned_unix.cmp(&a.pinned_unix),
+                        }
                     } else {
                         // Newest first: projects show on each row, not as groups.
                         std::cmp::Ordering::Equal
@@ -85,6 +103,7 @@ struct State {
     projects_reader: Option<ProjectReader>,
     index: Option<HistoryIndex>,
     replace: bool,
+    sessions_pending: bool,
     snapshot: Snapshot,
 }
 pub struct History {
@@ -108,6 +127,7 @@ impl History {
                 projects_reader: None,
                 index: None,
                 replace: false,
+                sessions_pending: true,
                 snapshot: Snapshot::default(),
             }),
             updates,
@@ -141,6 +161,7 @@ impl History {
         s.projects_reader = None;
         s.index = None;
         s.replace = false;
+        s.sessions_pending = true;
         s.lease = lease.filter(Lease::is_current);
         if let Some(lease) = s.lease.clone() {
             s.cancel = lease.cancel.child_token();
@@ -150,6 +171,7 @@ impl History {
                 lease
                     .client()
                     .history(lease.session())
+                    .and_then(|r| r.with_query(&s.snapshot.query))
                     .and_then(|r| r.with_page_size(200)),
                 lease
                     .client()
@@ -202,13 +224,46 @@ impl History {
         s.reader = Some(reader);
         s.index = Some(lease.client().history_index(lease.session())?);
         s.snapshot.rows.clear();
+        s.snapshot.sessions.clear();
+        s.snapshot.query.clear();
         s.snapshot.project = project.cloned();
         s.snapshot.state = LoadState::Idle;
         s.snapshot.has_more = true;
         s.replace = false;
+        s.sessions_pending = true;
         self.publish(&s);
         Ok(())
     }
+    /// Start a fresh, account-fenced title search. Results retain server paging.
+    pub fn search(&self, query: &str) -> Result<(), Error> {
+        let mut s = self.state.lock().unwrap();
+        let lease = s
+            .lease
+            .clone()
+            .filter(Lease::is_current)
+            .ok_or(Error::Cancelled)?;
+        let reader = match &s.snapshot.project {
+            Some(p) => lease.client().shared_history(lease.session(), p)?,
+            None => lease.client().history(lease.session())?,
+        }
+        .with_query(query)?
+        .with_page_size(200)?;
+        s.query_cancel.cancel();
+        s.query_cancel = s.cancel.child_token();
+        s.query += 1;
+        s.reader = Some(reader);
+        s.index = Some(lease.client().history_index(lease.session())?);
+        s.snapshot.query = query.trim().to_owned();
+        s.snapshot.rows.clear();
+        s.snapshot.sessions.clear();
+        s.snapshot.state = LoadState::Idle;
+        s.snapshot.has_more = true;
+        s.replace = false;
+        s.sessions_pending = true;
+        self.publish(&s);
+        Ok(())
+    }
+
     /// Keep old rows explicitly stale during an outage; replace them on the first fresh page.
     pub fn refresh(&self) -> Result<(), Error> {
         let mut s = self.state.lock().unwrap();
@@ -221,12 +276,13 @@ impl History {
             Some(p) => lease.client().shared_history(lease.session(), p)?,
             None => lease.client().history(lease.session())?,
         };
-        let reader = reader.with_page_size(200)?;
+        let reader = reader.with_query(&s.snapshot.query)?.with_page_size(200)?;
         s.query_cancel.cancel();
         s.query_cancel = s.cancel.child_token();
         s.query += 1;
         s.reader = Some(reader);
         s.replace = true;
+        s.sessions_pending = true;
         s.snapshot.state = LoadState::Idle;
         s.snapshot.has_more = true;
         self.publish(&s);
@@ -244,6 +300,7 @@ impl History {
                     Some(p) => lease.client().shared_history(lease.session(), p),
                     None => lease.client().history(lease.session()),
                 }
+                .and_then(|r| r.with_query(&s.snapshot.query))
                 .and_then(|r| r.with_page_size(200))
                 .ok()
             });
@@ -274,6 +331,7 @@ impl History {
             }
             match result {
                 Ok(Some(page)) => {
+                    s.snapshot.sessions = page.sessions;
                     let Some(index) = &mut s.index else {
                         return;
                     };
@@ -307,6 +365,125 @@ impl History {
             this.publish(&s);
         }
     }
+    /// Read the confirmed owner order without discarding last-known ordering on failure.
+    pub fn refresh_pin_order(self: &Arc<Self>) -> impl Future<Output = ()> + Send + 'static {
+        let this = self.clone();
+        let request = {
+            let mut s = self.state.lock().unwrap();
+            let lease = s.lease.clone().filter(Lease::is_current);
+            lease.map(|lease| {
+                s.snapshot.pin_order_state = LoadState::Loading;
+                this.publish(&s);
+                (s.epoch, lease, s.cancel.child_token())
+            })
+        };
+        async move {
+            let Some((epoch, lease, cancel)) = request else {
+                return;
+            };
+            let result = lease
+                .client()
+                .saved_pin_order(lease.session(), &cancel)
+                .await;
+            let mut s = this.state.lock().unwrap();
+            if s.epoch != epoch || !lease.is_current() || cancel.is_cancelled() {
+                return;
+            }
+            match result {
+                Ok(order) => {
+                    if s.snapshot
+                        .pin_order
+                        .as_ref()
+                        .is_none_or(|old| order.revision() >= old.revision())
+                    {
+                        s.snapshot.pin_order = Some(order);
+                    }
+                    s.snapshot.pin_order_state = LoadState::Ready;
+                }
+                Err(_) => {
+                    s.snapshot.pin_order_state = LoadState::Failed {
+                        message: "Couldn't load pinned chats. Try again.".into(),
+                        stale: s.snapshot.pin_order.is_some(),
+                    }
+                }
+            }
+            this.publish(&s);
+        }
+    }
+
+    /// Commit one saved-pin move on the server. A failed or stale request cannot
+    /// change local ordering, pin flags, session selection, or chat content.
+    pub fn move_pin(
+        self: &Arc<Self>,
+        id: String,
+        after: Option<String>,
+        before: Option<String>,
+        revision: u64,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'static {
+        let this = self.clone();
+        async move {
+            let (epoch, lease, order, cancel) = {
+                let s = this.state.lock().unwrap();
+                let lease = s
+                    .lease
+                    .clone()
+                    .filter(Lease::is_current)
+                    .ok_or(Error::Cancelled)?;
+                if s.snapshot.project.is_some()
+                    || s.snapshot.pin_order_state != LoadState::Ready
+                    || !s.snapshot.rows.iter().any(|row| {
+                        row.chat.id() == id
+                            && row.pinned_unix.is_some()
+                            && row.archived_unix.is_none()
+                    })
+                {
+                    return Err(Error::InvalidReference);
+                }
+                let order = s
+                    .snapshot
+                    .pin_order
+                    .clone()
+                    .filter(|order| order.revision() == revision)
+                    .ok_or(Error::Changed)?;
+                (s.epoch, lease, order, s.cancel.child_token())
+            };
+            let chat = lease.client().chat(lease.session(), &id)?;
+            let after = after
+                .as_deref()
+                .map(|id| lease.client().chat(lease.session(), id))
+                .transpose()?;
+            let before = before
+                .as_deref()
+                .map(|id| lease.client().chat(lease.session(), id))
+                .transpose()?;
+            let order = lease
+                .client()
+                .move_saved_pin(
+                    lease.session(),
+                    &order,
+                    &chat,
+                    after.as_ref(),
+                    before.as_ref(),
+                    &cancel,
+                )
+                .await?;
+            let mut s = this.state.lock().unwrap();
+            if s.epoch != epoch || !lease.is_current() || cancel.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            if s.snapshot
+                .pin_order
+                .as_ref()
+                .is_none_or(|old| order.revision() >= old.revision())
+            {
+                s.snapshot.pin_order = Some(order);
+                s.snapshot.pin_order_state = LoadState::Ready;
+                this.publish(&s);
+            }
+            Ok(())
+        }
+    }
+
     pub fn refresh_projects(&self) -> Result<(), Error> {
         let mut s = self.state.lock().unwrap();
         let lease = s
@@ -363,9 +540,14 @@ impl History {
                     if s.replace {
                         s.index = lease.client().history_index(lease.session()).ok();
                         s.replace = false;
+                        s.sessions_pending = true;
                     }
                     let more = page.as_ref().is_some_and(|p| p.has_more);
                     if let Some(page) = page {
+                        if s.sessions_pending {
+                            s.snapshot.sessions = page.sessions;
+                            s.sessions_pending = false;
+                        }
                         if let Some(index) = &mut s.index {
                             if let Err(e) = index.extend(page.data) {
                                 s.snapshot.state = LoadState::Failed {
@@ -373,6 +555,7 @@ impl History {
                                     stale: false,
                                 };
                                 s.snapshot.rows.clear();
+                                s.snapshot.sessions.clear();
                                 this.publish(&s);
                                 return;
                             }
@@ -406,11 +589,13 @@ impl History {
                     if lost_access(&e) {
                         s.index = lease.client().history_index(lease.session()).ok();
                         s.snapshot.rows.clear();
+                        s.snapshot.sessions.clear();
                         if let Some(project) = s.snapshot.project.take() {
                             s.snapshot.projects.retain(|p| p.id() != project.id());
                             s.reader = lease
                                 .client()
                                 .history(lease.session())
+                                .and_then(|r| r.with_query(&s.snapshot.query))
                                 .and_then(|r| r.with_page_size(200))
                                 .ok();
                         }
@@ -420,7 +605,7 @@ impl History {
                     }
                     s.snapshot.state = LoadState::Failed {
                         message: e.to_string(),
-                        stale: !s.snapshot.rows.is_empty(),
+                        stale: !s.snapshot.rows.is_empty() || !s.snapshot.sessions.is_empty(),
                     };
                 }
             }
@@ -501,12 +686,15 @@ impl History {
                         s.reader = lease
                             .client()
                             .history(lease.session())
+                            .and_then(|r| r.with_query(&s.snapshot.query))
                             .and_then(|r| r.with_page_size(200))
                             .ok();
                         s.snapshot.has_more = true;
                         s.replace = true;
+                        s.sessions_pending = true;
                         s.index = lease.client().history_index(lease.session()).ok();
                         s.snapshot.rows.clear();
+                        s.snapshot.sessions.clear();
                         s.snapshot.state = LoadState::Failed {
                             message: e.to_string(),
                             stale: false,
@@ -537,4 +725,125 @@ fn lost_access(error: &Error) -> bool {
             | Error::WrongDeployment
             | Error::NotFound
     )
+}
+
+impl History {
+    /// Read a previously authorized indexed row without creating a room or session.
+    pub fn indexed_detail(
+        self: &Arc<Self>,
+        key: &str,
+    ) -> impl Future<Output = Result<openagents::sessions::SessionDetail, Error>> + Send + 'static
+    {
+        let this = self.clone();
+        let key = key.to_owned();
+        let request = {
+            let s = self.state.lock().unwrap();
+            s.lease.clone().filter(Lease::is_current).and_then(|l| {
+                let mut rows = s
+                    .snapshot
+                    .sessions
+                    .iter()
+                    .filter(|r| r.navigation_key() == key);
+                let row = rows.next()?.clone();
+                if rows.next().is_some() {
+                    return None;
+                }
+                Some((
+                    s.epoch,
+                    s.query,
+                    l,
+                    row,
+                    s.snapshot.project.as_ref().map(|p| p.id().to_owned()),
+                    s.query_cancel.clone(),
+                ))
+            })
+        };
+        async move {
+            let (epoch, query, lease, row, project, cancel) = request.ok_or(Error::Cancelled)?;
+            let result = openagents::sessions::get_row(
+                lease.client(),
+                lease.session(),
+                &row,
+                project.as_deref(),
+                &cancel,
+            )
+            .await?;
+            let mut s = this.state.lock().unwrap();
+            if s.epoch != epoch || s.query != query || !lease.is_current() || cancel.is_cancelled()
+            {
+                return Err(Error::Cancelled);
+            }
+            let previous = s
+                .snapshot
+                .sessions
+                .iter_mut()
+                .find(|r| r.navigation_key() == key)
+                .ok_or(Error::Cancelled)?;
+            if previous.home != result.session.home
+                || previous.navigation_key() != result.session.navigation_key()
+            {
+                return Err(Error::InvalidResponse);
+            }
+            *previous = result.session.clone();
+            this.publish(&s);
+            Ok(result)
+        }
+    }
+    /// Acknowledge only a rendered indexed row; preserve newer activity and other viewers.
+    pub fn mark_indexed_seen(
+        self: &Arc<Self>,
+        key: &str,
+        revision: &str,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'static {
+        let this = self.clone();
+        let key = key.to_owned();
+        let revision = revision.to_owned();
+        let request = {
+            let s = self.state.lock().unwrap();
+            s.lease.clone().filter(Lease::is_current).and_then(|l| {
+                s.snapshot
+                    .sessions
+                    .iter()
+                    .find(|r| {
+                        r.navigation_key() == key
+                            && r.activity_revision.as_deref() == Some(revision.as_str())
+                    })
+                    .cloned()
+                    .map(|r| {
+                        (
+                            s.epoch,
+                            s.query,
+                            l,
+                            r,
+                            s.snapshot.project.as_ref().map(|p| p.id().to_owned()),
+                            s.query_cancel.clone(),
+                        )
+                    })
+            })
+        };
+        async move {
+            let (epoch, query, lease, row, project, cancel) = request.ok_or(Error::Cancelled)?;
+            openagents::sessions::mark_seen(
+                lease.client(),
+                lease.session(),
+                &row,
+                project.as_deref(),
+                &cancel,
+            )
+            .await?;
+            let mut s = this.state.lock().unwrap();
+            if s.epoch != epoch || s.query != query || !lease.is_current() || cancel.is_cancelled()
+            {
+                return Err(Error::Cancelled);
+            }
+            if let Some(row) = s.snapshot.sessions.iter_mut().find(|r| {
+                r.navigation_key() == key
+                    && r.activity_revision.as_deref() == Some(revision.as_str())
+            }) {
+                row.unseen = Some(false);
+            }
+            this.publish(&s);
+            Ok(())
+        }
+    }
 }

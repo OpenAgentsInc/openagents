@@ -764,6 +764,19 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+
+- 2026-10-18 (#12089): add Android presentation glue for Lab Rust Native cards and Rust-owned visual frames. The Lab bridge mounts through `SemanticViewAdapter`, bounds JSON size, preserves revision-bound activations and field changes, and ignores queued events after a card is replaced. Fixture coverage uses bounded synthetic views; Android compilation and device input remain unverified.
+
+- 2026-10-18 (#12089 follow-up): derive bounded Android Lab projections from
+  account-bound saved/live cards through `lab-ui::card`. Rust checks registered
+  media, mounted intent identity, current card contents, and disposal, including
+  after media awaits. Kotlin requires owned registered surface mounts through
+  `SemanticViewAdapter`; label substitutes are removed. Generation-fenced queues
+  keep retired workers from clearing replacement frames, and bitmap failures
+  retain Rust's paint fallback. New Rust/Kotlin fixtures are authored but unrun
+  below the disk floor; bindings, media-player integration, and device validation
+  remain pending.
+
 - [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
   Android push delivery uses the existing Rust push registration and private
   owner-note APIs. `CoreClient::handle_push_wake` receives a typed wake; Rust
@@ -850,3 +863,19 @@ links remain readable. Upstream fixes now require manual ports.
   asks the host to show navigation without changing session state. Integration
   with the blocked session/project navigation, Activity, and window-inset owners,
   plus Android/JUnit/device checks, remains pending.
+- [OpenAgents #12087](https://github.com/OpenAgentsInc/openagents/issues/12087):
+  Add an isolated Android Views drawer and synthetic presenter fixtures over
+  Rust-owned session/history intents. Add bounded saved-title search and owned
+  rename to the server and SDK, with account-fenced UniFFI pin/archive/rename.
+  Save pin order in one owner-scoped CAS record and project typed Rust move hints
+  for live and saved rows. Saved metadata without a verified Rust source stays
+  optional. Shell wiring, binding regeneration, and executable checks remain open; see
+  `apps/android/drawer/README.md`. No checks requiring a build have passed yet.
+
+- [OpenAgents #12087](https://github.com/OpenAgentsInc/openagents/issues/12087):
+  preserve separately authorized indexed sessions through the account, UniFFI,
+  and Android drawer. Agent/status/project data stays on its own identity;
+  a bounded viewer-owned read-marker API acknowledges only the exact published
+  row version. The SDK and server changes land together. Indexed transcript reads
+  keep shared-project authorization; no legacy-ID join or second room path is
+  added. New source fixtures and binding/integration checks remain unrun.

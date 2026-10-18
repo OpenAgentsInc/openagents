@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -30,6 +30,7 @@ struct Control {
     reads: AtomicUsize,
     stolen: AtomicUsize,
     started: tokio::sync::Notify,
+    pins: Mutex<(u64, Vec<String>)>,
 }
 impl Control {
     fn mode(&self, n: usize) {
@@ -90,6 +91,16 @@ async fn list(
     let end = (start + limit).min(205);
     let data: Vec<_> = (start..end)
         .map(|n| summary(if mode == 8 { 0 } else { n }, 405))
+        .filter(|row| {
+            mode == 16
+                || q.get("query").is_none_or(|query| {
+                    row["title"]
+                        .as_str()
+                        .unwrap()
+                        .to_lowercase()
+                        .contains(&query.to_lowercase())
+                })
+        })
         .collect();
     let next = if mode == 3 {
         Some(id(99))
@@ -146,6 +157,53 @@ async fn bytes(State(c): State<Arc<Control>>, headers: HeaderMap) -> Response {
     }
     b"fixture!".to_vec().into_response()
 }
+async fn pins(State(c): State<Arc<Control>>, headers: HeaderMap) -> Response {
+    let mode = before(&c, &headers).await;
+    if let Some(response) = denied(mode) {
+        return response;
+    }
+    if headers["authorization"].to_str().unwrap().contains(&key(2)) {
+        return Json(json!({"revision":0,"ids":[]})).into_response();
+    }
+    let mut pins = c.pins.lock().unwrap();
+    if pins.1.is_empty() {
+        pins.1 = vec![id(0), id(1), id(2)];
+    }
+    Json(json!({"revision":pins.0,"ids":pins.1})).into_response()
+}
+async fn move_pin(
+    State(c): State<Arc<Control>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let mode = before(&c, &headers).await;
+    if let Some(response) = denied(mode) {
+        return response;
+    }
+    let mut pins = c.pins.lock().unwrap();
+    if body["revision"].as_u64() != Some(pins.0) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({"error":{"code":"pin_order_changed"}})),
+        )
+            .into_response();
+    }
+    // Scripted response for the fixture's sole accepted move; no list algorithm.
+    assert_eq!(body["id"], id(2));
+    assert!(body["after"].is_null());
+    assert_eq!(body["before"], id(0));
+    pins.0 += 1;
+    pins.1 = vec![id(2), id(0), id(1)];
+    let ids = if mode == 17 {
+        vec![id(0), id(2), id(1)]
+    } else if mode == 18 {
+        vec![id(2), id(2)]
+    } else {
+        pins.1.clone()
+    };
+    Json(json!({"revision":pins.0,"ids":ids})).into_response()
+}
+
 async fn fixture() -> (Client, Session, Arc<Control>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -155,6 +213,7 @@ async fn fixture() -> (Client, Session, Arc<Control>) {
         let other=headers.get("authorization").unwrap().to_str().unwrap().contains(&key(2));
         Json(json!({"account":{"id":if other{"acct_two"}else{"acct_one"},"label":"Fixture"},"workspaces":[]}))
     })).route("/v1/history",get(list)).route("/v1/history/projects",get(||async{Json(json!({"data":[{"id":"prj_0000000000000001","name":"Shared","shared":true}],"next":null}))}))
+        .route("/v1/history/pins",get(pins).patch(move_pin))
         .route("/v1/history/{id}/messages",get(messages)).route("/v1/history/{id}/files/{file}",get(bytes))
         .route("/v1/history/{id}/captures/{capture}",get(||async{b"cap".to_vec()}))
         .route("/stolen",get(move || {stolen.stolen.fetch_add(1,Ordering::SeqCst);async{"bad"}})).with_state(c.clone());
@@ -451,4 +510,124 @@ async fn saved_text_above_auth_response_bound_is_not_truncated() {
             .with_page_size(201)
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn saved_title_search_keeps_scan_cursor_through_empty_pages() {
+    let (client, session, control) = fixture().await;
+    let cancel = CancellationToken::new();
+    let mut reader = client
+        .history(&session)
+        .unwrap()
+        .with_page_size(200)
+        .unwrap()
+        .with_query("Absent")
+        .unwrap();
+    let first = reader
+        .next_page(&client, &session, &cancel)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(first.data.is_empty() && first.has_more);
+    let last = reader
+        .next_page(&client, &session, &cancel)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(last.data.is_empty() && !last.has_more);
+    assert_eq!(control.reads.load(Ordering::SeqCst), 2);
+    let mut reader = reader.with_query(" DUPLICATE ").unwrap();
+    assert_eq!(
+        reader
+            .next_page(&client, &session, &cancel)
+            .await
+            .unwrap()
+            .unwrap()
+            .data
+            .len(),
+        200
+    );
+    assert!(
+        client
+            .history(&session)
+            .unwrap()
+            .with_query(&"q".repeat(201))
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn saved_search_refuses_a_server_that_ignored_the_query() {
+    let (client, session, control) = fixture().await;
+    control.mode(16);
+    let mut reader = client
+        .history(&session)
+        .unwrap()
+        .with_query("Absent")
+        .unwrap();
+    assert!(matches!(
+        reader
+            .next_page(&client, &session, &CancellationToken::new())
+            .await,
+        Err(Error::InvalidResponse)
+    ));
+}
+
+#[tokio::test]
+async fn saved_pin_order_checks_account_revision_cancellation_and_confirmed_gap() {
+    let (client, session, control) = fixture().await;
+    let cancel = CancellationToken::new();
+    let order = client.saved_pin_order(&session, &cancel).await.unwrap();
+    assert_eq!(order.revision(), 0);
+    assert_eq!(order.ids(), &[id(0), id(1), id(2)]);
+    let chat = client.chat(&session, &id(2)).unwrap();
+    let before = client.chat(&session, &id(0)).unwrap();
+    let next = client
+        .move_saved_pin(&session, &order, &chat, None, Some(&before), &cancel)
+        .await
+        .unwrap();
+    assert_eq!(next.revision(), 1);
+    assert_eq!(next.ids(), &[id(2), id(0), id(1)]);
+    assert_eq!(order.revision(), 0);
+    assert!(
+        client
+            .move_saved_pin(&session, &order, &chat, None, Some(&before), &cancel)
+            .await
+            .is_err()
+    );
+    let other = client.authenticate(&key(2)).await.unwrap();
+    let calls = control.reads.load(Ordering::SeqCst);
+    assert!(matches!(
+        client
+            .move_saved_pin(&other, &next, &chat, None, Some(&before), &cancel)
+            .await,
+        Err(Error::WrongAccount)
+    ));
+    cancel.cancel();
+    assert!(matches!(
+        client
+            .move_saved_pin(&session, &next, &chat, None, Some(&before), &cancel)
+            .await,
+        Err(Error::Cancelled)
+    ));
+    assert_eq!(control.reads.load(Ordering::SeqCst), calls);
+}
+
+#[tokio::test]
+async fn saved_pin_order_refuses_wrong_gap_and_duplicate_response_ids() {
+    for mode in [17, 18] {
+        let (client, session, control) = fixture().await;
+        let cancel = CancellationToken::new();
+        let order = client.saved_pin_order(&session, &cancel).await.unwrap();
+        control.mode(mode);
+        let chat = client.chat(&session, &id(2)).unwrap();
+        let before = client.chat(&session, &id(0)).unwrap();
+        assert!(matches!(
+            client
+                .move_saved_pin(&session, &order, &chat, None, Some(&before), &cancel)
+                .await,
+            Err(Error::InvalidResponse)
+        ));
+        assert_eq!(order.ids(), &[id(0), id(1), id(2)]);
+    }
 }

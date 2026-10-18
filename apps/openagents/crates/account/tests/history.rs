@@ -36,6 +36,8 @@ impl CredentialStore for Store {
 #[derive(Default)]
 struct Server {
     status: AtomicUsize,
+    two_pins: AtomicBool,
+    pins: Mutex<(u64, Vec<String>)>,
     count: AtomicUsize,
     shared_count: AtomicUsize,
     projects: Mutex<Vec<serde_json::Value>>,
@@ -73,9 +75,61 @@ async fn list(State(s): State<Arc<Server>>, Query(q): Query<HashMap<String, Stri
         s.count.load(Ordering::SeqCst)
     };
     let end = (start + limit).min(count);
-    let rows:Vec<_>=(start..end).map(|n|json!({"id":id(n),"title":"Same title","revision":1,"updated_unix":n+1,"pinned_unix":if n==204{Some(1)}else{None},"archived_unix":if n==5{Some(1)}else{None},"project":"prj_0000000000000001","source":match n%3{0=>"web",1=>"terminal",_=>"phone"},"messages":405})).collect();
-    Json(json!({"data":rows,"next":(end<count).then(||id(end-1))})).into_response()
+    let rows:Vec<_>=(start..end).map(|n|json!({"id":id(n),"title":"Same title","revision":1,"updated_unix":n+1,"pinned_unix":if n==204 || (n==203 && s.two_pins.load(Ordering::SeqCst)){Some(1)}else{None},"archived_unix":if n==5{Some(1)}else{None},"project":"prj_0000000000000001","source":match n%3{0=>"web",1=>"terminal",_=>"phone"},"messages":405})).collect();
+    let sessions = if !q.contains_key("after") {
+        vec![
+            json!({"id":id(900),"home":"computer:device-a","title":"Same title","computer":"Synthetic","status":"awaiting_input","last_activity_unix":10,"agent":"Custom agent","project":q.get("project"),"unseen":true,"record_key":"c".repeat(64),"activity_revision":"a".repeat(64)}),
+        ]
+    } else {
+        vec![]
+    };
+    Json(json!({"data":rows,"next":(end<count).then(||id(end-1)),"sessions":sessions}))
+        .into_response()
 }
+async fn pin_response(s: &Server) -> Option<Response> {
+    if s.delayed.load(Ordering::SeqCst) {
+        s.started.notify_one();
+        s.release.notified().await;
+    }
+    let status = s.status.load(Ordering::SeqCst);
+    (status != 0).then(|| {
+        (
+            StatusCode::from_u16(status as u16).unwrap(),
+            Json(json!({"error":{"code":"unavailable"}})),
+        )
+            .into_response()
+    })
+}
+async fn pins(State(s): State<Arc<Server>>) -> Response {
+    if let Some(response) = pin_response(&s).await {
+        return response;
+    }
+    let mut pins = s.pins.lock().unwrap();
+    if pins.1.is_empty() {
+        pins.1 = vec![id(204), id(203)];
+    }
+    Json(json!({"revision":pins.0,"ids":pins.1})).into_response()
+}
+async fn move_pin(State(s): State<Arc<Server>>, Json(body): Json<serde_json::Value>) -> Response {
+    if let Some(response) = pin_response(&s).await {
+        return response;
+    }
+    let mut pins = s.pins.lock().unwrap();
+    if body["revision"].as_u64() != Some(pins.0) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({"error":{"code":"pin_order_changed"}})),
+        )
+            .into_response();
+    }
+    assert_eq!(body["id"], id(203));
+    assert!(body["after"].is_null());
+    assert_eq!(body["before"], id(204));
+    pins.0 += 1;
+    pins.1 = vec![id(203), id(204)];
+    Json(json!({"revision":pins.0,"ids":pins.1})).into_response()
+}
+
 async fn setup() -> (
     Arc<Controller>,
     Arc<History>,
@@ -103,6 +157,11 @@ async fn setup() -> (
             }),
         )
         .route("/v1/history", get(list))
+        .route("/v1/history/sessions/{id}/seen", axum::routing::put(|State(s):State<Arc<Server>>, axum::extract::Path(id):axum::extract::Path<String>, Json(body):Json<serde_json::Value>| async move {
+            if s.delayed.load(Ordering::SeqCst) { s.started.notify_one();s.release.notified().await; }
+            Json(json!({"id":id,"record_key":"c".repeat(64),"activity_revision":body["activity_revision"],"unseen":false}))
+        }))
+        .route("/v1/history/pins", get(pins).patch(move_pin))
         .route(
             "/v1/history/projects",
             get(|State(s): State<Arc<Server>>| async move {
@@ -265,4 +324,132 @@ async fn a_new_account_lists_shared_projects_without_owned_chats_or_computers() 
     h.more().await;
     assert_eq!(h.snapshot().project.as_ref().unwrap().name, "House");
     assert!(h.snapshot().rows.is_empty());
+}
+
+#[tokio::test]
+async fn saved_pin_move_changes_order_only_after_server_confirmation_and_preserves_rows_on_failure()
+{
+    let (_account, h, s, _root, _client) = setup().await;
+    s.two_pins.store(true, Ordering::SeqCst);
+    h.more().await;
+    h.more().await;
+    h.refresh_pin_order().await;
+    let keys = || {
+        h.snapshot()
+            .visible_rows(false)
+            .into_iter()
+            .take(2)
+            .map(|row| row.chat.id().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(keys(), [id(204), id(203)]);
+    s.delayed.store(true, Ordering::SeqCst);
+    let pending = tokio::spawn(h.move_pin(id(203), None, Some(id(204)), 0));
+    s.started.notified().await;
+    assert_eq!(keys(), [id(204), id(203)]);
+    assert_eq!(h.snapshot().pin_order.as_ref().unwrap().revision(), 0);
+    s.delayed.store(false, Ordering::SeqCst);
+    s.release.notify_one();
+    pending.await.unwrap().unwrap();
+    assert_eq!(keys(), [id(203), id(204)]);
+    assert_eq!(h.snapshot().rows.len(), 205);
+    assert_eq!(h.existing(&id(203)).unwrap().summary.pinned_unix, Some(1));
+    s.status.store(503, Ordering::SeqCst);
+    assert!(h.move_pin(id(203), None, Some(id(204)), 1).await.is_err());
+    assert_eq!(keys(), [id(203), id(204)]);
+    assert_eq!(h.snapshot().pin_order.as_ref().unwrap().revision(), 1);
+    h.refresh_pin_order().await;
+    assert_eq!(keys(), [id(203), id(204)]);
+    assert!(matches!(
+        h.snapshot().pin_order_state,
+        LoadState::Failed { stale: true, .. }
+    ));
+}
+
+#[tokio::test]
+async fn saved_pin_reply_cannot_fill_a_different_account_or_reorder_a_shared_project() {
+    let (a, h, s, root, client) = setup().await;
+    s.two_pins.store(true, Ordering::SeqCst);
+    h.more_projects().await;
+    h.more().await;
+    h.more().await;
+    h.refresh_pin_order().await;
+    let project = h.snapshot().projects[0].clone();
+    h.project(Some(&project)).unwrap();
+    h.more().await;
+    assert!(h.move_pin(id(203), None, Some(id(204)), 0).await.is_err());
+    h.project(None).unwrap();
+    h.more().await;
+    h.more().await;
+    s.delayed.store(true, Ordering::SeqCst);
+    let pending = tokio::spawn(h.move_pin(id(203), None, Some(id(204)), 0));
+    s.started.notified().await;
+    a.invalidate();
+    h.reset(None);
+    let b = account(&client, root.path(), 2).await;
+    h.reset(b.lease());
+    s.delayed.store(false, Ordering::SeqCst);
+    s.release.notify_one();
+    assert!(pending.await.unwrap().is_err());
+    assert!(h.snapshot().pin_order.is_none());
+    assert!(h.snapshot().rows.is_empty());
+}
+
+#[tokio::test]
+async fn indexed_rows_keep_authoritative_metadata_across_pages_and_clear_on_account_change() {
+    let (controller, h, server, root, client) = setup().await;
+    h.more().await;
+    let first = h.snapshot();
+    assert_eq!(first.sessions.len(), 1);
+    assert_eq!(first.sessions[0].agent.as_deref(), Some("Custom agent"));
+    assert_eq!(first.sessions[0].unseen, Some(true));
+    h.more().await;
+    assert_eq!(
+        h.snapshot().sessions,
+        first.sessions,
+        "later pages do not drop indexed sidecar"
+    );
+    server.status.store(503, Ordering::SeqCst);
+    h.refresh().unwrap();
+    h.more().await;
+    assert_eq!(
+        h.snapshot().sessions,
+        first.sessions,
+        "outage retains explicitly stale authorized rows"
+    );
+    server.status.store(0, Ordering::SeqCst);
+    h.more_projects().await;
+    let project = h.snapshot().projects[0].clone();
+    h.project(Some(&project)).unwrap();
+    assert!(h.snapshot().sessions.is_empty());
+    h.more().await;
+    assert_eq!(
+        h.snapshot().sessions[0].project.as_deref(),
+        Some(project.id())
+    );
+    let next = account(&client, root.path(), 2).await;
+    controller.sign_out().await;
+    h.reset(next.lease());
+    assert!(
+        h.snapshot().sessions.is_empty(),
+        "another account never inherits indexed rows"
+    );
+}
+
+#[tokio::test]
+async fn indexed_seen_late_reply_cannot_publish_into_a_replacement_account() {
+    let (controller, h, server, root, client) = setup().await;
+    h.more().await;
+    let revision = h.snapshot().sessions[0].activity_revision.clone().unwrap();
+    server.delayed.store(true, Ordering::SeqCst);
+    let started = server.started.notified();
+    let key = h.snapshot().sessions[0].navigation_key();
+    let job = tokio::spawn(h.mark_indexed_seen(&key, &revision));
+    started.await;
+    let next = account(&client, root.path(), 2).await;
+    controller.sign_out().await;
+    h.reset(next.lease());
+    server.release.notify_waiters();
+    assert!(job.await.unwrap().is_err());
+    assert!(h.snapshot().sessions.is_empty());
 }

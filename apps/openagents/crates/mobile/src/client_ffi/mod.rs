@@ -53,6 +53,8 @@ mod saved;
 pub use saved::*;
 mod composer_drafts;
 mod semantic_bridge;
+mod drawer;
+pub use drawer::*;
 mod session;
 mod voice_usage;
 pub use voice_usage::*;
