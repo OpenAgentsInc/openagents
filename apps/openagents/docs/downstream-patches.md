@@ -598,3 +598,18 @@ links remain readable. Upstream fixes now require manual ports.
   `crates/mobile/src/client_ffi/voice_usage.rs` owns host selection, refreshes,
   and usage state; hooks are `Client::agent_accounts`, `VoiceCall`'s host id,
   and the usage section in `VoiceViewController.swift`.
+- [OpenAgents #12056](https://github.com/OpenAgentsInc/openagents/issues/12056):
+  upgrading the development app from `main` with no owner steps. Our crate
+  `crates/host-upgrade` holds the upgrader (fetch, build in the shared
+  target, check, hand over), the quiet-moment wait, the bundle swap, and the
+  log; `apps/openagents/src/host_upgrade_cli.rs` is `openagents
+  host-upgrade`; `crates/mcp/src/upgrade_host.rs` is the `upgrade_host`
+  tool; `crates/ui/src/host_upgrade.rs` is the app's watcher, notice,
+  relaunch, and reopened line. Hooks: one `note_input` call in
+  `ComposerInput::record_edit` (`crates/ui/src/composer.rs`),
+  `Shell::voice_live` and `Shell::has_unsaved_files`
+  (`crates/ui/src/shell.rs`), one `host_upgrade::init` in `run_app`
+  (`crates/ui/src/lib.rs`), `DocHost::resume_queues_after_restart` and its
+  check where a chat handle opens (`crates/engine/src/doc_host.rs`, called
+  from `crates/engine/src/lib.rs`), and `OPENAGENTS_DEV_APP_OUT` plus the
+  commit stamp in `scripts/run-macos-dev.sh`.

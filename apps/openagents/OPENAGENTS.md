@@ -75,7 +75,30 @@ directory, one per line. macOS may ask once to let the renamed app read that
 entry. A packaged install's `Coder Desktop` data folder is renamed to
 `OpenAgents Desktop` on first start.
 
-Update and relaunch (quit the app first):
+Upgrade to the newest `main` without quitting (#12056):
+
+```sh
+"$HOME/work/openagents-app/apps/openagents/target/macos-dev/OpenAgents Dev.app/Contents/MacOS/openagents" host-upgrade --reason "newest main"
+```
+
+It fetches `main` into `~/work/openagents-app`, builds the bundle beside the
+running one in `~/work/openagents-target-app` (waiting for a build slot like
+an agent's build), and checks it: the signature, the data folder and port
+written into it, and its headless engine answering on a scratch port. If the
+build or a check fails, the checkout goes back, the running app is left
+alone, and the command says why. Otherwise the app takes over: it waits until
+you haven't typed for 30 seconds, aren't on a voice call, and have no unsaved
+files, shows a notice for 10 seconds, swaps the bundle in, and reopens on the
+chat you had open. Agents under keepers keep running through the restart,
+and the queues of chats that were running keep draining. The reopened app
+says "Reopened after an upgrade". `host-upgrade --status` shows the upgrade
+waiting in the app and the last results; every upgrade is a line in
+`host-upgrade/upgrades.jsonl` in the data folder (from and to commit,
+Chicago time, result). If the new app doesn't start within three minutes,
+the previous bundle is put back and opened. Agents use the `upgrade_host`
+tool, which needs the `host.upgrade` scope.
+
+Update and relaunch by hand (quit the app first):
 
 ```sh
 git -C ~/work/openagents-app fetch origin main

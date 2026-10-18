@@ -47,7 +47,9 @@ If a chat is `awaitingInput`, answer it with `respond_to_input`. \
 Agent builds on this computer share a few build slots and wait for one on their own; \
 `build_status` shows how many run and wait and the free disk, and sets the limit. \
 Pruning a build cache or stopping a process goes through `machine_action`, only under the \
-owner's grant to this chat, and every action is logged.\n\
+owner's grant to this chat, and every action is logged. \
+To run the newest main in this computer's app, use `upgrade_host` (it needs the \
+host.upgrade scope); never rebuild or restart the app yourself.\n\
 \n\
 When a chart, table, diagram, dashboard, or 3D view would say more than prose and \
 `show_visual` is available, write a Luau visual script and show it with `show_visual` before \

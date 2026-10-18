@@ -39,6 +39,7 @@ mod glass;
 mod haptics;
 pub mod history;
 pub mod home;
+mod host_upgrade;
 pub mod icons;
 pub(crate) mod image_media;
 pub(crate) mod image_viewer;
@@ -260,6 +261,7 @@ pub fn run_app(config: UiConfig) {
         .detach();
         state::AppState::bootstrap(state.clone(), config.boot(), cx);
         background::init(state.clone(), data_dir.clone(), cx);
+        host_upgrade::init(state.clone(), data_dir.clone(), config.boot().ipc_port, cx);
 
         // Graceful teardown: an in-process engine drains live runs and flushes
         // doc snapshots before the process exits (remote engines outlive us).

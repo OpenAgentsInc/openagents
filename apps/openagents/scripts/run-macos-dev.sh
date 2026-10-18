@@ -3,6 +3,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env-compat.sh"
 # Build and run an isolated OpenAgents desktop development bundle ("OpenAgents Dev.app").
 # This bundle has its own LaunchServices/TCC identity, data directory, and IPC port.
 # Set OPENAGENTS_DEV_BUILD_ONLY=1 to prepare the signed bundle without launching it.
+# Set OPENAGENTS_DEV_APP_OUT to a bundle path to build there instead, beside a
+# running app (the host upgrade, #12056, stages its bundle this way); it
+# implies OPENAGENTS_DEV_BUILD_ONLY=1.
 
 set -euo pipefail
 
@@ -11,6 +14,10 @@ command -v cargo >/dev/null 2>&1 || PATH="$HOME/.cargo/bin:$PATH"
 VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | sed 's/.*"\(.*\)".*/\1/')"
 DEV_ROOT="$ROOT/target/macos-dev"
 APP="$DEV_ROOT/OpenAgents Dev.app"
+if [[ -n "${OPENAGENTS_DEV_APP_OUT:-}" ]]; then
+  APP="$OPENAGENTS_DEV_APP_OUT"
+  OPENAGENTS_DEV_BUILD_ONLY=1
+fi
 CONTENTS="$APP/Contents"
 # The dev bundle keeps the checkout-local data the fork has used since it was
 # created (it holds the owner's dev sessions); never a real install's data.
@@ -39,6 +46,10 @@ fi
 
 mkdir -p "$CONTENTS/Resources/licenses"
 cp "$ROOT/crates/voice/NOTICE.md" "$CONTENTS/Resources/licenses"/parakeet-v3.txt
+# The commit this bundle was built from, so a host upgrade can say what it
+# replaced (#12056).
+git -C "$ROOT" rev-parse HEAD >"$CONTENTS/Resources/openagents-commit" 2>/dev/null ||
+  rm -f "$CONTENTS/Resources/openagents-commit"
 
 # Coder Desktop icon, generated from dist/openagents/icon-1024.png (the OpenAgents
 # app icon); see FORK.md.

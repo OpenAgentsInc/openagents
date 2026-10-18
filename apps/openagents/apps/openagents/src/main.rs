@@ -6,6 +6,7 @@
 
 mod auth_cli;
 mod daemon;
+mod host_upgrade_cli;
 mod paths;
 mod update_cli;
 
@@ -59,6 +60,9 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Rebuild this computer's development app from main, check it, and swap
+    /// it in at a quiet moment; running chats keep going (#12056).
+    HostUpgrade(host_upgrade_cli::Args),
 }
 
 #[derive(Subcommand)]
@@ -323,6 +327,9 @@ fn main() -> anyhow::Result<()> {
         Some(Command::Update { check }) => {
             let runtime = tokio::runtime::Runtime::new()?;
             runtime.block_on(update_cli::update(&edge_url_from_env(), check))
+        }
+        Some(Command::HostUpgrade(args)) => {
+            host_upgrade_cli::run(args, paths::data_dir(), ipc_port_from_env())
         }
         Some(Command::Daemon { command }) => match command {
             DaemonCommand::Install => daemon::install(&engine_config_from_env().data_dir),

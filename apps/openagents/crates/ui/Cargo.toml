@@ -117,6 +117,7 @@ openagents-engine.workspace = true
 openagents-harness.workspace = true
 openagents-rpc.workspace = true
 openagents-update.workspace = true
+openagents-host-upgrade.workspace = true
 openagents-syntax.workspace = true
 openagents-theme.workspace = true
 openagents-visual.workspace = true

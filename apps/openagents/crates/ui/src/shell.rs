@@ -4669,6 +4669,16 @@ impl Shell {
         }
     }
 
+    /// A voice call is under way in this window (#12056's quiet moment).
+    pub(crate) fn voice_live(&self, cx: &App) -> bool {
+        self.voice.read(cx).is_live()
+    }
+
+    /// A file in this window has unsaved changes (#12056's quiet moment).
+    pub(crate) fn has_unsaved_files(&self, cx: &App) -> bool {
+        !self.all_file_edits_flushed(cx)
+    }
+
     fn all_file_edits_flushed(&self, cx: &App) -> bool {
         self.file_surfaces
             .values()

@@ -23,6 +23,7 @@ openagents-brand.workspace = true
 openagents-preview.workspace = true
 openagents-proto.workspace = true
 openagents-doc.workspace = true
+openagents-host-upgrade.workspace = true
 openagents-sync.workspace = true
 openagents-harness.workspace = true
 openagents-rpc.workspace = true

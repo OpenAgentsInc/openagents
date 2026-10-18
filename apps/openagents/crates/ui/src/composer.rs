@@ -2949,6 +2949,7 @@ impl ComposerInput {
     /// Called with the range about to be replaced, BEFORE the content changes,
     /// so the pushed snapshot is the pre-edit state.
     fn record_edit(&mut self, range: &Range<usize>, new_text: &str) {
+        crate::host_upgrade::note_input();
         self.cancel_dictation();
         let kind = if new_text.is_empty() {
             EditKind::Delete

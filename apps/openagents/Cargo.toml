@@ -29,6 +29,7 @@ members = [
     "crates/visual-gpu",
     "crates/brand",
     "crates/background",
+    "crates/host-upgrade",
     "apps/openagents",
 ]
 
@@ -41,6 +42,7 @@ publish = false
 [workspace.dependencies]
 openagents-brand = { path = "crates/brand" }
 openagents-background = { path = "crates/background" }
+openagents-host-upgrade = { path = "crates/host-upgrade" }
 openagents-account = { path = "crates/account" }
 openagents-voice-session = { path = "crates/voice-session" }
 openagents-orb = { path = "crates/orb" }

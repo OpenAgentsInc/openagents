@@ -271,6 +271,9 @@ struct DocHostInner {
     /// network work even while something still pins the graph.
     shutdown: CancellationToken,
     edge_disconnected: AtomicBool,
+    /// Chats whose recovered queue drains on its own: they were running
+    /// when a host upgrade restarted the app (#12056).
+    resume_queues: Mutex<HashSet<String>>,
     /// Tracks every spawned worker so `shutdown_workers` can await them.
     tasks: TaskTracker,
     handles: Mutex<HashMap<String, Arc<ChatDocHandle>>>,
@@ -978,6 +981,15 @@ impl ChatDocHandle {
 }
 
 impl DocHost {
+    /// Let these chats' recovered queues drain on their own once their
+    /// handles open: a host upgrade restarted the app while they ran
+    /// (#12056).
+    pub fn resume_queues_after_restart(&self, chats: impl IntoIterator<Item = String>) {
+        lock(&self.inner.resume_queues).extend(chats);
+    }
+}
+
+impl DocHost {
     pub fn new(store: Arc<DocsStore>, config: DocHostConfig) -> Self {
         let host = Self {
             inner: Arc::new(DocHostInner {
@@ -991,6 +1003,7 @@ impl DocHost {
                 project_action_runtime: OnceLock::new(),
                 shutdown: CancellationToken::new(),
                 edge_disconnected: AtomicBool::new(false),
+                resume_queues: Mutex::new(HashSet::new()),
                 tasks: TaskTracker::new(),
                 handles: Mutex::new(HashMap::new()),
                 document_loads: AtomicU64::new(0),
@@ -1595,7 +1608,10 @@ impl DocHost {
         // user submitted to this live engine. Keep that recovered work frozen
         // until an explicit prompt / Send now / Steer action thaws it. Rows
         // appended after the handle exists retain the normal automatic drain.
-        let recovered_queue_pending = !initial_queue.is_empty();
+        // A chat that was running when a host upgrade restarted the app keeps
+        // its live queue (#12056).
+        let recovered_queue_pending =
+            !initial_queue.is_empty() && !lock(&self.inner.resume_queues).remove(chat_id);
         let (queue_tx, _) = watch::channel(initial_queue);
 
         let handle = Arc::new(ChatDocHandle {

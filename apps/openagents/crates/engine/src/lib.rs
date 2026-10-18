@@ -267,6 +267,9 @@ impl EngineCore {
         )?;
         doc_host.set_workspace(workspace.clone());
         doc_host.set_sessions(sessions.clone());
+        doc_host.resume_queues_after_restart(openagents_host_upgrade::record::take_resume_queues(
+            &openagents_host_upgrade::layout::state_dir(data_dir),
+        ));
         sessions.set_doc_host(doc_host.clone());
         // Before recovery: chats whose agents a keeper still runs are picked up, not recovered.
         sessions.start_keepers(profile.store_root().join("keepers"));

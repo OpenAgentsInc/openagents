@@ -10416,6 +10416,7 @@ dependencies = [
  "openagents-background",
  "openagents-brand",
  "openagents-engine",
+ "openagents-host-upgrade",
  "openagents-mcp",
  "openagents-rpc",
  "openagents-ui",
@@ -10608,6 +10609,7 @@ dependencies = [
  "openagents-connect",
  "openagents-doc",
  "openagents-harness",
+ "openagents-host-upgrade",
  "openagents-mcp",
  "openagents-preview",
  "openagents-proto",
@@ -10679,6 +10681,17 @@ dependencies = [
  "uuid",
  "windows-sys 0.61.2",
  "zip",
+]
+
+[[package]]
+name = "openagents-host-upgrade"
+version = "0.2.113"
+dependencies = [
+ "coder-lease",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -11026,6 +11039,7 @@ dependencies = [
  "openagents-engine",
  "openagents-gpui-test",
  "openagents-harness",
+ "openagents-host-upgrade",
  "openagents-markdown",
  "openagents-orb",
  "openagents-proto",
