@@ -16,6 +16,7 @@ def check_history_paths(paths):
         '/v1/history/sessions': {'get'},
         '/v1/history/sessions/{id}': {'get'},
         '/v1/history/sessions/computers/{device}': {'put', 'delete'},
+        '/v1/history/sessions/computers/{device}/moves': {'get'},
         '/v1/history/sessions/{id}/transcript': {'put'},
         '/v1/history/sessions/projects/{project}/transcript': {'put'},
         '/v1/history/sessions/{id}/messages': {'put'},

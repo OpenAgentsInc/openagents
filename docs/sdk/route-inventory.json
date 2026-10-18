@@ -80,22 +80,22 @@
     {
       "path": "/v1/agent-assignments",
       "source": "crates/openagents-web/src/agent_assignments.rs",
-      "line": 272
+      "line": 274
     },
     {
       "path": "/v1/agent-assignments/{id}",
       "source": "crates/openagents-web/src/agent_assignments.rs",
-      "line": 273
+      "line": 275
     },
     {
       "path": "/v1/agent-assignments/{id}/commands",
       "source": "crates/openagents-web/src/agent_assignments.rs",
-      "line": 274
+      "line": 276
     },
     {
       "path": "/v1/agent-assignments/{id}/report",
       "source": "crates/openagents-web/src/agent_assignments.rs",
-      "line": 275
+      "line": 277
     },
     {
       "path": "/v1/labs/agent/kinds",
@@ -185,7 +185,7 @@
     {
       "path": "/v1/threads/{id}/continue",
       "source": "crates/openagents-web/src/continuations.rs",
-      "line": 17
+      "line": 18
     },
     {
       "path": "/v1/agent-definitions",
@@ -238,34 +238,59 @@
       "line": 188
     },
     {
-      "path": "/v1/environment-computers/session",
-      "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 806
+      "path": "/v1/device/nostr/challenge",
+      "source": "crates/openagents-web/src/device_nostr.rs",
+      "line": 33
     },
     {
-      "path": "/v1/environment-computers/{native}/image",
+      "path": "/v1/device/nostr",
+      "source": "crates/openagents-web/src/device_nostr.rs",
+      "line": 34
+    },
+    {
+      "path": "/v1/device/keys/challenge",
+      "source": "crates/openagents-web/src/device_nostr.rs",
+      "line": 35
+    },
+    {
+      "path": "/v1/device/keys",
+      "source": "crates/openagents-web/src/device_nostr.rs",
+      "line": 36
+    },
+    {
+      "path": "/v1/device/keys/{pubkey}",
+      "source": "crates/openagents-web/src/device_nostr.rs",
+      "line": 37
+    },
+    {
+      "path": "/v1/environment-computers/session",
       "source": "crates/openagents-web/src/environments/computers.rs",
       "line": 807
     },
     {
-      "path": "/v1/environment-computers/{native}/command",
+      "path": "/v1/environment-computers/{native}/image",
       "source": "crates/openagents-web/src/environments/computers.rs",
       "line": 808
     },
     {
-      "path": "/v1/environment-computers/{native}/computer",
+      "path": "/v1/environment-computers/{native}/command",
       "source": "crates/openagents-web/src/environments/computers.rs",
       "line": 809
     },
     {
+      "path": "/v1/environment-computers/{native}/computer",
+      "source": "crates/openagents-web/src/environments/computers.rs",
+      "line": 810
+    },
+    {
       "path": "/v1/environment-computers/{native}/credentials",
       "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 813
+      "line": 814
     },
     {
       "path": "/v1/environment-computers/{native}/credentials-check",
       "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 817
+      "line": 818
     },
     {
       "path": "/v1/history",
@@ -613,6 +638,26 @@
       "line": 79
     },
     {
+      "path": "/v1/history/sessions/computers/{device}/moves",
+      "source": "crates/openagents-web/src/session_index.rs",
+      "line": 80
+    },
+    {
+      "path": "/v1/visitors",
+      "source": "crates/openagents-web/src/visitor_api.rs",
+      "line": 57
+    },
+    {
+      "path": "/v1/visitors/claim",
+      "source": "crates/openagents-web/src/visitor_api.rs",
+      "line": 58
+    },
+    {
+      "path": "/v1/web-sign-in/{request}",
+      "source": "crates/openagents-web/src/web_sign_in.rs",
+      "line": 92
+    },
+    {
       "path": "/v1/work/computer-session",
       "source": "crates/openagents-web/src/work_runs.rs",
       "line": 123
@@ -665,6 +710,11 @@
   ],
   "web_constant_mounts": [
     {
+      "path": "/v1/account",
+      "source": "crates/openagents-web/src/account_delete.rs",
+      "constant": "PATH"
+    },
+    {
       "path": "/v1/schedules",
       "source": "crates/openagents-web/src/account_schedules.rs",
       "constant": "API"
@@ -715,6 +765,11 @@
       "constant": "SIGN_OUT"
     },
     {
+      "path": "/v1/device/apple",
+      "source": "crates/openagents-web/src/device.rs",
+      "constant": "APPLE"
+    },
+    {
       "path": "/v1/projects",
       "source": "crates/openagents-web/src/projects/api.rs",
       "constant": "API"
@@ -733,6 +788,11 @@
       "path": "/v1/keys/{id}",
       "source": "crates/openagents-web/src/sign_in_keys.rs",
       "constant": "API_ONE"
+    },
+    {
+      "path": "/v1/web-sign-in/approve",
+      "source": "crates/openagents-web/src/web_sign_in.rs",
+      "constant": "APPROVE"
     },
     {
       "path": "/v1/work",
@@ -1097,6 +1157,36 @@
     },
     {
       "path": "/v1/account/identities/github",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/nostr/challenge",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/nostr",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/keys/challenge",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/keys",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/keys/{pubkey}",
       "audience": "FirstParty",
       "domain": "Sessions",
       "public_front_pattern": false
@@ -1577,6 +1667,12 @@
     },
     {
       "path": "/v1/sessions/github",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/apple",
       "audience": "Internal",
       "domain": "",
       "public_front_pattern": false

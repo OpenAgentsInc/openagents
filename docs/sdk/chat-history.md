@@ -68,6 +68,12 @@ rows with `openagents::sessions::publish`, which replaces the rows that
 computer published before and marks it online for 90 seconds. Removing the
 computer from the account removes its rows.
 
+`GET /v1/history/sessions/computers/{device}/moves` uses the account's app
+credential to read requests to continue on the web and existing cloud
+destinations that may need a local update. The owning computer freezes its
+old part before calling `POST /v1/threads/{id}/continue` to claim the
+destination. Reading move requests does not start an agent.
+
 The transcript is off by default. `set_transcript` turns it on for one chat
 and `set_project_transcripts` for a project. While it is on, the publish
 answer names the chat, and the host uploads a read-only copy with

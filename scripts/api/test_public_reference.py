@@ -107,6 +107,7 @@ class PublicReference(unittest.TestCase):
     def test_session_controls_keep_their_methods_and_authority(self):
         controls = {
             '/v1/history/sessions/computers/{device}': {'put', 'delete'},
+            '/v1/history/sessions/computers/{device}/moves': {'get'},
             '/v1/history/sessions/{id}/transcript': {'put'},
             '/v1/history/sessions/projects/{project}/transcript': {'put'},
             '/v1/history/sessions/{id}/messages': {'put'},
