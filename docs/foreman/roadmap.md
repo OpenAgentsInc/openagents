@@ -103,6 +103,14 @@ flowchart TD
   in the phone's chat list, and on the website, and a message sent from the
   phone reaches it within 10 seconds.
 - **Size:** M.
+- **Status (2026-10-17, #12031):** built. `openagents chat open [BRIEF]
+  [--project P]` calls the engine's own `create_chat` tool over its local
+  connection and prints the chat's ID (`crates/openagents-cli/src/chat_open.rs`;
+  `docs/cli/chat.md`). Without `--project` it picks the app project whose
+  folder holds the current directory. `AGENTS.md` carries the rule, including
+  one claim per working chat (item 23's rule; its enforcement is still open),
+  and `templates/foreman.md` tells the owner the hand-off for a terminal
+  claim. The phone and website timing check is an After-close check.
 
 ### 4. A stall rule that acts
 

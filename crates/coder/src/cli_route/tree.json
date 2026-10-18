@@ -4224,6 +4224,78 @@
           }
         },
         {
+          "name": "open",
+          "leaf": {
+            "path": [
+              "chat",
+              "open"
+            ],
+            "usage": [
+              "open [BRIEF] [--project PROJECT] [--device DEVICE] [--harness HARNESS] [--model MODEL] [--title TITLE] [--ipc-port PORT]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "open"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "BRIEF",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "PROJECT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "device",
+                    "value": "DEVICE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "harness",
+                    "value": "HARNESS",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "model",
+                    "value": "MODEL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "title",
+                    "value": "TITLE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ipc-port",
+                    "value": "PORT",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Start a chat in the OpenAgents app on this computer and print its ID. It is an app chat, like one started in the app: it shows in the app's Sessions, on your phone, on the website, and in Foreman's list_chats, and they can message and steer it. BRIEF (`-` reads stdin) is its first message; without one it waits for a message. --project picks the app project by name, path, or id; without it, the project on this computer whose folder holds the current directory, else none. --device starts it on another of your computers. Use it to hand off from a terminal session instead of coordinating issue work there (AGENTS.md).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "shell-result",
           "leaf": {
             "path": [
@@ -4706,6 +4778,46 @@
           "kind": "option",
           "name": "project",
           "value": "PROJECT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "device",
+          "value": "DEVICE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "harness",
+          "value": "HARNESS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "model",
+          "value": "MODEL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "title",
+          "value": "TITLE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "ipc-port",
+          "value": "PORT",
           "open": true,
           "optional": true,
           "repeated": true

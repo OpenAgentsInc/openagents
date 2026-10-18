@@ -213,6 +213,18 @@ claim N` / `release N` (comment marker, you as assignee, project Status), the
 same record Coder's flows and `coder-project` write and honour; leave an issue
 another claim holds (`openagents issue status N`) alone.
 
+Coordinate issue work only in an app chat (#12031). A session that files,
+claims, hands out, or integrates several issues runs as a chat in the
+OpenAgents app: Foreman, or a chat started with `create_chat`/`create_chats`
+or `openagents chat open`. Never coordinate from a terminal session or hand
+issues to Task-tool subagents there: Foreman, the phone, and the website can't
+see or steer them, and they die with the session
+([Foreman lessons, L1](docs/foreman/lessons-learned.md)). In a terminal, hand
+off instead: `openagents chat open "BRIEF"` in the checkout starts the app chat
+in that project and prints its ID; then stop coordinating there. One claim per
+working chat: claim the issue you are working, not the ones you hand out; each
+chat claims its own.
+
 Before you launch subagents, run `openagents capacity check claude` (exit 1
 means the login is out of its limit; don't launch), and when an agent stops on
 a usage limit, run `openagents capacity record PROVIDER --reset TIME` with the

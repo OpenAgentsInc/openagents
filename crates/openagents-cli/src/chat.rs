@@ -41,6 +41,8 @@ mod coder_run;
 mod fleet;
 #[path = "chat_gce.rs"]
 mod gce;
+#[path = "chat_open.rs"]
+mod open_app;
 #[path = "chat_placement.rs"]
 mod placement;
 #[path = "chat_project.rs"]
@@ -68,6 +70,17 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         and its events stream here. --no-run only shows the offer instead.
         `openagents settings` chooses the providers, whether Coder asks
         first, the project folders, and what its commands may reach.
+  open [BRIEF] [--project PROJECT] [--device DEVICE] [--harness HARNESS] [--model MODEL] [--title TITLE] [--ipc-port PORT]
+        Start a chat in the OpenAgents app on this computer and print its
+        ID. It is an app chat, like one started in the app: it shows in the
+        app's Sessions, on your phone, on the website, and in Foreman's
+        list_chats, and they can message and steer it. BRIEF (`-` reads
+        stdin) is its first message; without one it waits for a message.
+        --project picks the app project by name, path, or id; without it,
+        the project on this computer whose folder holds the current
+        directory, else none. --device starts it on another of your
+        computers. Use it to hand off from a terminal session instead of
+        coordinating issue work there (AGENTS.md).
   shell-result -
         Record one exact approved shell result on its existing thread.
   shell-request -
@@ -192,6 +205,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     // With --project too: the new chat is published to the account on
     // openagents.com (#11542).
     Declared::computer("send", Effect::Publishes),
+    Declared::computer("open", Effect::Publishes),
     Declared::computer("shell-request", Effect::Publishes),
     Declared::computer("shell-result", Effect::Publishes),
     Declared::computer("threads", Effect::ReadOnly),
@@ -253,6 +267,7 @@ impl From<client::Error> for Failure {
 
 /// The `openagents chat` commands; any other first word starts a message.
 const COMMANDS: &[&str] = &[
+    "open",
     "shell-request",
     "shell-result",
     "send",
@@ -349,6 +364,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     // openagents.com, deleted for good.
     if command == "delete" {
         return crate::account_threads::delete_command(output, rest, USAGE);
+    }
+    // `chat open`: a chat in the app engine, not a router thread.
+    if command == "open" {
+        return open_app::run(output, rest, USAGE);
     }
     let args = match Args::parse(rest, SWITCHES) {
         Ok(args) => args,

@@ -32,6 +32,7 @@ used, so a script can continue it.
 
 ```text
 openagents chat MESSAGE                        same as `chat send MESSAGE`
+openagents chat open [BRIEF] [--project PROJECT] [--device DEVICE] [--harness HARNESS] [--model MODEL] [--title TITLE]
 openagents chat send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS]
 openagents chat send MESSAGE --project PROJECT [--timeout SECONDS]
 openagents chat follow --thread ID
@@ -47,8 +48,25 @@ openagents chat apply --thread ID
 openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|bare]
 ```
 
-Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
-`--json` before or after the group.
+Every command but `open` also takes `--scratch`, `--local`, and `--socket
+PATH`, and every command takes `--json` before or after the group.
+
+- `open` (#12031) starts a chat in the OpenAgents app on this computer and
+  prints its ID first, then returns. It is an app chat, made by the engine's
+  own `create_chat` tool over its local connection (`--ipc-port`, default
+  `OPENAGENTS_IPC_PORT` or the app's port), the same path Foreman's
+  `create_chat` takes: it shows in the app's Sessions, on the phone, on the
+  website, and in `list_chats`, and Foreman and the phone can message,
+  interrupt, and steer it. `BRIEF` (several words, or `-` for stdin) is its
+  first message; without one the chat waits. `--project` picks the app
+  project by name, path, or id; without it, the project on this computer
+  whose folder holds the current directory (the deepest one), else none.
+  `--device` names another of your computers; `--harness` and `--model` are
+  checked against what that computer offers. `--json` prints the
+  `create_chat` result (`chatId`, `deviceId`, `project`, `harness`, `sent`).
+  This is the terminal hand-off: a session that coordinates issue work runs
+  as an app chat, not in a terminal (`AGENTS.md`;
+  [Foreman lessons, L1](../foreman/lessons-learned.md)).
 
 - `send` (or a bare message) starts a new thread, or continues `--thread ID`
   with its context. `MESSAGE` may be several words; `-` reads it from stdin

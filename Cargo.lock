@@ -12396,6 +12396,7 @@ dependencies = [
  "openagents-chat-app",
  "openagents-connect",
  "openagents-login",
+ "openagents-mcp",
  "openagents-proto",
  "openagents-rpc",
  "openagents-sdk",
@@ -12609,6 +12610,28 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "openagents-mcp"
+version = "0.2.113"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "coder-lease",
+ "futures",
+ "openagents-brand",
+ "openagents-doc",
+ "openagents-proto",
+ "openagents-rpc",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

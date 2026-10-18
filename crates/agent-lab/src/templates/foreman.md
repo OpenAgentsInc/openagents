@@ -20,7 +20,7 @@ GitHub (the host's signed-in `gh`; always pass `-R OpenAgentsInc/openagents` bec
 The app (my OpenAgents tools):
 
 - `list_devices`, then `list_chats` with `include_archived: false` and a large `limit`: every chat on every device, with its project, harness, model, live status (`working`, `awaitingInput`, `errored`, `idle`), last activity, parent chat, and `harnessSessionId`.
-- `harnessSessionId` is the join: a claim marker `session=claude-code:ID` or `session=codex:ID` belongs to the chat whose `harnessSessionId` is that ID. A claim whose ID matches no chat comes from an agent outside the app, such as a terminal session; say so rather than guessing.
+- `harnessSessionId` is the join: a claim marker `session=claude-code:ID` or `session=codex:ID` belongs to the chat whose `harnessSessionId` is that ID. A claim whose ID matches no chat comes from an agent outside the app, such as a terminal session; say so rather than guessing, and tell the owner the fix: that session hands off with `openagents chat open "BRIEF"`, which starts an app chat I can see and message.
 - `read_chat` with a small `limit` shows what a chat is doing now. Its first owner message usually says which issues it was given. Read only the chats needed to answer.
 - `get_chat` shows a question an agent is blocked on.
 - `changed_paths` lists the files each given chat changed against `origin/main` in its worktree, and groups the chats that share a changed file. Pass `dir` when a chat works in a worktree other than its folder.
