@@ -15,6 +15,8 @@ use std::future::Future;
 
 /// The most sessions one publish may carry.
 pub const MAX_PER_COMPUTER: usize = 200;
+/// Bound the combined authorized shared-project session list.
+pub const MAX_LISTED: usize = 4096;
 
 /// What a session is doing.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,6 +59,15 @@ impl<'de> Deserialize<'de> for SessionStatus {
 /// One session row as the account lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct SessionSummary {
+    /// Opaque authorized owner/device/session identity, including shared members.
+    #[serde(default)]
+    pub record_key: Option<String>,
+    /// Exact published-row version for viewer-scoped read acknowledgment.
+    #[serde(default)]
+    pub activity_revision: Option<String>,
+    /// Unknown on older services; never inferred from a generic opened time.
+    #[serde(default)]
+    pub unseen: Option<bool>,
     pub id: String,
     pub home: Home,
     pub title: String,
@@ -92,8 +103,22 @@ pub struct SessionSummary {
     pub agent: Option<String>,
 }
 impl SessionSummary {
+    /// Stable list identity. New services include the authorized record owner; old ones stay home-qualified.
+    pub fn navigation_key(&self) -> String {
+        self.record_key.clone().unwrap_or_else(|| match &self.home {
+            Home::Computer(device) => format!("legacy:{device}:{}", self.id),
+            Home::Cloud => format!("invalid:{}", self.id),
+        })
+    }
     pub(crate) fn valid(&self) -> bool {
-        chat_home::valid_id(&self.id)
+        self.record_key
+            .as_ref()
+            .is_none_or(|r| r.len() == 64 && r.bytes().all(|b| b.is_ascii_hexdigit()))
+            && self
+                .activity_revision
+                .as_ref()
+                .is_none_or(|r| r.len() == 64 && r.bytes().all(|b| b.is_ascii_hexdigit()))
+            && chat_home::valid_id(&self.id)
             && matches!(&self.home, Home::Computer(_))
             && self
                 .continues
@@ -216,7 +241,7 @@ fn project_ok(id: &str) -> bool {
 pub(crate) fn rows(value: &Value) -> Result<Vec<SessionSummary>, Error> {
     let rows: Vec<SessionSummary> =
         serde_json::from_value(value.clone()).map_err(|_| Error::InvalidResponse)?;
-    if rows.iter().any(|r| !r.valid()) {
+    if rows.len() > MAX_LISTED || rows.iter().any(|r| !r.valid()) {
         return Err(Error::InvalidResponse);
     }
     Ok(rows)
@@ -258,6 +283,62 @@ pub async fn get(
     id: &str,
     cancel: &CancellationToken,
 ) -> Result<SessionDetail, Error> {
+    get_in_project(client, session, id, None, cancel).await
+}
+
+/// Read a session in the same authorized shared-project scope as its list.
+pub async fn get_in_project(
+    client: &Client,
+    session: &Session,
+    id: &str,
+    project: Option<&str>,
+    cancel: &CancellationToken,
+) -> Result<SessionDetail, Error> {
+    get_scoped(client, session, id, project, None, cancel).await
+}
+/// Read exactly the authorized indexed identity from the list, including shared-owner collisions.
+pub async fn get_row(
+    client: &Client,
+    session: &Session,
+    row: &SessionSummary,
+    project: Option<&str>,
+    cancel: &CancellationToken,
+) -> Result<SessionDetail, Error> {
+    if !row.valid() {
+        return Err(Error::InvalidReference);
+    }
+    let detail = get_scoped(
+        client,
+        session,
+        &row.id,
+        project,
+        row.record_key.as_deref(),
+        cancel,
+    )
+    .await?;
+    if detail.session.home != row.home || detail.session.record_key != row.record_key {
+        return Err(Error::InvalidResponse);
+    }
+    Ok(detail)
+}
+async fn get_scoped(
+    client: &Client,
+    session: &Session,
+    id: &str,
+    project: Option<&str>,
+    record: Option<&str>,
+    cancel: &CancellationToken,
+) -> Result<SessionDetail, Error> {
+    let mut query = Vec::new();
+    if let Some(project) = project {
+        if !project_ok(project) {
+            return Err(Error::InvalidReference);
+        }
+        query.push(("project", project.to_owned()));
+    }
+    if let Some(record) = record {
+        query.push(("record", record.to_owned()));
+    }
     client.check_session(session)?;
     if !chat_home::valid_id(id) {
         return Err(Error::InvalidReference);
@@ -267,7 +348,7 @@ pub async fn get(
         client.request(
             Method::GET,
             &["history", "sessions", id],
-            &[],
+            &query,
             None,
             Some(session.token()),
         ),
@@ -275,7 +356,10 @@ pub async fn get(
     .await?;
     let found: SessionSummary =
         serde_json::from_value(value["session"].clone()).map_err(|_| Error::InvalidResponse)?;
-    if !found.valid() || found.id != id {
+    if !found.valid()
+        || found.id != id
+        || project.is_some_and(|p| found.project.as_deref() != Some(p))
+    {
         return Err(Error::InvalidResponse);
     }
     let messages: Option<Vec<CopiedMessage>> =
@@ -438,4 +522,53 @@ pub async fn upload_transcript(
         .as_u64()
         .map(|n| n as usize)
         .ok_or(Error::InvalidResponse)
+}
+
+/// Acknowledge the authorized indexed row actually displayed, not a newer activity.
+pub async fn mark_seen(
+    client: &Client,
+    session: &Session,
+    row: &SessionSummary,
+    project: Option<&str>,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
+    client.check_session(session)?;
+    if !row.valid() {
+        return Err(Error::InvalidReference);
+    }
+    let record = row.record_key.as_deref().ok_or(Error::InvalidReference)?;
+    let revision = row
+        .activity_revision
+        .as_deref()
+        .ok_or(Error::InvalidReference)?;
+    let mut query = Vec::new();
+    if let Some(project) = project {
+        if !project_ok(project) {
+            return Err(Error::InvalidReference);
+        }
+        query.push(("project", project.to_owned()));
+    }
+    query.push(("record", record.to_owned()));
+    let value: Value = cancellable(
+        cancel,
+        client.request(
+            Method::PUT,
+            &["history", "sessions", &row.id, "seen"],
+            &query,
+            Some(json!({"activity_revision":revision})),
+            Some(session.token()),
+        ),
+    )
+    .await?;
+    if row
+        .record_key
+        .as_deref()
+        .is_some_and(|record| value["record_key"].as_str() != Some(record))
+        || value["id"].as_str() != Some(row.id.as_str())
+        || value["activity_revision"].as_str() != Some(revision)
+        || value["unseen"].as_bool() != Some(false)
+    {
+        return Err(Error::InvalidResponse);
+    }
+    Ok(())
 }

@@ -11,6 +11,7 @@ import uniffi.openagents_core.CoreSavedHistoryInterface
 import uniffi.openagents_core.SavedFilingChange
 import uniffi.openagents_core.SavedHistoryAction
 import uniffi.openagents_core.SavedLoadState
+import uniffi.openagents_core.SavedIndexedTranscript
 import uniffi.openagents_core.SavedPinMove
 import uniffi.openagents_core.DrawerPinHints
 import uniffi.openagents_core.SessionHandle
@@ -26,6 +27,7 @@ class RustDrawerCore(
     private val selected: () -> DrawerKey?,
     private val openLive: (SessionHandle) -> Unit,
     private val openSaved: (String) -> Unit,
+    private val openIndexed: (SavedIndexedTranscript) -> Unit,
 ) : DrawerCore {
     private val access = Mutex()
     private var savedRequest: DrawerRequest? = null
@@ -66,12 +68,16 @@ class RustDrawerCore(
                     savedRequest = request
                     val snapshot = saved.snapshot()
                     val state = snapshot.state
-                    DrawerFrame(snapshot.rows.map { row ->
+                    val rows = snapshot.rows.map { row ->
                         DrawerRow(DrawerKey(DrawerOrigin.SAVED, row.id), row.title, row.subtitle, row.group,
                             row.agentName, row.indicator?.let(::status), row.unseen, row.pinned, row.archived,
                             if (row.canFile) setOf(DrawerAction.PIN, DrawerAction.ARCHIVE, DrawerAction.RENAME) else emptySet(),
                             row.moveEarlier?.let(::savedMove), row.moveLater?.let(::savedMove))
-                    }, selected(), snapshot.hasMore, loading = state is SavedLoadState.Loading,
+                    } + snapshot.sessions.map { row ->
+                        DrawerRow(DrawerKey(DrawerOrigin.INDEXED, row.key), row.title, row.subtitle,
+                            "Computer chats", row.agentName, row.status, row.unseen, false, false, emptySet())
+                    }
+                    DrawerFrame(rows, selected(), snapshot.hasMore, loading = state is SavedLoadState.Loading,
                         offline = state is SavedLoadState.Failed && state.stale,
                         error = (state as? SavedLoadState.Failed)?.message,
                         projects = snapshot.projects.map { DrawerProject(it.id, it.name) },
@@ -90,21 +96,27 @@ class RustDrawerCore(
                         withContext(Dispatchers.Main) { openLive(handle) }
                         live.markSeen(intent.key.id)
                     }
+                    DrawerOrigin.INDEXED -> {
+                        val detail = saved.indexedSession(intent.key.id)
+                        withContext(Dispatchers.Main) { openIndexed(detail) }
+                        detail.row.activityRevision?.let { saved.markIndexedSeen(detail.row.key, it) }
+                    }
                     DrawerOrigin.SAVED -> {
                         saved.action(SavedHistoryAction.Open(intent.key.id))
                         withContext(Dispatchers.Main) { openSaved(intent.key.id) }
                     }
                 }
-                is DrawerIntent.Pin -> if (intent.key.origin == DrawerOrigin.LIVE) {
+                is DrawerIntent.Pin -> { require(intent.key.origin != DrawerOrigin.INDEXED); if (intent.key.origin == DrawerOrigin.LIVE) {
                     if (intent.pinned) live.pinSession(intent.key.id) else live.unpinSession(intent.key.id)
-                } else saved.fileChat(intent.key.id, SavedFilingChange.Pin(intent.pinned))
-                is DrawerIntent.Archive -> if (intent.key.origin == DrawerOrigin.LIVE) {
+                } else saved.fileChat(intent.key.id, SavedFilingChange.Pin(intent.pinned)) }
+                is DrawerIntent.Archive -> { require(intent.key.origin != DrawerOrigin.INDEXED); if (intent.key.origin == DrawerOrigin.LIVE) {
                     if (intent.archived) live.archiveSession(intent.key.id) else live.unarchiveSession(intent.key.id)
-                } else saved.fileChat(intent.key.id, SavedFilingChange.Archive(intent.archived))
-                is DrawerIntent.Rename -> if (intent.key.origin == DrawerOrigin.LIVE) {
+                } else saved.fileChat(intent.key.id, SavedFilingChange.Archive(intent.archived)) }
+                is DrawerIntent.Rename -> { require(intent.key.origin != DrawerOrigin.INDEXED); if (intent.key.origin == DrawerOrigin.LIVE) {
                     live.renameSession(intent.key.id, intent.title)
-                } else saved.fileChat(intent.key.id, SavedFilingChange.Rename(intent.title))
+                } else saved.fileChat(intent.key.id, SavedFilingChange.Rename(intent.title)) }
                 is DrawerIntent.MovePin -> {
+                    require(intent.key.origin != DrawerOrigin.INDEXED)
                     require(intent.after == null || intent.after.origin == intent.key.origin)
                     require(intent.before == null || intent.before.origin == intent.key.origin)
                     if (intent.key.origin == DrawerOrigin.LIVE) {

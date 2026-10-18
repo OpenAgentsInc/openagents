@@ -35,17 +35,34 @@ only after the server confirms a mutation and Rust refreshes the list.
   a 10-second deadline. On failure, Rust retains the last known order and disables
   move controls until a successful refresh. The View only forwards Rust-supplied
   move hints, for both live and saved pins.
-- Live agent identity, indicator, and unseen state come from Rust `SessionRow`.
-  The server `session_index::Row` owns published UUID/device/agent/status data and
-  a separate copied transcript. Legacy saved Conversation IDs are hashes of
-  `(owner, session string)`; `coder_sync::Upload` has computer/title/messages,
-  repository, and activity, without a verified index-row/device link. A computer
-  name is not that link. Therefore saved agent/status cannot safely be captured
-  from the session index at save time with the current contract.
-  `session_index::Row` also has no unseen field. The live read owner is the
-  workspace `RegistryDoc::set_chat_seen`, reached through Rust `Client::mark_seen`;
-  saved `opened_unix` only serves web work completion. Saved agent, indicator,
-  and unread values remain optional until a verified source contract exists.
+- Live metadata still comes from Rust `SessionRow`. Indexed computer sessions now
+  retain `/v1/history`'s separately authorized `sessions` rows through account,
+  UniFFI, and the drawer. These rows preserve the published custom-agent name,
+  status, project scope, and viewer read state; `INDEXED` navigation never aliases
+  a live room or a hashed legacy Conversation. Server-issued record keys include
+  the authorized owner/device/session identity, so shared members with the same
+  session UUID remain separate. Detail and acknowledgment requests carry that key. Later chat pages do not erase the
+  first-page indexed rows. Query/project/account changes fence old results, and
+  authorization loss clears rows. Title search applies on the Rust server to
+  both stored chats and the bounded first-page session list.
+- `PUT /v1/history/sessions/{id}/seen?record=...&project=...` acknowledges only the published
+  row version actually rendered. The server authorizes owned/shared access using
+  the existing session-index rules, compares a hash of the exact stored row, and
+  stores at most 1,024 markers under the viewer's own account with one generation
+  CAS. Metadata changes, later activity, or a different owner/device stay unseen;
+  a stale revision returns `409 activity_changed`. Old services decode with
+  unknown read state. No `opened_unix` interpretation or computer-name join is
+  used. A marker cannot acknowledge a newer row, even if activity changes after
+  the authorization read. Eviction may show an old row as unseen again.
+- The shell must provide `openIndexed(SavedIndexedTranscript)` and mount the
+  Rust-returned copy or its typed unavailable state; `messages == null` means no
+  authorized transcript copy is currently available. It must not fabricate a
+  transcript or start a session. `RustDrawerCore` acknowledges the exact revision
+  only after that callback returns successfully. Indexed rows have no filing
+  controls because the session index does not own the live Loro mutation path.
+  Legacy saved agent/status/unread fields remain optional: those Conversations
+  do not contain a verified session-index identity. They are not joined to a
+  different row by name or guessed ID.
 - Add the B1 source-set wiring and account lifecycle/listeners. The drawer already
   presents Rust-supplied projects and project paging; Rust checks shared visibility
   and keeps shared rows read-only. Move up/down menus use typed Rust hints. Keep
@@ -59,8 +76,8 @@ only after the server confirms a mutation and Rust refreshes the list.
 
 All fixtures are synthetic. No account, credential, network service, emulator, or
 Android glyph metrics were used. No Cargo, Kotlin/JUnit, Gradle, Android, or
-emulator check has run for this issue: free disk fell below the 100 GiB floor
-(latest observed 93.324 GiB). Direct formatting of changed Rust files and
+emulator check has run for this issue. This resumed source pass has no assigned
+D1 build slot; roughly 112 GiB of headroom does not permit fresh Rust state. Direct formatting of changed Rust files and
 `git diff --check` passed. This is not acceptance-complete or ready to merge.
 
 After capacity returns and the coordinator assigns the serial slot, queue:
@@ -77,8 +94,14 @@ After capacity returns and the coordinator assigns the serial slot, queue:
    `cargo test -p openagents-mobile --lib saved_pin_controls`, and
    `cargo test -p openagents-mobile --lib live_move_hints` (account/query fences,
    confirmed ordering, outage retention, late account replies, and UniFFI hints).
-4. UniFFI generation and integrated Kotlin compile; run the seven drawer JUnit tests.
-5. Android Views tests for swipe/long-press, restoration, account change, project
+4. New source fixtures, all unrun: `cargo test -p openagents-web indexed_read_markers`,
+   `cargo test -p openagents-web session_index::seen::tests`,
+   `cargo test -p openagents-sdk --test sessions indexed_read_ack`, app account
+   `cargo test -p openagents-account --test history indexed_`, and mobile
+   `cargo test -p openagents-mobile --lib indexed_`.
+5. Regenerate Android bindings from the actual Android ELF using final B1's
+   generator, then compile the drawer source and run its eight JUnit fixtures.
+6. Android Views tests for swipe/long-press, restoration, account change, project
    visibility, pagination, and predictive-back commit/cancel after shell wiring.
 
 Use the repository's shared target and build-environment helper. Keep builds

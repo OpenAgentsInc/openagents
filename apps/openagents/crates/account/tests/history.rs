@@ -76,7 +76,15 @@ async fn list(State(s): State<Arc<Server>>, Query(q): Query<HashMap<String, Stri
     };
     let end = (start + limit).min(count);
     let rows:Vec<_>=(start..end).map(|n|json!({"id":id(n),"title":"Same title","revision":1,"updated_unix":n+1,"pinned_unix":if n==204 || (n==203 && s.two_pins.load(Ordering::SeqCst)){Some(1)}else{None},"archived_unix":if n==5{Some(1)}else{None},"project":"prj_0000000000000001","source":match n%3{0=>"web",1=>"terminal",_=>"phone"},"messages":405})).collect();
-    Json(json!({"data":rows,"next":(end<count).then(||id(end-1))})).into_response()
+    let sessions = if !q.contains_key("after") {
+        vec![
+            json!({"id":id(900),"home":"computer:device-a","title":"Same title","computer":"Synthetic","status":"awaiting_input","last_activity_unix":10,"agent":"Custom agent","project":q.get("project"),"unseen":true,"record_key":"c".repeat(64),"activity_revision":"a".repeat(64)}),
+        ]
+    } else {
+        vec![]
+    };
+    Json(json!({"data":rows,"next":(end<count).then(||id(end-1)),"sessions":sessions}))
+        .into_response()
 }
 async fn pin_response(s: &Server) -> Option<Response> {
     if s.delayed.load(Ordering::SeqCst) {
@@ -149,6 +157,10 @@ async fn setup() -> (
             }),
         )
         .route("/v1/history", get(list))
+        .route("/v1/history/sessions/{id}/seen", axum::routing::put(|State(s):State<Arc<Server>>, axum::extract::Path(id):axum::extract::Path<String>, Json(body):Json<serde_json::Value>| async move {
+            if s.delayed.load(Ordering::SeqCst) { s.started.notify_one();s.release.notified().await; }
+            Json(json!({"id":id,"record_key":"c".repeat(64),"activity_revision":body["activity_revision"],"unseen":false}))
+        }))
         .route("/v1/history/pins", get(pins).patch(move_pin))
         .route(
             "/v1/history/projects",
@@ -381,4 +393,63 @@ async fn saved_pin_reply_cannot_fill_a_different_account_or_reorder_a_shared_pro
     assert!(pending.await.unwrap().is_err());
     assert!(h.snapshot().pin_order.is_none());
     assert!(h.snapshot().rows.is_empty());
+}
+
+#[tokio::test]
+async fn indexed_rows_keep_authoritative_metadata_across_pages_and_clear_on_account_change() {
+    let (controller, h, server, root, client) = setup().await;
+    h.more().await;
+    let first = h.snapshot();
+    assert_eq!(first.sessions.len(), 1);
+    assert_eq!(first.sessions[0].agent.as_deref(), Some("Custom agent"));
+    assert_eq!(first.sessions[0].unseen, Some(true));
+    h.more().await;
+    assert_eq!(
+        h.snapshot().sessions,
+        first.sessions,
+        "later pages do not drop indexed sidecar"
+    );
+    server.status.store(503, Ordering::SeqCst);
+    h.refresh().unwrap();
+    h.more().await;
+    assert_eq!(
+        h.snapshot().sessions,
+        first.sessions,
+        "outage retains explicitly stale authorized rows"
+    );
+    server.status.store(0, Ordering::SeqCst);
+    h.more_projects().await;
+    let project = h.snapshot().projects[0].clone();
+    h.project(Some(&project)).unwrap();
+    assert!(h.snapshot().sessions.is_empty());
+    h.more().await;
+    assert_eq!(
+        h.snapshot().sessions[0].project.as_deref(),
+        Some(project.id())
+    );
+    let next = account(&client, root.path(), 2).await;
+    controller.sign_out().await;
+    h.reset(next.lease());
+    assert!(
+        h.snapshot().sessions.is_empty(),
+        "another account never inherits indexed rows"
+    );
+}
+
+#[tokio::test]
+async fn indexed_seen_late_reply_cannot_publish_into_a_replacement_account() {
+    let (controller, h, server, root, client) = setup().await;
+    h.more().await;
+    let revision = h.snapshot().sessions[0].activity_revision.clone().unwrap();
+    server.delayed.store(true, Ordering::SeqCst);
+    let started = server.started.notified();
+    let key = h.snapshot().sessions[0].navigation_key();
+    let job = tokio::spawn(h.mark_indexed_seen(&key, &revision));
+    started.await;
+    let next = account(&client, root.path(), 2).await;
+    controller.sign_out().await;
+    h.reset(next.lease());
+    server.release.notify_waiters();
+    assert!(job.await.unwrap().is_err());
+    assert!(h.snapshot().sessions.is_empty());
 }

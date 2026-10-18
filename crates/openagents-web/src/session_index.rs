@@ -26,6 +26,8 @@
 //! ([`KEY`]). Removing a computer from the account
 //! ([`crate::phone_api::remove_computer_named`]) removes its rows.
 
+mod seen;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::Router;
@@ -67,6 +69,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/v1/history/sessions", get(list))
         .route("/v1/history/sessions/{id}", get(one))
+        .route("/v1/history/sessions/{id}/seen", put(seen::mark))
         .route(
             "/v1/history/sessions/computers/{device}",
             put(publish).delete(forget),
@@ -881,6 +884,8 @@ fn prefix(text: &str, bytes: usize) -> &str {
 #[derive(Default, Deserialize)]
 struct Scope {
     project: Option<String>,
+    /// Opaque identity of an authorized owner/device/session row.
+    record: Option<String>,
 }
 
 /// One row the caller may see, whose record it is in, and whether its
@@ -958,11 +963,18 @@ pub(crate) async fn listed(
     project: Option<&str>,
 ) -> Result<Vec<Value>, Response> {
     let now = now_unix();
+    let records = records(app, headers, owner, project).await?;
+    let markers = seen::load(&app.config.chat_store, owner)
+        .await
+        .map_err(|e| stored(&e))?
+        .0;
     let mut rows = Vec::new();
-    for (member, index) in records(app, headers, owner, project).await? {
+    for (member, index) in records {
         for row in index.newest() {
             let shared = shared_with(&index, row, member == owner);
-            rows.push((row.last_activity_unix, view(&index, row, now, shared)));
+            let mut value = view(&index, row, now, shared);
+            seen::decorate(&mut value, &markers, &member, row)?;
+            rows.push((row.last_activity_unix, value));
         }
     }
     rows.sort_by(|a, b| b.0.cmp(&a.0));
@@ -977,11 +989,25 @@ pub(crate) async fn find(
     id: &str,
     project: Option<&str>,
 ) -> Result<Visible, Response> {
+    find_record(app, headers, owner, id, project, None).await
+}
+async fn find_record(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    id: &str,
+    project: Option<&str>,
+    record: Option<&str>,
+) -> Result<Visible, Response> {
     if !chat_home::valid_id(id) {
         return Err(missing());
     }
     for (member, index) in records(app, headers, owner, project).await? {
-        if index.rows.contains_key(id) {
+        if index
+            .rows
+            .get(id)
+            .is_some_and(|row| record.is_none_or(|key| seen::identity(&member, row) == key))
+        {
             return Ok(Visible {
                 owner: member,
                 index,
@@ -1013,7 +1039,16 @@ async fn one(
         Ok(o) => o,
         Err(r) => return r,
     };
-    let found = match find(&app, &headers, &owner, &id, scope.project.as_deref()).await {
+    let found = match find_record(
+        &app,
+        &headers,
+        &owner,
+        &id,
+        scope.project.as_deref(),
+        scope.record.as_deref(),
+    )
+    .await
+    {
         Ok(f) => f,
         Err(r) => return r,
     };
@@ -1026,9 +1061,17 @@ async fn one(
     } else {
         None
     };
+    let markers = match seen::load(&app.config.chat_store, &owner).await {
+        Ok((markers, _)) => markers,
+        Err(e) => return stored(&e),
+    };
+    let mut value = view(&found.index, found.row(), now_unix(), shared);
+    if let Err(error) = seen::decorate(&mut value, &markers, &found.owner, found.row()) {
+        return error;
+    }
     answer(
         StatusCode::OK,
-        json!({"session": view(&found.index, found.row(), now_unix(), shared), "messages": messages}),
+        json!({"session": value, "messages": messages}),
     )
 }
 
@@ -1063,11 +1106,16 @@ pub(crate) fn openapi(doc: &mut Value) {
     if let Some(list) = schemas.get_mut("HistoryList") {
         list["properties"]["sessions"] = json!({"type":"array","maxItems":MAX_ROWS,"items":s("HistorySession"),"description":"Computer sessions, newest first, on the first page only. They never join data or its paging."});
     }
+    schemas.get_mut("HistorySession").unwrap()["properties"]["record_key"] = json!({"type":["string","null"],"pattern":"^[0-9a-f]{64}$","description":"Opaque authorized owner/device/session identity, distinct across shared members."});
+    schemas.get_mut("HistorySession").unwrap()["properties"]["activity_revision"] = json!({"type":["string","null"],"pattern":"^[0-9a-f]{64}$","description":"Exact published row version shown to this viewer."});
+    schemas.get_mut("HistorySession").unwrap()["properties"]["unseen"] = json!({"type":["boolean","null"],"description":"This published row differs from the viewer's last acknowledged row."});
+    schemas.insert("HistorySessionSeen".into(),json!({"type":"object","additionalProperties":false,"required":["activity_revision"],"properties":{"activity_revision":{"type":"string","pattern":"^[0-9a-f]{64}$"}}}));
     let error = json!({"description":"Invalid, signed out, missing, transcript off, throttled, or unavailable.","content":{"application/json":{"schema":s("AppAccountError")}}});
     let ok = |schema: Value, what: &str| json!({"description":what,"content":{"application/json":{"schema":schema}}});
     let id =
         json!({"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}});
     let project = json!({"name":"project","in":"query","description":"A project the caller is in. A shared project lists every member's rows in it.","schema":{"type":"string"}});
+    let record = json!({"name":"record","in":"query","schema":{"type":"string","pattern":"^[0-9a-f]{64}$"},"description":"Exact authorized indexed row identity from the list."});
     let device = json!({"name":"device","in":"path","required":true,"schema":{"type":"string","pattern":"^[A-Za-z0-9._-]{1,128}$"}});
     let body =
         |schema: &str| json!({"required":true,"content":{"application/json":{"schema":s(schema)}}});
@@ -1087,7 +1135,10 @@ pub(crate) fn openapi(doc: &mut Value) {
         op
     };
     doc["paths"]["/v1/history/sessions"] = json!({"get": op("listComputerSessions", vec![project.clone()], None, ok(s("HistorySessions"), "Session rows"), "The caller's computer sessions, newest first, or a project's.")});
-    doc["paths"]["/v1/history/sessions/{id}"] = json!({"get": op("readComputerSession", vec![id.clone(), project], None, ok(s("HistorySessionDetail"), "One session"), "One session row, and its transcript copy when the transcript is on for the caller.")});
+    doc["paths"]["/v1/history/sessions/{id}"] = json!({"get": op("readComputerSession", vec![id.clone(), project.clone(),record.clone()], None, ok(s("HistorySessionDetail"), "One session"), "One session row, and its transcript copy when the transcript is on for the caller.")});
+    let mut required_record = record.clone();
+    required_record["required"] = json!(true);
+    doc["paths"]["/v1/history/sessions/{id}/seen"] = json!({"put":op("markComputerSessionSeen",vec![id.clone(),project,required_record],Some(body("HistorySessionSeen")),ok(json!({"type":"object","required":["id","record_key","activity_revision","unseen"],"properties":{"id":{"type":"string"},"record_key":{"type":"string","pattern":"^[0-9a-f]{64}$"},"activity_revision":{"type":"string"},"unseen":{"const":false}}}),"The shown row was acknowledged"),"Record only this viewer's exact authorized row. A changed row returns 409 activity_changed; later activity remains unseen.")});
     doc["paths"]["/v1/history/sessions/computers/{device}"] = json!({
         "put": op("publishComputerSessions", vec![device.clone()], Some(body("HistorySessionPublish")), ok(json!({"type":"object","required":["transcripts"],"properties":{"transcripts":{"type":"array","items":{"type":"string","format":"uuid"}}}}), "The sessions whose transcript is on"), "A host's current rows for this computer, replacing the ones it published before. Publishing also marks the computer online for 90 seconds."),
         "delete": op("forgetComputerSessions", vec![device], None, ok(json!({"type":"object","required":["removed"],"properties":{"removed":{"type":"boolean"}}}), "Removed"), "Remove this computer's rows and transcript copies."),

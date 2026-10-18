@@ -1,4 +1,7 @@
 //! Native controls over the desktop's account-bound saved-history models.
+mod indexed;
+pub use indexed::*;
+
 use super::{CoreError, CoreResult};
 use openagents_account::{
     Lease, Snapshot as AccountUpdate,
@@ -114,6 +117,7 @@ pub struct SavedHistorySnapshot {
     pub pin_order: Option<SavedPinOrder>,
     pub pin_order_state: SavedLoadState,
     pub rows: Vec<SavedChatRow>,
+    pub sessions: Vec<SavedIndexedRow>,
     pub projects: Vec<SavedProjectRow>,
     pub has_more: bool,
     pub more_projects: bool,
@@ -577,6 +581,15 @@ impl CoreSavedHistory {
             pin_order,
             pin_order_state: h.pin_order_state.into(),
             rows,
+            sessions: if archived {
+                vec![]
+            } else {
+                h.sessions
+                    .iter()
+                    .filter(|r| r.continued_by.is_none())
+                    .map(indexed::row)
+                    .collect()
+            },
             projects: h
                 .projects
                 .into_iter()

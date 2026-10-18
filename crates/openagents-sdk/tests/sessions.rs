@@ -146,3 +146,67 @@ async fn sessions_publish_list_and_share_transcripts_through_the_account() {
     ));
     task.abort();
 }
+
+#[tokio::test]
+async fn indexed_read_ack_keeps_project_and_revision_and_rejects_false_confirmation() {
+    use axum::extract::Query;
+    use std::collections::HashMap;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let app = Router::new()
+        .route(
+            "/v1/account",
+            get(|| async {
+                Json(json!({"account":{"id":"one","label":"Synthetic"},"workspaces":[]}))
+            }),
+        )
+        .route(
+            "/v1/history/sessions/{id}/seen",
+            put(
+                |Path(id): Path<String>,
+                 Query(query): Query<HashMap<String, String>>,
+                 Json(body): Json<Value>| async move {
+                    assert_eq!(query["project"], "prj_shared");
+                    assert_eq!(query["record"],"c".repeat(64));
+                    assert_eq!(body["activity_revision"], "a".repeat(64));
+                    Json(json!({"id":id,"record_key":"c".repeat(64),"activity_revision":if id==ONE {"b".repeat(64)} else {"a".repeat(64)},"unseen":false}))
+                },
+            ),
+        );
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap();
+    let session = client
+        .authenticate(&format!("oa_sk_{}", "1".repeat(64)))
+        .await
+        .unwrap();
+    let mut value = row(ONE);
+    value["activity_revision"] = json!("a".repeat(64));
+    value["unseen"] = json!(true);
+    value["record_key"] = json!("c".repeat(64));
+    let summary = serde_json::from_value(value).unwrap();
+    assert!(matches!(
+        sessions::mark_seen(
+            &client,
+            &session,
+            &summary,
+            Some("prj_shared"),
+            &CancellationToken::new()
+        )
+        .await,
+        Err(Error::InvalidResponse)
+    ));
+    let mut confirmed = row(CHAT);
+    confirmed["activity_revision"] = json!("a".repeat(64));
+    confirmed["record_key"] = json!("c".repeat(64));
+    let confirmed = serde_json::from_value(confirmed).unwrap();
+    sessions::mark_seen(
+        &client,
+        &session,
+        &confirmed,
+        Some("prj_shared"),
+        &CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+    task.abort();
+}

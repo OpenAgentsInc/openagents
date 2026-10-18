@@ -1,7 +1,7 @@
 package com.openagents.app.drawer
 
 /** Origin is part of a key: a saved copy and a live room can share an ID. */
-enum class DrawerOrigin { LIVE, SAVED }
+enum class DrawerOrigin { LIVE, SAVED, INDEXED }
 data class DrawerKey(val origin: DrawerOrigin, val id: String)
 enum class DrawerTab { LIVE, SAVED }
 enum class DrawerAction { PIN, ARCHIVE, RENAME }

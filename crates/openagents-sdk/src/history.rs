@@ -561,8 +561,12 @@ impl ChatReader {
             self.0 = previous_reader;
             return Err(Error::InvalidResponse);
         }
+        if page.sessions.len() > crate::sessions::MAX_LISTED {
+            self.0 = previous_reader;
+            return Err(Error::InvalidResponse);
+        }
         // A row this client can't read is left out rather than failing the list.
-        let sessions = page
+        let sessions: Vec<crate::sessions::SessionSummary> = page
             .sessions
             .iter()
             .filter_map(|row| {
@@ -571,6 +575,14 @@ impl ChatReader {
                     .pop()
             })
             .collect();
+        if !query.is_empty()
+            && sessions
+                .iter()
+                .any(|row| !row.title.to_lowercase().contains(&query))
+        {
+            self.0 = previous_reader;
+            return Err(Error::InvalidResponse);
+        }
         Ok(Some(HistoryPage {
             data,
             has_more: page.next.is_some(),
