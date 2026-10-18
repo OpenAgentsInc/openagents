@@ -30,6 +30,9 @@ impl codex_transport::Transport for NoModel {
     }
 }
 struct Native {
+    clock: Arc<dyn Fn() -> u64 + Send + Sync>,
+    created_at: u64,
+    expires_at: u64,
     active: AtomicBool,
     epoch: AtomicU64,
     repo: AtomicBool,
@@ -58,7 +61,14 @@ async fn native(State(n): State<Arc<Native>>, request: Request) -> Response {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     match path {
-        "/v1/session"=>Json(json!({"session":{"id":"session-alice","kind":"user","account":"alice","created_at":now()-1,"expires_at":now()+3600,"state":"active"}})).into_response(),
+        "/v1/session" => {
+            let observed = (n.clock)();
+            Json(json!({"session":{
+                "id":"session-alice","kind":"user","account":"alice",
+                "created_at":n.created_at,"expires_at":n.expires_at,
+                "state":if observed < n.expires_at { "active" } else { "expired" }
+            }})).into_response()
+        },
         "/v1/account"=>Json(json!({"account":{"id":"alice","label":"Alice"},"workspaces":[{"id":"alice-workspace","name":"Alice work","role":"owner"}]})).into_response(),
         "/v1/workspaces/alice-workspace"=>Json(json!({"workspace":{"id":"alice-workspace","tenant":"fixture","members_epoch":n.epoch.load(Ordering::SeqCst)},"role":"owner"})).into_response(),
         "/v1/account/github/broker"=>{n.tickets.fetch_add(1,Ordering::SeqCst);Json(json!({"ticket":"ogb_fixture-private-ticket"})).into_response()},
@@ -123,10 +133,18 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_clock(Arc::new(now)).await
+    }
+    async fn with_clock(clock: Arc<dyn Fn() -> u64 + Send + Sync>) -> Self {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        // Authentication reads the same session twice; its timestamps stay fixed.
+        let issued_at = clock();
         let native_state = Arc::new(Native {
+            clock,
+            created_at: issued_at - 1,
+            expires_at: issued_at + 3600,
             active: AtomicBool::new(true),
             epoch: AtomicU64::new(3),
             repo: AtomicBool::new(true),
@@ -299,6 +317,27 @@ impl Fixture {
             .unwrap()
     }
 }
+#[tokio::test]
+async fn authorization_keeps_session_expiry_when_clock_advances_between_reads() {
+    for step in [1, 60] {
+        let initial = now() - 60;
+        let clock = Arc::new(AtomicU64::new(initial));
+        let observed = clock.clone();
+        let f =
+            Fixture::with_clock(Arc::new(move || observed.fetch_add(step, Ordering::SeqCst))).await;
+        assert!(clock.load(Ordering::SeqCst) >= initial + 3 * step);
+        let grant = store(&f.app)
+            .unwrap()
+            .grant("envc-fixture")
+            .unwrap()
+            .unwrap();
+        assert_eq!(grant.expires_unix, initial + 3600);
+        assert!(authorization(&f.app, &f.binding).await.is_ok());
+        clock.store(initial + 3600, Ordering::SeqCst);
+        assert!(authorization(&f.app, &f.binding).await.is_err());
+    }
+}
+
 #[tokio::test]
 async fn a_job_bootstraps_on_the_api_host_without_a_computer_and_excludes_account_routes() {
     let f = Fixture::new().await;
