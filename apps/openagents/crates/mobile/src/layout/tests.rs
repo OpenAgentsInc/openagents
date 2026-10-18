@@ -318,6 +318,7 @@ fn streaming_text_exports_rust_age_across_width_changes() {
     let first = first_frame.display(0).unwrap();
     let first_age = first.reveal_age_ms.expect("streaming row has Rust age");
     assert!(first.runs.iter().all(|run| run.reveal_ms == Some(0)));
+    assert_eq!(reveal_age_for(&first, "first streamed text"), Some(0));
 
     w.width = 744.0;
     let resized = w.pass().display(0).unwrap();
@@ -328,9 +329,17 @@ fn streaming_text_exports_rust_age_across_width_changes() {
         entries: vec![entry("first streamed text and more", MessageStatus::Streaming)],
         ..Default::default()
     };
+    std::thread::sleep(std::time::Duration::from_millis(2));
     let updated = w.pass().display(0).unwrap();
     assert!(updated.reveal_age_ms.is_some(), "new stream content gets a Rust age sample");
-    assert!(updated.runs.iter().all(|run| run.reveal_ms == Some(0)));
+    assert_eq!(reveal_age_for(&updated, "first streamed text"), Some(0));
+    let suffix_age = reveal_age_for(&updated, "and more").expect("appended text has its own start");
+    assert!(suffix_age > 0, "appended text starts after the unchanged prefix");
+
+    w.width = 320.0;
+    let narrower = w.pass().display(0).unwrap();
+    assert_eq!(reveal_age_for(&narrower, "first streamed text"), Some(0));
+    assert_eq!(reveal_age_for(&narrower, "and more"), Some(suffix_age));
 
     w.input = TranscriptInput {
         entries: vec![entry("first streamed text and more", MessageStatus::Complete)],
@@ -339,6 +348,42 @@ fn streaming_text_exports_rust_age_across_width_changes() {
     let settled = w.pass().display(0).unwrap();
     assert_eq!(settled.reveal_age_ms, None);
     assert!(settled.runs.iter().all(|run| run.reveal_ms.is_none()));
+}
+
+#[test]
+fn streaming_reveal_keeps_unchanged_suffix_through_markdown_rewrite() {
+    use openagents_doc::parts::{MessagePart, MessageStatus};
+    use openagents_doc::schema::{MessageRole, SessionMessageEntry};
+    let entry = |text: &str| {
+        Arc::new(SessionMessageEntry {
+            id: "rewrite".into(),
+            role: MessageRole::Assistant,
+            parts: vec![MessagePart::Text { id: "body".into(), text: text.into() }],
+            created_at: 0,
+            device_id: String::new(),
+            status: Some(MessageStatus::Streaming),
+            continuation_of: None,
+            duration_ms: None,
+        })
+    };
+    let mut w = worker(390.0);
+    w.input = TranscriptInput { entries: vec![entry("plain unchanged **bold")], streaming: true, ..Default::default() };
+    let before = w.pass().display(0).unwrap();
+    let bold_age = reveal_age_for(&before, "bold").unwrap();
+
+    w.input = TranscriptInput { entries: vec![entry("plain unchanged **bold**")], streaming: true, ..Default::default() };
+    let after = w.pass().display(0).unwrap();
+    assert_eq!(reveal_age_for(&after, "bold"), Some(bold_age));
+}
+
+fn reveal_age_for(display: &super::display::RowDisplay, needle: &str) -> Option<u32> {
+    let byte = display.text.find(needle)?;
+    let start = display.text[..byte].encode_utf16().count() as u32;
+    display
+        .runs
+        .iter()
+        .find(|run| run.start <= start && start < run.start + run.len)
+        .and_then(|run| run.reveal_ms)
 }
 
 fn thought_input(text: &str, streaming: bool) -> TranscriptInput {

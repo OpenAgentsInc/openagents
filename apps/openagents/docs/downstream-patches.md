@@ -987,7 +987,8 @@ links remain readable. Upstream fixes now require manual ports.
   adds a Rust monotonic reveal-age sample to each streaming row display, and a
   Kotlin alpha helper that combines that Rust age with local elapsed time
   without comparing clock origins. Unchanged row cores preserve their reveal
-  origin through width changes; changed streaming text starts a new row reveal.
+  origin through width changes; a changed streaming row keeps unchanged text
+  offsets and assigns new text the current row age.
   A thin image loader reads transcript attachments and Lab card images through
   `CoreSavedHistory.attachmentBytes`, `labCard`, and `labMedia`, then presents
   bounded image bytes in a zoomable, dismissible Android view. The source
@@ -1025,12 +1026,15 @@ links remain readable. Upstream fixes now require manual ports.
   binding generation remain unrun; media viewer routing remains a separate C2
   integration step.
 
-- OpenAgents #12085 source follow-up `06085048` adds a Rust monotonic
-  row reveal-age sample and a thin bounded image viewer over the existing
-  Rust attachment/Lab media APIs. New Rust/Kotlin fixtures and generated binding
-  updates remain unrun. Changed rows currently restart their whole reveal;
-  preserving unchanged text during streaming appends remains source acceptance
-  work. No earlier test receipt applies to this follow-up.
+- OpenAgents #12085 source follow-up `06085048` adds a Rust monotonic row-age
+  sample and a bounded image viewer over the existing Rust attachment/Lab media
+  APIs. Its follow-up preserves reveal offsets for unchanged rendered prefix
+  and suffix text around a streaming edit and keeps them through width changes;
+  the changed middle receives the new Rust age sample. The Android viewer is
+  `AutoCloseable`; its owner can dismiss it and release the decoded bitmap on
+  route or account retirement. Three transcript fixture constructors now
+  supply a null reveal age for synthetic rows. Rust/Kotlin fixtures and real UniFFI
+  regeneration remain unrun; no earlier test receipt applies to this follow-up.
 - #12100: Wire the selected live session's Rust-authorized voice target to F2's
   RTC bridge and F3's Rust Native capsule/screen. The process owns media/service
   resources across Activity recreation; Rust owns the call and rejects stale
