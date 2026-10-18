@@ -776,3 +776,12 @@ links remain readable. Upstream fixes now require manual ports.
   bindings and builds arm64 then x86_64. #12082 and #12091 remain native blockers.
   Release-certificate
   verification is an owner-only After-close check in `NEEDS_OWNER.md`.
+
+- [OpenAgents #12090](https://github.com/OpenAgentsInc/openagents/issues/12090):
+  The Android composer presentation keeps draft text, selection, and IME marked
+  ranges in sync through a narrow Rust editor port. Context chips, attachment
+  labels, mention suggestions, and composer actions are native Views; question,
+  approval, and queued-message cards mount through `SemanticViewAdapter`.
+  The composer and transcript share a weighted chat layout, so Rust receives
+  the transcript's new viewport size when the keyboard changes available space.
+  A bounded fixture core covers send choices and display-only attachment events.
