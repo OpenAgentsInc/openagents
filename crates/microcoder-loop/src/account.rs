@@ -183,7 +183,20 @@ fn remember(path: PathBuf, stamp: Stamp, found: Option<String>) {
 /// `dir`'s salt. `None` when the salt cannot be read or made.
 #[must_use]
 pub fn fingerprint(dir: &Path, provider: Provider, identity: &str) -> Option<String> {
-    let salt = salt(dir)?;
+    fingerprint_with(salt(dir)?, provider, identity)
+}
+
+/// Fingerprint a login using an existing salt, without creating any file.
+pub fn current_read_only(dir: &Path, provider: Provider, identify: Identify) -> Option<String> {
+    let salt: [u8; 32] = std::fs::read(dir.join(SALT_FILE))
+        .ok()?
+        .as_slice()
+        .try_into()
+        .ok()?;
+    fingerprint_with(salt, provider, &identify(provider)?)
+}
+
+fn fingerprint_with(salt: [u8; 32], provider: Provider, identity: &str) -> Option<String> {
     let mut hash = Sha256::new();
     hash.update(b"openagents.coder.account.v1\0");
     hash.update(salt);
@@ -257,6 +270,36 @@ mod tests {
 
     fn env(home: &Path) -> impl Fn(&str) -> Option<OsString> + '_ {
         move |name| (name == "HOME").then(|| home.as_os_str().to_owned())
+    }
+
+    #[test]
+    fn reading_capacity_and_usage_never_creates_an_account_salt() {
+        let dir = tempfile::tempdir().unwrap();
+        let login: Identify = |_| Some("fixture-login".into());
+        assert_eq!(current_read_only(dir.path(), Provider::Claude, login), None);
+        let book = crate::capacity::Book {
+            schema: crate::capacity::SCHEMA.into(),
+            refusals: vec![crate::capacity::Refusal::new(
+                Provider::Claude,
+                crate::capacity::Kind::UsageLimit,
+                100,
+                Some(200),
+            )],
+        };
+        std::fs::write(
+            dir.path().join(crate::capacity::FILE),
+            serde_json::to_vec(&book).unwrap(),
+        )
+        .unwrap();
+        let _ = crate::capacity::Book::load_with(dir.path(), login);
+        let _ = crate::usage::Book::load_with(dir.path(), login);
+        assert!(!dir.path().join(SALT_FILE).exists());
+        let expected = current(dir.path(), Provider::Claude, login);
+        assert!(expected.is_some());
+        assert_eq!(
+            current_read_only(dir.path(), Provider::Claude, login),
+            expected
+        );
     }
 
     /// Stand-in credentials only, in a temporary home: the identity comes

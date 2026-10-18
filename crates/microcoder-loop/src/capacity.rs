@@ -671,7 +671,7 @@ impl Book {
         book.refusals.retain(|refusal| {
             crate::account::applies(
                 refusal.account.as_deref(),
-                crate::account::current(dir, refusal.provider, identify).as_deref(),
+                crate::account::current_read_only(dir, refusal.provider, identify).as_deref(),
             )
         });
         book.lifted_by(&crate::usage::Book::load_with(dir, identify))

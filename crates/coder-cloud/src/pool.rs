@@ -316,7 +316,7 @@ fn basename(url: &str) -> String {
     url.rsplit('/').next().unwrap_or(url).to_owned()
 }
 
-fn hosts_from(listing: &Value) -> Vec<Host> {
+pub(crate) fn hosts_from(listing: &Value) -> Vec<Host> {
     let mut hosts: Vec<Host> = listing
         .as_array()
         .map(Vec::as_slice)

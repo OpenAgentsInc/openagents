@@ -59,6 +59,18 @@ fn build_status_tool() -> Option<ToolDef> {
     }
 }
 
+/// OpenAgents #12039: read-only machine facts, on Unix.
+fn machine_status_tool() -> Option<ToolDef> {
+    #[cfg(unix)]
+    {
+        Some(crate::machine_status::tool())
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
 /// OpenAgents #12033: granted, logged machine actions, on Unix.
 fn machine_action_tool() -> Option<ToolDef> {
     #[cfg(unix)]
@@ -841,6 +853,7 @@ impl Tools {
             .chain(build_status_tool())
             .chain(machine_action_tool())
             .chain(upgrade_host_tool().filter(|_| in_chat))
+            .chain(machine_status_tool())
             .collect()
     }
 
@@ -877,6 +890,14 @@ impl Tools {
             RECORD_DECISION => self.record_decision(parse(args)?).await,
             #[cfg(unix)]
             crate::build_status::NAME => return crate::build_status::call(args),
+            #[cfg(unix)]
+            crate::machine_status::NAME => {
+                return crate::machine_status::call(
+                    self.openagents.origin().chat_id.as_deref(),
+                    args,
+                )
+                .await;
+            }
             #[cfg(unix)]
             crate::machine_action::NAME => {
                 let chat = self.openagents.origin().chat_id.clone();
@@ -2213,6 +2234,29 @@ mod tests {
         assert_eq!(method, methods::PUBLISH_VISUAL);
         assert_eq!(params["chatId"], "chat-alpha-1");
         assert_eq!(params["script"], "return ui.text 'chart'");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn machine_status_is_available_to_any_agent_and_rejects_write_arguments() {
+        let world = Arc::new(World::default());
+        for origin in [
+            Origin::default(),
+            Origin {
+                chat_id: Some("ordinary-agent".into()),
+                device_id: None,
+            },
+        ] {
+            let tools = tools(world.clone(), origin);
+            assert!(tools.has("machine_status"));
+            assert!(
+                tools
+                    .call("machine_status", json!({"action":"prune"}))
+                    .await
+                    .is_err()
+            );
+        }
+        assert!(world.writes.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

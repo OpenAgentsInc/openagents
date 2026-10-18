@@ -27,6 +27,8 @@ mod changed_paths;
 mod build_status;
 #[cfg(unix)]
 mod machine_action;
+#[cfg(unix)]
+pub mod machine_status;
 mod inbox;
 mod jsonrpc;
 mod tools;

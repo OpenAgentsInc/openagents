@@ -76,6 +76,8 @@ mod grant;
 mod holder;
 mod limits;
 pub mod machine;
+#[cfg(unix)]
+pub mod machine_status;
 pub mod observe;
 pub mod placement;
 mod resource;

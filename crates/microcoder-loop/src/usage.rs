@@ -260,7 +260,7 @@ impl Book {
             entry.reading.as_ref().is_none_or(|reading| {
                 crate::account::applies(
                     reading.account.as_deref(),
-                    crate::account::current(dir, entry.provider, identify).as_deref(),
+                    crate::account::current_read_only(dir, entry.provider, identify).as_deref(),
                 )
             })
         });

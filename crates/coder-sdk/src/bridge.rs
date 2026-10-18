@@ -284,7 +284,7 @@ impl Host {
                     // One connection per hook firing; each answers alone.
                     let _ = std::thread::Builder::new()
                         .name("coder hook".into())
-                        .spawn(move || serve_one(&runner, &stream, None));
+                        .spawn(move || serve_one::<UnixStream>(&runner, &stream, None));
                 }
             })?;
         Ok(Host {
@@ -328,7 +328,7 @@ impl Host {
                     let token = token.clone();
                     let _ = std::thread::Builder::new()
                         .name("coder hook".into())
-                        .spawn(move || serve_one(&runner, &stream, Some(&token)));
+                        .spawn(move || serve_one::<TcpStream>(&runner, &stream, Some(&token)));
                 }
             })?;
         Ok(Host {
@@ -459,14 +459,14 @@ pub fn ask(
         let stream = TcpStream::connect_timeout(&address, wait)?;
         stream.set_read_timeout(Some(wait))?;
         stream.set_write_timeout(Some(wait))?;
-        return exchange(&stream, &request);
+        return exchange::<TcpStream>(&stream, &request);
     }
     #[cfg(unix)]
     {
         let stream = UnixStream::connect(socket)?;
         stream.set_read_timeout(Some(wait))?;
         stream.set_write_timeout(Some(wait))?;
-        exchange(&stream, &request)
+        exchange::<UnixStream>(&stream, &request)
     }
     #[cfg(not(unix))]
     Err(std::io::Error::new(

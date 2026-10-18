@@ -251,6 +251,12 @@ flowchart TD
   and builds over the cap become events that wake Foreman.
 - **Size:** M.
 
+- **Tool and collection API (#12039):** `machine_status` reads facts for any
+  agent ID. Check-in hosts use `machine_status::collect`,
+  `Status::prompt_block`, and `coder_lease::machine_status::Alerts`; see
+  [Machine facts in app check-ins](../coder/runtime/leases.md#machine-facts-in-app-check-ins).
+  Automatic prompt and wake wiring stays with the check-in host's editor.
+
 ### 23. One claim per working chat
 
 - **What:** A claim names one working chat or run, and a chat holds at most

@@ -616,3 +616,8 @@ links remain readable. Upstream fixes now require manual ports.
   check where a chat handle opens (`crates/engine/src/doc_host.rs`, called
   from `crates/engine/src/lib.rs`), and `OPENAGENTS_DEV_APP_OUT` plus the
   commit stamp in `scripts/run-macos-dev.sh`.
+- [OpenAgents #12039](https://github.com/OpenAgentsInc/openagents/issues/12039):
+  Add the read-only `machine_status` app tool for any agent ID, using shared
+  machine, capacity, landing, and pool readers. Expose
+  `machine_status::collect`, `Status::prompt_block`, and resource alerts for
+  check-in hosts.

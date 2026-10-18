@@ -281,20 +281,24 @@ fn wake(queue: &Queue<'_>) -> Option<String> {
 }
 
 fn status(queue: &Queue<'_>, all: bool) -> Result<Value, String> {
-    let entries = queue.entries()?;
-    let shown: Vec<&Entry> = entries.iter().filter(|e| all || e.state.open()).collect();
-    let worker = queue.worker()?;
-    let alive = worker
-        .as_ref()
-        .is_some_and(|w| land_queue::now().saturating_sub(w.at) < land_queue::WORKER_STALE_SECS);
-    Ok(json!({
-        "queue": queue.store.location(),
-        "now": land_queue::now(),
-        "worker": worker,
-        "worker_alive": alive,
-        "open": entries.iter().filter(|e| e.state.open()).count(),
-        "entries": shown,
-    }))
+    let entries = queue
+        .entries()?
+        .into_iter()
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    let worker = queue
+        .worker()?
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    Ok(coder_cloud::machine_status::landing_facts(
+        &queue.store.location(),
+        entries,
+        worker,
+        all,
+        land_queue::now(),
+    ))
 }
 
 fn show(queue: &Queue<'_>, id: &str) -> Result<Value, String> {

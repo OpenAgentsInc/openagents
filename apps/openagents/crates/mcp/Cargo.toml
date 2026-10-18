@@ -25,6 +25,8 @@ reqwest.workspace = true
 # OpenAgents #11971: `build_status` reads the agent build gate.
 [target.'cfg(unix)'.dependencies]
 coder-lease = { path = "../../../../crates/coder-lease" }
+coder-cloud = { path = "../../../../crates/coder-cloud" }
+microcoder-loop = { path = "../../../../crates/microcoder-loop" }
 
 [dev-dependencies]
 tempfile.workspace = true

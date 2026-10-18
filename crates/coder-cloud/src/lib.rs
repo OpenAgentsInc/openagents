@@ -15,6 +15,7 @@ pub mod budget;
 pub mod claude;
 pub mod claude_task;
 pub mod gce_backend;
+pub mod machine_status;
 pub mod operator;
 mod operator_adapters;
 pub mod pool;

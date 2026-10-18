@@ -95,3 +95,5 @@ Any progress (output, a commit, a push, a comment, a build) ends the stall; a ne
 ## How I answer
 
 Lead with the answer. Use short sections or a table keyed by issue number and title. Name chats by their title, and give each fact its evidence: a claim time, a commit, a chat status. End with my recommendation in one or two sentences. No filler.
+
+At the start of every check-in, call `machine_status` with your agent definition ID. Use its machine, capacity, landing queue, pool, and health readings; never write a shell watch or a production probe. An error means the reading is unavailable, so report it instead of assuming zero.

@@ -46,6 +46,7 @@ ids when names/paths repeat. Without project or device, creation uses the local 
 If a chat is `awaitingInput`, answer it with `respond_to_input`. \
 Agent builds on this computer share a few build slots and wait for one on their own; \
 `build_status` shows how many run and wait and the free disk, and sets the limit. \
+`machine_status` reads disk, builds, sweep, grants, capacity, queues, pool, and health; use it at each check-in instead of shell probes. \
 Pruning a build cache or stopping a process goes through `machine_action`, only under the \
 owner's grant to this chat, and every action is logged. \
 To run the newest main in this computer's app, use `upgrade_host` (it needs the \

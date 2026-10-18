@@ -714,3 +714,23 @@ a toolchains boundary.
 the shim first on its `PATH`.
 Every test uses a temporary lease root; under `cfg(test)` the crate panics
 when a root resolves into the real home.
+
+## Machine facts in app check-ins
+
+The read-only `machine_status {"agent_id":"ID"}` app tool reads the machine's
+free disk against a 100 GiB floor, exact Cargo process count, build slots and
+cap, sweep report and recent evictions, provider capacity, machine grants and
+actions for that ID, landing queue, GCE pool, and timed `GET` health checks.
+Without `agent_id`, it uses the calling chat's ID. Errors are reported per
+source; an unavailable reading is not zero. This tool grants no scope and
+performs no machine action.
+
+A check-in host calls `openagents_mcp::machine_status::collect(agent_id)` on
+its five-minute tick (`REFRESH_EVERY`), caches the result by agent definition
+ID, and appends `Status::prompt_block()` to each prompt. Keep a single
+`coder_lease::machine_status::Alerts` in the host and pass each new result's
+`machine` to `observe`. Each returned `DiskLow` or `BuildsOverCap` becomes a
+wake event for that agent. A continuing shortage raises no second event;
+recovery followed by another shortage raises a new one. An unavailable
+reading preserves the previous alert state. Automatic prompt and wake wiring
+belongs in the check-in host; the tool and these APIs do not change it.
