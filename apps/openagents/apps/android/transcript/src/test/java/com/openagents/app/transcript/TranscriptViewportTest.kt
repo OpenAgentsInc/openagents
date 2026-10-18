@@ -7,6 +7,42 @@ import uniffi.openagents_core.RowKind
 import uniffi.openagents_core.RowPlacement
 
 class TranscriptViewportTest {
+    @Test fun cachedDisplayKeepsItsLocalSampleTimeAcrossFrameRefresh() {
+        var clock = 10_000L
+        val viewport = TranscriptViewport(monotonicMs = { clock })
+        val frame = RecordedGeometry.frame("initial")
+        viewport.submit(frame)
+        val row = requireNotNull(frame.placement(0u))
+        val first = requireNotNull(viewport.displaySample(row))
+        clock += 150
+        viewport.submit(frame)
+        val second = requireNotNull(viewport.displaySample(row))
+        assertSame(first, second)
+        assertEquals(10_000L, second.sampledAtMs)
+        viewport.clear()
+        viewport.submit(frame)
+        assertEquals(10_150L, requireNotNull(viewport.displaySample(row)).sampledAtMs)
+    }
+
+    @Test fun widthReplacementTakesANewAgeSampleWithoutChangingRustRows() {
+        var clock = 20_000L
+        val viewport = TranscriptViewport(monotonicMs = { clock })
+        val frame = RecordedGeometry.frame("initial")
+        viewport.submit(frame)
+        val row = requireNotNull(frame.placement(0u))
+        viewport.displaySample(row)
+        clock += 80
+        val wider = object : TranscriptFrame by frame {
+            override val width = frame.width + 100f
+            override fun display(index: UInt) = frame.display(index)?.copy(width = width)
+        }
+        viewport.submit(wider)
+        val sample = requireNotNull(viewport.displaySample(row))
+        assertEquals(20_080L, sample.sampledAtMs)
+        assertEquals(row.key, sample.display.key)
+        assertEquals(row.version, sample.display.version)
+    }
+
     @Test fun recreationRestoresTheRustRowAfterItsFrameArrives() {
         val old = TranscriptViewport()
         old.resize(120f); old.submit(RecordedGeometry.frame("initial")); old.userScrollTo(220f, true)

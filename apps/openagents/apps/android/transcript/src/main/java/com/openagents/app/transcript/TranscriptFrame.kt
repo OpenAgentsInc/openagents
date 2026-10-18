@@ -38,12 +38,13 @@ data class TranscriptViewportAnchor(val row: ULong, val inside: Float, val follo
 }
 
 /** Viewport state only. Row measurement, ordering, and visibility stay in Rust. */
-class TranscriptViewport(private val cacheLimit: Int = 96) {
+class TranscriptViewport(private val cacheLimit: Int = 96, private val monotonicMs: () -> Long = { System.nanoTime() / 1_000_000L }) {
     init { require(cacheLimit > 0) }
     private data class Anchor(val key: ULong, val inside: Float)
     private data class CacheKey(val key: ULong, val version: ULong, val width: Float)
-    private val cache = object : LinkedHashMap<CacheKey, RowDisplay>(16, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, RowDisplay>?) = size > cacheLimit
+    data class DisplaySample(val display: RowDisplay, val sampledAtMs: Long)
+    private val cache = object : LinkedHashMap<CacheKey, DisplaySample>(16, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, DisplaySample>?) = size > cacheLimit
     }
     var frame: TranscriptFrame? = null
         private set
@@ -108,12 +109,14 @@ class TranscriptViewport(private val cacheLimit: Int = 96) {
         frame?.rowsIn(offset, offset + height).orEmpty()
     }
 
-    fun display(row: RowPlacement): RowDisplay? {
+    fun display(row: RowPlacement): RowDisplay? = displaySample(row)?.display
+
+    fun displaySample(row: RowPlacement): DisplaySample? {
         val current = frame ?: return null
         val key = CacheKey(row.key, row.version, current.width)
-        return cache[key] ?: current.display(row.index)?.also {
+        return cache[key] ?: current.display(row.index)?.let {
             require(it.key == row.key && it.version == row.version && it.width == current.width && it.height == row.height)
-            cache[key] = it
+            DisplaySample(it, monotonicMs()).also { sampled -> cache[key] = sampled }
         }
     }
 

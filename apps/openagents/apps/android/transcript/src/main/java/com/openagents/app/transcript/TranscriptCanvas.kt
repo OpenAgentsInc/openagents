@@ -113,14 +113,23 @@ class TranscriptCanvas(
         canvas.clipRect(paddingLeft, paddingTop, width - paddingRight, height - paddingBottom)
         canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
         canvas.scale(density, density)
+        var revealing = false
+        val reducedMotion = !android.animation.ValueAnimator.areAnimatorsEnabled()
+        val nowMs = System.nanoTime() / 1_000_000L
         for (row in rows) {
-            val display = viewport.display(row) ?: continue
+            val sample = viewport.displaySample(row) ?: continue
+            val display = sample.display
+            val elapsed = (nowMs - sample.sampledAtMs).coerceIn(0L, UInt.MAX_VALUE.toLong())
+            if (!reducedMotion && display.runs.any {
+                transcriptRevealAlpha(display.revealAgeMs, it.revealMs, elapsed, TranscriptPainter.REVEAL_DURATION_MS) < 1f
+            }) revealing = true
             val rowSave = canvas.save()
             canvas.translate(0f, row.y - viewport.offset)
-            painter.draw(canvas, display, density) { horizontal[ScrollerKey(row.key, it)] ?: 0f }
+            painter.draw(canvas, display, density, elapsed, reducedMotion) { horizontal[ScrollerKey(row.key, it)] ?: 0f }
             canvas.restoreToCount(rowSave)
         }
         canvas.restoreToCount(save)
+        if (revealing && isAttachedToWindow) postInvalidateOnAnimation()
         onPaintStats?.invoke(TranscriptPaintStats(frame.revision, rows.size, viewport.cachedRows, System.nanoTime() - started))
     }
 
