@@ -45,7 +45,7 @@ case "$command" in
     clean_env bash "$ROOT/scripts/android/build-core.sh"
     ;;
   compile)
-    gradle :app:compileDebugKotlin :app:compileReleaseKotlin :app:testDebugUnitTest "$@"
+    gradle :app:compileDebugKotlin :app:compileReleaseKotlin :app:compileDebugAndroidTestKotlin :app:testDebugUnitTest "$@"
     ;;
   apk)
     gradle :app:assembleDebug "$@"
