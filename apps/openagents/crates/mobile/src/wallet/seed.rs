@@ -28,7 +28,7 @@ pub const KEYCHAIN_SERVICE: &str = "com.openagents.app.spark";
 pub const KEYCHAIN_ACCOUNT: &str = "seed-v1";
 
 /// What one read of the key store found.
-#[derive(Clone, PartialEq, Eq, uniffi::Enum)]
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum KeyRead {
     /// The item exists; these are its bytes.
     Found { bytes: Vec<u8> },
@@ -42,7 +42,7 @@ pub enum KeyRead {
 }
 
 /// What one add to the key store did.
-#[derive(Clone, PartialEq, Eq, uniffi::Enum)]
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum KeyAdd {
     Added,
     /// An item was already there; it was left as it was.

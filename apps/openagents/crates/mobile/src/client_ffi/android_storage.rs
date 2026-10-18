@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn wallet_read_before_create_and_racing_add_preserve_the_first_seed() {
-        use super::super::wallet::seed::{KeyAdd, KeyRead, KeyStore};
+        use crate::wallet::seed::{KeyAdd, KeyRead, KeyStore};
         let provider = Arc::new(MemoryProvider::default());
         let store = AndroidWalletKeyStore(provider.clone());
         assert_eq!(store.read_seed(), KeyRead::NotFound);
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn corrupt_wallet_key_is_unreadable_and_is_not_replaced() {
-        use super::super::wallet::seed::{KeyRead, KeyStore};
+        use crate::wallet::seed::{KeyRead, KeyStore};
         let provider = Arc::new(MemoryProvider::default());
         *provider.next_read.lock().unwrap() = Some(SecretRead::Corrupt);
 
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn wallet_creation_fails_closed_on_locked_or_corrupt_reads() {
-        use super::super::wallet::seed::{SeedError, create};
+        use crate::wallet::seed::{SeedError, create};
         let provider = Arc::new(MemoryProvider::default());
         let store = AndroidWalletKeyStore(provider.clone());
 

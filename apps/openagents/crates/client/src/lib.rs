@@ -51,7 +51,7 @@ pub use error::ClientError;
 pub use events::{ClientEvent, ClientListener};
 /// Where pairings made by code are kept (#12000).
 pub use openagents_sync::paired_device::{
-    KeychainPairings, MemoryPairings, PairedComputer, PairingStore, code_problem,
+    KeychainPairings, MemoryPairings, PairedComputer, PairingStore, StoreError, code_problem,
 };
 pub use session::{
     AppendHint, BusyPolicy, ComposerState, Entry, HostCapabilities, HostInfo, InputRequest,
