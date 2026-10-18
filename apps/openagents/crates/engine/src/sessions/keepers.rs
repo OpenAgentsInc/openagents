@@ -102,6 +102,41 @@ pub(super) fn admit(inner: &Inner) -> Result<Admitted, EngineError> {
     Ok(admitted)
 }
 
+/// How many times, and how far apart, a pickup is retried at startup.
+const PICKUP_TRIES: u32 = 40;
+const PICKUP_RETRY: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The running keepers to pick up: the newest one for each chat. Older
+/// keepers for a chat that has a newer one are left over from earlier
+/// engines (each restart that failed to pick a run up started another);
+/// they're asked to finish so two agents never answer for one chat.
+#[cfg(unix)]
+fn newest_per_chat(root: &std::path::Path) -> Vec<(keeper::client::Found, RunMeta)> {
+    let mut newest: HashMap<String, (keeper::client::Found, RunMeta)> = HashMap::new();
+    let mut older = Vec::new();
+    // `discover` lists oldest first, so a later entry replaces an earlier one.
+    for found in keeper::client::discover(root) {
+        let Ok(meta) = serde_json::from_value::<RunMeta>(found.meta.clone()) else {
+            continue;
+        };
+        if !alive(&found.dir) {
+            continue; // its journal stays for whoever looks; recovery takes the chat
+        }
+        if let Some(previous) = newest.insert(meta.chat_id.clone(), (found, meta)) {
+            older.push(previous);
+        }
+    }
+    for (found, meta) in older {
+        tracing::info!(chat = %meta.chat_id, dir = %found.dir.display(), "finishing an older keeper for a chat with a newer one");
+        tokio::spawn(async move {
+            if let Ok(link) = keeper::client::connect(&found.dir, None).await {
+                let _ = link.sender().finish();
+            }
+        });
+    }
+    newest.into_values().collect()
+}
+
 impl Drain {
     fn active(&self) -> bool {
         lock(&self.until).is_some_and(|until| std::time::Instant::now() < until)
@@ -133,18 +168,29 @@ impl SessionsEngine {
             return;
         }
         #[cfg(unix)]
-        for found in keeper::client::discover(&keepers.root) {
-            let Ok(meta) = serde_json::from_value::<RunMeta>(found.meta) else {
-                continue;
-            };
-            if !alive(&found.dir) {
-                continue; // its journal stays for whoever looks; recovery takes the chat
-            }
+        for (found, meta) in newest_per_chat(&keepers.root) {
             lock(&keepers.adopting).insert(meta.chat_id.clone(), None);
             let engine = self.clone();
             tokio::spawn(async move {
                 let chat_id = meta.chat_id.clone();
-                if let Err(error) = engine.adopt(found.dir, meta).await {
+                // A saved agent's run needs the account, which the engine
+                // signs in to a moment after startup: retry the pickup for a
+                // while before falling back to recovery.
+                let mut tries = 0;
+                let picked = loop {
+                    match engine.adopt(found.dir.clone(), meta.clone()).await {
+                        Err(error) if tries < PICKUP_TRIES => {
+                            tries += 1;
+                            tracing::info!(chat = %chat_id, %error, tries, "pickup not ready; retrying");
+                            if let Some(keepers) = engine.inner.keepers.get() {
+                                lock(&keepers.adopting).insert(chat_id.clone(), None);
+                            }
+                            tokio::time::sleep(PICKUP_RETRY).await;
+                        }
+                        other => break other,
+                    }
+                };
+                if let Err(error) = picked {
                     tracing::warn!(chat = %chat_id, %error, "could not pick up a running agent");
                     if let Some(keepers) = engine.inner.keepers.get() {
                         lock(&keepers.adopting).remove(&chat_id);
