@@ -37,6 +37,7 @@ class RecoveryHost(
     private val clipboard: SecretClipboard,
     private val worker: (() -> Unit) -> Unit,
     private val openChat: () -> Unit,
+    private val semantics: (() -> com.openagents.app.accessibility.NativeSemantics)? = null,
 ) : AutoCloseable {
     private val main = Handler(Looper.getMainLooper())
     private val screen = SecretScreen(window, parent)
@@ -72,7 +73,7 @@ class RecoveryHost(
         val renderer = adapter ?: SemanticViewAdapter(parent.context,
             { instance, revision, key -> dispatch { port.activate(instance, revision, key) } },
             { instance, revision, key, value -> worker { port.change(instance, revision, key, value) } },
-            { instance, revision -> port.acknowledge(instance, revision) }).also { adapter = it }
+            { instance, revision -> port.acknowledge(instance, revision) }, semantics = semantics?.invoke()).also { adapter = it }
         try {
             renderer.mount(parent, frame.json)
             if (frame.secure) screen.harden()

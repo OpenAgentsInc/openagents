@@ -4,6 +4,7 @@ use crate::client_ffi::{CoreAccount, CoreCloudChat};
 use rust_native::{Element, Node, View};
 use std::sync::atomic::{AtomicBool, Ordering};
 const MAX_BYTES: usize = 16_000;
+use crate::client_ffi::composer_drafts::CLOUD_DEFAULT_DRAFT;
 #[derive(Clone, uniffi::Record)]
 pub struct AndroidComposerFrame {
     pub instance: String,
@@ -70,7 +71,7 @@ impl CoreAndroidComposer {
             .is_none_or(|state| state.text.is_empty())
             && !model.pending_send
         {
-            if let Some(draft) = drafts.restore("android:cloud-default")? {
+            if let Some(draft) = drafts.restore(CLOUD_DEFAULT_DRAFT)? {
                 model.mirror.dispose();
                 model
                     .mirror
@@ -165,7 +166,7 @@ impl CoreAndroidComposer {
                         .or(model
                             .drafts
                             .as_ref()
-                            .map(|d| d.restore("android:cloud-default"))
+                            .map(|d| d.restore(CLOUD_DEFAULT_DRAFT))
                             .transpose()?
                             .flatten())
                         .unwrap_or_default(),
@@ -257,7 +258,7 @@ impl CoreAndroidComposer {
         let response = model.mirror.call_json(&request);
         if let Some(drafts) = &model.drafts {
             if let Some(state) = model.mirror.state() {
-                drafts.save("android:cloud-default", &state.text)?;
+                drafts.save(CLOUD_DEFAULT_DRAFT, &state.text)?;
             }
         }
         Ok(response)
@@ -355,7 +356,7 @@ impl CoreAndroidComposer {
         }
         let completion = chat.send_completion(text.clone(), lease)?;
         if let Some(drafts) = &model.drafts {
-            drafts.save("android:cloud-default", "")?;
+            drafts.save(CLOUD_DEFAULT_DRAFT, "")?;
         }
         model.pending_send = true;
         model
@@ -374,7 +375,7 @@ impl CoreAndroidComposer {
                     restore_unsent(&mut model.mirror, cleared.as_ref(), &text);
                 }
                 if let (Some(drafts), Some(state)) = (&model.drafts, model.mirror.state()) {
-                    let _ = drafts.save("android:cloud-default", &state.text);
+                    let _ = drafts.save(CLOUD_DEFAULT_DRAFT, &state.text);
                 }
                 let listener = model.listener.clone();
                 drop(model);

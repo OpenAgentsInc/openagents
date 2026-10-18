@@ -20,7 +20,7 @@ interface SemanticsPort : AutoCloseable {
     fun environment(fontScale: Float, density: Float, reducedMotion: Boolean): String
     fun lifecycle(event: String): String
 }
-class CoreSemanticsPort(private val core: CoreAccessibilitySurface) : SemanticsPort {
+class CoreSemanticsPort(private val core: CoreAccessibilitySurface, private val ownsCore: Boolean = true) : SemanticsPort {
     override fun prepare(view: ByteArray) = core.prepare(view)
     override fun acknowledge(instance: String, revision: Long) = core.acknowledge(instance, revision.toULong())
     override fun focused(instance: String, revision: Long, key: String) = core.focused(instance, revision.toULong(), key)
@@ -28,7 +28,7 @@ class CoreSemanticsPort(private val core: CoreAccessibilitySurface) : SemanticsP
     override fun restore(bookmark: String) = core.restore(bookmark)
     override fun environment(fontScale: Float, density: Float, reducedMotion: Boolean) = core.environment(fontScale, density, reducedMotion)
     override fun lifecycle(event: String) = core.lifecycle(event)
-    override fun close() { core.close(); core.destroy() }
+    override fun close() { if (ownsCore) core.close(); core.destroy() }
 }
 
 /** Maps Rust roles to platform nodes. It never dispatches intents or saves field values. */

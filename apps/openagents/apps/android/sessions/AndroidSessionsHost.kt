@@ -24,6 +24,7 @@ class AndroidSessionsHost(
     scope: CoroutineScope,
     private val route: (AndroidSessionAction) -> Unit,
     private val failure: (Throwable) -> Unit,
+    private val semantics: (() -> com.openagents.app.accessibility.NativeSemantics)? = null,
 ) : AutoCloseable {
     private val job = SupervisorJob(scope.coroutineContext[Job])
     private val tasks = CoroutineScope(scope.coroutineContext + job)
@@ -54,7 +55,7 @@ class AndroidSessionsHost(
         val renderer = adapter ?: SemanticViewAdapter(parent.context,
             { instance, revision, key -> activate(instance, revision, key) },
             { _, _, _, _ -> },
-            { instance, revision -> owner.acknowledge(instance, revision.toULong()) }).also { adapter = it }
+            { instance, revision -> owner.acknowledge(instance, revision.toULong()) }, semantics = semantics?.invoke()).also { adapter = it }
         try { renderer.mount(parent, bytes) } catch (error: Exception) { retire(); failure(error) }
     }
     private fun activate(instance: String, revision: Long, key: String) {

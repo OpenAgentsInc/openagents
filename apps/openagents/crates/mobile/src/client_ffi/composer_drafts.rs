@@ -9,6 +9,8 @@ use sha2::{Digest, Sha256};
 
 use super::types::{CoreError, CoreResult};
 
+pub(crate) const CLOUD_DEFAULT_DRAFT: &str = "android:cloud-default";
+
 const DRAFT_SCHEMA: &str = "openagents.composer-drafts";
 const DRAFT_VERSION: u32 = 1;
 const MAX_DRAFT_BYTES: usize = 64 * 1024;

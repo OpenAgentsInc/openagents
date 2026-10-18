@@ -1,6 +1,7 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
 use super::*;
 use openagents_account::openagents::Deployment;
+use std::collections::BTreeMap;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -29,6 +30,31 @@ impl ClientListener for Events {
 impl SavedHistoryListener for Events {
     fn on_saved_history_changed(&self) {
         self.0.on_android_host_changed();
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, uniffi::Enum)]
+pub enum AndroidHostSurface {
+    Sessions,
+    Settings,
+    Recovery,
+    Wallet,
+    VoiceCapsule,
+    VoiceScreen,
+    LinkReview,
+    Composer,
+}
+impl AndroidHostSurface {
+    fn scope(self) -> &'static str {
+        match self {
+            Self::Sessions => "android:sessions",
+            Self::Settings => "android:settings",
+            Self::Recovery => "android:recovery",
+            Self::Wallet => "android:wallet",
+            Self::VoiceCapsule => "android:voice-capsule",
+            Self::VoiceScreen => "android:voice-screen",
+            Self::LinkReview => "android:link-review",
+            Self::Composer => "android:composer",
+        }
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -91,6 +117,8 @@ enum Content {
     },
 }
 struct State {
+    foreground: bool,
+    semantics: BTreeMap<AndroidHostSurface, Arc<CoreAccessibilitySurface>>,
     navigation_revision: u64,
     anchor: Option<AndroidTranscriptAnchor>,
     generation: u64,
@@ -115,6 +143,23 @@ impl NavigationStamp {
     }
 }
 impl State {
+    fn apply_visibility(&self) {
+        let visible = self.foreground && self.route == AndroidHostRoute::Chat;
+        if let Content::Live { session, .. } = &self.content {
+            session.set_view_attached(visible);
+        }
+        if let Some(history) = &self.history {
+            history.follow(visible && matches!(self.content, Content::Saved { .. }));
+        }
+    }
+    fn retire_content(&self) {
+        if let Content::Live { session, .. } = &self.content {
+            session.set_view_attached(false);
+        }
+        if let Content::Saved { history, .. } = &self.content {
+            history.follow(false);
+        }
+    }
     fn begin_navigation(&mut self) -> CoreResult<NavigationStamp> {
         self.navigation_revision = self
             .navigation_revision
@@ -153,6 +198,10 @@ impl CoreAndroidHost {
             if let Some(history) = state.history.take() {
                 history.shutdown();
             }
+            for (_, surface) in std::mem::take(&mut state.semantics) {
+                surface.close();
+            }
+            state.retire_content();
             state.client = None;
             let sessions = CoreAndroidSessions::new(account.clone(), self.events.clone());
             let cloud = sessions.default_chat()?;
@@ -210,11 +259,13 @@ impl CoreAndroidHost {
         if let Some(previous) = state.composer.take() {
             previous.dispose();
         }
+        state.retire_content();
         state.content = content;
         state.anchor = None;
         state.composer = composer;
         state.content_revision = revision;
         state.route = AndroidHostRoute::Chat;
+        state.apply_visibility();
         Ok(())
     }
 }
@@ -263,6 +314,8 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                foreground: true,
+                semantics: BTreeMap::new(),
                 navigation_revision: 0,
                 anchor: None,
                 generation,
@@ -297,6 +350,8 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                foreground: true,
+                semantics: BTreeMap::new(),
                 navigation_revision: 0,
                 anchor: None,
                 generation: 0,
@@ -387,6 +442,39 @@ impl CoreAndroidHost {
         }
         state.anchor = Some(anchor);
         Ok(())
+    }
+    pub fn set_foreground(&self, active: bool) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        state.foreground = active;
+        if let Some(client) = &state.client {
+            if active {
+                client.on_foreground();
+            } else {
+                client.on_background();
+            }
+        }
+        if let Some(history) = &state.history {
+            history.set_foreground(active);
+        }
+        state.apply_visibility();
+        Ok(())
+    }
+    pub fn accessibility_surface(
+        &self,
+        surface: AndroidHostSurface,
+    ) -> CoreResult<Arc<CoreAccessibilitySurface>> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if let Some(existing) = state.semantics.get(&surface) {
+            return Ok(existing.clone());
+        }
+        let semantics = CoreAccessibilitySurface::new(
+            self.account.clone().ok_or(CoreError::Closed)?,
+            surface.scope().into(),
+        )?;
+        state.semantics.insert(surface, semantics.clone());
+        Ok(semantics)
     }
     pub fn account(&self) -> Option<Arc<CoreAccount>> {
         self.account.clone()
@@ -479,6 +567,7 @@ impl CoreAndroidHost {
             return Err(CoreError::Closed);
         }
         s.route = route;
+        s.apply_visibility();
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())
@@ -498,6 +587,7 @@ impl CoreAndroidHost {
             self.replace(&mut s, Content::Cloud(cloud), Some(composer))?;
         }
         s.route = AndroidHostRoute::Chat;
+        s.apply_visibility();
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())
@@ -540,6 +630,7 @@ impl CoreAndroidHost {
             )?;
         }
         s.route = AndroidHostRoute::Chat;
+        s.apply_visibility();
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())

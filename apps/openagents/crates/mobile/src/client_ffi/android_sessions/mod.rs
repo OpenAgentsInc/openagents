@@ -630,6 +630,9 @@ impl CoreAndroidSessions {
                 });
             }
             Intent::NewCloud => {
+                if let Some(client) = self.state.lock().unwrap().client.clone() {
+                    client.composer_drafts.save(super::composer_drafts::CLOUD_DEFAULT_DRAFT, "")?;
+                }
                 self.cloud.new_chat();
                 return Ok(AndroidSessionAction::Cloud {
                     chat: self.default_chat()?,

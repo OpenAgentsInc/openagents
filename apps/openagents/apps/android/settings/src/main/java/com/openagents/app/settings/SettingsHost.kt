@@ -14,12 +14,14 @@ class SettingsHost(
     scope: CoroutineScope,
     effects: (SettingsEffect) -> Unit,
     unavailable: () -> Unit,
+    semantics: com.openagents.app.accessibility.NativeSemantics? = null,
 ) : AutoCloseable {
     private lateinit var presenter: SettingsPresenter
     private val adapter = SemanticViewAdapter(context,
         activate = { instance, revision, key -> presenter.activate(instance, revision.toULong(), key) },
         changeField = { instance, revision, key, value -> presenter.change(instance, revision.toULong(), key, value) },
         acknowledge = { instance, revision -> core.acknowledge(instance, revision.toULong()) },
+        semantics = semantics,
     )
     init {
         presenter = SettingsPresenter(core, scope, { adapter.mount(container, it) }, effects, {

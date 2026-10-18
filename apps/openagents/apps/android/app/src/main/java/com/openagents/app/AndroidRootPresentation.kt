@@ -15,6 +15,7 @@ import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.openagents.app.adaptive.*
+import com.openagents.app.accessibility.*
 import com.openagents.app.composer.*
 import com.openagents.app.drawer.*
 import com.openagents.app.onboarding.*
@@ -37,6 +38,8 @@ internal class AndroidRootPresentation(
     private var closed = false
     private var queued = false
     private var dirty = false
+    private var foreground = true
+    private val semanticMounts = mutableMapOf<AndroidHostSurface, NativeSemantics>()
     private var snapshot: AndroidHostSnapshot? = null
     private var contentRevision: ULong? = null
     private var mountedIdentity: Pair<ULong, ULong>? = null
@@ -112,6 +115,7 @@ internal class AndroidRootPresentation(
         ui()
         if (closed) return
         dirty = true
+        if (!foreground) return
         if (queued) return
         queued = true
         scope.launch {
@@ -163,7 +167,7 @@ internal class AndroidRootPresentation(
                 chatContainer.visibility = View.GONE
                 routeContainer.visibility = View.VISIBLE
                 if (sessions == null) next.sessions?.let { core ->
-                    sessions = AndroidSessionsHost(routeContainer, core, scope, ::sessionAction, { showFailure() })
+                    sessions = AndroidSessionsHost(routeContainer, core, scope, ::sessionAction, { showFailure() }, { semantics(AndroidHostSurface.SESSIONS) })
                     sessions?.showPicker()
                 }
             }
@@ -178,6 +182,7 @@ internal class AndroidRootPresentation(
                         RecoveryClipboard(activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager),
                         application::recoveryWork,
                         { guarded { owner.selectDefaultChat(); panes.showSession() } },
+                        { semantics(AndroidHostSurface.RECOVERY) },
                     ).also { it.start(android.os.Build.MODEL) }
                 }
             }
@@ -269,6 +274,15 @@ internal class AndroidRootPresentation(
         }
     }
 
+    private fun semantics(surface: AndroidHostSurface): NativeSemantics {
+        semanticMounts.remove(surface)?.close()
+        return NativeSemantics(CoreSemanticsPort(owner.accessibilitySurface(surface), ownsCore = false)).also {
+            semanticMounts[surface] = it
+            it.environment(activity.resources.configuration.fontScale, activity.resources.displayMetrics.density,
+                !android.animation.ValueAnimator.areAnimatorsEnabled())
+        }
+    }
+
     private fun mountSettings(next: AndroidHostSnapshot) {
         val account = next.account ?: return
         val callback = object : SettingsListener {
@@ -281,7 +295,7 @@ internal class AndroidRootPresentation(
         val effects = AndroidSettingsActions(activity, 4101, {}, { _, _, _, _ -> }, null, null, null)
         settingsActions = effects
         settings = SettingsHost(activity, routeContainer, RustSettingsPort(core), scope,
-            effects::handle, ::showFailure).also { it.start() }
+            effects::handle, ::showFailure, semantics(AndroidHostSurface.SETTINGS)).also { it.start() }
     }
 
     private fun sessionAction(action: AndroidSessionAction) {
@@ -303,9 +317,32 @@ internal class AndroidRootPresentation(
         if (snapshot?.route != AndroidHostRoute.CHAT) { guarded { owner.navigate(AndroidHostRoute.CHAT) }; return true }
         return panes.handleBack()
     }
-    fun background() { recovery?.background() }
-    fun foreground() { recovery?.foreground(); refresh() }
-    fun configurationChanged() { if (!closed) { canvas?.refreshViewport(); panes.refresh() } }
+    fun background() {
+        if (closed) return
+        foreground = false
+        recovery?.background()
+        settings?.close(); settings = null
+        sessions?.retire()
+        semanticMounts.values.forEach { runCatching { it.lifecycle("background") } }
+        runCatching { owner.setForeground(false) }
+    }
+    fun foreground() {
+        if (closed) return
+        foreground = true
+        runCatching { owner.setForeground(true) }
+        semanticMounts.values.forEach { runCatching { it.lifecycle("foreground") } }
+        recovery?.foreground(); sessions?.showPicker(); refresh()
+    }
+    fun configurationChanged() {
+        if (closed) return
+        semanticMounts.values.forEach { semantics -> runCatching {
+            semantics.lifecycle("rotation")
+            semantics.environment(activity.resources.configuration.fontScale, activity.resources.displayMetrics.density,
+                !android.animation.ValueAnimator.areAnimatorsEnabled())
+        } }
+        canvas?.refreshViewport(); panes.refresh()
+        recovery?.refresh(); settings?.refresh(); sessions?.showPicker()
+    }
     private fun guarded(action: () -> Unit) {
         if (closed) return
         try { action(); refresh() } catch (_: Exception) { showFailure() }
@@ -345,6 +382,7 @@ internal class AndroidRootPresentation(
         drawerView.onRequest = {}; drawerView.onIntent = {}
         ViewCompat.setOnApplyWindowInsetsListener(panes.view, null)
         panes.close()
+        semanticMounts.values.forEach { it.close() }; semanticMounts.clear()
     }
     private fun ui() = check(Looper.myLooper() == Looper.getMainLooper())
     private fun palette() = TranscriptPalette { role ->
