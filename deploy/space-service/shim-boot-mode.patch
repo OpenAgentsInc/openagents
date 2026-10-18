@@ -1,0 +1,30 @@
+diff --git a/shim/space.go b/shim/space.go
+index e06d4d9a..c707c1b5 100644
+--- a/shim/space.go
++++ b/shim/space.go
+@@ -2308,7 +2308,9 @@ func sandboxCreateBootMode(rootfsSizeMb *uint32) pb.BootMode {
+ 	if rootfsSizeMb != nil {
+ 		return pb.BootMode_BOOT_MODE_COLD
+ 	}
+-	return pb.BootMode_BOOT_MODE_UNSPECIFIED
++	// Ask for the clean base snapshot. The node manager falls back to cold
++	// when the template has no ready base snapshot (#12145).
++	return pb.BootMode_BOOT_MODE_BASE_SNAPSHOT
+ }
+ 
+ // sandboxVolumeEncryption reads the BYOK immutable encrypted-volumes flag.
+diff --git a/shim/space_test.go b/shim/space_test.go
+index 069d3246..3c70dac6 100644
+--- a/shim/space_test.go
++++ b/shim/space_test.go
+@@ -899,8 +899,8 @@ func TestSandboxRootfsSizeMb(t *testing.T) {
+ }
+ 
+ func TestSandboxCreateBootMode(t *testing.T) {
+-	if got := sandboxCreateBootMode(nil); got != pb.BootMode_BOOT_MODE_UNSPECIFIED {
+-		t.Fatalf("sandboxCreateBootMode(nil) = %v, want unspecified", got)
++	if got := sandboxCreateBootMode(nil); got != pb.BootMode_BOOT_MODE_BASE_SNAPSHOT {
++		t.Fatalf("sandboxCreateBootMode(nil) = %v, want base snapshot", got)
+ 	}
+ 	diskMib := uint32(32768)
+ 	if got := sandboxCreateBootMode(&diskMib); got != pb.BootMode_BOOT_MODE_COLD {
