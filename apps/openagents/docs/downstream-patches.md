@@ -20,6 +20,14 @@ Keep fork-specific changes here so upstream updates can review each integration.
   wrapping, and Canvas-origin fixtures. API 26, viewport runtime and
   performance, Activity recreation, and physical-device checks remain queued.
 
+- OpenAgents #12090: add account-scoped Rust composer drafts, a Rust Native
+  session intent/editor bridge, and a feature-local Android composer over the
+  existing session send and attachment contracts. Android now has bounded
+  photo, document, paste, and private CameraX capture intake with image
+  conversion and local pending-file removal. Rust Native remains responsible
+  for shared cards. This is a source-only checkpoint; its Rust and Android
+  checks remain unrun pending a coordinator build slot.
+
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
   UniFFI callback on the existing key sign-in controller. Rust binds its
   digest to the challenge and identity, sends the token through the SDK,

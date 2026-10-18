@@ -199,18 +199,18 @@ def deploy(staging):
                 or "," in public_origin):
             raise RuntimeError("Set CODER_SYNC_PUBLIC_ORIGIN to an HTTPS origin without a path.")
         environment["CODER_SYNC_PUBLIC_ORIGIN"] = public_origin
-    # The 2026-10-18 mitigation (#12120), until coder-sync moves to a
-    # single-writer VM (#12122): on Cloud Run a lone instance kept being
-    # declared "no available instance" while idle, so a revision may run up
-    # to three, keeping one warm. Live rooms are per instance, so devices on
-    # different instances miss each other's live updates until they
-    # reconnect; writes stay serialized in Postgres. The service allows six
-    # so earlier revisions' socket-held instances don't take the slots.
-    # #12128 found what had been taking instances out of rotation: answers
-    # to unread multi-MB uploads reset the frontend's connection. The server
-    # now drains refused bodies.
+    # One instance (#12130). Device rooms and live chat rows live in the
+    # instance's memory, so a host and a client on different instances never
+    # meet: the room answers host_offline and live updates go missing. The
+    # #12120 mitigation ran up to three instances because a lone instance
+    # kept being taken out of rotation; #12128 found why (answers to unread
+    # multi-MB uploads reset the frontend's connection) and the server now
+    # drains refused bodies. The service allows two during a rollout so the
+    # previous revision's socket-held instance can't block the new one, then
+    # drops back to one, which stops that instance and moves its sockets
+    # over. #12122 replaces this with a single-writer VM.
     args = ["run", "deploy", service, f"--region={REGION}", f"--image=us-central1-docker.pkg.dev/{PROJECT}/openagents/coder-sync:{commit}",
-            f"--service-account={ACCOUNT}", "--max=6", "--min=0", "--max-instances=3", "--min-instances=1", "--timeout=3600", "--concurrency=1000",
+            f"--service-account={ACCOUNT}", "--max=2", "--min=0", "--max-instances=1", "--min-instances=1", "--timeout=3600", "--concurrency=1000",
             # A frozen process gets restarted, not left answering "no available
             # instance" (#12120). /health reads the database through the pool.
             "--liveness-probe=httpGet.path=/health,httpGet.port=8080,periodSeconds=10,timeoutSeconds=3,failureThreshold=3", "--cpu=1", "--memory=512Mi", "--allow-unauthenticated",
@@ -227,6 +227,7 @@ def deploy(staging):
     serving = {t.get("revisionName"): t.get("percent", 0) for t in status.get("traffic", [])}
     if latest != status.get("latestCreatedRevisionName") or serving.get(latest) != 100:
         raise RuntimeError(f"The new revision is not serving all traffic: {serving}.")
+    g("run", "services", "update", service, f"--region={REGION}", "--max=1")
     print(f"{latest} serves 100% of traffic.")
     print(status["url"])
 
