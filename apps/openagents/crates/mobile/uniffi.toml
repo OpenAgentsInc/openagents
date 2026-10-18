@@ -1,4 +1,5 @@
 [bindings.kotlin.rename]
+"CoreAndroidSessions.close" = "shutdown"
 "CoreOwnComputerOffer.close" = "dismiss"
 "TranscriptView.close" = "shutdown"
 "CoreError.NotFound.message" = "detail"
