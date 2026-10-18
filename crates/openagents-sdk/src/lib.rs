@@ -14,6 +14,7 @@ pub mod history;
 pub mod labs;
 mod payment;
 pub mod rooms;
+pub mod runs;
 pub mod schedules;
 pub mod sessions;
 pub mod terminal_chats;

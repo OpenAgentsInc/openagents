@@ -139,6 +139,12 @@ publish.",
         tags: &["Custom agents"],
     },
     Area {
+        slug: "runs",
+        title: "Runs",
+        lead: "Report agent and harness activity and progress, and see which runs are still active.",
+        tags: &["Runs"],
+    },
+    Area {
         slug: "computers",
         title: "Computers",
         lead: "Create cloud computers, run commands on them, move files, and read usage.",

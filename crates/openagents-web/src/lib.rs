@@ -71,6 +71,8 @@ mod device_nostr;
 mod docs_mcp;
 mod door_route;
 mod environments;
+mod runs;
+mod runs_openapi;
 mod sand_gallery;
 /// Staging's stand-in for a GitHub App (#11226).
 pub use environments::push::StandIn as StagingPush;
@@ -637,6 +639,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(visitor_api::routes())
         .merge(history_api::routes())
         .merge(session_index::routes())
+        .merge(runs::routes())
         .merge(labs_api::routes(&app))
         .merge(lab_card_view::routes())
         .merge(custom_agents::routes())

@@ -13891,6 +13891,419 @@
         "description": "Account-owned requests to continue on the web, plus existing cloud destinations whose local metadata may need repair. The owning computer freezes its old part before claiming the destination through continueChatOnComputer."
       }
     },
+    "/v1/runs": {
+      "get": {
+        "operationId": "listRuns",
+        "tags": [
+          "Runs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "live",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "issue",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            }
+          }
+        ],
+        "description": "Private to the signed-in account. Live means not ended and a heartbeat received less than three minutes ago. Output and progress are host-reported Unix milliseconds, separate from receipt time. List filters combine with AND; live=false selects expired or ended runs. Results are newest receipt first, with run ID breaking ties. At most 512 runs; reports disappear from the list after 24 hours without a heartbeat, or 24 hours after ending. Use a fresh ID for a new run. Heartbeat body run must match the path ID. Run kind, harness, harness session, computer, and agent stay fixed; output and progress cannot move backward. Send at most once a minute except on status changes. An exact retry within a minute succeeds without extending presence; the same report after a minute refreshes it. Limits: 12 accepted heartbeats per run and 120 per account in a rolling minute, including status changes; 8 KiB heartbeat body. Repeated end requests succeed for a known ID. Heartbeats for an ended ID conflict while its record is kept. Reports grant no execution or steering authority. Responses are private and no-store.",
+        "responses": {
+          "200": {
+            "description": "The account's runs or a successful update.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait when rate_limited.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/heartbeat": {
+      "put": {
+        "operationId": "heartbeatRun",
+        "tags": [
+          "Runs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "not": {
+                "enum": [
+                  ".",
+                  ".."
+                ]
+              },
+              "description": "An identifier other than . or .. ."
+            }
+          }
+        ],
+        "description": "Private to the signed-in account. Live means not ended and a heartbeat received less than three minutes ago. Output and progress are host-reported Unix milliseconds, separate from receipt time. List filters combine with AND; live=false selects expired or ended runs. Results are newest receipt first, with run ID breaking ties. At most 512 runs; reports disappear from the list after 24 hours without a heartbeat, or 24 hours after ending. Use a fresh ID for a new run. Heartbeat body run must match the path ID. Run kind, harness, harness session, computer, and agent stay fixed; output and progress cannot move backward. Send at most once a minute except on status changes. An exact retry within a minute succeeds without extending presence; the same report after a minute refreshes it. Limits: 12 accepted heartbeats per run and 120 per account in a rolling minute, including status changes; 8 KiB heartbeat body. Repeated end requests succeed for a known ID. Heartbeats for an ended ID conflict while its record is kept. Reports grant no execution or steering authority. Responses are private and no-store.",
+        "responses": {
+          "200": {
+            "description": "The account's runs or a successful update.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOk"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait when rate_limited.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunHeartbeat"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{id}/end": {
+      "post": {
+        "operationId": "endRun",
+        "tags": [
+          "Runs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "not": {
+                "enum": [
+                  ".",
+                  ".."
+                ]
+              },
+              "description": "An identifier other than . or .. ."
+            }
+          }
+        ],
+        "description": "Private to the signed-in account. Live means not ended and a heartbeat received less than three minutes ago. Output and progress are host-reported Unix milliseconds, separate from receipt time. List filters combine with AND; live=false selects expired or ended runs. Results are newest receipt first, with run ID breaking ties. At most 512 runs; reports disappear from the list after 24 hours without a heartbeat, or 24 hours after ending. Use a fresh ID for a new run. Heartbeat body run must match the path ID. Run kind, harness, harness session, computer, and agent stay fixed; output and progress cannot move backward. Send at most once a minute except on status changes. An exact retry within a minute succeeds without extending presence; the same report after a minute refreshes it. Limits: 12 accepted heartbeats per run and 120 per account in a rolling minute, including status changes; 8 KiB heartbeat body. Repeated end requests succeed for a known ID. Heartbeats for an ended ID conflict while its record is kept. Reports grant no execution or steering authority. Responses are private and no-store.",
+        "responses": {
+          "200": {
+            "description": "The account's runs or a successful update.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOk"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait when rate_limited.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, denied, missing run, run_ended/run_conflict, body too large, rate_limited/quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/keys": {
       "get": {
         "operationId": "listAccountKeys",
@@ -27664,6 +28077,38 @@
                 }
               }
             }
+          },
+          "autonomy": {
+            "type": "object",
+            "description": "How the agent runs on its own. Not part of the agent's identity. Omitted when unset; unknown fields are ignored.",
+            "properties": {
+              "check_ins": {
+                "type": "boolean",
+                "description": "Hosts turn timed check-ins on for this agent's chat without being asked, when it is the computer's only such chat."
+              },
+              "every_minutes": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 1440,
+                "description": "Minutes between check-ins when the host turns them on."
+              },
+              "stall_minutes": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 240,
+                "description": "Minutes a chat or claim the agent manages may go with no progress before the host raises it. Hosts default to 20."
+              },
+              "authority": {
+                "type": "boolean",
+                "description": "The agent asks for standing authority over other chats with its check-ins. The host grants it, logged; the owner can turn it off."
+              },
+              "shell_timeout_secs": {
+                "type": "integer",
+                "minimum": 10,
+                "maximum": 3600,
+                "description": "The longest one shell command may run, in seconds. The host passes it to the runtime."
+              }
+            }
           }
         }
       },
@@ -30899,6 +31344,169 @@
                 }
               }
             }
+          }
+        }
+      },
+      "RunHeartbeat": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "run",
+          "kind",
+          "harness",
+          "computer",
+          "status",
+          "last_output_at"
+        ],
+        "properties": {
+          "run": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "not": {
+              "enum": [
+                ".",
+                ".."
+              ]
+            },
+            "description": "An identifier other than . or .. ."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "app_chat",
+              "terminal",
+              "cloud_work",
+              "landing"
+            ]
+          },
+          "harness": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "not": {
+              "enum": [
+                ".",
+                ".."
+              ]
+            },
+            "description": "An identifier other than . or .. ."
+          },
+          "harness_session": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9_.:-]+$",
+                "not": {
+                  "enum": [
+                    ".",
+                    ".."
+                  ]
+                },
+                "description": "An identifier other than . or .. ."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "computer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "not": {
+              "enum": [
+                ".",
+                ".."
+              ]
+            },
+            "description": "An identifier other than . or .. ."
+          },
+          "issues": {
+            "type": "array",
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 18446744073709551615
+            },
+            "default": []
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "working",
+              "awaiting_input",
+              "errored"
+            ]
+          },
+          "last_output_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Unix milliseconds, at most one minute ahead of server time."
+          },
+          "last_progress_at": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0,
+                "description": "Unix milliseconds, at most one minute ahead of server time."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 199,
+            "description": "One line, fewer than 200 UTF-8 bytes, with no control characters."
+          },
+          "agent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Agent definition ID, never an agent name."
+          }
+        }
+      },
+      "RunList": {
+        "type": "object",
+        "required": [
+          "runs"
+        ],
+        "properties": {
+          "runs": {
+            "type": "array",
+            "maxItems": 512,
+            "items": {
+              "$ref": "#/components/schemas/RunHeartbeat"
+            }
+          }
+        }
+      },
+      "RunOk": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
           }
         }
       },

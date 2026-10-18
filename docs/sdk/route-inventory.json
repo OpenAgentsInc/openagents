@@ -608,6 +608,21 @@
       "line": 49
     },
     {
+      "path": "/v1/runs",
+      "source": "crates/openagents-web/src/runs.rs",
+      "line": 250
+    },
+    {
+      "path": "/v1/runs/{id}/heartbeat",
+      "source": "crates/openagents-web/src/runs.rs",
+      "line": 251
+    },
+    {
+      "path": "/v1/runs/{id}/end",
+      "source": "crates/openagents-web/src/runs.rs",
+      "line": 252
+    },
+    {
       "path": "/v1/history/sessions",
       "source": "crates/openagents-web/src/session_index.rs",
       "line": 68
