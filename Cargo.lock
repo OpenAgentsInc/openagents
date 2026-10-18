@@ -12378,6 +12378,7 @@ dependencies = [
  "hex",
  "jev",
  "jev-hosted",
+ "jiff",
  "jsonschema",
  "knowledge",
  "lab-terminal",

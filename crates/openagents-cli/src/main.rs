@@ -54,6 +54,7 @@ mod ext_eval_init;
 mod ext_run;
 #[cfg(feature = "verse")]
 mod film;
+mod foreman;
 mod game;
 mod github_verbs;
 mod gym;
@@ -286,6 +287,7 @@ Coder:
                question on a computer of yours.
   shadow       What a sample of Coder runs would have cost through the raw engine
                (off unless set: coder.shadow).
+  foreman      Daily measurements for a saved agent, by agent ID.
   efficiency   Routed against raw delegation, from recorded runs: cost per
                checked result, time to it, and pass rate, with intervals.
   cloud        A GCE spot pool granted as one computer: up, down, status.
@@ -666,6 +668,7 @@ fn main() -> ExitCode {
         "studio" => studio::run(&output, &rest),
         "agent" => agent::run(&output, &rest),
         "shadow" => shadow::run(&output, &rest),
+        "foreman" => foreman::run(&output, &rest),
         "efficiency" => efficiency::run(&output, &rest),
         "cloud" => cloud::run(&output, &rest),
         // Website deploys and pull request reviews and merges, under the

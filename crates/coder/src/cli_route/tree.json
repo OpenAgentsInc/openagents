@@ -25460,6 +25460,101 @@
       ]
     },
     {
+      "name": "foreman",
+      "summary": "Daily measurements for a saved agent, by agent ID.",
+      "children": [
+        {
+          "name": "report",
+          "leaf": {
+            "path": [
+              "foreman",
+              "report"
+            ],
+            "usage": [
+              "report"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "report"
+                  }
+                ]
+              }
+            ],
+            "summary": "Daily issue, stall, check-in, disk, probe, deploy, and owner wait measurements.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "agent",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "day",
+          "value": "DATE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "repo",
+          "value": "OWNER/REPO",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "issues",
+          "value": "N,N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "decision-log",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "build-sweep-log",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "fixture",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "efficiency",
       "summary": "Routed against raw delegation, from recorded runs: cost per checked result, time to it, and pass rate, with intervals.",
       "leaf": {

@@ -20,6 +20,7 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+jiff = "0.2"
 openagents-rpc = { path = "../../apps/openagents/crates/rpc" }
 # `chat open` creates app chats through the engine's own create_chat tool.
 openagents-mcp = { path = "../../apps/openagents/crates/mcp" }

@@ -1,0 +1,994 @@
+{
+  "captured_at": "2026-10-17T21:25:00-05:00",
+  "issues": [
+    {
+      "number": 11994,
+      "title": "Nostr identity: abuse limits for key-only accounts",
+      "created_at": "2026-10-17T18:54:10Z",
+      "closed_at": "2026-10-18T00:51:47Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:26:47Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 11995,
+      "title": "Nostr identity: identity from 12 words and silent sign-in (shared Rust)",
+      "created_at": "2026-10-17T18:54:11Z",
+      "closed_at": "2026-10-18T00:52:01Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:27:18Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 11996,
+      "title": "Nostr identity: phone onboarding tutorial, no sign-in; backup and restore in Settings",
+      "created_at": "2026-10-17T18:54:12Z",
+      "closed_at": "2026-10-18T00:52:15Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:03:31Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 11997,
+      "title": "Nostr identity: desktop identity, silent sign-in, Start here or Restore",
+      "created_at": "2026-10-17T18:54:13Z",
+      "closed_at": "2026-10-18T00:52:29Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:27:29Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 11998,
+      "title": "Nostr identity: desktop Connect your phone QR window, NIP-HOST on by default",
+      "created_at": "2026-10-17T18:54:14Z",
+      "closed_at": "2026-10-18T00:52:43Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T18:59:15Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 12000,
+      "title": "Nostr identity: phone QR scanner and pairing that links the computer to the account",
+      "created_at": "2026-10-17T18:55:26Z",
+      "closed_at": "2026-10-18T00:52:56Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:27:36Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 12001,
+      "title": "Nostr identity: website sign-in by phone scan and NIP-07",
+      "created_at": "2026-10-17T18:55:27Z",
+      "closed_at": "2026-10-18T00:53:09Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:27:44Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 12006,
+      "title": "Epic: Nostr identity \u2014 open the app and use it, no sign-in",
+      "created_at": "2026-10-17T18:56:12Z",
+      "closed_at": "2026-10-18T00:54:02Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": []
+    },
+    {
+      "number": 12007,
+      "title": "openagents.com/docs/sdk: a full SDK documentation site generated from the OpenAPI contracts and SDK code",
+      "created_at": "2026-10-17T19:02:47Z",
+      "closed_at": "2026-10-18T00:53:22Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:07:11Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 12010,
+      "title": "Design Lab: capture every screen of the desktop app too",
+      "created_at": "2026-10-17T19:47:34Z",
+      "closed_at": "2026-10-18T00:53:36Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:47:55Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 12011,
+      "title": "Phone: a way to exit demo mode",
+      "created_at": "2026-10-17T19:52:45Z",
+      "closed_at": "2026-10-18T00:53:49Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T19:53:16Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        }
+      ]
+    },
+    {
+      "number": 12018,
+      "title": "Custom agents: use current runtime settings in SDK runner turns",
+      "created_at": "2026-10-17T23:13:12Z",
+      "closed_at": "2026-10-18T01:18:49Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T23:13:22Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        },
+        {
+          "created_at": "2026-10-18T00:59:14Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:90b4fa34-a043-4ced-9a26-0d7998794e80 -->"
+        }
+      ]
+    },
+    {
+      "number": 12022,
+      "title": "Expose cached Codex account quota through OpenAgents CLI with explicit freshness",
+      "created_at": "2026-10-17T23:15:46Z",
+      "closed_at": "2026-10-18T01:30:41Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T23:16:07Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        },
+        {
+          "created_at": "2026-10-17T23:24:50Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=codex:01a14c23-68c8-7042-b47f-e2b1ca8b300a -->"
+        },
+        {
+          "created_at": "2026-10-18T00:59:23Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:6f2e8c60-03fc-4292-825f-a92b671fc347 -->"
+        }
+      ]
+    },
+    {
+      "number": 12019,
+      "title": "iOS: show Working while a saved account chat answers",
+      "created_at": "2026-10-17T23:14:00Z",
+      "closed_at": "2026-10-18T01:33:10Z",
+      "agent_id": "baseline-2026-10-17",
+      "comments": [
+        {
+          "created_at": "2026-10-17T23:14:11Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:a9366ded-5f13-4301-a07b-ece8b70474c1 -->"
+        },
+        {
+          "created_at": "2026-10-18T00:59:10Z",
+          "body": "Claimed: an agent is working on this.\n\n<!-- openagents-coder-claim cli session=claude-code:f61fa6ed-29ae-4c94-92fb-56c5e386aedb -->"
+        }
+      ]
+    }
+  ],
+  "commits": [
+    {
+      "sha": "f33cfec2864cd1b9fcabc0d603e4e4e5df6cdb57",
+      "commit": {
+        "message": "Show execution-host Codex usage on the iOS voice screen (#12016)\n\nThe Talk with Codex list gains a Codex account usage section: the account,\nplan, quota windows with percentages and resets, and the last-updated time\nfor the computer that handles the call. It reads the existing\nListAgentAccounts RPC (the same AgentAccountsSnapshot the CLI reads, #12022)\nwith the desktop's cadence: a cached read, then a forced probe at most every\n30 s per computer, and a 5 min poll. A live call keeps its own computer even\nif next-call preferences change; replies from an earlier computer are\ndropped. No computer, offline, sign-in, unsupported and failed refreshes are\nstated as such, and missing data never shows as 0%.\n\nRust (client_ffi/voice_usage.rs) owns host selection and state; UIKit only\npresents it. Swift bindings regenerated with build-core.sh.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T23:16:42Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:43:57Z"
+        }
+      }
+    },
+    {
+      "sha": "4e3d34ea4d25cc8cf41e57bb37fc6b40ef30b13b",
+      "commit": {
+        "message": "Add the #12019 on-device check to After-close checks\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:32:55Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:32:55Z"
+        }
+      }
+    },
+    {
+      "sha": "92fc250db218def33af2a2b71c8201704453003a",
+      "commit": {
+        "message": "Show Working while a saved account chat answers on iOS (#12019)\n\nThe saved account transcript now sets the shared Working row from the\nTurns snapshot's busy flag, the same flag behind Stop. It shows before\nanswer text arrives and clears when the answer finishes, stops, fails, or\nobservation pauses, and after a chat or account switch. Builds on\n02dd4ce52a (the adapter and layout tests) and adds one guard so a shut-down\nhistory view never shows Working.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:32:17Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:32:19Z"
+        }
+      }
+    },
+    {
+      "sha": "888b6d8af51c0a703f573aeeb4fab5c9e1e05aac",
+      "commit": {
+        "message": "Phone: no way into the demo for people, and no demo exit chip or row\n\nThe demo stays for the Design Lab screenshot tour, which starts it with\n-demo. The welcome screens lose \"See a demo\", and the exit chip strip and\nSettings row from #12011 go, since nobody can be in the demo but the tour.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:30:27Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:30:34Z"
+        }
+      }
+    },
+    {
+      "sha": "15522b51d134fa8a3cdb42ff41ae2672bc945d6f",
+      "commit": {
+        "message": "Read Codex account quota from the CLI with explicit freshness (#12022)\n\n`openagents accounts usage --device local|UUID [--harness codex]\n[--account active|ID] --json [--refresh] [--ipc-port PORT]` reads the\nrunning app engine's shared usage cache through the existing\nListAgentAccounts RPC. Output carries cachedAt/usageFetchedAt, ageMs,\nstate (fresh/stale/neverFetched/unavailable), a stale flag, usage and\nrefresh errors kept apart from last-good windows, and refresh results\nof updated/cached/failed. No RPC or DTO shape change; openagents-rpc\ndrops its sync dependency's default SQLite store so the root CLI links.\n\nBuilds on the earlier unfinished session's work in the old worktree.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:30:26Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:30:27Z"
+        }
+      }
+    },
+    {
+      "sha": "5502ee2ab49eed3876b8f51dfeb96d51826b5ec8",
+      "commit": {
+        "message": "Fix current runtime settings in SDK agent turns (#12018)\n\nBind the settings chosen for the turn into the existing SDK runner input. Keep identity edits pinned to the assigned revision and cover runner changes and native-to-SDK changes with the public runner contract.",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T23:14:21Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T01:18:40Z"
+        }
+      }
+    },
+    {
+      "sha": "a4735eba5c128b7f4b384e1f3c5fb1a105d799df",
+      "commit": {
+        "message": "Start the identity with the device name after leaving the demo, and regenerate the phone's Swift bindings (#12011, #11995)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T23:22:15Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "e41be4eb30afbf400627549093b4d0c2326e8c8e",
+      "commit": {
+        "message": "Fix the desktop identity tests' local deployment address (#11997)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T23:08:40Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "2e453f291ede5eebded18e46b2ba5949c7c0b2a0",
+      "commit": {
+        "message": "Answer an app's refusal of a read with a signed refusal (#12000)\n\nWhen the app's dispatcher refused an app RPC, the host returned through\n`?` out of execute, so the device got no signed reply and waited out its\ntimeout; DeviceChannel then saw a transport failure (Unavailable) where\nit expects `unsupported`, and never fell back. LinkAccount on a computer\nwithout an account key hit this in the engine's pairing test.\n\nNow a refused read, and a definite refusal of an effect (unsupported,\nmalformed, bounds, forbidden, missing right), earns a signed refusal. An\neffect whose outcome is unknown still gets no reply, so a retry asks\nagain and the command ledger keeps it to one run.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T22:57:52Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "cd7a43960e1f5a37a59ddad67d5a0f6afc6d6f0f",
+      "commit": {
+        "message": "SDK docs: plain words for two modules, the known unlinked calls listed, the reference regenerated (#12007)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T22:43:58Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "713023f88f84b979af5a7bd702ddc3a157485263",
+      "commit": {
+        "message": "Regenerate the SDK reference, app and Computers contracts; read generated request types in the reference; list the sign-in routes as non-screens (#12007, #12001)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T22:33:55Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "595b792d6520e03e1c22557d6339707a93507fef",
+      "commit": {
+        "message": "Add a way out of the phone's offline demo (#12011)\n\nThe demo had no way back to the real app. A \"Demo \u00b7 Exit\" chip now sits\nin a strip at the top of the shell while the demo runs, and Settings\nshows an \"Exit demo\" row in place of Sign Out. Both stop the demo\nclient, remove its data folder, and start this phone's own account the\nway a launch does, without restarting the app.\n\nThe Rust core owns the words (`demo_exit_copy`, checked by the oa-copy\nguard) and `forget_demo_data`, which removes only a folder named `demo`.\nRust tests cover exiting a demo client and keeping the account's folder.\n\nNothing from the demo reaches the account any more: the demo gets its\nown cloud chat and own-computer record instead of the account's, keeps\nits new-session page in memory, and \"See a demo\" sets a signed-in\naccount aside instead of signing it out. A UI test enters the demo and\nleaves it from the chip and from Settings.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:58:48Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "76f80a1e8f8de04a68d7c0862590b9962b10123f",
+      "commit": {
+        "message": "Add the desktop app to Design Lab (#12010)\n\nDesign Lab now holds two apps, Phone and Desktop. Desktop capture runs\nsit in the captures folder's desktop/ folder; each app's newest run\ndecides which of its screens are current, desktop screens are filed as\ndesktop:<area>--<screen> with pictures under desktop/, and the board\ngets a Phone / Desktop switcher (P, #app=desktop) that draws desktop\nframes at their own aspect ratio and starts mocks at the app's size.\n\nThe desktop tour (crates/ui/src/shell/design_lab_tour.rs, behind\naccount-fixture) opens the whole shell offscreen in a 1280 x 800 point\nwindow with fixture data and a loopback fixture account, and saves the\nboot gates, Home, the sidebar, a chat with tool rows and its menus, the\nright-pane panels and every Settings page in light and dark mode. The\ndesign-lab-tour example and scripts/design-lab-capture-desktop.sh run it.\nGPUI keeps element bounds private, so desktop shots have no element trees.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T20:03:38Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "7069145a008b1faa103008b5ccb64c594f52a7e6",
+      "commit": {
+        "message": "Add the SDK docs at /docs/sdk, generated from the contracts and the SDK\n\nThe website gets an SDK landing page, an API reference page per area,\na Rust SDK reference page per module, and a server-side search. The\npages run no script.\n\n- The API reference is drawn at request time from the committed\n  contracts: the app API (with Computers and Labs), the System One\n  slice, and the decision API limited to the routes the public API\n  forwards. Each operation shows its method, path, description,\n  sign-in, parameters, request and response fields, grouped errors, a\n  curl example, and the SDK functions that call it. Its operation ID\n  is its anchor.\n- The Rust SDK reference comes from docs/sdk/sdk-reference.json, which\n  a syn-based test in openagents-sdk writes from the crate's source.\n  The test fails when the file is stale or a public item has no doc\n  comment.\n- Fill the gaps: descriptions for the seven app operations that had\n  none, and doc comments on every public SDK item.\n- Link the SDK docs from /docs, /docs/api, and the sitemap.\n\nRefs #12007.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:39:43Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "e7346ead8366011f9b31234ffadd02539e009375",
+      "commit": {
+        "message": "Keep CoreAccount::close_clients for the identity's sign-in (#11995)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:49:02Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "eb030ae4b6a4d9dfadeb5c1e475e3d72511e4ed8",
+      "commit": {
+        "message": "Drop the SDK's visitor module declaration; the identity retired the visitor flow (#11995)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:44:29Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "28f74df5a7b71708a64f1ae5624943dbf766be6d",
+      "commit": {
+        "message": "Mark the website sign-in routes as this site's own (#12001)\n\nThe routes were missing from upstream::owned, so a request carrying the\nsession cookie was refused with 403 by the host guard (the poll after\nsign-in) and, with --upstream, the routes would have been forwarded.\nweb_sign_in::owns now claims /login/ and /v1/web-sign-in/.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:40:12Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "de20c37b4f72782cb9789b55045ce07f8d20fc3c",
+      "commit": {
+        "message": "Read App Attest assertions and the development fixture correctly (#11994)\n\nAn assertion sets the attested-data flag but its authenticator data\nstops after the counter, so the parser reads attested data only when it\nis there. The real device fixture comes from a development build, so its\ntests allow development keys, and a new test checks that a verifier for\nproduction refuses it.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:39:16Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "a7224060e2362691b65b855135b0929e97995039",
+      "commit": {
+        "message": "Refuse wallet restore words that differ from the account's (#11995)\n\nOn a phone with an identity, the wallet's Restore from words now takes\nonly the identity's own words. Other words would split the wallet from\nthe account, so the screen says: \"These words don't match your account.\nTo use different words, restore your account from them in Settings.\"\nThe account's Restore from 12 words is the one path that changes the\nwords; a wallet made after it takes them. A locked identity item\nrestores nothing.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:28:06Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "fba98802d1d666f28d94d9dcd7374286662803c7",
+      "commit": {
+        "message": "Make a new wallet from the identity's 12 words (#11995, #11999)\n\n\"Make a wallet\" made its own 12 words, so a person ended up with two\nbackups. A new wallet now takes the identity's words instead.\n\n- `seed::create_with` makes the wallet's seed from the identity's\n  entropy when the phone has an identity, and new words only when it has\n  none (the identity then adopts the wallet's words when it is made). A\n  locked identity item makes no wallet. The seed is still only added\n  where none is stored, and the identity's item is only read.\n- `CoreWallet::new` reads the phone's identity item through\n  `openagents_account::identity::phone_entropy`; `Wallet::with_identity`\n  takes any source, for tests.\n- An existing wallet seed stays as it is and remains the source of the\n  identity's words.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:26:54Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:39Z"
+        }
+      }
+    },
+    {
+      "sha": "0d3881b61ad83229891ed531e9c2eaec5d4e8470",
+      "commit": {
+        "message": "Read the website sign-in waits from the app config (#12001)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:24:41Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "78b0f0acec11ddcedddbc8359e724fd8152cea8e",
+      "commit": {
+        "message": "Pass the loaded identity by reference in the phone's backup calls (#11995)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:08:55Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "65d5594976111f5f4a15d3c3994e6b6d30a89d51",
+      "commit": {
+        "message": "Keep the phone's computer-code check in the sync crate instead of linking coder-computers (#12000)\n\ncoder-computers pulls coder-ui and rust-native's syntax highlighting,\nwhose tree-sitter clashes with the app workspace's pinned one.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T20:32:06Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "4bc695098372ce4f5680a9a68de1175a9288063b",
+      "commit": {
+        "message": "Import Arc in the Connect your phone sheet (#11998)\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T20:29:55Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "d4868f9bd2befd7cbbf2ce735762f4c7b976dcc2",
+      "commit": {
+        "message": "Hand the desktop's link offer to its engine process through the data dir (#12000)\n\nThe desktop engine runs as its own background service, so the in-process\nlink watch can't reach it. The window now also writes its offer to\nopenagents-account/identity/link-offer.json (mode 0600): the key, the\nKeychain service that holds it, and a timestamp it refreshes every\nminute. The secret never goes to disk. The engine polls that file, reads\nthe identity from the same Keychain item when the key matches (backing\noff 30 seconds after a failed read), and writes \"signed\" and \"linked\"\nto link-state.json beside it, which the window reads each second. The\nin-process path stays for tests and a single-process app.\n\nAlso add a test that a website sign-in (#12001) by a key with no account\ngoes through #11994's new-key gate, and that a key with its account\nsigns the browser in without it.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T20:05:42Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "2a8a4a92eb2536b052d7afb0e7aecaaaa00ad1c7",
+      "commit": {
+        "message": "Tell the computer when its account link landed, and wire the desktop's signer (#12000)\n\nAfter the phone's POST /v1/device/keys succeeds, it calls the new app\nmethod AccountLinked {pubkey} over the device channel. The computer's\nsigner accepts it only from the grant it signed a proof for, once, and\nthe engine then calls link::linked, a new step in the desktop identity's\nlink watch (LinkState::Linked). The desktop signs in on Linked instead of\nafter a fixed wait; if no word comes within a minute it offers its key\nagain rather than signing in, since an unlinked key that signs in makes\nits own account.\n\nThe engine follows link::watch for its data directory after the device\nconnection starts: while a key is offered it signs with that key (and\nthe deployment's key-link address from CODER_DESKTOP_API_URL), keeps the\nsigner through Signed, and clears it otherwise. link_account calls\nlink::signed after it signs.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T20:01:05Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "fc81db3d99499f407be6a65e3ade18f3c2a52bfa",
+      "commit": {
+        "message": "Connect a computer by scanning its code, and sign it in as the same person (#12000)\n\nThe phone scans a computer's connect code (or opens its connect link, or\ntakes a pasted code) and pairs with no prior registry entry: the computer\nappears in Devices from the pairing alone. The host-signed grant and the\nphone's key for that computer are kept in the Keychain\n(`KeychainPairings`), so the pairing outlives the app, and the client\nreconnects to saved computers on launch. Forgetting a pairing removes it.\n\nThe same scan links the computer to the phone's account, as NIP-HOST\n\"Account key link by QR\" describes: the phone gets a key-link challenge\nfor its account, asks the computer over the new device connection to sign\na NIP-98 proof (app method `LinkAccount`), checks it, and posts it to\n`POST /v1/device/keys` with its own session. The computer's signer\n(`account_link::Signer`, wired through `Hosted::set_account_signer`)\nanswers only a fresh connect-code grant, once, for our key-link\naddresses only.\n\nThe scanner also takes website sign-in codes (#12001): it names the\nbrowser, asks first, and approves with the phone's identity key. The\nwebsite's app-site association now lists `/login/scan`.\n\nSwift adds only the AVFoundation scanner, its result alerts, a Settings\nrow, the tutorial's scan button, and the universal-link handler.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:50:24Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "3ac9675ace706ca400d839ef14e57f8f00daa935",
+      "commit": {
+        "message": "Sign in on the website with a phone scan or a browser extension (#12001)\n\n/login now shows a QR code the OpenAgents phone app scans and approves\nwith its Nostr key, and a button for a NIP-07 browser extension. Both end\nin the usual oa_cloud_session cookie, so /device (Coder 1.0's approval\npage), /oauth/authorize, and Settings work for an account that has only\na key. GitHub sign-in stays for existing accounts.\n\n- openagents-web: web_sign_in module. POST /login/key starts a sign-in\n  (a challenge from the account service, a request held in memory for\n  its five minutes, and an HttpOnly cookie that ties it to the browser);\n  GET /login/key/{request}/qr.svg is the code; GET /v1/web-sign-in/{id}\n  tells the phone which browser it signs in; POST /v1/web-sign-in/approve\n  takes the phone's NIP-98 approval, checks it signs this request's\n  challenge, and forwards it byte for byte to POST /v1/sessions/nostr;\n  GET /login/key/{request}/status hands the session to the browser once.\n  POST /login/key/extension signs a browser in from an extension.\n  static/sign-in.js drives the page; no TypeScript.\n- oa-auth: /v1/web-sign-in/approve and /login/key/extension join the\n  sign-in paths, and a sign-in signed for them gets a browser session\n  (book.issue), not an app session, so it isn't listed as a computer.\n- openagents-sdk: ScannedLogin::parse, Client::scanned_login and\n  Client::approve_scanned_login for the phone's scanner (#12000).\n- Tests: the scan flow end to end with a throwaway key, including a\n  key-only account approving a Coder device code; the extension flow;\n  cross-site refusals; replay.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:42:45Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "e45b939167931e13aefec8a633818735111eb89f",
+      "commit": {
+        "message": "Add the desktop identity: welcome, silent sign-in, identity row (#11997)\n\nNobody signs in on the desktop. A fresh computer opens a welcome with\nConnect your phone, Start here, or Restore from 12 words. After that the\nidentity's key signs in silently on every launch and renews before the\nsession ends, so configure_sync gets its bearer from the minted session.\n\n- openagents_account::desktop::identity: the DesktopIdentity trait and\n  KeyIdentity, which runs it over the shared Identities and the\n  controller's key sign-in (#11995). A fresh computer makes no key and\n  signs in with none until Start here or Restore. A computer signed in by\n  an earlier build gets a key that joins that account. Also the welcome\n  rules, typed-word checks, the short npub, the backup steps, and the\n  words, with oa-copy tests.\n- Connect your phone makes the key without signing in and offers it in\n  desktop::identity::link for the device connection to sign a phone's\n  link proof with (#12000). A marker on disk keeps a relaunch from signing\n  in with the waiting key, since an unlinked key that signs in makes its\n  own account (identity_taken). Once the proof is signed the key signs in\n  as the phone's account.\n- The sidebar row is an identity row: the short npub, a backup dot, and\n  a menu with Your ID (copy), Linked devices, Back up your account (words\n  behind a warning), Connect your phone, and Agent Lab. The browser\n  sign-in, device code, and Sign out are gone; sign_in opens the welcome.\n- The welcome and Back up are shell overlays; an identity-capture example\n  draws every state headless.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:36:07Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "0713b52057b01f2629618783da0e2b8148a73555",
+      "commit": {
+        "message": "Show a Connect your phone QR code and run the device connection by default\n\nThe desktop app's NIP-HOST host now starts by default with an iroh\nendpoint, signed in or not; OPENAGENTS_NIP_HOST=0 turns it off. Without\nan account the host skips device-key registration instead of failing,\nand a start or registration failure no longer stops the app.\n\nA new Connect your phone sheet shows the host's connect link as a QR\ncode drawn on this computer. It asks for a new single-use code every\n60 seconds, cancels the replaced code 60 seconds later, and cancels\nevery code it holds when it closes, when the window loses focus, or\nafter ten idle minutes. The copy action copies the text form and clears\nit from the clipboard after 60 seconds. The sheet opens from the account\nmenu, a signed-out sidebar button, and Settings > Devices.\n\nThe engine serves CreateConnectCode and CancelConnectCodes only on the\nin-process and localhost transports, never through the relay host or\nthe paired-device RPC. coder-host gains a ConnectCodes handle that the\ncontrol socket's invite now shares. The ConnectCode payload carries an\nempty account_link field for the account-link request in #12000.\n\nRefs #11998\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:35:09Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "be268cb1088c01b15b670d8f2c8856e4a786d668",
+      "commit": {
+        "message": "Show a sign-up proof on a new key's first sign-in (#11995, #11994)\n\nA new key's first sign-in now carries what the account service asks\nfor: an App Attest attestation over the challenge on the phone, or a\nproof of work everywhere else.\n\n- SDK: `key_challenge` and `sign_in_with_key_on` sign in over a given\n  challenge with extra body fields, kept under `KEY_BODY_MAX` (16 KB).\n  `solve_pow` solves `SHA-256(challenge \":\" counter)` to `POW_BITS` (20)\n  leading zero bits. The SDK now knows the sign-up refusal codes.\n- `Controller` tries the plain key sign-in first, so a known key never\n  pays for a proof. On `proof_required` it takes a fresh challenge and\n  makes the proof off the async threads: App Attest when an `Attester`\n  is set, otherwise or after `invalid_attestation`, a proof of work.\n- Phone: `CoreAccount::set_app_attester` takes a Swift `AppAttester`.\n  `AppAttest.swift` makes or reuses this install's App Attest key (its\n  id kept in the Keychain, this device only) and attests it over\n  `SHA-256(challenge)`, answering nil in the simulator so the core falls\n  back to a proof of work.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:52:08Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "a42b0ed43ea412c3e4b40f1fef04a1c279fe78d6",
+      "commit": {
+        "message": "Make the identity from 12 words and sign in silently with its key (#11995)\n\nThe phone and desktop core now give every device an identity on first\nlaunch and sign in with it, with nothing for the person to do.\n\n- Add `openagents_account::identity`: an `Identity` from 12 or 24 BIP-39\n  words with its NIP-06 key, npub, nsec, and NIP-98 signing (it implements\n  the SDK's `NostrSigner`). `Identities` opens the words from the\n  identity's own Keychain item, or reuses the earlier app's wallet seed\n  (`com.openagents.app.spark` / `seed-v1`, read only) as the words, and\n  makes new words only when both are certainly absent. The item is on this\n  device only by default, with an iCloud Keychain copy as a setting. It\n  also holds restore from words, the backup check, and the words-saved\n  record.\n- Add silent sign-in to `Controller`: `start_with_key` reuses a saved\n  session, adds the key to that session's account first when the device\n  was signed in before the identity existed (`link_key`), and otherwise\n  signs in with the key. `renew_with_key` signs in again before the\n  session ends and swaps the session in place. `sign_in_with_key` serves\n  restore from words.\n- Phone FFI: `start_identity(device_name)`, `identity()` (npub, words\n  saved, iCloud copy), `backup_words`, `backup_check`, `confirm_backup`,\n  `restore_from_words`, `set_icloud_copy`, and `reveal_nsec`. The account\n  timer renews with the key. The device-code `sign_in` is now available\n  only to the account fixture's tests.\n- Retire the visitor chat and its claim in the new app: the cloud chat is\n  always an account chat, and its first send waits briefly for the silent\n  sign-in. Remove the SDK's `visitor` module; the server routes stay.\n- Add `desktop::identities` for the desktop's identity (UI in #11997).\n- Require `NostrSigner: Send + Sync` so key sign-ins run on the shared\n  runtime.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:42:13Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "b6575f78c6a94ae8509bd818c68f7f5d4bdb82ec",
+      "commit": {
+        "message": "Bound key-only accounts with App Attest, sign-up limits, and a breaker\n\nA Nostr key costs nothing, so accounts that sign in with only a key get\nlimits that don't depend on GitHub or Apple (#11994):\n\n- oa_auth::attest verifies App Attest attestations and assertions\n  offline against the pinned Apple App Attestation Root CA: the x5c\n  chain, the nonce extension, the key id, the app id\n  (HQWSG26L43.com.openagents.app), the counter, and the AAGUID. A book\n  beside the registry binds each attested key to one account. Tests use\n  a real device's attestation and assertion (BSD-3-Clause fixture from\n  github.com/bas-d/appattest).\n- The Nostr sign-in takes a NewKeyGate that runs before a new key makes\n  its account. The gateway's gate (gateway::key_accounts) accepts an\n  `app_attest` attestation over the challenge, or a `pow` proof of work\n  over it under per-address, per-/24, and global daily caps, reusing the\n  agent self-registration helpers. Replayed sign-ins count toward no cap.\n- Every key-only account that hasn't connected an account or paid shares\n  one daily breaker on its free model allowance ($20 by default).\n- GET /v1/account adds `account.free_cloud` (full, attested, none). The\n  website sends `X-OpenAgents-Allowance: free-attested` for an attested\n  key account, and the Computers service enrolls it in a smaller tier\n  (40,000,000 CPU ms, migration 0018) that only moves up to the full $3.\n\nExisting accounts and Coder 1.0.0 are unaffected: the new field and\nheader value are additive, and any non-key sign-in keeps the full\nallowances.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:42:25Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-18T00:38:38Z"
+        }
+      }
+    },
+    {
+      "sha": "97840b7ebc68c573f6701fdedd8686fa5138a5d8",
+      "commit": {
+        "message": "Remove Sign in with Apple and stop GitHub sign-in from making accounts (#12005)\n\nSign in with Apple is removed everywhere:\n- Server: POST /v1/sessions/apple (gateway and the oa-auth local\n  service) and POST /v1/device/apple (web) answer 410 apple_removed,\n  \"Sign in with Apple has been removed.\" oa_auth::apple, its test keys,\n  AuthError::AppleDenied, the gateway's accounts.apple config, and the\n  staging/production render of it are gone. tenancy keeps the apple\n  identity book and the apple: principal so linked accounts keep their\n  data; only the find-or-create sign-in is removed.\n- SDK: Client::sign_in_with_apple, AppleSignIn, and Error::AppleDenied\n  are removed.\n- Phone core: CoreAccount::sign_in_with_apple, apple_sign_in_nonce, and\n  Controller::sign_in_with_apple are removed, with the in-app approval\n  sheet helpers that only the deleted SignInSheet.swift used (#11996).\n- iOS: the com.apple.developer.applesignin entitlement is removed. The\n  Apple buttons went with #11996's removal of the sign-in screens.\n\nGitHub sign-in is deprecated:\n- oa_auth::service::sign_in takes new_accounts. Without it, a GitHub user\n  no account holds is refused with 403 signup_disabled (an existing code)\n  and nothing is made. The gateway sets it from accounts.github\n  .new_accounts, off by default; the local fixture service keeps it on\n  (without_github_signup turns it off).\n- The website's /login and /signup lead with \"The OpenAgents app needs\n  no sign-in.\" and keep Continue with GitHub under \"Signed up with GitHub\n  before? Sign in here.\" A refused new GitHub user sees a plain page.\n- Existing accounts still sign in, so Coder 1.0.0's device-code approval\n  keeps working.\n\nDocs: docs/auth/README.md and docs/auth/github.md mark GitHub sign-in\ndeprecated and Apple removed; the \"GitHub or Apple\" claim is cut in\ndocs/launch/1.0/claims.md; an After-close row is added.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:36:20Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T21:38:20Z"
+        }
+      }
+    },
+    {
+      "sha": "67c75999ee763305f90058ddfa9074a489899b79",
+      "commit": {
+        "message": "Bring the Spark wallet back to the phone and keep the old seed\n\nThe earlier OpenAgents app kept its Spark wallet seed in the Keychain item\ncom.openagents.app.spark / seed-v1. The current app has the same bundle ID\nand team, so it now reads that item and opens the same wallet.\n\n- apps/openagents/crates/mobile links crates/spark-wallet and turns on\n  Breez's SQLite store there only; the app workspace patches boltz-client\n  from the root's vendor/ copy, as the root workspace does.\n- wallet::seed holds the seed rules. The KeyStore foreign trait can only\n  read and add, so a stored seed can't be deleted or replaced. A read that\n  fails for any reason but \"not found\" (a locked phone) shows an error and\n  Try again, and never makes a seed. A seed is made only when the person\n  taps Make a wallet after the store said none exists; Restore from 12 or\n  24 words is offered only then too.\n- wallet_seed_words returns the stored seed's words for the identity\n  (#11995) and never writes.\n- The Wallet screen is a Rust Native view: balance, Receive (Spark\n  address, Lightning invoice, Bitcoin address, with QR), Send with a\n  confirmed quote, Activity, the trust note, and Back up. The iOS shell\n  adds the Keychain glue, the page, Face ID before the words, a\n  capture-proof words sheet, and a 60-second local-only pasteboard copy.\n  Wallet opens from the drawer toolbar, Settings, and -route wallet.\n- An offline fixture wallet (-wallet-fixture, simulator and tests only)\n  holds no money and never touches the Keychain.\n\nPorted from the removed app (c63b8bbe5c^): DeviceKey.swift, WalletTab.swift,\nand crates/openagents-mobile/src/wallet.rs, reduced to the main surface.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:37:30Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T20:00:58Z"
+        }
+      }
+    },
+    {
+      "sha": "68e72c50977ea65e8138312e5433cc332ec20533",
+      "commit": {
+        "message": "Audit the work to ship the current mobile app on Android\n\nAdd docs/audits/2026-10-17-android-app.md: what the Rust core and the\nretired Android code already give, a screen-by-screen inventory of the\niOS shell with the Android work for each, build, release, and testing\nplans, a phased plan with agent-day estimates (29 to 40, or 25 to 35\nwithout voice), risks, and decisions for the owner. It covers the\nidentity epic's onboarding, wallet, and QR work (#12006, #11996,\n#11999, #12000).\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T20:00:50Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T20:00:50Z"
+        }
+      }
+    },
+    {
+      "sha": "c7a370344e1d6f0a4c041187dfe2d7bdb127d261",
+      "commit": {
+        "message": "Remove the phone's Home screen; the app opens on a chat (#12009)\n\nThe owner asked for the Home screen to go. The shell's first page is now\nthe cloud chat, and the tutorial from #11996 lands on it.\n\n- Delete HomeViewController, its drawer button, its key command, the\n  `openagents://layout` links and the Home dashboard tests and shots.\n  The sidebar's Home button becomes a Chat button that opens the chat.\n- Remove `CoreAccount::home`, `CoreHome` and the mobile core's\n  dependency on `openagents-dashboard`. The desktop, web and SDK still\n  use that crate, so it stays.\n- Point the UI tests that went Home for the New session capsule at\n  Settings instead.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:35:04Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:44:16Z"
+        }
+      }
+    },
+    {
+      "sha": "c08d15a9bb454769bb59ec2be16368a4187a5528",
+      "commit": {
+        "message": "Replace the phone's sign-in with a first-launch tutorial (#11996)\n\nThe phone no longer asks anyone to sign in. First launch shows four\nskippable tutorial pages (ask anything, where coding runs, connecting a\ncomputer, backing up the account) and ends on a new chat with the\ncomposer focused. The Rust core owns the pages' words and the shown-once\nrecord (`CoreOnboarding`), with tests that run the oa-copy guard.\n\n- Remove SignInViewController, SignInSheet, SignInPromptController, the\n  visitor message countdown and every Sign in button. The scene always\n  opens the shell, with the cloud chat as the landing chat. When the\n  visitor limit is reached, the chat shows a plain line instead.\n- Add `CoreAccount::start_identity` and `CoreAccount::identity` as the\n  account boundary. Until #11995 they restore a saved login and return\n  no identity; Settings shows \"Your ID\" only once there is one, and the\n  backup and restore rows stay commented out.\n- Move \"See a demo\" into the tutorial.\n- Replace the Design Lab welcome and sign-in shots with the tutorial\n  pages and the landing chat, and update the UI tests that used the\n  sign-in button as their signed-out marker.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "author": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:23:03Z"
+        },
+        "committer": {
+          "name": "AtlantisPleb",
+          "email": "chris@openagents.com",
+          "date": "2026-10-17T19:23:10Z"
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T14:47:00-05:00",
+      "issue": 11994
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T14:52:00-05:00",
+      "issue": 11995
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T14:35:00-05:00",
+      "issue": 11996
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T14:55:00-05:00",
+      "issue": 11997
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T14:35:00-05:00",
+      "issue": 11998
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T15:05:00-05:00",
+      "issue": 12000
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T14:43:00-05:00",
+      "issue": 12001
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T14:40:00-05:00",
+      "issue": 12007
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T15:04:00-05:00",
+      "issue": 12010
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "ready",
+      "at": "2026-10-17T14:59:00-05:00",
+      "issue": 12011
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "claim",
+      "at": "2026-10-17T19:58:00-05:00",
+      "issue": 12018
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "claim",
+      "at": "2026-10-17T19:58:00-05:00",
+      "issue": 12022
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "claim",
+      "at": "2026-10-17T19:58:00-05:00",
+      "issue": 12019
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "stall",
+      "at": "2026-10-17T14:11:00-05:00",
+      "id": "agent",
+      "own_turn": true,
+      "ended_at": "2026-10-17T18:24:00-05:00"
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "stall",
+      "at": "2026-10-17T18:25:00-05:00",
+      "id": "coordinator-a9366ded",
+      "own_turn": false,
+      "ended_at": "2026-10-17T19:37:00-05:00"
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "probe",
+      "at": "2026-10-17T14:11:00-05:00",
+      "method": "POST",
+      "path": "/v1/visitors",
+      "target": "production",
+      "wrote_data": true
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "deploy_refused",
+      "at": "2026-10-17T19:52:00-05:00",
+      "deploy": "production",
+      "permission": true,
+      "reason": "actAs"
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "owner_wait",
+      "at": "2026-10-17T15:43:00-05:00",
+      "id": "disk-cleanup",
+      "what": "Free disk so builds can continue"
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "owner_done",
+      "at": "2026-10-17T15:59:00-05:00",
+      "id": "disk-cleanup"
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "disk",
+      "at": "2026-10-17T08:58:00-05:00",
+      "free_gib": 63
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "disk",
+      "at": "2026-10-17T09:08:00-05:00",
+      "free_gib": 96
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "disk",
+      "at": "2026-10-17T11:31:00-05:00",
+      "free_gib": 184
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "disk",
+      "at": "2026-10-17T14:01:00-05:00",
+      "free_gib": 99
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "disk",
+      "at": "2026-10-17T14:01:00-05:00",
+      "free_gib": 272
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "disk",
+      "at": "2026-10-17T15:43:00-05:00",
+      "free_gib": 0
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "disk",
+      "at": "2026-10-17T15:59:00-05:00",
+      "free_gib": 89
+    },
+    {
+      "agent_id": "baseline-2026-10-17",
+      "kind": "disk",
+      "at": "2026-10-17T18:25:00-05:00",
+      "free_gib": 32
+    }
+  ],
+  "build_sweep_log": "2026-10-17 6:51:44 PM CDT  sweep  free 363.8 GiB -> 363.8 GiB, freed 0 KiB; artifact use watched since 2026-10-17 6:51:44 PM CDT; targets: shared\n",
+  "sources": [
+    "docs/foreman/chat-review.md",
+    "docs/audits/2026-10-17-nostr-identity-close-timeline.md",
+    "GitHub issue dates and claim comments, recorded 2026-10-17 CDT",
+    "~/.openagents/logs/build-sweep.log (first recovery sample)"
+  ],
+  "notes": [
+    "Audit timestamps have minute precision. First commit dates come from GitHub; host check-ins were not recorded and remain unknown.",
+    "One recorded POST /v1/visitors incident represents a repeated watch; request count was not recorded.",
+    "The 19:58 takeover is a new claim; original claim times remain in GitHub comments."
+  ]
+}

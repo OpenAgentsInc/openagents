@@ -72,6 +72,13 @@ app's; otherwise the command keeps its own under `~/.openagents/chat/`, and
 the router's typed metadata, and `--run-coder` accepts a Coder offer through
 the host. The full guide is [chat.md](chat.md).
 
+## Daily agent reports (`openagents foreman report`)
+
+`openagents foreman report --agent ID --day YYYY-MM-DD` measures issue work,
+stalls, check-ins, disk, probe writes, deploy permissions, and owner waits.
+Times use Chicago time; `--json` prints the same measurements as an object.
+See the [report guide](../foreman/report.md) for inputs and the October 17 fixture.
+
 ## Models on the OpenAgents API (`openagents inference`)
 
 A plain HTTP client of the public inference API
