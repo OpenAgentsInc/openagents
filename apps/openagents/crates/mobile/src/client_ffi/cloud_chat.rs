@@ -140,6 +140,13 @@ impl CoreCloudChat {
         })
     }
 
+    pub(crate) fn watch(&self) -> tokio::sync::watch::Receiver<Snapshot> {
+        match &self.chat {
+            Chat::Live(chat) => chat.watch(),
+            Chat::Demo(chat) => chat.watch(),
+        }
+    }
+
     pub(crate) fn raw_snapshot(&self) -> Snapshot {
         match &self.chat {
             Chat::Live(chat) => chat.snapshot(),

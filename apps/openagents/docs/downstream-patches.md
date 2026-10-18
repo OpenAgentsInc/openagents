@@ -879,3 +879,10 @@ links remain readable. Upstream fixes now require manual ports.
   row version. The SDK and server changes land together. Indexed transcript reads
   keep shared-project authorization; no legacy-ID join or second room path is
   added. New source fixtures and binding/integration checks remain unrun.
+
+- [OpenAgents #12100](https://github.com/OpenAgentsInc/openagents/issues/12100):
+  attach default cloud chat and the offline demo directly to the shared Rust
+  transcript worker. Source replacement, clearing, and shutdown reject queued
+  updates from older subscriptions; Kotlin receives layout frames instead of
+  rebuilding message rows. Two synthetic projection/lifecycle fixtures are
+  authored. Binding generation and executable checks remain unrun.
