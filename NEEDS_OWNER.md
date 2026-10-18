@@ -2958,3 +2958,14 @@ transcript on a physical device using synthetic history and no owner account.
 Check bundled/fallback glyphs, RTL text, font/display scaling, stable history
 anchors, streaming, horizontal overflow, fast scrolling, and Activity recreation.
 Record frame percentiles and missed deadlines; follow the central After-close row.
+
+### Qualify Android project and chat handoff (#12095)
+
+After D3's focused code checks and B1 integration pass, use a dedicated test account
+with `X-OpenAgents-Test: 1` and disposable projects/computers. Check identity-first
+onboarding into the same useful cloud chat, Activity recreation without a new chat,
+selected-computer model/effort discovery and outage handling, project/branch menus,
+project sharing/approval, cloud start/stop and entitlement refusals, and continuing
+web/terminal chats through the same room/grant path. Check account switches and
+revoked grants. Delete created chats, projects, shares, and cloud computers before
+ending. Never use the owner's account or real computers for these checks.
