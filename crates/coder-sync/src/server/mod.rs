@@ -289,7 +289,9 @@ mod tests {
         );
         let socket = tokio::net::TcpStream::connect(addr).await.unwrap();
         let (mut read, mut write) = socket.into_split();
-        let writer = tokio::spawn(async move { write.write_all(&wire).await });
+        // Keep the write half open until the replies are read: dropping it
+        // half-closes the socket, and hyper drops pipelined requests on EOF.
+        let writer = tokio::spawn(async move { write.write_all(&wire).await.map(|()| write) });
         let mut replies = Vec::new();
         tokio::time::timeout(
             std::time::Duration::from_secs(30),
@@ -298,11 +300,12 @@ mod tests {
         .await
         .unwrap()
         .unwrap();
-        writer.await.unwrap().unwrap();
+        drop(writer.await.unwrap().unwrap());
         let replies = String::from_utf8_lossy(&replies);
+        // Bodies end without a newline, so find status lines by their prefix.
         let statuses: Vec<&str> = replies
-            .lines()
-            .filter(|line| line.starts_with("HTTP/1.1 "))
+            .match_indices("HTTP/1.1 ")
+            .filter_map(|(at, _)| replies[at..].lines().next())
             .collect();
         assert_eq!(
             statuses,
