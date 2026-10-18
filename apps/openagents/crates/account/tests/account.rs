@@ -56,6 +56,12 @@ struct Server {
     expires: AtomicUsize,
     active: Mutex<Vec<String>>,
     device_label: Mutex<Option<Value>>,
+    other_account_token: Mutex<Option<String>>,
+    delete_mode: AtomicUsize,
+    delete_delayed: AtomicBool,
+    delete_started: tokio::sync::Notify,
+    delete_release: tokio::sync::Notify,
+    delete_requests: Mutex<Vec<bool>>,
 }
 fn bearer(h: &HeaderMap) -> String {
     h.get("authorization")
@@ -101,7 +107,8 @@ async fn account(State(s): State<Arc<Server>>, h: HeaderMap) -> Response {
     if !s.active.lock().unwrap().contains(&bearer(&h)) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    Json(json!({"account":{"id":"acct_fixture","label":"Actual account"},"workspaces":[]}))
+    let other = s.other_account_token.lock().unwrap().as_deref() == Some(bearer(&h).as_str());
+    Json(json!({"account":{"id":if other {"acct_other"} else {"acct_fixture"},"label":"Actual account"},"workspaces":[]}))
         .into_response()
 }
 async fn revoke(State(s): State<Arc<Server>>, h: HeaderMap) -> Response {
@@ -112,6 +119,34 @@ async fn revoke(State(s): State<Arc<Server>>, h: HeaderMap) -> Response {
     s.active.lock().unwrap().retain(|t| t != &bearer(&h));
     Json(json!({"signed_out":true})).into_response()
 }
+async fn delete_account(
+    State(s): State<Arc<Server>>,
+    h: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let token = bearer(&h);
+    assert!(s.active.lock().unwrap().contains(&token));
+    assert_eq!(body["confirm"], "delete my account");
+    s.delete_requests
+        .lock()
+        .unwrap()
+        .push(body["forfeit_balance"].as_bool().unwrap());
+    s.delete_started.notify_one();
+    if s.delete_delayed.load(Ordering::SeqCst) {
+        s.delete_release.notified().await;
+    }
+    let (status, code) = match s.delete_mode.load(Ordering::SeqCst) {
+        1 => (StatusCode::CONFLICT, "balance_remaining"),
+        2 => (StatusCode::CONFLICT, "shared_workspace"),
+        3 => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
+        _ => {
+            s.active.lock().unwrap().retain(|active| *active != token);
+            return Json(json!({"account":{"state":"deleted"}})).into_response();
+        }
+    };
+    (status, Json(json!({"error":{"code":code}}))).into_response()
+}
+
 async fn setup() -> (
     Arc<Controller>,
     Arc<Server>,
@@ -124,7 +159,7 @@ async fn setup() -> (
     let code_origin = origin.clone();
     let server = Arc::new(Server::default());
     let router=Router::new().route("/v1/device/code",post(move|State(s): State<Arc<Server>>, Json(body): Json<Value>|{let origin=code_origin.clone();async move {*s.device_label.lock().unwrap()=Some(body);Json(json!({"device_code":"dvc_fixture","user_code":"BCDF-GHJK","verification_uri":format!("{origin}/device"),"verification_uri_complete":format!("{origin}/device?code=BCDF-GHJK"),"interval":1,"expires_in":30}))}}))
-        .route("/v1/device/token",post(token)).route("/v1/account",get(account)).route("/v1/device/sign-out",post(revoke)).with_state(server.clone());
+        .route("/v1/device/token",post(token)).route("/v1/account",get(account).delete(delete_account)).route("/v1/device/sign-out",post(revoke)).with_state(server.clone());
     tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap();
     let root = tempfile::tempdir().unwrap();
@@ -422,4 +457,98 @@ async fn explicit_credentials_use_the_same_storage_and_sign_out_lifecycle() {
             ..
         }
     ));
+}
+
+#[tokio::test]
+async fn deletion_completion_cannot_sign_out_or_forget_a_newer_account() {
+    for mode in 0..=3 {
+        let (controller, server, store, root, _client) = setup().await;
+        server.approved.store(true, Ordering::SeqCst);
+        controller.sign_in("Synthetic device".into()).await;
+        let old = controller.lease().unwrap();
+        server.delete_mode.store(mode, Ordering::SeqCst);
+        server.delete_delayed.store(true, Ordering::SeqCst);
+        let deleting = controller.clone();
+        let pending = tokio::spawn(async move { deleting.delete_account(false).await });
+        tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            server.delete_started.notified(),
+        )
+        .await
+        .unwrap();
+        let newer = format!("sess_{:064x}", 9002);
+        server.active.lock().unwrap().push(newer.clone());
+        *server.other_account_token.lock().unwrap() = Some(newer.clone());
+        controller.import_credential(newer).await;
+        let current = controller.lease().unwrap();
+        let generation = controller.snapshot().generation;
+        let saved = store.record.lock().unwrap().clone().unwrap();
+        assert_eq!(current.session().account().id, "acct_other");
+        assert!(!old.is_current());
+        server.delete_release.notify_one();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(8), pending)
+            .await
+            .unwrap()
+            .unwrap();
+        match (mode, result) {
+            (0, openagents_account::Deletion::Deleted)
+            | (1, openagents_account::Deletion::PaidCredit)
+            | (2, openagents_account::Deletion::SharedTeam)
+            | (3, openagents_account::Deletion::Failed(_)) => {}
+            _ => panic!("deletion outcome changed"),
+        }
+        assert_eq!(controller.snapshot().generation, generation);
+        assert!(current.is_current());
+        assert_eq!(
+            controller.lease().unwrap().session().account().id,
+            "acct_other"
+        );
+        assert!(
+            serde_json::to_value(store.record.lock().unwrap().as_ref().unwrap()).unwrap()
+                == serde_json::to_value(&saved).unwrap()
+        );
+        assert!(!root.path().join("account/signed-out").exists());
+        assert!(matches!(
+            controller
+                .delete_account_for_generation(old.generation, true)
+                .await,
+            openagents_account::Deletion::Failed(_)
+        ));
+        controller.sign_out_for_generation(old.generation).await;
+        assert!(current.is_current());
+        assert_eq!(*server.delete_requests.lock().unwrap(), [false]);
+    }
+}
+
+#[tokio::test]
+async fn deletion_keeps_typed_refusals_and_only_forgets_after_success() {
+    let (controller, server, store, root, _client) = setup().await;
+    server.approved.store(true, Ordering::SeqCst);
+    controller.sign_in("Synthetic device".into()).await;
+    let lease = controller.lease().unwrap();
+    for mode in 1..=3 {
+        server.delete_mode.store(mode, Ordering::SeqCst);
+        let result = controller.delete_account(false).await;
+        match (mode, result) {
+            (1, openagents_account::Deletion::PaidCredit)
+            | (2, openagents_account::Deletion::SharedTeam)
+            | (3, openagents_account::Deletion::Failed(_)) => {}
+            _ => panic!("deletion refusal changed"),
+        }
+        assert!(lease.is_current());
+        assert!(store.record.lock().unwrap().is_some());
+        assert!(!root.path().join("account/signed-out").exists());
+    }
+    server.delete_mode.store(0, Ordering::SeqCst);
+    assert!(matches!(
+        controller.delete_account(true).await,
+        openagents_account::Deletion::Deleted
+    ));
+    assert!(controller.lease().is_none());
+    assert!(store.record.lock().unwrap().is_none());
+    assert!(root.path().join("account/signed-out").exists());
+    assert_eq!(
+        *server.delete_requests.lock().unwrap(),
+        [false, false, false, true]
+    );
 }

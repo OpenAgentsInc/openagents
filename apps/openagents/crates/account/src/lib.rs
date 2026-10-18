@@ -198,7 +198,14 @@ impl Controller {
         self.state.lock().unwrap().generation == generation
     }
     fn begin(&self, phase: Phase) -> Ticket {
+        self.begin_expected(phase, None)
+            .expect("an unconditional account transition")
+    }
+    fn begin_expected(&self, phase: Phase, generation: Option<u64>) -> Option<Ticket> {
         let mut s = self.state.lock().unwrap();
+        if generation.is_some_and(|expected| s.generation != expected) {
+            return None;
+        }
         s.cancel.cancel();
         s.generation += 1;
         s.cancel = CancellationToken::new();
@@ -212,7 +219,7 @@ impl Controller {
             generation: s.generation,
             phase,
         });
-        ticket
+        Some(ticket)
     }
     fn publish(&self, t: &Ticket, phase: Phase, session: Option<Session>) -> bool {
         let mut s = self.state.lock().unwrap();
@@ -581,8 +588,23 @@ impl Controller {
         .map_err(|_| StorageError::Unavailable)?
     }
     pub fn sign_out(self: &Arc<Self>) -> impl Future<Output = ()> + Send + 'static {
-        let this = self.clone();
         let t = self.begin(Phase::SignedOut { notice: None });
+        self.sign_out_ticket(t)
+    }
+    pub fn sign_out_for_generation(
+        self: &Arc<Self>,
+        generation: u64,
+    ) -> impl Future<Output = ()> + Send + 'static {
+        let ticket = self.begin_expected(Phase::SignedOut { notice: None }, Some(generation));
+        let completion = ticket.map(|ticket| self.sign_out_ticket(ticket));
+        async move {
+            if let Some(completion) = completion {
+                completion.await;
+            }
+        }
+    }
+    fn sign_out_ticket(self: &Arc<Self>, t: Ticket) -> impl Future<Output = ()> + Send + 'static {
+        let this = self.clone();
         {
             // Seal restore before waiting for an OS credential prompt or a network request.
             let state = self.state.lock().unwrap();
@@ -616,6 +638,27 @@ impl Controller {
                 "Connect to your account before deleting it. Try again in a moment.".into(),
             );
         };
+        self.delete_leased_account(lease, forfeit_balance).await
+    }
+    /// A settings confirmation belongs to one account generation. Capture its
+    /// lease before sending so a delayed click cannot target a newer account.
+    pub async fn delete_account_for_generation(
+        self: &Arc<Self>,
+        generation: u64,
+        forfeit_balance: bool,
+    ) -> Deletion {
+        let Some(lease) = self.lease().filter(|lease| lease.generation == generation) else {
+            return Deletion::Failed(
+                "Your account changed. Open Settings again to continue.".into(),
+            );
+        };
+        self.delete_leased_account(lease, forfeit_balance).await
+    }
+    async fn delete_leased_account(
+        self: &Arc<Self>,
+        lease: Lease,
+        forfeit_balance: bool,
+    ) -> Deletion {
         match self
             .client
             .delete_account(lease.session(), forfeit_balance)
@@ -636,9 +679,16 @@ impl Controller {
                 );
             }
         }
-        let t = self.begin(Phase::SignedOut {
-            notice: Some(DELETED_NOTICE.into()),
-        });
+        // Deletion belongs to the lease that made the request. A later account
+        // must keep its credentials and state even when this request succeeds.
+        let Some(t) = self.begin_expected(
+            Phase::SignedOut {
+                notice: Some(DELETED_NOTICE.into()),
+            },
+            Some(lease.generation),
+        ) else {
+            return Deletion::Deleted;
+        };
         let _ = self.forget(&t).await;
         self.publish(
             &t,
