@@ -185,5 +185,26 @@ class AuthorityTests(Base):
         self.assertEqual(len(ff.feedback_rows(ca)), n)
 
 
+class GceToken(unittest.TestCase):
+    def test_a_gce_vm_without_env_uses_the_metadata_server(self):
+        keep = {k: os.environ.pop(k, None) for k in (
+            "VERTEX_ACCESS_TOKEN", "VERTEX_TOKEN_FILE", "GOOGLE_APPLICATION_CREDENTIALS",
+            "GCE_METADATA_HOST", "K_SERVICE", ff.EMBEDDINGS_VAR)}
+        saved_product, saved_key = ff.GCE_PRODUCT, ff.google_key_file
+        try:
+            ff.google_key_file = lambda: None
+            with tempfile.TemporaryDirectory() as d:
+                ff.GCE_PRODUCT = os.path.join(d, "product_name")
+                Path(ff.GCE_PRODUCT).write_text("Google Compute Engine\n")
+                self.assertEqual(ff.GoogleToken.kind(), "metadata")
+                Path(ff.GCE_PRODUCT).write_text("MacBookPro18,1\n")
+                self.assertNotEqual(ff.GoogleToken.kind(), "metadata")
+        finally:
+            ff.GCE_PRODUCT, ff.google_key_file = saved_product, saved_key
+            for k, v in keep.items():
+                if v is not None:
+                    os.environ[k] = v
+
+
 if __name__ == "__main__":
     unittest.main()
