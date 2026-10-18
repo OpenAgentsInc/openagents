@@ -785,3 +785,18 @@ links remain readable. Upstream fixes now require manual ports.
   The composer and transcript share a weighted chat layout, so Rust receives
   the transcript's new viewport size when the keyboard changes available space.
   A bounded fixture core covers send choices and display-only attachment events.
+  The mobile FFI now has a versioned draft store keyed by hashed account ID and
+  Rust session ID, plus a closed `SessionViewIntent` registry. It accepts only
+  acknowledged `ValidatedView` activations and field changes, rejects stale,
+  disabled, or unknown actions, and routes send/interrupt/input answers through
+  existing session operations. Draft save, restore, clear, account switch, and
+  unsupported action tests are authored but have not run. The current app tree
+  has no Activity result owner: Photo Picker, document picker, paste/image
+  conversion, camera capture, and upload-specific handling are not wired. The generic
+  attachment request only returns a platform handoff; approval actions are not
+  in the mobile intent set. The composer accepts payloads only up to 24 MiB per
+  file and 48 MiB total, passes bytes to Rust `SessionHandle.send`, and keeps
+  draft and attachment bytes available after a failed send. Stub fixtures cover
+  oversized and failed sends. Rust tests, UniFFI binding regeneration,
+  Kotlin/JUnit, and device input checks remain pending because free space is
+  below the 100 GiB build floor.

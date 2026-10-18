@@ -45,6 +45,13 @@ data class ComposerAttachment(
     val removeAction: ComposerAction? = null,
 )
 
+/** A bounded file payload ready for the existing Rust session send call. */
+data class ComposerAttachmentPayload(
+    val name: String,
+    val mimeType: String,
+    val data: ByteArray,
+)
+
 /** The editor identity shared with Rust's UTF-16 mirror. */
 data class ComposerEditorStamp(
     val instance: String,
@@ -98,7 +105,13 @@ data class ComposerFrame(
 /** Narrow boundary to Rust's composer editor and current-view intent resolver. */
 interface ComposerCorePort {
     fun edit(update: ComposerEditorUpdate): ComposerEditorAck
-    fun submit(stamp: ComposerEditorStamp, choiceToken: String?)
+    /** Returns false or throws when Rust cannot accept the send. */
+    fun submit(
+        stamp: ComposerEditorStamp,
+        choiceToken: String?,
+        text: String,
+        attachments: List<ComposerAttachmentPayload>,
+    ): Boolean
     fun activate(instance: String, revision: Long, node: String)
     fun changeField(instance: String, revision: Long, node: String, value: String)
     fun acknowledge(instance: String, revision: Long)
@@ -129,6 +142,12 @@ class AndroidComposerPresentation(
     private val attachmentRow = horizontalRow()
     private val attachmentScroll = horizontalScroll(attachmentRow)
     private val mentionRow = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private val sendError = TextView(context).apply {
+        text = "Couldn't send. Try again."
+        visibility = View.GONE
+        contentDescription = text
+        setPadding(dp(8), dp(4), dp(8), dp(4))
+    }
     private val inputRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.BOTTOM
@@ -160,6 +179,7 @@ class AndroidComposerPresentation(
     private var sharedCardsMount: Closeable? = null
     private var applyingAck = false
     private var disposed = false
+    private val pendingAttachments = mutableListOf<ComposerAttachmentPayload>()
     private val baseBottomPadding = root.paddingBottom
 
     private val textWatcher = object : TextWatcher {
@@ -193,6 +213,7 @@ class AndroidComposerPresentation(
         root.addView(contextScroll, matchWrap())
         root.addView(attachmentScroll, matchWrap())
         root.addView(mentionRow, matchWrap())
+        root.addView(sendError, matchWrap())
         inputRow.addView(attachmentButton, wrapWrap())
         inputRow.addView(input, LinearLayout.LayoutParams(0, wrap, 1f))
         inputRow.addView(sendButton, wrapWrap())
@@ -249,7 +270,11 @@ class AndroidComposerPresentation(
         input.hint = next.placeholder
         input.isEnabled = next.enabled
         input.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-        if (newInput) setInputText(next.initialDraft, next.initialDraft.length, next.initialDraft.length)
+        if (newInput) {
+            pendingAttachments.clear()
+            sendError.visibility = View.GONE
+            setInputText(next.initialDraft, next.initialDraft.length, next.initialDraft.length)
+        }
 
         val primary = if (next.busy) next.stopAction else null
         sendButton.text = primary?.label ?: next.primaryLabel
@@ -282,6 +307,7 @@ class AndroidComposerPresentation(
             root.setWindowInsetsAnimationCallback(null)
         }
         root.removeAllViews()
+        pendingAttachments.clear()
         frame = null
         editorStamp = null
     }
@@ -292,7 +318,7 @@ class AndroidComposerPresentation(
         if (current.busy) {
             current.stopAction?.takeIf { it.enabled }?.let { activate(it) }
         } else {
-            core.submit(editorStamp ?: current.stamp, null)
+            submit(null)
         }
     }
 
@@ -337,10 +363,44 @@ class AndroidComposerPresentation(
                 current.sendChoices.any { it.token == oldToken }
             }
                 ?: return@setOnMenuItemClickListener false
-            core.submit(editorStamp ?: current.stamp, token)
+            submit(token)
             true
         }
         menu.show()
+    }
+
+    /** Accept bytes from a platform picker after bounded URI reading/conversion. */
+    fun addAttachment(payload: ComposerAttachmentPayload): Boolean {
+        checkMainThread()
+        if (disposed || frame?.enabled != true || payload.data.isEmpty() ||
+            payload.data.size > MAX_ATTACHMENT_BYTES || pendingAttachments.size >= MAX_ATTACHMENTS ||
+            pendingAttachments.sumOf { it.data.size.toLong() } + payload.data.size > MAX_TOTAL_ATTACHMENT_BYTES ||
+            !byteBound(payload.name) || payload.name.isBlank() || !byteBound(payload.mimeType)
+        ) return false
+        pendingAttachments += payload.copy(data = payload.data.copyOf())
+        sendError.visibility = View.GONE
+        return true
+    }
+
+    private fun submit(choiceToken: String?) {
+        val current = frame ?: return
+        if (!current.enabled || disposed) return
+        val accepted = try {
+            core.submit(
+                editorStamp ?: current.stamp,
+                choiceToken,
+                input.text.toString(),
+                pendingAttachments.toList(),
+            )
+        } catch (_: Exception) {
+            false
+        }
+        if (accepted) {
+            pendingAttachments.clear()
+            sendError.visibility = View.GONE
+        } else {
+            sendError.visibility = View.VISIBLE
+        }
     }
 
     private fun renderChips(target: LinearLayout, chips: List<ComposerChip>) {
@@ -542,6 +602,8 @@ class AndroidComposerPresentation(
         const val MAX_ATTACHMENTS = 10
         const val MAX_ACTIONS = 16
         const val MAX_CHOICES = 4
+        const val MAX_ATTACHMENT_BYTES = 24 * 1024 * 1024
+        const val MAX_TOTAL_ATTACHMENT_BYTES = 48 * 1024 * 1024
         const val MATCH_PARENT = ViewGroup.LayoutParams.MATCH_PARENT
         const val WRAP_CONTENT = ViewGroup.LayoutParams.WRAP_CONTENT
     }

@@ -8,6 +8,7 @@ class BoundedComposerStubCore(initial: ComposerFrame) : ComposerCorePort {
     private var text = initial.initialDraft
     val events = ArrayList<String>()
     val displayedViews = ArrayList<Pair<String, Long>>()
+    var acceptNextSubmit = true
 
     init {
         require(initial.maxBytes in 1..MAX_TEXT_BYTES)
@@ -35,10 +36,25 @@ class BoundedComposerStubCore(initial: ComposerFrame) : ComposerCorePort {
         )
     }
 
-    override fun submit(stamp: ComposerEditorStamp, choiceToken: String?) {
-        if (stamp != frame.stamp) return
-        if (choiceToken != null && frame.sendChoices.none { it.token == choiceToken }) return
+    override fun submit(
+        stamp: ComposerEditorStamp,
+        choiceToken: String?,
+        text: String,
+        attachments: List<ComposerAttachmentPayload>,
+    ): Boolean {
+        if (stamp != frame.stamp ||
+            choiceToken != null && frame.sendChoices.none { it.token == choiceToken } ||
+            text.toByteArray(StandardCharsets.UTF_8).size > frame.maxBytes ||
+            attachments.size > MAX_ATTACHMENTS ||
+            attachments.any { it.data.isEmpty() || it.data.size > MAX_ATTACHMENT_BYTES }
+        ) return false
+        if (!acceptNextSubmit) {
+            acceptNextSubmit = true
+            record("submit_failed")
+            return false
+        }
         record(if (choiceToken == null) "submit" else "choice:$choiceToken")
+        return true
     }
 
     override fun acknowledge(instance: String, revision: Long) {
@@ -84,5 +100,7 @@ class BoundedComposerStubCore(initial: ComposerFrame) : ComposerCorePort {
     private companion object {
         const val MAX_EVENTS = 32
         const val MAX_TEXT_BYTES = 64 * 1024
+        const val MAX_ATTACHMENTS = 10
+        const val MAX_ATTACHMENT_BYTES = 24 * 1024 * 1024
     }
 }
