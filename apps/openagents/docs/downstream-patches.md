@@ -805,3 +805,13 @@ links remain readable. Upstream fixes now require manual ports.
   app_links`) and an end-to-end rerun of `scripts/android/build-core.sh` were
   not run by this chat. Release-certificate verification remains an owner-only
   step in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
+
+- [OpenAgents #12099](https://github.com/OpenAgentsInc/openagents/issues/12099):
+  add isolated Android onboarding/recovery presentation over shared Rust account,
+  identity, wallet recovery, and tutorial APIs. Rust Native owns the cards,
+  confirmation requirements, callback revisions, and authentication scope. New
+  Kotlin onboarding files supply device credentials, secret-screen protection,
+  lifecycle redaction, and explicit sensitive clipboard copy. A3 storage, D5
+  settings, and B1 Activity/Gradle files are unchanged. Source fixtures are unrun;
+  binding/host integration remains pending. The additive generation-fenced restore
+  API commits under the shared account-switch lock; its race fixtures are unrun.

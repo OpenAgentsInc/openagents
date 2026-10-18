@@ -2958,3 +2958,15 @@ transcript on a physical device using synthetic history and no owner account.
 Check bundled/fallback glyphs, RTL text, font/display scaling, stable history
 anchors, streaming, horizontal overflow, fast scrolling, and Activity recreation.
 Record frame percentiles and missed deadlines; follow the central After-close row.
+### Qualify Android first launch and recovery (#12099)
+
+After A3/E1 integration and focused offline checks pass, use synthetic recovery
+words and a dedicated test account on API 26 and current Android devices. Confirm
+that first launch opens useful chat without a sign-in wall, existing provider
+accounts and wallet seeds survive, all requested backup words must be confirmed,
+and malformed words or a locked store leave existing recovery data intact. Check
+unsupported device authentication, cancellation, stale results after background or
+account switch, restart, screenshots/task previews, autofill/keyboard suggestions,
+and explicit sensitive clipboard copy with cleanup within 60 seconds and on exit.
+Verify process death and OEM clipboard behavior physically. Never use the owner's
+real seed, wallet, account, or clipboard for these checks.
