@@ -67,6 +67,23 @@ impl Draft {
         if !harnesses.iter().any(|h| h.id == harness && h.offered) || models.is_empty() {
             return Err(failed("No models are available on this computer."));
         }
+        let mut model_ids = std::collections::BTreeSet::new();
+        if models.iter().any(|model| {
+            model.id.is_empty()
+                || !model_ids.insert(model.id.as_str())
+                || model
+                    .reasoning_levels
+                    .iter()
+                    .any(|effort| effort.is_empty())
+                || model
+                    .reasoning_levels
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+                    != model.reasoning_levels.len()
+        }) {
+            return Err(failed("This computer returned an invalid model list."));
+        }
         self.harness = Some(harness);
         self.harnesses = harnesses;
         self.models = models;
@@ -243,5 +260,36 @@ mod tests {
         );
         assert!(d.model.is_none());
         assert!(d.config().is_err());
+    }
+
+    #[test]
+    fn duplicate_model_and_effort_rows_cannot_enter_the_rust_menu() {
+        let mut d = Draft::new(4);
+        d.computer("fixture-host".into());
+        assert!(
+            d.catalog(
+                4,
+                d.token,
+                "fixture-host",
+                "codex".into(),
+                vec![harness()],
+                vec![model("fixture", &["low", "low"])],
+            )
+            .is_err()
+        );
+        assert!(d.models.is_empty());
+
+        assert!(
+            d.catalog(
+                4,
+                d.token,
+                "fixture-host",
+                "codex".into(),
+                vec![harness()],
+                vec![model("fixture", &[]), model("fixture", &[])],
+            )
+            .is_err()
+        );
+        assert!(d.models.is_empty());
     }
 }

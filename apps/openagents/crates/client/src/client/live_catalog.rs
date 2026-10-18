@@ -25,7 +25,11 @@ fn offered(
     .clone();
     let mut ids = std::collections::BTreeSet::new();
     if harnesses.iter().any(|h| {
-        h.id.is_empty() || h.id.len() > 128 || h.label.len() > 256 || !ids.insert(h.id.clone())
+        h.id.is_empty()
+            || h.id.len() > 128
+            || h.label.len() > 256
+            || h.reasoning_levels.len() > 32
+            || !ids.insert(h.id.clone())
     }) {
         return Err(ClientError::HostError(
             "This computer returned an invalid provider list.".into(),
@@ -44,9 +48,37 @@ fn models(list: Vec<ModelInfo>) -> Result<Vec<ModelInfo>> {
         m.id.is_empty()
             || m.id.len() > 256
             || m.label.len() > 256
+            || m.description.as_ref().is_some_and(|text| text.len() > 4096)
             || m.reasoning_levels.len() > 32
+            || m.reasoning_levels
+                .iter()
+                .any(|level| level.is_empty() || level.len() > 64)
+            || m.reasoning_levels
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != m.reasoning_levels.len()
             || m.options.len() > 32
-            || m.options.iter().any(|o| o.choices.len() > 32)
+            || m.options.iter().any(|option| {
+                option.id.is_empty()
+                    || option.id.len() > 128
+                    || option.label.len() > 256
+                    || option.choices.is_empty()
+                    || option.choices.len() > 32
+                    || option.choices.iter().any(|choice| {
+                        choice.id.is_empty() || choice.id.len() > 128 || choice.label.len() > 256
+                    })
+                    || !option
+                        .choices
+                        .iter()
+                        .any(|choice| choice.id == option.default_choice)
+            })
+            || m.options
+                .iter()
+                .map(|option| &option.id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != m.options.len()
             || !ids.insert(m.id.clone())
     }) {
         return Err(ClientError::HostError(
@@ -156,5 +188,26 @@ mod tests {
     fn duplicate_and_unbounded_catalogs_are_refused() {
         assert!(offered(vec![provider("codex", true), provider("codex", true)], None).is_err());
         assert!(models((0..513).map(|n| model(&format!("model-{n}"))).collect()).is_err());
+    }
+
+    #[test]
+    fn malformed_effort_and_model_options_are_refused() {
+        let mut duplicate_effort = model("fixture", &["low", "low"]);
+        assert!(models(vec![duplicate_effort.clone()]).is_err());
+
+        duplicate_effort.reasoning_levels = vec!["".into()];
+        assert!(models(vec![duplicate_effort.clone()]).is_err());
+
+        duplicate_effort.reasoning_levels.clear();
+        duplicate_effort.options.push(ModelOption {
+            id: "mode".into(),
+            label: "Mode".into(),
+            choices: vec![ModelOptionChoice {
+                id: "safe".into(),
+                label: "Safe".into(),
+            }],
+            default_choice: "missing".into(),
+        });
+        assert!(models(vec![duplicate_effort]).is_err());
     }
 }
