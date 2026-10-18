@@ -595,6 +595,88 @@ async fn handle_host_frame(
 }
 
 // ---------------------------------------------------------------------------
+// Direct routes (#12130)
+// ---------------------------------------------------------------------------
+
+/// A byte stream straight to a peer computer, already authorized by that
+/// peer. See [`DirectRoutes`].
+pub trait DirectIo: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static {}
+impl<T> DirectIo for T where T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
+{}
+pub type DirectStream = Box<dyn DirectIo>;
+
+/// Routes to peer computers that skip the sync device room, for when the room
+/// is down or refuses (429/503): one sync outage must not cut an app off from
+/// its other computers (#12130).
+///
+/// The implementation owns authorization: [`DirectRoutes::dial`] returns a
+/// stream only after the peer has admitted this device with a credential it
+/// issued over the authorized relay path ([`DirectRoutes::learn`]). A direct
+/// dial never skips that check.
+#[async_trait]
+pub trait DirectRoutes: Send + Sync + 'static {
+    /// Whether a usable direct route to `device_id` is known (cached on disk,
+    /// so this holds while sync is down).
+    fn knows(&self, device_id: &str) -> bool;
+    /// Dial `device_id` directly and pass its admission check.
+    async fn dial(&self, device_id: &str) -> Result<DirectStream, RpcError>;
+    /// A link to `device_id` is up: refresh its direct route over `client`
+    /// when due. Best effort and non-blocking.
+    fn learn(&self, _device_id: &str, _client: Arc<RpcClient>) {}
+}
+
+/// The virtual connection id a direct stream's frames are served under.
+const DIRECT_CONN: &str = "direct";
+
+/// Serve the full RPC surface to one admitted direct stream: the host side of
+/// [`DeviceLink::over_stream`]. Frames are the device-room frames, so every
+/// RPC handler and the echo liveness check work exactly as through the room.
+pub async fn serve_direct<S>(stream: S, service: Arc<dyn RpcService>)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
+    let (io, progress) = openagents_sync::socket::ProgressIo::new(stream);
+    let socket = WebSocketStream::from_raw_socket(io, Role::Server, None).await;
+    let ws = openagents_sync::socket::Connection { socket, progress };
+    let (out_tx, out_rx) = mpsc::channel::<Vec<u8>>(256);
+    let (in_tx, mut in_rx) = mpsc::channel::<Vec<u8>>(1);
+    let transport = openagents_sync::socket::pump_with_timing(
+        ws,
+        out_rx,
+        in_tx,
+        WsMessage::Binary,
+        binary_frame,
+        PING_INTERVAL,
+        SILENCE_LEASE,
+    );
+    let mut conns: HashMap<String, VirtualConn> = HashMap::new();
+    // Nudges come from the room, never from a peer.
+    let on_nudge: NudgeHandler = Arc::new(|_| false);
+    let dispatch = async {
+        while let Some(bytes) = in_rx.recv().await {
+            let Ok((mut header, payload)) = decode_device_frame(&bytes) else {
+                continue;
+            };
+            if header.k != RPC_KIND && header.k != ECHO_KIND {
+                continue;
+            }
+            // Stamp the origin the room would have stamped.
+            header.from = Some(DIRECT_CONN.into());
+            header.to = None;
+            let Ok(frame) = encode_device_frame(&header, &payload) else {
+                continue;
+            };
+            handle_host_frame(&frame, &mut conns, &service, &out_tx, &on_nudge).await;
+        }
+    };
+    tokio::select! {
+        _ = transport => {},
+        _ = dispatch => {},
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Client link
 // ---------------------------------------------------------------------------
 
@@ -606,6 +688,16 @@ pub struct DeviceLink {
     client: Arc<RpcClient>,
     closed_rx: watch::Receiver<Option<String>>,
     pump: tokio::task::JoinHandle<()>,
+    route: LinkRoute,
+}
+
+/// Which path a [`DeviceLink`] rides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkRoute {
+    /// Through the sync device room.
+    Room,
+    /// Straight to the peer computer ([`DirectRoutes`]), skipping sync.
+    Direct,
 }
 
 impl DeviceLink {
@@ -620,6 +712,18 @@ impl DeviceLink {
             .await
             .map_err(|e| RpcError::Transport(format!("device room unreachable: {e}")))?;
         Ok(Self::from_socket(ws))
+    }
+
+    /// A link over an already-authenticated direct byte stream to the peer
+    /// (see [`DirectRoutes`]). The same device frames ride it as through the
+    /// room; the peer serves them with [`serve_direct`].
+    pub async fn over_stream(stream: DirectStream) -> Self {
+        use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
+        let (io, progress) = openagents_sync::socket::ProgressIo::new(stream);
+        let socket = WebSocketStream::from_raw_socket(io, Role::Client, None).await;
+        let mut link = Self::from_socket(openagents_sync::socket::Connection { socket, progress });
+        link.route = LinkRoute::Direct;
+        link
     }
 
     fn from_socket<S>(ws: openagents_sync::socket::Connection<S>) -> Self
@@ -738,7 +842,13 @@ impl DeviceLink {
             client: Arc::new(RpcClient::new(out_tx, in_rx)),
             closed_rx,
             pump,
+            route: LinkRoute::Room,
         }
+    }
+
+    /// The path this link rides.
+    pub fn route(&self) -> LinkRoute {
+        self.route
     }
 
     pub fn client(&self) -> Arc<RpcClient> {
@@ -794,6 +904,9 @@ pub struct LinkCacheConfig {
     /// is presence-driven: the workspace's peer-alive hook fires the moment
     /// heartbeats return, and the next call passes the gate.
     pub liveness: Option<PeerLivenessProbe>,
+    /// Optional direct routes, tried when the device room is down, refuses,
+    /// or cannot reach the peer (#12130).
+    pub direct: Option<Arc<dyn DirectRoutes>>,
 }
 
 impl LinkCacheConfig {
@@ -811,6 +924,7 @@ impl LinkCacheConfig {
             cooldown_max: Duration::from_secs(60),
             probe_timeout: Duration::from_secs(10),
             liveness: None,
+            direct: None,
         }
     }
 }
@@ -818,6 +932,31 @@ impl LinkCacheConfig {
 /// Consecutive failures older than this decay to zero — a blip an hour ago must
 /// not escalate today's first retry up the backoff curve.
 const FAILURE_DECAY: Duration = Duration::from_secs(600);
+/// After the device room refuses or can't be reached, dials with a known
+/// direct route go direct first for this long instead of retrying the room.
+const ROOM_DOWN_HOLD: Duration = Duration::from_secs(30);
+/// Bound on one direct dial (connect plus admission).
+const DIRECT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What the app should say about a peer's link.
+pub const STATUS_SYNC_UNAVAILABLE: &str = "sync unavailable";
+pub const STATUS_CONNECTED_DIRECTLY: &str = "sync unavailable, connected directly";
+
+/// A failed dial through the room, and whether the room itself failed (it
+/// refused, such as 429/503, or was unreachable) rather than the peer.
+struct DialFailure {
+    room_down: bool,
+    error: RpcError,
+}
+
+impl DialFailure {
+    fn peer(error: RpcError) -> Self {
+        Self {
+            room_down: false,
+            error,
+        }
+    }
+}
 
 #[derive(Default)]
 struct DialState {
@@ -837,6 +976,8 @@ pub struct LinkCache {
     links: Mutex<HashMap<String, Arc<DeviceLink>>>,
     dial_state: Mutex<HashMap<String, DialState>>,
     dial_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// When the device room last refused or couldn't be reached (#12130).
+    room_down_at: Mutex<Option<Instant>>,
 }
 
 impl LinkCache {
@@ -847,6 +988,7 @@ impl LinkCache {
             links: Mutex::new(HashMap::new()),
             dial_state: Mutex::new(HashMap::new()),
             dial_locks: Mutex::new(HashMap::new()),
+            room_down_at: Mutex::new(None),
         });
         // Wake = every cached link is half-open and every cooldown is moot
         // (the failures belonged to the pre-suspend network). Drop them so the
@@ -921,13 +1063,24 @@ impl LinkCache {
         if let Some(link) = self.cached(device_id) {
             return Ok(link.client());
         }
+        // A cached direct route (#12130) is the way around a sync outage.
+        let direct = self
+            .config
+            .direct
+            .clone()
+            .filter(|direct| direct.knows(device_id));
         // Registry-dark gate: a device with no recent presence is not worth a
         // dial (let alone the 3-attempt sequence) — fail fast with zero
         // network traffic. A live cached link above always wins over the
         // verdict; ambiguity (registry down, unknown device) never parks.
-        if let Some(probe) = &self.config.liveness
-            && probe(device_id) == PeerLiveness::Dark
-        {
+        // With a direct route, the presence may be dark only because the
+        // peer's own sync link is down, so the direct route is still tried.
+        let dark = self
+            .config
+            .liveness
+            .as_ref()
+            .is_some_and(|probe| probe(device_id) == PeerLiveness::Dark);
+        if dark && direct.is_none() {
             return Err(RpcError::Transport(format!(
                 "peer {device_id}: device is offline (no recent presence)"
             )));
@@ -950,33 +1103,128 @@ impl LinkCache {
             return Err(RpcError::Transport(message));
         }
         let mut last_err = None;
-        for attempt in 0..DIAL_ATTEMPTS {
-            if attempt > 0 {
-                tokio::time::sleep(DIAL_RETRY_SPACING * attempt).await;
-            }
-            match self.dial(device_id).await {
-                Ok(link) => {
-                    lock(&self.dial_state).remove(device_id);
-                    let mut links = lock(&self.links);
-                    if self.revoked.load(Ordering::Acquire) {
-                        return Err(RpcError::Transport("not signed in".into()));
+        let mut room_down = false;
+        // While the room is known to be down (or the peer is dark), a peer
+        // with a direct route skips the room's retry sequence entirely.
+        let room_known_down = self.room_recently_down();
+        let skip_room = direct.is_some() && (dark || room_known_down);
+        if !skip_room {
+            for attempt in 0..DIAL_ATTEMPTS {
+                if attempt > 0 {
+                    tokio::time::sleep(DIAL_RETRY_SPACING * attempt).await;
+                }
+                match self.dial(device_id).await {
+                    Ok(link) => {
+                        *lock(&self.room_down_at) = None;
+                        let client = self.install(device_id, link)?;
+                        tracing::info!(device = %device_id, "peer: connected via device room");
+                        if let Some(direct) = &self.config.direct {
+                            direct.learn(device_id, client.clone());
+                        }
+                        return Ok(client);
                     }
-                    links.insert(device_id.to_string(), link.clone());
-                    drop(links);
-                    self.spawn_evictor(device_id.to_string(), &link);
-                    tracing::info!(device = %device_id, "peer: connected via device room");
-                    return Ok(link.client());
+                    Err(failure) => {
+                        tracing::debug!(device = %device_id, attempt, error = %failure.error, room_down = failure.room_down, "peer: dial attempt failed");
+                        if failure.room_down {
+                            room_down = true;
+                            *lock(&self.room_down_at) = Some(Instant::now());
+                        }
+                        last_err = Some(failure.error);
+                        // A refusing room won't let us in a second later; go
+                        // straight to the direct route when there is one.
+                        if room_down && direct.is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(direct) = direct {
+            match self.dial_direct(direct.as_ref(), device_id).await {
+                Ok(link) => {
+                    let client = self.install(device_id, link)?;
+                    tracing::info!(device = %device_id, "peer: {STATUS_CONNECTED_DIRECTLY}");
+                    direct.learn(device_id, client.clone());
+                    return Ok(client);
                 }
                 Err(err) => {
-                    tracing::debug!(device = %device_id, attempt, error = %err, "peer: dial attempt failed");
-                    last_err = Some(err);
+                    tracing::info!(device = %device_id, error = %err, "peer: direct dial failed");
+                    last_err.get_or_insert(err);
                 }
             }
         }
         // Only the exhausted sequence counts as ONE failure on the cooldown
         // curve — the in-call retries must not escalate it by themselves.
         self.note_failure(device_id);
-        Err(last_err.unwrap_or(RpcError::Closed))
+        let err = last_err.unwrap_or(RpcError::Closed);
+        if dark && !room_down && !room_known_down {
+            return Err(RpcError::Transport(format!(
+                "peer {device_id}: device is offline (no recent presence)"
+            )));
+        }
+        if room_down || (skip_room && room_known_down) {
+            // Say what is actually down: sync, not the computer.
+            return Err(RpcError::Transport(format!(
+                "peer {device_id}: {STATUS_SYNC_UNAVAILABLE} ({err})"
+            )));
+        }
+        Err(err)
+    }
+
+    /// What to show for `device_id`'s link while sync is impaired:
+    /// [`STATUS_CONNECTED_DIRECTLY`] when a live link rides a direct route,
+    /// [`STATUS_SYNC_UNAVAILABLE`] while the device room is refusing or
+    /// unreachable, and `None` when sync is fine.
+    pub fn status(&self, device_id: &str) -> Option<&'static str> {
+        if self
+            .cached(device_id)
+            .is_some_and(|link| link.route() == LinkRoute::Direct)
+        {
+            return Some(STATUS_CONNECTED_DIRECTLY);
+        }
+        self.room_recently_down().then_some(STATUS_SYNC_UNAVAILABLE)
+    }
+
+    /// The route a live cached link to `device_id` rides, if any.
+    pub fn route(&self, device_id: &str) -> Option<LinkRoute> {
+        self.cached(device_id).map(|link| link.route())
+    }
+
+    fn room_recently_down(&self) -> bool {
+        lock(&self.room_down_at).is_some_and(|at| at.elapsed() < ROOM_DOWN_HOLD)
+    }
+
+    /// Cache a freshly dialed, probed link and watch it for drops.
+    fn install(
+        self: &Arc<Self>,
+        device_id: &str,
+        link: Arc<DeviceLink>,
+    ) -> Result<Arc<RpcClient>, RpcError> {
+        lock(&self.dial_state).remove(device_id);
+        let mut links = lock(&self.links);
+        if self.revoked.load(Ordering::Acquire) {
+            return Err(RpcError::Transport("not signed in".into()));
+        }
+        links.insert(device_id.to_string(), link.clone());
+        drop(links);
+        self.spawn_evictor(device_id.to_string(), &link);
+        Ok(link.client())
+    }
+
+    async fn dial_direct(
+        &self,
+        direct: &dyn DirectRoutes,
+        device_id: &str,
+    ) -> Result<Arc<DeviceLink>, RpcError> {
+        tracing::info!(device = %device_id, "peer: dialing directly");
+        let stream = tokio::time::timeout(DIRECT_CONNECT_TIMEOUT, direct.dial(device_id))
+            .await
+            .map_err(|_| {
+                RpcError::Transport(format!("peer {device_id}: direct connect timed out"))
+            })??;
+        let link = Arc::new(DeviceLink::over_stream(stream).await);
+        self.ready(device_id, &link).await?;
+        Ok(link)
     }
 
     /// Drop a cached link after a failed RPC so the next call re-dials.
@@ -1048,14 +1296,14 @@ impl LinkCache {
         entry.cooldown_until = Some(Instant::now() + backoff);
     }
 
-    async fn dial(&self, device_id: &str) -> Result<Arc<DeviceLink>, RpcError> {
+    async fn dial(&self, device_id: &str) -> Result<Arc<DeviceLink>, DialFailure> {
         // Fresh token on every attempt — an expired one is never reused.
         let token = self
             .config
             .token
             .token()
             .await
-            .map_err(|e| RpcError::Transport(e.to_string()))?;
+            .map_err(|e| DialFailure::peer(RpcError::Transport(e.to_string())))?;
         let conn_id = uuid::Uuid::new_v4().to_string();
         let url = device_room_ws_url(
             &self.config.edge_url,
@@ -1074,16 +1322,32 @@ impl LinkCache {
             .token
             .device_request(device_id, &url)
             .await
-            .map_err(|e| RpcError::Transport(e.to_string()))?;
+            .map_err(|e| DialFailure::peer(RpcError::Transport(e.to_string())))?;
+        // Every failure to open the socket is the room's: it refused (such as
+        // 429/503), or it could not be reached at all.
         let link = tokio::time::timeout(
             DIAL_CONNECT_TIMEOUT,
             DeviceLink::connect_with_headers(&url, &headers),
         )
         .await
-        .map_err(|_| RpcError::Transport(format!("peer {device_id}: connect timed out")))?;
-        let link = Arc::new(link?);
-        // Readiness probe: prove the host answers before caching (an offline host bounces
-        // host_offline, which closes the link and fails this call fast).
+        .map_err(|_| DialFailure {
+            room_down: true,
+            error: RpcError::Transport(format!("peer {device_id}: connect timed out")),
+        })?
+        .map_err(|error| DialFailure {
+            room_down: true,
+            error,
+        })?;
+        let link = Arc::new(link);
+        self.ready(device_id, &link)
+            .await
+            .map_err(DialFailure::peer)?;
+        Ok(link)
+    }
+
+    /// Readiness probe: prove the host answers before caching (an offline
+    /// host bounces host_offline, which closes the link and fails this fast).
+    async fn ready(&self, device_id: &str, link: &DeviceLink) -> Result<(), RpcError> {
         let client = link.client();
         let probe = client.call(crate::methods::LIST_HARNESSES, serde_json::json!({}));
         tokio::time::timeout(self.config.probe_timeout, probe)
@@ -1094,7 +1358,7 @@ impl LinkCache {
             .map_err(|e| {
                 RpcError::Transport(format!("peer {device_id}: readiness check failed: {e}"))
             })?;
-        Ok(link)
+        Ok(())
     }
 
     fn spawn_evictor(self: &Arc<Self>, device_id: String, link: &Arc<DeviceLink>) {
