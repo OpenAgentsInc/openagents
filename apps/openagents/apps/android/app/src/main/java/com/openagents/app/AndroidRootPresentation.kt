@@ -17,6 +17,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.openagents.app.adaptive.*
 import com.openagents.app.composer.*
 import com.openagents.app.drawer.*
+import com.openagents.app.onboarding.*
 import com.openagents.app.sessions.AndroidSessionsHost
 import com.openagents.app.settings.*
 import com.openagents.app.transcript.*
@@ -49,6 +50,7 @@ internal class AndroidRootPresentation(
     private var attachments: AndroidComposerAttachmentResults? = null
     private var sessions: AndroidSessionsHost? = null
     private var settings: SettingsHost? = null
+    private var recovery: RecoveryHost? = null
     private var settingsActions: AndroidSettingsActions? = null
     private var drawer: DrawerPresenter? = null
     private val notice = TextView(activity)
@@ -70,6 +72,7 @@ internal class AndroidRootPresentation(
         buttons.addView(action("Chat") { owner.selectDefaultChat(); panes.showSession() })
         buttons.addView(action("New chat") { owner.navigate(AndroidHostRoute.SESSIONS); panes.showSession() })
         buttons.addView(action("Settings") { owner.navigate(AndroidHostRoute.SETTINGS); panes.showSession() })
+        if (owner.account() != null) buttons.addView(action("Your ID") { owner.navigate(AndroidHostRoute.RECOVERY); panes.showSession() })
         navigation.addView(buttons)
         navigation.addView(drawerView, LinearLayout.LayoutParams(-1, 0, 1f))
         content.addView(chatContainer, FrameLayout.LayoutParams(-1, -1))
@@ -154,6 +157,7 @@ internal class AndroidRootPresentation(
                 chatContainer.visibility = View.VISIBLE
             }
             AndroidHostRoute.SESSIONS -> {
+                recovery?.close(); recovery = null
                 settings?.close(); settings = null
                 settingsActions?.close(); settingsActions = null
                 chatContainer.visibility = View.GONE
@@ -163,7 +167,22 @@ internal class AndroidRootPresentation(
                     sessions?.showPicker()
                 }
             }
+            AndroidHostRoute.RECOVERY -> {
+                sessions?.close(); sessions = null
+                settings?.close(); settings = null
+                settingsActions?.close(); settingsActions = null
+                chatContainer.visibility = View.GONE; routeContainer.visibility = View.VISIBLE
+                if (recovery == null) next.recovery?.let { core ->
+                    recovery = RecoveryHost(routeContainer, activity.window, CoreRecoveryPort(core, ownsCore = false),
+                        AndroidDeviceAuthentication(activity, CredentialLauncher(activity::launchDeviceCredential)),
+                        RecoveryClipboard(activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager),
+                        application::recoveryWork,
+                        { guarded { owner.selectDefaultChat(); panes.showSession() } },
+                    ).also { it.start(android.os.Build.MODEL) }
+                }
+            }
             AndroidHostRoute.SETTINGS -> {
+                recovery?.close(); recovery = null
                 sessions?.close(); sessions = null
                 chatContainer.visibility = View.GONE
                 routeContainer.visibility = View.VISIBLE
@@ -268,7 +287,7 @@ internal class AndroidRootPresentation(
     private fun sessionAction(action: AndroidSessionAction) {
         guarded {
             when (action) {
-                is AndroidSessionAction.Cloud -> { owner.selectDefaultChat(); panes.showSession() }
+                is AndroidSessionAction.Cloud -> { owner.selectCloudChat(action.chat); panes.showSession() }
                 is AndroidSessionAction.Session -> { owner.selectSession(action.id); panes.showSession() }
                 is AndroidSessionAction.OpenUrl -> activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)))
                 is AndroidSessionAction.Clipboard -> (activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
@@ -284,6 +303,8 @@ internal class AndroidRootPresentation(
         if (snapshot?.route != AndroidHostRoute.CHAT) { guarded { owner.navigate(AndroidHostRoute.CHAT) }; return true }
         return panes.handleBack()
     }
+    fun background() { recovery?.background() }
+    fun foreground() { recovery?.foreground(); refresh() }
     fun configurationChanged() { if (!closed) { canvas?.refreshViewport(); panes.refresh() } }
     private fun guarded(action: () -> Unit) {
         if (closed) return
@@ -291,6 +312,7 @@ internal class AndroidRootPresentation(
     }
     private fun showFailure() { notice.text = "Couldn't open this screen. Try again."; notice.visibility = View.VISIBLE }
     private fun closeRoutes() {
+        recovery?.close(); recovery = null
         sessions?.close(); sessions = null
         settings?.close(); settings = null
         settingsActions?.close(); settingsActions = null

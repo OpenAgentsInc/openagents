@@ -26,6 +26,13 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     @Volatile
     private var ownerNotificationHandler: ((OwnerNoteView) -> Unit)? = null
     private lateinit var secretStorage: AndroidEncryptedFileStore
+    private val recoveryWorker by lazy {
+        java.util.concurrent.ThreadPoolExecutor(1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+            java.util.concurrent.ArrayBlockingQueue<Runnable>(32),
+            java.util.concurrent.ThreadFactory { task -> Thread(task, "openagents-recovery") },
+            java.util.concurrent.ThreadPoolExecutor.AbortPolicy())
+    }
+    fun recoveryWork(work: () -> Unit) { recoveryWorker.execute { work() } }
     private var realHost: uniffi.openagents_core.CoreAndroidHost? = null
     private var demoHost: uniffi.openagents_core.CoreAndroidHost? = null
     private var hostObserver: (() -> Unit)? = null

@@ -12,6 +12,24 @@ import com.openagents.app.scanner.CameraXQrScannerDriver
 
 class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var credentialResult: ((Boolean) -> Unit)? = null
+    private var credentialPending = false
+    private val credentialLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val callback = credentialResult
+        credentialResult = null; credentialPending = false
+        callback?.invoke(result.resultCode == RESULT_OK)
+    }
+
+    internal fun launchDeviceCredential(intent: android.content.Intent, result: (Boolean) -> Unit): AutoCloseable {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        if (credentialPending) { result(false); return AutoCloseable {} }
+        credentialPending = true; credentialResult = result
+        try { credentialLauncher.launch(intent) }
+        catch (_: Exception) { credentialPending = false; credentialResult = null; result(false) }
+        return AutoCloseable { if (credentialResult === result) credentialResult = null }
+    }
     private var rootPresentation: AndroidRootPresentation? = null
     private var attachmentResults: AndroidAttachmentActivityResultOwner? = null
     private var attachmentResultListener: ((AndroidAttachmentResult) -> Unit)? = null
@@ -52,7 +70,17 @@ class MainActivity : ComponentActivity() {
         rootPresentation?.configurationChanged()
     }
 
+    override fun onPause() {
+        rootPresentation?.background()
+        super.onPause()
+    }
+    override fun onResume() {
+        super.onResume()
+        rootPresentation?.foreground()
+    }
+
     override fun onDestroy() {
+        credentialResult?.invoke(false); credentialResult = null
         rootPresentation?.close()
         rootPresentation = null
         mainHandler.removeCallbacksAndMessages(null)
