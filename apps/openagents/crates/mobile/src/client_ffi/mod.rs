@@ -13,6 +13,8 @@
 
 mod android_sessions;
 pub use android_sessions::*;
+mod android_recovery;
+pub use android_recovery::*;
 mod account;
 mod android_storage;
 pub use android_storage::{
