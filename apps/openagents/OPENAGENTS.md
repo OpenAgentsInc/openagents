@@ -39,6 +39,7 @@ the local Android commands:
 
 ```sh
 scripts/android/app.sh core     # build the Rust core and both Android ABIs
+scripts/android/app.sh compile  # compile Kotlin variants and run focused JVM tests
 scripts/android/app.sh apk      # build the debug APK
 scripts/android/app.sh install  # install the debug APK on the selected device
 scripts/android/app.sh run      # launch the debug app
