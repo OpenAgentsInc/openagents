@@ -204,11 +204,14 @@ impl Backend for Live {
 }
 
 /// Serializes replacement provisioning in this queue so concurrent losses do
-/// not each grow from the same host count.
+/// not each grow from the same host count. `full` hosts (every slot taken by
+/// another queue) are never chosen but still count toward `--max-hosts`.
+#[allow(clippy::too_many_arguments)]
 fn replacement(
     backend: &dyn Backend,
     pool: &Pool,
     lost: &[String],
+    full: &[String],
     output: Output,
     running: &Mutex<BTreeMap<String, Host>>,
     allocation: &Mutex<()>,
@@ -223,7 +226,7 @@ fn replacement(
     let active = running.lock().unwrap_or_else(|e| e.into_inner());
     let available = hosts
         .iter()
-        .filter(|h| h.status == "RUNNING" && !lost.contains(&h.name))
+        .filter(|h| h.status == "RUNNING" && !lost.contains(&h.name) && !full.contains(&h.name))
         .filter(|h| {
             active.values().filter(|r| r.name == h.name).count()
                 < pool.slots_per_host.max(1) as usize
@@ -543,6 +546,7 @@ fn run_issue(
     let mut dollars = 0.0;
     let mut preemptions = Vec::new();
     let mut lost = Vec::new();
+    let mut full: Vec<String> = Vec::new();
     let mut recover_task: Option<String> = None;
     let slots = pool.slots_per_host.max(1);
     let failure = |message: String| Ended {
@@ -633,7 +637,22 @@ fn run_issue(
         match followed {
             Ok(ended) => break ended,
             Err(FollowError::Failed(message)) if message == "busy" && preemptions.is_empty() => {
-                return None;
+                // Another queue holds this host's slots: try a host with a
+                // free slot, or start one within --max-hosts.
+                full.push(host.name.clone());
+                match replacement(
+                    backend, pool, &lost, &full, output, running, allocation, stopping,
+                ) {
+                    Ok(next) => {
+                        super::boat::say(
+                            output,
+                            json!({"event": "gce_host_full", "issue": issue, "host": host.name, "next": next.name}),
+                            &format!("#{issue}: {} is full; trying {}.", host.name, next.name),
+                        );
+                        *host = next;
+                    }
+                    Err(_) => return None,
+                }
             }
             Err(FollowError::Failed(message)) => break failure(message),
             Err(FollowError::Lost {
@@ -675,7 +694,16 @@ fn run_issue(
                 if lost.len() >= 3 {
                     break failure("Three hosts were lost; recovery stopped.".into());
                 }
-                match replacement(backend, pool, &lost, output, running, allocation, stopping) {
+                match replacement(
+                    backend,
+                    pool,
+                    &lost,
+                    &[],
+                    output,
+                    running,
+                    allocation,
+                    stopping,
+                ) {
                     Ok(next) => *host = next,
                     Err(message) => {
                         break failure(format!("The host was lost and recovery failed: {message}"));
@@ -1244,6 +1272,7 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
                 &fake,
                 &pool(),
                 &["spot".into()],
+                &[],
                 Output::new(true),
                 &running,
                 &Mutex::new(()),
@@ -1255,6 +1284,31 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
         assert!(choose(false).unwrap_err().contains("revoked"));
         fake.revoked.store(false, Ordering::SeqCst);
         assert!(choose(false).unwrap_err().contains("--max-hosts"));
+        assert!(!fake.started.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_full_host_sends_the_issue_to_another_host_within_max_hosts() {
+        let fake = FakePool::new(true);
+        let mut wide = pool();
+        wide.max_hosts = 2;
+        let choose = |pool: &Pool, full: &[String]| {
+            replacement(
+                &fake,
+                pool,
+                &[],
+                full,
+                Output::new(true),
+                &Mutex::new(BTreeMap::new()),
+                &Mutex::new(()),
+                &AtomicBool::new(false),
+            )
+        };
+        // `spot` is full: the other running host takes the issue.
+        assert_eq!(choose(&wide, &["spot".into()]).unwrap().name, "replacement");
+        // Both full at --max-hosts 2: no host starts past the grant.
+        let both = ["spot".to_owned(), "replacement".to_owned()];
+        assert!(choose(&wide, &both).unwrap_err().contains("--max-hosts"));
         assert!(!fake.started.load(Ordering::SeqCst));
     }
 
