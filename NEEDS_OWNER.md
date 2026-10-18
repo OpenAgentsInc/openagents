@@ -2950,3 +2950,16 @@ afterward. No production or live Play check ran during H1 source work.
 Keep rollout off until this qualification passes; code completion does not
 wait for Play Console access, a physical device, or store action. See
 [the contract](docs/auth/README.md#android-play-integrity-12086).
+
+### Qualify Android first launch and recovery (#12099)
+
+After A3/E1 integration and focused offline checks pass, use synthetic recovery
+words and a dedicated test account on API 26 and current Android devices. Confirm
+that first launch opens useful chat without a sign-in wall, existing provider
+accounts and wallet seeds survive, all requested backup words must be confirmed,
+and malformed words or a locked store leave existing recovery data intact. Check
+unsupported device authentication, cancellation, stale results after background or
+account switch, restart, screenshots/task previews, autofill/keyboard suggestions,
+and explicit sensitive clipboard copy with cleanup within 60 seconds and on exit.
+Verify process death and OEM clipboard behavior physically. Never use the owner's
+real seed, wallet, account, or clipboard for these checks.
