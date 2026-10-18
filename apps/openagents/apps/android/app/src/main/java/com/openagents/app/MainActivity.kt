@@ -12,6 +12,26 @@ import com.openagents.app.scanner.CameraXQrScannerDriver
 
 class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var microphoneResult: ((Boolean) -> Unit)? = null
+    private var microphonePending = false
+    private val microphoneLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val callback = microphoneResult
+        microphonePending = false; microphoneResult = null
+        callback?.invoke(granted)
+    }
+    internal fun requestVoiceMicrophone(result: (Boolean) -> Unit): AutoCloseable {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        if (microphonePending) { result(false); return AutoCloseable {} }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            result(true); return AutoCloseable {}
+        }
+        microphonePending = true; microphoneResult = result
+        try { microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO) }
+        catch (_: Exception) { microphonePending = false; microphoneResult = null; result(false) }
+        return AutoCloseable { if (microphoneResult === result) microphoneResult = null }
+    }
     private var credentialResult: ((Boolean) -> Unit)? = null
     private var credentialPending = false
     private val credentialLauncher = registerForActivityResult(
@@ -80,6 +100,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        microphoneResult?.invoke(false); microphoneResult = null
         credentialResult?.invoke(false); credentialResult = null
         rootPresentation?.close()
         rootPresentation = null
