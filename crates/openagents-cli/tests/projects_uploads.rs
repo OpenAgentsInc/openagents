@@ -68,6 +68,8 @@ fn large_project_file_resumes_and_downloads_without_replacing_a_failed_output() 
                 }
                 Err(e) => panic!("{e}"),
             };
+            // macOS passes the listener's nonblocking mode to accepted sockets.
+            stream.set_nonblocking(false).unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             let mut first = String::new();
             reader.read_line(&mut first).unwrap();
