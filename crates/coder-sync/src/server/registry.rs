@@ -278,6 +278,8 @@ async fn apply(
         Vec::new()
     };
     tx.commit().await?;
+    // Give the connection back before notifying opens another (#12120).
+    drop(db);
     if !notes.is_empty() {
         notify(state, account, notes).await;
     }

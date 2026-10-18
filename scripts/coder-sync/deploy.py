@@ -195,8 +195,17 @@ def deploy(staging):
                 or "," in public_origin):
             raise RuntimeError("Set CODER_SYNC_PUBLIC_ORIGIN to an HTTPS origin without a path.")
         environment["CODER_SYNC_PUBLIC_ORIGIN"] = public_origin
+    # One instance per revision: rooms and presence live in its memory. The
+    # service allows two so the previous revision's instance can drain its
+    # hour-long sockets without taking the only slot (#12120: with --max=1
+    # the serving revision got "no available instance" for minutes). Every
+    # device holds sockets open (registry, chats, previews), so a request
+    # limit of 80 refused requests once those sockets stopped dropping.
     args = ["run", "deploy", service, f"--region={REGION}", f"--image=us-central1-docker.pkg.dev/{PROJECT}/openagents/coder-sync:{commit}",
-            f"--service-account={ACCOUNT}", "--max=1", "--min=0", "--max-instances=1", "--min-instances=0", "--timeout=3600", "--concurrency=80", "--cpu=1", "--memory=512Mi", "--allow-unauthenticated",
+            f"--service-account={ACCOUNT}", "--max=2", "--min=0", "--max-instances=1", "--min-instances=0", "--timeout=3600", "--concurrency=1000",
+            # A frozen process gets restarted, not left answering "no available
+            # instance" (#12120). /health reads the database through the pool.
+            "--liveness-probe=httpGet.path=/health,httpGet.port=8080,periodSeconds=10,timeoutSeconds=3,failureThreshold=3", "--cpu=1", "--memory=512Mi", "--allow-unauthenticated",
             f"--add-cloudsql-instances={PROJECT}:{REGION}:{INSTANCE}",
             f"--update-secrets=CODER_SYNC_DATABASE_URL=coder-sync{suffix}-database-url:latest",
             "--update-env-vars=" + ",".join(f"{key}={value}" for key, value in environment.items()),

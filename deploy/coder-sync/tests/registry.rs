@@ -518,40 +518,44 @@ async fn a_hello_and_a_probe_read_without_writing() {
     assert_eq!(seq, 1);
 }
 
-/// #12120: connections are kept and reused, at most the pool's size are out
-/// at once, and a transaction dropped without commit is rolled back before
-/// the connection serves anyone else.
+/// #12120: connections are kept and reused, a caller holding one can always
+/// get another (a pool that waited deadlocked production once ten handlers
+/// each held one and asked for a second), and a transaction dropped without
+/// commit is rolled back before the connection serves anyone else.
 #[tokio::test]
-async fn database_connections_are_reused_capped_and_rolled_back() {
+async fn database_connections_are_reused_never_wait_and_roll_back() {
     let dsn =
         std::env::var("CODER_SYNC_TEST_DATABASE_URL").expect("Run scripts/coder-sync/test.sh");
     let db = Database::with_pool_size(&dsn, 1).unwrap();
     let first = db.connect().await.unwrap();
-    let pid: i32 = first
-        .query_one("SELECT pg_backend_pid()", &[])
-        .await
-        .unwrap()
-        .get(0);
-    let other = db.clone();
-    let waiting = tokio::spawn(async move {
-        let client = other.connect().await.unwrap();
-        client
-            .query_one("SELECT pg_backend_pid()", &[])
-            .await
-            .unwrap()
-            .get::<_, i32>(0)
-    });
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(
-        !waiting.is_finished(),
-        "a second caller went past the pool's size"
-    );
+    // Hold the first while asking for more: none of these may wait.
+    let nested = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut held = Vec::new();
+        for _ in 0..3 {
+            held.push(db.connect().await.unwrap());
+        }
+        held
+    })
+    .await
+    .expect("a connection held by this caller must not block its next one");
+    drop(nested);
     drop(first);
-    assert_eq!(
-        waiting.await.unwrap(),
-        pid,
-        "the kept connection served the next caller"
-    );
+    // One kept connection serves callers one after another.
+    let backend = |db: &Database| {
+        let db = db.clone();
+        async move {
+            db.connect()
+                .await
+                .unwrap()
+                .query_one("SELECT pg_backend_pid()", &[])
+                .await
+                .unwrap()
+                .get::<_, i32>(0)
+        }
+    };
+    let one = backend(&db).await;
+    let two = backend(&db).await;
+    assert_eq!(one, two, "a kept connection serves the next caller");
     {
         let mut client = db.connect().await.unwrap();
         let tx = client.transaction().await.unwrap();

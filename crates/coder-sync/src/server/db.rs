@@ -2,31 +2,36 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_postgres::{Client, NoTls};
 
-/// Connections kept open per service instance (#12120). Opening one costs a
+/// Idle connections kept per service instance (#12120). Opening one costs a
 /// Cloud SQL handshake and SCRAM authentication: 1.4 to 3.7 s against the
 /// production `db-f1-micro`, ten times a query. Opened per job, that cost
 /// queued every registry hello behind other devices' pushes past the
-/// client's 20 s deadline. The cap stays well under that instance's
-/// `max_connections` (25), leaving room for migrations and operators.
+/// client's 20 s deadline. Connections are reused; at most this many wait
+/// idle, and more than this open when callers need them.
 pub const POOL_SIZE: usize = 10;
 /// A kept connection idle this long is closed rather than reused.
 const MAX_IDLE: Duration = Duration::from_secs(300);
 
+/// Postgres connections, reused. `connect` never waits for another caller:
+/// a handler may hold one connection while it asks for a second (a write
+/// that then reads push grants), and a pool that waited for a free slot
+/// deadlocked every database path once ten such handlers overlapped
+/// (#12120, the 09:37 CDT freeze).
 #[derive(Clone)]
 pub struct Database {
     config: tokio_postgres::Config,
     idle: Arc<Mutex<Vec<(Client, Instant)>>>,
-    slots: Arc<Semaphore>,
+    keep: usize,
 }
 
-/// A connection of the pool; it goes back when dropped, unless it closed.
+/// A connection; it goes back to the pool when dropped, unless it closed or
+/// the pool already keeps enough idle ones.
 pub struct Pooled {
     client: Option<Client>,
     idle: Arc<Mutex<Vec<(Client, Instant)>>>,
-    _slot: OwnedSemaphorePermit,
+    keep: usize,
 }
 
 impl Deref for Pooled {
@@ -53,10 +58,10 @@ impl Drop for Pooled {
         if let Some(client) = self.client.take()
             && !client.is_closed()
         {
-            self.idle
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .push((client, Instant::now()));
+            let mut idle = self.idle.lock().unwrap_or_else(|e| e.into_inner());
+            if idle.len() < self.keep {
+                idle.push((client, Instant::now()));
+            }
         }
     }
 }
@@ -66,23 +71,19 @@ impl Database {
         Self::with_pool_size(dsn, POOL_SIZE)
     }
 
-    pub fn with_pool_size(dsn: &str, size: usize) -> Result<Self, tokio_postgres::Error> {
+    pub fn with_pool_size(dsn: &str, keep: usize) -> Result<Self, tokio_postgres::Error> {
         let mut config: tokio_postgres::Config = dsn.parse()?;
         config.connect_timeout(Duration::from_secs(5));
         Ok(Self {
             config,
             idle: Arc::default(),
-            slots: Arc::new(Semaphore::new(size.max(1))),
+            keep: keep.max(1),
         })
     }
 
-    /// A connection: a kept one when one is idle, else a new one. At most
-    /// the pool's size are out at once; more callers wait their turn.
+    /// A connection: a kept idle one when there is one, else a new one. It
+    /// never waits on other callers.
     pub async fn connect(&self) -> Result<Pooled, tokio_postgres::Error> {
-        let slot = Arc::clone(&self.slots)
-            .acquire_owned()
-            .await
-            .expect("the pool's semaphore is never closed");
         let kept = {
             let mut idle = self.idle.lock().unwrap_or_else(|e| e.into_inner());
             idle.retain(|(client, at)| !client.is_closed() && at.elapsed() < MAX_IDLE);
@@ -95,7 +96,7 @@ impl Database {
         Ok(Pooled {
             client: Some(client),
             idle: Arc::clone(&self.idle),
-            _slot: slot,
+            keep: self.keep,
         })
     }
 
