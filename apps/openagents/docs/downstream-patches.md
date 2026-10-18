@@ -698,7 +698,6 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
-
 - [OpenAgents #12095](https://github.com/OpenAgentsInc/openagents/issues/12095):
   add the account-owned `CoreAndroidSessions` bridge and Rust Native new-session
   menus. Its default cloud-chat object survives native view recreation; project,
@@ -707,3 +706,13 @@ links remain readable. Upstream fixes now require manual ports.
   The optional Android host forwards typed actions using the existing Views
   adapter. Binding/host integration and focused fixtures are unrun. Automatic
   own-computer-card dismissal still needs authoritative cloud-device classification.
+
+- [OpenAgents #12100](https://github.com/OpenAgentsInc/openagents/issues/12100):
+  `apps/android/app/src/main/java/com/openagents/app/adaptive/` adds an
+  Android Views two-pane host and a width-based layout policy. The policy
+  carries opaque Rust session, composer-draft, and transcript-anchor references
+  unchanged through compact/expanded replans; it also passes font scale and
+  keyboard inset measurements through to the host. The compact back disposition
+  asks the host to show navigation without changing session state. Integration
+  with the blocked session/project navigation, Activity, and window-inset owners,
+  plus Android/JUnit/device checks, remains pending.
