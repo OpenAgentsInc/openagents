@@ -5,7 +5,8 @@
 //! it. See `crate::foreman` for the state, log and coalescing.
 use super::*;
 use crate::foreman::{
-    Adopt, CLAIMS_QUERY, Declaring, Foreman, GhIssue, Wake, claim_issues, tool_label,
+    Adopt, CLAIMS_QUERY, Declaring, Foreman, GhIssue, LocalProgress, Wake, claim_issues,
+    tool_label,
 };
 use openagents_account::{
     Lease,
@@ -92,7 +93,6 @@ impl DocHost {
                 let Some(foreman) = host.foreman().cloned() else {
                     return;
                 };
-                drop(host);
                 let state = foreman.state();
                 if state.settings.chat_id.is_none()
                     || state.settings.paused
@@ -100,9 +100,68 @@ impl DocHost {
                 {
                     continue;
                 }
-                look_at_github(&foreman).await;
+                let local = host.local_progress().await;
+                drop(host);
+                look_at_github(&foreman, &local).await;
             }
         });
+    }
+
+    /// What this computer sees of claims (#12032): each app chat's last
+    /// output by the harness session a claim marker names, and builds
+    /// running in worktrees of the agent's checkout named for an issue.
+    async fn local_progress(&self) -> LocalProgress {
+        let now = now_ms();
+        let (Some(workspace), Some(sessions)) = (self.workspace().cloned(), self.sessions())
+        else {
+            return LocalProgress::default();
+        };
+        let rows = workspace.merged_sessions(&sessions.watch_sessions().borrow());
+        let chats = workspace.watch_chats().borrow().clone();
+        let mut local = LocalProgress::default();
+        for chat in &chats {
+            let (Some(config), Some(id)) = (
+                chat.config.as_ref(),
+                chat.harness_session_id.as_deref().filter(|s| !s.is_empty()),
+            ) else {
+                continue;
+            };
+            let Some(harness) = serde_json::to_value(config.harness)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_owned))
+            else {
+                continue;
+            };
+            let row = rows.iter().find(|r| r.chat_id == chat.id);
+            let working = row
+                .filter(|r| r.status == openagents_proto::SessionStatus::Working)
+                .and_then(|r| r.started_at);
+            let last = row
+                .and_then(|r| r.last_output_at)
+                .into_iter()
+                .chain(working)
+                .chain(chat.last_message_at)
+                .map(|t| t.timestamp_millis())
+                .max();
+            if let Some(last) = last {
+                local.chats.insert(format!("{harness}:{id}"), last);
+            }
+        }
+        // The checkout the agent's chat works in.
+        let checkout = self
+            .foreman()
+            .and_then(|f| f.chat())
+            .and_then(|id| chats.iter().find(|c| c.id == id))
+            .and_then(|c| {
+                c.cwd.clone().or_else(|| {
+                    let space = c.space_id.as_deref()?;
+                    workspace.space(space).ok().flatten().map(|s| s.path)
+                })
+            });
+        if let Some(checkout) = checkout {
+            local.builds = builds_here(&checkout, now).await;
+        }
+        local
     }
 
     pub(crate) fn foreman(&self) -> Option<&Arc<Foreman>> {
@@ -549,7 +608,7 @@ fn declaring_chats(chats: &[openagents_proto::Chat], device: &str) -> Vec<Declar
 
 /// Ask the host's GitHub CLI what changed. A missing or signed-out `gh`
 /// leaves only chat and schedule wake-ups.
-async fn look_at_github(foreman: &Foreman) {
+async fn look_at_github(foreman: &Foreman, local: &LocalProgress) {
     let now = now_ms();
     let listed = gh(&[
         "issue",
@@ -577,10 +636,107 @@ async fn look_at_github(foreman: &Foreman) {
     }
     let query = format!("query={CLAIMS_QUERY}");
     if let Some(answer) = gh(&["api", "graphql", "-f", &query]).await {
-        if let Err(e) = foreman.observe_claims(&claim_issues(&answer), now) {
+        if let Err(e) = foreman.observe_claims(&claim_issues(&answer), local, now) {
             tracing::warn!(error = %e, "foreman: claim look failed");
         }
     }
+}
+
+/// Issues with a build running now in a worktree of `checkout` named for
+/// them (#12032). Reads `git worktree list` and the working folders of
+/// running `cargo` and `rustc` processes, each with a 10-second timeout.
+async fn builds_here(checkout: &str, now: i64) -> std::collections::BTreeMap<u64, i64> {
+    let worktrees = run(
+        "git",
+        &["-C", checkout, "worktree", "list", "--porcelain"],
+    )
+    .await
+    .map(|out| parse_worktrees(&out))
+    .unwrap_or_default();
+    if worktrees.is_empty() {
+        return Default::default();
+    }
+    let cwds = run("lsof", &["-a", "-d", "cwd", "-c", "cargo", "-c", "rustc", "-Fn"])
+        .await
+        .map(|out| parse_lsof_cwds(&out))
+        .unwrap_or_default();
+    builds_by_issue(&worktrees, &cwds, now)
+}
+
+async fn run(program: &str, args: &[&str]) -> Option<String> {
+    let mut command = tokio::process::Command::new(program);
+    command
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(10), command.output())
+        .await
+        .ok()?
+        .ok()?;
+    // lsof exits 1 when nothing matches; its output is still the answer.
+    String::from_utf8(output.stdout).ok()
+}
+
+/// `git worktree list --porcelain`: each worktree's folder and branch.
+fn parse_worktrees(out: &str) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    let mut path: Option<String> = None;
+    for line in out.lines() {
+        if let Some(p) = line.strip_prefix("worktree ") {
+            if let Some(done) = path.replace(p.to_owned()) {
+                found.push((done, String::new()));
+            }
+        } else if let Some(b) = line.strip_prefix("branch ") {
+            if let Some(p) = path.take() {
+                found.push((p, b.trim_start_matches("refs/heads/").to_owned()));
+            }
+        }
+    }
+    found.extend(path.map(|p| (p, String::new())));
+    found
+}
+
+/// `lsof -Fn`: the `n` lines are the processes' working folders.
+fn parse_lsof_cwds(out: &str) -> Vec<String> {
+    out.lines()
+        .filter_map(|l| l.strip_prefix('n'))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Issue numbers a worktree is named for: runs of 4 to 6 digits in its
+/// folder name or branch, like `oa-wt-foreman-12029` or `agent/12029-fix`.
+fn issue_numbers(path: &str, branch: &str) -> Vec<u64> {
+    let folder = std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    format!("{folder} {branch}")
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|run| (4..=6).contains(&run.len()))
+        .filter_map(|run| run.parse().ok())
+        .collect()
+}
+
+/// Issues whose worktree has a build running in it now.
+fn builds_by_issue(
+    worktrees: &[(String, String)],
+    cwds: &[String],
+    now: i64,
+) -> std::collections::BTreeMap<u64, i64> {
+    let mut builds = std::collections::BTreeMap::new();
+    for (path, branch) in worktrees {
+        let inside = |cwd: &String| {
+            std::path::Path::new(cwd).starts_with(path)
+        };
+        if cwds.iter().any(inside) {
+            for number in issue_numbers(path, branch) {
+                builds.insert(number, now);
+            }
+        }
+    }
+    builds
 }
 
 async fn gh(args: &[&str]) -> Option<serde_json::Value> {
@@ -713,6 +869,29 @@ mod tests {
         assert_eq!(found[0].chat_id, "c2");
         assert_eq!(found[0].agent.as_deref(), Some("def-1"));
         assert_eq!(found[0].declared.every_minutes, Some(10));
+    }
+
+    /// #12032: a claim whose worktree shows an active build counts as
+    /// progressing.
+    #[test]
+    fn a_build_in_an_issues_worktree_counts_as_progress() {
+        let porcelain = "worktree /Users/me/work/openagents\nHEAD abc\nbranch refs/heads/main\n\n\
+            worktree /Users/me/work/oa-wt-foreman-12029\nHEAD def\ndetached\n\n\
+            worktree /Users/me/work/wt-b\nHEAD 123\nbranch refs/heads/agent/12040-phone-push\n\n\
+            worktree /Users/me/work/wt-idle-12035\nHEAD 456\nbranch refs/heads/agent/12035\n";
+        let worktrees = parse_worktrees(porcelain);
+        assert_eq!(worktrees.len(), 4);
+        assert_eq!(worktrees[2].1, "agent/12040-phone-push");
+        let lsof = "p100\nccargo\nfcwd\nn/Users/me/work/oa-wt-foreman-12029/apps/openagents\n\
+            p101\ncrustc\nfcwd\nn/Users/me/work/wt-b\n";
+        let cwds = parse_lsof_cwds(lsof);
+        let builds = builds_by_issue(&worktrees, &cwds, 7);
+        assert_eq!(
+            builds.into_iter().collect::<Vec<_>>(),
+            [(12029, 7), (12040, 7)],
+            "the idle worktree and main show no build"
+        );
+        assert_eq!(issue_numbers("/x/openagents", "main"), Vec::<u64>::new());
     }
 
     fn interrupts(host: &DocHost) -> usize {

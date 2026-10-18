@@ -211,7 +211,11 @@ Cargo commands are also valid. Record what ran and any remaining limitations.
 Claim an issue before working it and release it if you stop: `openagents issue
 claim N` / `release N` (comment marker, you as assignee, project Status), the
 same record Coder's flows and `coder-project` write and honour; leave an issue
-another claim holds (`openagents issue status N`) alone.
+another claim holds (`openagents issue status N`) alone. The one exception
+(#12032): a coordinating agent may take over a claim whose holder made no
+progress through the whole stall ladder (messaged, then interrupted and
+restarted, then the owner told), after posting a takeover note on the issue
+that names the holder and the stall.
 
 Coordinate issue work only in an app chat (#12031). A session that files,
 claims, hands out, or integrates several issues runs as a chat in the

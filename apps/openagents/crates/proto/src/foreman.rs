@@ -20,6 +20,19 @@ fn default_stuck_minutes() -> u32 {
     DEFAULT_STUCK_MINUTES
 }
 
+/// How long a managed chat or a claim may go with no progress before the
+/// host raises it, once per stall (#12032), and the allowed range.
+pub const DEFAULT_STALL_MINUTES: u32 = 20;
+pub const MIN_STALL_MINUTES: u32 = 5;
+pub const MAX_STALL_MINUTES: u32 = 240;
+/// Minutes between the rungs of the stall ladder: message, then interrupt
+/// and restart with a brief, then tell the owner.
+pub const STALL_RUNG_MINUTES: u32 = 10;
+
+fn default_stall_minutes() -> u32 {
+    DEFAULT_STALL_MINUTES
+}
+
 /// What a standing authority lets Foreman do in other chats without asking.
 /// Money, keys, secrets, deploys and closing other agents' issues are never
 /// in it; those stay behind the existing approval rules.
@@ -61,6 +74,10 @@ pub struct ForemanSettings {
     /// it and starts a check-in that says why.
     #[serde(default = "default_stuck_minutes")]
     pub stuck_minutes: u32,
+    /// Minutes a managed chat or a claim may go with no progress before
+    /// the host raises it (#12032).
+    #[serde(default = "default_stall_minutes")]
+    pub stall_minutes: u32,
 }
 
 impl Default for ForemanSettings {
@@ -71,6 +88,7 @@ impl Default for ForemanSettings {
             paused: false,
             authority: false,
             stuck_minutes: DEFAULT_STUCK_MINUTES,
+            stall_minutes: DEFAULT_STALL_MINUTES,
         }
     }
 }
