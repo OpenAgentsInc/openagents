@@ -27,6 +27,8 @@ mod account_delete;
 pub use account_delete::*;
 mod android_wallet_migration;
 pub use android_wallet_migration::*;
+mod app_links;
+pub use app_links::*;
 mod agent_lab;
 mod chat_homes;
 mod cloud_chat;

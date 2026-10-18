@@ -894,6 +894,19 @@ links remain readable. Upstream fixes now require manual ports.
   app_links`) and an end-to-end rerun of `scripts/android/build-core.sh` were
   not run by this chat. Release-certificate verification remains an owner-only
   step in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
+  The Rust mobile FFI bounds all URLs before trying a route parser. It routes
+  computer links to the existing pairing flow and website sign-in links to
+  review before approval. Invitation links go to the active account's preview
+  and explicit acceptance methods; Rust keeps the invitation code out of the
+  dispatcher record. `CoreAccount::project_invitation_share` returns a typed
+  chooser title and text after the same URL validation; the full link appears
+  only in the text field. Account linking checks that the client belongs to
+  the current account generation. Invitation requests use the active session
+  bearer, and the server checks recipient authorization, expiry, and replay.
+  Fake-server fixtures cover invitation success, expiry, wrong-account
+  refusal, and replay refusal. Focused Rust tests remain pending coordinator
+  build admission.
+
 
 - [OpenAgents #12095](https://github.com/OpenAgentsInc/openagents/issues/12095):
   add the account-owned `CoreAndroidSessions` bridge and Rust Native new-session

@@ -19,7 +19,7 @@ required-features = ["bindgen"]
 
 [features]
 # Dedicated loopback credential delivery for simulator acceptance tests only.
-account-fixture = ["dep:reqwest"]
+account-fixture = []
 bindgen = ["uniffi/cli"]
 
 [dependencies]
@@ -39,8 +39,9 @@ lab-ui = { path = "../../../../crates/lab-ui" }
 agent-lab = { path = "../../../../crates/agent-lab", features = ["views"] }
 agent-contract = { path = "../../../../crates/agent-contract" }
 openagents-account.workspace = true
+openagents-connect = { path = "../../../../crates/openagents-connect" }
 sha2.workspace = true
-reqwest = { workspace = true, optional = true }
+reqwest.workspace = true
 openagents-voice-session.workspace = true
 openagents-orb.workspace = true
 openagents-veil.workspace = true

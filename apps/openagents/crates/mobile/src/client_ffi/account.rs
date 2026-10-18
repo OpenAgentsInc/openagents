@@ -61,6 +61,14 @@ pub trait AccountListener: Send + Sync {
 type Clients = Arc<Mutex<Vec<(u64, Weak<CoreClient>)>>>;
 const PUSH_REVOKE_TIMEOUT: Duration = Duration::from_secs(2);
 
+fn is_current_client<T>(clients: &[(u64, Weak<T>)], generation: u64, candidate: &Arc<T>) -> bool {
+    clients.iter().any(|(client_generation, client)| {
+        *client_generation == generation
+            && client
+                .upgrade()
+                .is_some_and(|current| Arc::ptr_eq(&current, candidate))
+    })
+}
 fn close_clients(clients: &Clients, keep: Option<u64>) {
     clients.lock().unwrap().retain(|(generation, client)| {
         let Some(client) = client.upgrade() else {
@@ -112,6 +120,98 @@ fn auth_error() -> CoreError {
     CoreError::Auth {
         message: "Log in again to continue.".into(),
     }
+}
+
+/// A server-checked invitation preview for the currently signed-in account.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ProjectInvitationPreview {
+    pub project_name: String,
+    pub role: String,
+    pub expires_at: String,
+    pub already_member: bool,
+}
+
+fn invitation_http() -> CoreResult<reqwest::Client> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|_| CoreError::Network {
+            message: "Couldn't connect to the invitation service.".into(),
+        })
+}
+
+async fn invitation_post(
+    http: &reqwest::Client,
+    website: &reqwest::Url,
+    bearer: &str,
+    path: &str,
+    code: &str,
+) -> CoreResult<serde_json::Value> {
+    let url = website.join(path).map_err(|_| CoreError::Internal {
+        message: "The account service address is invalid.".into(),
+    })?;
+    let response = http
+        .post(url)
+        .bearer_auth(bearer)
+        .json(&serde_json::json!({ "code": code }))
+        .send()
+        .await
+        .map_err(|_| CoreError::Network {
+            message: "Couldn't reach the invitation service.".into(),
+        })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(if status == reqwest::StatusCode::UNAUTHORIZED {
+            CoreError::Auth {
+                message: "Log in again to continue.".into(),
+            }
+        } else {
+            CoreError::HostError {
+                message: "This invitation is unavailable for this account or has expired.".into(),
+            }
+        });
+    }
+    response.json().await.map_err(|_| CoreError::HostError {
+        message: "The invitation service returned an unreadable response.".into(),
+    })
+}
+
+fn invitation_preview(body: &serde_json::Value) -> CoreResult<ProjectInvitationPreview> {
+    let invalid = || CoreError::HostError {
+        message: "The invitation service returned an invalid preview.".into(),
+    };
+    let project_name = body["project"]["name"]
+        .as_str()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(invalid)?
+        .to_owned();
+    let role = body["role"]
+        .as_str()
+        .filter(|value| matches!(*value, "viewer" | "editor"))
+        .ok_or_else(invalid)?
+        .to_owned();
+    let expires_at = body["expires_at"]
+        .as_str()
+        .filter(|expiry| !expiry.trim().is_empty())
+        .ok_or_else(invalid)?;
+    let already_member = body["member"].as_bool().ok_or_else(invalid)?;
+    Ok(ProjectInvitationPreview {
+        project_name,
+        role,
+        expires_at: expires_at.to_owned(),
+        already_member,
+    })
+}
+
+fn invitation_code(link: &str) -> CoreResult<String> {
+    const PROJECT_INVITE_PREFIX: &str = "https://openagents.com/projects/join/";
+    super::project_invitation::validated_project_invitation_link(link)
+        .and_then(|url| url.strip_prefix(PROJECT_INVITE_PREFIX))
+        .map(str::to_owned)
+        .ok_or_else(|| CoreError::InvalidArgument {
+            message: "This project invitation link is invalid.".into(),
+        })
 }
 #[derive(uniffi::Object)]
 pub struct CoreAccount {
@@ -266,6 +366,73 @@ fn pairing_store() -> Arc<dyn openagents_client::PairingStore> {
 
 #[uniffi::export]
 impl CoreAccount {
+    /// Build chooser content from a validated project invitation link.
+    pub fn project_invitation_share(
+        &self,
+        link: String,
+    ) -> CoreResult<super::ProjectInvitationShare> {
+        super::project_invitation::project_invitation_share(&link).ok_or_else(|| {
+            CoreError::InvalidArgument {
+                message: "This project invitation link isn't valid.".into(),
+            }
+        })
+    }
+
+    /// Preview a project invitation with the active account. The invitation
+    /// code stays in Rust and is sent only to the account API.
+    pub async fn preview_project_invitation(
+        &self,
+        link: String,
+    ) -> CoreResult<ProjectInvitationPreview> {
+        let code = invitation_code(&link)?;
+        let lease = self.controller.lease().ok_or_else(auth_error)?;
+        let bearer = lease.session().bearer_token().to_owned();
+        let website = self.deployment.website().clone();
+        let http = invitation_http()?;
+        super::on_runtime(async move {
+            let body = invitation_post(
+                &http,
+                &website,
+                &bearer,
+                "v1/projects/invitations/preview",
+                &code,
+            )
+            .await?;
+            invitation_preview(&body)
+        })
+        .await
+    }
+
+    /// Accept a project invitation for the active account after the person
+    /// confirms the preview. The server checks the invitation, expiry, and
+    /// recipient against this account's bearer token.
+    pub async fn accept_project_invitation(&self, link: String) -> CoreResult<String> {
+        let code = invitation_code(&link)?;
+        let lease = self.controller.lease().ok_or_else(auth_error)?;
+        let bearer = lease.session().bearer_token().to_owned();
+        let website = self.deployment.website().clone();
+        let http = invitation_http()?;
+        super::on_runtime(async move {
+            let body = invitation_post(
+                &http,
+                &website,
+                &bearer,
+                "v1/projects/invitations/accept",
+                &code,
+            )
+            .await?;
+            body["id"]
+                .as_str()
+                .or_else(|| body["project"]["id"].as_str())
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| CoreError::HostError {
+                    message: "The invitation service returned an invalid project.".into(),
+                })
+        })
+        .await
+    }
+
     /// Have the computer `device_id`, just connected by code, sign in as
     /// this account (#12000): its account key is added to the account.
     /// Call it right after `CoreClient::connect_computer`; the computer
@@ -277,6 +444,9 @@ impl CoreAccount {
     ) -> CoreResult<String> {
         let api_base = {
             let lease = self.controller.lease().ok_or_else(auth_error)?;
+            if !is_current_client(&self.clients.lock().unwrap(), lease.generation, &client) {
+                return Err(auth_error());
+            }
             lease.client().deployment().api_base().to_string()
         };
         let client = client.client.clone();
@@ -636,6 +806,17 @@ mod tests {
         assert_eq!(live_generations, [new_generation]);
     }
 
+    #[test]
+    fn computer_link_accepts_only_the_current_accounts_client() {
+        let current = Arc::new(());
+        let other_account = Arc::new(());
+        let clients = vec![(7, Arc::downgrade(&current))];
+
+        assert!(is_current_client(&clients, 7, &current));
+        assert!(!is_current_client(&clients, 8, &current));
+        assert!(!is_current_client(&clients, 7, &other_account));
+    }
+
     struct Memory;
     impl CredentialStore for Memory {
         fn load(&self, _: &Deployment) -> Result<Option<CredentialRecord>, StorageError> {
@@ -895,5 +1076,190 @@ mod tests {
                 .is_err()
         );
         server.abort();
+    }
+}
+
+#[cfg(test)]
+mod project_invitation_tests {
+    use super::{CoreError, invitation_code, invitation_http, invitation_post, invitation_preview};
+    use serde_json::Value;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+        task::JoinHandle,
+    };
+
+    struct CapturedRequest {
+        path: String,
+        authorization: String,
+        body: Value,
+    }
+
+    async fn read_request(stream: &mut TcpStream) -> CapturedRequest {
+        let mut bytes = Vec::new();
+        let mut chunk = [0; 4096];
+        let (header_end, body_len) = loop {
+            let count = stream.read(&mut chunk).await.unwrap();
+            assert_ne!(count, 0, "fake client closed before sending a request");
+            bytes.extend_from_slice(&chunk[..count]);
+            if let Some(end) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                let headers = String::from_utf8_lossy(&bytes[..end]);
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap_or(0);
+                if bytes.len() >= end + 4 + length {
+                    break (end, length);
+                }
+            }
+        };
+        let headers = String::from_utf8_lossy(&bytes[..header_end]);
+        let mut lines = headers.lines();
+        let path = lines
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .nth(1)
+            .unwrap()
+            .to_owned();
+        let authorization = lines
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("authorization")
+                    .then(|| value.trim().to_owned())
+            })
+            .unwrap_or_default();
+        let body_start = header_end + 4;
+        let body = serde_json::from_slice(&bytes[body_start..body_start + body_len]).unwrap();
+        CapturedRequest {
+            path,
+            authorization,
+            body,
+        }
+    }
+
+    async fn fake_server(
+        responses: Vec<(u16, &'static str)>,
+    ) -> (reqwest::Url, JoinHandle<Vec<CapturedRequest>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for (status, body) in responses {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                requests.push(read_request(&mut stream).await);
+                let response = format!(
+                    "HTTP/1.1 {status} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+            requests
+        });
+        (
+            reqwest::Url::parse(&format!("http://{address}/")).unwrap(),
+            task,
+        )
+    }
+
+    #[tokio::test]
+    async fn preview_and_accept_use_the_active_bearer_and_keep_the_code_in_rust() {
+        let (website, server) = fake_server(vec![
+            (
+                200,
+                include_str!("../../fixtures/android-project-invitation-preview.json"),
+            ),
+            (
+                200,
+                include_str!("../../fixtures/android-project-invitation-accepted.json"),
+            ),
+        ])
+        .await;
+        let http = invitation_http().unwrap();
+        let link = "https://openagents.com/projects/join/prjinv_fixture-token_01";
+        let code = invitation_code(link).unwrap();
+        let preview_body = invitation_post(
+            &http,
+            &website,
+            "synthetic-account-token",
+            "v1/projects/invitations/preview",
+            &code,
+        )
+        .await
+        .unwrap();
+        let preview = invitation_preview(&preview_body).unwrap();
+        assert_eq!(preview.project_name, "Synthetic project");
+        assert_eq!(preview.role, "editor");
+        assert_eq!(preview.expires_at, "2030-01-01T00:00:00Z");
+        assert!(!preview.already_member);
+
+        let accepted = invitation_post(
+            &http,
+            &website,
+            "synthetic-account-token",
+            "v1/projects/invitations/accept",
+            &code,
+        )
+        .await
+        .unwrap();
+        assert_eq!(accepted["id"], "prj_fixture_01");
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].path, "/v1/projects/invitations/preview");
+        assert_eq!(requests[1].path, "/v1/projects/invitations/accept");
+        for request in requests {
+            assert_eq!(request.authorization, "Bearer synthetic-account-token");
+            assert_eq!(request.body["code"], "prjinv_fixture-token_01");
+        }
+    }
+
+    #[tokio::test]
+    async fn expired_wrong_account_and_replayed_invitations_fail_closed_once() {
+        for (status, path, body) in [
+            (
+                410,
+                "v1/projects/invitations/preview",
+                include_str!("../../fixtures/android-project-invitation-expired.json"),
+            ),
+            (
+                403,
+                "v1/projects/invitations/accept",
+                include_str!("../../fixtures/android-project-invitation-wrong-account.json"),
+            ),
+            (
+                409,
+                "v1/projects/invitations/accept",
+                include_str!("../../fixtures/android-project-invitation-replayed.json"),
+            ),
+        ] {
+            let (website, server) = fake_server(vec![(status, body)]).await;
+            let http = invitation_http().unwrap();
+            let result = invitation_post(
+                &http,
+                &website,
+                "synthetic-account-token",
+                path,
+                "prjinv_fixture-token_01",
+            )
+            .await;
+            assert!(matches!(result, Err(CoreError::HostError { .. })));
+            assert_eq!(server.await.unwrap().len(), 1, "requests are not retried");
+        }
+    }
+
+    #[test]
+    fn malformed_project_links_are_rejected_before_network_use() {
+        for link in [
+            "https://openagents.com.evil/projects/join/prjinv_fixture-token_01",
+            "https://openagents.com/projects/join/prjinv_",
+            "https://openagents.com/projects/join/prjinv_fixture-token_01?next=evil",
+            "https://openagents.com/projects/join/prjinv_fixture-token_01/extra",
+        ] {
+            assert!(invitation_code(link).is_err(), "{link}");
+        }
     }
 }
