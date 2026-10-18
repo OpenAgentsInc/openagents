@@ -1613,6 +1613,9 @@ mod tests {
                 .args(["-c", "user.name=t", "-c", "user.email=t@t"])
                 .args(args)
                 .current_dir(&repo)
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_INDEX_FILE")
                 .status()
                 .unwrap();
             assert!(status.success());
@@ -1621,7 +1624,8 @@ mod tests {
         git(&["add", "."]);
         git(&["commit", "-q", "-m", "pins"]);
         // A rustup that has 1.97.1 whole and 1.98.1 missing its components.
-        let bin = home.path().join("bin");
+        // BUILD puts $HOME/.cargo/bin first on PATH, ahead of a real rustup.
+        let bin = home.path().join(".cargo/bin");
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::write(home.path().join("whole-1.97.1"), "").unwrap();
         let rustup = bin.join("rustup");
@@ -1638,6 +1642,9 @@ mod tests {
             let output = std::process::Command::new("bash")
                 .args(["-c", &format!("{toolchains}\noa_toolchains HEAD")])
                 .current_dir(&repo)
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_INDEX_FILE")
                 .env("HOME", home.path())
                 .env(
                     "PATH",
