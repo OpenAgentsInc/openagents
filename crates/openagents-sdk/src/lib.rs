@@ -4,6 +4,7 @@
 pub mod agent_lab;
 pub mod agents;
 mod auth;
+pub mod attention;
 pub mod chats;
 pub mod cloud_host;
 pub mod computers;

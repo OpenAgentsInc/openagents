@@ -1013,6 +1013,63 @@
       "reexports": []
     },
     {
+      "path": "attention",
+      "doc": "Account-wide events that need an agent's or person's attention.",
+      "items": [
+        {
+          "kind": "enum",
+          "name": "Attention",
+          "doc": "What needs attention. Times are Unix milliseconds.",
+          "declaration": "pub enum Attention {\n    RunStalled { run: String, since: i64 },\n    RunAwaitingInput { run: String, question: String },\n    RunErrored { run: String, reason: String },\n    ClaimNoProgress { issue: u64, holder: String, since: i64 },\n    LandingFailed { entry: String, issue: Option<u64>, reason: String },\n    WorkFinished { work: String, issue: u64, outcome: String },\n    MachineLow { computer: String, resource: Resource, value: u64 },\n    Unknown,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AttentionEvent",
+          "doc": "One event in an account's attention stream.",
+          "declaration": "pub struct AttentionEvent {\n    pub seq: u64,\n    pub at: i64,\n    pub agent: Option<String>,\n    pub attention: Attention,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AttentionStream",
+          "doc": "Attention events in order, read with [`AttentionStream::next`].",
+          "declaration": "pub struct AttentionStream {}",
+          "methods": [
+            {
+              "name": "cursor",
+              "doc": "The last event's `seq`, or the starting cursor; resume from here.",
+              "declaration": "pub fn cursor(&self) -> u64",
+              "calls": []
+            },
+            {
+              "name": "next",
+              "doc": "Reads the next event. Returns `None` when the server closes the stream;\nreconnect with [`AttentionStream::cursor`].",
+              "declaration": "pub async fn next(&mut self) -> Result<Option<AttentionEvent>, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "Resource",
+          "doc": "A machine resource that can run low.",
+          "declaration": "pub enum Resource {\n    Disk,\n    Memory,\n}"
+        },
+        {
+          "kind": "const",
+          "name": "CLAIM_IDLE_AFTER_MS",
+          "doc": "A live run holding issues with no progress for this long raises\n[`Attention::ClaimNoProgress`], in milliseconds.",
+          "declaration": "pub const CLAIM_IDLE_AFTER_MS: i64 = 20 * 60 * 1000;"
+        },
+        {
+          "kind": "const",
+          "name": "STALL_AFTER_MS",
+          "doc": "A working run with no output for this long is stalled, in milliseconds.",
+          "declaration": "pub const STALL_AFTER_MS: i64 = 20 * 60 * 1000;"
+        }
+      ],
+      "reexports": []
+    },
+    {
       "path": "chats",
       "doc": "Cloud turns in the existing account chat. Keep a `Send` to retry the same message.",
       "items": [
@@ -2704,6 +2761,12 @@
                   "path": "/v1/device/sign-out"
                 }
               ]
+            },
+            {
+              "name": "attention",
+              "doc": "Follow the account's attention events after cursor `after` (0 for all\nretained events). After a dropped connection, call again with\n[`AttentionStream::cursor`].",
+              "declaration": "pub async fn attention(\n    &self,\n    session: &Session,\n    after: u64,\n    cancel: &CancellationToken,\n) -> Result<AttentionStream, Error>",
+              "calls": []
             },
             {
               "name": "cloud_host",

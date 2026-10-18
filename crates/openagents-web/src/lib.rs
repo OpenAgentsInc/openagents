@@ -72,6 +72,8 @@ mod device_nostr;
 mod docs_mcp;
 mod door_route;
 mod environments;
+mod attention;
+mod attention_openapi;
 mod runs;
 mod runs_openapi;
 mod owner_notifications;
@@ -647,6 +649,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(history_api::routes())
         .merge(session_index::routes())
         .merge(runs::routes())
+        .merge(attention::routes())
         .merge(labs_api::routes(&app))
         .merge(lab_card_view::routes())
         .merge(custom_agents::routes())

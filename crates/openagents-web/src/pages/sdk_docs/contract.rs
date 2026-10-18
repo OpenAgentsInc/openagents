@@ -145,6 +145,12 @@ publish.",
         tags: &["Runs"],
     },
     Area {
+        slug: "attention",
+        title: "Attention",
+        lead: "Follow one stream of stalled, waiting, failed, and finished work across the account.",
+        tags: &["Attention"],
+    },
+    Area {
         slug: "computers",
         title: "Computers",
         lead: "Create cloud computers, run commands on them, move files, and read usage.",

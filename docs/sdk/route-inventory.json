@@ -80,22 +80,22 @@
     {
       "path": "/v1/agent-assignments",
       "source": "crates/openagents-web/src/agent_assignments.rs",
-      "line": 274
+      "line": 290
     },
     {
       "path": "/v1/agent-assignments/{id}",
       "source": "crates/openagents-web/src/agent_assignments.rs",
-      "line": 275
+      "line": 291
     },
     {
       "path": "/v1/agent-assignments/{id}/commands",
       "source": "crates/openagents-web/src/agent_assignments.rs",
-      "line": 276
+      "line": 292
     },
     {
       "path": "/v1/agent-assignments/{id}/report",
       "source": "crates/openagents-web/src/agent_assignments.rs",
-      "line": 277
+      "line": 293
     },
     {
       "path": "/v1/labs/agent/kinds",
@@ -151,6 +151,11 @@
       "path": "/v1/openapi.json",
       "source": "crates/openagents-web/src/agent_ready.rs",
       "line": 108
+    },
+    {
+      "path": "/v1/attention",
+      "source": "crates/openagents-web/src/attention.rs",
+      "line": 287
     },
     {
       "path": "/v1/threads/{id}/events",
@@ -398,6 +403,21 @@
       "line": 101
     },
     {
+      "path": "/v1/notify",
+      "source": "crates/openagents-web/src/owner_notifications.rs",
+      "line": 15
+    },
+    {
+      "path": "/v1/notify/grants/{agent}",
+      "source": "crates/openagents-web/src/owner_notifications.rs",
+      "line": 16
+    },
+    {
+      "path": "/v1/notify/{id}/read",
+      "source": "crates/openagents-web/src/owner_notifications.rs",
+      "line": 17
+    },
+    {
       "path": "/v1/threads/{id}/share",
       "source": "crates/openagents-web/src/pages/chat_share.rs",
       "line": 65
@@ -610,17 +630,17 @@
     {
       "path": "/v1/runs",
       "source": "crates/openagents-web/src/runs.rs",
-      "line": 250
+      "line": 294
     },
     {
       "path": "/v1/runs/{id}/heartbeat",
       "source": "crates/openagents-web/src/runs.rs",
-      "line": 251
+      "line": 295
     },
     {
       "path": "/v1/runs/{id}/end",
       "source": "crates/openagents-web/src/runs.rs",
-      "line": 252
+      "line": 296
     },
     {
       "path": "/v1/history/sessions",

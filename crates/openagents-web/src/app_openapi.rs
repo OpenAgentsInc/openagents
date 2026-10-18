@@ -134,6 +134,7 @@ pub fn document() -> Value {
     crate::continuations_openapi::extend(&mut document);
     crate::session_index::openapi(&mut document);
     crate::runs_openapi::extend(&mut document);
+    crate::attention_openapi::extend(&mut document);
     crate::key_openapi::extend(&mut document);
     crate::computers_api::extend_openapi(&mut document);
     crate::project_openapi::extend(&mut document);

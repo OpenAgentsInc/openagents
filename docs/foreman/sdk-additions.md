@@ -167,6 +167,15 @@ same shape as `GET /v1/work/{id}/events`. Foreman's host turns each event
 into a check-in reason; the phone turns the owner-facing ones into a push
 (S10).
 
+**Status.** Built in #12055: `openagents_sdk::attention` and
+`crates/openagents-web/src/attention.rs`. The server derives events from S1
+run heartbeats (stalled after 20 minutes without output, awaiting input,
+errored, a landing run's error, a live claim with no progress for 20
+minutes) and from work runs (finished, failed landing), raises each once,
+and keeps the last 1000 per account in a log the stream resumes from by
+`seq` (or `Last-Event-ID`). `MachineLow` is in the type; its source is the
+machine facts of roadmap item 7 (#12039).
+
 ## S4. Landing queue client
 
 **Today.** `openagents land submit | status | show | withdraw`

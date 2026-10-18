@@ -212,6 +212,50 @@ async fn load(store: &Store, owner: &str) -> Result<(Book, Option<String>), Erro
         None => Ok((Book::default(), None)),
     }
 }
+
+/// One account's run report and the server times that determine its presence.
+#[derive(Clone)]
+pub(crate) struct RunPresence {
+    pub(crate) beat: RunHeartbeat,
+    pub(crate) received_at: i64,
+    pub(crate) ended_at: Option<i64>,
+}
+
+impl RunPresence {
+    pub(crate) fn is_live(&self, at: i64) -> bool {
+        self.ended_at.is_none() && at.saturating_sub(self.received_at) < LIVE_WINDOW_MS
+    }
+}
+
+impl From<Entry> for RunPresence {
+    fn from(entry: Entry) -> Self {
+        Self {
+            beat: entry.beat,
+            received_at: entry.received_at,
+            ended_at: entry.ended_at,
+        }
+    }
+}
+
+/// Retained reports for an account. Callers authenticate before choosing `owner`.
+pub(crate) async fn account_runs(store: &Store, owner: &str) -> Result<Vec<RunPresence>, Error> {
+    let (mut book, _) = load(store, owner).await?;
+    book.prune(now());
+    Ok(book.runs.into_values().map(RunPresence::from).collect())
+}
+
+/// A retained run at `at`. Callers authenticate before choosing `owner`.
+pub(crate) async fn lookup(
+    store: &Store,
+    owner: &str,
+    id: &str,
+    at: i64,
+) -> Result<Option<RunPresence>, Error> {
+    let (mut book, _) = load(store, owner).await?;
+    book.prune(at);
+    Ok(book.runs.remove(id).map(RunPresence::from))
+}
+
 async fn change(
     store: &Store,
     owner: &str,
