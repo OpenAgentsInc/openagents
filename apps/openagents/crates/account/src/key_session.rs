@@ -255,10 +255,10 @@ impl Controller {
                 match cancelled(&t.cancel, self.client.link_key(session, identity.as_ref())).await {
                     Ok(_) => self.mark_linked(&account, &pubkey),
                     Err(Error::Cancelled) => return,
-                    Err(e) if invalid_login(&e) => existing = None,
-                    // The key already signs in to another account, or the
-                    // server couldn't be reached: keep this session, and try
-                    // again on the next launch.
+                    // The session was just restored, so it works: a refused
+                    // link (an older server without the route, a key on
+                    // another account, no network) never throws it away.
+                    // Try again on the next launch.
                     Err(_) => {}
                 }
             }

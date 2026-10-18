@@ -58,6 +58,8 @@ struct Server {
     origin: Mutex<String>,
     /// pubkey -> account
     keys: Mutex<BTreeMap<String, String>>,
+    /// Answer key links 403, like a server without the route (2026-10-17).
+    refuse_links: std::sync::atomic::AtomicBool,
     /// bearer -> account
     sessions: Mutex<BTreeMap<String, String>>,
     issued: AtomicUsize,
@@ -172,6 +174,9 @@ async fn link(State(s): State<Arc<Server>>, h: HeaderMap, Json(body): Json<Value
     let Some(account) = s.session(&h) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
+    if s.refuse_links.load(Ordering::SeqCst) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     let Some(pubkey) = body["proof"]
         .as_str()
         .and_then(|p| s.signer(p, "/v1/device/keys"))
@@ -408,4 +413,35 @@ async fn a_new_key_asked_for_a_proof_solves_one_and_a_known_key_never_does() {
     again.sign_in_with_key(identity, "Desktop".into()).await;
     assert_eq!(signed_in(&again).await, account);
     assert_eq!(server.proofs.load(Ordering::SeqCst), 1);
+}
+
+/// Production on 2026-10-17 answered the key link 403 because the route
+/// wasn't deployed, and the desktop threw away a working session and came
+/// up signed out. A refused link keeps the restored session.
+#[tokio::test]
+async fn a_refused_key_link_keeps_the_saved_session() {
+    let (server, client) = serve().await;
+    server.refuse_links.store(true, Ordering::SeqCst);
+    let dir = tempfile::tempdir().unwrap();
+    let old = server.issue("acct_old");
+    let store = Arc::new(Store::default());
+    let expiry = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 20 * 86_400;
+    *store.0.lock().unwrap() = Some(
+        serde_json::from_value(json!({
+            "deployment": client.deployment(), "account": label("acct_old"),
+            "expires_at": expiry, "credential": old,
+        }))
+        .unwrap(),
+    );
+    let identity = Arc::new(Identity::from_words(WORDS).unwrap());
+    let c = controller(&client, &store, dir.path());
+    c.start_with_key(identity.clone(), "Desktop".into()).await;
+    assert_eq!(signed_in(&c).await, "acct_old");
+    assert!(!c.key_linked("acct_old", &identity.pubkey_hex()));
+    assert_eq!(server.created.load(Ordering::SeqCst), 0);
+    assert!(store.0.lock().unwrap().is_some());
 }
