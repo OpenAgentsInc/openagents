@@ -373,7 +373,8 @@ impl DocHost {
         self.foreman_tell_owner(&foreman, &chat, now).await;
         self.foreman_wake(&chat, busy, now, |text| {
             self.request_from_chat_row(&chat, text)
-        })?;
+        })
+        .await?;
         Ok(())
     }
 
@@ -544,7 +545,7 @@ impl DocHost {
 
     /// Start the check-in that is due, if any, as a message queued into
     /// Foreman's chat. Returns its message id.
-    fn foreman_wake(
+    async fn foreman_wake(
         &self,
         chat: &str,
         busy: bool,
@@ -560,8 +561,58 @@ impl DocHost {
         // The agent's saved working state rides every check-in (#12057).
         let working = super::working_state::section(self.working_state(chat).as_ref(), now);
         wake.text = super::working_state::with_section(&wake.text, &working);
+        #[cfg(unix)]
+        let owner_wait = if let Some(agent) = self
+            .agent_of(chat)
+            .filter(|id| openagents_account::openagents::agents::valid_id(id))
+        {
+            use openagents_mcp::machine_status::{OwnerOptions, collect_with};
+            let repository = self.workspace().and_then(|workspace| {
+                let row = workspace.chat(chat).ok()??;
+                row.cwd
+                    .clone()
+                    .or_else(|| {
+                        workspace
+                            .space(row.space_id.as_deref()?)
+                            .ok()
+                            .flatten()
+                            .map(|s| s.path)
+                    })
+                    .map(std::path::PathBuf::from)
+            });
+            match collect_with(
+                &agent,
+                OwnerOptions {
+                    repository,
+                    ..OwnerOptions::default()
+                },
+            )
+            .await
+            {
+                Ok(status) => {
+                    wake.text.push_str("\n\n");
+                    wake.text.push_str(&status.prompt_block());
+                    Some((agent, status.owner_wait))
+                }
+                Err(error) => {
+                    tracing::warn!(agent = %agent, error = %error, "couldn't read check-in facts");
+                    wake.text.push_str(
+                        "\n\nMachine and queue facts could not be read for this check-in.",
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
         match self.queue_foreman_wake(chat, &wake, request) {
-            Ok(()) => Ok(Some(wake.id)),
+            Ok(()) => {
+                #[cfg(unix)]
+                if let Some((agent, report)) = owner_wait {
+                    self.notify_new_owner_items(chat, &agent, &report).await;
+                }
+                Ok(Some(wake.id))
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "foreman: check-in not queued");
                 foreman.update(|s| s.open_wake = None)?;
@@ -897,10 +948,10 @@ mod tests {
     const WORKER: &str = "f0000000-0000-4000-8000-000000000002";
     const MIN: i64 = 60_000;
 
-    /// #12032 and #12040: only the final rung reaches the owner-notification
-    /// service, using the saved agent's ID and its chat rather than its name.
+    /// #12032, #12036, and #12040: final stalls and new owner items notify
+    /// once, using the saved agent definition and its own chat.
     #[tokio::test]
-    async fn the_last_stall_rung_notifies_the_owner_through_the_sdk() {
+    async fn final_stalls_and_new_owner_items_notify_once_through_the_sdk() {
         use crate::HarnessRegistry;
         use axum::{
             Json, Router,
@@ -911,7 +962,10 @@ mod tests {
             desktop::{self, MemoryStore},
             openagents::{Client, Deployment, owner_notifications::NotifyOwner},
         };
-        use openagents_proto::{ChatConfig, SandboxLevel, saved_agent::ASSIGNMENT};
+        use openagents_proto::{
+            ChatConfig, SandboxLevel,
+            saved_agent::{AGENT, ASSIGNMENT},
+        };
         use serde_json::json;
 
         let root = tempfile::tempdir().unwrap();
@@ -1011,9 +1065,12 @@ mod tests {
                     harness: HarnessId::Mock,
                     model: None,
                     reasoning: None,
-                    model_options: [(ASSIGNMENT.into(), json!(assignment))]
-                        .into_iter()
-                        .collect(),
+                    model_options: [
+                        (ASSIGNMENT.into(), json!(assignment)),
+                        (AGENT.into(), json!(agent)),
+                    ]
+                    .into_iter()
+                    .collect(),
                     sandbox: SandboxLevel::WorkspaceWrite,
                 }),
                 Some(root.path().to_string_lossy().into_owned()),
@@ -1064,6 +1121,34 @@ mod tests {
             );
             assert!(openagents_account::openagents::agents::valid_id(
                 &request.request_id
+            ));
+        }
+        #[cfg(unix)]
+        {
+            received.lock().unwrap().clear();
+            let mut report: openagents_mcp::machine_status::OwnerStatus =
+                serde_json::from_value(json!({
+                    "repository": root.path(),
+                    "entries": [{"id": "c".repeat(64), "what": "Approve the store release",
+                        "source": "NEEDS_OWNER.md", "line": 1, "since": 100, "age_seconds": 400}],
+                    "deploy_permission": null, "errors": [], "read_sources": ["NEEDS_OWNER.md"]
+                }))
+                .unwrap();
+            host.notify_new_owner_items(FOREMAN, &agent, &report).await;
+            report.entries[0].age_seconds = Some(500);
+            host.notify_new_owner_items(FOREMAN, &agent, &report).await;
+            let notes = received.lock().unwrap();
+            assert_eq!(
+                notes.len(),
+                1,
+                "one new owner item sends one request; age changes stay silent"
+            );
+            assert_eq!(notes[0].note.agent, agent);
+            assert_eq!(notes[0].note.chat, FOREMAN);
+            assert_eq!(notes[0].note.title, "Your help is needed");
+            assert_eq!(notes[0].note.body, "Approve the store release");
+            assert!(openagents_account::openagents::agents::valid_id(
+                &notes[0].request_id
             ));
         }
         core.shutdown().await;
@@ -1231,6 +1316,7 @@ mod tests {
             .unwrap();
         let first = host
             .foreman_wake(FOREMAN, false, 10 * MIN, request(&cwd))
+            .await
             .unwrap()
             .expect("a check-in");
         assert!(
@@ -1258,6 +1344,7 @@ mod tests {
         let host = open();
         let wake = host
             .foreman_wake(FOREMAN, false, now_ms() + 60 * MIN, request(&cwd))
+            .await
             .unwrap()
             .expect("the scheduled check-in after the restart");
         let text = runs(&host)
@@ -1369,6 +1456,7 @@ mod tests {
             assert!(!host.foreman_watch(FOREMAN, true, minute * MIN).unwrap());
             assert_eq!(
                 host.foreman_wake(FOREMAN, true, minute * MIN, request(&cwd))
+                    .await
                     .unwrap(),
                 None
             );
@@ -1384,6 +1472,7 @@ mod tests {
             .unwrap();
         let id = host
             .foreman_wake(FOREMAN, false, 26 * MIN, request(&cwd))
+            .await
             .unwrap()
             .expect("one check-in");
         let queued = runs(&host);
@@ -1394,6 +1483,7 @@ mod tests {
         ), "{}", queued[0].1);
         assert_eq!(
             host.foreman_wake(FOREMAN, false, 27 * MIN, request(&cwd))
+                .await
                 .unwrap(),
             None
         );
@@ -1443,11 +1533,13 @@ mod tests {
         // The schedule tick.
         assert_eq!(
             host.foreman_wake(FOREMAN, false, 19 * MIN, request(&cwd))
+                .await
                 .unwrap(),
             None
         );
         let scheduled = host
             .foreman_wake(FOREMAN, false, 20 * MIN, request(&cwd))
+            .await
             .unwrap()
             .expect("the schedule starts a turn");
         let queued = runs(&host);
@@ -1489,12 +1581,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             host.foreman_wake(FOREMAN, true, 30 * MIN, request(&cwd))
+                .await
                 .unwrap(),
             None,
             "never over Foreman's own turn"
         );
         let finished = host
             .foreman_wake(FOREMAN, false, 30 * MIN, request(&cwd))
+            .await
             .unwrap()
             .expect("the finished chat starts a turn");
         let queued = runs(&host);

@@ -16,7 +16,7 @@ impl DocHost {
     }
 
     /// The definition ID of the saved agent `chat` runs, if any.
-    fn agent_of(&self, chat: &str) -> Option<String> {
+    pub(super) fn agent_of(&self, chat: &str) -> Option<String> {
         self.workspace()?
             .chat(chat)
             .ok()??

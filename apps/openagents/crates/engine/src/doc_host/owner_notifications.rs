@@ -138,3 +138,61 @@ impl DocHost {
         Ok(assignment)
     }
 }
+
+#[cfg(unix)]
+impl DocHost {
+    /// Notify once for each newly read owner item, separately for each definition.
+    pub(super) async fn notify_new_owner_items(
+        &self,
+        chat: &str,
+        agent: &str,
+        report: &openagents_mcp::machine_status::OwnerStatus,
+    ) {
+        use sha2::{Digest, Sha256};
+        if self.agent_of(chat).as_deref() != Some(agent) {
+            return;
+        }
+        let entries = {
+            let mut seen = self
+                .inner
+                .owner_wait_seen
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            seen.observe(agent, report)
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        for entry in entries {
+            let key = format!(
+                "owner-wait:{agent}:{chat}:{}:{}:{:?}",
+                report
+                    .repository
+                    .as_deref()
+                    .unwrap_or_else(|| std::path::Path::new(""))
+                    .display(),
+                entry.id,
+                entry.since,
+            );
+            let request_id = format!("{:x}", Sha256::digest(key.as_bytes()));
+            let title = "Your help is needed";
+            let mut body = entry.what.split_whitespace().collect::<Vec<_>>().join(" ");
+            let note = OwnerNote {
+                agent: agent.into(),
+                chat: chat.into(),
+                title: title.into(),
+                body: body.clone(),
+            };
+            if note.validate().is_err() {
+                body = "Open this chat to see what needs your help.".into();
+            }
+            if let Err(error) = self
+                .notify_owner_from_chat(chat, &request_id, title, &body)
+                .await
+            {
+                tracing::warn!(agent = %agent, chat = %chat, request = %request_id, error = %error,
+                    "couldn't notify the owner about a new item");
+            }
+        }
+    }
+}

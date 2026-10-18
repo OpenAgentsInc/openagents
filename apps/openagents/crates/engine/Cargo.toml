@@ -21,6 +21,7 @@ chat-home = { path = "../../../../crates/chat-home" }
 openagents-sdk = { path = "../../../../crates/openagents-sdk" }
 coder-cloud = { path = "../../../../crates/coder-cloud" }
 openagents-account.workspace = true
+openagents-mcp.workspace = true
 openagents-brand.workspace = true
 openagents-preview.workspace = true
 openagents-proto.workspace = true
@@ -68,7 +69,6 @@ nostr = { path = "../../../../crates/nostr" }
 axum = "0.8"
 oa-copy = { path = "../../../../crates/oa-copy" }
 tracing-subscriber.workspace = true
-openagents-mcp.workspace = true
 openagents-harness = { workspace = true, features = ["installer-fixture"] }
 # Paused-clock tests (the 30-minute idle reaper).
 tokio = { workspace = true, features = ["test-util"] }

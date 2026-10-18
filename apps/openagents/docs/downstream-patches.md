@@ -15,6 +15,8 @@ Keep fork-specific changes here so upstream updates can review each integration.
 - OpenAgents #12036: `machine_status` includes owner steps and deploy permission
   facts through the public `coder_cloud::owner_status` API. Each agent can
   choose its repository and deployment; `NewEntries` tracks notifications by ID.
+  Check-ins append these facts and notify the owner once per new item, using
+  the saved agent definition and the existing owner-notification hook.
 
 - OpenAgents #12071: agent builds disable incremental compilation and keep
   Cargo fingerprints under each manifest's path hash within a shared target.
