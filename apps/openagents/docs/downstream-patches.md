@@ -1073,3 +1073,10 @@ links remain readable. Upstream fixes now require manual ports.
   denial, expiry, account-switch, current-view copy and redaction fixtures are
   authored but unrun. No wallet, money, device credential, or owner data was
   accessed during source preparation.
+
+- #12100: Mount C2's disposable image viewer only after Rust resolves the current
+  frame's image widget and the existing saved-history reader returns bounded
+  bytes. Reject late loads after a frame/account/route change; close the viewer
+  and pending load on background, route exit, source replacement, and Activity
+  teardown. C2's per-run reveal offsets and row-age publisher are preserved.
+  Integrated Rust, binding, Kotlin, and lifecycle checks remain unrun.

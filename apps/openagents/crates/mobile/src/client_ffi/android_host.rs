@@ -97,7 +97,14 @@ pub enum AndroidHostContent {
 #[derive(Clone, uniffi::Enum)]
 pub enum AndroidTranscriptEffect {
     Handled,
-    Copy { text: String },
+    Copy {
+        text: String,
+    },
+    Media {
+        row: u64,
+        widget: u32,
+        kind: crate::layout::display::WidgetKind,
+    },
     Unavailable,
 }
 #[derive(Clone, uniffi::Record)]
@@ -707,6 +714,13 @@ impl CoreAndroidHost {
             WidgetKind::Disclosure { .. } | WidgetKind::Chevron { .. } => {
                 view.toggle(row);
                 AndroidTranscriptEffect::Handled
+            }
+            kind @ (WidgetKind::Image { .. } | WidgetKind::LabMedia { .. }) => {
+                AndroidTranscriptEffect::Media {
+                    row,
+                    widget: widget.id,
+                    kind,
+                }
             }
             WidgetKind::ToolToggle { detail, open } => {
                 view.toggle_detail(row, detail, open);

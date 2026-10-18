@@ -51,6 +51,9 @@ internal class AndroidRootPresentation(
     private var canvas: TranscriptCanvas? = null
     private var layout: TranscriptView? = null
     private var relay: TranscriptFrameRelay? = null
+    private var mediaLoad: Job? = null
+    private var mediaViewer: TranscriptMediaViewer? = null
+    private var mediaRequest = 0L
     private var selection: TranscriptSelectionHost? = null
     private var selectionCallbacks = false
     private var transcriptNavigation: TranscriptNavigation? = null
@@ -175,6 +178,7 @@ internal class AndroidRootPresentation(
             // Saved-history updates also feed the existing Rust layout, without native message rows.
             owner.refreshTranscript(requireNotNull(layout), next.generation, next.contentRevision)
         }
+        if (next.route != AndroidHostRoute.CHAT) closeMedia()
         if (next.route != AndroidHostRoute.WALLET) { wallet?.close(); wallet = null }
         if (next.route != AndroidHostRoute.LINK_REVIEW) { linkReview?.close(); linkReview = null }
         val composerFrame = next.composer?.frame()
@@ -381,6 +385,8 @@ internal class AndroidRootPresentation(
                                 AndroidTranscriptEffect.Handled -> Unit
                                 is AndroidTranscriptEffect.Copy -> (activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                                     .setPrimaryClip(ClipData.newPlainText("OpenAgents", effect.text))
+                                is AndroidTranscriptEffect.Media -> openMedia(next, current.frame.revision,
+                                    TranscriptHitTarget.Widget(effect.row, effect.widget, effect.kind))
                                 AndroidTranscriptEffect.Unavailable -> showFailure()
                             }
                         }
@@ -429,6 +435,33 @@ internal class AndroidRootPresentation(
             override fun beforeFrameClose() { selectionCallbacks = false; observer.beforeFrameClose() }
         }
         return host
+    }
+
+    private fun openMedia(next: AndroidHostSnapshot, frameRevision: ULong, target: TranscriptHitTarget.Widget) {
+        val history = next.history ?: return showFailure()
+        closeMedia()
+        val request = mediaRequest
+        mediaLoad = scope.launch {
+            var bytes: ByteArray? = null
+            try {
+                withContext(Dispatchers.IO) { bytes = TranscriptMediaLoader(history).image(target) }
+                val payload = bytes ?: return@launch showFailure()
+                if (closed || !foreground || request != mediaRequest || snapshot?.route != AndroidHostRoute.CHAT ||
+                    mountedIdentity != (next.generation to next.contentRevision) ||
+                    canvas?.interactionSnapshot()?.frame?.revision != frameRevision) return@launch
+                val viewer = TranscriptMediaViewer(activity, payload)
+                bytes = null // The disposable viewer now owns these bytes, including failed show cleanup.
+                mediaViewer = viewer
+                if (!viewer.show()) { viewer.close(); mediaViewer = null; showFailure() }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (!closed && request == mediaRequest) showFailure() }
+            finally { bytes?.fill(0) }
+        }
+    }
+    private fun closeMedia() {
+        mediaRequest++
+        mediaLoad?.cancel(); mediaLoad = null
+        mediaViewer?.close(); mediaViewer = null
     }
 
     private fun bindDrawer(next: AndroidHostSnapshot) {
@@ -516,6 +549,7 @@ internal class AndroidRootPresentation(
     fun background() {
         if (closed) return
         foreground = false
+        closeMedia()
         microphoneRequest?.close(); microphoneRequest = null
         snapshot?.linkReview?.let { runCatching { owner.dismissLinkReview(it) } }
         linkReview?.close(); linkReview = null
@@ -561,6 +595,7 @@ internal class AndroidRootPresentation(
         routeContainer.removeAllViews()
     }
     private fun closeChat() {
+        closeMedia()
         val current = mountedIdentity
         canvas?.saveViewportAnchor()?.let { anchor ->
             if (current != null) try {
