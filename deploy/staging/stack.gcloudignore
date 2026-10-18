@@ -30,6 +30,10 @@
 /scripts/install/*
 !/scripts/install/coder.sh
 !/scripts/install/coder.ps1
+# coder-lease compiles in the agent build environment (#12071).
+!/scripts/dev/
+/scripts/dev/*
+!/scripts/dev/cargo-build-env.sh
 !/programs/
 !/questions/
 !/plugins/

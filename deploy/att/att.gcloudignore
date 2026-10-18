@@ -8,6 +8,12 @@
 !/.cargo/
 !/crates/
 !/nips/
+# coder-lease compiles in the agent build environment (#12071).
+!/scripts/
+/scripts/*
+!/scripts/dev/
+/scripts/dev/*
+!/scripts/dev/cargo-build-env.sh
 !/deploy/
 /deploy/*
 !/deploy/att/
