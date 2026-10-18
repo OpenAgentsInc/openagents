@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 class BoundedComposerStubCoreTest {
     @Test
     fun attachmentSubmissionRetainsFailedPayloadForRetry() {
-        val stamp = ComposerEditorStamp("composer", 1, "input", "token", "lifetime", 0)
+        val stamp = ComposerEditorStamp("composer", 1, "input", "token", "1", 0)
         val frame = ComposerFrame(
             stamp = stamp,
             initialDraft = "question",
@@ -28,7 +28,7 @@ class BoundedComposerStubCoreTest {
 
     @Test
     fun attachmentSubmissionRejectsOversizedPayloads() {
-        val stamp = ComposerEditorStamp("composer", 1, "input", "token", "lifetime", 0)
+        val stamp = ComposerEditorStamp("composer", 1, "input", "token", "1", 0)
         val frame = ComposerFrame(
             stamp = stamp,
             initialDraft = "",

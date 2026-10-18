@@ -24,6 +24,13 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.core.view.OnReceiveContentListener
 import androidx.core.view.ViewCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.Closeable
 import java.nio.charset.StandardCharsets
 import kotlin.math.max
@@ -54,6 +61,39 @@ data class ComposerAttachmentPayload(
     val mimeType: String,
     val data: ByteArray,
 )
+
+data class ComposerMentionFile(val path: String, val isDirectory: Boolean)
+
+/** File search and canonical link encoding stay in the signed-in Rust core. */
+interface ComposerMentionPort {
+    suspend fun searchFiles(query: String): List<ComposerMentionFile>
+    fun fileMentionLink(file: ComposerMentionFile): String
+}
+
+data class ActiveComposerMentionQuery(val startUtf16: Int, val endUtf16: Int, val query: String)
+
+/** Finds a bounded @query at the current UTF-16 cursor without parsing paths. */
+object ComposerMentionQuery {
+    fun active(text: String, cursorUtf16: Int): ActiveComposerMentionQuery? {
+        if (cursorUtf16 !in 0..text.length) return null
+        var index = cursorUtf16 - 1
+        while (index >= 0) {
+            when (text[index]) {
+                '@' -> {
+                    if (index > 0 && !text[index - 1].isWhitespace()) return null
+                    val query = text.substring(index + 1, cursorUtf16)
+                    if (query.length > MAX_QUERY_CHARS || query.any(Char::isWhitespace)) return null
+                    return ActiveComposerMentionQuery(index, cursorUtf16, query)
+                }
+                else -> if (text[index].isWhitespace()) return null
+            }
+            index--
+        }
+        return null
+    }
+
+    private const val MAX_QUERY_CHARS = 128
+}
 
 /** The editor identity shared with Rust's UTF-16 mirror. */
 data class ComposerEditorStamp(
@@ -136,6 +176,7 @@ class AndroidComposerPresentation(
     context: Context,
     private val core: ComposerCorePort,
     private val rustNativeMount: RustNativeComposerMount,
+    private val mentionPort: ComposerMentionPort? = null,
 ) : Closeable {
     private val context = context
     private val density = context.resources.displayMetrics.density
@@ -151,6 +192,7 @@ class AndroidComposerPresentation(
     private val attachmentRow = horizontalRow()
     private val attachmentScroll = horizontalScroll(attachmentRow)
     private val mentionRow = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private val mentionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val sendError = TextView(context).apply {
         text = "Couldn't send. Try again."
         visibility = View.GONE
@@ -191,6 +233,9 @@ class AndroidComposerPresentation(
     private val pendingAttachments = mutableListOf<ComposerAttachmentPayload>()
     private var attachmentPickerListener: (() -> Unit)? = null
     private var pastedImageListener: ((Uri) -> Unit)? = null
+    private var mentionSearch: Job? = null
+    private var activeMention: ActiveComposerMentionQuery? = null
+    private var mentionGeneration = 0L
     private val baseBottomPadding = root.paddingBottom
 
     private val textWatcher = object : TextWatcher {
@@ -216,6 +261,7 @@ class AndroidComposerPresentation(
             )
             editorStamp = ack.stamp
             applyAck(ack)
+            refreshMentionQuery()
         }
     }
 
@@ -248,6 +294,9 @@ class AndroidComposerPresentation(
             } else false
         }
         input.setOnKeyListener { _, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_UP) {
+                input.post(::refreshMentionQuery)
+            }
             val current = frame
             if (current != null && current.sendOnEnter &&
                 keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN &&
@@ -256,6 +305,12 @@ class AndroidComposerPresentation(
                 activatePrimary()
                 true
             } else false
+        }
+        input.setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_UP) {
+                input.post(::refreshMentionQuery)
+            }
+            false
         }
         attachmentButton.setOnClickListener { showActions(it, frame?.attachmentActions.orEmpty()) }
         sendButton.setOnClickListener { activatePrimary() }
@@ -337,6 +392,7 @@ class AndroidComposerPresentation(
         ViewCompat.setOnReceiveContentListener(input, null, null)
         input.setOnEditorActionListener(null)
         input.setOnKeyListener(null)
+        input.setOnTouchListener(null)
         input.setText("")
         attachmentButton.setOnClickListener(null)
         sendButton.setOnClickListener(null)
@@ -349,6 +405,9 @@ class AndroidComposerPresentation(
         pendingAttachments.clear()
         attachmentPickerListener = null
         pastedImageListener = null
+        mentionSearch?.cancel()
+        mentionScope.cancel()
+        activeMention = null
         frame = null
         editorStamp = null
     }
@@ -558,6 +617,100 @@ class AndroidComposerPresentation(
         mentionRow.visibility = if (actions.isEmpty()) View.GONE else View.VISIBLE
     }
 
+    private fun refreshMentionQuery() {
+        val port = mentionPort ?: return
+        mentionSearch?.cancel()
+        val generation = ++mentionGeneration
+        val query = ComposerMentionQuery.active(input.text.toString(), input.selectionStart)
+        activeMention = query
+        if (query == null || query.query.isEmpty() || BaseInputConnection.getComposingSpanStart(input.text) >= 0) {
+            renderMentionFiles(emptyList())
+            return
+        }
+        mentionSearch = mentionScope.launch {
+            delay(MENTION_SEARCH_DELAY_MS)
+            val files = try {
+                port.searchFiles(query.query).take(MAX_MENTION_RESULTS)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            if (disposed || generation != mentionGeneration || activeMention != query) return@launch
+            renderMentionFiles(files)
+        }
+    }
+
+    private fun renderMentionFiles(files: List<ComposerMentionFile>) {
+        mentionRow.removeAllViews()
+        files.forEach { file ->
+            val label = file.path.substringAfterLast('/').ifBlank { file.path }
+            val parent = file.path.substringBeforeLast('/', "")
+            mentionRow.addView(Button(context).apply {
+                text = if (parent.isBlank()) label else "$label  ·  $parent"
+                contentDescription = if (file.isDirectory) "Insert folder $label" else "Insert file $label"
+                isEnabled = frame?.enabled == true
+                minimumHeight = dp(44)
+                setOnClickListener { insertMention(file) }
+            }, matchWrap())
+        }
+        if (files.isNotEmpty()) {
+            mentionRow.visibility = View.VISIBLE
+        } else if (frame?.mentionSuggestions.isNullOrEmpty()) {
+            mentionRow.visibility = View.GONE
+        }
+    }
+
+    private fun insertMention(file: ComposerMentionFile) {
+        val port = mentionPort ?: return
+        val query = activeMention ?: return
+        val text = input.text.toString()
+        if (query.endUtf16 > text.length || text.substring(query.startUtf16, query.endUtf16) != "@${query.query}") return
+        val link = try {
+            port.fileMentionLink(file)
+        } catch (_: Exception) {
+            sendError.visibility = View.VISIBLE
+            return
+        }
+        if (link.isBlank() || !byteBound(link)) {
+            sendError.visibility = View.VISIBLE
+            return
+        }
+        val updated = text.replaceRange(query.startUtf16, query.endUtf16, link)
+        applyingAck = true
+        try {
+            input.setText(updated)
+            input.setSelection((query.startUtf16 + link.length).coerceAtMost(updated.length))
+        } finally {
+            applyingAck = false
+        }
+        val stamp = editorStamp ?: return
+        val ack = try {
+            core.edit(
+                ComposerEditorUpdate(
+                    stamp = stamp,
+                    text = updated,
+                    selectionStartUtf16 = input.selectionStart,
+                    selectionEndUtf16 = input.selectionEnd,
+                    markedStartUtf16 = null,
+                    markedEndUtf16 = null,
+                ),
+            )
+        } catch (_: Exception) {
+            setInputText(text, query.endUtf16, query.endUtf16)
+            activeMention = query
+            sendError.visibility = View.VISIBLE
+            return
+        }
+        editorStamp = ack.stamp
+        applyAck(ack)
+        if (ack.text != updated) {
+            activeMention = ComposerMentionQuery.active(input.text.toString(), input.selectionStart)
+            sendError.visibility = View.VISIBLE
+            return
+        }
+        activeMention = null
+        renderMentionFiles(emptyList())
+    }
+
     private fun renderSharedCards(json: String?) {
         if (json == sharedCardsJson) return
         sharedCardsMount?.close()
@@ -608,6 +761,7 @@ class AndroidComposerPresentation(
         require(validId(next.stamp.instance) && validId(next.stamp.node))
         require(next.stamp.viewRevision > 0 && next.stamp.editorRevision >= 0)
         require(validId(next.stamp.inputToken) && validId(next.stamp.editingLifetime))
+        require(next.stamp.editingLifetime.toULongOrNull() != null)
         require(next.primaryLabel.isNotBlank())
         require(next.maxBytes in 1..MAX_TEXT_BYTES)
         require(next.initialDraft.toByteArray(StandardCharsets.UTF_8).size <= next.maxBytes)
@@ -702,6 +856,8 @@ class AndroidComposerPresentation(
         const val MAX_ATTACHMENTS = ComposerAttachmentLimits.MAX_ATTACHMENTS
         const val MAX_ACTIONS = 16
         const val MAX_CHOICES = 4
+        const val MAX_MENTION_RESULTS = 5
+        const val MENTION_SEARCH_DELAY_MS = 120L
         const val MATCH_PARENT = ViewGroup.LayoutParams.MATCH_PARENT
         const val WRAP_CONTENT = ViewGroup.LayoutParams.WRAP_CONTENT
     }

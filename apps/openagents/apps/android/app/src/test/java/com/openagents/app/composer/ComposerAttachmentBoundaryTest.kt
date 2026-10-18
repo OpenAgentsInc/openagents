@@ -32,7 +32,7 @@ class ComposerAttachmentBoundaryTest {
     @Test
     fun photoAndDocumentCancellationLeavesDraftAndSendStateUntouched() {
         val draft = "keep this draft"
-        val stamp = ComposerEditorStamp("composer", 1, "input", "token", "lifetime", 0)
+        val stamp = ComposerEditorStamp("composer", 1, "input", "token", "1", 0)
         val frame = ComposerFrame(
             stamp = stamp,
             initialDraft = draft,
@@ -126,7 +126,7 @@ class ComposerAttachmentBoundaryTest {
 
     @Test
     fun failedCoreSubmissionKeepsAttachmentForRetry() {
-        val stamp = ComposerEditorStamp("composer", 1, "input", "token", "lifetime", 0)
+        val stamp = ComposerEditorStamp("composer", 1, "input", "token", "1", 0)
         val frame = ComposerFrame(
             stamp = stamp,
             initialDraft = "question",
