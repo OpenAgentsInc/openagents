@@ -1028,9 +1028,9 @@ links remain readable. Upstream fixes now require manual ports.
 
 - OpenAgents #12085 source follow-up `06085048` adds a Rust monotonic row-age
   sample and a bounded image viewer over the existing Rust attachment/Lab media
-  APIs. Its follow-up preserves reveal offsets for unchanged rendered text
-  around a streaming edit and keeps them through width changes; only inserted
-  or replaced text starts at the new Rust age sample. The Android viewer is
+  APIs. Its follow-up preserves reveal offsets for unchanged rendered prefix
+  and suffix text around a streaming edit and keeps them through width changes;
+  the changed middle receives the new Rust age sample. The Android viewer is
   `AutoCloseable`; its owner can dismiss it and release the decoded bitmap on
   route or account retirement. Three transcript fixture constructors now
   supply a null reveal age for synthetic rows. Rust/Kotlin fixtures and real UniFFI
