@@ -75,10 +75,10 @@ case "$first" in
   ;;
 
 *scenario:mcp*)
-  case "$first" in
-    *'"mcp":{"args":["mcp"],"command":"/path with spaces/openagents","env":{"OPENAGENTS_CHAT_ID":"origin-chat"},"name":"openagents"}'*) ;;
-    *) exit 1 ;;
-  esac
+  # Compare parsed JSON: serde_json's preserve_order (on in the app workspace)
+  # writes the server's fields in declaration order, not sorted.
+  printf '%s' "$first" | python3 -c 'import json, sys; sys.exit(json.load(sys.stdin).get("mcp") != {"name": "openagents", "command": "/path with spaces/openagents", "args": ["mcp"], "env": {"OPENAGENTS_CHAT_ID": "origin-chat"}})' \
+    || { emit '{"ev":"fatal","message":"mcp server was not passed through"}'; exit 1; }
   emit '{"ev":"ready","agentId":"agent-1","model":"auto"}'
   emit '{"ev":"text","text":"mcp configured"}'
   emit '{"ev":"turn","status":"finished"}'
