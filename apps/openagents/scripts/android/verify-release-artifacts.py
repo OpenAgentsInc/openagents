@@ -30,6 +30,10 @@ FORBIDDEN_PATH_PARTS = (
     "mockito",
     "junit/",
     "espresso/",
+    "google-services.json",
+    ".jks",
+    ".keystore",
+    "service-account",
 )
 
 
@@ -263,6 +267,7 @@ def main() -> int:
             args.aab: fingerprint(args.aab_cert_sha256),
         }
         check_assetlinks(args.assetlinks, args.app_signing_cert_sha256)
+        version_codes = {}
         for path in (args.apk, args.aab):
             if not path.is_file():
                 raise CheckError(f"artifact does not exist: {path}")
@@ -273,6 +278,7 @@ def main() -> int:
                 raise CheckError(
                     f"{path.name} versionCode {version_code} must exceed {RETIRED_VERSION_CODE}"
                 )
+            version_codes[path] = version_code
             signer = artifact_signer(path)
             if signer != expected_signers[path]:
                 raise CheckError(
@@ -287,6 +293,11 @@ def main() -> int:
             if path.suffix.lower() == ".apk":
                 run_tool("zipalign", "-c", "-P", "16", "-v", "4", str(path))
                 print(f"{path.name}: zipalign 16 KiB check passed")
+        if version_codes[args.apk] != version_codes[args.aab]:
+            raise CheckError(
+                "APK and AAB must use the same shared versionCode: "
+                f"{version_codes[args.apk]} != {version_codes[args.aab]}"
+            )
         for path, label in ((args.r8_rules, "R8 rules"), (args.mapping, "R8 mapping")):
             if not path.is_file() or path.stat().st_size == 0:
                 raise CheckError(f"{label} is missing or empty: {path}")
