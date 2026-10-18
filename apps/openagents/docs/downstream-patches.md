@@ -695,41 +695,71 @@ links remain readable. Upstream fixes now require manual ports.
   offline fake-driver tests. Kotlin receives bounded media operations and
   returns platform results; route, focus, and network events stay within the
   Android media layer, while Rust retains call, signaling, and session state.
-  No WebRTC artifact is pinned. The candidate Maven coordinate is
-  `io.github.webrtc-sdk:android:150.7871.01`. [Maven Central's POM](https://repo.maven.apache.org/maven2/io/github/webrtc-sdk/android/150.7871.01/android-150.7871.01.pom)
-  reports the publication metadata. Its [AAR SHA-256 sidecar](https://repo.maven.apache.org/maven2/io/github/webrtc-sdk/android/150.7871.01/android-150.7871.01.aar.sha256)
-  reports
-  `0a1627b1a48c2bc17d9a40d62fc47bd45166f44a311e95917f147c402de379b0`.
-  Maven also publishes an [AAR PGP signature](https://repo.maven.apache.org/maven2/io/github/webrtc-sdk/android/150.7871.01/android-150.7871.01.aar.asc).
-  The [`webrtc-sdk/android` release `v150.7871.01`](https://github.com/webrtc-sdk/android/releases/tag/v150.7871.01)
-  was published on 2026-08-31 by its release workflow and lists three AARs.
-  GitHub reports their
-  SHA-256 digests as `8ad5e5fd02f0177743ddb566bea329006bef7689b944f6351717cd1d018958c0`
-  (`libwebrtc.aar`),
-  `ba675271b758c7506bc71c75392d5ecc21c9748180643292d3880acb2498ac51`
-  (`libwebrtc_prefixed.aar`), and
-  `9ea512a9b3c76fbec83c4ad4160650b2f741618c0ab467774ceb74d6017710d2`
-  (`libwebrtc_prefixed_stripped.aar`). None matches the Maven AAR sidecar.
-  The release notes attribute the release to `cloudwebrtc`; the Maven POM names
-  `webrtc-sdk` as developer and links the Android wrapper repository. The
-  [release list](https://github.com/webrtc-sdk/android/releases) shows multiple
-  upstream-version releases, but does not promise a fixed cadence. The
-  [Android AAR build instructions](https://github.com/webrtc-sdk/webrtc-build/blob/main/docs/build.md)
-  describe the source build, but do not map the Maven AAR bytes to a specific
-  release asset or explain the repackaging step. The AAR itself was not
-  downloaded, so its bytes were not checked against the Maven digest, and
-  the PGP signature's signing key was not independently identified or trusted.
-  Keep the coordinate unselected until that artifact-to-release provenance is
-  verified.
+  No WebRTC artifact is pinned. A bounded read-only review on 2026-10-18
+  streamed three Maven AARs, checked their SHA-256 sidecars, inspected their
+  archive entries, and compared the publications with their primary source
+  releases. None has a complete source-to-bytes-to-notices chain.
 
-  The wrapper's [`LICENSE`](https://github.com/webrtc-sdk/android/blob/7b6390f/LICENSE)
-  declares MIT. The [`webrtc-sdk/webrtc` M150 `LICENSE`](https://github.com/webrtc-sdk/webrtc/blob/m150_release/LICENSE)
-  declares the Google WebRTC BSD license, and its [README](https://github.com/webrtc-sdk/webrtc/blob/m150_release/README.md)
-  says its fork patches from Shiguredo and LiveKit are Apache 2.0. The Maven
-  POM labels the publication BSD-3-Clause. No complete third-party notice
-  inventory tied to the Maven AAR was found, so the app's redistribution
-  notices cannot yet be established. Do not treat the POM's single license
-  label as the full payload license set.
+  For `io.github.webrtc-sdk:android:150.7871.01`, the 49,147,033-byte Maven
+  AAR hash is
+  `0a1627b1a48c2bc17d9a40d62fc47bd45166f44a311e95917f147c402de379b0`, which
+  matches its [Maven SHA-256 sidecar](https://repo.maven.apache.org/maven2/io/github/webrtc-sdk/android/150.7871.01/android-150.7871.01.aar.sha256).
+  Its [PGP signature sidecar](https://repo.maven.apache.org/maven2/io/github/webrtc-sdk/android/150.7871.01/android-150.7871.01.aar.asc)
+  is present, but could not be verified because this review environment has no
+  `gpg` executable or trusted signer-key identity. GitHub's
+  [v150.7871.01 release](https://github.com/webrtc-sdk/android/releases/tag/v150.7871.01)
+  lists three assets, sized 49,147,033, 49,161,211, and 30,603,895 bytes. Their
+  published hashes are respectively
+  `8ad5e5fd02f0177743ddb566bea329006bef7689b944f6351717cd1d018958c0`,
+  `ba675271b758c7506bc71c75392d5ecc21c9748180643292d3880acb2498ac51`, and
+  `9ea512a9b3c76fbec83c4ad4160650b2f741618c0ab467774ceb74d6017710d2`; none
+  matches the Maven AAR. The release is attributed to `cloudwebrtc`, while
+  Maven names `webrtc-sdk`. The [Android source build](https://github.com/webrtc-sdk/webrtc-build/blob/main/docs/build.md)
+  does not map the Maven bytes to a release asset. The Maven AAR contains six
+  entries and no license or notice files. The wrapper declares MIT, while the
+  [M150 source README](https://github.com/webrtc-sdk/webrtc/blob/m150_release/README.md)
+  identifies Google WebRTC BSD and Shiguredo and LiveKit Apache-2.0 patches;
+  the POM lists only BSD-3-Clause. No full third-party notice inventory is
+  tied to the Maven bytes.
+
+  For `io.getstream:stream-webrtc-android:1.3.10`, the 20,609,071-byte Maven
+  AAR hash is
+  `afa3b0feaa2902f6ece10e67ce3b7e6d9def18a86b73f0c6a524209cb938aa96`, which
+  matches its [Maven SHA-256 sidecar](https://repo.maven.apache.org/maven2/io/getstream/stream-webrtc-android/1.3.10/stream-webrtc-android-1.3.10.aar.sha256).
+  A PGP signature sidecar is present, but its signer identity is unverified.
+  The [GitHub 1.3.10 release](https://github.com/GetStream/webrtc-android/releases/tag/1.3.10)
+  has a verified release commit (`5d388e533d87f857e7de4a729630200cf9766369`)
+  and no binary assets or AAR digest. Its tag commit is dated 2025-09-11 even
+  though the release page dates publication to 2026-09-11. The tagged source
+  includes four checked-in ABI `.so` files but does not identify their upstream
+  WebRTC revision. The AAR has 15 entries and no license or notice files; the
+  source tree has an Apache-2.0 `LICENSE` but no third-party inventory. Maven's
+  POM points to `GetStream/stream-webrtc-android`, while the release is in
+  `GetStream/webrtc-android`. The exact AAR bytes match Maven's checksum, but
+  the release source does not map to those bytes or document the native
+  payload's full license set.
+
+  For `com.pexip.webrtc:webrtc:146.0.0`, the 33,805,523-byte AAR hash is
+  `79c5a3f20d78dab5e17245b59c986866dad19b7f2d4c4b8ff613ec1cc55f1402`, which
+  matches its [Maven SHA-256 sidecar](https://repo.maven.apache.org/maven2/com/pexip/webrtc/webrtc/146.0.0/webrtc-146.0.0.aar.sha256).
+  A PGP signature sidecar is present, but its signer identity is unverified.
+  The [POM](https://repo.maven.apache.org/maven2/com/pexip/webrtc/webrtc/146.0.0/webrtc-146.0.0.pom)
+  names the WebRTC Software License and Additional IP Rights Grant and points
+  to `github.com/pexip/webrtc-android`; that GitHub repository currently
+  returns 404. Maven metadata ends at 146.0.0 with `lastUpdated` 2026-04-09.
+  The AAR has six entries and no license or notice files. With the source
+  repository unavailable, the release source, current maintenance, and full
+  bundled-license inventory cannot be verified.
+
+  Keep all three coordinates unselected. No reviewed artifact has an
+  independently verified signature identity and a complete third-party notice
+  inventory tied to the exact AAR bytes. #12094 remains blocked until a
+  maintainer provides an accessible source revision, reproducible or
+  release-bound AAR digest, trusted signature identity, and complete notices
+  for the selected release. The source and fake-driver checkpoint does not
+  satisfy the dependency/build acceptance item. No Cargo, Gradle, emulator,
+  or device checks ran; they remain pending after a candidate clears this
+  evidence gate and safe build capacity is available.
 
   The typed Android-only event seam reports route, audio-focus, and network
   changes to its media-layer listener and fences late events after close. Fake

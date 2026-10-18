@@ -43,6 +43,20 @@ passing. List remaining deploy/device/store evidence in the handoff and
 report later defects as new issues; these steps do not hold code-complete
 work open.
 
+## Qualify an Android WebRTC release (#12094)
+
+The Android voice media source and fake-driver checkpoint does not include a
+selected WebRTC dependency. The bounded artifact review is recorded in
+[`apps/openagents/docs/downstream-patches.md`](apps/openagents/docs/downstream-patches.md).
+Before implementation resumes, identify a maintained Android WebRTC release
+whose source revision maps to the exact published AAR bytes, whose signer can
+be verified against a trusted maintainer key, and whose complete third-party
+notices cover the native payload. The reviewed Maven artifacts either do not
+map to their source releases or lack an accessible source and complete
+notices. Do not pin one until those records agree. Cargo, Gradle, emulator,
+and device checks remain pending until a candidate is selected and measured
+build capacity is at least 100 GiB free.
+
 ## Check the voice-agent picker (#12061)
 
 After deploying the voice-agent account route and updating both apps, choose
