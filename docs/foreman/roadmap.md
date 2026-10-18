@@ -9,6 +9,14 @@ names the crate or file that would change.
 Sizes: **S** is under a day, **M** is one to three days, **L** is a week or
 more.
 
+**One rule covers every item:** nothing in this roadmap is built for
+Foreman alone. Foreman is a custom agent made of public SDK primitives, and
+anyone can fork it ([built-on-the-sdk.md](built-on-the-sdk.md)). So the
+watchdog, wakes, stall rule, grants, decision log, dashboard, and phone
+notifications below are general agent capabilities that Foreman uses, and a
+fork gets them too. Items 19 to 22 remove the Foreman-only code that exists
+today.
+
 ## The target loop
 
 ```mermaid
@@ -324,6 +332,70 @@ flowchart TD
   a test repository with only SDK calls.
 - **Size:** L.
 
+## Foreman on the SDK, forkable by anyone
+
+These items make the official Foreman and anyone's fork equal. They come
+before the dashboard and the decision log on the account, which should be
+built once, for every agent.
+
+### 19. Agent wakes and grants for any agent
+
+- **What:** Replace the Foreman-only check-in engine (`engine/src/foreman.rs`,
+  `doc_host/foreman.rs`) and `ForemanSettings`'s `Authority` with general
+  **agent wakes** (declared events, an interval, a coalescing window) and
+  **agent grants** (named scopes over named chats or projects, the same
+  never-list for every agent), keyed by agent definition ID.
+- **Why:** The owner's rule that Foreman is built from primitives anyone can
+  use. Today a fork can't check in or steer.
+- **Where:** `apps/openagents/crates/engine`, `proto`, `rpc`; the SDK
+  (`agents::set_wakes`, `agents::grant`, [sdk-additions.md](sdk-additions.md) S12).
+- **Acceptance:** `git grep -i foreman` in the engine, proto, and RPC finds no
+  branch on the name; a fork of Foreman under another name, with the same
+  grants, completes a check-in and a steer on a test host.
+- **Size:** L.
+
+### 20. A decision log and an autonomy card for any agent
+
+- **What:** `record_decision` loses its "Foreman only" check and writes to the
+  calling agent's own log. Settings → General → Foreman becomes an autonomy
+  card on every saved agent (its chat, wakes, grants, and log), on the
+  desktop, the phone, and the website.
+- **Why:** Same rule; and item 12 (log on the account) should be built once.
+- **Where:** `apps/openagents/crates/mcp/src/tools.rs`,
+  `apps/openagents/crates/ui/src/settings/foreman.rs`, S7.
+- **Acceptance:** Two saved agents keep separate logs; the card shows for a
+  non-Foreman agent.
+- **Size:** M.
+
+### 21. The official Foreman as a published definition
+
+- **What:** Move Foreman's playbook out of one instruction string into Agent
+  Lab skills, and publish Foreman as an agent definition with a stable ID and
+  revisions. `agent_lab::templates::foreman()` fetches it instead of
+  building a Rust constant.
+- **Why:** A fork should start from what runs, and see later changes.
+- **Where:** `crates/agent-lab/src/templates.rs`, `templates/foreman.md`, the
+  agent catalog.
+- **Acceptance:** The SDK example makes Foreman from the published
+  definition; changing the definition needs no app release.
+- **Size:** M.
+
+### 22. Fork and publish for every agent
+
+- **What:** `fork` copies a published definition (spec, skills, tests,
+  declared wakes, requested grants, never the granted powers) into the
+  caller's catalog with `forked_from`; anyone can publish their own. Agent
+  Lab's **Start from Foreman** becomes **Fork**, and NIP-AGENT exports carry
+  the same data.
+- **Why:** Anyone should be able to put their own spin on Foreman, as with
+  every custom agent.
+- **Where:** `crates/openagents-sdk/src/agents.rs`, the agent catalog
+  routes, Agent Lab, [NIP-AGENT](../../nips/openagents/NIP-AGENT.md), S13.
+- **Acceptance:** An Agent Lab test forks Foreman, changes its model and
+  stall rule, asks for its own grants, and passes Foreman's tests plus a
+  check-in, a steer, and a log entry.
+- **Size:** L.
+
 ## Order and dependencies
 
 | Order | Item | Depends on |
@@ -338,10 +410,17 @@ flowchart TD
 | 8 | Push to the phone | 4 |
 | 9 | Terminal sessions | 4 |
 | 10 | System One judgments | 4 |
-| 11 | Dashboard | 12, 13 |
-| 12 | Decision log on the account | 2 |
+| 11 | Dashboard | 12, 13, 20 |
+| 12 | Decision log on the account | 2, 20 |
 | 13 | Measurement | 4 |
 | 14–18 | Later | Phase 1 and 2 |
+| 19 | Agent wakes and grants for any agent | 2 |
+| 20 | Decision log and autonomy card for any agent | 19 |
+| 21 | Official Foreman as a published definition | — |
+| 22 | Fork and publish | 19, 21 |
+
+Build items 1, 2, and 4 (the watchdog, on by default, and the stall rule) as
+agent capabilities from the start, so they don't need rewriting in item 19.
 
 Items 1, 2, 3, and 6 are small and independent; together they would have
 removed the 71-minute stall, the 4-hour Foreman freeze, and most of the

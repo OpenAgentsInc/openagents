@@ -9,6 +9,36 @@ and, with standing authority, messages, starts, steers, and stops them.
 This folder reviews how Foreman did on its first two days (2026-10-16 and
 2026-10-17), records what went wrong, and lays out what to build next.
 
+## Foreman is a custom agent built from SDK primitives
+
+Foreman is not a special part of the app. It is a custom agent defined with
+the same OpenAgents SDK primitives anyone on the platform can use, and
+anyone can fork it to make their own version, as with every custom agent.
+Concretely, Foreman is:
+
+1. **An agent definition**: an `AgentSpec` (name, instructions, runtime
+   Claude Code, model Opus 5.5, host-default access) in the agent catalog,
+   through `openagents_sdk::agents`.
+2. **An Agent Lab experiment**: the template `agent_lab::templates::foreman()`
+   with five tests, saved, run, and promoted to an agent through
+   `openagents_sdk::agent_lab`. [`examples/foreman.rs`](../../crates/openagents-sdk/examples/foreman.rs)
+   does all of this with SDK calls only.
+3. **A placement and assignment**: a computer and a project picked with
+   `agents::place`, running the agent's runtime there.
+4. **A wake schedule**: an account schedule (`openagents_sdk::schedules`)
+   that posts into the agent's chat.
+5. **App agent tools** it calls while it runs: `list_chats`, messaging and
+   steering chats, and `record_decision`.
+
+Items 1 to 4 are open to anyone today. Item 5 and the autonomy around it
+(event wakes, standing authority, the decision log, and the Settings card)
+are still Foreman-only code from #11965. Until they become general agent
+capabilities, a fork can copy Foreman's instructions and model but can't
+check in, steer, or keep a log. [built-on-the-sdk.md](built-on-the-sdk.md)
+maps every primitive, lists each Foreman-only part and what replaces it,
+describes forking today and the target, and sketches a Foreman built from
+SDK calls only. Roadmap items 19 to 22 do the work.
+
 ## What Foreman is today
 
 | Part | Where | State on 2026-10-17 |
@@ -33,6 +63,8 @@ The user guide is [`docs/agent-lab/foreman.md`](../agent-lab/foreman.md).
   Foreman the default way issue work runs.
 - [sdk-additions.md](sdk-additions.md): the `openagents-sdk`, HTTP, and CLI
   surface that Foreman and outside harnesses need.
+- [built-on-the-sdk.md](built-on-the-sdk.md): how Foreman is made of SDK
+  primitives, what is still Foreman-only, and how anyone forks it.
 
 Related records:
 

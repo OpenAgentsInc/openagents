@@ -319,7 +319,8 @@ prompt text.
 
 **Proposal.**
 
-- Add `kind: Option<String>` (for example `"foreman_check_in"`) and
+- Add `agent: Option<String>` (the agent definition ID it wakes, for any
+  agent, not a Foreman-only kind) and
   `last_ran_at: Option<i64>` to `Schedule`, written by the host on each tick.
 - `GET /v1/schedules/{id}/health` answers `on_time | late { missed: u32 } |
   never_ran`, and two missed intervals raise an S3 attention event.
@@ -395,9 +396,72 @@ under `docs/decision-models/measurements/` before use:
 
 Foreman records each judgment's receipt with the decision that used it.
 
+## S12. Agent wakes and grants
+
+**Today.** Foreman's event wakes, coalescing, and standing authority are
+Foreman-only engine state (`apps/openagents/crates/engine/src/foreman.rs`,
+`ForemanSettings` and `Authority` in `apps/openagents/crates/proto/src/foreman.rs`),
+set from the desktop's Settings card. No SDK call reaches them, and no other
+agent can have them.
+
+**Gap.** A fork of Foreman, or any other agent, can't wake on events or be
+granted power over chats ([built-on-the-sdk.md](built-on-the-sdk.md)).
+
+**Proposal.**
+
+```rust
+pub enum Wake { ChatFinished, ChatNeedsAnswer, IssueOpened, IssueClosed, ClaimStale { hours: u32 }, ChatStalled { minutes: u32 } }
+pub struct Wakes { pub events: Vec<Wake>, pub every: Option<Duration>, pub coalesce: Duration }
+pub enum Scope { ChatMessage, ChatStart, ChatSteer, ChatStop, LandSubmit, WorkDispatch }
+pub enum Over { Chats(Vec<String>), Project(String), Account }
+pub struct Grant { pub scopes: Vec<Scope>, pub over: Over }
+
+impl Agents<'_> {
+    pub async fn set_wakes(&self, agent: &str, wakes: Wakes, cancel: &CancellationToken) -> Result<(), Error>;
+    pub async fn grant(&self, agent: &str, grant: Grant, cancel: &CancellationToken) -> Result<GrantId, Error>;
+    pub async fn revoke(&self, agent: &str, grant: &GrantId, cancel: &CancellationToken) -> Result<(), Error>;
+}
+```
+
+Routes: `PUT /v1/agent-definitions/{id}/wakes`,
+`POST /v1/agent-definitions/{id}/grants`,
+`DELETE /v1/agent-definitions/{id}/grants/{grant}`. Only the account owner
+grants; the never-list (money, keys, secrets, deploys, closing other agents'
+issues) can't be granted to any agent. The host enforces grants on every
+tool call, as it enforces standing authority today.
+
+## S13. Fork and publish agents
+
+**Today.** Agent Lab's **Start from Foreman** and the SDK example copy
+`agent_lab::templates::foreman()`, a Rust constant in `crates/agent-lab`.
+There's no fork of a saved or published definition, and public catalogs are
+outside the custom-agents delivery (`docs/custom-agents.md`).
+
+**Gap.** Nobody can fork the Foreman that actually runs, follow its later
+revisions, or publish their own for others.
+
+**Proposal.**
+
+```rust
+pub struct ForkOptions { pub name: String }
+impl Agents<'_> {
+    pub async fn fork(&self, definition: &str, options: ForkOptions, cancel: &CancellationToken) -> Result<AgentDefinition, Error>;
+    pub async fn publish(&self, definition: &str, cancel: &CancellationToken) -> Result<Published, Error>;
+    pub async fn upstream(&self, definition: &str, cancel: &CancellationToken) -> Result<Option<UpstreamChanges>, Error>;
+}
+```
+
+Routes: `POST /v1/agent-definitions/{id}/fork`,
+`POST /v1/agent-definitions/{id}/publish`,
+`GET /v1/agent-definitions/{id}/upstream`. A fork copies the spec, skills,
+test suite, declared wakes, and requested grants, records
+`forked_from: {definition, revision}`, and never copies granted powers.
+
 ## Order
 
 S1, S2, and S3 come first: they turn "outside the app" from a dead end into
 a run that Foreman can read and steer. S5 and S4 next, so Foreman dispatches
 and lands without shelling out. S6, S7, and S9 make the state shared. S8,
-S10, and S11 follow the roadmap's Phase 2.
+S10, and S11 follow the roadmap's Phase 2. S12 and S13 make Foreman a
+custom agent like any other (roadmap items 19 to 22); build S2, S3, and S7
+against agent IDs from the start so they serve every agent.
