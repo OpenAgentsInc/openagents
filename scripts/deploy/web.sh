@@ -65,6 +65,12 @@
 # DRY_RUN=1 writes the production spec and prints the writes without them.
 set -eu
 
+# Apple's Python can lack a CA bundle. Use the system bundle unless the
+# caller configured a certificate file or directory.
+if [ -z "${SSL_CERT_FILE:-}" ] && [ -z "${SSL_CERT_DIR:-}" ] && [ -r /etc/ssl/cert.pem ]; then
+    export SSL_CERT_FILE=/etc/ssl/cert.pem
+fi
+
 PROJECT=openagentsgemini
 REGION=us-central1
 REPO=us-central1-docker.pkg.dev/$PROJECT/openagents

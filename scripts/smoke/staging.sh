@@ -25,6 +25,12 @@
 # production candidate, implies --production): the gateway checks, which
 # wait for traffic (#11154), print WAIT instead of failing.
 set -eu
+# Apple's Python can lack a CA bundle. Use the system bundle unless the
+# caller configured a certificate file or directory.
+if [ -z "${SSL_CERT_FILE:-}" ] && [ -z "${SSL_CERT_DIR:-}" ] && [ -r /etc/ssl/cert.pem ]; then
+    export SSL_CERT_FILE=/etc/ssl/cert.pem
+fi
+
 case " $* " in *" --production "* | *" --candidate "*) production=1 ;; *) production= ;; esac
 if [ -z "$production" ] && [ -z "${SMOKE_SIGNUP_TOKEN:-}" ] && command -v gcloud > /dev/null 2>&1; then
     config=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
