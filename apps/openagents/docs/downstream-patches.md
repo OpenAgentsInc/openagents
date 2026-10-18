@@ -11,11 +11,14 @@ Keep fork-specific changes here so upstream updates can review each integration.
   Rust row placements and display lists, with shared fallback shaping,
   bounded row caches, and stable viewport anchors. Recorded synthetic Rust
   geometry backs nine passing JVM tests. Debug Kotlin, unit-test Kotlin, and
-  transcript Android-test Kotlin compile against B1's actual Android binding;
-  Android glyph checks and emulator performance evidence remain queued.
-  Resume on verified B1 Android checkpoint `69fa3b1b50`: port transcript source
-  roots, exact Geist assets, and existing instrumentation-test wiring without
-  changing generated bindings or scanner/configuration fixes.
+  transcript Android-test Kotlin compile against B1's actual Android binding.
+  On B1 integration base `fb59d69ea8798b94dc7ea69d23d637efd75be8e3`, the
+  focused app check completed in 13 seconds across 86 tasks; all 15 JVM tests
+  passed (nine transcript, four bootstrap, two push), confirmed by the XML
+  reports with zero failures, errors, or skips. Direct offline API 35
+  instrumentation passed 14/14 tests, including the three transcript glyph,
+  wrapping, and Canvas-origin fixtures. API 26, viewport runtime and
+  performance, Activity recreation, and physical-device checks remain queued.
 
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
   UniFFI callback on the existing key sign-in controller. Rust binds its

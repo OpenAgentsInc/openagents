@@ -1,9 +1,10 @@
 # Android transcript renderer
 
 C1 (#12084) paints the shared Rust layout with Android Views. This directory
-uses B1's generated Android binding and existing app setup. The C1 port is
-based on B1 startup fix `0219cf0002b1da0ce44ff8781d32c9e9db8a9912`;
-B1 (#12083) remains the native issue blocker for app integration.
+uses B1's generated Android binding and existing app setup. The C1 port was
+validated on B1 integration base
+`fb59d69ea8798b94dc7ea69d23d637efd75be8e3` and C1 checkpoint
+`2cfa7579c10577039b1478cd0e1bf02fad74efbf`.
 
 `TranscriptCanvas` is one View, regardless of history length. It asks the
 immutable Rust frame for visible rows and paints their logical coordinates
@@ -54,20 +55,24 @@ path and real Android fallback behavior still need the queued device checks.
 ## Check status and handoff
 
 The integrated port passed this focused check on CoderOS over B1 checkpoint
-`0219cf0002b1da0ce44ff8781d32c9e9db8a9912` with the actual generated
+`fb59d69ea8798b94dc7ea69d23d637efd75be8e3` with the actual generated
 Android binding and at most two Gradle workers:
 
 ```sh
-scripts/android/app.sh compile
+nix develop ./os#android --command bash -c 'cd apps/openagents && CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app" scripts/android/app.sh compile :app:assembleDebug :app:assembleDebugAndroidTest'
 ```
 
-The check passed in 18 seconds (48 tasks), including debug/release Kotlin,
+The check passed in 13 seconds (86 tasks), including debug/release Kotlin,
 Android-test compilation, and 15 JVM tests: nine transcript, four bootstrap,
-and two push tests, with zero failures, errors, or skips. The three
-instrumentation methods compile but have not run. No C1 native rebuild, APK
-assembly, emulator, or performance run took place. Final B1 narrows its
-`platform/tests` exclusion to production compilation; Android-test compilation
-processed both `SemanticViewAdapterTest` and C1's explicit transcript test root.
+and two push tests. XML reports show zero failures, errors, or skips. The
+debug and Android-test APKs assembled with matching signing certificates. The
+isolated offline API 35 AndroidJUnitRunner passed all 14 tests: two semantic
+adapter, nine scanner, and three transcript text tests. The transcript tests
+verified API 35 glyph advances, Rust wrapping, and Canvas text origins. API 26,
+viewport runtime and performance, Activity recreation, and physical-device
+checks remain unrun. Final B1 narrows its `platform/tests` exclusion to
+production compilation; Android-test compilation processed both
+`SemanticViewAdapterTest` and C1's explicit transcript test root.
 Offline API 26/35 glyph, wrapping, runtime, and frame-pacing checks are listed
 in the central master-delegation After-close table; physical qualification is
 also in `NEEDS_OWNER.md`.
@@ -80,9 +85,10 @@ also in `NEEDS_OWNER.md`.
   stub are test doubles. These are not Android glyph metrics or device output.
 - `src/androidTest`: three checks using B1's existing `InstrumentationTestCase`
   setup for actual fallback advances, Rust/Android wrapping, and exact Canvas
-  text origins. The generated Android binding supplies `setDebugEntries` and
-  `debugLineStarts`; no host-library binding is substituted. Run on API 26 and API 35 in
-  isolated offline test state, using only synthetic layout entries.
+  text origins. These passed on API 35 in isolated offline test state with
+  synthetic layout entries. Run them on API 26 as well. The generated Android
+  binding supplies `setDebugEntries` and `debugLineStarts`; no host-library
+  binding is substituted.
 - Capture and verification tools, full six-frame/129-row recordings, font and
   library hashes, and logs stay in the chat's `openagents scratch` directory.
 
