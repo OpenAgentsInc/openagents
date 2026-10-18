@@ -25,8 +25,11 @@ use super::{Failure, event, failed};
 use crate::EXIT_FAILURE;
 use crate::out::Output;
 
-/// The engine's scripts, as this binary was built with them.
-const SCRIPTS: [(&str, &str); 6] = [
+/// The engine's scripts, as this binary was built with them: the driver,
+/// its build runner, and every bench module the briefing imports, so a
+/// computer without the repository's scripts (a GCE pool host) runs the
+/// whole engine (#12058).
+const SCRIPTS: [(&str, &str); 12] = [
     (
         "scripts/work/work_issue.py",
         include_str!("../../../scripts/work/work_issue.py"),
@@ -43,9 +46,6 @@ const SCRIPTS: [(&str, &str); 6] = [
         "scripts/bench/briefed-ab/common.py",
         include_str!("../../../scripts/bench/briefed-ab/common.py"),
     ),
-    // The kinds briefing and the second attempt, both on the default path
-    // (#12058: a pool host without the repository's scripts stopped with
-    // "No module named 'kinds'").
     (
         "scripts/bench/briefed-ab/kinds.py",
         include_str!("../../../scripts/bench/briefed-ab/kinds.py"),
@@ -54,12 +54,31 @@ const SCRIPTS: [(&str, &str); 6] = [
         "scripts/bench/briefed-ab/rebrief.py",
         include_str!("../../../scripts/bench/briefed-ab/rebrief.py"),
     ),
+    (
+        "scripts/bench/briefed-ab/acceptance.py",
+        include_str!("../../../scripts/bench/briefed-ab/acceptance.py"),
+    ),
+    (
+        "scripts/bench/briefed-ab/ab.py",
+        include_str!("../../../scripts/bench/briefed-ab/ab.py"),
+    ),
+    (
+        "scripts/bench/briefed-ab/briefer_arms.py",
+        include_str!("../../../scripts/bench/briefed-ab/briefer_arms.py"),
+    ),
+    (
+        "scripts/bench/briefed-ab/haiku_briefer.py",
+        include_str!("../../../scripts/bench/briefed-ab/haiku_briefer.py"),
+    ),
+    (
+        "scripts/bench/briefed-ab/prepare.py",
+        include_str!("../../../scripts/bench/briefed-ab/prepare.py"),
+    ),
+    (
+        "scripts/bench/briefed-ab/stall.py",
+        include_str!("../../../scripts/bench/briefed-ab/stall.py"),
+    ),
 ];
-
-/// Bench modules the scripts import only under levers the engine never
-/// sets, so they are not built in.
-#[cfg(test)]
-const LEVER_ONLY: [&str; 4] = ["haiku_briefer", "briefer_arms", "acceptance", "ab"];
 
 /// How a green change lands, as the engine reads it.
 pub(super) fn land_word(given: Option<&str>, policy_main: bool) -> Result<&'static str, String> {
@@ -548,10 +567,7 @@ mod tests {
                     .or_else(|| line.strip_prefix("from "))
                     .and_then(|rest| rest.split([' ', ',', '.']).next())
                     .unwrap_or_default();
-                if module.is_empty()
-                    || LEVER_ONLY.contains(&module)
-                    || !bench.join(format!("{module}.py")).exists()
-                {
+                if module.is_empty() || !bench.join(format!("{module}.py")).exists() {
                     continue;
                 }
                 let path = format!("scripts/bench/briefed-ab/{module}.py");
