@@ -9,6 +9,8 @@ import uniffi.openagents_core.VoiceMediaListener
 import uniffi.openagents_core.VoiceMediaOperation
 import uniffi.openagents_core.VoiceMediaRequest
 import uniffi.openagents_core.VoiceNetworkState as CoreVoiceNetworkState
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /** A media result returned to Rust. SDP is present only for offer operations. */
 data class VoiceMediaResult(
@@ -76,11 +78,22 @@ class AndroidVoiceMediaBridge(
     private val platformEventHandler: (VoiceMediaPlatformEvent) -> Unit = {},
 ) : VoiceMediaListener, AutoCloseable {
     private val lock = Any()
+    // Serializes callbacks with close without holding the state monitor across callbacks.
+    private val callbackGate = ReentrantLock()
     private val waitingForBinding = ArrayDeque<VoiceMediaRequest>()
     private val inFlight = mutableSetOf<ULong>()
-    private var completer: VoiceMediaCompleter? = null
-    private var platformStateSink: ((VoiceMediaPlatformEvent) -> Unit)? = null
+    private data class Binding(
+        val generation: Long,
+        val completer: VoiceMediaCompleter,
+        val stateSink: ((VoiceMediaPlatformEvent) -> Unit)?,
+    )
+
+    private var generation = 0L
+    private var binding: Binding? = null
     private var closed = false
+
+    private fun isActiveLocked(current: Binding): Boolean =
+        !closed && generation == current.generation && binding === current
 
     init {
         driver.setEventListener(::receivePlatformEvent)
@@ -127,17 +140,18 @@ class AndroidVoiceMediaBridge(
         return bind(completer, null)
     }
 
-    private fun bind(
+    internal fun bind(
         completer: VoiceMediaCompleter,
         stateSink: ((VoiceMediaPlatformEvent) -> Unit)?,
     ): Boolean {
-        val waiting = synchronized(lock) {
-            if (closed || this.completer != null) return false
-            this.completer = completer
-            this.platformStateSink = stateSink
-            waitingForBinding.toList().also { waitingForBinding.clear() }
+        val (current, waiting) = synchronized(lock) {
+            if (closed || binding != null) return false
+            generation += 1
+            val current = Binding(generation, completer, stateSink)
+            binding = current
+            current to waitingForBinding.toList().also { waitingForBinding.clear() }
         }
-        waiting.forEach(::dispatch)
+        waiting.forEach { dispatch(it, current) }
         return true
     }
 
@@ -149,7 +163,7 @@ class AndroidVoiceMediaBridge(
 
         val ready = synchronized(lock) {
             if (closed || !inFlight.add(request.requestId)) return
-            val current = completer
+            val current = binding
             if (current == null) {
                 // Rust bounds outstanding requests to four while the call starts.
                 check(waitingForBinding.size < 4)
@@ -162,15 +176,9 @@ class AndroidVoiceMediaBridge(
         ready?.let { (queued, current) -> dispatch(queued, current) }
     }
 
-    private fun dispatch(request: VoiceMediaRequest) {
-        val current = synchronized(lock) {
-            if (closed) return
-            completer ?: return
-        }
-        dispatch(request, current)
-    }
-
-    private fun dispatch(request: VoiceMediaRequest, current: VoiceMediaCompleter) {
+    private fun dispatch(request: VoiceMediaRequest, current: Binding) {
+        val active = synchronized(lock) { isActiveLocked(current) }
+        if (!active) return
         try {
             driver.execute(request) { result -> complete(request, current, result) }
         } catch (_: Exception) {
@@ -184,13 +192,14 @@ class AndroidVoiceMediaBridge(
 
     private fun complete(
         request: VoiceMediaRequest,
-        current: VoiceMediaCompleter,
+        current: Binding,
         result: VoiceMediaResult,
     ) {
-        synchronized(lock) {
-            if (closed || completer !== current || !inFlight.remove(request.requestId)) return
-            // Keep close behind the callback so a result cannot arrive after close returns.
-            current.complete(
+        callbackGate.withLock {
+            synchronized(lock) {
+                if (!isActiveLocked(current) || !inFlight.remove(request.requestId)) return
+            }
+            current.completer.complete(
                 request.requestId,
                 result.failure,
                 result.sdp,
@@ -201,24 +210,37 @@ class AndroidVoiceMediaBridge(
     }
 
     private fun receivePlatformEvent(event: VoiceMediaPlatformEvent) {
-        synchronized(lock) {
+        val current = synchronized(lock) {
             if (closed) return
-            platformEventHandler.invoke(event)
-            platformStateSink?.invoke(event)
+            binding
+        }
+        callbackGate.withLock {
+            val active = synchronized(lock) {
+                !closed && (current == null || isActiveLocked(current))
+            }
+            if (!active) return
+            platformEventHandler(event)
+            val sink = current?.stateSink ?: return
+            val stillActive = synchronized(lock) { isActiveLocked(current) }
+            if (stillActive) sink(event)
         }
     }
 
     override fun close() {
-        val shouldCloseDriver = synchronized(lock) {
-            if (closed) return
-            closed = true
-            waitingForBinding.clear()
-            inFlight.clear()
-            true
-        }
-        if (shouldCloseDriver) {
-            driver.setEventListener(null)
-            driver.close()
+        callbackGate.withLock {
+            val shouldCloseDriver = synchronized(lock) {
+                if (closed) return
+                closed = true
+                generation += 1
+                binding = null
+                waitingForBinding.clear()
+                inFlight.clear()
+                true
+            }
+            if (shouldCloseDriver) {
+                driver.setEventListener(null)
+                driver.close()
+            }
         }
     }
 }

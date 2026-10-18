@@ -62,16 +62,36 @@ Keep fork-specific changes here so upstream updates can review each integration.
   existing `openagents_voice_session` path. The mobile FFI owns typed audio
   route, focus, network, and proximity state; the Android bridge forwards
   media requests and platform events without taking ownership of call state.
-  No WebRTC artifact is pinned. The upstream
+  The official `webrtc-sdk/android` v150.7871.01 release is a supported
+  dependency candidate. Its tagged README names
+  `io.github.webrtc-sdk:android:150.7871.01`, and its tagged
+  `gradle.properties` sets that coordinate and version. The tagged release
+  workflow fetches AARs from a selected `webrtc-sdk/webrtc-build` run; the
+  publish workflow then downloads `libwebrtc.aar` from the matching GitHub
+  release, adjusts M150 Java class files to Java 17, and publishes the AAR
+  under that Maven version. The workflow selection uses a manually supplied
+  build run ID, so the repository does not itself verify that run's source
+  revision against the release tag. An earlier read-only check found that the
+  Maven AAR digest differed from each GitHub release AAR digest. This is
+  consistent with the documented class-version adjustment, but we have not
+  reproduced the transform or downloaded the artifact.
+
+  The tagged POM declares BSD-3-Clause, while the repository's top-level
+  `LICENSE` is MIT and `Licenses/WEBRTC.md` contains WebRTC BSD and Apache
+  notices for bundled components. The tagged publish workflow uploads the
+  AAR and generated source and Javadoc jars, not a separate notice file. We
+  preserved the tagged MIT text and bundled license collection in Android app
+  assets and recorded their source paths in `THIRD_PARTY_NOTICES.md`. The
+  upstream repository provides a pinned update path in `RELEASING.md`; the
+  Android dependency pin still needs to be added to
+  `apps/android/app/build.gradle.kts` when the coordinator admits that hunk.
+  The
   [`webrtc-sdk/android` release](https://github.com/webrtc-sdk/android/releases/tag/v150.7871.01)
-  points to source commit `7b6390f`, and its Maven POM points to that GitHub
-  repository. The earlier exact-byte review found that its Maven AAR digest
-  did not match any published GitHub AAR digest. The Maven signature exists,
-  but its signer identity is unverified; the AAR and source tree do not provide
-  a complete third-party notice inventory tied to those bytes. The real media
-  driver, route and focus controls, RTC teardown, lifecycle checks, and device
-  call checks remain pending while this dependency review and build admission
-  are unresolved.
+  points to source commit `7b6390f`. The Rust-owned media contract and fake
+  bridge cover request delivery, typed platform state, callback fencing, and
+  closure. A WebRTC-backed driver, Android permission and route integration,
+  interruption and network handling, reconnect and repeated-call checks, and
+  device calls remain pending.
 
 - OpenAgents #12081: Android startup initializes the JVM context and platform
   certificate verifier before any live Rust client can start. Kotlin retries

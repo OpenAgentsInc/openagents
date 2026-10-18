@@ -3,6 +3,7 @@ package com.openagents.app.voice
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -166,6 +167,62 @@ class AndroidVoiceMediaBridgeTest {
             afterRecovery,
         )
         assertEquals(afterRecovery, events)
+    }
+
+    @Test
+    fun callbacksCanWaitForAnotherThreadToReenterTheBridge() {
+        lateinit var bridge: AndroidVoiceMediaBridge
+        val driver = FakeVoiceMediaDriver()
+        val callbackFailures = mutableListOf<Throwable>()
+        bridge = AndroidVoiceMediaBridge(driver) {
+            assertReentrantBridgeCall(callbackFailures) {
+                bridge.`onRequest`(request(22u))
+            }
+        }
+        assertTrue(
+            bridge.bind(
+                VoiceMediaCompleter { _, _, _, _, _ ->
+                    assertReentrantBridgeCall(callbackFailures) {
+                        bridge.`onRequest`(request(23u))
+                    }
+                },
+                {
+                    assertReentrantBridgeCall(callbackFailures) {
+                        bridge.`onRequest`(request(24u))
+                    }
+                },
+            ),
+        )
+
+        driver.emit(VoiceMediaPlatformEvent.NetworkChanged(VoiceNetworkState.AVAILABLE))
+        bridge.`onRequest`(request(21u))
+        driver.reply(23uL, VoiceMediaResult(sdp = "fixture-answer"))
+
+        assertTrue(callbackFailures.isEmpty(), "callback could not reenter the bridge: $callbackFailures")
+        assertEquals(listOf(22uL, 24uL, 21uL, 23uL), driver.requests.map { it.requestId })
+        bridge.close()
+    }
+
+    private fun assertReentrantBridgeCall(
+        failures: MutableList<Throwable>,
+        action: () -> Unit,
+    ) {
+        val finished = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>()
+        Thread {
+            try {
+                action()
+            } catch (error: Throwable) {
+                failure.set(error)
+            } finally {
+                finished.countDown()
+            }
+        }.start()
+        if (!finished.await(2, TimeUnit.SECONDS)) {
+            failures += IllegalStateException("bridge monitor blocked callback reentry")
+            return
+        }
+        failure.get()?.let(failures::add)
     }
 
     private fun request(
