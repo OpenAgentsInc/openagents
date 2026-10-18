@@ -1318,6 +1318,51 @@ impl Client {
         list
     }
 
+    /// Validate a draft against this host's live catalog. Failed discovery leaves the draft alone.
+    pub async fn available_chat_config(
+        &self,
+        device_id: &str,
+        config: ChatConfig,
+    ) -> Option<ChatConfig> {
+        if openagents_proto::saved_agent::is_agent_chat(Some(&config)) {
+            return Some(config);
+        }
+        let (harnesses, live) = match self.inner.backend() {
+            Backend::Demo(demo) => (demo.list_harnesses(device_id).await, None),
+            Backend::Live(live) => {
+                let value = live
+                    .relay
+                    .call(
+                        device_id,
+                        openagents_rpc::methods::LIST_HARNESSES,
+                        serde_json::json!({}),
+                    )
+                    .await
+                    .ok()?;
+                (
+                    serde_json::from_value::<Vec<HarnessInfo>>(value).ok()?,
+                    Some(live),
+                )
+            }
+        };
+        let harness = crate::catalog_selection::harness(&config, &harnesses)?;
+        let models = if let Some(live) = live {
+            let value = live
+                .relay
+                .call(
+                    device_id,
+                    openagents_rpc::methods::LIST_MODELS,
+                    serde_json::json!({"harness": harness}),
+                )
+                .await
+                .ok()?;
+            serde_json::from_value::<Vec<ModelInfo>>(value).ok()?
+        } else {
+            self.inner.demo()?.list_models(harness).await
+        };
+        crate::catalog_selection::config(&config, harness, &models)
+    }
+
     /// Last known model choices for a computer, or the bundled list before discovery.
     pub fn cached_models(&self, device_id: &str, harness: &str) -> Vec<ModelInfo> {
         if device_id.is_empty() {

@@ -3333,6 +3333,11 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
     func chatReadOnly(id: String)  -> Bool
     
     /**
+     * Keep a supported draft, or choose from the selected host's successful live catalog.
+     */
+    func availableChatConfig(deviceId: String, config: ChatConfig) async throws  -> ChatConfig?
+    
+    /**
      * Returns immediately. Callbacks are dispatched on the core runtime; the
      * platform must hop to its media/UI executor and call complete_media.
      */
@@ -4235,6 +4240,25 @@ open func chatReadOnly(id: String) -> Bool  {
         FfiConverterString.lower(id),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Keep a supported draft, or choose from the selected host's successful live catalog.
+     */
+open func availableChatConfig(deviceId: String, config: ChatConfig)async throws  -> ChatConfig?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreclient_available_chat_config(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(deviceId),FfiConverterTypeChatConfig_lower(config)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeChatConfig.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
     /**
@@ -25479,6 +25503,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_chat_read_only() != 30414) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_available_chat_config() != 58721) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_start_voice() != 63530) {

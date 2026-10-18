@@ -24,6 +24,7 @@ mod custom_agents;
 mod identity;
 mod demo;
 pub use demo::*;
+mod host_config;
 mod labs;
 pub use identity::*;
 mod web_login;

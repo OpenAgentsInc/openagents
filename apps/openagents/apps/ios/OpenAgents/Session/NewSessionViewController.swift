@@ -37,6 +37,17 @@ struct HostOption: Equatable {
     var displayName: String {
         name == AppModel.cloudHostName ? "OpenAgents Cloud" : name
     }
+
+    /// OpenAgents Cloud for "Run on" next to a project's checkouts: it has
+    /// none, so without this the menu's only cloud choice was the account
+    /// chat (#12020). Picking it runs the session there with no project.
+    static func cloudBesides(_ checkouts: [ProjectOption], in hosts: [HostOption], continuationDevice: String?) -> HostOption? {
+        hosts.first { h in
+            h.name == AppModel.cloudHostName
+                && !checkouts.contains { $0.device == h.id }
+                && (continuationDevice == nil || h.id == continuationDevice)
+        }
+    }
 }
 
 struct ModelChoice: Equatable {
@@ -206,6 +217,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// name while a fresh one comes back over the relay.
     private static var modelCache: [String: [ModelChoice]] = [:]
     private var modelsDevice: String?
+    private var modelLoadRevision: UInt64 = 0
 
     /// Models for the draft's host: cached (or the built-in catalog) at once,
     /// then the host's own list.
@@ -213,15 +225,29 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         let device = deviceId
         guard device != modelsDevice else { return refreshChips() }
         modelsDevice = device
+        modelLoadRevision += 1
+        let revision = modelLoadRevision
         models = Self.modelCache[device] ?? Self.catalogModels()
         refreshChips()
         Task { [weak self] in
             guard let self else { return }
+            let requested = self.draft
             let fresh = await self.app.models(for: device)
             guard !fresh.isEmpty else { return }
+            guard self.modelsDevice == device, self.modelLoadRevision == revision else { return }
             Self.modelCache[device] = fresh
-            guard self.modelsDevice == device else { return }
             self.models = fresh
+            self.refreshChips()
+            guard self.continuation == nil, self.app.customAgents?.selectionActive() != true,
+                  let client = self.app.client else { return }
+            let config = ChatConfig(harness: requested.harness, model: requested.model, reasoning: requested.effort, modelOptions: [:], sandbox: .workspaceWrite)
+            guard let selected = try? await client.availableChatConfig(deviceId: device, config: config),
+                  self.modelsDevice == device, self.modelLoadRevision == revision,
+                  self.draft == requested, !self.created,
+                  self.app.customAgents?.selectionActive() != true else { return }
+            self.draft.harness = selected.harness
+            self.draft.model = selected.model
+            self.draft.effort = selected.reasoning
             self.refreshChips()
         }
     }
@@ -311,7 +337,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// Run on OpenAgents: we answer here, with no computer.
     private func openAgentsChoice() -> [UIMenuElement] {
         guard offersOpenAgents else { return [] }
-        return [UIAction(title: "OpenAgents", subtitle: "We answer here, no computer needed", image: UIImage(systemName: "cloud"), state: onOpenAgents ? .on : .off) { [weak self] _ in
+        return [UIAction(title: "OpenAgents", subtitle: "We answer here, no computer needed", image: BrandMarks.image(for: "openagents", side: 18), state: onOpenAgents ? .on : .off) { [weak self] _ in
             self?.onOpenAgents = true
             self?.refreshChips()
         }]
@@ -382,21 +408,20 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// home.
     private func hostMenu() -> UIMenu {
         let checkouts = self.checkouts
+        var hosts: [UIMenuElement] = openAgentsChoice()
         if !checkouts.isEmpty {
-            return UIMenu(title: "Run on", children: openAgentsChoice() + checkouts.map { p in
+            hosts += checkouts.map { p in
                 let shared = checkouts.filter { $0.device == p.device }.count > 1
                 return UIAction(title: p.deviceName, subtitle: shared ? p.path : (p.online ? "Online" : "Offline"), image: UIImage(systemName: "desktopcomputer"), state: !onOpenAgents && p.id == draft.projectId ? .on : .off) { [weak self] _ in
                     self?.onOpenAgents = false
                     self?.pickCheckout(p)
                 }
-            })
-        }
-        var hosts: [UIMenuElement] = openAgentsChoice() + app.hostOptions.filter { continuation == nil || $0.id == continuation?.deviceId() }.map { h in
-            UIAction(title: h.displayName, subtitle: h.online ? "Online" : "Offline", image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: !onOpenAgents && h.id == draft.hostId ? .on : .off) { [weak self] _ in
-                self?.onOpenAgents = false
-                self?.draft.hostId = h.id
-                self?.loadModels()
             }
+            if let cloud = HostOption.cloudBesides(checkouts, in: app.hostOptions, continuationDevice: continuation?.deviceId()) {
+                hosts.append(hostAction(cloud, leavingProject: true))
+            }
+        } else {
+            hosts += app.hostOptions.filter { continuation == nil || $0.id == continuation?.deviceId() }.map { hostAction($0) }
         }
         if continuation == nil, app.offersCloudHost, app.cloudHostDevice?.online != true {
             let starting = app.cloudHost?.running == true
@@ -414,6 +439,23 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             })
         }
         return UIMenu(title: "Run on", children: hosts)
+    }
+
+    /// A project-less session on `h`, in its own folder there; offered next
+    /// to a project's checkouts, it says it leaves the project.
+    private func hostAction(_ h: HostOption, leavingProject: Bool = false) -> UIAction {
+        let status = h.online ? "Online" : "Offline"
+        return UIAction(title: h.displayName, subtitle: leavingProject ? "No project · \(status)" : status, image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: !onOpenAgents && draft.projectId == nil && h.id == draft.hostId ? .on : .off) { [weak self] _ in
+            guard let self else { return }
+            self.onOpenAgents = false
+            if self.draft.projectId != nil {
+                self.draft.projectId = nil
+                self.draft.branch = nil
+                self.draft.worktree = false
+            }
+            self.draft.hostId = h.id
+            self.loadModels()
+        }
     }
 
     private func branchMenu() -> UIMenu {
