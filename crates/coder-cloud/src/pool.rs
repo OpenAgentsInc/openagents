@@ -883,6 +883,12 @@ oa_build() {
     flock -u 8; exec 8>&-; return 0
   fi
   git checkout -q --detach "$rev" || return 2
+  # The runs' checks build --offline; apps/openagents is its own workspace
+  # with git dependencies (gpui) the root build never fetches.
+  if [ -f apps/openagents/Cargo.toml ]; then
+    (cd apps/openagents && cargo fetch --locked -q) >/tmp/oa-pool-fetch.log 2>&1 \
+      || { tail -n 20 /tmp/oa-pool-fetch.log >&2; flock -u 8; exec 8>&-; return 3; }
+  fi
   # The build scripts stamp the commit and tree only from the environment
   # (d765f537cb), and the install below requires a clean stamp of $rev.
   local dirty=0
@@ -1657,6 +1663,7 @@ mod tests {
             ["toolchain install 1.98.1 --profile minimal -c rustfmt -c clippy"]
         );
         assert!(BUILD.contains("oa_toolchains \"$rev\" ||"));
+        assert!(BUILD.contains("(cd apps/openagents && cargo fetch --locked -q)"));
     }
 
     #[test]
