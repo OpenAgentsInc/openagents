@@ -76,7 +76,15 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     // keeps the Coder issue flow.
     // `briefed:codex`, `briefed:opencode` and `briefed:gemini` run the same
     // briefing and checks on Codex, OpenCode and Gemini (#11308).
-    let engine = args.option("engine").unwrap_or("briefed");
+    let target_gce = target == super::placement::Target::Gce;
+    coder_cloud::budget::act_for(args.option("agent"));
+    // The pool's hosts carry no Claude login, so the briefed agent runs on
+    // Codex there (the ChatGPT copy the pool sends) unless --engine says.
+    let engine = args.option("engine").unwrap_or(if target_gce {
+        "briefed:codex"
+    } else {
+        "briefed"
+    });
     let briefed = match engine {
         "briefed" | "briefed:codex" | "briefed:opencode" | "briefed:gemini" => true,
         "bare" => false,
@@ -86,7 +94,9 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             )));
         }
     };
-    if briefed {
+    // `--on gce` runs every engine on the granted pool (#12058); the
+    // briefed agent elsewhere runs here or on openagents.com's work hosts.
+    if briefed && !target_gce {
         return briefed_work(output, args, &spec, target, engine).await;
     }
     if target != super::placement::Target::Here
@@ -146,6 +156,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             parallel,
             land,
             engine_fallback,
+            engine: engine.to_owned(),
         };
         return super::gce::work(output, request).await;
     }

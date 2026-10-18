@@ -890,10 +890,10 @@ to check whether the newer revision already contains your commits.
 `promote` copies the spec of the revision serving the traffic (not the
 service template, which can be a tagged test revision), swaps only the
 `web` image, writes JSON so `CODER_CHAT_SYNC` stays `"on"`, and moves the
-`new` tag. The automation account is still refused `actAs`, so the script
-retries `replace` and `update-traffic` once as the default account
-(`chris@`). `--production` on the smoke asks one question, makes no
-account, and skips the sign-in checks.
+`new` tag. Every write runs as the automation account, with no retry as a
+person ([automation-account.md](automation-account.md), since 2026-10-17).
+`--production` on the smoke asks one question, makes no account, and skips
+the sign-in checks.
 
 First run: commit `dba9b59ff8`, Cloud Build `3b9081ea`, image
 `openagents/openagents-web@sha256:8f60ac6514ae03a2fef5312952c6257f8aa3473491a34d8788e60cb38a143d80`.
@@ -1225,3 +1225,16 @@ the protected LiveKit tag), so the writes went through the script's chris@
 fallback.
 
 Rollback: `scripts/deploy/web.sh rollback coder-web-4be3621361-20261014085257`.
+
+### 2026-10-18 02:27 UTC: production deploys run on the automation account (#12058)
+
+The deny on `actAs` over the runtime account was narrowed (the runtime
+account no longer carries the protected LiveKit tag;
+[automation-account.md](automation-account.md)), and `web.sh` no longer
+retries as `chris@`. Proof, with only the automation account's
+configuration: `WEB_DEPLOY_TAG=saproof scripts/deploy/web.sh promote` of the
+image production already served applied the no-traffic candidate
+`coder-web-e8c3eeb00a-20261018022721`, and its smoke was 58 passed, 0 failed,
+2 skipped, and 8 waiting for traffic. The tag was removed afterwards.
+`coder-web-e8c3eeb00a-20261017185349` kept 100% of traffic; `/health`,
+`/openapi.json` and `/docs` answered 200 before and after.

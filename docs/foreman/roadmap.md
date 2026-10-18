@@ -199,6 +199,13 @@ flowchart TD
   on the OpenAgents Cloud board, and `pgrep -x cargo` on the orchestrating
   computer stays at 0.
 - **Size:** M.
+- **Status (2026-10-17, #12037, #12058):** the template dispatches issue
+  work with `openagents chat work --on gce --land queue --agent ID` (the
+  briefed agent on Codex on a pool host), and `cloud up` runs only within
+  the compute budget granted to the agent's definition ID
+  (`openagents cloud budget --agent ID`), on the automation account.
+  The `work_issues` app tool and the SDK's `Work`/`Pool` client (S5) are
+  [#12062](https://github.com/OpenAgentsInc/openagents/issues/12062).
 
 ### 6. Land through `openagents land submit`
 

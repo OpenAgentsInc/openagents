@@ -21,6 +21,8 @@ fn pool() -> Pool {
         max_hosts: 1,
         idle_minutes: 10,
         slots_per_host: 2,
+        gcloud_config: None,
+        account: None,
     }
 }
 fn host() -> Host {

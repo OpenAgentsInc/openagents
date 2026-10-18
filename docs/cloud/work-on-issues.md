@@ -70,7 +70,7 @@ A run always uses the requesting person's own Claude sign-in:
 | GitHub tools | `/chat/{id}/github` has "Work on an issue"; after a change on an issue, "Work on this issue". |
 | Phone and web boards | Runs are items on the `OpenAgents Cloud` board of `GET /v1/agents`, titled `#N` and the issue's title, with status, engine, time, cost and tokens so far (the engine's `cost` line after each attempt; unknown stays unknown), and a line with the stage (#11250): `waiting for a computer`, `starting`, `finding files`, `coding`, `coding again with Claude Code`, `checks`, `landing`, `queued <entry>`, then `queued <entry>`, `pull request <url>`, `committed <commit>`, `failed: <reason>` or `stopped`. The web draws the issue, commit and pull request as links. Stop reaches them. |
 | API | `POST /v1/work {repo, issue, land: pr\|queue\|none, engine?: briefed\|bare\|solver}` (`solver`: Solver in the cloud, [solver-on-gcp.md](solver-on-gcp.md)) → `201 {id, url, events}`; `GET /v1/work`, `GET /v1/work/{id}?after=N&wait=S`, `GET /v1/work/{id}/events` (server-sent `progress`, `state`, `result`), `POST /v1/work/{id}/cancel`. Auth: `Authorization: Bearer sess_…` (`coder login`), agent-work accounts only. |
-| CLI | `openagents chat work --issues N` runs the briefed agent here (scripts built into the binary); `--on boat\|gce` sends the issues to `/v1/work`; `--engine bare` keeps the Coder issue flow. |
+| CLI | `openagents chat work --issues N` runs the briefed agent here (scripts built into the binary); `--on boat` sends the issues to `/v1/work`; `--on gce` runs them on the granted GCE pool, on Codex by default, within its compute budget ([gce-pool.md](gce-pool.md#the-engine-on-a-pool-host)); `--engine bare` keeps the Coder issue flow. |
 
 ## Work hosts
 

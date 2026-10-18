@@ -59,10 +59,9 @@
 # full --production smoke against openagents.com, the 8 gateway checks
 # included (SMOKE=0 skips it). Every step prints its time.
 #
-# Reads run as the automation account (CLOUDSDK_CONFIG, default
-# ~/work/.secrets/gcloud-sa-config). Where that account is refused actAs on
-# production's runtime account, the write is retried once with the default
-# gcloud account (chris@), as docs/deployment/openagents-web.md describes.
+# Reads and writes run as the automation account (CLOUDSDK_CONFIG, default
+# ~/work/.secrets/gcloud-sa-config), production included, with no fallback
+# to a person's gcloud login (docs/deployment/automation-account.md).
 # DRY_RUN=1 writes the production spec and prints the writes without them.
 set -eu
 
@@ -87,19 +86,17 @@ now() { date +%s; }
 say() { printf '%s\n' "$*" >&2; }
 took() { say "  $1: $(( $(now) - $2 )) s"; }
 
-# A write that may need chris@: the automation account first, then once
-# with the default gcloud configuration if it was refused.
+# A write, as the automation account only: no person's login is used
+# (#12058). A refusal stops the deploy and says which permission is missing.
 apply() {
     if [ -n "${DRY_RUN:-}" ]; then say "  DRY_RUN: gcloud $*"; return 0; fi
     log=$STATE/apply.log
     if g "$@" > "$log" 2>&1; then cat "$log" >&2; return 0; fi
     cat "$log" >&2
     if grep -qi 'actAs\|PERMISSION_DENIED\|does not have permission' "$log"; then
-        say "The automation account was refused; retrying with the default gcloud account."
-        env -u CLOUDSDK_CONFIG gcloud "$@"
-    else
-        return 1
+        say "The automation account was refused (above). Grant it the missing role; see docs/deployment/automation-account.md."
     fi
+    return 1
 }
 
 digest() { # IMAGE:TAG -> sha256:..., or nothing

@@ -127,7 +127,7 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         build's command tree declares it; one that changes something here
         waits for this; one that moves money or shows a secret never runs
         from the chat.
-  work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|briefed:codex|briefed:opencode|briefed:gemini|bare]
+  work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|briefed:codex|briefed:opencode|briefed:gemini|bare] [--agent ID]
         Work several issues: NUMBERS such as 10050,10051, or a LABEL's open
         issues. By default the briefed agent works each one (--engine
         briefed): a briefing of the files the issue needs, the agent with
@@ -135,9 +135,11 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         instead when the briefing is weak, the checks keep failing, or a
         capability is missing (it says which), then the landing queue
         (--land queue, or main) or a pull request (--land pr; none commits
-        only). Here it uses this computer's Claude Code login; with --on it
-        goes to openagents.com's work hosts under your login (coder login)
-        and your own Claude login from Settings > Claude. Each issue ends
+        only). Here it uses this computer's Claude Code login; with --on boat
+        it goes to openagents.com's work hosts under your login (coder login)
+        and your own Claude login from Settings > Claude; with --on gce it
+        runs on the GCE pool (below), on Codex (briefed:codex) unless
+        --engine says otherwise. Each issue ends
         with its engine, time, cost (unknown when not reported), checks,
         and pull request or landing entry. --engine briefed:codex runs the
         same briefing and checks on Codex CLI, briefed:opencode on OpenCode,
@@ -179,7 +181,11 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         go in the run record. Without a live grant it refuses; it never
         runs elsewhere. Engine logins use the ChatGPT copy first, or with
         --engine-fallback, Codex's OpenAI key or Grok Build's XAI_API_KEY,
-        as for boat; docs/cloud/gce-pool.md.
+        as for boat. Runs stay inside the pool's compute budget (`openagents
+        cloud budget`): none starts once the 24-hour cap is spent, and one
+        that reaches the per-run cap is stopped. --agent ID (or
+        OPENAGENTS_AGENT_ID) names the agent definition this runs for; an
+        agent grows the pool only under its own grant; docs/cloud/gce-pool.md.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
@@ -234,6 +240,7 @@ const OPTIONS: &[&str] = &[
     "template",
     "engine",
     "project",
+    "agent",
 ];
 const SWITCHES: &[&str] = &[
     "scratch",

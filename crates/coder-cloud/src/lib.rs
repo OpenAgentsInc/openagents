@@ -11,6 +11,7 @@ use std::{
 };
 
 pub mod boat_backend;
+pub mod budget;
 pub mod claude;
 pub mod claude_task;
 pub mod gce_backend;

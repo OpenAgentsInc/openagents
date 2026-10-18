@@ -24,20 +24,29 @@
 //!   (`gcloud compute start-iap-tunnel`), or straight to the internal
 //!   address with `OA_POOL_SSH=internal` from inside the VPC.
 //!
+//! - **The budget** (#12058, [`coder_cloud::budget`]). A spend cap over
+//!   the last 24 hours and per run, a hard host limit, and the most idle
+//!   minutes; `cloud budget` sets it, `cloud status` shows spend against it,
+//!   and nothing starts a host or a run past it. An agent (`--agent ID` or
+//!   `OPENAGENTS_AGENT_ID`) starts hosts only under its own grant.
+//!
 //! Every `gcloud` call honors `CLOUDSDK_CONFIG`; on the owner's Mac that is
-//! the automation account's isolated configuration.
+//! the automation account's isolated configuration. The grant remembers
+//! it, so a later call without it (an agent's tool call) runs as the same
+//! account, never a person's login that expires.
 
 use crate::out::{Output, table};
 use crate::{Args, EXIT_FAILURE};
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
+use coder_cloud::budget::{Budget, Ledger};
 pub(crate) use coder_cloud::pool::*;
 use serde_json::json;
 use std::time::Instant;
 pub(crate) fn start_hosts(pool: &Pool, count: u64, output: Output) -> Result<Vec<Started>, String> {
     coder_cloud::pool::start_hosts(pool, count, output.json())
 }
-pub(crate) const USAGE: &str = "usage: openagents cloud COMMAND
+pub(crate) const USAGE: &str = "usage: openagents cloud COMMAND [--agent ID]
   up [--hosts N] [--machine TYPE] [--on-demand] [--max-hosts N] [--idle-minutes N]
                  Grant this computer the GCE pool `gce` and start hosts until
                  it has N (default 1): spot VMs from the newest oa-coder-host
@@ -51,11 +60,20 @@ pub(crate) const USAGE: &str = "usage: openagents cloud COMMAND
   down           Delete every host of the pool, list what is left, and revoke
                  the grant: `chat work --on gce` refuses until the next `up`.
   status         The grant, each host (zone, spot or on demand, uptime, live
-                 runs, idle minutes), and the pool's hourly cost estimate.
+                 runs, idle minutes), the pool's hourly cost estimate, and its
+                 spend over the last 24 hours against the budget.
+  budget [--daily USD] [--per-run USD] [--max-hosts N] [--idle-minutes N]
+         [--agent ID --daily USD | --agent ID --revoke]
+                 Show or set the compute budget (defaults $300 a day, $10 a
+                 run, 8 hosts, 10 idle minutes). Hosts and runs never start
+                 past it. With --agent, grant that agent definition ID its own
+                 daily cap: an agent's `cloud up` and `chat work --on gce`
+                 are refused without one.
 Run a task with `openagents coder delegate AGENT --on gce --task TEXT`.
 Run issues with `openagents chat work --on gce --issues N --parallel M`.
-Needs gcloud logged in to project openagentsgemini (CLOUDSDK_CONFIG), and ssh;
-OA_PROJECT and OA_ZONES override the project and zones. docs/cloud/gce-pool.md.";
+Needs gcloud logged in to project openagentsgemini as a service account
+(CLOUDSDK_CONFIG; a person's login expires), and ssh; OA_PROJECT and OA_ZONES
+override the project and zones. docs/cloud/gce-pool.md.";
 
 /// What each command above does, for the chat router's command tree.
 #[cfg(test)]
@@ -64,6 +82,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("up", Effect::Spends),
     Declared::computer("down", Effect::Publishes),
     Declared::computer("status", Effect::ReadOnly),
+    Declared::computer("budget", Effect::LocalWrite),
 ];
 
 // The commands.
@@ -72,13 +91,21 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
         return output.usage("cloud", "a command is required", USAGE);
     };
-    let args = match Args::parse(rest, &["on-demand"]) {
+    let args = match Args::parse(rest, &["on-demand", "revoke"]) {
         Ok(args) => args,
         Err(message) => return output.usage("cloud", &message, USAGE),
     };
     let allowed: &[&str] = match command.as_str() {
-        "up" => &["hosts", "machine", "max-hosts", "idle-minutes"],
-        "down" | "status" => &[],
+        "up" => &["hosts", "machine", "max-hosts", "idle-minutes", "agent"],
+        "down" | "status" => &["agent"],
+        "budget" => &[
+            "daily",
+            "per-run",
+            "max-hosts",
+            "idle-minutes",
+            "agent",
+            "revoke",
+        ],
         "--help" | "-h" | "help" => {
             println!("{USAGE}");
             return 0;
@@ -94,9 +121,13 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     {
         return output.usage("cloud", &format!("unknown option `--{name}`"), USAGE);
     }
+    if command != "budget" {
+        coder_cloud::budget::act_for(args.option("agent"));
+    }
     let result = match command.as_str() {
         "up" => up(*output, &args),
         "down" => down(*output),
+        "budget" => budget(*output, &args),
         _ => status(*output),
     };
     match result {
@@ -106,24 +137,55 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 }
 
 fn up(output: Output, args: &Args) -> Result<u8, String> {
+    let limits = Budget::load();
     let hosts: u64 = args.number("hosts", 1)?;
-    let max_hosts: u64 = args.number("max-hosts", DEFAULT_MAX_HOSTS.max(hosts))?;
-    let idle: u64 = args.number("idle-minutes", DEFAULT_IDLE_MINUTES)?;
+    let max_hosts: u64 = args.number(
+        "max-hosts",
+        DEFAULT_MAX_HOSTS.max(hosts).min(limits.max_hosts),
+    )?;
+    let idle: u64 = args.number(
+        "idle-minutes",
+        DEFAULT_IDLE_MINUTES.min(limits.idle_minutes),
+    )?;
     if !(1..=32).contains(&hosts) || hosts > max_hosts {
         return Err("--hosts is 1 to 32 and at most --max-hosts".into());
     }
-    if !(1..=240).contains(&idle) {
-        return Err("--idle-minutes is 1 to 240".into());
+    if max_hosts > limits.max_hosts {
+        return Err(format!(
+            "--max-hosts {max_hosts} is past the budget's {}; `openagents cloud budget --max-hosts \
+             N` raises it",
+            limits.max_hosts
+        ));
+    }
+    if !(1..=limits.idle_minutes.min(240)).contains(&idle) {
+        return Err(format!(
+            "--idle-minutes is 1 to {} (the budget's idle limit)",
+            limits.idle_minutes.min(240)
+        ));
     }
     let machine = args.option("machine").unwrap_or(DEFAULT_MACHINE);
     let previous = Pool::load();
-    let pool = Pool::grant(
+    let mut pool = Pool::grant(
         previous.as_ref(),
         machine,
         !args.switch("on-demand"),
         max_hosts,
         idle,
     );
+    // Which account the pool runs as; a person's login expires daily, so
+    // say so rather than fail at the next reauthentication.
+    pool.account = coder_cloud::pool::active_account().or(pool.account);
+    if let Some(account) = pool
+        .account
+        .as_deref()
+        .filter(|a| coder_cloud::pool::is_person(a))
+    {
+        eprintln!(
+            "cloud: gcloud is signed in as {account}, a person's login that expires; set \
+             CLOUDSDK_CONFIG to a service account's configuration (docs/cloud/gce-pool.md, \
+             \"Accounts\")"
+        );
+    }
     pool.save()?;
     let live: Vec<Host> = list_hosts(&pool.project, Some(&pool.pool))?
         .into_iter()
@@ -215,6 +277,89 @@ fn down(output: Output) -> Result<u8, String> {
     })
 }
 
+/// `cloud budget`: show the budget, or set it.
+fn budget(output: Output, args: &Args) -> Result<u8, String> {
+    let mut budget = Budget::load();
+    let dollars = |name: &str| -> Result<Option<f64>, String> {
+        args.option(name)
+            .map(|text| {
+                text.trim_start_matches('$')
+                    .parse::<f64>()
+                    .map_err(|_| format!("--{name} is a dollar amount, like 300"))
+            })
+            .transpose()
+    };
+    let changed = if let Some(agent) = args.option("agent") {
+        let agent = agent.trim();
+        if agent.is_empty() {
+            return Err("--agent needs an agent definition ID".into());
+        }
+        if args.switch("revoke") {
+            budget.agents.remove(agent);
+        } else {
+            let daily = dollars("daily")?.ok_or("--agent needs --daily USD, or --revoke")?;
+            budget.agents.insert(
+                agent.to_owned(),
+                coder_cloud::budget::AgentGrant {
+                    daily_usd: daily,
+                    granted_at: now(),
+                },
+            );
+        }
+        true
+    } else {
+        let mut changed = false;
+        if let Some(daily) = dollars("daily")? {
+            budget.daily_usd = daily;
+            changed = true;
+        }
+        if let Some(per_run) = dollars("per-run")? {
+            budget.per_run_usd = per_run;
+            changed = true;
+        }
+        if args.option("max-hosts").is_some() {
+            budget.max_hosts = args.number("max-hosts", budget.max_hosts)?;
+            changed = true;
+        }
+        if args.option("idle-minutes").is_some() {
+            budget.idle_minutes = args.number("idle-minutes", budget.idle_minutes)?;
+            changed = true;
+        }
+        changed
+    };
+    if changed {
+        budget.check()?;
+        budget.set_at = Some(now());
+        budget.save()?;
+    }
+    let spent = Ledger::load().spent(now(), None);
+    let value = json!({"event": "cloud_budget", "budget": budget, "spent_usd": spent,
+        "changed": changed});
+    output.emit(&value, |_| budget_text(&budget, spent));
+    Ok(0)
+}
+
+fn budget_text(budget: &Budget, spent: f64) -> String {
+    let mut text = format!(
+        "Budget: about ${spent:.2} of ${:.2} spent over the last 24 hours (list price); at most \
+         ${:.2} a run, {} host(s) at once, {} idle minute(s) before a host deletes itself.",
+        budget.daily_usd, budget.per_run_usd, budget.max_hosts, budget.idle_minutes
+    );
+    if budget.agents.is_empty() {
+        text.push_str(" No agent may start hosts.");
+    } else {
+        let ledger = Ledger::load();
+        for (id, grant) in &budget.agents {
+            text.push_str(&format!(
+                "\nAgent {id}: about ${:.2} of ${:.2} over the last 24 hours.",
+                ledger.spent(now(), Some(id)),
+                grant.daily_usd
+            ));
+        }
+    }
+    text
+}
+
 fn status_text(pool: &Pool, hosts: &[Host], activity: &[Activity]) -> String {
     let grant = match pool.revoked_at {
         None => format!("granted (epoch {})", pool.epoch),
@@ -253,6 +398,14 @@ fn status_text(pool: &Pool, hosts: &[Host], activity: &[Activity]) -> String {
         hosts.iter().filter(|h| h.status == "RUNNING").count() as u64 * pool.slots_per_host,
         pool.idle_minutes
     );
+    if let Some(account) = &pool.account {
+        text.push_str(&format!(" gcloud account: {account}."));
+    }
+    text.push('\n');
+    text.push_str(&budget_text(
+        &Budget::load(),
+        Ledger::load().spent(now(), None),
+    ));
     if !hosts.is_empty() {
         text.push('\n');
         text.push_str(&table(&rows));
@@ -271,7 +424,8 @@ fn status(output: Output) -> Result<u8, String> {
     let hosts = list_hosts(&pool.project, Some(&pool.pool))?;
     let activity = activity(&pool.project, &hosts);
     let value = json!({"event": "cloud_status", "pool": pool, "hosts": hosts,
-        "activity": activity});
+        "activity": activity, "budget": Budget::load(),
+        "spent_usd": Ledger::load().spent(now(), None)});
     output.emit(&value, |_| status_text(&pool, &hosts, &activity));
     Ok(0)
 }

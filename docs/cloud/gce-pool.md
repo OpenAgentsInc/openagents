@@ -8,11 +8,15 @@
   `crates/openagents-cli/src/chat_placement.rs` (the placement `--on boat`
   and `--on gce` share)
 - Image: [`oa-coder-host`](../deployment/coder-host-image.md), baked daily
+- Budget, accounts, the briefed engine on the pool:
+  [#12058](https://github.com/OpenAgentsInc/openagents/issues/12058)
 
 ```text
+export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config   # a service account, never a person
 openagents cloud up --hosts 2              # grant the pool and start two hosts
-openagents chat work --on gce --issues 10301,10302,10303,10304 --parallel 4
-openagents cloud status                    # hosts, live runs, idle minutes, $/hour
+openagents chat work --on gce --issues 10301,10302,10303,10304 --parallel 4 --land queue
+openagents cloud status                    # hosts, live runs, idle minutes, $/hour, spend vs. budget
+openagents cloud budget --daily 300        # the compute budget (the default)
 openagents cloud down                      # delete every host, revoke the grant
 ```
 
@@ -53,6 +57,61 @@ of `--on gce`.
 The hosts themselves are found by label each time (`gcloud compute instances
 list --filter=labels.openagents-pool=<pool>`): hosts delete themselves, so
 GCE is the only list that stays true.
+
+## The engine on a pool host
+
+`chat work --on gce` runs every engine on the pool. The default is the
+briefed agent on Codex (`--engine briefed:codex`): the pool's hosts carry
+the orchestrating computer's ChatGPT login copy and no Claude login. Each
+host runs `openagents chat work --local --engine E`, which makes the
+briefing, runs the agent with `verify` (it compiles, tests and formats on
+the host), replays the checks on the real diff, and lands through the
+landing queue with `--land queue` ([work-on-issues.md](work-on-issues.md)).
+`--engine bare` runs the Coder issue flow there instead. Hosts build
+`briefed-agent` beside `openagents`, and the host agent installs numpy for
+the context finder. (`--on boat` still sends the briefed agent to
+openagents.com's work hosts through `POST /v1/work`.)
+
+## The compute budget
+
+`~/.openagents/cloud/budget.json`, set with `openagents cloud budget`
+(`crates/coder-cloud/src/budget.rs`):
+
+| Limit | Default | Enforced at |
+| --- | --- | --- |
+| Spend over the last 24 hours (`--daily`) | $300 | every host start (`cloud up`, growth for `--parallel`, a replacement host): refused when what's spent plus an hour of the new hosts would pass it. Every run start: refused once it's spent. |
+| Spend per run (`--per-run`) | $10 | each run: its session on the host is killed once its slot's share of the host's price reaches it |
+| Hosts at once (`--max-hosts`) | 8 | `cloud up --max-hosts` can't exceed it; no start passes it |
+| Idle minutes (`--idle-minutes`) | 10 | the most `cloud up --idle-minutes` may set; each host deletes itself after that long with no run |
+
+Spend is estimated at list price from `~/.openagents/cloud/spend.json`, one
+entry per pool host. A host is billed from GCE's creation time until it
+was first seen gone (or until now), and never past its 12-hour backstop.
+Every `cloud` command and every run's host check refreshes the entries. A host
+that deletes itself between two listings is billed until the second one,
+so the estimate errs high, never low. `cloud status` and `cloud budget`
+show "about $X of $Y spent over the last 24 hours".
+
+**Agents.** A process that acts for an agent (`--agent ID`, or
+`OPENAGENTS_AGENT_ID`) starts hosts only under that agent definition ID's
+own grant, `openagents cloud budget --agent ID --daily USD`
+(`--agent ID --revoke` removes it). Without a grant, its `cloud up` is
+refused with the command for the owner to run. Grants are keyed by agent
+ID, never by name, so any custom agent can be granted what Foreman is.
+
+## Accounts
+
+Run the pool as a service account: the automation account's configuration
+(`CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config`). A person's login,
+such as `chris@`, expires daily and can't reauthenticate without the
+person. `cloud up` records the configuration and the account in the pool
+record. Every later gcloud call of the pool, ssh's IAP tunnel included,
+uses that configuration when the environment names none, so an agent's
+tool call without `CLOUDSDK_CONFIG` still runs as the service account.
+`cloud up` warns when gcloud is signed in as a person, and `cloud status`
+names the account. Each gcloud call has a 10-minute limit. The audit of
+every call and the roles behind it is in
+[automation-account.md](../deployment/automation-account.md#the-gce-pool-and-foremans-fan-out).
 
 ## Hosts
 
@@ -174,6 +233,7 @@ in `NEEDS_OWNER.md` ("Boat: choose how coding agents log in").
 ```sh
 export CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config
 openagents cloud status
+openagents cloud budget
 gcloud compute instances list --project openagentsgemini --filter=labels.openagents-managed=coder-pool
 gcloud compute instances get-serial-port-output HOST --zone ZONE --project openagentsgemini | grep OA_POOL
 ```

@@ -41,7 +41,8 @@ Cloud Run runbook).
 | Durable account storage for the web stack: the NFS server that keeps accounts, sessions and keys across revisions, its backups and restore | [Account storage](account-storage.md) |
 | Free-only labor reference host | [Labor runtime](../coder/runtime/free-labor.md) |
 | Local model doors | [Kev](../kev/README.md), [Lev](../lev/README.md), and [Laya](../laya/README.md) |
-| The OpenAgents website, not yet deployed from this repository | [Website port](openagents-web.md) |
+| The OpenAgents website (openagents.com): staging, promote, shift and rollback with `scripts/deploy/web.sh` | [Website](openagents-web.md) |
+| The automation account every scripted deploy and the GCE pool run as, with no person's login: its roles, the narrowed deny, the audit | [Automation account](automation-account.md) |
 
 These services have distinct grants, identities, credentials, persistence, and
 acceptance evidence. The portable-host launchd fixture and Linux systemd fixture

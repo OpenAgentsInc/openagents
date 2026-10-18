@@ -231,24 +231,18 @@ impl Credentials {
 }
 
 /// A Secret Manager secret's latest value, through `gcloud` (which honors
-/// `CLOUDSDK_CONFIG`), or `None`. Nothing is printed.
+/// `CLOUDSDK_CONFIG`, else the GCE pool's pinned configuration, so it runs
+/// as the pool's account), within a minute, or `None`. Nothing is printed.
 fn secret(name: &str) -> Option<String> {
-    let output = std::process::Command::new("gcloud")
-        .args([
-            "secrets",
-            "versions",
-            "access",
-            "latest",
-            "--secret",
-            name,
-            "--project",
-            SECRET_PROJECT,
-        ])
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    let value = String::from_utf8(output.stdout).ok()?.trim().to_owned();
-    (output.status.success() && !value.is_empty()).then_some(value)
+    let value = coder_cloud::pool::gcloud_in(
+        SECRET_PROJECT,
+        &["secrets", "versions", "access", "latest", "--secret", name],
+        std::time::Duration::from_secs(60),
+    )
+    .ok()?
+    .trim()
+    .to_owned();
+    (!value.is_empty()).then_some(value)
 }
 
 /// Where this computer's Codex login is: `OA_CODER_CODEX_AUTH`, else

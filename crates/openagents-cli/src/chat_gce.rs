@@ -56,6 +56,9 @@ pub(super) struct Request {
     pub parallel: u64,
     pub land: Option<Land>,
     pub engine_fallback: bool,
+    /// The `chat work --engine` the host runs (`briefed:codex` by default
+    /// on the pool, whose hosts carry no Claude login).
+    pub engine: String,
 }
 
 fn nonce() -> String {
@@ -71,7 +74,14 @@ fn nonce() -> String {
 /// file holding them is deleted first thing), a slot lock, the CLI build,
 /// and the issue flow with NDJSON events. Exit 75 means every slot of the
 /// host was taken.
-fn run_script(credentials: &Credentials, issue: u64, land: Option<Land>, slots: u64) -> String {
+fn run_script(
+    credentials: &Credentials,
+    issue: u64,
+    land: Option<Land>,
+    slots: u64,
+    engine: &str,
+) -> String {
+    let engine = boat::shell_quote(engine);
     let land = match land {
         Some(Land::Main) => " --land main",
         Some(Land::PullRequest) => " --land pr",
@@ -127,8 +137,9 @@ d=$(dirname "$0")
   fi
   oa_build || return $?
   cd "$HOME/openagents" || return 2
-  OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder OPENAGENTS_CODER_PLACEMENT=gce \
-    "$HOME/.oa-pool/bin/openagents" chat work --local --json --issues {issue} --parallel 1{land}
+  # The briefed engine lands through this build's CLI (`land submit`).
+  OA_CLI=$HOME/.oa-pool/bin/openagents OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder OPENAGENTS_CODER_PLACEMENT=gce \
+    "$HOME/.oa-pool/bin/openagents" chat work --local --json --issues {issue} --parallel 1 --engine {engine}{land}
 }}
 main; rc=$?
 echo "$rc" >"$d/exit"; touch "$HOME/.oa-pool/busy"; exit "$rc"
@@ -358,7 +369,7 @@ fn follow(
                         commits,
                     } => ended = Some((outcome, message, commits)),
                     Inner::Event(line) => super::work::show(&output, issue, &mut tools, &line),
-                    Inner::Other => {}
+                    Inner::Other => work_progress(output, issue, line.trim()),
                 }
             }
         }
@@ -424,6 +435,18 @@ fn follow(
             )
             .into())
         }
+    }
+}
+
+/// A briefed engine's progress line (`{"event": "work", ...}`), shown as a
+/// local run's is.
+fn work_progress(output: Output, issue: u64, line: &str) {
+    let Ok(value) = serde_json::from_str::<Value>(line) else {
+        return;
+    };
+    if value["event"] == "work" {
+        let text = value["text"].as_str().unwrap_or_default();
+        super::boat::say(output, value.clone(), &format!("#{issue}: {text}"));
     }
 }
 
@@ -542,7 +565,19 @@ fn run_issue(
             json!({"event": "gce_run", "issue": issue, "host": host.name, "zone": host.zone, "run": run}),
             &format!("#{issue}: on {} ({})", host.name, host.zone),
         );
-        let mut script = run_script(credentials, issue, request.land, pool.slots_per_host);
+        if let Err(message) = coder_cloud::budget::admit_run() {
+            break Ended {
+                outcome: "not_started".into(),
+                ..failure(message)
+            };
+        }
+        let mut script = run_script(
+            credentials,
+            issue,
+            request.land,
+            pool.slots_per_host,
+            &request.engine,
+        );
         if let Some(task) = &recover_task {
             script = format!(
                 "export OPENAGENTS_CODER_RECOVER_TASK={}\n{script}",
@@ -550,9 +585,38 @@ fn run_issue(
             );
         }
         let attempt_began = Instant::now();
-        let followed = follow(
-            backend, pool, host, &run, &script, issue, output, stopping, running,
-        );
+        // The per-run cap: past its share of the budget's per-run dollars,
+        // the run's session on the host is killed and the run fails.
+        let limit = coder_cloud::budget::Budget::load().run_limit(host, slots);
+        let capped = AtomicBool::new(false);
+        let followed = std::thread::scope(|scope| {
+            let (done, finished) = std::sync::mpsc::channel::<()>();
+            let (watched, run_name, capped) = (host.clone(), run.clone(), &capped);
+            scope.spawn(move || {
+                if finished.recv_timeout(limit) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+                    capped.store(true, Ordering::SeqCst);
+                    let _ = backend
+                        .ssh(&pool.project, &watched, &cloud::kill_remote(&run_name))
+                        .stdin(Stdio::null())
+                        .output();
+                }
+            });
+            let followed = follow(
+                backend, pool, host, &run, &script, issue, output, stopping, running,
+            );
+            let _ = done.send(());
+            followed
+        });
+        let followed = if capped.load(Ordering::SeqCst) {
+            Err(FollowError::Failed(format!(
+                "Stopped at the per-run cap: about ${:.2} of host time after {} min \
+                 (`openagents cloud budget --per-run USD` raises it).",
+                coder_cloud::budget::Budget::load().per_run_usd,
+                limit.as_secs() / 60
+            )))
+        } else {
+            followed
+        };
         // Remove cancelled, failed, and lost runs too, not only clean endings.
         running
             .lock()
@@ -848,7 +912,12 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     }
     let landed = results
         .iter()
-        .filter(|r| matches!(r["outcome"].as_str(), Some("landed" | "pull_request")))
+        .filter(|r| {
+            matches!(
+                r["outcome"].as_str(),
+                Some("landed" | "pull_request" | "queued" | "committed")
+            )
+        })
         .count();
     let total: f64 = results.iter().filter_map(|r| r["cost_usd"].as_f64()).sum();
     event(
@@ -866,7 +935,7 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     let good = results.iter().all(|r| {
         matches!(
             r["outcome"].as_str(),
-            Some("landed" | "pull_request" | "skipped" | "closed")
+            Some("landed" | "pull_request" | "queued" | "committed" | "skipped" | "closed")
         )
     });
     Ok(if good { 0 } else { crate::EXIT_FAILURE })
@@ -932,6 +1001,8 @@ mod tests {
             max_hosts: 1,
             idle_minutes: 10,
             slots_per_host: 2,
+            gcloud_config: None,
+            account: None,
         }
     }
 
@@ -1027,6 +1098,7 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
                 parallel: 1,
                 land: Some(Land::Main),
                 engine_fallback: false,
+                engine: "bare".into(),
             };
             let result = run_issue(
                 &fake,
@@ -1048,7 +1120,7 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
             assert!(running.lock().unwrap().is_empty());
             let received = std::fs::read_to_string(fake.dir.path().join("received")).unwrap();
             assert!(received.contains("export OPENAGENTS_CODER_RECOVER_TASK='losttask123'"));
-            assert!(received.contains("--issues 42 --parallel 1 --land main"));
+            assert!(received.contains("--issues 42 --parallel 1 --engine 'bare' --land main"));
             let records = fake.records.lock().unwrap();
             assert_eq!(records.len(), 2);
             assert_eq!(records[0]["outcome"], "preempted");
@@ -1131,6 +1203,7 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
             parallel: 1,
             land: None,
             engine_fallback: false,
+            engine: "bare".into(),
         };
         let result = run_issue(
             &fake,
@@ -1196,7 +1269,7 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
         credentials
             .variables
             .insert("GH_TOKEN".into(), "gho_secret'$(x)".into());
-        let script = run_script(&credentials, 10225, Some(Land::Main), 2);
+        let script = run_script(&credentials, 10225, Some(Land::Main), 2, "briefed:codex");
         let removed = script.find("rm -f \"$0\"").unwrap();
         let exported = script
             .find("export GH_TOKEN='gho_secret'\\''$(x)'")
@@ -1204,7 +1277,10 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
         assert!(removed < exported);
         assert!(script.contains("flock -n 9"));
         assert!(script.contains("$(seq 0 1)"));
-        assert!(script.contains("--issues 10225 --parallel 1 --land main"));
+        assert!(
+            script.contains("--issues 10225 --parallel 1 --engine 'briefed:codex' --land main")
+        );
+        assert!(script.contains("OA_CLI=$HOME/.oa-pool/bin/openagents"));
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
         assert!(script.contains("OPENAGENTS_CODER_PLACEMENT=gce"));
         assert!(script.contains("return 75"));
@@ -1229,6 +1305,8 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
             max_hosts: 8,
             idle_minutes: 10,
             slots_per_host: 2,
+            gcloud_config: None,
+            account: None,
         };
         let ended = Ended {
             outcome: "landed".into(),

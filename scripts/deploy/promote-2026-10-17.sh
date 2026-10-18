@@ -1,6 +1,6 @@
 #!/bin/sh
-# Production rollout of 2026-10-17, run once by the owner as chris@ (the
-# automation account is refused actAs on production's runtime account):
+# Production rollout of 2026-10-17, run as the automation account
+# (CLOUDSDK_CONFIG; docs/deployment/automation-account.md):
 #
 #   oa-computers   free cloud allowance and its migration 17 (#11981)
 #   web            app visitor chats (#11978), free Our cloud (#11981),
@@ -89,7 +89,7 @@ echo "  gateway $STACK ($stack_commit)"
 echo "  oa-computers $COMPUTERS (production now $COMPUTERS_PREVIOUS)"
 
 echo "$(when) 1/3 oa-computers $COMPUTERS (migration 17, free allowance)"
-env -u CLOUDSDK_CONFIG deploy/oa-computers/deploy.sh production "$COMPUTERS"
+CLOUDSDK_CONFIG=$SA_CONFIG deploy/oa-computers/deploy.sh production "$COMPUTERS"
 
 echo "$(when) 2/3 web and gateway candidate (no traffic)"
 scripts/deploy/web.sh promote --stack "$STACK" "$WEB"

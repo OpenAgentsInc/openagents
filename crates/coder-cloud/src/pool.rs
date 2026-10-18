@@ -49,6 +49,11 @@ fn zones() -> Vec<String> {
         .collect()
 }
 
+/// Where the pool record, its key, the budget and the spend ledger live.
+pub(crate) fn cloud_home() -> PathBuf {
+    home()
+}
+
 fn home() -> PathBuf {
     if let Some(dir) = std::env::var_os("OPENAGENTS_CLOUD_HOME") {
         return PathBuf::from(dir);
@@ -102,6 +107,16 @@ pub struct Pool {
     pub max_hosts: u64,
     pub idle_minutes: u64,
     pub slots_per_host: u64,
+    /// The gcloud configuration (`CLOUDSDK_CONFIG`) the grant was made
+    /// with. Every later gcloud call of the pool uses it when the
+    /// environment names none, so a process started without it (an agent's
+    /// tool call) still runs as the same account, never a person's login
+    /// that expires (#12058).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gcloud_config: Option<String>,
+    /// The gcloud account that made the grant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
 }
 
 impl Pool {
@@ -171,6 +186,11 @@ impl Pool {
             max_hosts,
             idle_minutes: idle,
             slots_per_host: SLOTS_PER_HOST,
+            gcloud_config: std::env::var("CLOUDSDK_CONFIG")
+                .ok()
+                .filter(|c| !c.trim().is_empty())
+                .or_else(|| previous.and_then(|p| p.gcloud_config.clone())),
+            account: previous.and_then(|p| p.account.clone()),
         }
     }
 
@@ -182,21 +202,101 @@ impl Pool {
 // ---------------------------------------------------------------------------
 // gcloud.
 
-/// Runs `gcloud ARGS --project P --quiet`; stdout, or stderr's last lines.
-fn gcloud(project: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("gcloud")
-        .args(args)
-        .args(["--project", project, "--quiet"])
+/// The longest one gcloud call of the pool may take (a create or a delete
+/// of several hosts included).
+const GCLOUD_LIMIT: Duration = Duration::from_secs(600);
+
+/// `CLOUDSDK_CONFIG` for the pool's gcloud calls: none when the
+/// environment names one, else the configuration the grant was made with.
+fn pinned_config() -> Option<String> {
+    if std::env::var_os("CLOUDSDK_CONFIG").is_some() {
+        return None;
+    }
+    Pool::load().and_then(|pool| pool.gcloud_config)
+}
+
+/// `gcloud`, under the pool's pinned configuration.
+pub fn gcloud_command() -> Command {
+    let mut command = Command::new("gcloud");
+    if let Some(config) = pinned_config() {
+        command.env("CLOUDSDK_CONFIG", config);
+    }
+    command
+}
+
+/// The gcloud account the pool's calls run as (`gcloud config get-value
+/// account`), if gcloud answers.
+pub fn active_account() -> Option<String> {
+    let mut command = gcloud_command();
+    command.args(["config", "get-value", "account"]);
+    run_within(command, Duration::from_secs(30))
+        .ok()
+        .map(|text| text.trim().to_owned())
+        .filter(|account| !account.is_empty() && !account.contains(' '))
+}
+
+/// A person's login rather than a service account: such logins expire and
+/// need an interactive sign-in, so the pool should not depend on one.
+pub fn is_person(account: &str) -> bool {
+    !account.ends_with(".gserviceaccount.com")
+}
+
+/// Runs `command` with a deadline; stdout, or stderr's last lines.
+fn run_within(mut command: Command, limit: Duration) -> Result<String, String> {
+    let mut child = command
         .stdin(Stdio::null())
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("gcloud did not start: {e}"))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    let read = |pipe: Option<Box<dyn std::io::Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_string(&mut text);
+            }
+            text
+        })
+    };
+    let stdout = read(child.stdout.take().map(|p| Box::new(p) as _));
+    let stderr = read(child.stderr.take().map(|p| Box::new(p) as _));
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("gcloud took longer than {} s", limit.as_secs()));
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    };
+    let (out, error) = (
+        stdout.join().unwrap_or_default(),
+        stderr.join().unwrap_or_default(),
+    );
+    if status.success() {
+        Ok(out)
     } else {
-        let error = String::from_utf8_lossy(&output.stderr);
         let tail: Vec<&str> = error.lines().rev().take(4).collect();
         Err(tail.into_iter().rev().collect::<Vec<_>>().join(" "))
     }
+}
+
+/// Runs `gcloud ARGS --project P --quiet` within [`GCLOUD_LIMIT`]; stdout,
+/// or stderr's last lines.
+fn gcloud(project: &str, args: &[&str]) -> Result<String, String> {
+    gcloud_in(project, args, GCLOUD_LIMIT)
+}
+
+/// [`gcloud`] with its own deadline, for callers outside the pool (the run
+/// credentials' Secret Manager reads) that should run as the same account.
+pub fn gcloud_in(project: &str, args: &[&str], limit: Duration) -> Result<String, String> {
+    let mut command = gcloud_command();
+    command.args(args).args(["--project", project, "--quiet"]);
+    run_within(command, limit)
 }
 
 /// One pool host as GCE lists it.
@@ -259,7 +359,11 @@ pub fn list_hosts(project: &str, pool: Option<&str>) -> Result<Vec<Host>, String
         ],
     )?;
     let listing: Value = serde_json::from_str(&text).map_err(|e| format!("gcloud listing: {e}"))?;
-    Ok(hosts_from(&listing))
+    let hosts = hosts_from(&listing);
+    if let Some(pool) = pool {
+        crate::budget::observe(pool, &hosts);
+    }
+    Ok(hosts)
 }
 
 /// A GCE refusal that means "no capacity here; try elsewhere".
@@ -442,7 +546,7 @@ fn known_hosts_path(host: &Host) -> PathBuf {
 
 /// Runs `gcloud` with a deadline, so a hung call cannot hold an ssh.
 fn gcloud_within(project: &str, args: &[&str], limit: Duration) -> Result<String, String> {
-    let mut child = Command::new("gcloud")
+    let mut child = gcloud_command()
         .args(args)
         .args(["--project", project, "--quiet"])
         .stdin(Stdio::null())
@@ -605,6 +709,10 @@ pub fn try_ssh(project: &str, host: &Host, remote: &str) -> Result<Command, Stri
     let internal = std::env::var("OA_POOL_SSH").is_ok_and(|mode| mode == "internal");
     let (args, target) = ssh_args(project, host, &known_hosts, internal);
     let mut command = Command::new("ssh");
+    // The IAP tunnel's gcloud runs as the pool's account too.
+    if let Some(config) = pinned_config() {
+        command.env("CLOUDSDK_CONFIG", config);
+    }
     command
         .args(args)
         .arg(format!("coder@{target}"))
@@ -700,6 +808,13 @@ for attempt in 1 2 3 4 5 6; do
   sleep 10
 done
 command -v bwrap >/dev/null || echo "OA_POOL_AGENT bubblewrap could not be installed" >/dev/ttyS0
+# The briefed agent's context finder needs numpy (#12058); without it the
+# briefing falls back to its lite finder.
+for attempt in 1 2 3; do
+  python3 -c 'import numpy' 2>/dev/null && break
+  apt-get update -q >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-numpy >/dev/null 2>&1 && break
+  sleep 10
+done
 touch /home/coder/.oa-pool/agent-ready
 echo "OA_POOL_AGENT_READY" >/dev/ttyS0
 "#;
@@ -722,6 +837,12 @@ oa_install() {
       chmod 555 "$staged/$b"
       "$staged/$b" --version >/dev/null || return 3
     done
+    # The briefed agent, the default engine of `chat work` (#12058); it has
+    # no --version, so it only has to be there.
+    if [ -x "$warm/debug/briefed-agent" ]; then
+      strip --strip-all -o "$staged/briefed-agent" "$warm/debug/briefed-agent" 2>/dev/null || cp "$warm/debug/briefed-agent" "$staged/briefed-agent" || return 3
+      chmod 555 "$staged/briefed-agent"
+    fi
     "$staged/coder-cloud-runtime" --runtime-manifest > "$staged/runtime.json" || return 3
     jq -e --arg rev "$rev" '.revision == $rev and .tree == "clean"' "$staged/runtime.json" >/dev/null || return 3
     echo "$rev" > "$staged/rev"
@@ -732,13 +853,16 @@ oa_install() {
   for b in openagents microcoder coder-cloud-runtime runtime.json rev; do
     ln -sfn "$installed/$b" "$HOME/.oa-pool/bin/$b.next" && mv -f "$HOME/.oa-pool/bin/$b.next" "$HOME/.oa-pool/bin/$b" || return 3
   done
+  if [ -x "$installed/briefed-agent" ]; then
+    ln -sfn "$installed/briefed-agent" "$HOME/.oa-pool/bin/briefed-agent.next" && mv -f "$HOME/.oa-pool/bin/briefed-agent.next" "$HOME/.oa-pool/bin/briefed-agent" || return 3
+  fi
 }
 oa_build() {
   exec 8>"$HOME/.oa-pool/build.lock"; flock 8
   cd "$HOME/openagents" || { echo "pool: no clone at ~/openagents" >&2; return 2; }
   git fetch -q origin main || { echo "pool: git fetch failed" >&2; return 2; }
   local rev; rev=$(git rev-parse origin/main)
-  if [ "$(cat "$HOME/.oa-pool/bin/rev" 2>/dev/null)" = "$rev" ] && [ -x "$HOME/.oa-pool/bin/microcoder" ] && [ -L "$HOME/.oa-pool/bin/coder-cloud-runtime" ]; then
+  if [ "$(cat "$HOME/.oa-pool/bin/rev" 2>/dev/null)" = "$rev" ] && [ -x "$HOME/.oa-pool/bin/microcoder" ] && [ -L "$HOME/.oa-pool/bin/coder-cloud-runtime" ] && [ -x "$HOME/.oa-pool/bin/briefed-agent" ]; then
     flock -u 8; exec 8>&-; return 0
   fi
   git checkout -q --detach "$rev" || return 2
@@ -747,14 +871,15 @@ oa_build() {
   echo "pool: building openagents, microcoder, and Coder runtime at ${rev:0:10} on the warm target" >&2
   local lease; lease=$(command -v openagents || true)
   if [ -z "$lease" ] || ! "$lease" lease --help >/dev/null 2>&1; then
-    CARGO_TARGET_DIR="$warm" cargo build --locked -q -p openagents-cli --bin openagents >/tmp/oa-pool-build.log 2>&1 || return 3
+    CARGO_TARGET_DIR="$warm" cargo build --locked -q -p openagents-cli --bin openagents >/tmp/oa-pool-build.log 2>&1 \
+      || { tail -n 40 /tmp/oa-pool-build.log >&2; flock -u 8; exec 8>&-; return 3; }
     lease=$warm/debug/openagents
   fi
-  for p in "openagents-cli --bin openagents" "microcoder --bin microcoder" "coder-new --bin coder-cloud-runtime"; do
+  for p in "openagents-cli --bin openagents" "microcoder --bin microcoder" "coder-new --bin coder-cloud-runtime" "briefed-agent --bin briefed-agent"; do
     CARGO_TARGET_DIR="$warm" "$lease" lease build --keep-target-dir -- cargo build --locked -q -p $p >/tmp/oa-pool-build.log 2>&1 \
       || { tail -n 40 /tmp/oa-pool-build.log >&2; flock -u 8; exec 8>&-; return 3; }
   done
-  oa_install "$warm" "$rev" || return 3
+  oa_install "$warm" "$rev" || { echo "pool: installing the build failed" >&2; flock -u 8; exec 8>&-; return 3; }
   flock -u 8; exec 8>&-
 }
 "#;
@@ -1035,6 +1160,9 @@ fn run_prepare(project: &str, host: &Host, json_output: bool) -> Result<(), Stri
 /// Starts `count` hosts of `pool` at once and waits until each is ready and
 /// prepared. Hosts that fail are deleted.
 pub fn start_hosts(pool: &Pool, count: u64, json_output: bool) -> Result<Vec<Started>, String> {
+    // Every path that starts a host stays inside the compute budget.
+    let hosts = list_hosts(&pool.project, Some(&pool.pool))?;
+    crate::budget::admit(pool, &hosts, count)?;
     let public_key = ensure_key()?;
     let handles: Vec<_> = (0..count)
         .map(|_| {
@@ -1104,6 +1232,7 @@ fn start_one(pool: &Pool, public_key: &str, json_output: bool) -> Started {
         }
     };
     started.create_seconds = began.elapsed().as_secs_f64();
+    crate::budget::started(pool, &host);
     say(
         &format!(
             "created in {} ({})",
