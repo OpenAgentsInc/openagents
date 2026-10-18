@@ -382,6 +382,7 @@ impl CoreAccount {
         mut config: CoreConfig,
         listener: Arc<dyn ClientListener>,
     ) -> CoreResult<Arc<CoreClient>> {
+        crate::android_bootstrap::ensure_initialized()?;
         let mut cache = self.cache.lock().unwrap();
         let lease = self.controller.lease().ok_or_else(auth_error)?;
         config.data_dir = self
