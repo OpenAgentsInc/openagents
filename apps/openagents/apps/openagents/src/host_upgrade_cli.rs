@@ -27,6 +27,10 @@ pub struct Args {
     wait_minutes: u64,
     #[arg(long, hide = true)]
     id: Option<String>,
+    /// A detached upgrade the owner started; its proof rides the
+    /// environment.
+    #[arg(long, hide = true)]
+    by_owner: bool,
 }
 
 #[cfg(not(unix))]
@@ -36,6 +40,7 @@ pub fn run(_: Args, _: std::path::PathBuf, _: u16) -> anyhow::Result<()> {
 
 #[cfg(unix)]
 pub fn run(args: Args, data_dir: std::path::PathBuf, ipc_port: u16) -> anyhow::Result<()> {
+    use openagents_host_upgrade::grant::Caller;
     use openagents_host_upgrade::{Layout, Request, record, system};
 
     let exe = std::env::current_exe()?;
@@ -63,19 +68,29 @@ pub fn run(args: Args, data_dir: std::path::PathBuf, ipc_port: u16) -> anyhow::R
     }
 
     // An agent needs the host.upgrade scope, whether it uses the tool or
-    // runs this in a terminal; the owner at a terminal doesn't.
-    let agent = openagents_host_upgrade::grant::requester(args.agent.as_deref());
-    let requested_by = agent.clone().unwrap_or_else(|| "owner".into());
+    // runs this in a terminal, and must prove it is the chat it names
+    // (#12067); the owner at a terminal needs neither.
     let id = args
         .id
         .clone()
         .unwrap_or_else(|| Request::new_id(openagents_host_upgrade::now_ms()));
+    let caller = openagents_host_upgrade::grant::caller(
+        args.agent.as_deref(),
+        args.by_owner.then_some(id.as_str()),
+        &args.reason,
+    )
+    .map_err(anyhow::Error::msg)?;
+    let agent = match &caller {
+        Caller::Owner => None,
+        Caller::Chat(agent) | Caller::Session(agent) => Some(agent.clone()),
+    };
+    let requested_by = caller.id().to_owned();
     if let Some(agent) = &agent {
         openagents_host_upgrade::grant::check(agent, &args.reason).map_err(anyhow::Error::msg)?;
     }
 
     if args.detach {
-        let log = detach(&exe, &args, agent.as_deref(), &id, &state_dir)?;
+        let log = detach(&exe, &args, &caller, &id, &state_dir)?;
         println!(
             "Upgrade {id} started. It builds main, checks it, and restarts the app at a quiet moment.\nProgress: {}\nResult: openagents host-upgrade --status",
             log.display()
@@ -156,10 +171,11 @@ fn log_refusal(state_dir: &std::path::Path, id: &str, by: &str, reason: &str, wh
 fn detach(
     exe: &std::path::Path,
     args: &Args,
-    agent: Option<&str>,
+    caller: &openagents_host_upgrade::grant::Caller,
     id: &str,
     state_dir: &std::path::Path,
 ) -> anyhow::Result<std::path::PathBuf> {
+    use openagents_host_upgrade::grant::{Caller, PROOF_VAR};
     use std::os::unix::process::CommandExt as _;
     std::fs::create_dir_all(state_dir)?;
     let log_path = state_dir.join(format!("upgrade-{id}.log"));
@@ -180,10 +196,16 @@ fn detach(
     if args.force {
         command.arg("--force");
     }
-    // Named, because the detached command no longer runs under the agent.
-    if let Some(agent) = agent {
-        command.arg("--agent").arg(agent);
-    }
+    // Named and proven, because the detached command no longer runs under
+    // the agent or at the owner's terminal (#12067).
+    match caller {
+        Caller::Owner => command.arg("--by-owner"),
+        Caller::Chat(agent) | Caller::Session(agent) => command.arg("--agent").arg(agent),
+    };
+    command.env(
+        PROOF_VAR,
+        openagents_host_upgrade::grant::detached_proof(caller, id).map_err(anyhow::Error::msg)?,
+    );
     // SAFETY: setsid is async-signal-safe and touches no Rust state.
     unsafe {
         command.pre_exec(|| {

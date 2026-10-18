@@ -4,7 +4,9 @@
 //! The owner grants machine scopes to an agent ID at a terminal
 //! (`openagents lease grant machine CHAT_ID --scope prune,stop`). This tool
 //! acts for the chat the server speaks for, so its chat ID is the agent ID;
-//! there is no argument to name another. `coder_lease::machine` checks the
+//! there is no argument to name another, and the engine's proof of that ID
+//! (`OPENAGENTS_CHAT_PROOF`, #12067) must ride this server's environment, so
+//! a server started by hand with a copied chat ID is refused. `coder_lease::machine` checks the
 //! grant, refuses what the build sweep would never touch, and logs every
 //! action and refusal with the Chicago time. `log` and `grants` read that
 //! record, which the owner reads with `openagents lease actions`.
@@ -12,7 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use coder_lease::agent_builds::sweep::Layout;
-use coder_lease::machine::{self, Action, Grants, Hands};
+use coder_lease::machine::{self, Action, Grants, Hands, proof};
 use serde_json::{Value, json};
 
 use crate::tools::ToolDef;
@@ -67,7 +69,15 @@ struct Args {
 /// Run the tool for the chat `chat_id` on this computer.
 pub fn call(chat_id: Option<&str>, args: Value) -> Result<Value, String> {
     let (root, layout) = machine::here()?;
-    call_at(&root, &layout, &machine::System, chat_id, args)
+    let chat_proof = std::env::var(proof::PROOF_VAR).ok();
+    call_at(
+        &root,
+        &layout,
+        &machine::System,
+        chat_id,
+        chat_proof.as_deref(),
+        args,
+    )
 }
 
 fn call_at(
@@ -75,6 +85,7 @@ fn call_at(
     layout: &Layout,
     hands: &dyn Hands,
     chat_id: Option<&str>,
+    chat_proof: Option<&str>,
     args: Value,
 ) -> Result<Value, String> {
     let args: Args = serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))?;
@@ -104,14 +115,18 @@ fn call_at(
     let chat = chat_id.ok_or(
         "machine actions run only from an app chat, whose ID is the agent ID the owner grants",
     )?;
-    let entry = machine::act(
-        root,
-        layout,
-        hands,
-        chat,
-        &action,
-        args.reason.as_deref().unwrap_or(""),
-    )?;
+    let reason = args.reason.as_deref().unwrap_or("");
+    let env = |name: &str| (name == proof::PROOF_VAR).then(|| chat_proof.map(str::to_owned))?;
+    if let Err(why) = proof::identify(root, Some(chat), &env, false, &String::new) {
+        return Err(machine::refuse_unproven(
+            root,
+            chat,
+            action.scope(),
+            reason,
+            why,
+        ));
+    }
+    let entry = machine::act(root, layout, hands, chat, &action, reason)?;
     let line = entry.line();
     Ok(json!({ "outcome": entry.outcome, "entry": entry, "line": line }))
 }
@@ -162,16 +177,33 @@ mod tests {
         std::fs::create_dir_all(target.join("debug/deps")).unwrap();
         let layout = Layout::at(&home, &root);
         let prune = json!({"action": "prune", "path": target, "reason": "disk at 30 GiB"});
+        let a = proof::proof_for(&root, "chat-a").unwrap();
+        let b = proof::proof_for(&root, "chat-b").unwrap();
+        let (a, b) = (Some(a.as_str()), Some(b.as_str()));
 
-        let out = call_at(&root, &layout, &Fixture, Some("chat-a"), prune.clone()).unwrap();
+        let out = call_at(&root, &layout, &Fixture, Some("chat-a"), a, prune.clone()).unwrap();
         assert_eq!(out["outcome"], "refused");
         assert!(target.is_dir());
-        assert!(call_at(&root, &layout, &Fixture, None, prune.clone()).is_err());
+        assert!(call_at(&root, &layout, &Fixture, None, None, prune.clone()).is_err());
 
         machine::grant(&root, "chat-a", &[Scope::BuildPrune], None).unwrap();
-        let out = call_at(&root, &layout, &Fixture, Some("chat-b"), prune.clone()).unwrap();
+        let out = call_at(&root, &layout, &Fixture, Some("chat-b"), b, prune.clone()).unwrap();
         assert_eq!(out["outcome"], "refused", "the grant is chat-a's alone");
-        let out = call_at(&root, &layout, &Fixture, Some("chat-a"), prune).unwrap();
+        // A server started with chat-a's ID copied, but no proof or chat-b's.
+        for forged in [None, b] {
+            let err = call_at(
+                &root,
+                &layout,
+                &Fixture,
+                Some("chat-a"),
+                forged,
+                prune.clone(),
+            )
+            .unwrap_err();
+            assert!(err.starts_with("refused:"), "{err}");
+            assert!(target.is_dir());
+        }
+        let out = call_at(&root, &layout, &Fixture, Some("chat-a"), a, prune).unwrap();
         assert_eq!(out["outcome"], "done", "{out}");
         assert!(!target.exists());
 
@@ -180,6 +212,7 @@ mod tests {
             &layout,
             &Fixture,
             Some("chat-a"),
+            a,
             json!({"action": "grants"}),
         )
         .unwrap();
@@ -189,6 +222,7 @@ mod tests {
             &layout,
             &Fixture,
             None,
+            None,
             json!({"action": "log", "limit": 2}),
         )
         .unwrap();
@@ -197,12 +231,20 @@ mod tests {
         assert_eq!(entries[1]["agent"], "chat-a");
         assert_eq!(entries[1]["outcome"], "done");
         assert_eq!(entries[1]["at"], "2026-10-17 9:30:00 PM CDT");
+        // The owner revokes it: the real chat, proof and all, is refused.
+        machine::revoke(&root, "chat-a").unwrap();
+        std::fs::create_dir_all(target.join("debug/deps")).unwrap();
+        let prune = json!({"action": "prune", "path": target, "reason": "disk at 30 GiB"});
+        let out = call_at(&root, &layout, &Fixture, Some("chat-a"), a, prune).unwrap();
+        assert_eq!(out["outcome"], "refused");
+        assert!(target.is_dir());
         assert!(
             call_at(
                 &root,
                 &layout,
                 &Fixture,
                 Some("chat-a"),
+                a,
                 json!({"action": "deploy"})
             )
             .is_err()

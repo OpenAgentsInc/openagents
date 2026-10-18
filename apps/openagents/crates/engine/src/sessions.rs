@@ -1665,25 +1665,35 @@ impl Inner {
 
     /// OpenAgents's own MCP server for a run of `chat_id`: this binary's `openagents
     /// mcp` subcommand, dialing the engine's IPC port and stamped with the
-    /// originating chat + device so the agent's side chats link back here.
-    /// None when the engine serves no port or its executable is unknown.
+    /// originating chat + device so the agent's side chats link back here,
+    /// and with the chat's proof of its ID, which its machine grants need
+    /// (#12067). None when the engine serves no port or its executable is
+    /// unknown.
     fn openagents_mcp(&self, chat_id: &str) -> Option<openagents_proto::McpServer> {
+        use coder_lease::machine::{self, proof};
         let port = self.ipc_port.load(std::sync::atomic::Ordering::Relaxed);
         if port == 0 {
             return None;
         }
         let command = std::env::current_exe().ok()?.to_str()?.to_owned();
+        let mut env: std::collections::BTreeMap<String, String> = [
+            ("OPENAGENTS_IPC_PORT".to_owned(), port.to_string()),
+            (proof::CHAT_VAR.to_owned(), chat_id.to_owned()),
+            ("OPENAGENTS_DEVICE_ID".to_owned(), self.device_id.clone()),
+        ]
+        .into_iter()
+        .collect();
+        match machine::here().and_then(|(root, _)| proof::proof_for(&root, chat_id)) {
+            Ok(chat_proof) => {
+                env.insert(proof::PROOF_VAR.to_owned(), chat_proof);
+            }
+            Err(error) => tracing::warn!(%error, chat_id, "no machine proof for this chat"),
+        }
         Some(openagents_proto::McpServer {
             name: "openagents".into(),
             command,
             args: vec!["mcp".into()],
-            env: [
-                ("OPENAGENTS_IPC_PORT".to_owned(), port.to_string()),
-                ("OPENAGENTS_CHAT_ID".to_owned(), chat_id.to_owned()),
-                ("OPENAGENTS_DEVICE_ID".to_owned(), self.device_id.clone()),
-            ]
-            .into_iter()
-            .collect(),
+            env,
         })
     }
 

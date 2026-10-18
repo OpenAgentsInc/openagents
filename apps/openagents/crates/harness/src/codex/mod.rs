@@ -1253,6 +1253,10 @@ async fn run_session(session: Session) {
                 .as_object_mut()
                 .expect("thread/start config overrides are an object");
             overrides.extend(codex_mcp_overrides(mcp));
+            // The chat's proof of its ID, for its shell commands (#12067).
+            overrides.extend(crate::chat_identity_env(Some(mcp)).into_iter().map(
+                |(name, value)| (format!("shell_environment_policy.set.{name}"), value.into()),
+            ));
         }
         #[cfg(unix)]
         if !title_only

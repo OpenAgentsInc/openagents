@@ -453,13 +453,40 @@ environment, like `grant screen`. Without `--for` it lasts until revoked.
 Granting an agent again replaces its earlier scopes. Grants live in
 `grants/machine.json` in the lease root.
 
-An app chat acts through its `machine_action` tool, which passes its own
-chat ID: the tool has no argument for naming another agent. A terminal
-agent uses `openagents lease prune PATH --reason TEXT` or `openagents
-lease stop PID --reason TEXT`, which act for `OPENAGENTS_CHAT_ID` when set,
-else the session the broker detects. Each action needs a reason. Without
-the grant, it's refused, and the agent hands the job to a chat or asks the
-owner. With the grant, these are still refused:
+An app chat acts through its `machine_action` or `upgrade_host` tool,
+which passes its own chat ID: the tools have no argument for naming another
+agent. From its own shell, a chat can also run `openagents lease prune PATH
+--reason TEXT`, `openagents lease stop PID --reason TEXT`, or `openagents
+host-upgrade --agent CHAT_ID`. Each action needs a reason. Without the
+grant, it's refused, and the agent hands the job to a chat or asks the
+owner.
+
+**Proof of the chat (#12067).** A chat ID is no secret, so naming one
+proves nothing. The engine keeps a key in `grants/machine.key` in the lease
+root (mode 600) and gives each chat its proof, a keyed hash of its chat ID,
+in `OPENAGENTS_CHAT_PROOF` beside `OPENAGENTS_CHAT_ID`: in the environment
+of the chat's `openagents` MCP server, and in the environment its shell
+commands get (Claude Code's process; Codex's `shell_environment_policy`).
+Every machine-action path
+([`machine::proof`](../../../crates/coder-lease/src/machine/proof.rs))
+accepts a chat ID only with that chat's proof:
+
+- A command that names a chat (`--agent`, or `OPENAGENTS_CHAT_ID`) with no
+  proof, or with another chat's, is refused and logged, and the refusal
+  says the proof is missing or belongs to another chat. Copying a granted
+  chat's ID into another process, or into another chat, isn't enough.
+- An agent that names no chat acts as the session the broker detects from
+  its own process ancestry (`claude-code:ID`, `codex:ID`).
+- The owner at an interactive terminal needs no proof and acts as the
+  owner, logged as `owner`, even when naming a chat. `host-upgrade
+  --detach` hands its detached copy a proof bound to that one upgrade.
+
+A chat started before this change gets its proof on its next turn, when
+the engine starts its harness and MCP server again. Harnesses other than
+Claude Code and Codex get the proof only in their MCP server, so they use
+the tools.
+
+With the grant, these are still refused:
 
 - **Prune:** a path that isn't a build cache (worktrees and checkouts
   included), the owner's dev-app target (left to the sweep below 40 GiB),
@@ -478,7 +505,8 @@ command name (never its arguments), the detail, and the Chicago time.
 `openagents lease actions` prints the grants and recent lines, and the
 `machine_action` tool's `log` and `grants` actions return the same record
 to the agent. On one Unix account, as with the screen grant, this stops
-accidents, not a process set on forging a grant.
+accidents and borrowed IDs, not a process set on reading the key file to
+forge a proof.
 
 ## Resources
 

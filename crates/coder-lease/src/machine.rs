@@ -24,8 +24,15 @@
 //!   `openagents lease actions` and the `machine_action` tool read it, so
 //!   the owner and the agent see the same record.
 //!
-//! On one Unix account this stops accidents, not a process set on forging a
-//! grant, like the screen grant ([`crate::Grant`]).
+//! - A grant to a chat ID is usable only by that chat ([`proof`], #12067):
+//!   the engine gives each chat a proof of its ID, and a command that names
+//!   a chat without that chat's proof is refused and logged. The owner at an
+//!   interactive terminal acts as the owner.
+//!
+//! On one Unix account this stops accidents and borrowed IDs, not a process
+//! set on forging a grant, like the screen grant ([`crate::Grant`]).
+
+pub mod proof;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -232,6 +239,22 @@ pub fn revoke(root: &Path, agent: &str) -> Result<bool, String> {
         .save(root)
         .map_err(|error| format!("the machine grants can't be written: {error}"))?;
     Ok(true)
+}
+
+/// Logs a refusal of a command that named `agent` without proving it
+/// ([`proof::identify`]), and returns the reason.
+pub fn refuse_unproven(
+    root: &Path,
+    agent: &str,
+    scope: Scope,
+    reason: &str,
+    why: String,
+) -> String {
+    let mut entry = Entry::new(&System, agent.trim(), scope, reason.trim());
+    entry.outcome = Outcome::Refused;
+    entry.detail.clone_from(&why);
+    let _ = log(root, &entry);
+    why
 }
 
 /// What an agent asks to do.

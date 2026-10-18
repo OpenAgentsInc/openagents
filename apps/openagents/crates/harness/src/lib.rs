@@ -347,6 +347,23 @@ pub fn compose_login_shell_path(cmd: &mut tokio::process::Command) {
     compose_path(cmd.as_std_mut(), std::iter::empty());
 }
 
+/// The chat's ID and its proof of that ID, from OpenAgents's own MCP server,
+/// for the shell commands an agent runs: a machine grant to a chat is usable
+/// only by a command that carries that chat's proof (#12067).
+pub fn chat_identity_env(mcp: Option<&openagents_proto::McpServer>) -> Vec<(&'static str, String)> {
+    let Some(mcp) = mcp else {
+        return Vec::new();
+    };
+    let value = |name: &str| mcp.env.get(name).filter(|value| !value.is_empty()).cloned();
+    match (value(CHAT_ID_VAR), value(CHAT_PROOF_VAR)) {
+        (Some(chat), Some(proof)) => vec![(CHAT_ID_VAR, chat), (CHAT_PROOF_VAR, proof)],
+        _ => Vec::new(),
+    }
+}
+
+const CHAT_ID_VAR: &str = "OPENAGENTS_CHAT_ID";
+const CHAT_PROOF_VAR: &str = "OPENAGENTS_CHAT_PROOF";
+
 /// Compose the child's PATH: the resolved executable's directory first, then
 /// our own PATH, then the login-shell PATH snapshot — deduped. npm-shim CLIs
 /// are `#!/usr/bin/env node` scripts whose `node` lives beside them in the

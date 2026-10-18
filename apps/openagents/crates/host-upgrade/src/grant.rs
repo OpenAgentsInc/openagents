@@ -1,25 +1,71 @@
 //! The `host.upgrade` scope (#12033's machine scopes): only an agent granted
 //! it may start an upgrade, the owner takes it away with `openagents lease
 //! revoke machine AGENT`, and every request an agent makes, refused or not,
-//! is a line in the machine-action log beside the upgrade's own log.
+//! is a line in the machine-action log beside the upgrade's own log. An
+//! agent proves it is the chat it names (#12067, [`machine::proof`]).
 
+use coder_lease::machine::proof;
+pub use coder_lease::machine::proof::{Caller, PROOF_VAR};
 use coder_lease::machine::{self, Entry, Grants, Scope};
 
-/// Who asks for an upgrade: the agent named, else the agent this command
-/// runs under (the app chat's ID, else its session), else `None` for the
-/// owner at a terminal.
-#[must_use]
-pub fn requester(named: Option<&str>) -> Option<String> {
-    if let Some(agent) = named.map(str::trim).filter(|agent| !agent.is_empty()) {
-        return Some(agent.to_owned());
+/// Who asks for an upgrade. `named` is the `--agent` flag. The owner at a
+/// terminal is the owner, even naming a chat; an agent must carry the
+/// proof of the chat it names, else it's the session its ancestry shows.
+/// `owner_request` is the request ID a detached upgrade the owner started
+/// carries, proven by the parent ([`detached_proof`]).
+///
+/// # Errors
+/// A chat is named without its proof; the refusal is logged.
+pub fn caller(
+    named: Option<&str>,
+    owner_request: Option<&str>,
+    reason: &str,
+) -> Result<Caller, String> {
+    let (root, _) = machine::here()?;
+    if let Some(id) = owner_request {
+        let proof = std::env::var(proof::PROOF_VAR).unwrap_or_default();
+        if proof::verify(&root, &owner_subject(id), &proof) {
+            return Ok(Caller::Owner);
+        }
+        let why = format!(
+            "refused: upgrade {id} says the owner started it, but carries no proof of that ({} is missing or wrong)",
+            proof::PROOF_VAR
+        );
+        return Err(refused(&root, proof::OWNER, reason, why));
     }
-    let env = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
-    if let Some(chat) = env("OPENAGENTS_CHAT_ID") {
-        return Some(chat.trim().to_owned());
+    proof::identify_here(&root, named).map_err(|why| {
+        let agent = named
+            .map(str::to_owned)
+            .or_else(|| std::env::var(proof::CHAT_VAR).ok())
+            .unwrap_or_default();
+        refused(&root, &agent, reason, why)
+    })
+}
+
+/// The proof a detached upgrade carries in [`proof::PROOF_VAR`]: the
+/// agent's own, or for the owner one bound to request `id`.
+///
+/// # Errors
+/// The key can't be read.
+pub fn detached_proof(caller: &Caller, id: &str) -> Result<String, String> {
+    let (root, _) = machine::here()?;
+    match caller {
+        Caller::Owner => proof::proof_for(&root, &owner_subject(id)),
+        Caller::Chat(agent) | Caller::Session(agent) => proof::proof_for(&root, agent),
     }
-    // An agent runs this if a grant made here would be refused for that.
-    coder_lease::grant_refusal_for("", true, &env, &coder_lease::ancestors)
-        .map(|_| coder_lease::Session::detect(&env, &coder_lease::ancestors).id)
+}
+
+fn owner_subject(id: &str) -> String {
+    format!("owner/host-upgrade/{id}")
+}
+
+fn refused(root: &std::path::Path, agent: &str, reason: &str, why: String) -> String {
+    let mut entry = Entry::new(&machine::System, agent, Scope::HostUpgrade, reason);
+    entry.outcome = machine::Outcome::Refused;
+    entry.command = Some("host-upgrade".into());
+    entry.detail.clone_from(&why);
+    let _ = machine::log(root, &entry);
+    why
 }
 
 /// Whether `agent` may start an upgrade now. A refusal is logged.

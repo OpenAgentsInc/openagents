@@ -191,16 +191,10 @@ pub(crate) fn act(output: Output, verb: &str, words: &[String]) -> u8 {
         };
         Action::Prune(path)
     };
-    let agent = agent_id();
+    let reason = args.option("reason").unwrap_or("");
     let entry = match machine::here().and_then(|(root, layout)| {
-        machine::act(
-            &root,
-            &layout,
-            &machine::System,
-            &agent,
-            &action,
-            args.option("reason").unwrap_or(""),
-        )
+        let agent = caller(&root, action.scope(), reason)?;
+        machine::act(&root, &layout, &machine::System, &agent, &action, reason)
     }) {
         Ok(entry) => entry,
         Err(message) => return output.fail("lease", &message),
@@ -214,17 +208,24 @@ pub(crate) fn act(output: Output, verb: &str, words: &[String]) -> u8 {
     }
 }
 
-/// The agent this command runs for: the app chat's ID when the engine
-/// set it, else the session the lease broker finds.
-fn agent_id() -> String {
-    std::env::var("OPENAGENTS_CHAT_ID")
-        .ok()
-        .map(|id| id.trim().to_owned())
-        .filter(|id| !id.is_empty())
-        .unwrap_or_else(|| {
-            coder_lease::Session::detect(&|name| std::env::var(name).ok(), &coder_lease::ancestors)
-                .id
-        })
+/// The agent this command acts for: the app chat that proves it is that
+/// chat (#12067), else the session the lease broker finds. The owner at a
+/// terminal acts under their own session, never a chat's grant. A chat
+/// named without its proof is refused and logged.
+fn caller(root: &std::path::Path, scope: Scope, reason: &str) -> Result<String, String> {
+    use machine::proof::{self, Caller};
+    match proof::identify_here(root, None) {
+        Ok(Caller::Chat(id) | Caller::Session(id)) => Ok(id),
+        Ok(Caller::Owner) => Ok(coder_lease::Session::detect(
+            &|name| std::env::var(name).ok(),
+            &coder_lease::ancestors,
+        )
+        .id),
+        Err(why) => {
+            let named = std::env::var(proof::CHAT_VAR).unwrap_or_default();
+            Err(machine::refuse_unproven(root, &named, scope, reason, why))
+        }
+    }
 }
 
 fn duration_words(seconds: u64) -> String {

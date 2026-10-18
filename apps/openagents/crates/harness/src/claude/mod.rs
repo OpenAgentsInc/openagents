@@ -323,6 +323,8 @@ impl ClaudeHarness {
             cmd.env("BASH_DEFAULT_TIMEOUT_MS", ms.to_string())
                 .env("BASH_MAX_TIMEOUT_MS", ms.to_string());
         }
+        // The chat's proof of its ID, for its shell commands (#12067).
+        cmd.envs(crate::chat_identity_env(request.mcp.as_ref()));
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -1683,6 +1685,52 @@ mod fork_session_tests {
         assert!(forked.iter().any(|a| a == "--fork-session"));
         request.resume = None;
         assert!(!args(&request).iter().any(|a| a == "--fork-session"));
+    }
+
+    /// The chat's ID and proof reach Claude Code's shell commands (#12067).
+    #[test]
+    fn the_chats_proof_rides_the_claude_process_env() {
+        let mut request: RunRequest = serde_json::from_value(serde_json::json!({
+            "prompt":"Upgrade the host", "cwd":"/workspace", "model":null, "reasoning":null,
+            "resume":null, "sandbox":"danger-full-access"
+        }))
+        .unwrap();
+        let env = |request: &RunRequest| -> Vec<(String, String)> {
+            let cmd = ClaudeHarness::new().build_command(&PathBuf::from("claude"), request);
+            let mut env: Vec<(String, String)> = cmd
+                .as_std()
+                .get_envs()
+                .filter_map(|(k, v)| {
+                    let k = k.to_string_lossy().into_owned();
+                    k.starts_with("OPENAGENTS_CHAT")
+                        .then(|| (k, v.unwrap_or_default().to_string_lossy().into_owned()))
+                })
+                .collect();
+            env.sort();
+            env
+        };
+        assert!(env(&request).is_empty(), "no MCP server, no chat identity");
+        let pair = |k: &str, v: &str| (k.to_owned(), v.to_owned());
+        request.mcp = Some(openagents_proto::McpServer {
+            name: "openagents".into(),
+            command: "openagents".into(),
+            args: vec!["mcp".into()],
+            env: [pair("OPENAGENTS_CHAT_ID", "chat-1")].into_iter().collect(),
+        });
+        assert!(
+            env(&request).is_empty(),
+            "an ID without its proof isn't passed on"
+        );
+        let mcp = request.mcp.as_mut().unwrap();
+        mcp.env
+            .insert("OPENAGENTS_CHAT_PROOF".into(), "abc123".into());
+        assert_eq!(
+            env(&request),
+            vec![
+                pair("OPENAGENTS_CHAT_ID", "chat-1"),
+                pair("OPENAGENTS_CHAT_PROOF", "abc123")
+            ]
+        );
     }
 
     /// A saved agent with a shell cap gets both Claude Code timeouts (#12029).
