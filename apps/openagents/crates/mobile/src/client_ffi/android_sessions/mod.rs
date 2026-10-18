@@ -352,7 +352,12 @@ impl CoreAndroidSessions {
                     ));
                     body.push(button(
                         "providers",
-                        s.draft.harness.as_deref().unwrap_or("Choose a provider"),
+                        s.draft
+                            .harness
+                            .as_ref()
+                            .and_then(|id| s.draft.harnesses.iter().find(|h| &h.id == id))
+                            .map(|h| h.label.as_str())
+                            .unwrap_or("Choose a provider"),
                         !s.draft.harnesses.is_empty(),
                         Intent::Harnesses,
                     ));
@@ -367,7 +372,12 @@ impl CoreAndroidSessions {
                     ));
                     body.push(button(
                         "efforts",
-                        s.draft.effort.as_deref().unwrap_or("Default effort"),
+                        s.draft
+                            .effort
+                            .as_deref()
+                            .map(openagents_client::catalog::reasoning_label)
+                            .as_deref()
+                            .unwrap_or("Default effort"),
                         s.draft.selected().is_some(),
                         Intent::Efforts,
                     ));
@@ -980,9 +990,69 @@ mod tests {
         };
         assert!(Arc::ptr_eq(&chat, &a));
         assert!(a.snapshot().chat.is_none());
+
+        let action = owner
+            .activate(
+                owner.instance.clone(),
+                json["revision"].as_u64().unwrap(),
+                "new-cloud".into(),
+            )
+            .await
+            .unwrap();
+        let AndroidSessionAction::Cloud { chat } = action else {
+            panic!("Expected the explicitly reset cloud chat")
+        };
+        assert!(Arc::ptr_eq(&chat, &a));
+        assert!(a.snapshot().chat.is_none());
+
+        for key in ["cloud-status", "cloud-start", "cloud-stop"] {
+            let result = owner
+                .activate(
+                    owner.instance.clone(),
+                    json["revision"].as_u64().unwrap(),
+                    key.into(),
+                )
+                .await;
+            assert!(matches!(result, Err(CoreError::Auth { .. })), "{key}");
+        }
         assert!(owner.state.lock().unwrap().client.is_none());
         owner.close();
         assert!(owner.default_chat().is_err());
+    }
+
+    #[tokio::test]
+    async fn stale_and_disabled_native_menu_actions_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = owner(dir.path());
+        let first: serde_json::Value = serde_json::from_slice(&owner.view().unwrap()).unwrap();
+        owner
+            .acknowledge(owner.instance.clone(), first["revision"].as_u64().unwrap())
+            .unwrap();
+        let second: serde_json::Value = serde_json::from_slice(&owner.view().unwrap()).unwrap();
+        assert!(matches!(
+            owner
+                .activate(
+                    owner.instance.clone(),
+                    first["revision"].as_u64().unwrap(),
+                    "cloud".into(),
+                )
+                .await,
+            Err(CoreError::Closed)
+        ));
+        owner
+            .acknowledge(owner.instance.clone(), second["revision"].as_u64().unwrap())
+            .unwrap();
+        assert!(matches!(
+            owner
+                .activate(
+                    owner.instance.clone(),
+                    second["revision"].as_u64().unwrap(),
+                    "computers".into(),
+                )
+                .await,
+            Err(CoreError::Closed)
+        ));
+        owner.close();
     }
     #[test]
     fn previous_or_unmounted_menu_cannot_create_or_select_a_computer() {
