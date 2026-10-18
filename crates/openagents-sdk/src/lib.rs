@@ -3,8 +3,8 @@
 
 pub mod agent_lab;
 pub mod agents;
-mod auth;
 pub mod attention;
+mod auth;
 pub mod chats;
 pub mod cloud_host;
 pub mod computers;
@@ -27,7 +27,8 @@ pub mod work;
 
 pub use auth::nostr::{
     EventTemplate, HTTP_AUTH_KIND, KEY_BODY_MAX, KeySignIn, LinkedKey, NostrSigner, POW_BITS,
-    ScannedLogin, ScannedLoginAbout, ScannedLoginApproved, SignerError, solve_pow,
+    ScannedLogin, ScannedLoginAbout, ScannedLoginApproved, SignerError,
+    play_integrity_request_hash, solve_pow,
 };
 pub use auth::{
     Account, AccountView, CredentialRecord, CredentialStore, DELETE_ACCOUNT_CONFIRM, Login, Poll,

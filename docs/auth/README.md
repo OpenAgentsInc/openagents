@@ -648,3 +648,65 @@ in-app sheet (`ASWebAuthenticationSession`) with `return=app`: the page
 then lets its form land on `openagents:`, and Approve or Deny sends the
 sheet to `openagents://signed-in` (`?denied=1`), which closes it. Without
 `return=app` the page is unchanged.
+
+### Android Play Integrity (#12086)
+
+The owner selected H1 in the Android sprint on 2026-10-18. Standard Play
+Integrity is an opt-in alternative to sign-up proof of work on the existing
+key-account route. Existing accounts need neither proof. Unsupported devices,
+offline/demo builds, refused tokens, provider outages, and an unconfigured
+server keep the proof-of-work path. It does not grant an attested cloud
+allowance: Play Integrity has no persistent install key, so address, network,
+and global signup caps still apply. App Attest's existing policy is unchanged.
+
+The request body adds `play_integrity: {token}`. Rust gives the platform only
+hex SHA-256 of `openagents.play-integrity.sign-in.v1`, a newline, the server
+challenge, a newline, and the identity's public key. The SDK signs the token
+body with that same key. The server verifies the signed request before
+calling Google's authenticated `PACKAGE:decodeIntegrityToken` endpoint. It
+checks the digest, package, allowed signing certificates, minimum version,
+timestamp (120 seconds old at most, 30 seconds future skew), `PLAY_RECOGNIZED`,
+`MEETS_DEVICE_INTEGRITY`, and `LICENSED`. It accepts no client-decoded verdict.
+Google's cleared replay verdicts fail these checks; local token/challenge
+reservations also reject repeat submissions. After gate admission the existing
+session store atomically burns event and challenge before creating an account.
+
+Configure `accounts.key_accounts.play_integrity` in the gateway config only
+when the provider is ready. It has a required `policy` object with
+`package_name` (from the brand crate), `certificate_sha256` (nonempty allowed
+Play app-signing SHA-256 digests, base64url without padding), and
+`minimum_version_code` (positive). Supply exactly one explicit credential
+selector: `service_account_file` or `access_token_file`. Service-account OAuth
+uses `https://www.googleapis.com/auth/playintegrity`; token files must contain
+an operator-refreshed token for that scope. No Vertex credentials or process
+credential variables are selected implicitly. Use private mounted files and
+Google-managed response decoding; never ship server credentials in the app.
+
+At most eight sign-in jobs enter the blocking queue; each job owns its
+permit through completion even if HTTP is cancelled. Google calls run off
+the async request worker, with at most four concurrent decodes, a ten-second total timeout, and a 32 KiB response limit. No token or
+provider payload is logged or persisted by the adapter; replay memory keeps
+at most 4,096 token digests for ten minutes. Google receives the opaque digest and its
+normal integrity/device signals, not recovery words or session credentials.
+Keep sign-in bodies out of request logging. Provider quota, authorization,
+and network faults return `503 play_integrity_unavailable`; rejected verdicts
+return `400 invalid_play_integrity`; repeat proofs return `409 proof_used`.
+The controller retries platform refusal/unavailability once with fresh
+challenge and proof of work, without skipping daily caps.
+
+B1 must include `apps/android/platform/AndroidPlayIntegrityAttester.kt`, add
+`com.google.android.play:integrity:1.5.0`, generate the new UniFFI binding, and
+register the callback before `CoreAccount.start_identity`. Supply the linked
+Cloud project number as build configuration. Leave it unregistered in demo,
+non-Play, and rollout-disabled builds. The adapter prepares a Standard provider
+and requests a token within eight seconds; it makes no HTTP call of its own.
+Until B1 wires it, this is not a runnable Android integration.
+
+Roll out first to a signed internal-testing build with a dedicated test
+account. The [Standard request contract](https://developer.android.com/google/play/integrity/standard)
+and [verdict fields](https://developer.android.com/google/play/integrity/verdicts)
+define provider behavior. Play Console configuration, server credentials,
+quota/privacy review, and real-device qualification are recorded in
+[NEEDS_OWNER.md](../../NEEDS_OWNER.md); source fixtures do not prove those steps.
+Remove the gateway config and unregister the callback to return to proof of
+work without changing identities, sessions, or stored credentials.

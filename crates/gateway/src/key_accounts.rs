@@ -9,6 +9,9 @@
 //!   attestation over the sign-in challenge ([`AttestBody`]); a key that
 //!   verifies ([`oa_auth::attest`]) is bound to the account, and one
 //!   install makes at most one attested account.
+//! - **Play Integrity.** An optional Standard token can replace proof of
+//!   work. It has no stable install key: daily caps and key-only cloud
+//!   standing still apply after verification.
 //! - **Sign-up limits for the rest.** A new key account that isn't
 //!   attested (the desktop, the CLI, a script) needs the same limits an
 //!   agent's self-registration has ([`crate::agent_accounts`]): a proof of
@@ -77,6 +80,10 @@ pub struct KeyAccounts {
     /// Whether keys made by a development build count as attested.
     #[serde(default)]
     pub allow_development: bool,
+    /// Standard Play Integrity as an alternative signup proof. Daily caps
+    /// still apply and this does not grant an attested cloud allowance.
+    #[serde(default)]
+    pub play_integrity: Option<crate::play_integrity::Config>,
     /// The breaker: the most every unproven key account's free model
     /// allowance together may cost a day, micros of USD.
     #[serde(default = "default_breaker")]
@@ -115,6 +122,7 @@ impl Default for KeyAccounts {
             forwarded_hops: default_hops(),
             app_id: default_app_id(),
             allow_development: false,
+            play_integrity: None,
             free_usd_micros_per_day: default_breaker(),
         }
     }
@@ -318,6 +326,8 @@ const SEEN_TTL: u64 = 600;
 pub struct KeyState {
     pub(crate) config: KeyAccounts,
     verifier: Verifier,
+    play: Option<crate::play_integrity::Verifier>,
+    blocking_slots: std::sync::Arc<tokio::sync::Semaphore>,
     book: Mutex<attest::Book>,
     signups: Mutex<Signups>,
     signups_path: PathBuf,
@@ -343,7 +353,13 @@ impl KeyState {
             .unwrap_or_default();
         Ok(Self {
             verifier: Verifier::apple(&config.app_id, config.allow_development),
+            play: config
+                .play_integrity
+                .as_ref()
+                .map(crate::play_integrity::Verifier::new)
+                .transpose()?,
             config,
+            blocking_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(8)),
             book: Mutex::new(attest::Book::open(dir)?),
             signups: Mutex::new(Signups {
                 day: saved.day,
@@ -354,6 +370,21 @@ impl KeyState {
             seen: Mutex::new(HashMap::new()),
             standings: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Bound work before it enters Tokio's blocking queue. Move the permit
+    /// into the job so a cancelled HTTP request cannot release it early.
+    pub(crate) fn sign_in_slot(&self) -> Result<tokio::sync::OwnedSemaphorePermit, Refusal> {
+        self.blocking_slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                Refusal::new(
+                    503,
+                    "sign_in_unavailable",
+                    "We couldn't sign you in right now. Try again in a moment.",
+                )
+            })
     }
 
     /// The gate a Nostr sign-in passes before it makes an account.
@@ -470,6 +501,12 @@ impl KeyState {
         };
         check_pow(challenge, solution, bits)
             .map_err(|why| Refusal::new(400, "invalid_proof", why))?;
+        self.admit_signup(headers)
+    }
+
+    /// Play Integrity has no persistent install key. Keep the same daily
+    /// limits even when it replaces proof of work.
+    fn admit_signup(&self, headers: &HeaderMap) -> Result<(), Refusal> {
         let ip = crate::agent_accounts::caller_ip(headers, self.config.forwarded_hops);
         let day = crate::inference_public::today();
         let mut signups = self.signups.lock().map_err(|_| busy())?;
@@ -490,8 +527,8 @@ impl KeyState {
 }
 
 /// What a Nostr sign-in by a key with no account must pass (#11994): an
-/// App Attest attestation in `app_attest`, or, without one, a proof of
-/// work in `pow` and the daily caps.
+/// App Attest in `app_attest`, or Play Integrity in `play_integrity`
+/// under daily caps, or proof of work in `pow` under the same caps.
 pub(crate) struct Gate<'a> {
     state: &'a KeyState,
     headers: &'a HeaderMap,
@@ -503,6 +540,62 @@ impl NewKeyGate for Gate<'_> {
         self.state
             .first_seen(&proof.event_id)
             .map_err(|r| r.answer())?;
+        if let Some(body) = fields.get("play_integrity") {
+            if fields.get("app_attest").is_some() {
+                return Err(Refusal::new(
+                    400,
+                    "invalid_play_integrity",
+                    "Send one app proof at a time.",
+                )
+                .answer());
+            }
+            let token = body.get("token").and_then(Value::as_str).ok_or_else(|| {
+                Refusal::new(
+                    400,
+                    "invalid_play_integrity",
+                    "We couldn't check this app. Try signing in again.",
+                )
+                .answer()
+            })?;
+            let verifier = self.state.play.as_ref().ok_or_else(|| {
+                Refusal::new(
+                    503,
+                    "play_integrity_unavailable",
+                    "We couldn't check this app right now. Try signing in again.",
+                )
+                .answer()
+            })?;
+            self.state
+                .first_seen(&format!("play-challenge:{}", proof.challenge))
+                .map_err(|r| r.answer())?;
+            verifier
+                .verify(token, &proof.challenge, &proof.pubkey, unix_now())
+                .map_err(|error| {
+                    use crate::play_integrity::Error;
+                    match error {
+                        Error::Replayed => Refusal::new(
+                            409,
+                            "proof_used",
+                            "That sign-in was already used. Sign in again.",
+                        ),
+                        Error::Rejected => Refusal::new(
+                            400,
+                            "invalid_play_integrity",
+                            "We couldn't check this app. Try signing in again.",
+                        ),
+                        Error::Unavailable => Refusal::new(
+                            503,
+                            "play_integrity_unavailable",
+                            "We couldn't check this app right now. Try signing in again.",
+                        ),
+                    }
+                    .answer()
+                })?;
+            return self
+                .state
+                .admit_signup(self.headers)
+                .map_err(|r| r.answer());
+        }
         if let Some(body) = fields.get("app_attest") {
             let body: AttestBody = serde_json::from_value(body.clone()).map_err(|_| {
                 Refusal::new(
@@ -692,5 +785,127 @@ mod tests {
         assert_eq!(config.difficulty_bits, 20);
         assert!(!config.allow_development);
         assert_eq!(config.free_usd_micros_per_day, 20_000_000);
+    }
+}
+
+#[cfg(test)]
+mod play_tests {
+    use super::*;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use nostr::domain::{RelaySigner, Tag};
+    use oa_auth::nostr::{NostrAuth, Purpose, SIGN_IN_PATHS};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct Fake {
+        value: Mutex<Value>,
+        calls: AtomicUsize,
+    }
+    impl crate::play_integrity::Decoder for Fake {
+        fn decode(&self, _: &str) -> Result<Value, crate::play_integrity::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self.value.lock().unwrap().clone())
+        }
+    }
+    fn proof(auth: &NostrAuth, token: &str) -> (Proof, Value) {
+        let at = unix_now();
+        let challenge = auth.issue(Purpose::SignIn, at).0;
+        let fields = json!({"play_integrity":{"token":token}});
+        let body = serde_json::to_vec(&fields).unwrap();
+        let key = RelaySigner::from_secret_hex(&"07".repeat(32)).unwrap();
+        let event = key.sign(
+            at,
+            27235,
+            vec![
+                Tag::new(vec!["u".into(), "http://fixture/v1/sessions/nostr".into()]),
+                Tag::new(vec!["method".into(), "POST".into()]),
+                Tag::new(vec!["challenge".into(), challenge]),
+                Tag::new(vec!["payload".into(), hex::encode(Sha256::digest(&body))]),
+            ],
+            String::new(),
+        );
+        let header = format!(
+            "Nostr {}",
+            STANDARD.encode(serde_json::to_vec(&event).unwrap())
+        );
+        (
+            auth.verify(
+                None,
+                &header,
+                "POST",
+                &SIGN_IN_PATHS,
+                Some(&body),
+                Purpose::SignIn,
+                at,
+            )
+            .unwrap(),
+            fields,
+        )
+    }
+    fn decoded(proof: &Proof) -> Value {
+        json!({
+            "requestDetails":{"requestPackageName":"org.example.fixture","requestHash":oa_auth::play_integrity::request_hash(&proof.challenge,&proof.pubkey),"timestampMillis":(unix_now()*1000).to_string()},
+            "appIntegrity":{"appRecognitionVerdict":"PLAY_RECOGNIZED","packageName":"org.example.fixture","certificateSha256Digest":["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"],"versionCode":"1"},
+            "deviceIntegrity":{"deviceRecognitionVerdict":["MEETS_DEVICE_INTEGRITY"]},
+            "accountDetails":{"appLicensingVerdict":"LICENSED"}
+        })
+    }
+    #[test]
+    fn verified_play_still_counts_caps_and_never_grants_install_credit() {
+        let dir = tempfile::tempdir().unwrap();
+        let auth = NostrAuth::open(dir.path(), &["http://fixture".into()]).unwrap();
+        let (first, fields) = proof(&auth, "first-token");
+        let fake = Arc::new(Fake {
+            value: Mutex::new(decoded(&first)),
+            calls: AtomicUsize::new(0),
+        });
+        let policy = oa_auth::play_integrity::Policy {
+            package_name: "org.example.fixture".into(),
+            certificate_sha256: vec!["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into()],
+            minimum_version_code: 1,
+        };
+        let mut state = KeyState::open(
+            dir.path(),
+            KeyAccounts {
+                per_day: 1,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        state.play = Some(crate::play_integrity::Verifier::with_decoder(
+            policy,
+            fake.clone(),
+        ));
+        let headers = HeaderMap::new();
+        let mut gate = state.gate(&headers);
+        assert!(gate.admit(&first, &fields).is_ok());
+        gate.made("fixture-account");
+        assert!(!state.is_attested("fixture-account"));
+        let replay = state.gate(&headers).admit(&first, &fields).unwrap_err();
+        assert_eq!(replay.body["error"]["code"], "proof_used");
+        assert_eq!(fake.calls.load(Ordering::SeqCst), 1);
+        let (second, fields) = proof(&auth, "second-token");
+        *fake.value.lock().unwrap() = decoded(&second);
+        let capped = state.gate(&headers).admit(&second, &fields).unwrap_err();
+        assert_eq!(capped.body["error"]["code"], "signup_limit");
+        assert_eq!(fake.calls.load(Ordering::SeqCst), 2);
+    }
+}
+
+#[cfg(test)]
+mod sign_in_admission_tests {
+    use super::*;
+    #[test]
+    fn blocking_jobs_are_bounded_before_enqueue_and_permits_stay_owned() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = KeyState::open(dir.path(), KeyAccounts::default()).unwrap();
+        let mut jobs: Vec<_> = (0..8).map(|_| state.sign_in_slot().unwrap()).collect();
+        let refusal = state.sign_in_slot().unwrap_err();
+        assert_eq!(refusal.status, 503);
+        assert_eq!(refusal.code, "sign_in_unavailable");
+        drop(jobs.pop());
+        assert!(state.sign_in_slot().is_ok());
     }
 }

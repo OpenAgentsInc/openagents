@@ -438,9 +438,10 @@ impl NostrAuth {
     }
 
     /// `POST /v1/sessions/nostr`: verify `authorization` over `body` (the
-    /// exact bytes, `{"app", "computer"}` or empty), find or create the
-    /// account holding `nostr:<pubkey>` (a new one gets a personal
-    /// workspace on `tenant`), burn the proof, and issue an app session,
+    /// exact bytes, `{"app", "computer"}` or empty), admit a new key and
+    /// burn its proof before finding or creating the account holding
+    /// `nostr:<pubkey>` (a new one gets a personal workspace on `tenant`),
+    /// and issue an app session,
     /// or a browser session when the event names one of
     /// [`WEB_SIGN_IN_PATHS`] (the label is then unused). Answers the
     /// device poll's `{session, token, account}` plus `created` and
@@ -524,6 +525,19 @@ impl NostrAuth {
             }
             Err(_) => return unavailable(),
         }
+        let Ok(sessions) = Sessions::open(&self.dir) else {
+            return unavailable();
+        };
+        // Admission may refuse a new key without consuming its challenge.
+        // Once admitted, reserve both proofs atomically before creating an
+        // account: concurrent replays must have no account side effects.
+        match sessions.mutate(|book, _, at| {
+            book.burn_nostr_proofs(&[&proof.event_id, &proof.nonce], proof.expires, at)
+        }) {
+            Ok(()) => {}
+            Err(SessionRefusal::ProofUsed) => return used(),
+            Err(_) => return unavailable(),
+        }
         let resolved = match accounts.sign_in_nostr(&proof.pubkey, tenant) {
             Ok(resolved) => resolved,
             Err(_) => return unavailable(),
@@ -542,14 +556,10 @@ impl NostrAuth {
                 "An agent account uses its API key directly; it can't sign in here.",
             );
         }
-        let Ok(sessions) = Sessions::open(&self.dir) else {
-            return unavailable();
-        };
         let account = resolved.account.id.clone();
         let workspace = resolved.workspace.as_ref().map(|w| w.id.clone());
         let created = resolved.created;
         let issued = sessions.mutate(|book, access, at| {
-            book.burn_nostr_proofs(&[&proof.event_id, &proof.nonce], proof.expires, at)?;
             let user = UserId::from(account.as_str());
             let issued = if browser {
                 book.issue(user, at)?

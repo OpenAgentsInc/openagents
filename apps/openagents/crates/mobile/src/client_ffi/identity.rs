@@ -64,6 +64,34 @@ impl openagents_account::Attester for Bridge {
     }
 }
 
+/// Android's platform result; Rust owns fallback and sign-in policy.
+#[derive(uniffi::Enum, Clone)]
+pub enum PlayIntegrityResult {
+    Token { token: String },
+    Unavailable,
+    Refused,
+}
+
+/// Thin Android callback over Standard Play Integrity. Only a request digest
+/// crosses this boundary. Called off the main thread; implementations must
+/// return within their platform timeout.
+#[uniffi::export(with_foreign)]
+pub trait PlayIntegrityAttester: Send + Sync {
+    fn attest(&self, request_hash: String) -> PlayIntegrityResult;
+}
+
+struct PlayBridge(Arc<dyn PlayIntegrityAttester>);
+impl openagents_account::PlayIntegrityAttester for PlayBridge {
+    fn attest(&self, request_hash: String) -> openagents_account::PlayIntegrityOutcome {
+        use openagents_account::PlayIntegrityOutcome;
+        match self.0.attest(request_hash) {
+            PlayIntegrityResult::Token { token } => PlayIntegrityOutcome::Token(token),
+            PlayIntegrityResult::Unavailable => PlayIntegrityOutcome::Unavailable,
+            PlayIntegrityResult::Refused => PlayIntegrityOutcome::Refused,
+        }
+    }
+}
+
 /// An identity store that is never there: accounts made for tests use it,
 /// so they never reach the real Keychain.
 pub(crate) struct NoVault;
@@ -118,6 +146,13 @@ impl CoreAccount {
     /// `start_identity`.
     pub fn set_app_attester(&self, attester: Arc<dyn AppAttester>) {
         self.controller().set_attester(Arc::new(Bridge(attester)));
+    }
+
+    /// Set Android's platform provider before `start_identity`. A missing or
+    /// unavailable provider keeps the proof-of-work path.
+    pub fn set_play_integrity_attester(&self, attester: Arc<dyn PlayIntegrityAttester>) {
+        self.controller()
+            .set_play_integrity_attester(Arc::new(PlayBridge(attester)));
     }
 
     /// Starts this phone's account on launch, with nothing for the person

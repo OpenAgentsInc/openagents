@@ -300,3 +300,33 @@ async fn an_attestation_that_does_not_verify_is_refused() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
     assert_eq!(code(&refused), "invalid_attestation");
 }
+
+#[tokio::test]
+async fn play_unconfigured_falls_back_to_existing_pow_and_known_keys_ignore_platform_proofs() {
+    let mut accounts = account_config(None);
+    accounts.key_accounts.difficulty_bits = 8;
+    let d = deploy(Some(accounts), true).await;
+    let (status, answer, _) = sign_in_over(
+        &d,
+        &signer(22),
+        "10.0.0.1",
+        |_| json!({"play_integrity":{"token":"synthetic-platform-token"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(code(&answer), "play_integrity_unavailable");
+    let (status, made, _) =
+        sign_in_over(&d, &signer(22), "10.0.0.1", |c| json!({"pow":solve(c,8)})).await;
+    assert_eq!(status, StatusCode::OK, "{made}");
+    assert_eq!(made["created"], true);
+    let (status, again, _) = sign_in_over(
+        &d,
+        &signer(22),
+        "10.0.0.1",
+        |_| json!({"play_integrity":{"token":"ignored"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["created"], false);
+    assert_eq!(made["account"]["id"], again["account"]["id"]);
+}

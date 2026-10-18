@@ -72,6 +72,11 @@ struct Server {
     /// New keys need a proof of work (#11994).
     require_proof: std::sync::atomic::AtomicBool,
     proofs: AtomicUsize,
+    play_requests: AtomicUsize,
+    sign_in_requests: AtomicUsize,
+    ordinary_unavailable: std::sync::atomic::AtomicBool,
+    challenges: AtomicUsize,
+    play_error: Mutex<Option<String>>,
 }
 
 impl Server {
@@ -109,11 +114,20 @@ fn label(account: &str) -> Value {
     json!({"id": account, "label": "Fixture"})
 }
 
-async fn challenge() -> Json<Value> {
+async fn challenge(State(s): State<Arc<Server>>) -> Json<Value> {
+    s.challenges.fetch_add(1, Ordering::SeqCst);
     Json(json!({"challenge": "c0ffee"}))
 }
 
 async fn sign_in(State(s): State<Arc<Server>>, h: HeaderMap, body: axum::body::Bytes) -> Response {
+    s.sign_in_requests.fetch_add(1, Ordering::SeqCst);
+    if s.ordinary_unavailable.load(Ordering::SeqCst) {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error":{"code":"play_integrity_unavailable"}})),
+        )
+            .into_response();
+    }
     let Some(proof) = h
         .get("authorization")
         .and_then(|v| v.to_str().ok())
@@ -127,11 +141,33 @@ async fn sign_in(State(s): State<Arc<Server>>, h: HeaderMap, body: axum::body::B
     let fields: Value = serde_json::from_slice(&body).unwrap_or_default();
     let known = s.keys.lock().unwrap().contains_key(&pubkey);
     if !known && s.require_proof.load(Ordering::SeqCst) {
-        let solved = fields["pow"].as_str().is_some_and(|pow| {
-            use sha2::Digest;
-            let digest = sha2::Sha256::digest(format!("c0ffee:{pow}").as_bytes());
-            digest[0] == 0 && digest[1] == 0 && digest[2] < 0x10
-        });
+        let play = if let Some(token) = fields["play_integrity"]["token"].as_str() {
+            s.play_requests.fetch_add(1, Ordering::SeqCst);
+            let error = s.play_error.lock().unwrap().clone();
+            if let Some(code) = error {
+                let status = match code.as_str() {
+                    "play_integrity_unavailable" | "sign_in_unavailable" => {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    }
+                    "proof_used" => StatusCode::CONFLICT,
+                    _ => StatusCode::BAD_REQUEST,
+                };
+                return (status, Json(json!({"error":{"code":code}}))).into_response();
+            }
+            token
+                == format!(
+                    "fixture-{}",
+                    openagents_account::openagents::play_integrity_request_hash("c0ffee", &pubkey)
+                )
+        } else {
+            false
+        };
+        let solved = play
+            || fields["pow"].as_str().is_some_and(|pow| {
+                use sha2::Digest;
+                let digest = sha2::Sha256::digest(format!("c0ffee:{pow}").as_bytes());
+                digest[0] == 0 && digest[1] == 0 && digest[2] < 0x10
+            });
         if !solved {
             return (
                 StatusCode::BAD_REQUEST,
@@ -444,4 +480,127 @@ async fn a_refused_key_link_keeps_the_saved_session() {
     assert!(!c.key_linked("acct_old", &identity.pubkey_hex()));
     assert_eq!(server.created.load(Ordering::SeqCst), 0);
     assert!(store.0.lock().unwrap().is_some());
+}
+
+struct PlayProbe {
+    outcome: u8,
+    calls: AtomicUsize,
+}
+impl openagents_account::PlayIntegrityAttester for PlayProbe {
+    fn attest(&self, request_hash: String) -> openagents_account::PlayIntegrityOutcome {
+        use openagents_account::PlayIntegrityOutcome;
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        match self.outcome {
+            0 => PlayIntegrityOutcome::Token(format!("fixture-{request_hash}")),
+            1 => PlayIntegrityOutcome::Unavailable,
+            _ => PlayIntegrityOutcome::Refused,
+        }
+    }
+}
+
+#[tokio::test]
+async fn play_proof_uses_the_same_account_and_known_keys_skip_the_provider() {
+    let (server, client) = serve().await;
+    server.require_proof.store(true, Ordering::SeqCst);
+    let dir = tempfile::tempdir().unwrap();
+    let c = controller(&client, &Arc::default(), dir.path());
+    let probe = Arc::new(PlayProbe {
+        outcome: 0,
+        calls: AtomicUsize::new(0),
+    });
+    c.set_play_integrity_attester(probe.clone());
+    let identity = Arc::new(Identity::from_words(WORDS).unwrap());
+    c.start_with_key(identity.clone(), "Android".into()).await;
+    let account = signed_in(&c).await;
+    assert_eq!(server.play_requests.load(Ordering::SeqCst), 1);
+    let other = tempfile::tempdir().unwrap();
+    let again = controller(&client, &Arc::default(), other.path());
+    again.set_play_integrity_attester(probe.clone());
+    again.sign_in_with_key(identity, "Android".into()).await;
+    assert_eq!(signed_in(&again).await, account);
+    assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(server.created.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn unavailable_refused_or_server_rejected_play_uses_pow_once() {
+    for (outcome, error) in [
+        (1, None),
+        (2, None),
+        (0, Some("invalid_play_integrity")),
+        (0, Some("play_integrity_unavailable")),
+        (0, Some("proof_used")),
+        (0, Some("proof_required")),
+    ] {
+        let (server, client) = serve().await;
+        server.require_proof.store(true, Ordering::SeqCst);
+        *server.play_error.lock().unwrap() = error.map(str::to_owned);
+        let dir = tempfile::tempdir().unwrap();
+        let c = controller(&client, &Arc::default(), dir.path());
+        let probe = Arc::new(PlayProbe {
+            outcome,
+            calls: AtomicUsize::new(0),
+        });
+        c.set_play_integrity_attester(probe.clone());
+        c.start_with_key(
+            Arc::new(Identity::from_words(WORDS).unwrap()),
+            "Android".into(),
+        )
+        .await;
+        signed_in(&c).await;
+        assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(server.proofs.load(Ordering::SeqCst), 1);
+        assert_eq!(server.created.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            server.sign_in_requests.load(Ordering::SeqCst),
+            if outcome == 0 { 3 } else { 2 }
+        );
+        assert_eq!(
+            server.play_requests.load(Ordering::SeqCst),
+            if outcome == 0 { 1 } else { 0 }
+        );
+        assert_eq!(
+            server.challenges.load(Ordering::SeqCst),
+            if outcome == 0 { 3 } else { 2 }
+        );
+    }
+}
+
+#[tokio::test]
+async fn unrelated_503_and_a_503_before_play_proof_propagate_without_pow_retry() {
+    for ordinary in [true, false] {
+        let (server, client) = serve().await;
+        server.require_proof.store(true, Ordering::SeqCst);
+        server
+            .ordinary_unavailable
+            .store(ordinary, Ordering::SeqCst);
+        *server.play_error.lock().unwrap() = Some("sign_in_unavailable".into());
+        let dir = tempfile::tempdir().unwrap();
+        let c = controller(&client, &Arc::default(), dir.path());
+        let probe = Arc::new(PlayProbe {
+            outcome: 0,
+            calls: AtomicUsize::new(0),
+        });
+        c.set_play_integrity_attester(probe.clone());
+        c.start_with_key(
+            Arc::new(Identity::from_words(WORDS).unwrap()),
+            "Android".into(),
+        )
+        .await;
+        assert!(matches!(c.snapshot().phase, Phase::Failed { .. }));
+        assert_eq!(server.created.load(Ordering::SeqCst), 0);
+        assert_eq!(server.proofs.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            server.challenges.load(Ordering::SeqCst),
+            if ordinary { 1 } else { 2 }
+        );
+        assert_eq!(
+            server.sign_in_requests.load(Ordering::SeqCst),
+            if ordinary { 1 } else { 2 }
+        );
+        assert_eq!(
+            probe.calls.load(Ordering::SeqCst),
+            if ordinary { 0 } else { 1 }
+        );
+    }
 }

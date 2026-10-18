@@ -2,6 +2,14 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12086: Android can supply Standard Play Integrity through a
+  UniFFI callback on the existing key sign-in controller. Rust binds its
+  digest to the challenge and identity, sends the token through the SDK,
+  and keeps proof-of-work fallback. The Kotlin provider is reserved for
+  B1 integration; it is not registered by an Android shell yet. The shared
+  sign-in flow reserves event and challenge before making an account, so
+  concurrent replays create no account as a side effect.
+
 - [OpenAgents #12075](https://github.com/OpenAgentsInc/openagents/issues/12075):
   Queued messages publish their ID after attachments and delivery settings, so
   concurrent drains read complete rows. Engine fixtures use SDK sign-in,

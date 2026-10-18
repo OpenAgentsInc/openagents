@@ -119,12 +119,13 @@ it cannot pass after only the first composer works.
 | Q2 | [#12100: Android: match adaptive phone and tablet navigation](https://github.com/OpenAgentsInc/openagents/issues/12100) | 1–2 days | [D1](https://github.com/OpenAgentsInc/openagents/issues/12087), [D2](https://github.com/OpenAgentsInc/openagents/issues/12090), [D3](https://github.com/OpenAgentsInc/openagents/issues/12095), [D5](https://github.com/OpenAgentsInc/openagents/issues/12091) |
 | G2 | [#12101: Android: add signing upgrades and internal-testing release checks](https://github.com/OpenAgentsInc/openagents/issues/12101) | 1 day | [B1](https://github.com/OpenAgentsInc/openagents/issues/12083), [E2](https://github.com/OpenAgentsInc/openagents/issues/12092), [E3](https://github.com/OpenAgentsInc/openagents/issues/12096) |
 | G1 | [#12103: Android: complete the parity matrix Design Lab and regression evidence](https://github.com/OpenAgentsInc/openagents/issues/12103) | 2–3 days | [A0](https://github.com/OpenAgentsInc/openagents/issues/12079), [A1](https://github.com/OpenAgentsInc/openagents/issues/12080), [A2](https://github.com/OpenAgentsInc/openagents/issues/12081), [A3](https://github.com/OpenAgentsInc/openagents/issues/12082), [B1](https://github.com/OpenAgentsInc/openagents/issues/12083), [C1](https://github.com/OpenAgentsInc/openagents/issues/12084), [C2](https://github.com/OpenAgentsInc/openagents/issues/12085), [C3](https://github.com/OpenAgentsInc/openagents/issues/12089), [D1](https://github.com/OpenAgentsInc/openagents/issues/12087), [D2](https://github.com/OpenAgentsInc/openagents/issues/12090), [D3](https://github.com/OpenAgentsInc/openagents/issues/12095), [D4](https://github.com/OpenAgentsInc/openagents/issues/12088), [D5](https://github.com/OpenAgentsInc/openagents/issues/12091), [E1](https://github.com/OpenAgentsInc/openagents/issues/12099), [E2](https://github.com/OpenAgentsInc/openagents/issues/12092), [E3](https://github.com/OpenAgentsInc/openagents/issues/12096), [F1](https://github.com/OpenAgentsInc/openagents/issues/12093), [F2](https://github.com/OpenAgentsInc/openagents/issues/12094), [F3](https://github.com/OpenAgentsInc/openagents/issues/12097), [Q1](https://github.com/OpenAgentsInc/openagents/issues/12102), [Q2](https://github.com/OpenAgentsInc/openagents/issues/12100), [G2](https://github.com/OpenAgentsInc/openagents/issues/12101) |
-| H1 | [#12086: Android: optionally add Play Integrity account proof](https://github.com/OpenAgentsInc/openagents/issues/12086) | Optional, 1.5–2 days | Optional decision |
+| H1 | [#12086: Android: add Play Integrity account proof](https://github.com/OpenAgentsInc/openagents/issues/12086) | 1.5–2 days | Owner selected ALL, 2026-10-18 |
 
 `R0` is computer-account setup, outside the Android implementation estimate.
-It does not block SSH builds. `H1` is optional: the existing proof-of-work
-account path supports the parity baseline. Neither optional Play Integrity
-nor a release-store action should hold an unrelated code change open.
+It does not block SSH builds. The owner selected `H1` with ALL Android
+sprint work on 2026-10-18; its optional-decision gate is satisfied. The
+existing proof-of-work account path remains supported. A release-store
+action does not hold unrelated code changes open.
 
 ## Order and ownership
 
@@ -146,9 +147,10 @@ nor a release-store action should hold an unrelated code change open.
 
 The audit's original app estimate is **29–40 agent-days including voice**.
 A0, accessibility/lifecycle coverage, and adaptive layouts add roughly
-**2.5–5 agent-days**. Treat **about 32–45 agent-days** as a planning range,
+**2.5–5 agent-days**. Selected H1 adds **1.5–2 agent-days**. Treat
+**about 33–47 agent-days** as a planning range,
 not a calendar promise. Re-estimate after A1 and the first transcript run;
-the Android core has not been exercised. R0, optional H1, store approvals,
+the Android core has not been exercised. R0, store approvals,
 and device availability are outside that range.
 
 Use lane 8's mobile ownership boundary from the

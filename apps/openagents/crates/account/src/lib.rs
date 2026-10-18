@@ -28,7 +28,9 @@ pub mod reader;
 pub mod turns;
 pub mod video_editor;
 pub mod voice_agent;
-pub use key_session::{Attestation, Attester, RENEW_WITHIN};
+pub use key_session::{
+    Attestation, Attester, PlayIntegrityAttester, PlayIntegrityOutcome, RENEW_WITHIN,
+};
 pub use platform::PlatformStore;
 
 #[derive(Clone, Debug)]
@@ -92,6 +94,7 @@ pub struct Controller {
     updates: watch::Sender<Snapshot>,
     /// App Attest on the phone, for a new key's first sign-in (#11994).
     attester: Mutex<Option<Arc<dyn key_session::Attester>>>,
+    play_integrity_attester: Mutex<Option<Arc<dyn key_session::PlayIntegrityAttester>>>,
 }
 #[derive(Clone)]
 pub struct Lease {
@@ -158,6 +161,7 @@ impl Controller {
             io: tokio::sync::Mutex::new(()),
             updates,
             attester: Mutex::new(None),
+            play_integrity_attester: Mutex::new(None),
         })
     }
     pub fn watch(&self) -> watch::Receiver<Snapshot> {

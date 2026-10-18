@@ -10,6 +10,8 @@
 //!   key is the account. A new key passes `crate::key_accounts` first:
 //!   `app_attest` (`{key_id, attestation}`) from the phone, or `pow`, a
 //!   proof of work over the challenge, under daily caps (#11994).
+//!   `play_integrity` (`{token}`) is a configured Android alternative to
+//!   proof of work under the same signup caps (#12086).
 //! - `GET /v1/account/keys/challenge`, `GET` and `POST /v1/account/keys`,
 //!   and `DELETE /v1/account/keys/{pubkey}`, as a session: the account's
 //!   keys, adding one with a proof the new key signed, and removing one
@@ -113,18 +115,36 @@ async fn sign_in(
         Ok(auth) => auth,
         Err(response) => return response,
     };
-    let authorization = headers.get("authorization").and_then(|v| v.to_str().ok());
-    // A key with no account passes the key-account limits first (#11994):
-    // App Attest from the phone, or a proof of work and the daily caps.
-    let mut gate = state.key_accounts.gate(&headers);
-    let answered = auth.sign_in_gated(
-        host(&headers),
-        &tenant,
-        authorization,
-        &body,
-        unix_now(),
-        &mut gate,
-    );
+    let slot = match state.key_accounts.sign_in_slot() {
+        Ok(slot) => slot,
+        Err(refusal) => return refusal.response(),
+    };
+    // Platform decoding performs bounded network I/O only after the normal
+    // signature/challenge checks, on a blocking task rather than this worker.
+    let answered = match tokio::task::spawn_blocking(move || {
+        let _slot = slot;
+        let authorization = headers.get("authorization").and_then(|v| v.to_str().ok());
+        let mut gate = state.key_accounts.gate(&headers);
+        auth.sign_in_gated(
+            host(&headers),
+            &tenant,
+            authorization,
+            &body,
+            unix_now(),
+            &mut gate,
+        )
+    })
+    .await
+    {
+        Ok(answered) => answered,
+        Err(_) => {
+            return refused(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "sign_in_unavailable",
+                "We couldn't sign you in right now. Try again in a moment.",
+            );
+        }
+    };
     let wait = answered.body["error"]["retry_after"].as_u64();
     let mut response = answer(answered);
     if let Some(wait) = wait

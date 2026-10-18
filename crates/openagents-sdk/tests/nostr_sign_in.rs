@@ -158,3 +158,26 @@ async fn a_key_signs_in_through_the_website_and_manages_its_keys() {
         .unwrap();
     assert_eq!(store.accounts.len(), 1);
 }
+
+#[test]
+fn play_request_hash_uses_the_server_byte_contract() {
+    use openagents_sdk::play_integrity_request_hash;
+    for (challenge, pubkey) in [
+        ("challenge", "key"),
+        ("challenge\nkey", "other"),
+        ("", "ab"),
+    ] {
+        assert_eq!(
+            play_integrity_request_hash(challenge, pubkey),
+            oa_auth::play_integrity::request_hash(challenge, pubkey)
+        );
+    }
+    assert_ne!(
+        play_integrity_request_hash("challenge", "key"),
+        play_integrity_request_hash("other", "key")
+    );
+    assert_ne!(
+        play_integrity_request_hash("challenge", "key"),
+        play_integrity_request_hash("challenge", "other")
+    );
+}

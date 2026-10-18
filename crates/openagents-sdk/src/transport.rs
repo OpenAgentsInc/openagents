@@ -472,11 +472,8 @@ impl Client {
         Self::check_response(response).await
     }
 
-    pub(crate) async fn check_response(
-        response: reqwest::Response,
-    ) -> Result<reqwest::Response, Error> {
-        let status = response.status();
-        let retry_after = response
+    pub(crate) fn retry_after(response: &reqwest::Response) -> Option<Duration> {
+        response
             .headers()
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|h| h.to_str().ok())
@@ -491,7 +488,14 @@ impl Client {
                             .duration_since(SystemTime::now())
                             .ok()
                     })
-            });
+            })
+    }
+
+    pub(crate) async fn check_response(
+        response: reqwest::Response,
+    ) -> Result<reqwest::Response, Error> {
+        let status = response.status();
+        let retry_after = Self::retry_after(&response);
         if status.is_redirection() {
             return Err(Error::Redirect);
         }
@@ -607,6 +611,7 @@ impl Client {
                 Some("signup_limit") => Some("signup_limit"),
                 Some("invalid_attestation") => Some("invalid_attestation"),
                 Some("attestation_in_use") => Some("attestation_in_use"),
+                Some("invalid_play_integrity") => Some("invalid_play_integrity"),
                 Some("sign_in_denied") => Some("sign_in_denied"),
                 Some("agent_account") => Some("agent_account"),
                 _ => None,

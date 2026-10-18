@@ -2923,3 +2923,23 @@ set to `production`. The server already checks attestations against Apple's
 root; without the capability, phone sign-ups fall back to the proof of work.
 
 - #12040: On a test phone signed in to the dedicated test account, allow notifications and grant the saved agent permission with `Client::set_owner_notification_grant`. After the deployment check in the master delegation, force one final-rung stall, confirm one banner, and tap it to check the title, body, and chat. This requires a configured APNs app profile and gateway credentials (#11853); automated tests use fake gateways only.
+
+### Configure and qualify Android Play Integrity (#12086)
+
+After B1 wires the reserved platform adapter, link the Play Console app to
+its Google Cloud project, enable Standard Play Integrity with Google-managed
+response decoding, and provision a server service account or refreshed OAuth
+token with the Play Integrity scope. Keep its file private; configure the
+explicit gateway credential selector, package from the brand crate, Play
+app-signing certificate digests, and minimum version code. Set the linked
+Cloud project number in the internal Android build. Review Google's device
+signals, privacy disclosure, quota, and availability before enabling rollout.
+
+On a signed Play internal-testing device and dedicated test account, check a
+new key sign-in, existing-account restore, wrong build/certificate, stale or
+replayed challenge/token, missing Play services, provider outage, and fallback
+to proof of work with unchanged signup caps. Remove test accounts and devices
+afterward. No production or live Play check ran during H1 source work.
+Keep rollout off until this qualification passes; code completion does not
+wait for Play Console access, a physical device, or store action. See
+[the contract](docs/auth/README.md#android-play-integrity-12086).

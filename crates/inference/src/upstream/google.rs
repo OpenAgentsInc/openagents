@@ -69,6 +69,7 @@ pub struct TokenSource {
     cached: Arc<Mutex<Option<(Secret, u64)>>>,
     http: reqwest::Client,
     secret_manager_url: String,
+    scope: String,
 }
 
 impl std::fmt::Debug for TokenSource {
@@ -91,6 +92,7 @@ impl TokenSource {
             cached: Arc::new(Mutex::new(None)),
             http: super::http::client(Duration::from_secs(10)),
             secret_manager_url: SECRET_MANAGER_URL.to_owned(),
+            scope: SCOPE.to_owned(),
         }
     }
 
@@ -184,6 +186,15 @@ impl TokenSource {
         self
     }
 
+    /// Use a provider's OAuth scope for service-account token exchange.
+    /// Existing clones keep their scope and cached token.
+    #[must_use]
+    pub fn with_scope(mut self, scope: &str) -> Self {
+        self.scope = scope.to_owned();
+        self.cached = Arc::new(Mutex::new(None));
+        self
+    }
+
     /// Whether this source can produce a token at all.
     #[must_use]
     pub fn present(&self) -> bool {
@@ -228,7 +239,7 @@ impl TokenSource {
                 read_token(response).await?
             }
             Kind::ServiceAccount(account) => {
-                let assertion = account.assertion(now)?;
+                let assertion = account.assertion(now, &self.scope)?;
                 let response = self
                     .http
                     .post(&account.token_uri)
@@ -248,14 +259,14 @@ impl TokenSource {
 }
 
 impl ServiceAccount {
-    fn assertion(&self, now: u64) -> Result<String, String> {
+    fn assertion(&self, now: u64, scope: &str) -> Result<String, String> {
         let mut header = json!({"alg": "RS256", "typ": "JWT"});
         if let Some(key_id) = &self.key_id {
             header["kid"] = json!(key_id);
         }
         let claims = json!({
             "iss": self.email,
-            "scope": SCOPE,
+            "scope": scope,
             "aud": self.token_uri,
             "iat": now,
             "exp": now + 3_600,

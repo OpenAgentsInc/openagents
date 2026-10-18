@@ -17,8 +17,8 @@ use url::Url;
 use super::{CredentialRecord, Session, TokenAnswer};
 
 mod web;
-pub use web::{SCAN_PATH, ScannedLogin, ScannedLoginAbout, ScannedLoginApproved};
 use crate::{Client, Error};
+pub use web::{SCAN_PATH, ScannedLogin, ScannedLoginAbout, ScannedLoginApproved};
 
 /// The largest sign-in body the server takes (`oa_auth::nostr::BODY_MAX`).
 pub const KEY_BODY_MAX: usize = 16 * 1024;
@@ -26,6 +26,18 @@ pub const KEY_BODY_MAX: usize = 16 * 1024;
 /// The proof-of-work difficulty a new key's first sign-in needs by default
 /// (#11994): leading zero bits of `SHA-256(challenge ":" solution)`.
 pub const POW_BITS: u8 = 20;
+
+/// Standard Play Integrity binds only this digest to the platform request.
+/// The key's signed HTTP request separately binds the returned token body.
+#[must_use]
+pub fn play_integrity_request_hash(challenge: &str, pubkey: &str) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(
+            format!("openagents.play-integrity.sign-in.v1\n{challenge}\n{pubkey}").as_bytes()
+        )
+    )
+}
 
 /// Solve the sign-up proof of work over `challenge`: the first counter, in
 /// decimal, whose `SHA-256(challenge ":" counter)` starts with `bits` zero
@@ -206,7 +218,8 @@ impl Client {
     /// Sign in over `challenge` (from [`Client::key_challenge`]), adding
     /// `proof` to the body: `{"pow": solve_pow(challenge, POW_BITS)}`, or
     /// `{"app_attest": {"key_id", "attestation"}}` from App Attest over
-    /// `SHA-256(challenge)`. The body stays under [`KEY_BODY_MAX`].
+    /// `SHA-256(challenge)`, or `{"play_integrity": {"token"}}` over
+    /// [`play_integrity_request_hash`]. The body stays under [`KEY_BODY_MAX`].
     pub async fn sign_in_with_key_on(
         &self,
         signer: &dyn NostrSigner,
@@ -215,6 +228,7 @@ impl Client {
         computer: &str,
         proof: serde_json::Map<String, Value>,
     ) -> Result<KeySignIn, Error> {
+        let sent_play = proof.contains_key("play_integrity");
         let mut fields = proof;
         fields.insert("app".into(), json!(app));
         fields.insert("computer".into(), json!(computer));
@@ -239,6 +253,29 @@ impl Client {
             .map_err(|error| Error::Network {
                 timeout: error.is_timeout(),
             })?;
+        // Only this signed Play request may interpret this one 503 code
+        // as a platform-proof refusal. Other availability failures keep
+        // their normal SDK outcome, including Retry-After.
+        if sent_play && response.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+            let retry_after = Self::retry_after(&response);
+            let unavailable = Error::Unavailable { retry_after };
+            let mut bytes = match Self::read_limited(response, KEY_BODY_MAX).await {
+                Ok(bytes) => bytes,
+                Err(_) => return Err(unavailable),
+            };
+            let play_unavailable = serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .is_some_and(|body| body["error"]["code"] == "play_integrity_unavailable");
+            bytes.fill(0);
+            return Err(if play_unavailable {
+                Error::Refused {
+                    status: 503,
+                    code: Some("play_integrity_unavailable"),
+                }
+            } else {
+                unavailable
+            });
+        }
         let answer: SignedIn = match Self::check_response(response).await {
             Ok(response) => Self::decode(response, &["device", "nostr"], 64 * 1024).await?,
             Err(Error::Unauthorized) => return Err(Error::KeyDenied),

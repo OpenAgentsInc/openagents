@@ -15,7 +15,9 @@
 //! A new key's first sign-in may need a sign-up proof (#11994): an App
 //! Attest attestation over the challenge on the phone ([`Attester`]), or a
 //! proof of work everywhere else and when App Attest isn't available. The
-//! controller tries the plain sign-in first, so a key that already has an
+//! Android may supply Standard Play Integrity over a challenge-and-key
+//! digest instead. Provider refusal or unavailability still uses proof of
+//! work. The controller tries the plain sign-in first, so a key that already has an
 //! account never pays for a proof.
 use crate::identity::Identity;
 use crate::{Controller, Phase, Ticket, cancelled, invalid_login, storage_message};
@@ -44,6 +46,21 @@ pub trait Attester: Send + Sync {
     fn attest(&self, client_data_hash: Vec<u8>) -> Option<Attestation>;
 }
 
+/// The Android platform call's result. Unavailable and refused requests
+/// both use proof of work; neither grants a sign-in on its own.
+#[derive(Clone)]
+pub enum PlayIntegrityOutcome {
+    Token(String),
+    Unavailable,
+    Refused,
+}
+
+/// Standard Play Integrity on Android. Called off the UI thread with a
+/// digest containing no recovery words or session credential.
+pub trait PlayIntegrityAttester: Send + Sync {
+    fn attest(&self, request_hash: String) -> PlayIntegrityOutcome;
+}
+
 fn refused(error: &Error, code: &str) -> bool {
     matches!(error, Error::Refused { code: Some(c), .. } if *c == code)
 }
@@ -52,6 +69,8 @@ fn refused(error: &Error, code: &str) -> bool {
 fn prove(
     attester: Option<Arc<dyn Attester>>,
     challenge: &str,
+    pubkey: &str,
+    play_integrity: Option<Arc<dyn PlayIntegrityAttester>>,
     attest: bool,
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut fields = serde_json::Map::new();
@@ -64,6 +83,19 @@ fn prove(
                 serde_json::json!({"key_id": a.key_id, "attestation": a.attestation}),
             );
             return fields;
+        }
+    }
+    if attest {
+        if let Some(PlayIntegrityOutcome::Token(token)) = play_integrity
+            .map(|a| a.attest(openagents::play_integrity_request_hash(challenge, pubkey)))
+        {
+            if !token.is_empty()
+                && token.len() <= 12 * 1024
+                && token.bytes().all(|b| b.is_ascii_graphic())
+            {
+                fields.insert("play_integrity".into(), serde_json::json!({"token": token}));
+                return fields;
+            }
         }
     }
     fields.insert(
@@ -92,6 +124,11 @@ impl Controller {
         *self.attester.lock().unwrap() = Some(attester);
     }
 
+    /// Set Android's Standard Play Integrity provider before identity startup.
+    pub fn set_play_integrity_attester(&self, attester: Arc<dyn PlayIntegrityAttester>) {
+        *self.play_integrity_attester.lock().unwrap() = Some(attester);
+    }
+
     /// Sign in with the key; when the server asks a new key for a sign-up
     /// proof, make one off this thread (App Attest when there is one, or
     /// else a proof of work) over a fresh challenge and send it.
@@ -109,10 +146,15 @@ impl Controller {
             let challenge = self.client.key_challenge().await?;
             let attester = self.attester.lock().unwrap().clone();
             let over = challenge.clone();
-            let proof = tokio::task::spawn_blocking(move || prove(attester, &over, attest))
-                .await
-                .map_err(|_| Error::InvalidCredential)?;
-            let sent_attestation = proof.contains_key("app_attest");
+            let play_integrity = self.play_integrity_attester.lock().unwrap().clone();
+            let pubkey = identity.pubkey_hex();
+            let proof = tokio::task::spawn_blocking(move || {
+                prove(attester, &over, &pubkey, play_integrity, attest)
+            })
+            .await
+            .map_err(|_| Error::InvalidCredential)?;
+            let sent_play = proof.contains_key("play_integrity");
+            let sent_app_attest = proof.contains_key("app_attest");
             match self
                 .client
                 .sign_in_with_key_on(identity, &challenge, &self.app_name, computer, proof)
@@ -121,9 +163,14 @@ impl Controller {
                 // An attestation the server won't take: once more with a
                 // proof of work.
                 Err(e)
-                    if sent_attestation
+                    if (sent_app_attest
                         && (refused(&e, "invalid_attestation")
-                            || refused(&e, "attestation_in_use")) =>
+                            || refused(&e, "attestation_in_use")))
+                        || (sent_play
+                            && (refused(&e, "invalid_play_integrity")
+                                || refused(&e, "play_integrity_unavailable")
+                                || refused(&e, "proof_used")
+                                || refused(&e, "proof_required"))) =>
                 {
                     attest = false;
                 }

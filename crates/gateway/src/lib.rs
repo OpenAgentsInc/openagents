@@ -78,6 +78,7 @@ mod lab_workers;
 pub mod money;
 mod nostr_sign_in;
 pub mod open_quota;
+pub mod play_integrity;
 #[allow(clippy::result_large_err)]
 pub mod playground;
 mod referrals;

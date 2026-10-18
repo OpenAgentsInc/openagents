@@ -37,6 +37,7 @@ pub mod invite;
 #[cfg(feature = "local")]
 pub mod local;
 pub mod nostr;
+pub mod play_integrity;
 pub mod repos;
 pub mod service;
 pub mod sign_in_keys;

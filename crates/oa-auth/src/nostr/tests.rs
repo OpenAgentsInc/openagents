@@ -566,3 +566,181 @@ fn a_website_sign_in_by_a_new_key_passes_the_new_key_gate() {
         assert!(answer.body["session"].get("app").is_none(), "{path}");
     }
 }
+
+#[test]
+fn a_used_challenge_cannot_create_an_account_for_another_key() {
+    let (dir, auth) = world();
+    let at = now();
+    let challenge = auth.issue(Purpose::SignIn, at).0;
+    for (seed, expected) in [(31, 200), (32, 409)] {
+        let key = signer(seed);
+        let header = Request {
+            signer: &key,
+            created_at: at,
+            url: SIGN_IN,
+            method: "POST",
+            challenge: Some(&challenge),
+            payload: Some(BODY),
+        }
+        .header();
+        assert_eq!(
+            auth.sign_in(None, "signup", Some(&header), BODY, at).status,
+            expected
+        );
+    }
+    let accounts = tenancy::Accounts::open(dir.path()).unwrap();
+    assert!(
+        accounts
+            .account_of_principal(&nostr_principal(&signer(32).pubkey()))
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn proof_required_keeps_the_challenge_for_a_later_admitted_proof() {
+    struct Required(bool);
+    impl NewKeyGate for Required {
+        fn admit(&mut self, _: &Proof, _: &Value) -> Result<(), Answer> {
+            if self.0 {
+                Err(refused(400, "proof_required", "Send a sign-up proof."))
+            } else {
+                Ok(())
+            }
+        }
+        fn made(&mut self, _: &str) {}
+    }
+    let (dir, auth) = world();
+    let key = signer(33);
+    let at = now();
+    let challenge = auth.issue(Purpose::SignIn, at).0;
+    let header = Request {
+        signer: &key,
+        created_at: at,
+        url: SIGN_IN,
+        method: "POST",
+        challenge: Some(&challenge),
+        payload: Some(BODY),
+    }
+    .header();
+    let first = auth.sign_in_gated(None, "signup", Some(&header), BODY, at, &mut Required(true));
+    assert_eq!(first.body["error"]["code"], "proof_required");
+    assert!(
+        tenancy::Accounts::open(dir.path())
+            .unwrap()
+            .account_of_principal(&nostr_principal(&key.pubkey()))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        auth.sign_in_gated(
+            None,
+            "signup",
+            Some(&header),
+            BODY,
+            at,
+            &mut Required(false)
+        )
+        .status,
+        200
+    );
+}
+
+#[test]
+fn concurrent_duplicate_events_or_challenges_create_at_most_one_account() {
+    for same_key in [true, false] {
+        let (dir, auth) = world();
+        let at = now();
+        let challenge = auth.issue(Purpose::SignIn, at).0;
+        let keys = [signer(34), signer(if same_key { 34 } else { 35 })];
+        let headers: Vec<_> = keys
+            .iter()
+            .map(|key| {
+                Request {
+                    signer: key,
+                    created_at: at,
+                    url: SIGN_IN,
+                    method: "POST",
+                    challenge: Some(&challenge),
+                    payload: Some(BODY),
+                }
+                .header()
+            })
+            .collect();
+        let barrier = std::sync::Barrier::new(2);
+        let statuses = std::thread::scope(|scope| {
+            let tasks: Vec<_> = headers
+                .iter()
+                .map(|header| {
+                    let barrier = &barrier;
+                    let auth = &auth;
+                    scope.spawn(move || {
+                        barrier.wait();
+                        auth.sign_in(None, "signup", Some(header), BODY, at).status
+                    })
+                })
+                .collect();
+            tasks
+                .into_iter()
+                .map(|task| task.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            statuses.iter().filter(|status| **status == 200).count(),
+            1,
+            "{statuses:?}"
+        );
+        assert_eq!(
+            statuses.iter().filter(|status| **status == 409).count(),
+            1,
+            "{statuses:?}"
+        );
+        if !same_key {
+            let accounts = tenancy::Accounts::open(dir.path()).unwrap();
+            let count = keys
+                .iter()
+                .filter(|key| {
+                    accounts
+                        .account_of_principal(&nostr_principal(&key.pubkey()))
+                        .unwrap()
+                        .is_some()
+                })
+                .count();
+            assert_eq!(count, 1);
+        }
+    }
+}
+
+#[test]
+fn mismatched_or_gate_refused_proofs_have_no_account_side_effects() {
+    let (dir, auth) = world();
+    let at = now();
+    for (seed, mismatched) in [(41, true), (42, false)] {
+        let key = signer(seed);
+        let challenge = auth.issue(Purpose::SignIn, at).0;
+        let header = Request {
+            signer: &key,
+            created_at: at,
+            url: SIGN_IN,
+            method: "POST",
+            challenge: Some(&challenge),
+            payload: Some(BODY),
+        }
+        .header();
+        let body = if mismatched { b"{}".as_slice() } else { BODY };
+        let mut gate = Refusing {
+            refuse: true,
+            ..Default::default()
+        };
+        let answer = auth.sign_in_gated(None, "signup", Some(&header), body, at, &mut gate);
+        assert_eq!(answer.status, if mismatched { 401 } else { 429 });
+        assert!(gate.made.is_empty());
+        assert!(
+            tenancy::Accounts::open(dir.path())
+                .unwrap()
+                .account_of_principal(&nostr_principal(&key.pubkey()))
+                .unwrap()
+                .is_none()
+        );
+    }
+}
