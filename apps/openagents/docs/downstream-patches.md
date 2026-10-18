@@ -13,7 +13,11 @@ Keep fork-specific changes here so upstream updates can review each integration.
 - OpenAgents #12083: the Android Views shell in `apps/android` uses the shared
   Rust mobile core, brand and version metadata, and both Android ABIs. The
   offline demo uses Rust's chat fixture with the bundled Geist fonts and
-  `oa-tokens` colors; local commands live in `scripts/android/app.sh`.
+  `oa-tokens` colors; local commands live in `scripts/android/app.sh`. The app
+  wires the shared push coordinator through its signed-in client provider and
+  selects the Firebase or no-push source set from local Firebase configuration.
+  Backup rules exclude encrypted account storage from cloud backup and device
+  transfer.
 
 - OpenAgents #12081: Android startup initializes the JVM context and platform
   certificate verifier before any live Rust client can start. Kotlin retries
