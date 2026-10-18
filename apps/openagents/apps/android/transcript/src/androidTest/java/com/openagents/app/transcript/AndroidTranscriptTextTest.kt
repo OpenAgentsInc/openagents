@@ -9,23 +9,18 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextDirectionHeuristics
 import android.text.TextPaint
-import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.ext.junit.runners.AndroidJUnit4
+import android.test.InstrumentationTestCase
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import org.junit.Assert.*
-import org.junit.Test
-import org.junit.runner.RunWith
 import uniffi.openagents_core.*
 
 /** Queued for B1's isolated API 26 and API 35 harness; no account or transport is used. */
-@RunWith(AndroidJUnit4::class)
-class AndroidTranscriptTextTest {
+class AndroidTranscriptTextTest : InstrumentationTestCase() {
     private fun fonts(): TranscriptFonts {
-        return TranscriptFonts(InstrumentationRegistry.getInstrumentation().targetContext.assets, TranscriptFonts.geistAssetPaths)
+        return TranscriptFonts(instrumentation.targetContext.assets, TranscriptFonts.geistAssetPaths)
     }
 
-    @Test fun fallbackMeasurementAndPainterUseTheSameRunMetrics() {
+    fun testFallbackMeasurementAndPainterUseTheSameRunMetrics() {
         val fonts = fonts()
         val measurer = AndroidTranscriptMeasurer(fonts)
         val samples = listOf("Latin ffi AV cafe", "漢字かな中文", "🙂 👨‍👩‍👧‍👦", "e\u0301 a\u0308", "العربية שלום", "Latin العربية 123 中文", "x != y -> z", "")
@@ -40,7 +35,7 @@ class AndroidTranscriptTextTest {
         }
     }
 
-    @Test fun rustWrappingAgreesWithAndroidForTheSameBundledBytesAndFallback() {
+    fun testRustWrappingAgreesWithAndroidForTheSameBundledBytesAndFallback() {
         val fonts = fonts()
         val text = TextSystem(fonts.faces, AndroidTranscriptMeasurer(fonts))
         try {
@@ -60,7 +55,7 @@ class AndroidTranscriptTextTest {
         } finally { text.close() }
     }
 
-    @Test fun rustDisplayBaselinesReachCanvasWithoutRoundingOrRemeasuringRows() {
+    fun testRustDisplayBaselinesReachCanvasWithoutRoundingOrRemeasuringRows() {
         val fonts = fonts()
         val text = TextSystem(fonts.faces, AndroidTranscriptMeasurer(fonts))
         val ready = CountDownLatch(1)
@@ -86,7 +81,7 @@ class AndroidTranscriptTextTest {
                     assertTrue(canvas.origins.any { (x, y) -> kotlin.math.abs(x - run.x) < .001f && kotlin.math.abs(y - run.baseline) < .001f })
                 }
             } finally { frame.close() }
-        } finally { engine.close(); text.close() }
+        } finally { engine.shutdown(); engine.close(); text.close() }
     }
 
     private class PositionCanvas(bitmap: Bitmap) : Canvas(bitmap) {

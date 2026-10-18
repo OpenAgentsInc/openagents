@@ -1,7 +1,8 @@
 # Android transcript renderer
 
 C1 (#12084) paints the shared Rust layout with Android Views. This directory
-is isolated from B1's app, Gradle files, generated bindings, and platform setup.
+uses B1's generated Android binding and existing app setup. The C1 port is
+based on B1 checkpoint `69fa3b1b5082a6e2377ad0142ae8ccb28bfad427`;
 B1 (#12083) remains the native issue blocker for app integration.
 
 `TranscriptCanvas` is one View, regardless of history length. It asks the
@@ -24,11 +25,11 @@ path and real Android fallback behavior still need the queued device checks.
 
 ## B1 integration
 
-1. Add `transcript/src/main/java` to the app's Kotlin source roots. Use its
-   existing `uniffi.openagents_core` binding; no second generated interface is
-   needed. C1 changes no Gradle files.
-2. Bundle all 12 files named in `TranscriptFonts.geistAssetPaths` under
-   `assets/fonts/`, using the bytes in `crates/ui/assets/fonts`. Construct
+1. The app source sets include the transcript main, JVM test, and Android
+   test roots. Use the existing `uniffi.openagents_core` Android binding;
+   C1 does not edit or generate another binding.
+2. All 12 files named in `TranscriptFonts.geistAssetPaths` are bundled under
+   `assets/fonts/`, with the same bytes as `crates/ui/assets/fonts`. Construct
    `TranscriptFonts` and a shared `TextSystem(fonts.faces,
    AndroidTranscriptMeasurer(fonts))` once per process, not once per row or
    chat. Rust retains these font bytes for the process.
@@ -42,7 +43,8 @@ path and real Android fallback behavior still need the queued device checks.
    after installing it. The scale passed to Rust is the configuration's font
    scale; style sizes returned by Rust are already scaled. Do not multiply
    them by `scaledDensity` again.
-5. In `onRelease`, close the relay before the engine. Detachment clears row
+5. In `onRelease`, close the relay, call the engine's Android `shutdown()`,
+   then close its handle. Detachment clears row
    caches and closes frame handles. Create a new binding after reattachment.
    Listener callbacks coalesce and read the latest frame on the main thread.
 6. C2/C3 can inject `TranscriptWidgets` to draw native affordances in Rust's
@@ -51,8 +53,9 @@ path and real Android fallback behavior still need the queued device checks.
 
 ## Check status and handoff
 
-No Kotlin compilation, Cargo, Gradle, emulator, or performance run was allowed
-for this source slice. The tests below are authored, **not reported as passed**.
+The resumed port has only static source checks. No C1 Kotlin compilation,
+Cargo, Gradle, emulator, or performance run has passed. The tests below are
+authored, **not reported as passed**. Wait for the coordinator's validation slot.
 
 - `src/test`: nine JUnit fixtures for history anchors, tail behavior, width and
   font changes, bounded reuse, empty frames, and UTF-16/scalar handling.
@@ -60,9 +63,10 @@ for this source slice. The tests below are authored, **not reported as passed**.
   existing local host library at `ac8712374b` with synthetic inputs. Geometry
   fixtures use the Rust test's `FixedFallback`. Empty display bodies in the
   stub are test doubles. These are not Android glyph metrics or device output.
-- `src/androidTest`: three AndroidJUnit4 checks for actual fallback advances,
-  Rust/Android wrapping, and exact Canvas text origins. Add AndroidX test
-  runner/ext-junit when B1 wires these tests. Run them on API 26 and API 35 in
+- `src/androidTest`: three checks using B1's existing `InstrumentationTestCase`
+  setup for actual fallback advances, Rust/Android wrapping, and exact Canvas
+  text origins. The generated Android binding supplies `setDebugEntries` and
+  `debugLineStarts`; no host-library binding is substituted. Run on API 26 and API 35 in
   isolated offline test state, using only synthetic layout entries.
 - Capture and verification tools, full six-frame/129-row recordings, font and
   library hashes, and logs stay in the chat's `openagents scratch` directory.

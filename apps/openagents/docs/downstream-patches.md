@@ -12,6 +12,9 @@ Keep fork-specific changes here so upstream updates can review each integration.
   bounded row caches, and stable viewport anchors. Recorded synthetic Rust
   geometry backs stub-core tests; B1 integration, Kotlin execution, Android
   glyph checks, and emulator performance evidence remain queued.
+  Resume on verified B1 Android checkpoint `69fa3b1b50`: port transcript source
+  roots, exact Geist assets, and existing instrumentation-test wiring without
+  changing generated bindings or scanner/configuration fixes.
 
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
   UniFFI callback on the existing key sign-in controller. Rust binds its
