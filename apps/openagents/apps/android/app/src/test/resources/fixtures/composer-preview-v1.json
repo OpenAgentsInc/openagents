@@ -4,7 +4,7 @@
   "revision": 7,
   "composer_node": "composer-input",
   "input_token": "draft-3",
-  "editing_lifetime": "edit-life-1",
+  "editing_lifetime": "1",
   "editor_revision": 10,
   "max_bytes": 65536,
   "draft": "Can you compare these?\n",

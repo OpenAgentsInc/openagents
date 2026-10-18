@@ -4,6 +4,7 @@ package com.openagents.app.composer
 import android.os.SystemClock
 import org.json.JSONArray
 import org.json.JSONObject
+import uniffi.openagents_core.NativeActionResult
 import uniffi.openagents_core.OutgoingAttachment
 import uniffi.openagents_core.SessionHandle
 
@@ -21,7 +22,7 @@ class RustComposerCorePort(
             .put("token", stamp.inputToken)
             .put("max_bytes", maxBytes)
             .put("draft", draft)
-        return callEditor(stamp, request)
+        return callEditor(stamp, request.toString())
     }
 
     override fun edit(update: ComposerEditorUpdate): ComposerEditorAck {
@@ -29,24 +30,9 @@ class RustComposerCorePort(
         val mark = if (update.markedStartUtf16 != null && update.markedEndUtf16 != null) {
             JSONArray().put(update.markedStartUtf16).put(update.markedEndUtf16)
         } else JSONObject.NULL
-        val request = JSONObject()
-            .put("op", "apply")
-            .put(
-                "stamp",
-                JSONObject()
-                    .put("token", stamp.inputToken)
-                    .put("lifetime", stamp.editingLifetime.toLongOrNull() ?: -1L)
-                    .put("revision", stamp.editorRevision),
-            )
-            .put(
-                "change",
-                JSONObject()
-                    .put("op", "sync")
-                    .put("text", update.text)
-                    .put("selection", JSONArray().put(update.selectionStartUtf16).put(update.selectionEndUtf16))
-                    .put("marked", mark)
-                    .put("at_ms", SystemClock.elapsedRealtime()),
-            )
+        val request = """
+            {"op":"apply","stamp":{"token":${JSONObject.quote(stamp.inputToken)},"lifetime":${lifetime(stamp.editingLifetime)},"revision":${unsigned(stamp.editorRevision, "editor revision")}},"change":{"op":"sync","text":${JSONObject.quote(update.text)},"selection":[${update.selectionStartUtf16},${update.selectionEndUtf16}],"marked":$mark,"at_ms":${SystemClock.elapsedRealtime().coerceAtLeast(0)}}}
+        """.trimIndent()
         return callEditor(stamp, request)
     }
 
@@ -56,46 +42,56 @@ class RustComposerCorePort(
         text: String,
         attachments: List<ComposerAttachmentPayload>,
     ): Boolean {
-        session.submitNativeComposer(
+        val result = session.submitNativeComposer(
             stamp.instance,
-            stamp.viewRevision,
+            unsigned(stamp.viewRevision, "view revision"),
             stamp.inputToken,
-            stamp.editingLifetime.toLongOrNull() ?: -1L,
-            stamp.editorRevision,
+            lifetime(stamp.editingLifetime),
+            unsigned(stamp.editorRevision, "editor revision"),
             choiceToken,
             text,
             attachments.map { attachment ->
                 OutgoingAttachment(attachment.name, attachment.mimeType, attachment.data.copyOf())
             },
         )
-        return true
+        return when (result) {
+            is NativeActionResult.SendStarted,
+            is NativeActionResult.SendSteered,
+            is NativeActionResult.SendQueued -> true
+            else -> false
+        }
     }
 
     override fun activate(instance: String, revision: Long, node: String) {
-        session.activateNative(instance, revision, node, null, emptyList())
+        session.activateNative(instance, unsigned(revision, "view revision"), node, null, emptyList())
     }
 
     override fun activateAttachment(instance: String, revision: Long, node: String): Boolean {
-        session.activateNative(instance, revision, node, null, emptyList())
-        return true
+        return session.activateNative(
+            instance,
+            unsigned(revision, "view revision"),
+            node,
+            null,
+            emptyList(),
+        ) == NativeActionResult.AttachmentPickerRequested
     }
 
     override fun changeField(instance: String, revision: Long, node: String, value: String) {
-        session.changeNativeField(instance, revision, node, value)
+        session.changeNativeField(instance, unsigned(revision, "view revision"), node, value)
     }
 
     override fun acknowledge(instance: String, revision: Long) {
-        session.acknowledgeNativeView(instance, revision)
+        session.acknowledgeNativeView(instance, unsigned(revision, "view revision"))
     }
 
     fun prepareNativeView(viewJson: String): String =
         session.prepareNativeView(viewJson.toByteArray(Charsets.UTF_8)).toString(Charsets.UTF_8)
 
-    private fun callEditor(stamp: ComposerEditorStamp, request: JSONObject): ComposerEditorAck {
+    private fun callEditor(stamp: ComposerEditorStamp, request: String): ComposerEditorAck {
         val response = session.composerEditor(
             stamp.instance,
-            stamp.viewRevision,
-            request.toString().toByteArray(Charsets.UTF_8),
+            unsigned(stamp.viewRevision, "view revision"),
+            request.toByteArray(Charsets.UTF_8),
         )
         val root = JSONObject(response.toString(Charsets.UTF_8))
         val state = root.optJSONObject("state")
@@ -105,7 +101,7 @@ class RustComposerCorePort(
         val marked = state.optJSONArray("marked")
         val acknowledgedStamp = stamp.copy(
             inputToken = editorStamp.getString("token"),
-            editingLifetime = editorStamp.getLong("lifetime").toString(),
+            editingLifetime = editorStamp.get("lifetime").toString().also(::lifetime),
             editorRevision = editorStamp.getLong("revision"),
         )
         return ComposerEditorAck(
@@ -116,5 +112,13 @@ class RustComposerCorePort(
             markedStartUtf16 = marked?.getInt(0),
             markedEndUtf16 = marked?.getInt(1),
         )
+    }
+
+    private fun lifetime(value: String): ULong =
+        value.toULongOrNull() ?: throw IllegalArgumentException("Invalid Rust editor lifetime")
+
+    private fun unsigned(value: Long, field: String): ULong {
+        require(value >= 0) { "Invalid $field" }
+        return value.toULong()
     }
 }
