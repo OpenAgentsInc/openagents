@@ -834,11 +834,10 @@ links remain readable. Upstream fixes now require manual ports.
   Keystore alias as authenticated data. It never changes the legacy file or
   key. `AndroidWalletSurface` mounts the Rust wallet snapshot with
   `SemanticViewAdapter` and forwards typed activation and field changes to
-  Rust. The app shell still needs to add a Wallet route. The eight synthetic
-  Rust migration tests passed on checkpoint
-  `75c8fe09e957189824e24d2ba763ac7d1643baae`; rerun them on the integration
-  branch. Regenerated E2 bindings, Android compilation, and device upgrade
-  checks remain pending.
+  Rust. The app shell still needs to add a Wallet route. On checkpoint
+  `2c770a3bd3f0c1e8103d11d6dc0b19ef19866806`, all eight migration tests
+  and 18 wallet tests passed. Regenerated E2 bindings, Android compilation,
+  and device upgrade checks remain pending.
 - [OpenAgents #12102](https://github.com/OpenAgentsInc/openagents/issues/12102):
   derive Android accessibility roles, names, states, action labels, modal scope,
   and focus order from validated Rust Native views. Focus bookmarks contain
@@ -971,3 +970,12 @@ links remain readable. Upstream fixes now require manual ports.
   settings, and B1 Activity/Gradle files are unchanged. Source fixtures are unrun;
   binding/host integration remains pending. The additive generation-fenced restore
   API commits under the shared account-switch lock; its race fixtures are unrun.
+
+- OpenAgents #12085 C2 validation starts from final C1 docs checkpoint
+  `065446b4ce00676bc916666a56cc402d5f80ace6` and ports only the C2 transcript
+  interaction delta. It preserves the C1 Canvas renderer and adds the borrowed
+  viewport snapshot/observer hook and ordering fixture. B1's Gradle source roots
+  include the C2 main, JVM, and Android-test sources. Source `199177cc726c`
+  passed Kotlin compilation, 26 JVM tests, paired APK assembly, and 17 direct
+  offline API 35 instrumentation tests. Host mounting, media viewing, and
+  streaming fade remain unfinished; no combined integration pass is claimed.

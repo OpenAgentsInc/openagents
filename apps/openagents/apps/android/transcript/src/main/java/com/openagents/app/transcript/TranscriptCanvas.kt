@@ -46,6 +46,17 @@ class TranscriptCanvas(
     var onPaintStats: ((TranscriptPaintStats) -> Unit)? = null
     /** The shell closes its LayoutListener and Rust transcript here. */
     var onRelease: (() -> Unit)? = null
+    var interactionObserver: TranscriptInteractionObserver? = null
+
+    /** Borrowed immutable frame and copied presentation offsets; no second viewport. */
+    fun interactionSnapshot(): TranscriptInteractionSnapshot? {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val frame = viewport.frame ?: return null
+        val offsets = horizontal.toMap()
+        return TranscriptInteractionSnapshot(frame, viewport.offset, viewport.height) { row, scroller ->
+            offsets[ScrollerKey(row, scroller)] ?: 0f
+        }
+    }
 
     init { isVerticalScrollBarEnabled = true; isFocusable = true }
 
@@ -54,17 +65,20 @@ class TranscriptCanvas(
         val old = viewport.frame
         if (old === frame) return
         fling.abortAnimation()
+        interactionObserver?.beforeFrameReplacement(frame)
         viewport.submit(frame)
         painter.setStyles(frame.styles())
+        interactionObserver?.viewportChanged()
         (old as? AutoCloseable)?.close()
         invalidate()
     }
 
-    fun followTail() { fling.abortAnimation(); viewport.followTail(); invalidate() }
+    fun followTail() { fling.abortAnimation(); viewport.followTail(); interactionObserver?.viewportChanged(); invalidate() }
 
     fun refreshViewport() {
         onViewportChanged?.invoke(((width - paddingLeft - paddingRight) / density).coerceAtLeast(0f), resources.configuration.fontScale)
         viewport.resize(((height - paddingTop - paddingBottom) / density).coerceAtLeast(0f))
+        interactionObserver?.viewportChanged()
         invalidate()
     }
 
@@ -124,6 +138,7 @@ class TranscriptCanvas(
                     if (horizontalDrag && target != null) {
                         horizontal[target.first] = ((horizontal[target.first] ?: 0f) + (lastX - x) / density).coerceIn(0f, target.second)
                     } else viewport.userScrollTo(viewport.offset + (lastY - y) / density, true)
+                    interactionObserver?.viewportChanged()
                     invalidate()
                 }
                 lastX = x; lastY = y
@@ -170,6 +185,7 @@ class TranscriptCanvas(
     override fun computeScroll() {
         if (fling.computeScrollOffset()) {
             viewport.userScrollTo(fling.currY / density, false)
+            interactionObserver?.viewportChanged()
             postInvalidateOnAnimation()
         }
     }
@@ -183,11 +199,15 @@ class TranscriptCanvas(
         check(Looper.myLooper() == Looper.getMainLooper())
         fling.abortAnimation(); endTouch()
         val release = onRelease
+        val observer = interactionObserver
         onRelease = null
-        try { release?.invoke() } finally {
-            (viewport.frame as? AutoCloseable)?.close()
-            viewport.clear(); painter.clear(); horizontal.clear()
-            onViewportChanged = null; onPaintStats = null
+        interactionObserver = null
+        try { observer?.beforeFrameClose() } finally {
+            try { release?.invoke() } finally {
+                (viewport.frame as? AutoCloseable)?.close()
+                viewport.clear(); painter.clear(); horizontal.clear()
+                onViewportChanged = null; onPaintStats = null
+            }
         }
     }
 }
