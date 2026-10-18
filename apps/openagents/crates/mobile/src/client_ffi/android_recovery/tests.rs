@@ -167,6 +167,25 @@ fn tutorial_is_skippable_and_existing_identity_provider_and_seed_are_not_recreat
     assert_eq!(b.provider, "synthetic-existing-provider");
     assert!(f.render().unwrap().json.windows(7).any(|s| s == b"Your ID"));
 }
+
+#[test]
+fn completed_onboarding_start_and_reentry_stay_on_your_id_without_recreating_identity() {
+    let b = Fake::new();
+    b.finished.store(true, Ordering::SeqCst);
+    let identity = b.identity().unwrap().npub;
+    let seed = b.vault.entropy.lock().unwrap().clone();
+    let f = b.flow();
+
+    let startup = f.start("fixture".into()).unwrap();
+    assert!(!startup.open_chat);
+    let reentry = f.start("fixture".into()).unwrap();
+    assert!(!reentry.open_chat);
+    assert!(String::from_utf8(reentry.json).unwrap().contains("Your ID"));
+    assert_eq!(b.start_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(b.identity().unwrap().npub, identity);
+    assert_eq!(seed, *b.vault.entropy.lock().unwrap());
+}
+
 #[test]
 fn denied_unavailable_and_cancelled_authentication_never_read_words() {
     for _ in 0..3 {
