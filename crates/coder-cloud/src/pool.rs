@@ -857,11 +857,28 @@ oa_install() {
     ln -sfn "$installed/briefed-agent" "$HOME/.oa-pool/bin/briefed-agent.next" && mv -f "$HOME/.oa-pool/bin/briefed-agent.next" "$HOME/.oa-pool/bin/briefed-agent" || return 3
   fi
 }
+# Every toolchain `$1` pins (the root and apps/openagents pin different
+# ones), with rustfmt and clippy, installed once under the build lock. Two
+# runs that each let rustup install a missing pin at once leave it without
+# rustfmt or clippy, and every check then fails as a checker error.
+oa_toolchains() {
+  local rev=$1 file channel
+  for file in rust-toolchain.toml apps/openagents/rust-toolchain.toml; do
+    channel=$(git show "$rev:$file" 2>/dev/null | sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' | head -n 1)
+    [ -n "$channel" ] || continue
+    rustup run "$channel" rustfmt --version >/dev/null 2>&1 && rustup run "$channel" cargo clippy --version >/dev/null 2>&1 && continue
+    echo "pool: installing Rust $channel with rustfmt and clippy" >&2
+    rustup toolchain uninstall "$channel" >/dev/null 2>&1
+    rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy >/tmp/oa-pool-toolchain.log 2>&1 \
+      || { tail -n 20 /tmp/oa-pool-toolchain.log >&2; return 3; }
+  done
+}
 oa_build() {
   exec 8>"$HOME/.oa-pool/build.lock"; flock 8
   cd "$HOME/openagents" || { echo "pool: no clone at ~/openagents" >&2; return 2; }
   git fetch -q origin main || { echo "pool: git fetch failed" >&2; return 2; }
   local rev; rev=$(git rev-parse origin/main)
+  oa_toolchains "$rev" || { echo "pool: installing the pinned Rust toolchains failed" >&2; flock -u 8; exec 8>&-; return 3; }
   if [ "$(cat "$HOME/.oa-pool/bin/rev" 2>/dev/null)" = "$rev" ] && [ -x "$HOME/.oa-pool/bin/microcoder" ] && [ -L "$HOME/.oa-pool/bin/coder-cloud-runtime" ] && [ -x "$HOME/.oa-pool/bin/briefed-agent" ]; then
     flock -u 8; exec 8>&-; return 0
   fi
@@ -1570,6 +1587,76 @@ mod tests {
         assert!(HOST_AGENT.contains("compute.googleapis.com"));
         assert!(HOST_AGENT.contains("/etc/openagents/pool-host"));
         assert!(prepare_script().contains("oa_build"));
+    }
+
+    #[test]
+    fn the_build_installs_each_pinned_toolchain_once_with_rustfmt_and_clippy() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        let repo = home.path().join("repo");
+        std::fs::create_dir_all(repo.join("apps/openagents")).unwrap();
+        let pin = |channel: &str| format!("[toolchain]\nchannel = \"{channel}\"\n");
+        std::fs::write(repo.join("rust-toolchain.toml"), pin("1.97.1")).unwrap();
+        std::fs::write(
+            repo.join("apps/openagents/rust-toolchain.toml"),
+            pin("1.98.1"),
+        )
+        .unwrap();
+        let git = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .current_dir(&repo)
+                .status()
+                .unwrap();
+            assert!(status.success());
+        };
+        git(&["init", "-q"]);
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "pins"]);
+        // A rustup that has 1.97.1 whole and 1.98.1 missing its components.
+        let bin = home.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(home.path().join("whole-1.97.1"), "").unwrap();
+        let rustup = bin.join("rustup");
+        std::fs::write(
+            &rustup,
+            "#!/bin/sh\necho \"$*\" >> \"$HOME/rustup.log\"\ncase \"$1 $2\" in\n\
+             \"run \"*) test -f \"$HOME/whole-$2\";;\n\
+             \"toolchain install\") touch \"$HOME/whole-$3\";;\nesac\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&rustup, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let toolchains = BUILD.split("oa_build()").next().unwrap();
+        let run = || {
+            let output = std::process::Command::new("bash")
+                .args(["-c", &format!("{toolchains}\noa_toolchains HEAD")])
+                .current_dir(&repo)
+                .env("HOME", home.path())
+                .env(
+                    "PATH",
+                    format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+                )
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run();
+        run();
+        let log = std::fs::read_to_string(home.path().join("rustup.log")).unwrap();
+        let installs: Vec<&str> = log
+            .lines()
+            .filter(|l| l.starts_with("toolchain install"))
+            .collect();
+        assert_eq!(
+            installs,
+            ["toolchain install 1.98.1 --profile minimal -c rustfmt -c clippy"]
+        );
+        assert!(BUILD.contains("oa_toolchains \"$rev\" ||"));
     }
 
     #[test]
