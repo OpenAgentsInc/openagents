@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 
 pub const SCHEMA: &str = "agent-replay.v1";
 /// 2026-10-17, the day the acceptance harness for epic #12028 replays.
-pub const FIXTURE_2026_10_17: &str = include_str!("../../../docs/agent-lab/replay-2026-10-17.json");
+pub const FIXTURE_2026_10_17: &str = include_str!("../fixtures/replay-2026-10-17.json");
 /// The longest a shell or HTTP call may block in a replay, in seconds.
 pub const MAX_CALL_SECONDS: u64 = 120;
 

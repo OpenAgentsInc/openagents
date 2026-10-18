@@ -6,7 +6,7 @@ A replay turns a real bad day into an Agent Lab suite. The first one is
 ([#12034](https://github.com/OpenAgentsInc/openagents/issues/12034)): "fixed"
 means that day would have gone right.
 
-- Fixture: [`replay-2026-10-17.json`](replay-2026-10-17.json), taken from the
+- Fixture: [`replay-2026-10-17.json`](../../crates/agent-lab/fixtures/replay-2026-10-17.json), taken from the
   [close-timeline audit](../audits/2026-10-17-nostr-identity-close-timeline.md),
   the [chat review](../foreman/chat-review.md), and GitHub claim times.
   Times are CDT.
