@@ -262,6 +262,18 @@ impl CoreAccount {
 
 #[uniffi::export]
 impl CoreAccount {
+    /// Build chooser content from a validated project invitation link.
+    pub fn project_invitation_share(
+        &self,
+        link: String,
+    ) -> CoreResult<super::ProjectInvitationShare> {
+        super::project_invitation::project_invitation_share(&link).ok_or_else(|| {
+            CoreError::InvalidArgument {
+                message: "This project invitation link isn't valid.".into(),
+            }
+        })
+    }
+
     pub fn project_sharing(
         &self,
         listener: Arc<dyn super::SharingListener>,
