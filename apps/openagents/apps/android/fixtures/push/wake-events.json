@@ -1,0 +1,13 @@
+{
+  "events": [
+    { "wake": "reconnect" },
+    { "wake": "attention" },
+    { "wake": "attention" },
+    { "wake": "reconnect" }
+  ],
+  "refused": [
+    {},
+    { "wake": "unknown" },
+    { "wake": "attention", "request_id": "synthetic-only" }
+  ]
+}

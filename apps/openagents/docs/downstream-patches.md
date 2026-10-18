@@ -2,6 +2,12 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12084: add an isolated Kotlin Views transcript renderer over
+  Rust row placements and display lists, with shared fallback shaping,
+  bounded row caches, and stable viewport anchors. Recorded synthetic Rust
+  geometry backs stub-core tests; B1 integration, Kotlin execution, Android
+  glyph checks, and emulator performance evidence remain queued.
+
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
   UniFFI callback on the existing key sign-in controller. Rust binds its
   digest to the challenge and identity, sends the token through the SDK,
@@ -9,6 +15,34 @@ Keep fork-specific changes here so upstream updates can review each integration.
   B1 integration; it is not registered by an Android shell yet. The shared
   sign-in flow reserves event and challenge before making an account, so
   concurrent replays create no account as a side effect.
+
+- OpenAgents #12083: the Android Views shell in `apps/android` uses the shared
+  Rust mobile core, brand and version metadata, and both Android ABIs. The
+  offline demo uses Rust's chat fixture with the bundled Geist fonts and
+  `oa-tokens` colors; local commands live in `scripts/android/app.sh`. The app
+  wires the shared push coordinator through its signed-in client provider and
+  selects the Firebase or no-push source set from local Firebase configuration.
+  Backup rules exclude encrypted account storage from cloud backup and device
+  transfer. The app owns one encrypted storage adapter and exposes it to the
+  Rust account and wallet integration. The `ComponentActivity` owns typed photo,
+  document, camera, and permission results; QR scanning forwards bounded raw
+  text through a Rust classifier callback. The checked-in UniFFI source still
+  lacks A2/A3's `PushWakeKind`, `CoreClient.handlePushWake`, `AndroidSecretStorage`,
+  `SecretRead`, `SecretMutation`, `CoreAccount.newWithSecureStorage`, and
+  `androidWalletKeyStore` bindings, as well as the app-link classifier binding.
+  The Rust account and wallet call sites remain pending binding generation.
+  `scripts/android/build-core.sh` must regenerate the bindings and both ABI
+  libraries before the app can compile.
+
+- OpenAgents #12081: Android startup initializes the JVM context and platform
+  certificate verifier before any live Rust client can start. Kotlin retries
+  after failed setup, ignores repeated successful callbacks, and rejects calls
+  that arrive before initialization.
+
+- OpenAgents #12081: Android startup initializes the JVM context and platform
+  certificate verifier before any live Rust client can start. Kotlin retries
+  after failed setup, ignores repeated successful callbacks, and rejects calls
+  that arrive before initialization.
 
 - [OpenAgents #12075](https://github.com/OpenAgentsInc/openagents/issues/12075):
   Queued messages publish their ID after attachments and delivery settings, so
@@ -702,3 +736,92 @@ links remain readable. Upstream fixes now require manual ports.
   settings, and B1 Activity/Gradle files are unchanged. Source fixtures are unrun;
   binding/host integration remains pending. The additive generation-fenced restore
   API commits under the shared account-switch lock; its race fixtures are unrun.
+- [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
+  Android push delivery uses the existing Rust push registration and private
+  owner-note APIs. `CoreClient::handle_push_wake` receives a typed wake; Rust
+  returns the newest checked owner note for attention and redials sync for a
+  reconnect without changing app lifecycle state. The shared platform
+  coordinator validates data-only wake messages, and the `push` source set
+  contains the Firebase transport adapter; `nopush` has no Firebase symbols.
+  The app owns client creation, foreground suppression, notification routing,
+  and tap handling. Android channel setup and permission checks live in
+  `platform/AndroidPushNotifications.kt`.
+- [OpenAgents #12082](https://github.com/OpenAgentsInc/openagents/issues/12082):
+  Android stores opaque encrypted values through Android Keystore and an
+  atomic private-file adapter. Rust owns the account, identity, wallet-seed,
+  and paired-grant records and decides when they may be created or replaced;
+  cloud backup and device transfer exclude the encrypted store.
+
+- [OpenAgents #12096](https://github.com/OpenAgentsInc/openagents/issues/12096):
+  classify only bounded HTTPS links on `openagents.com` for computer pairing
+  and project invitations in the Rust mobile FFI. The existing connect-code
+  parser checks shape and expiry; the server still authorizes invitation use.
+  Synthetic fixtures cover the connect fragment, project path, and rejected
+  URL forms. `AndroidScannerPresentationBoundary.kt` adds bounded raw-text
+  handoff, permission denial/cancel/retry states, and duplicate/late callback
+  fencing. `CameraXQrScannerDriver.kt` uses `ImageAnalysis` with
+  `KEEP_ONLY_LATEST`, a 1280×720 target, and QR-only ML Kit decoding; decoded
+  raw text goes to the Rust classifier callback. Synthetic fake analyzer and
+  decoder cases cover duplicates and late results. It does not perform link
+  approval. B1 owns the Gradle and manifest changes. The official CameraX
+  release page lists 1.6.2 as stable, and the official ML Kit page documents
+  bundled `com.google.mlkit:barcode-scanning:17.3.0` ([CameraX](https://developer.android.com/jetpack/androidx/releases/camera),
+  [ML Kit](https://developers.google.com/ml-kit/vision/barcode-scanning/android)).
+  Both production files now live in the app source set under
+  `apps/android/app/src/main/java/com/openagents/app/scanner/`, with synthetic
+  instrumentation coverage under `apps/android/app/src/androidTest/java/com/openagents/app/scanner/`.
+  B1 owns `MainActivity.startQrScanner(previewView, classifyWithRust, onFailure)`,
+  permission-result handling, the Activity shell wiring, and pins CameraX 1.6.2
+  with bundled ML Kit 17.3.0. The app manifest requests camera permission.
+  Scanning sends bounded raw text only to the Rust classifier callback; Kotlin
+  does not classify or authorize links. Neither dependency has been resolved in
+  an Android build.
+  `scripts/android/app.sh compile` runs the debug and release Kotlin compile,
+  compiles scanner instrumentation sources, and runs debug JVM tests; it remains
+  unrun below the 100 GiB build floor. The scanner instrumentation test still
+  needs a device run through `:app:connectedDebugAndroidTest`. The release check
+  (`scripts/android/app.sh check`) and API 26 install/run check remain pending. The Rust classifier
+  fixture check (`cargo test --locked -p openagents-mobile app_links`) and
+  `scripts/android/build-core.sh` also remain unrun; the latter generates
+  bindings and builds arm64 then x86_64. #12082 and #12091 remain native blockers.
+  Release-certificate
+  verification is an owner-only After-close check in `NEEDS_OWNER.md`.
+
+- [OpenAgents #12090](https://github.com/OpenAgentsInc/openagents/issues/12090):
+  The Android composer presentation keeps draft text, selection, and IME marked
+  ranges in sync through a narrow Rust editor port. Context chips, attachment
+  labels, mention suggestions, and composer actions are native Views; question,
+  approval, and queued-message cards mount through `SemanticViewAdapter`.
+  The composer and transcript share a weighted chat layout, so Rust receives
+  the transcript's new viewport size when the keyboard changes available space.
+  The app build includes transcript main, unit-test, and instrumentation source
+  roots, and routes Android platform tests to instrumentation tests. It pins
+  ZXing core 3.5.4 for A3's scanner replacement while retaining CameraX 1.5.3.
+  A bounded fixture core covers send choices and attachment intake outcomes.
+  The mobile FFI now has a versioned draft store keyed by hashed account ID and
+  Rust session ID, plus a closed `SessionViewIntent` registry. It accepts only
+  acknowledged `ValidatedView` activations and field changes, rejects stale,
+  disabled, or unknown actions, and routes send/interrupt/input answers through
+  existing session operations. Draft save, restore, clear, account switch, and
+  unsupported action tests are authored but have not run. The B1 app shell
+  provides `AndroidAttachmentActivityResultOwner`; D2 listens through its
+  `MainActivity` forwarding methods for Photo Picker, document picker, and
+  camera capture results. D2 bounds each stream read by Rust's
+  `max_attachment_bytes()` value before it copies bytes into
+  `ComposerAttachmentPayload`. The Rust FFI has
+  `SessionHandle::submit_native_composer`, which passes `OutgoingAttachment`
+  bytes through the existing send call. The production Kotlin
+  `ComposerCorePort` adapter and regenerated UniFFI binding are still pending,
+  so this path is not yet connected end to end. D2 limits presentation intake
+  to 10 files and 48 MiB total, but the Rust FFI does not yet validate those
+  limits or MIME content; MIME types remain untrusted metadata. No image
+  conversion or paste API exists in this boundary. Photo/document cancellation
+  is an explicit no-op, camera cancellation uses `saved=false`, and stale
+  owner callbacks are fenced. Approval actions remain outside the mobile intent
+  set. Fixtures cover denial, cancellation, oversize, stream failure, stale
+  callbacks, and failed-send retry. Rust tests, UniFFI binding regeneration,
+  Kotlin/JUnit, and device input checks remain pending. Integrate A3's ZXing
+  scanner source and F1's regenerated bindings before the next Gradle check.
+  The C1 viewport snapshot commit
+  `6668ece8130ecadac82168f9a7c27f8e04f5acc6` is coordinated but not yet in
+  `origin/main`; D2 will integrate it after it lands.
