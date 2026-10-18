@@ -75,15 +75,15 @@ pub async fn guard(
         })
         .unwrap_or_default();
     let Some(token) = bearer(request.headers(), &query).filter(|v| v.len() <= 4096) else {
-        return denied(StatusCode::UNAUTHORIZED);
+        return refuse(request, StatusCode::UNAUTHORIZED).await;
     };
     let Some(accounts) = &state.accounts else {
-        return denied(StatusCode::SERVICE_UNAVAILABLE);
+        return refuse(request, StatusCode::SERVICE_UNAVAILABLE).await;
     };
     match accounts.verify(&token).await {
         Ok(who) => {
             let Ok(value) = HeaderValue::from_str(&who.account) else {
-                return denied(StatusCode::SERVICE_UNAVAILABLE);
+                return refuse(request, StatusCode::SERVICE_UNAVAILABLE).await;
             };
             request.headers_mut().insert(ACCOUNT_HEADER, value);
             match super::proof::admit(&state, &who, request).await {
@@ -91,8 +91,13 @@ pub async fn guard(
                 Err(status) => denied(status),
             }
         }
-        Err(status) => denied(status),
+        Err(status) => refuse(request, status).await,
     }
+}
+/// Refuse after reading the upload, so the connection stays reusable.
+async fn refuse(request: Request, status: StatusCode) -> Response {
+    super::drain(request.into_body()).await;
+    denied(status)
 }
 fn denied(status: StatusCode) -> Response {
     (status,Json(serde_json::json!({"error":if status==StatusCode::UNAUTHORIZED{"unauthenticated"}else{"unavailable"}}))).into_response()

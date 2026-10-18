@@ -139,6 +139,8 @@ pub fn router(state: StateData) -> Router {
             "/chat2/{id}/checkpoint",
             get(chat::checkpoint).post(chat::publish_checkpoint),
         )
+        // Retired edge sidecar: shipped apps still PUT multi-MB tails here.
+        .route("/chat2/{id}/tail", axum::routing::put(retired_tail))
         .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
         .fallback(protected)
         .with_state(state.clone())
@@ -157,7 +159,39 @@ async fn health(State(state): State<Arc<StateData>>) -> Response {
     Json(serde_json::json!({"ok":true, "service":"coder-sync", "auth": match state.auth { AuthMode::Disabled=>"disabled", AuthMode::Dev=>"dev", AuthMode::OpenAgents=>"openagents" }, "revision":state.revision})).into_response()
 }
 
+/// Upper bound on bytes read from a body we are about to refuse. Cloud Run
+/// caps HTTP/1 requests at 32 MiB, so this covers every request it forwards.
+const DRAIN_LIMIT: usize = 33 * 1024 * 1024;
+const DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Read and discard a request body before answering it. Answering early
+/// leaves the upload unread, hyper resets the connection, and the Cloud Run
+/// frontend then stops routing to this instance while its sockets keep it
+/// counted as active: "no available instance" 429s (#12128).
+pub(crate) async fn drain(body: axum::body::Body) {
+    use axum::body::HttpBody;
+    let mut body = std::pin::pin!(body);
+    let mut seen = 0usize;
+    let _ = tokio::time::timeout(DRAIN_TIMEOUT, async {
+        while let Some(Ok(frame)) = std::future::poll_fn(|cx| body.as_mut().poll_frame(cx)).await {
+            seen += frame.data_ref().map_or(0, |data| data.len());
+            if seen > DRAIN_LIMIT {
+                break;
+            }
+        }
+    })
+    .await;
+}
+
+async fn retired_tail(request: Request) -> Response {
+    drain(request.into_body()).await;
+    (StatusCode::GONE, Json(serde_json::json!({"error":"gone"}))).into_response()
+}
+
 async fn protected(State(state): State<Arc<StateData>>, request: Request) -> Response {
+    let (parts, body) = request.into_parts();
+    drain(body).await;
+    let request = Request::from_parts(parts, axum::body::Body::empty());
     let header = request
         .headers()
         .get("authorization")
@@ -213,4 +247,70 @@ async fn request_id(request: Request, next: Next) -> Response {
     );
     tracing::info!(request_id=%id, method, status=response.status().as_u16(), elapsed_ms=started.elapsed().as_millis() as u64, "HTTP request");
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// #12128: a multi-MB PUT to a route we refuse must not reset the
+    /// connection; the next request on the same socket still gets an answer.
+    #[tokio::test]
+    async fn refused_uploads_keep_the_connection_open() {
+        let app = router(StateData {
+            proof_origin: None,
+            database: db::Database::new("host=localhost dbname=unused").unwrap(),
+            bucket: storage::Bucket::memory(),
+            rooms: rooms::Rooms::default(),
+            devices: Default::default(),
+            auth: AuthMode::Disabled,
+            accounts: None,
+            revision: "fixture".into(),
+            push: None,
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let body = vec![b'x'; 6 * 1024 * 1024];
+        let mut wire = Vec::new();
+        for path in ["/chat2/whale/tail", "/no-such-route"] {
+            wire.extend(
+                format!(
+                    "PUT {path} HTTP/1.1\r\nhost: sync\r\ncontent-length: {}\r\n\r\n",
+                    body.len()
+                )
+                .into_bytes(),
+            );
+            wire.extend_from_slice(&body);
+        }
+        wire.extend_from_slice(
+            b"GET /no-such-route HTTP/1.1\r\nhost: sync\r\nconnection: close\r\n\r\n",
+        );
+        let socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let (mut read, mut write) = socket.into_split();
+        let writer = tokio::spawn(async move { write.write_all(&wire).await });
+        let mut replies = Vec::new();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            read.read_to_end(&mut replies),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        writer.await.unwrap().unwrap();
+        let replies = String::from_utf8_lossy(&replies);
+        let statuses: Vec<&str> = replies
+            .lines()
+            .filter(|line| line.starts_with("HTTP/1.1 "))
+            .collect();
+        assert_eq!(
+            statuses,
+            [
+                "HTTP/1.1 410 Gone",
+                "HTTP/1.1 401 Unauthorized",
+                "HTTP/1.1 401 Unauthorized"
+            ]
+        );
+    }
 }

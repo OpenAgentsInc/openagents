@@ -15,9 +15,10 @@
 //! back-to-back small frames (join → eph-join, ack → push) that Nagle would
 //! pointlessly pair with delayed ACKs.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::net::SocketAddr;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -29,6 +30,13 @@ use tokio_tungstenite::tungstenite::error::{Error as WsError, UrlError};
 /// Delay before starting the next address attempt while one is still pending
 /// (RFC 8305 §5's "Connection Attempt Delay"; 250ms is its recommended value).
 const STAGGER: Duration = Duration::from_millis(250);
+
+/// First and largest wait after a server answers a handshake with 429/503.
+/// Every room's own redial backoff (250ms..16s, reset by wake/online events)
+/// is far shorter; against a server that is shedding load those loops made
+/// about 85 requests a minute from two machines (#12128).
+const SHED_FLOOR: Duration = Duration::from_secs(15);
+const SHED_CAP: Duration = Duration::from_secs(120);
 
 pub type WsStream = crate::socket::Connection<MaybeTlsStream<crate::socket::ProgressIo<TcpStream>>>;
 
@@ -58,6 +66,21 @@ pub async fn connect_ws_headers(
 
 async fn connect_ws_inner(url: &str, headers: &[(String, String)]) -> Result<WsStream, WsError> {
     let mut request = url.into_client_request()?;
+    let authority = request
+        .uri()
+        .authority()
+        .map(|a| a.as_str().to_ascii_lowercase())
+        .unwrap_or_default();
+    if let Some(left) = shedding(&authority) {
+        // Refuse locally: no request reaches a server that asked us to wait.
+        return Err(WsError::Io(io::Error::new(
+            io::ErrorKind::WouldBlock,
+            format!(
+                "sync unavailable (server busy); retrying in {}s",
+                left.as_secs().max(1)
+            ),
+        )));
+    }
     for (key, value) in headers {
         let key =
             tokio_tungstenite::tungstenite::http::header::HeaderName::from_bytes(key.as_bytes())
@@ -100,12 +123,110 @@ async fn connect_ws_inner(url: &str, headers: &[(String, String)]) -> Result<WsS
     let _ = stream.set_nodelay(true);
     let (stream, progress) = crate::socket::ProgressIo::new(stream);
     let (ws, _response) =
-        tokio_tungstenite::client_async_tls_with_config(request, stream, None, None).await?;
+        match tokio_tungstenite::client_async_tls_with_config(request, stream, None, None).await {
+            Ok(done) => done,
+            Err(err) => {
+                note_shed(&authority, &err);
+                return Err(err);
+            }
+        };
+    shed_gates().remove(&authority);
     crate::wake::notify_online();
     Ok(crate::socket::Connection {
         socket: ws,
         progress,
     })
+}
+
+#[derive(Clone, Copy)]
+struct ShedGate {
+    until: tokio::time::Instant,
+    step: Duration,
+}
+
+fn shed_gates() -> std::sync::MutexGuard<'static, HashMap<String, ShedGate>> {
+    static GATES: OnceLock<Mutex<HashMap<String, ShedGate>>> = OnceLock::new();
+    GATES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// How long dials to `authority` (`host[:port]`) stay closed because that
+/// server last answered 429/503; `None` when it may be dialed. Lets status
+/// surfaces say "sync unavailable" instead of blaming the other computer.
+pub fn shedding(authority: &str) -> Option<Duration> {
+    let until = shed_gates().get(authority)?.until;
+    let left = until.saturating_duration_since(tokio::time::Instant::now());
+    (!left.is_zero()).then_some(left)
+}
+
+/// Close the gate for `authority` after a 429/503 handshake answer: the
+/// server's Retry-After when given, else a doubling step (15s..120s) with
+/// full jitter so every room on every machine does not return in lockstep.
+fn note_shed(authority: &str, err: &WsError) {
+    let WsError::Http(response) = err else {
+        return;
+    };
+    let retry_after = response
+        .headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok());
+    close_gate(authority, response.status().as_u16(), retry_after);
+}
+
+/// [`shedding`] for any http(s)/ws(s) URL on a sync server.
+pub fn shedding_url(url: &str) -> Option<Duration> {
+    shedding(&authority_of(url)?)
+}
+
+/// Plain-HTTPS callers report their answers here so a 429/503 closes the
+/// same per-host gate the WebSocket dials honor.
+pub fn note_http_status(url: &str, status: u16, retry_after: Option<&str>) {
+    let Some(authority) = authority_of(url) else {
+        return;
+    };
+    if (200..300).contains(&status) {
+        shed_gates().remove(&authority);
+    } else {
+        close_gate(&authority, status, retry_after);
+    }
+}
+
+fn authority_of(url: &str) -> Option<String> {
+    let uri: tokio_tungstenite::tungstenite::http::Uri = url.parse().ok()?;
+    Some(uri.authority()?.as_str().to_ascii_lowercase())
+}
+
+fn close_gate(authority: &str, status: u16, retry_after: Option<&str>) {
+    if status != 429 && status != 503 {
+        return;
+    }
+    let retry_after = retry_after
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|secs| Duration::from_secs(secs).min(SHED_CAP));
+    let mut gates = shed_gates();
+    let step = gates
+        .get(authority)
+        .map_or(SHED_FLOOR, |gate| (gate.step * 2).min(SHED_CAP));
+    let wait = retry_after.unwrap_or_else(|| step / 2 + jitter(step / 2));
+    gates.insert(
+        authority.to_owned(),
+        ShedGate {
+            until: tokio::time::Instant::now() + wait,
+            step,
+        },
+    );
+}
+
+fn jitter(max: Duration) -> Duration {
+    // Cheap decorrelation without a rand dependency.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let max_ms = u64::try_from(max.as_millis()).unwrap_or(u64::MAX).max(1);
+    Duration::from_millis(u64::from(nanos) % max_ms)
 }
 
 /// Race TCP connects over an already-ordered address list: one new attempt per
@@ -205,6 +326,90 @@ mod tests {
             .err()
             .expect("dial unexpectedly succeeded");
         assert!(matches!(err, WsError::Io(ref e) if e.kind() == io::ErrorKind::TimedOut));
+    }
+
+    /// A listener that answers every WebSocket upgrade with `status`.
+    async fn refusing_server(
+        status: &'static str,
+        extra: &'static str,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}/", listener.local_addr().unwrap());
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = hits.clone();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let reply = format!("HTTP/1.1 {status}\r\ncontent-length: 0\r\n{extra}\r\n");
+                let _ = socket.write_all(reply.as_bytes()).await;
+            }
+        });
+        (url, hits)
+    }
+
+    #[tokio::test]
+    async fn a_429_closes_the_host_until_the_server_lets_us_back() {
+        let (url, hits) = refusing_server("429 Too Many Requests", "").await;
+        let authority = url
+            .trim_start_matches("ws://")
+            .trim_end_matches('/')
+            .to_owned();
+        let err = connect_ws(&url)
+            .await
+            .err()
+            .expect("429 must fail the dial");
+        assert!(matches!(err, WsError::Http(_)));
+        let left = shedding(&authority).expect("429 closes the gate");
+        assert!(left >= SHED_FLOOR / 2 && left <= SHED_FLOOR, "{left:?}");
+        // Redials during the gate never reach the server.
+        for _ in 0..5 {
+            let err = connect_ws(&url).await.err().unwrap();
+            assert!(err.to_string().contains("sync unavailable"), "{err}");
+        }
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // A second shed doubles the step.
+        let response = tokio_tungstenite::tungstenite::http::Response::builder()
+            .status(503)
+            .body(None::<Vec<u8>>)
+            .unwrap();
+        note_shed(&authority, &WsError::Http(response.into()));
+        let left = shedding(&authority).unwrap();
+        assert!(left >= SHED_FLOOR && left <= SHED_FLOOR * 2, "{left:?}");
+    }
+
+    #[tokio::test]
+    async fn retry_after_sets_the_wait_and_other_errors_do_not_gate() {
+        let (url, _) = refusing_server("429 Too Many Requests", "retry-after: 3\r\n").await;
+        let authority = url
+            .trim_start_matches("ws://")
+            .trim_end_matches('/')
+            .to_owned();
+        let _ = connect_ws(&url).await;
+        let left = shedding(&authority).unwrap();
+        assert!(
+            left <= Duration::from_secs(3) && left > Duration::from_secs(1),
+            "{left:?}"
+        );
+        let (url, _) = refusing_server("404 Not Found", "").await;
+        let authority = url
+            .trim_start_matches("ws://")
+            .trim_end_matches('/')
+            .to_owned();
+        let _ = connect_ws(&url).await;
+        assert_eq!(shedding(&authority), None);
+    }
+
+    #[test]
+    fn https_answers_share_the_websocket_gate() {
+        let url = "https://shed.example/registry/org/rows?since=1";
+        note_http_status(url, 429, None);
+        assert!(shedding("shed.example").is_some());
+        assert!(shedding_url("wss://shed.example/registry/org/ws").is_some());
+        note_http_status(url, 200, None);
+        assert_eq!(shedding_url(url), None);
     }
 
     #[test]
