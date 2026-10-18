@@ -83,6 +83,16 @@ pub enum AndroidHostContent {
     Indexed,
 }
 #[derive(Clone, uniffi::Record)]
+pub struct AndroidHostTextPoint {
+    pub row: u64,
+    pub utf16: u32,
+}
+#[derive(Clone, uniffi::Record)]
+pub struct AndroidHostSelection {
+    pub anchor: AndroidHostTextPoint,
+    pub focus: AndroidHostTextPoint,
+}
+#[derive(Clone, uniffi::Record)]
 pub struct AndroidHostSnapshot {
     pub generation: u64,
     pub route: AndroidHostRoute,
@@ -98,6 +108,7 @@ pub struct AndroidHostSnapshot {
     pub account: Option<Arc<CoreAccount>>,
     pub anchor: Option<AndroidTranscriptAnchor>,
     pub recovery: Option<Arc<CoreAndroidRecovery>>,
+    pub selection: Option<AndroidHostSelection>,
 }
 enum Content {
     Cloud(Arc<CoreCloudChat>),
@@ -117,6 +128,7 @@ enum Content {
     },
 }
 struct State {
+    selection: Option<AndroidHostSelection>,
     foreground: bool,
     semantics: BTreeMap<AndroidHostSurface, Arc<CoreAccessibilitySurface>>,
     navigation_revision: u64,
@@ -212,6 +224,7 @@ impl CoreAndroidHost {
             }
             state.sessions = Some(sessions);
             state.anchor = None;
+            state.selection = None;
             state.generation = snapshot.generation;
             state.content_revision = state
                 .content_revision
@@ -262,6 +275,7 @@ impl CoreAndroidHost {
         state.retire_content();
         state.content = content;
         state.anchor = None;
+        state.selection = None;
         state.composer = composer;
         state.content_revision = revision;
         state.route = AndroidHostRoute::Chat;
@@ -314,6 +328,7 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                selection: None,
                 foreground: true,
                 semantics: BTreeMap::new(),
                 navigation_revision: 0,
@@ -350,6 +365,7 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                selection: None,
                 foreground: true,
                 semantics: BTreeMap::new(),
                 navigation_revision: 0,
@@ -422,7 +438,39 @@ impl CoreAndroidHost {
             account: self.account.clone(),
             anchor: s.anchor.clone(),
             recovery: self.recovery.clone(),
+            selection: s.selection.clone(),
         })
+    }
+    pub fn save_text_selection(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        selection: Option<AndroidHostSelection>,
+    ) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation || state.content_revision != content_revision {
+            return Err(CoreError::Closed);
+        }
+        let frame = view.frame();
+        if frame.revision() != frame_revision {
+            return Err(CoreError::Closed);
+        }
+        if let Some(selection) = &selection {
+            for point in [&selection.anchor, &selection.focus] {
+                let row = frame
+                    .index_of(point.row)
+                    .and_then(|index| frame.display(index))
+                    .ok_or(CoreError::Closed)?;
+                if !selection_boundary(&row.text, point.utf16 as usize) {
+                    return Err(CoreError::Closed);
+                }
+            }
+        }
+        state.selection = selection;
+        Ok(())
     }
     pub fn save_transcript_anchor(
         &self,
@@ -702,12 +750,33 @@ impl CoreAndroidHost {
     }
 }
 
+fn selection_boundary(text: &str, offset: usize) -> bool {
+    let mut at = 0;
+    for c in text.chars() {
+        if at == offset {
+            return true;
+        }
+        at += c.len_utf16();
+        if at > offset {
+            return false;
+        }
+    }
+    at == offset
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     struct Listener;
     impl AndroidHostListener for Listener {
         fn on_android_host_changed(&self) {}
+    }
+    #[test]
+    fn selection_offsets_cannot_split_utf16_surrogates() {
+        assert!(selection_boundary("a🙂z", 1));
+        assert!(!selection_boundary("a🙂z", 2));
+        assert!(selection_boundary("a🙂z", 3));
+        assert!(!selection_boundary("a🙂z", usize::MAX));
     }
     #[test]
     fn remount_borrows_the_same_demo_owner_and_editor() {

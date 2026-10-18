@@ -49,6 +49,9 @@ internal class AndroidRootPresentation(
     private var canvas: TranscriptCanvas? = null
     private var layout: TranscriptView? = null
     private var relay: TranscriptFrameRelay? = null
+    private var selection: TranscriptSelectionHost? = null
+    private var selectionCallbacks = false
+    private var transcriptNavigation: TranscriptNavigation? = null
     private var composer: AndroidComposerPresentation? = null
     private var attachments: AndroidComposerAttachmentResults? = null
     private var sessions: AndroidSessionsHost? = null
@@ -221,23 +224,87 @@ internal class AndroidRootPresentation(
                     }
                 }
             }
+            val selectionView = mountSelection(transcript, bound, next)
             owner.attachTranscript(bound, next.generation, next.contentRevision)
             val presentation = next.composer?.let { AndroidComposerFeature.createHost(activity, it) }
             if (presentation != null) {
-                val combined = AndroidChatPresentation(activity, transcript, presentation)
+                val combined = AndroidChatPresentation(activity, transcript, presentation, selectionView)
                 chat = combined
                 composer = presentation
                 attachments = AndroidComposerAttachmentResults(activity, presentation, activity)
                 chatContainer.addView(combined.view(), FrameLayout.LayoutParams(-1, -1))
-            } else chatContainer.addView(transcript, FrameLayout.LayoutParams(-1, -1))
+            } else chatContainer.addView(selectionView, FrameLayout.LayoutParams(-1, -1))
             canvas = transcript; layout = bound; relay = updates
             mountedIdentity = next.generation to next.contentRevision
             next.anchor?.let { transcript.restoreViewportAnchor(TranscriptViewportAnchor(it.row, it.inside, it.following)) }
             transcript.submitFrame(RustTranscriptFrame(bound.frame()))
         } catch (error: Exception) {
+            selectionCallbacks = false
+            selection?.close(); selection = null
+            transcriptNavigation?.close(); transcriptNavigation = null
             updates.close(); engine?.close(); transcript.close()
             throw error
         }
+    }
+
+    private fun mountSelection(transcript: TranscriptCanvas, engine: TranscriptView, next: AndroidHostSnapshot): TranscriptSelectionHost {
+        val conversation = "${next.generation}/${next.contentRevision}"
+        var restored = next.selection == null
+        var replacingFrame = false
+        selectionCallbacks = true
+        val host = TranscriptSelectionHost(activity, transcript, transcript::interactionSnapshot,
+            AndroidTranscriptSelectionGeometry(application.transcriptFonts),
+            object : TranscriptSelectionCallbacks {
+                override fun onSelection(token: TranscriptSelectionToken, range: TranscriptTextSelection?) {
+                    if (!selectionCallbacks || replacingFrame || !restored) return
+                    val frame = transcript.interactionSnapshot()?.frame ?: return
+                    runCatching { owner.saveTextSelection(engine, next.generation, next.contentRevision, frame.revision,
+                        range?.let { AndroidHostSelection(AndroidHostTextPoint(it.anchor.rowKey, it.anchor.utf16Offset.toUInt()),
+                            AndroidHostTextPoint(it.focus.rowKey, it.focus.utf16Offset.toUInt())) }) }
+                }
+                override fun onHit(token: TranscriptSelectionToken, target: TranscriptHitTarget) {
+                    // Media payloads are supplied by C2's separate Rust-owned viewer boundary.
+                    if (target is TranscriptHitTarget.Widget) when (val kind = target.kind) {
+                        is WidgetKind.Disclosure -> engine.toggle(target.rowKey)
+                        is WidgetKind.Chevron -> engine.toggle(target.rowKey)
+                        is WidgetKind.ToolToggle -> engine.toggleDetail(target.rowKey, kind.detail, kind.open)
+                        else -> Unit
+                    }
+                }
+                override fun onSystemTextAction(intent: Intent) { activity.startActivity(intent) }
+            }, 0x553B82F6, activity.getColor(R.color.oa_accent))
+        selection = host
+        val pager = next.account?.let { account ->
+            TranscriptNavigation(CoreTranscriptNavigationPort(CoreTranscriptAccessibility(account, engine))) { revision, row, _ ->
+                if (transcript.interactionSnapshot()?.frame?.revision == revision) {
+                    transcript.restoreViewportAnchor(TranscriptViewportAnchor(row, 0f, false))
+                }
+            }
+        }
+        transcriptNavigation = pager
+        if (pager != null) host.setVirtualActionDelegate(object : TranscriptVirtualActionDelegate {
+            override fun actions(revision: ULong, anchorRow: ULong) = try { pager.actions(revision, anchorRow) } catch (_: Exception) { emptyList() }
+            override fun perform(actionId: Int, revision: ULong, anchorRow: ULong) = try { pager.perform(actionId, revision, anchorRow) } catch (_: Exception) { false }
+            override fun retire() = pager.retire()
+        })
+        val observer = host.observer(conversation)
+        transcript.interactionObserver = object : TranscriptInteractionObserver {
+            override fun beforeFrameReplacement(frame: TranscriptFrame) {
+                replacingFrame = true
+                observer.beforeFrameReplacement(frame)
+            }
+            override fun viewportChanged() {
+                observer.viewportChanged()
+                replacingFrame = false
+                if (!restored) next.selection?.let { saved ->
+                    restored = host.restore(TranscriptSelectionBookmark(conversation, TranscriptTextSelection(
+                        TranscriptTextPoint(saved.anchor.row, saved.anchor.utf16.toInt()),
+                        TranscriptTextPoint(saved.focus.row, saved.focus.utf16.toInt()))))
+                }
+            }
+            override fun beforeFrameClose() { selectionCallbacks = false; observer.beforeFrameClose() }
+        }
+        return host
     }
 
     private fun bindDrawer(next: AndroidHostSnapshot) {
@@ -366,6 +433,9 @@ internal class AndroidRootPresentation(
         attachments?.close(); attachments = null
         // Stop queued frames before releasing their Rust source or borrowed frame handles.
         relay?.close(); relay = null
+        selectionCallbacks = false
+        selection?.close(); selection = null
+        transcriptNavigation?.close(); transcriptNavigation = null
         chat?.close()
         if (chat == null) canvas?.close()
         chat = null; canvas = null; composer = null; mountedIdentity = null

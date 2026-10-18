@@ -13,10 +13,11 @@ class AndroidChatPresentation(
     context: Context,
     private val transcript: TranscriptCanvas,
     private val composer: AndroidComposerPresentation,
+    transcriptContent: View = transcript,
 ) : Closeable {
     private val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        addView(transcript, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        addView(transcriptContent, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         addView(composer.view(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
