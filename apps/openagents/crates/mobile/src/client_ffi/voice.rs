@@ -328,11 +328,14 @@ impl VoiceCall {
         microphone: u16,
         speaker: u16,
     ) {
-        let mut pending = self.media.pending.lock().unwrap();
-        if self.media.closed.load(Ordering::Acquire) {
-            return;
-        }
-        if let Some(tx) = pending.remove(&request_id) {
+        let tx = {
+            let mut pending = self.media.pending.lock().unwrap();
+            if self.media.closed.load(Ordering::Acquire) {
+                return;
+            }
+            pending.remove(&request_id)
+        };
+        if let Some(tx) = tx {
             let reply = match failure {
                 Some(VoiceMediaFailure::PermissionDenied) => {
                     Err(VoiceRejection::MicrophonePermissionDenied)
