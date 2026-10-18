@@ -679,3 +679,10 @@ links remain readable. Upstream fixes now require manual ports.
   `engine/src/rpc/run_commands.rs` maps the RPC body. `host_rpc` checks account,
   native rights, and definition-based command grants; the device-channel adapter
   preserves the request ID when delivery is uncertain.
+- [OpenAgents #12085](https://github.com/OpenAgentsInc/openagents/issues/12085):
+  Add a C2 interaction model over the C1 `TranscriptFrame` contract. It resolves
+  link and widget taps against Rust-provided hit rectangles and preserves text
+  selections by row key and UTF-16 offset across frame updates. Synthetic JVM
+  fixtures cover history insertion, stream growth, removed rows, surrogate
+  boundaries, and links. Android shell gesture and system-action wiring remains
+  pending integration with C1 and B1.
