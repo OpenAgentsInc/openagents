@@ -232,6 +232,10 @@ pub struct RowDisplay {
     pub scrollers: Vec<Scroller>,
     pub widgets: Vec<Widget>,
     pub fades: Vec<Fade>,
+    /// Age of the row's Rust monotonic reveal clock when this display was
+    /// built. Painters may advance this value with their own monotonic clock;
+    /// the two clocks do not need to share an origin.
+    pub reveal_age_ms: Option<u32>,
     /// Plain text for copy / accessibility.
     pub copy_text: String,
 }

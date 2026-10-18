@@ -975,15 +975,27 @@ links remain readable. Upstream fixes now require manual ports.
   `065446b4ce00676bc916666a56cc402d5f80ace6` and ports only the C2 transcript
   interaction delta. It preserves the C1 Canvas renderer and adds the borrowed
   viewport snapshot/observer hook and ordering fixture. B1's Gradle source roots
-  include the C2 main, JVM, and Android-test sources. Source `199177cc726c`
-  passed Kotlin compilation, 26 JVM tests, paired APK assembly, and 17 direct
-  offline API 35 instrumentation tests. Host mounting, media viewing, and
-  streaming fade remain unfinished; no combined integration pass is claimed.
-  The later `b681a34567` follow-up adds an optional
-  `TranscriptVirtualActionDelegate` for Rust paging actions through the existing
-  accessibility provider. Its new instrumentation fixture remains unrun.
-  Kotlin-only UniFFI names map the recovery and accessibility objects’ explicit
-  `close` methods to `shutdown`, keeping their generated cleanup methods distinct.
+  include the C2 main, JVM, and Android-test sources. The focused compile, JVM,
+  and Android-test source checks passed on tested source `199177cc726c206cca870cd52644b8a0436e7069`:
+  26 JVM tests passed, five Android-test classes compiled, and 17 API 35
+  instrumentation tests passed. Commit `a71ded33ca8c800469ee51385794d6f7a1626e80`
+  records the docs-only runtime receipt. A later C2 follow-up adds the optional
+  `TranscriptVirtualActionDelegate` to the existing selection host so Q1 can
+  forward Rust paging actions without adding another accessibility provider.
+  Its new synthetic instrumentation fixture is authored but unrun; the earlier
+  results apply to the source at `199177cc72` only. This source checkpoint
+  adds a Rust monotonic reveal-age sample to each streaming row display, and a
+  Kotlin alpha helper that combines that Rust age with local elapsed time
+  without comparing clock origins. Unchanged row cores preserve their reveal
+  origin through width changes; changed streaming text starts a new row reveal.
+  A thin image loader reads transcript attachments and Lab card images through
+  `CoreSavedHistory.attachmentBytes`, `labCard`, and `labMedia`, then presents
+  bounded image bytes in a zoomable, dismissible Android view. The source
+  fixtures are authored but unrun. The new `RowDisplay.revealAgeMs` field still
+  needs real UniFFI regeneration; generated Kotlin was not edited. No new C2
+  Rust, Kotlin, Android-test, or runtime checks have run, and the earlier
+  results still apply to `199177cc72` only.
+  Kotlin-only UniFFI renames recovery/accessibility explicit cleanup to `shutdown`.
 
 - [OpenAgents #12100](https://github.com/OpenAgentsInc/openagents/issues/12100):
   attach default cloud chat and the offline demo directly to the shared Rust
@@ -1019,3 +1031,4 @@ links remain readable. Upstream fixes now require manual ports.
   permission/terminal callbacks. Start the microphone foreground service before
   waiting for its first asynchronous state snapshot. Voice JVM source roots are
   registered; all new host/voice checks and matching bindings remain unrun.
+

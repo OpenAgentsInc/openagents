@@ -290,6 +290,57 @@ fn streaming_thought_markdown_settles_to_the_fresh_parse() {
     }
 }
 
+#[test]
+fn streaming_text_exports_rust_age_across_width_changes() {
+    use openagents_doc::parts::{MessagePart, MessageStatus};
+    use openagents_doc::schema::{MessageRole, SessionMessageEntry};
+    let entry = |text: &str, status: MessageStatus| {
+        Arc::new(SessionMessageEntry {
+            id: "stream".into(),
+            role: MessageRole::Assistant,
+            parts: vec![MessagePart::Text {
+                id: "body".into(),
+                text: text.into(),
+            }],
+            created_at: 0,
+            device_id: String::new(),
+            status: Some(status),
+            continuation_of: None,
+            duration_ms: None,
+        })
+    };
+    let mut w = worker(390.0);
+    w.input = TranscriptInput {
+        entries: vec![entry("first streamed text", MessageStatus::Streaming)],
+        ..Default::default()
+    };
+    let first_frame = w.pass();
+    let first = first_frame.display(0).unwrap();
+    let first_age = first.reveal_age_ms.expect("streaming row has Rust age");
+    assert!(first.runs.iter().all(|run| run.reveal_ms == Some(0)));
+
+    w.width = 744.0;
+    let resized = w.pass().display(0).unwrap();
+    assert!(resized.reveal_age_ms.unwrap() >= first_age);
+    assert!(resized.runs.iter().all(|run| run.reveal_ms == Some(0)));
+
+    w.input = TranscriptInput {
+        entries: vec![entry("first streamed text and more", MessageStatus::Streaming)],
+        ..Default::default()
+    };
+    let updated = w.pass().display(0).unwrap();
+    assert!(updated.reveal_age_ms.is_some(), "new stream content gets a Rust age sample");
+    assert!(updated.runs.iter().all(|run| run.reveal_ms == Some(0)));
+
+    w.input = TranscriptInput {
+        entries: vec![entry("first streamed text and more", MessageStatus::Complete)],
+        ..Default::default()
+    };
+    let settled = w.pass().display(0).unwrap();
+    assert_eq!(settled.reveal_age_ms, None);
+    assert!(settled.runs.iter().all(|run| run.reveal_ms.is_none()));
+}
+
 fn thought_input(text: &str, streaming: bool) -> TranscriptInput {
     use openagents_doc::parts::{MessagePart, MessageStatus};
     use openagents_doc::schema::{MessageRole, SessionMessageEntry};
