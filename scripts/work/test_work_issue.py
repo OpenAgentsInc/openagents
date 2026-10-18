@@ -19,7 +19,7 @@ class LandingBriefTests(unittest.TestCase):
         self.assertTrue(text.endswith("Leave that step to the driver; never push to `main`."))
 
     def test_other_modes_leave_landing_to_the_driver(self):
-        for mode in ("pr", "none"):
+        for mode in ("pr", "push", "none"):
             with self.subTest(mode=mode):
                 self.assertEqual(work.landing_instructions(12038, mode), work.NO_LANDING)
 
@@ -42,6 +42,17 @@ class LandingBriefTests(unittest.TestCase):
                               root / "bare", "", 1, land_mode="queue")
                 prompt = launch.call_args.args[0][2]
                 self.assertTrue(prompt.endswith(work.landing_instructions(12038, "queue")))
+
+
+class PushLandingTests(unittest.TestCase):
+    def test_push_only_pushes_the_named_branch(self):
+        run = Mock()
+        with patch.object(work, "sh") as sh, \
+                patch.dict(work.os.environ, {"OA_WORK_PUSH_BRANCH": "land/archil-12136-ab"}):
+            landed = work.land(run, Path("/w"), "o/r", {"number": 12136}, "push", "abcdef123456", "briefed", [])
+        self.assertEqual(landed, {"how": "push", "branch": "land/archil-12136-ab"})
+        self.assertEqual(sh.call_count, 1)
+        self.assertEqual(sh.call_args.args[0][-1], "HEAD:refs/heads/land/archil-12136-ab")
 
 
 if __name__ == "__main__":
