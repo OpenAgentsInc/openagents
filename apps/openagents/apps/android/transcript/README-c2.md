@@ -74,17 +74,24 @@ Authored JVM checks: `TranscriptInteractionsTest` and
 `AndroidTranscriptSelectionTextTest`, including real ICU joined-emoji boundaries.
 B1's Gradle configuration includes the C2 main, JVM-test, and Android-test roots.
 This validation branch excludes the unrelated D2/D3/D5 app sources and generated
-binding changes. The focused command was admitted once on CoderOS. The first run
-found a Kotlin recursive type-inference error in `TranscriptSelectionHost`; an
-explicit controller type fixed app compilation. The retry compiled debug and
-release Kotlin and the debug JVM-test source, then failed compiling AndroidTest
-because `androidx.test.ext.junit.runners.AndroidJUnit4` is not a configured
-dependency. The two Android fixtures now use the existing
-`android.test.InstrumentationTestCase` runner pattern. That adaptation has not
-been recompiled. No test task ran and no test XML was produced. The command did
-not reach APK assembly. The last paired reading was 82.72 GiB free, below the
-100 GiB build floor, so another compile waits for restored headroom and coordinator
-admission. The exact command for that admission is:
+binding changes. The first focused run found recursive type inference in
+`TranscriptSelectionHost`; an explicit `TranscriptSelectionController` type fixed
+it. The next run exposed an unavailable `AndroidJUnit4` dependency, so both C2
+Android fixtures now use the configured `InstrumentationTestCase` runner.
+
+The admitted retry passed debug and release Kotlin compilation, JVM test
+compilation and execution, AndroidTest Kotlin compilation, and debug app and
+test APK assembly. The five JVM XML reports under
+`app/build/test-results/testDebugUnitTest/` record 26 tests, with 0 failures,
+0 errors, and 0 skipped. The two C2 JVM suites account for 11 of those tests.
+AndroidTest compilation produced five test classes: `SemanticViewAdapterTest`,
+`AndroidScannerPresentationBoundaryTest`, `AndroidTranscriptSelectionSnapshotTest`,
+`AndroidTranscriptSelectionTextTest`, and `AndroidTranscriptTextTest`. No AndroidTest
+runner ran, so no instrumentation test XML exists. Both debug APKs verify, with
+matching signer SHA-256 `f1e42e894e0a5b73548b388f442ab5b2c1e4566f001d9d93e587f9bdfc95be25`.
+The command and all compilation or assembly tasks completed successfully. Stop
+here until a new coordinator admission for a direct runner and a fresh paired
+capacity check.
 
 ```sh
 nix develop ./os#android --command bash -c 'cd apps/openagents && CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app" scripts/android/app.sh compile :app:assembleDebug :app:assembleDebugAndroidTest'
