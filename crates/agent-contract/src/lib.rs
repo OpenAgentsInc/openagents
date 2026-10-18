@@ -36,6 +36,10 @@ pub struct Autonomy {
     /// check-ins. The host grants it, logged, and the owner can turn it off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub authority: bool,
+    /// Minutes a chat or claim the agent manages may go with no progress
+    /// before the host raises it (#12032). Hosts default to 20.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stall_minutes: Option<u32>,
     /// The longest one shell command may run, in seconds. The host hands it
     /// to the runtime (Claude Code's `BASH_DEFAULT_TIMEOUT_MS` and
     /// `BASH_MAX_TIMEOUT_MS`), so a probe with no timeout of its own can't
@@ -47,6 +51,9 @@ pub struct Autonomy {
 /// The allowed range of [`Autonomy::every_minutes`].
 pub const MIN_CHECK_IN_MINUTES: u32 = 5;
 pub const MAX_CHECK_IN_MINUTES: u32 = 24 * 60;
+/// The allowed range of [`Autonomy::stall_minutes`].
+pub const MIN_STALL_MINUTES: u32 = 5;
+pub const MAX_STALL_MINUTES: u32 = 240;
 /// The allowed range of [`Autonomy::shell_timeout_secs`].
 pub const MIN_SHELL_TIMEOUT_SECS: u32 = 10;
 pub const MAX_SHELL_TIMEOUT_SECS: u32 = 3600;
@@ -123,6 +130,12 @@ impl AgentSpec {
                 .is_some_and(|m| !(MIN_CHECK_IN_MINUTES..=MAX_CHECK_IN_MINUTES).contains(&m))
         {
             return Err("Choose check-ins between every 5 minutes and once a day.");
+        }
+        if let Some(a) = &self.autonomy
+            && a.stall_minutes
+                .is_some_and(|m| !(MIN_STALL_MINUTES..=MAX_STALL_MINUTES).contains(&m))
+        {
+            return Err("Choose a stall window between 5 minutes and 4 hours.");
         }
         if self.fallbacks.len() > MAX_FALLBACKS {
             return Err("Choose fewer fallback runtimes.");
@@ -255,6 +268,7 @@ mod tests {
             check_ins: true,
             every_minutes: Some(10),
             authority: true,
+            stall_minutes: Some(10),
             shell_timeout_secs: Some(120),
         });
         s.validate().unwrap();
@@ -273,6 +287,13 @@ mod tests {
         for bad in [4, 1441] {
             s.autonomy = Some(Autonomy {
                 every_minutes: Some(bad),
+                ..Autonomy::default()
+            });
+            assert!(s.validate().is_err(), "{bad}");
+        }
+        for bad in [4, 241] {
+            s.autonomy = Some(Autonomy {
+                stall_minutes: Some(bad),
                 ..Autonomy::default()
             });
             assert!(s.validate().is_err(), "{bad}");

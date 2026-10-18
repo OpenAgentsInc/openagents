@@ -138,6 +138,11 @@ flowchart TD
   chat that is waiting on a build lease (it has output) and one event per
   stall, not one per check-in.
 - **Size:** M.
+- **Status:** built in #12032. The window is `stall_minutes` (default 20,
+  from the definition's `autonomy.stall_minutes`). A claim also counts as
+  progressing when its chat produces output or a build runs in a worktree
+  named for it. Each rung starts its own check-in, so the replay's 18:25
+  stall is messaged at 18:45 and restarted at 18:55.
 
 ### 16. Machine actions as logged scopes
 

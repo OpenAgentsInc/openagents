@@ -13,8 +13,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
 use openagents_proto::foreman::{
-    Authority, DecisionEntry, ForemanSettings, MAX_EVERY_MINUTES, MAX_STUCK_MINUTES,
-    MIN_EVERY_MINUTES, MIN_STUCK_MINUTES, Scope, WakeReason,
+    Authority, DecisionEntry, ForemanSettings, MAX_EVERY_MINUTES, MAX_STALL_MINUTES,
+    MAX_STUCK_MINUTES, MIN_EVERY_MINUTES, MIN_STALL_MINUTES, MIN_STUCK_MINUTES, STALL_RUNG_MINUTES,
+    Scope, WakeReason,
 };
 use openagents_proto::saved_agent::Declared;
 use openagents_proto::{Session, SessionStatus, ToolCall};
@@ -74,6 +75,22 @@ pub(crate) enum Event {
         session: String,
         since: i64,
     },
+    /// A managed chat has been working with no output for the stall window
+    /// (#12032).
+    ChatStalled {
+        chat: String,
+        title: String,
+        since: i64,
+    },
+    /// A claimed issue has had no comment, no commit naming it, no push to
+    /// its linked branch, and no local progress (its chat's output, a build
+    /// in its worktree) for the stall window (#12032).
+    ClaimNoProgress {
+        number: u64,
+        title: String,
+        session: String,
+        since: i64,
+    },
 }
 
 impl Event {
@@ -103,8 +120,84 @@ impl Event {
                 "The claim on #{number} ({title}) by {session} has had no activity since {}.",
                 clock(*since)
             ),
+            Self::ChatStalled { chat, title, since } => format!(
+                "Chat \"{title}\" ({}) is working but has produced no output since {}.",
+                short(chat),
+                clock(*since)
+            ),
+            Self::ClaimNoProgress {
+                number,
+                title,
+                session,
+                since,
+            } => format!(
+                "The claim on #{number} ({title}) by {session} has shown no progress (no commit, push, comment, chat output or build) since {}.",
+                clock(*since)
+            ),
         }
     }
+}
+
+/// Work with no progress for the stall window, kept until it moves again,
+/// so every check-in can say which rung of the ladder is due (#12032).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Stall {
+    /// What stalled, in plain words.
+    pub subject: String,
+    /// Its last progress, Unix ms.
+    pub since: i64,
+    /// The last rung a check-in announced; reaching the next one starts a
+    /// check-in of its own, so each rung is heard when it is due.
+    #[serde(default)]
+    pub rung: u32,
+    /// The owner was told on the last rung.
+    #[serde(default)]
+    pub told: bool,
+}
+
+/// A stall on its last rung, for the owner's phone (#12040).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OwnerNotice {
+    /// Stable per stall (its key and start), so a retry never notifies twice.
+    pub request_id: String,
+    pub title: String,
+    pub body: String,
+}
+
+impl Stall {
+    /// The rung due now: 1 at the stall window, then one more every
+    /// [`STALL_RUNG_MINUTES`], up to 3.
+    fn rung_at(&self, now: i64, window_minutes: u32) -> u32 {
+        let over = (now - self.since) / 60_000 - i64::from(window_minutes);
+        if over < 0 {
+            return 0;
+        }
+        (1 + over / i64::from(STALL_RUNG_MINUTES)).min(3) as u32
+    }
+
+    /// One line for the check-in: how long, and the rung that is due.
+    fn line(&self, now: i64, window_minutes: u32) -> String {
+        let age = (now - self.since).max(0) / 60_000;
+        let due = match self.rung_at(now, window_minutes) {
+            0 | 1 => "rung 1: message it",
+            2 => "rung 2: interrupt it and restart it with a brief",
+            _ => "rung 3: tell the owner, first in your status",
+        };
+        format!(
+            "{}: no progress for {age} minutes. Due: {due}.",
+            self.subject
+        )
+    }
+}
+
+/// What the host sees of claims on this computer (#12032): each app chat's
+/// last output by its harness session (`claude-code:ID`, as claim markers
+/// name it), and the last time a build ran in a worktree named for an issue.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct LocalProgress {
+    pub chats: HashMap<String, i64>,
+    pub builds: BTreeMap<u64, i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -185,6 +278,8 @@ pub(crate) struct State {
     /// definition ID. Cleared when the owner picks another chat.
     pub turned_on_at: Option<i64>,
     pub agent: Option<String>,
+    /// Open stalls by `chat:ID` or `claim:N`, each raised once.
+    pub stalls: BTreeMap<String, Stall>,
 }
 
 impl Default for State {
@@ -208,6 +303,7 @@ impl Default for State {
             adopted: BTreeSet::new(),
             turned_on_at: None,
             agent: None,
+            stalls: BTreeMap::new(),
         }
     }
 }
@@ -358,6 +454,9 @@ impl Foreman {
             stuck_minutes: settings
                 .stuck_minutes
                 .clamp(MIN_STUCK_MINUTES, MAX_STUCK_MINUTES),
+            stall_minutes: settings
+                .stall_minutes
+                .clamp(MIN_STALL_MINUTES, MAX_STALL_MINUTES),
             ..settings
         };
         let change = self.update(|s| {
@@ -365,6 +464,7 @@ impl Foreman {
                 || s.settings.every_minutes != settings.every_minutes
                 || s.settings.paused != settings.paused;
             if s.settings.chat_id != settings.chat_id {
+                s.stalls.clear();
                 s.turned_on_at = None;
                 s.agent = None;
                 s.managed.clear();
@@ -434,6 +534,10 @@ impl Foreman {
                     .unwrap_or(s.settings.every_minutes),
                 paused: false,
                 authority: pick.declared.authority,
+                stall_minutes: pick
+                    .declared
+                    .stall_minutes
+                    .unwrap_or(s.settings.stall_minutes),
                 ..s.settings
             },
             now,
@@ -507,6 +611,8 @@ impl Foreman {
             return Ok(());
         };
         let mut events = Vec::new();
+        // Managed chats with their last output while they work.
+        let mut stalls: Vec<(String, Option<i64>)> = Vec::new();
         let mut marks = lock(&self.marks);
         for row in rows {
             let mark = Mark {
@@ -526,6 +632,7 @@ impl Foreman {
             if !(state.managed.contains(&row.chat_id) || is_child(&row.chat_id)) {
                 continue;
             }
+            stalls.push((row.chat_id.clone(), working_since(row)));
             let previous = marks.insert(row.chat_id.clone(), mark.clone());
             let Some(previous) = previous else { continue };
             let name = || title(&row.chat_id);
@@ -569,6 +676,40 @@ impl Foreman {
                 })?;
             }
         }
+        let window = i64::from(state.settings.stall_minutes) * 60_000;
+        let raised = self.update(|s| {
+            let mut raised = Vec::new();
+            for (chat, last) in &stalls {
+                let key = format!("chat:{chat}");
+                match last {
+                    Some(last) if now - last >= window => {
+                        let fresh = s.stalls.get(&key).is_none_or(|k| k.since != *last);
+                        if fresh {
+                            let name = title(chat);
+                            s.stalls.insert(
+                                key,
+                                Stall {
+                                    subject: format!("Chat \"{name}\" ({})", short(chat)),
+                                    since: *last,
+                                    rung: 0,
+                                    told: false,
+                                },
+                            );
+                            raised.push(Event::ChatStalled {
+                                chat: chat.clone(),
+                                title: name,
+                                since: *last,
+                            });
+                        }
+                    }
+                    _ => {
+                        s.stalls.remove(&key);
+                    }
+                }
+            }
+            raised
+        })?;
+        events.extend(raised);
         self.push_events(events, now)
     }
 
@@ -644,7 +785,9 @@ impl Foreman {
             (now - last >= QUIET_MS || now - first >= MAX_WAIT_MS)
                 && now - s.last_check_in >= MIN_GAP_MS
         };
-        if stuck.is_none() && !scheduled && !events_ready {
+        let window = s.settings.stall_minutes;
+        let rung_due = s.stalls.values().any(|k| k.rung_at(now, window) > k.rung);
+        if stuck.is_none() && !scheduled && !events_ready && !rung_due {
             return Ok(None);
         }
         let reason = if stuck.is_some() {
@@ -657,17 +800,27 @@ impl Foreman {
         let events: Vec<String> = s.pending.iter().map(|p| p.event.line()).collect();
         let slot = match reason {
             WakeReason::Schedule => format!("schedule:{}", s.last_scheduled),
-            WakeReason::Events => format!("events:{}", s.pending[0].at),
+            WakeReason::Events => match s.pending.first() {
+                Some(p) => format!("events:{}", p.at),
+                None => format!("stall:{now}"),
+            },
             WakeReason::Stuck => format!("stuck:{}", stuck.as_ref().map_or(0, |k| k.turn)),
         };
         let id = uuid_from(&format!("foreman:{chat}:{slot}"));
         let recent = self.read(PROMPT_ENTRIES);
         let lead = stuck.as_ref().map(Stuck::line);
+        let mut open: Vec<&Stall> = s.stalls.values().collect();
+        open.sort_by_key(|k| k.since);
+        let stalls: Vec<String> = open
+            .iter()
+            .map(|k| k.line(now, s.settings.stall_minutes))
+            .collect();
         let text = prompt(
             reason,
             now,
             lead.as_deref(),
             &events,
+            &stalls,
             s.authority.as_ref(),
             &recent,
         );
@@ -676,6 +829,9 @@ impl Foreman {
             st.last_check_in = now;
             if let Some(k) = st.stuck.as_mut() {
                 k.checked_in = true;
+            }
+            for k in st.stalls.values_mut() {
+                k.rung = k.rung_at(now, window);
             }
             if scheduled {
                 st.last_scheduled = now;
@@ -734,12 +890,60 @@ impl Foreman {
         self.push_events(events, now)
     }
 
-    /// Open issues with their latest comments into stale-claim events,
-    /// each reported once per claim.
-    pub fn observe_claims(&self, issues: &[GhClaimIssue], now: i64) -> Result<(), EngineError> {
+    /// Open issues with their latest comments, commits and linked branches,
+    /// and what this computer sees of each claim, into events: a claim with
+    /// no progress for the stall window (#12032), and a claim with no chat at
+    /// all and no newer comment for six hours. Each is reported once.
+    pub fn observe_claims(
+        &self,
+        issues: &[GhClaimIssue],
+        local: &LocalProgress,
+        now: i64,
+    ) -> Result<(), EngineError> {
+        let window = i64::from(self.state().settings.stall_minutes) * 60_000;
         let events = self.update(|s| {
             let mut events = Vec::new();
+            let mut claimed = BTreeSet::new();
             for issue in issues {
+                let Some(claim) = active_claim(issue) else {
+                    continue;
+                };
+                claimed.insert(format!("claim:{}", issue.number));
+                let chat = local.chats.get(&claim.session).copied();
+                let last = claim_progress(issue, &claim)
+                    .into_iter()
+                    .chain(chat)
+                    .chain(local.builds.get(&issue.number).copied())
+                    .max()
+                    .unwrap_or(claim.at);
+                let key = format!("claim:{}", issue.number);
+                if now - last >= window {
+                    if s.stalls.get(&key).is_none_or(|k| k.since != last) {
+                        s.stalls.insert(
+                            key,
+                            Stall {
+                                subject: format!(
+                                    "The claim on #{} ({}) by {}",
+                                    issue.number, issue.title, claim.session
+                                ),
+                                since: last,
+                                rung: 0,
+                                told: false,
+                            },
+                        );
+                        events.push(Event::ClaimNoProgress {
+                            number: issue.number,
+                            title: issue.title.clone(),
+                            session: claim.session.clone(),
+                            since: last,
+                        });
+                    }
+                } else {
+                    s.stalls.remove(&key);
+                }
+                if chat.is_some() {
+                    continue;
+                }
                 let Some((session, since)) = stale_claim(issue, now) else {
                     continue;
                 };
@@ -755,9 +959,38 @@ impl Foreman {
             while s.stale.len() > MAX_ISSUES {
                 s.stale.pop_first();
             }
+            // A claim that was released, or whose issue closed, is no stall.
+            s.stalls
+                .retain(|key, _| !key.starts_with("claim:") || claimed.contains(key));
             events
         })?;
         self.push_events(events, now)
+    }
+
+    /// Stalls that reached the last rung of the ladder and the owner hasn't
+    /// been told about, each returned once (#12032). The caller pushes them
+    /// to the owner's phone.
+    pub fn owner_notices(&self, now: i64) -> Result<Vec<OwnerNotice>, EngineError> {
+        self.update(|s| {
+            let window = s.settings.stall_minutes;
+            let mut notices = Vec::new();
+            for (key, stall) in s.stalls.iter_mut() {
+                if stall.told || stall.rung_at(now, window) < 3 {
+                    continue;
+                }
+                stall.told = true;
+                let minutes = (now - stall.since).max(0) / 60_000;
+                notices.push(OwnerNotice {
+                    request_id: hex64(&format!("stall:{key}:{}", stall.since)),
+                    title: "Work has stalled".into(),
+                    body: format!(
+                        "{}: no progress for {minutes} minutes, after a message and a restart.",
+                        stall.subject
+                    ),
+                });
+            }
+            notices
+        })
     }
 
     /// Foreman's own record of a check-in.
@@ -819,6 +1052,7 @@ pub(crate) fn prompt(
     now: i64,
     lead: Option<&str>,
     events: &[String],
+    stalls: &[String],
     authority: Option<&Authority>,
     recent: &[DecisionEntry],
 ) -> String {
@@ -843,6 +1077,14 @@ pub(crate) fn prompt(
         text.push_str("Since the last check-in:\n");
         for event in events {
             text.push_str(&format!("- {event}\n"));
+        }
+    }
+    if !stalls.is_empty() {
+        text.push_str(
+            "\nStalled work, oldest first. Act on the rung that is due, not an offer, and record it with record_decision:\n",
+        );
+        for stall in stalls {
+            text.push_str(&format!("- {stall}\n"));
         }
     }
     text.push('\n');
@@ -897,18 +1139,64 @@ pub(crate) struct GhIssue {
 
 /// One open issue from the claims search, with its latest comments.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct GhClaimIssue {
     pub number: u64,
     #[serde(default)]
     pub title: String,
     #[serde(default)]
     pub comments: GhComments,
+    /// Commits that name the issue, as GitHub records them when pushed.
+    #[serde(default)]
+    pub timeline_items: GhNodes<GhReference>,
+    /// Branches linked to the issue, with their head commit.
+    #[serde(default)]
+    pub linked_branches: GhNodes<GhLinkedBranch>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(crate) struct GhComments {
     #[serde(default)]
     pub nodes: Vec<GhComment>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(bound(deserialize = "T: Deserialize<'de>"))]
+pub(crate) struct GhNodes<T> {
+    #[serde(default)]
+    pub nodes: Vec<Option<T>>,
+}
+
+impl<T> Default for GhNodes<T> {
+    fn default() -> Self {
+        Self { nodes: Vec::new() }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GhReference {
+    #[serde(default)]
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct GhLinkedBranch {
+    #[serde(default, rename = "ref")]
+    pub reference: Option<GhRef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct GhRef {
+    #[serde(default)]
+    pub target: Option<GhCommit>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GhCommit {
+    #[serde(default)]
+    pub committed_date: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -920,7 +1208,7 @@ pub(crate) struct GhComment {
 }
 
 /// The GraphQL search Foreman's instructions use for claims.
-pub(crate) const CLAIMS_QUERY: &str = "{search(query:\"repo:OpenAgentsInc/openagents is:issue is:open\",type:ISSUE,first:100){nodes{... on Issue{number title comments(last:20){nodes{body createdAt}}}}}}";
+pub(crate) const CLAIMS_QUERY: &str = "{search(query:\"repo:OpenAgentsInc/openagents is:issue is:open\",type:ISSUE,first:100){nodes{... on Issue{number title comments(last:20){nodes{body createdAt}} timelineItems(last:10,itemTypes:[REFERENCED_EVENT]){nodes{... on ReferencedEvent{createdAt}}} linkedBranches(first:5){nodes{ref{target{... on Commit{committedDate}}}}}}}}}";
 
 /// `gh api graphql` answer for [`CLAIMS_QUERY`].
 pub(crate) fn claim_issues(answer: &serde_json::Value) -> Vec<GhClaimIssue> {
@@ -933,6 +1221,79 @@ pub(crate) fn claim_issues(answer: &serde_json::Value) -> Vec<GhClaimIssue> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// An issue's latest unreleased claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Claim {
+    /// The comment's index among the issue's latest comments.
+    index: usize,
+    session: String,
+    at: i64,
+}
+
+fn active_claim(issue: &GhClaimIssue) -> Option<Claim> {
+    let comments = &issue.comments.nodes;
+    let index = comments.iter().rposition(|c| c.body.contains(CLAIM_MARK))?;
+    if comments[index..]
+        .iter()
+        .any(|c| c.body.contains(RELEASE_MARK))
+    {
+        return None;
+    }
+    let claim = &comments[index];
+    let fields = claim.body.split_once(CLAIM_MARK)?.1;
+    let fields = fields.split_once("-->").map_or(fields, |(f, _)| f);
+    let session = fields
+        .split_whitespace()
+        .find_map(|w| w.strip_prefix("session="))
+        .unwrap_or("an agent")
+        .to_owned();
+    Some(Claim {
+        index,
+        session,
+        at: claim.created_at.timestamp_millis(),
+    })
+}
+
+/// The latest progress GitHub shows on a claimed issue: a comment after the
+/// claim, a commit naming it, or its linked branch's head commit.
+fn claim_progress(issue: &GhClaimIssue, claim: &Claim) -> Option<i64> {
+    let comments = issue.comments.nodes[claim.index + 1..]
+        .iter()
+        .map(|c| c.created_at.timestamp_millis());
+    let commits = issue
+        .timeline_items
+        .nodes
+        .iter()
+        .flatten()
+        .filter_map(|r| r.created_at)
+        .map(|t| t.timestamp_millis());
+    let branches = issue
+        .linked_branches
+        .nodes
+        .iter()
+        .flatten()
+        .filter_map(|b| b.reference.as_ref()?.target.as_ref()?.committed_date)
+        .map(|t| t.timestamp_millis());
+    comments
+        .chain(commits)
+        .chain(branches)
+        .filter(|t| *t > claim.at)
+        .max()
+}
+
+/// A managed chat's last output while it works: its last output, else the
+/// start of its turn. `None` when it isn't working or the row can't say.
+fn working_since(row: &Session) -> Option<i64> {
+    if row.status != SessionStatus::Working {
+        return None;
+    }
+    row.last_output_at
+        .into_iter()
+        .chain(row.started_at)
+        .map(|t| t.timestamp_millis())
+        .max()
 }
 
 /// The issue's latest claim, when it is unreleased, has no newer comment,
@@ -987,6 +1348,14 @@ pub(crate) fn tool_label(call: &ToolCall) -> String {
         }
         _ => format!("`{name}`"),
     }
+}
+
+/// 64 lowercase hex characters derived from `seed`.
+fn hex64(seed: &str) -> String {
+    Sha256::digest(seed.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn uuid_from(seed: &str) -> String {
@@ -1180,6 +1549,7 @@ mod tests {
                 6,
                 None,
                 &[],
+                &[],
                 f.state().authority.as_ref(),
                 &[]
             )
@@ -1247,14 +1617,18 @@ mod tests {
                 {"body":"progress","createdAt":"1970-01-01T02:00:00Z"}]}}
         ]}}});
         let issues = claim_issues(&answer);
-        f.observe_claims(&issues, now).unwrap();
-        f.observe_claims(&issues, now + MIN).unwrap();
+        let local = LocalProgress::default();
+        f.observe_claims(&issues, &local, now).unwrap();
+        f.observe_claims(&issues, &local, now + MIN).unwrap();
         let wake = f.due(false, now + 10 * MIN).unwrap().unwrap();
         assert!(wake.text.contains("Issue #11 opened: T11"));
         assert!(wake.text.contains("Issue #10 closed: T10"));
         assert!(!wake.text.contains("#9"));
-        assert!(wake.text.contains("The claim on #20 (Stale) by codex:abc"));
-        assert_eq!(wake.text.matches("The claim on").count(), 1);
+        assert!(
+            wake.text
+                .contains("The claim on #20 (Stale) by codex:abc has had no activity since")
+        );
+        assert_eq!(wake.text.matches("has had no activity since").count(), 1);
     }
 
     #[test]
@@ -1425,6 +1799,7 @@ mod tests {
                 check_ins,
                 every_minutes: Some(10),
                 authority: true,
+                stall_minutes: None,
             },
         }
     }
@@ -1496,6 +1871,243 @@ mod tests {
         );
         assert_eq!(f.state().settings.chat_id, None);
         assert!(f.read(10).is_empty(), "nothing granted");
+    }
+
+    fn stall_events(f: &Foreman, from: i64, to: i64) -> Vec<String> {
+        // Drain check-ins over the range and collect every stall event.
+        let mut lines = Vec::new();
+        let mut at = from;
+        while at <= to {
+            if let Some(wake) = f.due(false, at).unwrap() {
+                lines.extend(
+                    wake.text
+                        .lines()
+                        .filter(|l| {
+                            l.contains("produced no output since")
+                                || l.contains("shown no progress")
+                        })
+                        .map(str::to_owned),
+                );
+            }
+            at += MIN;
+        }
+        lines
+    }
+
+    /// #12032: a managed chat working with no output for 20 minutes raises
+    /// one `ChatStalled`, however many check-ins follow, and each check-in
+    /// names the rung that is due until it moves again.
+    #[test]
+    fn a_silent_managed_chat_raises_one_stall_and_climbs_the_ladder() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        f.manage("w").unwrap();
+        let title = |_: &str| "Land #11999".to_owned();
+        let row = |output: i64| Session {
+            started_at: chrono::DateTime::from_timestamp_millis(0),
+            last_output_at: chrono::DateTime::from_timestamp_millis(output * MIN),
+            ..row("w", SessionStatus::Working, None)
+        };
+        // The coordinator's last output is at 1 minute; it rebases and stops.
+        let mut prompts = Vec::new();
+        for minute in 1..=45 {
+            f.observe(&[row(1)], |_| false, title, minute * MIN)
+                .unwrap();
+            if let Some(wake) = f.due(false, minute * MIN).unwrap() {
+                prompts.push((minute, wake.text));
+            }
+        }
+        let raised: usize = prompts
+            .iter()
+            .map(|(_, t)| {
+                t.matches("is working but has produced no output since")
+                    .count()
+            })
+            .sum();
+        assert_eq!(raised, 1, "one event per stall");
+        let rung = |n: &str| prompts.iter().find(|(_, t)| t.contains(n)).map(|(m, _)| *m);
+        // Silent since minute 1: message at 21, restart at 31, owner at 41.
+        assert_eq!(rung("rung 1: message it"), Some(21));
+        assert_eq!(
+            rung("rung 2: interrupt it and restart it with a brief"),
+            Some(31)
+        );
+        assert_eq!(rung("rung 3: tell the owner"), Some(41));
+        // Output again ends the stall.
+        f.observe(&[row(46)], |_| false, title, 46 * MIN).unwrap();
+        assert!(f.state().stalls.is_empty());
+    }
+
+    /// #12032: a chat waiting on a build lease that keeps printing raises
+    /// nothing.
+    #[test]
+    fn a_chat_that_keeps_printing_raises_no_stall() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        f.manage("w").unwrap();
+        for minute in 1..=60 {
+            let row = Session {
+                started_at: chrono::DateTime::from_timestamp_millis(0),
+                last_output_at: chrono::DateTime::from_timestamp_millis(
+                    (minute - minute % 3) * MIN,
+                ),
+                ..row("w", SessionStatus::Working, None)
+            };
+            f.observe(&[row], |_| false, |c| c.to_owned(), minute * MIN)
+                .unwrap();
+        }
+        assert!(f.state().stalls.is_empty());
+        assert!(stall_events(&f, 0, 60 * MIN).is_empty());
+    }
+
+    fn claim(
+        number: u64,
+        title: &str,
+        session: &str,
+        at_min: i64,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let at = chrono::DateTime::from_timestamp_millis(at_min * MIN)
+            .unwrap()
+            .to_rfc3339();
+        let mut node = serde_json::json!({
+            "number": number,
+            "title": title,
+            "comments": {"nodes": [
+                {"body": format!("<!-- openagents-coder-claim cli session={session} -->"), "createdAt": at}
+            ]}
+        });
+        for (k, v) in extra.as_object().unwrap() {
+            node[k] = v.clone();
+        }
+        node
+    }
+
+    /// #12032, 2026-10-17's case: a claim with no live, progressing chat for
+    /// 20 minutes is raised once, and the check-ins carry it up the ladder
+    /// (message, then restart, then the owner); a claim whose worktree shows
+    /// an active build, or whose chat keeps producing output, is progressing.
+    #[test]
+    fn a_claim_with_no_progress_climbs_the_ladder_but_active_work_does_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let answer = serde_json::json!({"data":{"search":{"nodes":[
+            claim(11999, "Wallet", "claude-code:term", 0, serde_json::json!({})),
+            claim(12002, "Delete account", "claude-code:builder", 0, serde_json::json!({})),
+            claim(12005, "Apple", "claude-code:chat", 0, serde_json::json!({})),
+        ]}}});
+        let issues = claim_issues(&answer);
+        let mut prompts = Vec::new();
+        for minute in 1..=45 {
+            let now = minute * MIN;
+            let local = LocalProgress {
+                // An app chat that keeps answering.
+                chats: HashMap::from([("claude-code:chat".to_owned(), now - MIN)]),
+                // A worktree named for #12002 with cargo running in it.
+                builds: BTreeMap::from([(12002, now)]),
+            };
+            f.observe_claims(&issues, &local, now).unwrap();
+            if let Some(wake) = f.due(false, now).unwrap() {
+                prompts.push((minute, wake.text));
+            }
+        }
+        let all: String = prompts.iter().map(|(_, t)| t.as_str()).collect();
+        assert_eq!(
+            all.matches("The claim on #11999 (Wallet) by claude-code:term has shown no progress")
+                .count(),
+            1,
+            "one event per stall"
+        );
+        assert!(!all.contains("#12002"), "an active build is progress");
+        assert!(!all.contains("#12005"), "a chat with output is progress");
+        let rung = |n: &str| {
+            prompts
+                .iter()
+                .find(|(_, t)| {
+                    t.contains(&format!("#11999 (Wallet) by claude-code:term: no progress"))
+                        && t.contains(n)
+                })
+                .map(|(m, _)| *m)
+        };
+        // Claimed at 0 with nothing since: message at 20, restart at 30,
+        // the owner at 40.
+        assert_eq!(rung("rung 1: message it"), Some(20));
+        assert_eq!(
+            rung("rung 2: interrupt it and restart it with a brief"),
+            Some(30)
+        );
+        assert_eq!(rung("rung 3: tell the owner"), Some(40));
+        // A new commit naming the issue resets it, and a later stall is a
+        // new event.
+        let pushed = serde_json::json!({"data":{"search":{"nodes":[
+            claim(11999, "Wallet", "claude-code:term", 0, serde_json::json!({
+                "timelineItems": {"nodes": [{"createdAt": chrono::DateTime::from_timestamp_millis(46 * MIN).unwrap().to_rfc3339()}]}
+            })),
+        ]}}});
+        let pushed = claim_issues(&pushed);
+        f.observe_claims(&pushed, &LocalProgress::default(), 47 * MIN)
+            .unwrap();
+        assert!(f.state().stalls.is_empty(), "the commit is progress");
+        f.observe_claims(&pushed, &LocalProgress::default(), 66 * MIN)
+            .unwrap();
+        assert_eq!(f.state().stalls.len(), 1, "silent again for 20 minutes");
+        // Releasing the claim ends it.
+        let released = serde_json::json!({"data":{"search":{"nodes":[
+            claim(11999, "Wallet", "claude-code:term", 0, serde_json::json!({"comments": {"nodes": [
+                {"body": "<!-- openagents-coder-claim cli session=claude-code:term -->", "createdAt": "1970-01-01T00:00:00Z"},
+                {"body": "<!-- openagents-coder-release -->", "createdAt": "1970-01-01T01:00:00Z"}
+            ]}})),
+        ]}}});
+        f.observe_claims(
+            &claim_issues(&released),
+            &LocalProgress::default(),
+            70 * MIN,
+        )
+        .unwrap();
+        assert!(f.state().stalls.is_empty());
+    }
+
+    /// #12032: the last rung tells the owner once per stall, with a request
+    /// ID that stays the same across retries.
+    #[test]
+    fn the_owner_hears_once_per_stall_on_the_last_rung() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let answer = serde_json::json!({"data":{"search":{"nodes":[
+            claim(11999, "Wallet", "claude-code:term", 0, serde_json::json!({})),
+        ]}}});
+        let issues = claim_issues(&answer);
+        f.observe_claims(&issues, &LocalProgress::default(), 20 * MIN)
+            .unwrap();
+        assert!(f.owner_notices(39 * MIN).unwrap().is_empty(), "rung 2");
+        let notices = f.owner_notices(40 * MIN).unwrap();
+        assert_eq!(notices.len(), 1);
+        assert_eq!(notices[0].request_id.len(), 64);
+        assert!(notices[0].body.starts_with("The claim on #11999 (Wallet)"));
+        assert!(f.owner_notices(50 * MIN).unwrap().is_empty(), "once");
+        assert_eq!(
+            notices[0].request_id,
+            hex64(&format!("stall:claim:11999:{}", 0)),
+            "stable for the same stall"
+        );
+    }
+
+    #[test]
+    fn the_stall_window_is_the_agents_setting() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let mut s = f.state().settings;
+        s.stall_minutes = 10;
+        f.set(s, 0).unwrap();
+        let answer = serde_json::json!({"data":{"search":{"nodes":[
+            claim(1234, "Fork", "codex:x", 0, serde_json::json!({})),
+        ]}}});
+        f.observe_claims(&claim_issues(&answer), &LocalProgress::default(), 9 * MIN)
+            .unwrap();
+        assert!(f.state().stalls.is_empty());
+        f.observe_claims(&claim_issues(&answer), &LocalProgress::default(), 10 * MIN)
+            .unwrap();
+        assert_eq!(f.state().stalls.len(), 1);
     }
 
     #[test]

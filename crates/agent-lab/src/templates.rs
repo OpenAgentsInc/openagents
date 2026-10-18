@@ -32,6 +32,8 @@ pub fn foreman() -> Experiment {
                     check_ins: true,
                     every_minutes: Some(10),
                     authority: true,
+                    // The host's 20-minute default stall window.
+                    stall_minutes: None,
                     shell_timeout_secs: Some(120),
                 }),
             },

@@ -18,6 +18,7 @@ pub(crate) fn extend(doc: &mut Value) {
   "autonomy":{"type":"object","description":"How the agent runs on its own. Not part of the agent's identity. Omitted when unset; unknown fields are ignored.","properties":{
     "check_ins":{"type":"boolean","description":"Hosts turn timed check-ins on for this agent's chat without being asked, when it is the computer's only such chat."},
     "every_minutes":{"type":"integer","minimum":5,"maximum":1440,"description":"Minutes between check-ins when the host turns them on."},
+    "stall_minutes":{"type":"integer","minimum":5,"maximum":240,"description":"Minutes a chat or claim the agent manages may go with no progress before the host raises it. Hosts default to 20."},
     "authority":{"type":"boolean","description":"The agent asks for standing authority over other chats with its check-ins. The host grants it, logged; the owner can turn it off."},
     "shell_timeout_secs":{"type":"integer","minimum":10,"maximum":3600,"description":"The longest one shell command may run, in seconds. The host passes it to the runtime."}}}}});
     let schemas = json!({

@@ -436,6 +436,14 @@ fn foreman_template_is_a_valid_claude_code_experiment() {
     assert_eq!(autonomy.every_minutes, Some(10));
     assert!(text.contains("Check-ins are off on this computer, so I only wake when you ask."));
     assert!(text.contains("`timeout 60 CMD`") && text.contains("`curl -m 20`"));
+    // The stall ladder acts in three recorded rungs (#12032).
+    for rung in [
+        "**Message it** (rung 1",
+        "**Interrupt and restart it with a brief** (rung 2",
+        "**Tell the owner** (rung 3",
+    ] {
+        assert!(text.contains(rung), "{rung}");
+    }
 }
 #[cfg(feature = "views")]
 #[test]

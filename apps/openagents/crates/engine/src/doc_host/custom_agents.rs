@@ -641,6 +641,7 @@ fn stamp_agent(
             check_ins: a.check_ins,
             every_minutes: a.every_minutes,
             authority: a.authority,
+            stall_minutes: a.stall_minutes,
         })
         .filter(|d| *d != Declared::default());
     match declared.and_then(|d| serde_json::to_value(d).ok()) {
@@ -1072,12 +1073,13 @@ mod tests {
             check_ins: true,
             every_minutes: Some(10),
             authority: true,
+            stall_minutes: Some(15),
             shell_timeout_secs: Some(120),
         });
         stamp_agent(&mut options, &a.spec.agent, &a.definition.spec);
         assert_eq!(
             options[AUTONOMY],
-            serde_json::json!({"checkIns": true, "everyMinutes": 10, "authority": true})
+            serde_json::json!({"checkIns": true, "everyMinutes": 10, "authority": true, "stallMinutes": 15})
         );
         a.definition.spec.autonomy = None;
         stamp_agent(&mut options, &a.spec.agent, &a.definition.spec);
