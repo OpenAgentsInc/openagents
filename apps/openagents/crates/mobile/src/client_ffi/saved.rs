@@ -36,7 +36,23 @@ pub struct SavedChatRow {
     pub title: String,
     pub subtitle: String,
     pub group: String,
+    pub pinned: bool,
+    pub archived: bool,
+    /// Shared-project rows remain read-only; the server authorizes every write.
+    pub can_file: bool,
+    pub project_id: Option<String>,
+    /// Saved conversations do not publish these live-session fields.
+    pub agent_name: Option<String>,
+    pub indicator: Option<super::ChatIndicator>,
+    pub unseen: Option<bool>,
 }
+#[derive(Clone, Debug, uniffi::Enum)]
+pub enum SavedFilingChange {
+    Pin { pinned: bool },
+    Archive { archived: bool },
+    Rename { title: String },
+}
+
 #[derive(Clone, uniffi::Record)]
 pub struct SavedProjectRow {
     pub id: String,
@@ -92,6 +108,7 @@ pub struct SavedHistorySnapshot {
     pub login_required: bool,
     pub archived: bool,
     pub project: Option<String>,
+    pub query: String,
     pub rows: Vec<SavedChatRow>,
     pub projects: Vec<SavedProjectRow>,
     pub has_more: bool,
@@ -130,6 +147,7 @@ pub enum SavedHistoryAction {
     Send { text: String },
     RetrySend,
     StopAnswer,
+    Search { query: String },
 }
 #[uniffi::export(with_foreign)]
 pub trait SavedHistoryListener: Send + Sync {
@@ -359,6 +377,85 @@ impl CoreSavedHistory {
         files
     }
 
+    /// File an already-loaded owned chat. Refresh only after server confirmation;
+    /// neither navigation nor list ordering changes optimistically.
+    pub async fn file_chat(&self, id: String, change: SavedFilingChange) -> CoreResult<()> {
+        if !self.current() {
+            return Err(unavailable());
+        }
+        if self.history.snapshot().project.is_some() {
+            return Err(CoreError::Unsupported {
+                message: "Open your own chats to change this chat.".into(),
+            });
+        }
+        let existing = self.history.existing(&id).ok_or_else(unavailable)?;
+        let lease = existing.lease;
+        let view_cancel = self.cancel.clone();
+        let requested = change.clone();
+        let result = openagents_client::runtime::shared()
+            .spawn(async move {
+                if !lease.is_current() {
+                    return Err(unavailable());
+                }
+                let request = async {
+                    match &change {
+                        SavedFilingChange::Pin { pinned } => {
+                            openagents_account::openagents::chats::set_pinned(
+                                lease.client(),
+                                lease.session(),
+                                &existing.chat,
+                                *pinned,
+                                &view_cancel,
+                            )
+                            .await
+                        }
+                        SavedFilingChange::Archive { archived } => {
+                            openagents_account::openagents::chats::set_archived(
+                                lease.client(),
+                                lease.session(),
+                                &existing.chat,
+                                *archived,
+                                &view_cancel,
+                            )
+                            .await
+                        }
+                        SavedFilingChange::Rename { title } => {
+                            openagents_account::openagents::chats::set_title(
+                                lease.client(),
+                                lease.session(),
+                                &existing.chat,
+                                title,
+                                &view_cancel,
+                            )
+                            .await
+                        }
+                    }
+                };
+                let result = wait_for_filing(&lease.cancel, &view_cancel, request).await;
+                if !lease.is_current() {
+                    return Err(unavailable());
+                }
+                result
+            })
+            .await
+            .map_err(failed)??;
+        if !self.current() {
+            return Err(unavailable());
+        }
+        let confirmed = match requested {
+            SavedFilingChange::Pin { pinned } => result.pinned == pinned,
+            SavedFilingChange::Archive { archived } => result.archived == archived,
+            SavedFilingChange::Rename { .. } => true,
+        };
+        if !confirmed {
+            return Err(CoreError::Network {
+                message: "Couldn't confirm the change. Refresh and try again.".into(),
+            });
+        }
+        self.refresh_lists();
+        Ok(())
+    }
+
     pub fn snapshot(&self) -> SavedHistorySnapshot {
         let active = self.current();
         let h = if active {
@@ -398,6 +495,13 @@ impl CoreSavedHistory {
                 };
                 SavedChatRow {
                     id: row.chat.id().into(),
+                    pinned: row.pinned_unix.is_some(),
+                    archived: row.archived_unix.is_some(),
+                    can_file: h.project.is_none(),
+                    project_id: row.project.clone(),
+                    agent_name: None,
+                    indicator: None,
+                    unseen: None,
                     title: row.title,
                     subtitle: format!(
                         "{}{source} · {} messages",
@@ -417,6 +521,7 @@ impl CoreSavedHistory {
             login_required: h.login_required,
             archived,
             project: h.project.map(|p| p.name),
+            query: h.query,
             rows,
             projects: h
                 .projects
@@ -510,6 +615,10 @@ impl CoreSavedHistory {
         }
         let runtime = openagents_client::runtime::shared();
         match action {
+            SavedHistoryAction::Search { query } => {
+                self.history.search(&query).map_err(failed)?;
+                runtime.spawn(self.history.more());
+            }
             SavedHistoryAction::MoreChats => {
                 runtime.spawn(self.history.more());
             }
@@ -667,6 +776,32 @@ impl Drop for CoreSavedHistory {
     }
 }
 
+async fn wait_for_filing(
+    account_cancel: &CancellationToken,
+    view_cancel: &CancellationToken,
+    request: impl std::future::Future<
+        Output = Result<
+            openagents_account::openagents::chats::Filing,
+            openagents_account::openagents::Error,
+        >,
+    >,
+) -> CoreResult<openagents_account::openagents::chats::Filing> {
+    tokio::select! {
+        biased;
+        _ = account_cancel.cancelled() => Err(unavailable()),
+        _ = view_cancel.cancelled() => Err(CoreError::Closed),
+        result = request => result.map_err(|error| match error {
+            openagents_account::openagents::Error::Unauthorized
+            | openagents_account::openagents::Error::ExpiredSession
+            | openagents_account::openagents::Error::WrongAccount
+            | openagents_account::openagents::Error::WrongDeployment => unavailable(),
+            _ => CoreError::Network {
+                message: "Couldn't update this chat. Try again.".into(),
+            },
+        }),
+    }
+}
+
 fn transcript_input(
     snapshot: &openagents_account::reader::Snapshot,
     chat: Option<&openagents_account::openagents::ChatRef>,
@@ -690,6 +825,54 @@ fn transcript_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn saved_filing_cancellation_fences_requests_and_failed_answers() {
+        use std::sync::atomic::AtomicUsize;
+        let calls = AtomicUsize::new(0);
+        let account = CancellationToken::new();
+        let view = CancellationToken::new();
+        account.cancel();
+        let request = async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok(openagents_account::openagents::chats::Filing {
+                pinned: true,
+                archived: false,
+            })
+        };
+        assert!(matches!(
+            wait_for_filing(&account, &view, request).await,
+            Err(CoreError::Auth { .. })
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let account = CancellationToken::new();
+        let pending = std::future::pending();
+        let result = wait_for_filing(&account, &view, pending);
+        tokio::pin!(result);
+        tokio::select! {
+            _ = &mut result => panic!("a pending write cannot be confirmed"),
+            _ = tokio::task::yield_now() => {},
+        }
+        view.cancel();
+        assert!(matches!(result.await, Err(CoreError::Closed)));
+        let view = CancellationToken::new();
+        assert!(matches!(
+            wait_for_filing(&account, &view, async {
+                Err(openagents_account::openagents::Error::InvalidResponse)
+            })
+            .await,
+            Err(CoreError::Network { .. })
+        ));
+        let confirmed = wait_for_filing(&account, &view, async {
+            Ok(openagents_account::openagents::chats::Filing {
+                pinned: true,
+                archived: false,
+            })
+        })
+        .await
+        .unwrap();
+        assert!(confirmed.pinned && !confirmed.archived);
+    }
 
     #[test]
     fn saved_reply_activity_survives_complete_message_snapshots_and_clears_when_idle() {

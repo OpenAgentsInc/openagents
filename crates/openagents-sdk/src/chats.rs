@@ -327,6 +327,20 @@ pub async fn set_archived(
     )
     .await
 }
+/// Rename an owned saved chat. The server applies the same title limits as the web.
+pub async fn set_title(
+    client: &Client,
+    session: &Session,
+    chat: &ChatRef,
+    title: &str,
+    cancel: &CancellationToken,
+) -> Result<Filing, Error> {
+    let title = title.trim();
+    if title.is_empty() || title.chars().count() > 120 || title.chars().any(char::is_control) {
+        return Err(Error::InvalidReference);
+    }
+    file(client, session, chat, json!({"title": title}), cancel).await
+}
 async fn file(
     client: &Client,
     session: &Session,
@@ -339,6 +353,7 @@ async fn file(
         request_id: String::new(),
     }
     .check(client, session)?;
+    let expected_title = body.get("title").and_then(Value::as_str).map(str::to_owned);
     let future = async {
         client
             .request::<Value>(
@@ -351,7 +366,11 @@ async fn file(
             .await
     };
     let value = tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),result=future=>result?};
-    if value["id"] != chat.id() {
+    if value["id"] != chat.id()
+        || expected_title
+            .as_ref()
+            .is_some_and(|title| value["title"].as_str() != Some(title.as_str()))
+    {
         return Err(Error::InvalidResponse);
     }
     Ok(Filing {

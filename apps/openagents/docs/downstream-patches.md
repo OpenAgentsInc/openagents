@@ -710,3 +710,67 @@ links remain readable. Upstream fixes now require manual ports.
   retain Rust's paint fallback. New Rust/Kotlin fixtures are authored but unrun
   below the disk floor; bindings, media-player integration, and device validation
   remain pending.
+
+- [OpenAgents #12093](https://github.com/OpenAgentsInc/openagents/issues/12093):
+  Android push delivery uses the existing Rust push registration and private
+  owner-note APIs. `CoreClient::handle_push_wake` receives a typed wake; Rust
+  returns the newest checked owner note for attention and redials sync for a
+  reconnect without changing app lifecycle state. The shared platform
+  coordinator validates data-only wake messages, and the `push` source set
+  contains the Firebase transport adapter; `nopush` has no Firebase symbols.
+  The app owns client creation, foreground suppression, notification routing,
+  and tap handling. Android channel setup and permission checks live in
+  `platform/AndroidPushNotifications.kt`.
+- [OpenAgents #12096](https://github.com/OpenAgentsInc/openagents/issues/12096):
+  classify only bounded HTTPS links on `openagents.com` for computer pairing
+  and project invitations in the Rust mobile FFI. The existing connect-code
+  parser checks shape and expiry; the server still authorizes invitation use.
+  Synthetic fixtures cover the connect fragment, project path, and rejected
+  URL forms. `AndroidScannerPresentationBoundary.kt` adds bounded raw-text
+  handoff, permission denial/cancel/retry states, and duplicate/late callback
+  fencing. `CameraXQrScannerDriver.kt` uses `ImageAnalysis` with
+  `KEEP_ONLY_LATEST`, a 1280×720 target, and QR-only ZXing decoding; decoded
+  raw text goes to the Rust classifier callback. Synthetic luminance fixtures
+  cover stride, rotation, decoder cleanup, invalid frames, and exact raw text.
+  It does not perform link approval. B1 owns the Gradle and manifest changes.
+  The app uses CameraX 1.5.3 with ZXing core 3.5.4; CameraX 1.5.3 supports the
+  API 35 compile SDK and the pinned Android Gradle Plugin. See the
+  [CameraX release notes](https://developer.android.com/jetpack/androidx/releases/camera)
+  and [ZXing core](https://github.com/zxing/zxing).
+  Both production files now live in the app source set under
+  `apps/android/app/src/main/java/com/openagents/app/scanner/`, with synthetic
+  instrumentation coverage under `apps/android/app/src/androidTest/java/com/openagents/app/scanner/`.
+  B1 owns `MainActivity.startQrScanner(previewView, classifyWithRust, onFailure)`,
+  permission-result handling, the Activity shell wiring, and pins CameraX 1.5.3
+  with ZXing core 3.5.4. The app manifest requests camera permission. Java and
+  Kotlin compile targets are both Java 17, and the app pins build tools 35.0.0
+  for its API 35 compile SDK.
+  Scanning sends bounded raw text only to the Rust classifier callback; Kotlin
+  does not classify or authorize links. On CoderOS, `scripts/android/app.sh
+  check` passed `compileDebugAndroidTestKotlin`, `testDebugUnitTest`, debug and
+  release assembly, `lintVitalRelease`, and the release APK policy check. The
+  policy check confirmed `com.openagents.app`, minimum API 26, both ABIs, the
+  mobile core and matching NDK `libc++_shared.so`, no staged Breez/Iroh Cargo
+  libraries, and no debug-only launch extras. The debug APK is 250,979,147
+  bytes; the release APK is 249,630,443 bytes. Each contains exactly the
+  expected five native libraries per ABI and has no duplicate ZIP entries.
+  `scripts/android/stage-core-libs.sh` stages only the Android core and the
+  matching pinned NDK C++ runtime. It strips debug information from staged
+  copies and checks that dynamic symbols are unchanged; the original Cargo
+  artifacts remain intact. The app pins NDK 27.1.12297006.
+
+  No device run has been done. The scanner instrumentation, cold-start native
+  loading, Activity recreation, camera permission denial/cancel/retry, and
+  API 26 install/run checks are recorded in [After-close checks](../../../docs/audits/2026-10-16-master-delegation.md#after-close-checks).
+  The Rust classifier fixture check (`cargo test --locked -p openagents-mobile
+  app_links`) and an end-to-end rerun of `scripts/android/build-core.sh` were
+  not run by this chat. Release-certificate verification remains an owner-only
+  step in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
+
+- [OpenAgents #12087](https://github.com/OpenAgentsInc/openagents/issues/12087):
+  Add an isolated Android Views drawer and synthetic presenter fixtures over
+  Rust-owned session/history intents. Add bounded saved-title search and owned
+  rename to the server and SDK, with account-fenced UniFFI pin/archive/rename.
+  Saved metadata without a Rust source stays optional. Durable saved pin order,
+  shell wiring, binding regeneration, and executable checks remain open; see
+  `apps/android/drawer/README.md`. No checks requiring a build have passed yet.
