@@ -12,7 +12,7 @@ openagents chat work --on archil --issues 12131,12126 --parallel 2 --land queue
 ## How a run goes
 
 1. **Image.** Every sandbox starts from
-   `us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/archil-worker:v2`,
+   `us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/archil-worker:v3`,
    built from `crates/coder-cloud/archil/Dockerfile`: the toolchains the
    repository pins (1.97.1 and 1.98.1, with rustfmt and clippy), protoc
    with its includes, Node with
@@ -23,7 +23,8 @@ openagents chat work --on archil --issues 12131,12126 --parallel 2 --land queue
    builds the briefed agent, and warms the checks' target
    (`~/.openagents/work/target`) with `openagents-cli`. Then it's stopped.
 3. **One fork per issue.** Each issue forks the template. This computer
-   reads the issue with `gh` and writes it into the fork, along with the
+   posts a claim comment, reads the issue with `gh`, and writes it into the
+   fork, along with the
    engine's scripts as this binary carries them and the run's credentials.
    The credentials go in a private file that the run deletes first thing.
 4. **The run.** The fork moves the checkout to `origin/main`, rebuilds the
@@ -34,7 +35,8 @@ openagents chat work --on archil --issues 12131,12126 --parallel 2 --land queue
    land/archil-N-* --issue N` (or `gh pr create` with `--land pr`). Then it
    stops and deletes the sandbox, comments the run's wall time and cost on
    the issue, and appends a route record (placement `archil`) to
-   `~/.openagents/cloud/runs.jsonl`.
+   `~/.openagents/cloud/runs.jsonl`. The driver's result, with each check's
+   output tail, is kept in `~/.openagents/cloud/archil-runs/`.
 
 The orchestrator does the GitHub API and landing steps because Archil's
 free-plan network is an allowlist. It includes github.com, crates.io, npm,
