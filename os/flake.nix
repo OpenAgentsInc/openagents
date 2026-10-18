@@ -18,24 +18,8 @@
         config.allowUnfree = true;
       };
 
-      # The SDK that builds `bins/coder-android`:
-      # the platform and build tools that match `compileSdk`, and the NDK
-      # their `ndkVersion` names, so Gradle finds it without a download. The
-      # emulator and its system image stay in the module's SDK, the one
-      # /etc/coderos/android.json names.
-      androidNdkVersion = "27.1.12297006";
-      androidSdk = ((pkgs.androidenv.override { licenseAccepted = true; }).composeAndroidPackages {
-        platformVersions = [ "35" ];
-        buildToolsVersions = [ "35.0.0" ];
-        includeNDK = true;
-        ndkVersions = [ androidNdkVersion ];
-        includeEmulator = false;
-        includeSystemImages = false;
-        includeCmake = false;
-        toolsVersion = null;
-      }).androidsdk;
-
-      androidSdkRoot = "${androidSdk}/libexec/android-sdk";
+      android = import ./pkgs/android-sdk.nix { inherit pkgs; };
+      androidSdkRoot = "${android.sdk}/libexec/android-sdk";
 
       # A NixOS system from the CoderOS modules, a stub for the hardware, and
       # whatever a check adds. It is the smallest host that can evaluate, so
@@ -109,6 +93,29 @@
       # this flake carries turned on. `tests/stub-host.nix` says how to add
       # another.
       checks.${system} = {
+        android-build =
+          let
+            host = stubHost [ {
+              users.users.operator.isNormalUser = true;
+              services.getty.autologinUser = "operator";
+              coderos.desktop = {
+                enable = true;
+                user = "operator";
+                # Android evaluation does not build the unrelated desk binary.
+                deskPackage = pkgs.hello;
+                android.enable = true;
+                android.build.enable = true;
+              };
+            } ];
+            env = host.config.environment.sessionVariables;
+            grant = builtins.fromJSON (builtins.unsafeDiscardStringContext
+              host.config.environment.etc."coderos/android.json".text);
+          in
+          assert grant.sdk == builtins.unsafeDiscardStringContext androidSdkRoot;
+          assert env.ANDROID_NDK_HOME == "${androidSdkRoot}/ndk/${android.ndkVersion}";
+          assert env.JAVA_HOME == android.jdk.home;
+          evaluates "android-build" host;
+
         stub-host = evaluates "stub-host" (stubHost [ ]);
         stub-host-all = evaluates "stub-host-all" (stubHost [ ./tests/all-capabilities.nix ]);
 
@@ -246,33 +253,21 @@
             evaluates "coder-host-stands-down" host;
       };
 
-      # The shell that builds the Android apps: `nix develop ./os#android`
-      # from the repository root, then `scripts/build-coder-android.sh` or
-      # `scripts/build-openagents-android.sh`. The Rust toolchain comes from
-      # the machine's `rustup`, which reads `rust-toolchain.toml`, with the
-      # `aarch64-linux-android` and `x86_64-linux-android` targets added.
+      # Android build tools and the same emulator image as the host module.
       devShells.${system} = {
         android = pkgs.mkShell {
           packages = [
-            androidSdk
-            pkgs.jdk17
-            pkgs.gradle
-            pkgs.cargo-ndk
-            pkgs.watchexec
-            # `protoc`, for the wallet's Spark crates (prost-build).
-            pkgs.protobuf
-          ];
+            android.sdk
+            pkgs.util-linux
+            pkgs.iproute2
+          ] ++ android.buildPackages;
 
           ANDROID_HOME = androidSdkRoot;
           ANDROID_SDK_ROOT = androidSdkRoot;
-          ANDROID_NDK_HOME = "${androidSdkRoot}/ndk/${androidNdkVersion}";
-          JAVA_HOME = pkgs.jdk17.home;
+          ANDROID_NDK_HOME = "${androidSdkRoot}/ndk/${android.ndkVersion}";
+          JAVA_HOME = android.jdk.home;
 
-          shellHook = ''
-            echo "Android SDK: $ANDROID_HOME"
-            echo "NDK: $ANDROID_NDK_HOME"
-            echo "Build with scripts/build-coder-android.sh or scripts/build-openagents-android.sh."
-          '';
+          shellHook = builtins.readFile ./bin/android-build-env;
         };
 
         compositor = compositorShell;

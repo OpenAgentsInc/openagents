@@ -1,0 +1,11 @@
+# Sourced by the Android development shell; caches stay outside the checkout.
+export OPENAGENTS_ANDROID_WORK="${OPENAGENTS_ANDROID_WORK:-$HOME/.openagents/android-build}"
+export GRADLE_USER_HOME="$OPENAGENTS_ANDROID_WORK/gradle"
+export ANDROID_USER_HOME="$OPENAGENTS_ANDROID_WORK/user"
+export ANDROID_EMULATOR_HOME="$OPENAGENTS_ANDROID_WORK/emulator"
+export ANDROID_AVD_HOME="$OPENAGENTS_ANDROID_WORK/avd"
+export CARGO_INCREMENTAL=0
+mkdir -p "$GRADLE_USER_HOME" "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME" "$ANDROID_EMULATOR_HOME"
+# Cargo targets and compiler state are selected per workspace by the caller.
+echo "Android SDK: $ANDROID_HOME"
+echo "Android state: $OPENAGENTS_ANDROID_WORK"

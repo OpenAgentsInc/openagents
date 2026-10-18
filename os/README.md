@@ -14,7 +14,7 @@ The plan for moving CoderOS here, and the list of what moves next, is
 | --- | --- |
 | `nixosModules.coderos` | The base system and every optional capability, each off by default. `nixosModules.default` is the same module. |
 | `devShells.x86_64-linux.compositor` | `pkg-config` and the system libraries Smithay links, for `cargo test -p coder-wm -p coder-compositor` with the pinned toolchain. |
-| `devShells.x86_64-linux.android` | The Android SDK, NDK, JDK 17, Gradle, and `cargo-ndk` that `scripts/build-coder-android.sh` and `scripts/build-openagents-android.sh` build with. |
+| `devShells.x86_64-linux.android` | The pinned Android build tools and emulator for the current mobile app; see [Android build environment](#android-build-environment). |
 | `packages.x86_64-linux` | `coder-desk`, the desk command the CoderOS scripts run instead of `hyprctl`, built from `crates/coder-desk-cli` by `pkgs/coder-desk.nix`, `coder-compositor`, the optional Coder Wayland compositor, built from `crates/coder-compositor` by `pkgs/coder-compositor.nix`, and `coderos-camera`, the camera daemon, built from `crates/coderos-camera` by `pkgs/coderos-camera.nix` with its ONNX Runtime fetched by digest. `paper-mono` is the Paper Mono font package, built by `pkgs/paper-mono.nix` from `crates/paper-mono/fonts/`. Modules that run a program from this workspace add its build here. |
 | `checks.x86_64-linux` | Evaluates a stub host with the base module alone, and with every capability turned on, and the example workstation against a stub hardware file. |
 
@@ -321,3 +321,100 @@ The Nix and shell under `os/` are infrastructure, in the same sense as the
 repository's retained Python and shell tooling. Product behavior belongs in
 Rust; a script here launches or configures a Rust program rather than
 growing product logic of its own.
+
+## Android build environment
+
+For Android development on CoderOS, run `nix develop ./os#android` from the
+repository root. The shell and `coderos.desktop.android.build.enable = true`
+use the same SDK composition; emulator-only hosts keep build tools off.
+The private `~/coderos-hosts/hosts/coderos-4080.nix` enables that option.
+No NixOS switch is needed to use the shell. Do not switch or restart host
+services for an Android build.
+
+`pkgs/android-sdk.nix` pins API 35, build tools 35.0.0, NDK r27b
+(`27.1.12297006`), and CMake 3.22.1. `flake.lock` pins the package revisions,
+including JDK 17, Gradle 8, cargo-ndk, adb, and the emulator image. This keeps
+one managed SDK definition, with no `sdkmanager` downloads into a home
+folder. B1 must pin its app plugin and Gradle wrapper together; for example,
+[AGP 8.7 supports API 35, JDK 17, and Gradle 8.9 or later](https://developer.android.com/build/releases/agp-8-7-0-release-notes).
+A0 does not build an Android app or test that plugin.
+
+The shell isolates Gradle, Android-user, emulator, and AVD state under
+`~/.openagents/android-build`. Set `OPENAGENTS_ANDROID_WORK` before entering
+the shell to use another dedicated directory. The desktop emulator's
+existing state stays separate. Keep captures and check output under
+`openagents scratch`:
+
+```sh
+nix develop ./os#android
+android_evidence="$(openagents scratch)/android-a0"
+bash os/tests/android-build-tools.sh "$android_evidence/tools"
+bash os/tests/android-offline-boot.sh "$android_evidence/boot"
+```
+
+The boot directory must be empty. The boot check uses a fresh API 35
+`google_apis;x86_64` Pixel 7, KVM, software graphics, no window, no microphone
+or cameras, no snapshots, and a separate adb server. A Linux network
+namespace has only loopback and no routes, so the guest cannot contact
+production. The command stops after at most 240 seconds plus 15 seconds for
+forced cleanup. It shuts down its own guest and adb server on exit. Do not
+sign in or install the app during this check.
+
+For the first app cross-build (A1), use the existing app workspace target:
+
+```sh
+cd apps/openagents
+export CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app"
+export OPENAGENTS_KEEP_TARGET_DIR=1
+. "$(git rev-parse --show-toplevel)/scripts/dev/cargo-build-env.sh"
+```
+
+The helper sets `CARGO_INCREMENTAL=0`, pins the compiler, and gives each
+physical workspace and compiler its own intermediate build directory.
+Keep this shared app target across worktrees; the root workspace uses the
+existing `~/work/openagents-target-workspace` instead. Run one Cargo command
+at a time in each chat. A1 must fix `scripts/android/build-core.sh` to honor
+these settings before using it; the script still assumes a local target.
+Use `aarch64-linux-android` for devices and `x86_64-linux-android` for the
+KVM guest. Both standard libraries are installed for Rust 1.98.1.
+
+### CoderOS verification, 2026-10-18 (#12079)
+
+The checks ran on `coderos-4080`, Linux 6.18.49, in app chat
+`9f45b787-5171-417c-9ae3-9311e5471bdf`.
+
+| Check | Result |
+| --- | --- |
+| JDK / Gradle / cargo-ndk | 17.0.20.1 / 8.14.4 (JDK 17) / 4.1.2 |
+| SDK / build tools / NDK / CMake | 35 / 35.0.0 / 27.1.12297006 / 3.22.1 |
+| adb / emulator | 37.0.0 / 36.5.11.0 |
+| Native toolchain | Synthetic C++ shared libraries link for both ABIs at API 26 with `-Wl,-z,max-page-size=16384`; ELF headers and load segments recorded |
+| Gradle | Synthetic `probe` task passes with `--offline --no-daemon --max-workers=2` |
+| KVM | `/dev/kvm` readable and writable; `emulator -accel-check`: KVM version 12 installed and usable |
+| Offline boot | `sys.boot_completed=1`, SDK 35, `x86_64`; emulator reports 24,527 ms; no third-party packages |
+| Network | Only loopback; no routes in the guest's host network namespace |
+| Nix | Android build module check passes; private host's NDK path evaluates to the same SDK with the worktree input override |
+
+Logs and ELF reports are under
+`~/.openagents/scratch/codex-01a14f0b-6299-7670-b076-6e3d39f36a10/android-build-tools`
+and `android-offline-boot`. The SDK closure is 8.3 GiB (including dependencies
+shared with other packages); boot state is 803 MiB. The preflight disk reading
+was 113.22 GiB available; after tool realization, Android Rust standard
+libraries, and checks it was 101.60 GiB. Concurrent host work can also change
+free space. Existing app and root targets measured 4.3 GiB and 86 GiB before
+these checks; A0 does not compile the Rust app.
+
+Keep **100 GiB free**. Before each build, check machine status and `df -h`;
+start no build below the floor or if its expected growth would cross it.
+With only 1.60 GiB above the floor, check capacity before starting A1's cold
+build. Do not delete the Nix store, another agent's targets, or
+`~/openagents/target/release` to make room. Leave both the legacy Coder host
+and `openagents-native-target.service` unchanged.
+
+First build schedule: A1 builds the host bindings, then x86_64, then arm64,
+one Cargo invocation at a time, recording free disk and target size after
+each step. B1's first Gradle app build follows serially. Allow parallel
+builds only after those measurements show enough room above the floor for
+the combined peak growth; until then, keep one cold build on this host.
+Physical-device, app, signing, and store checks belong to later sprint
+issues, not this environment check.

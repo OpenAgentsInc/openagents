@@ -1,4 +1,4 @@
-# The optional Android emulator, and the file that describes it.
+# The optional Android emulator and build tools.
 #
 # A host that leaves `coderos.desktop.android.enable` off gets nothing from
 # this file: no SDK, no system image, no bind, and no Xwayland.
@@ -33,21 +33,12 @@ let
   desktop = config.coderos.desktop;
   cfg = desktop.android;
 
-  # The SDK, composed from Google's repository by nixpkgs. Only what the
-  # emulator needs: the legacy `tools`, the build tools, and cmake are left
-  # out, because nothing here compiles an app. `licenseAccepted` is the
-  # androidenv's own switch for the SDK license, set here rather than through
-  # `nixpkgs.config` so a host that leaves the option off accepts nothing.
-  sdk = ((pkgs.androidenv.override { licenseAccepted = true; }).composeAndroidPackages {
-    includeEmulator = true;
-    includeSystemImages = true;
-    platformVersions = [ cfg.platformVersion ];
-    systemImageTypes = [ cfg.systemImageType ];
-    abiVersions = [ cfg.abi ];
-    buildToolsVersions = [ ];
-    includeCmake = false;
-    toolsVersion = null;
-  }).androidsdk;
+  android = import ../../pkgs/android-sdk.nix {
+    inherit pkgs;
+    build = cfg.build.enable;
+    inherit (cfg) platformVersion systemImageType abi;
+  };
+  sdk = android.sdk;
 
   sdkRoot = "${sdk}/libexec/android-sdk";
 
@@ -89,12 +80,14 @@ in
       Xwayland on for it
     '';
 
+    build.enable = lib.mkEnableOption "Android build tools, NDK, CMake, JDK 17, Gradle 8, cargo-ndk, and protoc";
+
     platformVersion = lib.mkOption {
       type = lib.types.str;
       default = "35";
       description = ''
         The Android API level of the platform and the system image. 35 is
-        Android 15, which is what `bins/coder-android` compiles against.
+        Android 15, the current OpenAgents Android build baseline.
       '';
     };
 
@@ -185,10 +178,12 @@ in
 
     # The launcher, and the SDK on the PATH as well, so a person at the
     # machine can reach the guest with the same `adb` the launcher stops it
-    # with, and `scripts/build-coder-android.sh` finds the SDK by
-    # `ANDROID_HOME`.
-    environment.systemPackages = [ launcher sdk ];
-    environment.sessionVariables = {
+    # with. The build shell uses this SDK composition as well.
+    environment.systemPackages = [ launcher sdk ] ++ lib.optionals cfg.build.enable android.buildPackages;
+    environment.sessionVariables = lib.optionalAttrs cfg.build.enable {
+      JAVA_HOME = android.jdk.home;
+      ANDROID_NDK_HOME = "${sdkRoot}/ndk/${android.ndkVersion}";
+    } // {
       ANDROID_HOME = sdkRoot;
       ANDROID_SDK_ROOT = sdkRoot;
       ANDROID_AVD_HOME = "${config.users.users.${desktop.user}.home}/.openagents/android/avd";
