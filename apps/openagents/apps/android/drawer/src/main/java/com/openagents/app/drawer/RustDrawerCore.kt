@@ -28,6 +28,8 @@ class RustDrawerCore(
     private val openLive: (SessionHandle) -> Unit,
     private val openSaved: (String) -> Unit,
     private val openIndexed: (SavedIndexedTranscript) -> Unit,
+    private val acknowledgeOnOpen: Boolean = true,
+    private val openIndexedRoute: ((String) -> Unit)? = null,
 ) : DrawerCore {
     private val access = Mutex()
     private var savedRequest: DrawerRequest? = null
@@ -94,12 +96,17 @@ class RustDrawerCore(
                     DrawerOrigin.LIVE -> {
                         val handle = live.openSession(intent.key.id)
                         withContext(Dispatchers.Main) { openLive(handle) }
-                        live.markSeen(intent.key.id)
+                        if (acknowledgeOnOpen) live.markSeen(intent.key.id)
                     }
                     DrawerOrigin.INDEXED -> {
-                        val detail = saved.indexedSession(intent.key.id)
-                        withContext(Dispatchers.Main) { openIndexed(detail) }
-                        detail.row.activityRevision?.let { saved.markIndexedSeen(detail.row.key, it) }
+                        val router = openIndexedRoute
+                        if (router != null) {
+                            withContext(Dispatchers.Main) { router(intent.key.id) }
+                        } else {
+                            val detail = saved.indexedSession(intent.key.id)
+                            withContext(Dispatchers.Main) { openIndexed(detail) }
+                            if (acknowledgeOnOpen) detail.row.activityRevision?.let { saved.markIndexedSeen(detail.row.key, it) }
+                        }
                     }
                     DrawerOrigin.SAVED -> {
                         saved.action(SavedHistoryAction.Open(intent.key.id))

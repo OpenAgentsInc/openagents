@@ -186,6 +186,17 @@ internal class AndroidRootPresentation(
             val bound = TranscriptView(application.transcriptText, updates)
             engine = bound
             transcript.onViewportChanged = { width, scale -> bound.setViewport(width, scale) }
+            var reportedMount = false
+            transcript.onPaintStats = { stats ->
+                if (!closed && !reportedMount && stats.visibleRows > 0) {
+                    reportedMount = true
+                    scope.launch {
+                        try { owner.transcriptMounted(next.generation, next.contentRevision) }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { /* Opening again retries a refused read marker. */ }
+                    }
+                }
+            }
             owner.attachTranscript(bound, next.generation, next.contentRevision)
             val presentation = next.composer?.let { AndroidComposerFeature.createHost(activity, it) }
             if (presentation != null) {
@@ -208,16 +219,35 @@ internal class AndroidRootPresentation(
     private fun bindDrawer(next: AndroidHostSnapshot) {
         val client = next.client ?: return
         val history = next.history ?: return
-        val core = RustDrawerCore(client, history, { null },
+        val core = RustDrawerCore(client, history, {
+            snapshot?.let { current -> current.selectedChat?.let { id ->
+                when (current.source) {
+                    AndroidHostContent.LIVE -> DrawerKey(DrawerOrigin.LIVE, id)
+                    AndroidHostContent.SAVED -> DrawerKey(DrawerOrigin.SAVED, id)
+                    AndroidHostContent.INDEXED -> DrawerKey(DrawerOrigin.INDEXED, id)
+                    AndroidHostContent.CLOUD -> null
+                }
+            } }
+        },
             { session -> guarded { owner.selectSession(session.chatId()); panes.showSession() } },
             { id -> guarded { owner.selectSavedChat(id); panes.showSession() } },
-            { _ -> showFailure() },
+            { detail -> openIndexed(detail.row.key) },
+            acknowledgeOnOpen = false,
+            openIndexedRoute = ::openIndexed,
         )
         val presenter = DrawerPresenter(core, scope, drawerView::render)
         drawer = presenter
         drawerView.onRequest = presenter::show
         drawerView.onIntent = presenter::send
         presenter.show()
+    }
+
+    private fun openIndexed(key: String) {
+        scope.launch {
+            try { owner.selectIndexedChat(key); panes.showSession(); refresh() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (!closed) showFailure() }
+        }
     }
 
     private fun mountSettings(next: AndroidHostSnapshot) {

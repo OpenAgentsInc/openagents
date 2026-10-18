@@ -68,10 +68,11 @@ fn indexed_error(error: openagents_account::openagents::Error) -> CoreError {
         },
     }
 }
-#[uniffi::export]
 impl CoreSavedHistory {
-    /// Load an existing indexed session in this history's current account/project scope.
-    pub async fn indexed_session(&self, key: String) -> CoreResult<SavedIndexedTranscript> {
+    async fn load_indexed_detail(
+        &self,
+        key: String,
+    ) -> CoreResult<openagents_account::openagents::sessions::SessionDetail> {
         if !self.current() {
             return Err(unavailable());
         }
@@ -84,6 +85,63 @@ impl CoreSavedHistory {
         if !self.current() {
             return Err(unavailable());
         }
+        Ok(detail)
+    }
+    pub(crate) async fn indexed_layout(
+        &self,
+        key: String,
+    ) -> CoreResult<(SavedIndexedRow, crate::layout::TranscriptInput)> {
+        let detail = self.load_indexed_detail(key).await?;
+        let row = row(&detail.session);
+        let messages = detail.messages.ok_or_else(|| CoreError::NotFound {
+            message: "A copy of this chat isn't available.".into(),
+        })?;
+        let input = indexed_input(&row.key, messages);
+        Ok((row, input))
+    }
+}
+fn indexed_input(
+    key: &str,
+    messages: Vec<openagents_account::openagents::sessions::CopiedMessage>,
+) -> crate::layout::TranscriptInput {
+    use openagents_account::openagents::sessions::CopiedRole;
+    use openagents_doc::{
+        parts::{MessagePart, MessageStatus},
+        schema::{MessageRole, SessionMessageEntry},
+    };
+    crate::layout::TranscriptInput {
+        entries: messages
+            .into_iter()
+            .enumerate()
+            .map(|(at, message)| {
+                Arc::new(SessionMessageEntry {
+                    id: format!("indexed:{key}:{at}"),
+                    role: match message.role {
+                        CopiedRole::User => MessageRole::User,
+                        CopiedRole::Assistant => MessageRole::Assistant,
+                        CopiedRole::Tool => MessageRole::System,
+                    },
+                    parts: vec![MessagePart::Text {
+                        id: "text".into(),
+                        text: message.text,
+                    }],
+                    created_at: 0,
+                    device_id: String::new(),
+                    status: Some(MessageStatus::Complete),
+                    continuation_of: None,
+                    duration_ms: None,
+                })
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+
+#[uniffi::export]
+impl CoreSavedHistory {
+    /// Load an existing indexed session in this history's current account/project scope.
+    pub async fn indexed_session(&self, key: String) -> CoreResult<SavedIndexedTranscript> {
+        let detail = self.load_indexed_detail(key).await?;
         let messages = detail.messages.map(|messages| {
             messages
                 .into_iter()
@@ -169,5 +227,58 @@ mod tests {
         let b: SessionSummary = serde_json::from_value(b).unwrap();
         assert_eq!(a.id, b.id);
         assert_ne!(row(&a).key, row(&b).key);
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+    use openagents_account::openagents::sessions::{CopiedMessage, CopiedRole};
+    #[test]
+    fn indexed_copies_keep_their_identity_roles_and_rust_layout() {
+        let input = indexed_input(
+            "session:synthetic",
+            vec![
+                CopiedMessage {
+                    role: CopiedRole::User,
+                    text: "question".into(),
+                },
+                CopiedMessage {
+                    role: CopiedRole::Assistant,
+                    text: "answer".into(),
+                },
+                CopiedMessage {
+                    role: CopiedRole::Tool,
+                    text: "tool".into(),
+                },
+            ],
+        );
+        assert_eq!(input.entries.len(), 3);
+        assert_eq!(input.entries[0].id, "indexed:session:synthetic:0");
+        assert!(matches!(
+            input.entries[0].role,
+            openagents_doc::schema::MessageRole::User
+        ));
+        assert!(matches!(
+            input.entries[1].role,
+            openagents_doc::schema::MessageRole::Assistant
+        ));
+        assert!(matches!(
+            input.entries[2].role,
+            openagents_doc::schema::MessageRole::System
+        ));
+        assert!(!input.working && !input.streaming);
+        assert_ne!(
+            input.entries[0].id,
+            indexed_input(
+                "other",
+                vec![CopiedMessage {
+                    role: CopiedRole::User,
+                    text: "question".into(),
+                }]
+            )
+            .entries[0]
+                .id
+        );
     }
 }
