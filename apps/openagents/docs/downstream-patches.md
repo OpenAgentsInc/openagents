@@ -645,3 +645,9 @@ links remain readable. Upstream fixes now require manual ports.
 - 2026-10-18 (#12062): Add `work_issues` through the public SDK Work/Pool
   connection and the shared `coder-cloud` host service. Use saved agent IDs
   for budget checks and preserve owner commands in refusals.
+- [OpenAgents #12068](https://github.com/OpenAgentsInc/openagents/issues/12068):
+  desktop account messages describe connecting, retrying, and chats that belong
+  to a different account instead of asking people to sign in. The guard in
+  `crates/account/tests/desktop_copy.rs` checks account, background, client,
+  engine, sync, UI, and SDK strings, including startup pickup errors. Agent-provider
+  logins and the optional upstream WorkOS flow keep their own instructions.

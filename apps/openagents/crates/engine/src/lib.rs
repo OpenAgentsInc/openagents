@@ -832,9 +832,9 @@ impl Engine {
             }
             WorkspaceScope::Synced => {
                 if auth.account().is_some() {
-                    let lease = auth
-                        .openagents_lease()
-                        .ok_or_else(|| EngineError::Other("Log in again to continue.".into()))?;
+                    let lease = auth.openagents_lease().ok_or_else(|| {
+                        EngineError::Other("We couldn't connect to your account. Try again.".into())
+                    })?;
                     let key = openagents_account::desktop::sync_scope(
                         lease.client().deployment(),
                         &config.edge_url,

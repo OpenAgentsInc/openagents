@@ -359,7 +359,7 @@ impl Source {
     fn check(&self) -> Result<(), String> {
         self.current()
             .then_some(())
-            .ok_or_else(|| "Sign in again to open this film.".into())
+            .ok_or_else(|| "We couldn't connect to your account. Open the film again.".into())
     }
 
     pub async fn load(&self) -> Result<(Timeline, Card), String> {

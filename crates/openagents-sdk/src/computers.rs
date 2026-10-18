@@ -372,7 +372,7 @@ impl fmt::Display for Error {
             Self::Unsupported => "This action isn't available for this computer.",
             Self::RandomUnavailable => "The request couldn't be created. Try again.",
             Self::Network { .. } => "Couldn't connect. Check your connection and try again.",
-            Self::Api { status: 401, .. } => "Log in again to continue.",
+            Self::Api { status: 401, .. } => "We couldn't connect to your account. Try again.",
             Self::Api { status: 403, .. } => "You don't have access to this computer.",
             Self::Api { status: 404, .. } => {
                 "This computer, command, or file is no longer available."

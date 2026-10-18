@@ -6414,7 +6414,11 @@ impl Shell {
                         if local {
                             shell.sync_flow = SyncFlow::Enabling;
                         }
-                        shell.show_notice(crate::toast::ToastKind::Error, format!("Could not cancel sign-in: {err}"), cx);
+                        shell.show_notice(
+                            crate::toast::ToastKind::Error,
+                            format!("Couldn't cancel account setup: {err}"),
+                            cx,
+                        );
                     }
                 }
                 cx.notify();
@@ -6771,7 +6775,11 @@ impl Shell {
                     {
                         shell.sync_flow = SyncFlow::Idle;
                     }
-                    shell.show_notice(crate::toast::ToastKind::Error, format!("Sign in failed: {err}"), cx);
+                    shell.show_notice(
+                        crate::toast::ToastKind::Error,
+                        format!("Couldn't connect to your account: {err}"),
+                        cx,
+                    );
                     cx.notify();
                 }
             })
@@ -10104,7 +10112,7 @@ impl Shell {
                 .child(
                     div().mt(px(6.0)).child(popover::dialog_body(
                         &theme,
-                        "Finish signing in in your browser. OpenAgents will keep using this local workspace until you quit and reopen.",
+                        "Connecting to your account…",
                     )),
                 )
                 .child(
@@ -10122,7 +10130,7 @@ impl Shell {
                                 })),
                         )
                         .child(
-                            popover::btn_primary(&theme, "Open browser again")
+                            popover::btn_primary(&theme, "Try again")
                                 .id("sync-enable-open-browser")
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.start_sign_in(cx)
@@ -10135,7 +10143,7 @@ impl Shell {
                 .child(
                     div().mt(px(6.0)).child(popover::dialog_body(
                         &theme,
-                        "Removing the partial sign-in before returning to your local workspace.",
+                        "Returning to your chats on this computer…",
                     )),
                 )
                 .into_any_element(),
@@ -12515,8 +12523,7 @@ impl Shell {
                         .child(SharedString::from("Retry")),
                 )
                 .into_any_element(),
-            // Login card (openagents App.tsx Gate): centered card on the grid —
-            // logo, "Log in to OpenAgents", copy, full-width white Log in button.
+            // Account setup for a computer without an account yet.
             _ => div()
                 .w(px(360.0))
                 .px(px(32.0))
@@ -12541,7 +12548,7 @@ impl Shell {
                         .text_size(crate::typography::ui_rems(18.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.text)
-                        .child(SharedString::from("Log in to OpenAgents")),
+                        .child(SharedString::from("Set up your account")),
                 )
                 .child(
                     div()
@@ -12551,7 +12558,7 @@ impl Shell {
                         .line_height(px(19.0))
                         .text_color(theme.text_muted)
                         .child(SharedString::from(
-                            "This opens your browser to finish logging in — you'll come right back.",
+                            "Connect your phone, restore from 12 words, or start a new account.",
                         )),
                 )
                 .child(
@@ -12570,7 +12577,7 @@ impl Shell {
                         .cursor_pointer()
                         .hover(|s| s.opacity(0.9))
                         .on_click(cx.listener(|this, _, _, cx| this.start_sign_in(cx)))
-                        .child(SharedString::from("Log in")),
+                        .child(SharedString::from("Set up account")),
                 )
                 .into_any_element(),
         };

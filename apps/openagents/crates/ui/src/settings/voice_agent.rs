@@ -139,7 +139,7 @@ impl Render for VoiceAgentCard {
         match self.view.clone() {
             Some(v) => self.mount(&v.root, cx),
             None => div()
-                .child("Sign in to choose a voice agent.")
+                .child("Connecting to your account…")
                 .into_any_element(),
         }
     }

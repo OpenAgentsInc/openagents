@@ -56,7 +56,7 @@ impl Picker {
     fn lease(&self) -> Result<Lease, String> {
         self.controller
             .lease()
-            .ok_or_else(|| "Sign in to choose a voice agent.".into())
+            .ok_or_else(|| "Connecting to your account…".into())
     }
     fn publish(&self) {
         self.updates.send_modify(|r| *r = r.wrapping_add(1));
@@ -74,7 +74,7 @@ impl Picker {
                     definitions: vec![],
                     chats: vec![],
                     choice: VoiceAgent::default(),
-                    notice: Some("Sign in to choose a voice agent.".into()),
+                    notice: Some("Connecting to your account…".into()),
                     busy: true,
                     ..state.clone()
                 },

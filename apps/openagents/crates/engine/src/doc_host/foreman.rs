@@ -564,7 +564,7 @@ impl DocHost {
         let client = lease
             .client()
             .schedules(lease.session())
-            .map_err(|_| error("Sign in to OpenAgents again."))?;
+            .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         let device = self.inner.config.device_id.clone();
         let state = foreman.state();
         let now_secs = (now / 1000).max(1) as u64;

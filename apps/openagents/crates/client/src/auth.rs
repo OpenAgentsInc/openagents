@@ -186,7 +186,7 @@ fn net(err: reqwest::Error) -> ClientError {
 /// WorkOS paste-code exchange.
 pub async fn exchange_code(edge_url: &str, code: &str) -> Result<AuthExchange> {
     if !cfg!(feature = "upstream-workos") {
-        return Err(ClientError::Auth("Log in with OpenAgents.".into()));
+        return Err(ClientError::Auth("Connecting to your account…".into()));
     }
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -219,7 +219,7 @@ pub async fn exchange_code(edge_url: &str, code: &str) -> Result<AuthExchange> {
 /// Organizations the (unscoped) access token's user belongs to.
 pub async fn list_orgs(edge_url: &str, access_token: &str) -> Result<Vec<AuthOrg>> {
     if !cfg!(feature = "upstream-workos") {
-        return Err(ClientError::Auth("Log in with OpenAgents.".into()));
+        return Err(ClientError::Auth("Connecting to your account…".into()));
     }
     #[derive(Deserialize)]
     struct Reply {
@@ -248,7 +248,7 @@ pub async fn refresh(
     organization_id: Option<&str>,
 ) -> Result<AuthTokens> {
     if !cfg!(feature = "upstream-workos") {
-        return Err(ClientError::Auth("Log in with OpenAgents.".into()));
+        return Err(ClientError::Auth("Connecting to your account…".into()));
     }
     let url = endpoint(edge_url, "auth/refresh");
     let mut body = serde_json::json!({ "refreshToken": refresh_token });
@@ -382,17 +382,19 @@ impl TokenProvider {
     /// rejects and the caller's backoff retries through here.
     pub(crate) async fn bearer(&self) -> Result<String> {
         match &self.mode {
-            Mode::Disabled => Err(ClientError::Auth("Log in with OpenAgents.".into())),
+            Mode::Disabled => Err(ClientError::Auth("Connecting to your account…".into())),
             Mode::OpenAgents { bearer, expires_at } => {
                 if expires_at
                     .is_some_and(|expiry| expiry <= chrono::Utc::now().timestamp().max(0) as u64)
                 {
                     if !self.expired.swap(true, Ordering::AcqRel) {
                         self.events.ordered(ClientEvent::AuthExpired {
-                            reason: "Log in again to continue.".into(),
+                            reason: "We couldn't connect to your account. Try again.".into(),
                         });
                     }
-                    Err(ClientError::Auth("Log in again to continue.".into()))
+                    Err(ClientError::Auth(
+                        "We couldn't connect to your account. Try again.".into(),
+                    ))
                 } else {
                     Ok(bearer.clone())
                 }

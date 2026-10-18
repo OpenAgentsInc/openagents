@@ -853,7 +853,7 @@ impl Render for SavedReader {
                 ),
         );
         if !self.model.current() {
-            return body.child(div().p(px(24.)).child("Sign in to open this chat."));
+            return body.child(div().p(px(24.)).child("Connecting to your account…"));
         }
         body = body.child(div().flex_1().min_h_0().child(self.transcript.clone()));
         let mut footer = div()

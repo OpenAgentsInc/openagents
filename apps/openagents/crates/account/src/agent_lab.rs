@@ -74,7 +74,7 @@ impl Lab {
     pub fn view(&self) -> View<Action> {
         if self.lease().is_err() {
             let mut s = Workbench::new("signed-out".into());
-            s.notice = Some("Sign in to use Agent Lab.".into());
+            s.notice = Some("Connecting to your account…".into());
             s.busy = true;
             return s.view();
         }
@@ -87,7 +87,7 @@ impl Lab {
         self.controller
             .lease()
             .filter(|l| Some(&l.session().account().id) == self.account.as_ref())
-            .ok_or_else(|| "Sign in to use Agent Lab.".into())
+            .ok_or_else(|| "Connecting to your account…".into())
     }
     fn path(&self, lease: &Lease) -> PathBuf {
         let identity =
@@ -117,7 +117,7 @@ impl Lab {
         let labs = lease
             .client()
             .agent_lab(lease.session())
-            .map_err(|_| "Sign in again.")?;
+            .map_err(|_| "We couldn't connect to your account. Try again.")?;
         let mut documents = vec![];
         let mut after = None;
         loop {
@@ -147,7 +147,7 @@ impl Lab {
         let agents = lease
             .client()
             .agents(lease.session())
-            .map_err(|_| "Sign in again.")?;
+            .map_err(|_| "We couldn't connect to your account. Try again.")?;
         let mut definitions = vec![];
         after = None;
         loop {
@@ -227,7 +227,7 @@ impl Lab {
         let labs = lease
             .client()
             .agent_lab(lease.session())
-            .map_err(|_| "Sign in again.")?;
+            .map_err(|_| "We couldn't connect to your account. Try again.")?;
         if let Command::Load(id) = command {
             let d = labs
                 .document(&id, &lease.cancel)

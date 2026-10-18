@@ -71,7 +71,7 @@ fn failed(error: impl std::fmt::Display) -> RpcError {
 }
 
 fn signed_out() -> RpcError {
-    RpcError::Failed("Sign in to OpenAgents on this computer to move chats.".into())
+    RpcError::Failed("Connecting to your account… Try moving the chats again in a moment.".into())
 }
 
 /// Plans and Bring backs running in this process, so a second request

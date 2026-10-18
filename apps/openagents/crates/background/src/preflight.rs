@@ -57,7 +57,7 @@ impl fmt::Display for Problem {
         match self {
             Self::SignInNotSaved => write!(
                 f,
-                "Your OpenAgents sign-in is only for this window. Sign in again from Settings, then try again."
+                "Couldn't save your account connection on this computer. Unlock your device, then try again."
             ),
             Self::NotInstalled { name } => write!(
                 f,

@@ -7,7 +7,7 @@ impl DocHost {
     ) -> Result<openagents_account::openagents::agents::voice::VoiceAgent, EngineError> {
         let lease = self
             .openagents_lease()
-            .ok_or_else(|| EngineError::Other("Sign in to choose a voice agent.".into()))?;
+            .ok_or_else(|| EngineError::Other("Connecting to your account…".into()))?;
         let choice = lease
             .client()
             .agents(lease.session())

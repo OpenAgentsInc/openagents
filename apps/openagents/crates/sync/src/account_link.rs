@@ -54,7 +54,7 @@ const MAX_USED: usize = 256;
 pub enum LinkError {
     /// The computer doesn't link by scan, or this pairing can't ask now.
     #[error(
-        "This computer didn't offer to sign in as you. It's connected, and you can sign it in from its own screen."
+        "This computer is connected, but it hasn't joined your account. Choose Connect your phone on it and scan the new code."
     )]
     NotOffered,
     /// The computer's answer wasn't a valid proof.

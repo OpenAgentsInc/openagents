@@ -66,7 +66,7 @@ impl DocHost {
         note.validate().map_err(EngineError::AgentService)?;
         let lease = self
             .openagents_lease()
-            .ok_or_else(|| error("Sign in to OpenAgents on this computer."))?;
+            .ok_or_else(|| error("Connecting to your account…"))?;
         let a = self.owner_notification_assignment(chat_id, &lease).await?;
         check_binding(&a, agent_id, chat_id, &self.inner.config.device_id)?;
         lease
@@ -86,7 +86,7 @@ impl DocHost {
     ) -> Result<(), EngineError> {
         let lease = self
             .openagents_lease()
-            .ok_or_else(|| error("Sign in to OpenAgents on this computer."))?;
+            .ok_or_else(|| error("Connecting to your account…"))?;
         let a = self.owner_notification_assignment(chat_id, &lease).await?;
         check_binding(&a, &a.spec.agent, chat_id, &self.inner.config.device_id)?;
         let note = OwnerNote {

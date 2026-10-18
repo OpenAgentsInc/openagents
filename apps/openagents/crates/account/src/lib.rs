@@ -309,7 +309,7 @@ impl Controller {
                 self.publish(
                     &t,
                     Phase::SignedOut {
-                        notice: Some("Log in again to continue.".into()),
+                        notice: Some("We couldn't connect to your account. Try again.".into()),
                     },
                     None,
                 );
@@ -608,7 +608,9 @@ impl Controller {
     /// server never had them.
     pub async fn delete_account(self: &Arc<Self>, forfeit_balance: bool) -> Deletion {
         let Some(lease) = self.lease() else {
-            return Deletion::Failed("Sign in first, then delete your account.".into());
+            return Deletion::Failed(
+                "Connect to your account before deleting it. Try again in a moment.".into(),
+            );
         };
         match self
             .client

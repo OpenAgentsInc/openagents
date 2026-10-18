@@ -430,7 +430,7 @@ impl Render for HomePage {
             }
             out = out.child(self.mount(view.root.clone(), &view, cx));
         } else {
-            out = out.child("Sign in to open Home.");
+            out = out.child("Connecting to your account…");
         }
         out
     }

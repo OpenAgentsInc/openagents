@@ -9116,7 +9116,7 @@ impl Composer {
         let continuation_attempt = continuation.is_some();
         self.send_task = Some(cx.spawn(async move |this, cx| {
             let result: Result<Option<String>, String> = async {
-                if continuation_lease.as_ref().is_some_and(|lease| !lease.is_current()) { return Err("Sign in again before continuing.".into()); }
+                if continuation_lease.as_ref().is_some_and(|lease| !lease.is_current()) { return Err("We couldn't connect to your account. Open the chat again to continue.".into()); }
                 // Attachments stage FIRST — before the chat row or anything
                 // else exists. Staging is chat-independent (keyed by
                 // uploadId), and ordering it first makes a new-chat send
@@ -9332,7 +9332,7 @@ impl Composer {
                 // (idempotent; the doc host would materialize the chat on
                 // first command anyway, so failures are non-fatal).
                 if is_new {
-                    if continuation_lease.as_ref().is_some_and(|lease| !lease.is_current()) { return Err("Sign in again before continuing.".into()); }
+                    if continuation_lease.as_ref().is_some_and(|lease| !lease.is_current()) { return Err("We couldn't connect to your account. Open the chat again to continue.".into()); }
                     let mut mutate = serde_json::json!({
                         "op": "createChat",
                         "chatId": chat_id,
@@ -9391,7 +9391,7 @@ impl Composer {
                     }
                 }
                 if let Some((source_device, source)) = &native_source {
-                    if !source.is_current() { return Err("Sign in again before continuing.".into()); }
+                    if !source.is_current() { return Err("We couldn't connect to your account. Open the chat again to continue.".into()); }
                     let target = chat_home::PartRef {id: chat_id.clone(), home: chat_home::Home::Computer(device_id.clone())};
                     let reference = continuation.as_ref().ok_or_else(|| "Open the earlier chat again.".to_string())?;
                     let mut prepare = serde_json::json!({"chatId":chat_id,"source":reference});

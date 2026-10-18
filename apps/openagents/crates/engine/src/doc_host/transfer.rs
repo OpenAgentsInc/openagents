@@ -75,7 +75,7 @@ impl DocHost {
     pub(crate) async fn part_revision(&self, chat: &str) -> Result<u64, EngineError> {
         let lease = self
             .openagents_lease()
-            .ok_or_else(|| EngineError::Other("Sign in to OpenAgents on this computer.".into()))?;
+            .ok_or_else(|| EngineError::Other("Connecting to your account…".into()))?;
         let remote = openagents_account::openagents::sessions::get(
             lease.client(),
             lease.session(),
@@ -169,9 +169,14 @@ impl DocHost {
         let failed = |text: &str| EngineError::Other(text.into());
         let lease = self
             .openagents_lease()
-            .ok_or_else(|| failed("Sign in to OpenAgents on this computer."))?;
-        if lease.session().account().id != account || !lease.is_current() {
-            return Err(failed("Sign in to the same account on this computer."));
+            .ok_or_else(|| failed("Connecting to your account…"))?;
+        if !lease.is_current() {
+            return Err(failed(
+                "We couldn't connect to your account. Open the chat again to continue.",
+            ));
+        }
+        if lease.session().account().id != account {
+            return Err(failed("This chat belongs to a different account."));
         }
         if !self.is_host(chat)
             || !target.valid()
@@ -259,7 +264,9 @@ impl DocHost {
             )
             .await?;
             if !lease.is_current() {
-                return Err(failed("Sign in again before continuing."));
+                return Err(failed(
+                    "We couldn't connect to your account. Open the chat again to continue.",
+                ));
             }
             if remote.session.home != Home::Computer(self.inner.config.device_id.clone())
                 || remote.session.last_activity_unix.max(1) != revision
@@ -294,7 +301,9 @@ impl DocHost {
         )
         .await?;
         if !lease.is_current() {
-            return Err(failed("Sign in again before continuing."));
+            return Err(failed(
+                "We couldn't connect to your account. Open the chat again to continue.",
+            ));
         }
         workspace.set_chat_destination(chat, &continued.target)?;
         Ok(continued)

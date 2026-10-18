@@ -718,7 +718,7 @@ pub mod link {
 /// The words the desktop shows. Tests run the `oa-copy` guard over them.
 pub mod copy {
     pub const WELCOME_TITLE: &str = "Welcome to OpenAgents";
-    pub const WELCOME_BODY: &str = "There's nothing to sign in to. Pick how you want to start.";
+    pub const WELCOME_BODY: &str = "Pick how you want to start.";
     pub const CONNECT_PHONE: &str = "Connect your phone";
     pub const CONNECT_PHONE_HINT: &str =
         "Use OpenAgents on your phone? Scan a code to use the same account here.";

@@ -245,7 +245,7 @@ impl Home {
         s.undo = None;
         s.configured = None;
         s.remote_next = None;
-        s.notice = Some("Sign in again to see your work.".into());
+        s.notice = Some("We couldn't connect to your account. Open Home again.".into());
         self.changed(&mut s);
     }
     pub fn shutdown(&self) {
@@ -1164,7 +1164,7 @@ impl Home {
     ) -> Result<Effect, String> {
         if !self.current() {
             self.clear();
-            return Err("Sign in again to see your work.".into());
+            return Err("We couldn't connect to your account. Open Home again.".into());
         }
         let action = {
             let s = self.state.lock().unwrap();
@@ -1208,7 +1208,7 @@ impl Home {
     /// Reorder an edit draft using two actions from the same displayed view.
     pub fn reorder(&self, source: Activation, target: Activation) -> Result<(), String> {
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         let mut s = self.state.lock().unwrap();
         if s.screen != Screen::Edit {
@@ -1254,7 +1254,7 @@ impl Home {
         fields: BTreeMap<String, String>,
     ) -> Result<Effect, String> {
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         let action = {
             let mut s = self.state.lock().unwrap();
@@ -1297,7 +1297,7 @@ impl Home {
     }
     pub async fn import(&self, bytes: &[u8]) -> Result<(), String> {
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         let package = Package::decode(bytes).map_err(str::to_owned)?;
         let d = package
@@ -1305,7 +1305,7 @@ impl Home {
             .map_err(str::to_owned)?;
         let mut s = self.state.lock().unwrap();
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         s.draft = Some(d);
         s.screen = Screen::Configure;
@@ -1949,7 +1949,7 @@ impl Home {
         self.changed(&mut s);
     }
     async fn more_issues(&self) -> Result<(), String> {
-        let lease = self.lease.as_ref().ok_or("Sign in to see issues.")?;
+        let lease = self.lease.as_ref().ok_or("Connecting to your account…")?;
         let (d, w, key, page) = {
             let s = self.state.lock().unwrap();
             let d = Self::selected(&s).clone();
@@ -1982,7 +1982,7 @@ impl Home {
             .issues(&filter, &lease.cancel)
             .await;
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         let mut s = self.state.lock().unwrap();
         if Self::selected(&s).id != d.id || Self::selected(&s).revision != d.revision {
@@ -2016,7 +2016,7 @@ impl Home {
         Ok(())
     }
     async fn more_work(&self) -> Result<(), String> {
-        let lease = self.lease.as_ref().ok_or("Sign in to see work.")?;
+        let lease = self.lease.as_ref().ok_or("Connecting to your account…")?;
         let after = self
             .state
             .lock()
@@ -2035,7 +2035,7 @@ impl Home {
             return Err("Refresh work and try again.".into());
         }
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         let mut s = self.state.lock().unwrap();
         s.remote_next = page.next;
@@ -2138,7 +2138,7 @@ impl Home {
         self.changed(&mut s);
     }
     async fn directory(&self, action: &str) -> Result<(), String> {
-        let lease = self.lease.as_ref().ok_or("Sign in to browse layouts.")?;
+        let lease = self.lease.as_ref().ok_or("Connecting to your account…")?;
         let home = lease
             .client()
             .home(lease.session())
@@ -2179,7 +2179,7 @@ impl Home {
             return Err("Search layouts again to continue.".into());
         }
         if !self.current() {
-            return Err("Sign in again to see layouts.".into());
+            return Err("We couldn't connect to your account. Open layouts again.".into());
         }
         let mut s = self.state.lock().unwrap();
         if s.navigation != ticket {
@@ -2199,7 +2199,7 @@ impl Home {
         Ok(())
     }
     async fn preview(&self, id: &str) -> Result<(), String> {
-        let lease = self.lease.as_ref().ok_or("Sign in to browse layouts.")?;
+        let lease = self.lease.as_ref().ok_or("Connecting to your account…")?;
         let ticket = {
             let mut s = self.state.lock().unwrap();
             s.navigation += 1;
@@ -2213,7 +2213,7 @@ impl Home {
             .await
             .map_err(|e| e.to_string())?;
         if !self.current() {
-            return Err("Sign in again to see layouts.".into());
+            return Err("We couldn't connect to your account. Open layouts again.".into());
         }
         let mut s = self.state.lock().unwrap();
         if s.navigation != ticket {
@@ -2226,7 +2226,7 @@ impl Home {
         Ok(())
     }
     async fn check_update(&self) -> Result<(), String> {
-        let lease = self.lease.as_ref().ok_or("Sign in to check updates.")?;
+        let lease = self.lease.as_ref().ok_or("Connecting to your account…")?;
         let home = lease
             .client()
             .home(lease.session())
@@ -2241,7 +2241,7 @@ impl Home {
             .await
             .map_err(|e| e.to_string())?;
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         if latest.version == source.version {
             let mut s = self.state.lock().unwrap();
@@ -2254,7 +2254,7 @@ impl Home {
             .await
             .map_err(|e| e.to_string())?;
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         let mut s = self.state.lock().unwrap();
         s.update_target = Some((local, old.package));
@@ -2278,7 +2278,7 @@ impl Home {
         std::fs::rename(temp, path).map_err(|_| storage_error())
     }
     async fn publish(&self, visibility: &str) -> Result<Effect, String> {
-        let lease = self.lease.as_ref().ok_or("Sign in to share layouts.")?;
+        let lease = self.lease.as_ref().ok_or("Connecting to your account…")?;
         let home = lease
             .client()
             .home(lease.session())
@@ -2304,7 +2304,7 @@ impl Home {
     }
     async fn perform(&self, new: Option<Pending>) -> Result<Effect, String> {
         let _guard = self.io.lock().await;
-        let lease = self.lease.as_ref().ok_or("Sign in to continue.")?;
+        let lease = self.lease.as_ref().ok_or("Connecting to your account…")?;
         let home = lease
             .client()
             .home(lease.session())
@@ -2348,7 +2348,7 @@ impl Home {
             Err(error) => return Err(error.to_string()),
         };
         if !self.current() {
-            return Err("Sign in again to continue.".into());
+            return Err("We couldn't connect to your account. Try again.".into());
         }
         std::fs::remove_file(path).map_err(|_| storage_error())?;
         let mut s = self.state.lock().unwrap();
@@ -2370,7 +2370,7 @@ impl Home {
         })
     }
     async fn listing_action(&self, action: &str) -> Result<(), String> {
-        let lease = self.lease.as_ref().ok_or("Sign in to continue.")?;
+        let lease = self.lease.as_ref().ok_or("Connecting to your account…")?;
         let home = lease
             .client()
             .home(lease.session())

@@ -381,7 +381,7 @@ impl Render for DevicesPage {
                         .text_size(crate::typography::ui_rems(13.0))
                         .text_color(theme.text_muted)
                         .child(SharedString::from(
-                            "Sign in on another device to see it here.",
+                            "Connect another device to your account to see it here.",
                         )),
                 ),
             )

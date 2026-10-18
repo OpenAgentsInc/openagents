@@ -155,7 +155,9 @@ impl Client {
 
     pub async fn prepare_continuation_session(&self, source: &Source, id: &str) -> Result<PartRef> {
         if source.account != self.user_id() {
-            return Err(ClientError::Auth("Log in again to continue.".into()));
+            return Err(ClientError::Auth(
+                "This chat belongs to a different account.".into(),
+            ));
         }
         let row = self
             .chat_record(id)

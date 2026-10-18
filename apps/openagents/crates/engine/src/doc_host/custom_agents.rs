@@ -139,15 +139,15 @@ impl DocHost {
             .inner
             .custom_agents
             .get()
-            .ok_or_else(|| error("Sign in to OpenAgents on this computer."))?;
+            .ok_or_else(|| error("Connecting to your account…"))?;
         let lease = host
             .auth
             .openagents_lease()
-            .ok_or_else(|| error("Sign in to OpenAgents on this computer."))?;
+            .ok_or_else(|| error("Connecting to your account…"))?;
         let agents = lease
             .client()
             .agents(lease.session())
-            .map_err(|_| error("Sign in to OpenAgents again."))?;
+            .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         let a = agents
             .assignment(&id, &lease.cancel)
             .await
@@ -289,7 +289,7 @@ impl DocHost {
         let agents = lease
             .client()
             .agents(lease.session())
-            .map_err(|_| error("Sign in to OpenAgents again."))?;
+            .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         let mut after = None;
         loop {
             let page = agents
@@ -351,7 +351,7 @@ impl DocHost {
         let agents = lease
             .client()
             .agents(lease.session())
-            .map_err(|_| error("Sign in again."))?;
+            .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         let result_copy = result.clone();
         let r = agents
             .report_request(
@@ -518,7 +518,7 @@ impl DocHost {
         let agents = lease
             .client()
             .agents(lease.session())
-            .map_err(|_| error("Sign in again."))?;
+            .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         let latest = agents
             .get(&a.spec.agent, None, &lease.cancel)
             .await
@@ -555,7 +555,7 @@ impl DocHost {
                 .inner
                 .custom_agents
                 .get()
-                .ok_or_else(|| error("Sign in on this computer."))?;
+                .ok_or_else(|| error("Connecting to your account…"))?;
             spec.validate().map_err(error)?;
             let resolved =
                 runtime::resolve(spec, &runtime::host_order(&binding.registry), |h, m| {

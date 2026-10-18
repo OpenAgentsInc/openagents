@@ -20,9 +20,8 @@ fn claim_error(error: openagents_account::openagents::Error) -> EngineError {
             code: Some("context_required"),
             ..
         } => "Open this chat on its computer before continuing elsewhere.",
-        Error::Refused { status: 401, .. } | Error::WrongAccount => {
-            "Sign in to the same account before continuing."
-        }
+        Error::Refused { status: 401, .. } => "We couldn't connect to your account. Try again.",
+        Error::WrongAccount => "This chat belongs to a different account.",
         Error::Refused { status: 404, .. } | Error::NotFound => {
             "The earlier chat is no longer available to this account."
         }
@@ -227,7 +226,7 @@ impl DocHost {
         }
         let lease = self
             .openagents_lease()
-            .ok_or_else(|| EngineError::Other("Sign in to OpenAgents on this computer.".into()))?;
+            .ok_or_else(|| EngineError::Other("Connecting to your account…".into()))?;
         if !handle.doc().read_entries()?.is_empty() {
             return Err(EngineError::Other(
                 "Start a new conversation to continue this chat.".into(),
@@ -235,7 +234,7 @@ impl DocHost {
         }
         if source.account != lease.session().account().id {
             return Err(EngineError::Other(
-                "Sign in to the same account on this computer.".into(),
+                "This chat belongs to a different account.".into(),
             ));
         }
         let target = PartRef {
@@ -281,7 +280,7 @@ impl DocHost {
         .map_err(claim_error)?;
         if !lease.is_current() {
             return Err(EngineError::Other(
-                "Sign in again before continuing.".into(),
+                "We couldn't connect to your account. Open the chat again to continue.".into(),
             ));
         }
         let backlink = lease

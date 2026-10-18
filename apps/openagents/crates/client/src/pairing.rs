@@ -208,7 +208,7 @@ impl Client {
                 "Your account has as many devices as it can hold. Remove one in Settings first."
                     .into(),
             )),
-            (401, _) => Err(ClientError::Auth("Log in again to continue.".into())),
+            (401, _) => Err(ClientError::Auth("We couldn't connect to your account. Try again.".into())),
             _ => Err(failed()),
         }
     }

@@ -97,7 +97,7 @@ impl Bearer {
         let tokens: Vec<_> = pairs.iter().filter(|(key, _)| key == "token").collect();
         if tokens.len() != 1 || tokens[0].1.is_empty() {
             return Err(SyncError::Auth(
-                "Sign in again to connect this computer.".into(),
+                "Couldn't connect to your account. Reopen OpenAgents and try again.".into(),
             ));
         }
         let token = tokens[0].1.clone();

@@ -115,7 +115,7 @@ impl Drafts {
             return Ok(());
         };
         if !source.target.is_current() {
-            return Err("Sign in again before continuing.");
+            return Err("We couldn't connect to your account. Open the chat again to continue.");
         }
         let engine = state
             .engine()
