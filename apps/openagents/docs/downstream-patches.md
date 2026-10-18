@@ -763,19 +763,23 @@ links remain readable. Upstream fixes now require manual ports.
   Kotlin compile targets are both Java 17, and the app pins build tools 35.0.0
   for its API 35 compile SDK.
   Scanning sends bounded raw text only to the Rust classifier callback; Kotlin
-  does not classify or authorize links. Gradle resolved the scanner dependencies
-  during compilation and assembled the debug APK; no APK has run on a device.
-  `scripts/android/app.sh compile` passed debug and release Kotlin compilation,
-  scanner instrumentation source compilation, and debug JVM tests on CoderOS.
-  The scanner instrumentation still needs `:app:connectedDebugAndroidTest` on an
-  isolated device. `scripts/android/app.sh check` assembled the debug APK, then
-  failed release lint because Fragment 1.1.0 was below the 1.3.0 minimum for
-  Activity Result APIs. B1 now pins Fragment 1.3.0; rerun the check after disk
-  headroom returns above the 100 GiB build floor. API 26 install/run checks
-  remain pending. The Rust classifier
-  fixture check (`cargo test --locked -p openagents-mobile app_links`) was not
-  run by this chat. The ABI libraries were built and Kotlin was generated from
-  the arm64 library; the reordered `scripts/android/build-core.sh` was syntax
-  checked but was not rerun end to end. #12082 and #12091 remain native blockers.
-  Release-certificate
-  verification is an owner-only After-close check in `NEEDS_OWNER.md`.
+  does not classify or authorize links. On CoderOS, `scripts/android/app.sh
+  check` passed `compileDebugAndroidTestKotlin`, `testDebugUnitTest`, debug and
+  release assembly, `lintVitalRelease`, and the release APK policy check. The
+  policy check confirmed `com.openagents.app`, minimum API 26, both ABIs, the
+  mobile core and matching NDK `libc++_shared.so`, no staged Breez/Iroh Cargo
+  libraries, and no debug-only launch extras. The debug APK is 250,979,147
+  bytes; the release APK is 249,630,443 bytes. Each contains exactly the
+  expected five native libraries per ABI and has no duplicate ZIP entries.
+  `scripts/android/stage-core-libs.sh` stages only the Android core and the
+  matching pinned NDK C++ runtime. It strips debug information from staged
+  copies and checks that dynamic symbols are unchanged; the original Cargo
+  artifacts remain intact. The app pins NDK 27.1.12297006.
+
+  No device run has been done. The scanner instrumentation, cold-start native
+  loading, Activity recreation, camera permission denial/cancel/retry, and
+  API 26 install/run checks are recorded in [After-close checks](../../../docs/audits/2026-10-16-master-delegation.md#after-close-checks).
+  The Rust classifier fixture check (`cargo test --locked -p openagents-mobile
+  app_links`) and an end-to-end rerun of `scripts/android/build-core.sh` were
+  not run by this chat. Release-certificate verification remains an owner-only
+  step in [NEEDS_OWNER.md](../../../NEEDS_OWNER.md).
