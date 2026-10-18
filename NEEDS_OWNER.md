@@ -2950,3 +2950,14 @@ afterward. No production or live Play check ran during H1 source work.
 Keep rollout off until this qualification passes; code completion does not
 wait for Play Console access, a physical device, or store action. See
 [the contract](docs/auth/README.md#android-play-integrity-12086).
+
+### Qualify Android project and chat handoff (#12095)
+
+After D3's focused code checks and B1 integration pass, use a dedicated test account
+with `X-OpenAgents-Test: 1` and disposable projects/computers. Check identity-first
+onboarding into the same useful cloud chat, Activity recreation without a new chat,
+selected-computer model/effort discovery and outage handling, project/branch menus,
+project sharing/approval, cloud start/stop and entitlement refusals, and continuing
+web/terminal chats through the same room/grant path. Check account switches and
+revoked grants. Delete created chats, projects, shares, and cloud computers before
+ending. Never use the owner's account or real computers for these checks.
