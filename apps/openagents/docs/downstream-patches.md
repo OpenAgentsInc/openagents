@@ -10,8 +10,9 @@ Keep fork-specific changes here so upstream updates can review each integration.
 - OpenAgents #12084: add an isolated Kotlin Views transcript renderer over
   Rust row placements and display lists, with shared fallback shaping,
   bounded row caches, and stable viewport anchors. Recorded synthetic Rust
-  geometry backs stub-core tests; B1 integration, Kotlin execution, Android
-  glyph checks, and emulator performance evidence remain queued.
+  geometry backs nine passing JVM tests. Debug Kotlin, unit-test Kotlin, and
+  transcript Android-test Kotlin compile against B1's actual Android binding;
+  Android glyph checks and emulator performance evidence remain queued.
   Resume on verified B1 Android checkpoint `69fa3b1b50`: port transcript source
   roots, exact Geist assets, and existing instrumentation-test wiring without
   changing generated bindings or scanner/configuration fixes.

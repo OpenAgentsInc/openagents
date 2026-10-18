@@ -53,11 +53,23 @@ path and real Android fallback behavior still need the queued device checks.
 
 ## Check status and handoff
 
-The resumed port has only static source checks. No C1 Kotlin compilation,
-Cargo, Gradle, emulator, or performance run has passed. The tests below are
-authored, **not reported as passed**. Wait for the coordinator's validation slot.
+The resumed port passed these focused checks on CoderOS over B1 checkpoint
+`69fa3b1b5082a6e2377ad0142ae8ccb28bfad427` with the actual generated
+Android binding. Each Gradle operation used at most two workers:
 
-- `src/test`: nine JUnit fixtures for history anchors, tail behavior, width and
+```sh
+gradle :app:compileDebugKotlin :app:compileDebugUnitTestKotlin
+gradle :app:testDebugUnitTest --tests com.openagents.app.transcript.TranscriptViewportTest
+gradle :app:compileDebugAndroidTestKotlin
+```
+
+The JVM result is nine tests, zero failures, errors, or skips. The three
+instrumentation methods compile but have not run. No C1 native rebuild, APK
+assembly, emulator, or performance run took place. The existing B1 exclusion
+for `platform/tests` remains outside this result; C1's explicit transcript
+Android-test root was compiled.
+
+- `src/test`: nine passing JUnit fixtures for history anchors, tail behavior, width and
   font changes, bounded reuse, empty frames, and UTF-16/scalar handling.
 - `RecordedGeometry` and `RecordedText`: compact values captured from the
   existing local host library at `ac8712374b` with synthetic inputs. Geometry
