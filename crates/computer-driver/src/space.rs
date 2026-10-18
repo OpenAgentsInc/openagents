@@ -390,11 +390,9 @@ impl SpaceDriver {
                         .map_err(|_| Error::unknown("couldn't check the earlier request"))?
                     {
                         LifecycleClaim::Accepted(id) => Some(id),
-                        LifecycleClaim::Uncertain => {
-                            return Err(Error::unknown(
-                                "the earlier request couldn't be confirmed",
-                            ));
-                        }
+                        // Saved without a provider answer: resend under the same
+                        // idempotency key, which SPACE honors.
+                        LifecycleClaim::Uncertain => None,
                         LifecycleClaim::Rejected => {
                             if let Some(next) = journal
                                 .authorized_retry(&request, computer, action)
