@@ -362,7 +362,7 @@ impl DocHost {
         }
         let busy = sessions.turn_in_flight(&chat);
         self.foreman_watch(&chat, busy, now)?;
-        self.foreman_tell_owner(&foreman, &chat, now);
+        self.foreman_tell_owner(&foreman, &chat, now).await;
         self.foreman_wake(&chat, busy, now, |text| {
             self.request_from_chat_row(&chat, text)
         })?;
@@ -435,7 +435,7 @@ impl DocHost {
 
     /// The stall ladder's last rung (#12032): tell the owner once per stall.
     /// Until then the check-in also puts it first in the agent's status.
-    fn foreman_tell_owner(&self, foreman: &Foreman, chat: &str, now: i64) {
+    async fn foreman_tell_owner(&self, foreman: &Foreman, chat: &str, now: i64) {
         let notices = match foreman.owner_notices(now) {
             Ok(notices) => notices,
             Err(e) => {
@@ -444,17 +444,17 @@ impl DocHost {
             }
         };
         for notice in notices {
-            // CALL SITE for #12040: push to the owner's phone with
-            // `self.notify_owner_from_chat(chat, &notice.request_id,
-            // &notice.title, &notice.body)` once it is on main. Until then
-            // the notice is logged here and the check-in carries rung 3.
-            tracing::warn!(
-                chat = %chat,
-                request = %notice.request_id,
-                "foreman: {}: {}",
-                notice.title,
-                notice.body
-            );
+            if let Err(error) = self
+                .notify_owner_from_chat(chat, &notice.request_id, &notice.title, &notice.body)
+                .await
+            {
+                tracing::warn!(
+                    chat = %chat,
+                    request = %notice.request_id,
+                    error = %error,
+                    "foreman: couldn't notify the owner"
+                );
+            }
         }
     }
 
@@ -835,6 +835,179 @@ mod tests {
     const FOREMAN: &str = "f0000000-0000-4000-8000-000000000001";
     const WORKER: &str = "f0000000-0000-4000-8000-000000000002";
     const MIN: i64 = 60_000;
+
+    /// #12032 and #12040: only the final rung reaches the owner-notification
+    /// service, using the saved agent's ID and its chat rather than its name.
+    #[tokio::test]
+    async fn the_last_stall_rung_notifies_the_owner_through_the_sdk() {
+        use crate::HarnessRegistry;
+        use axum::{
+            Json, Router,
+            routing::{get, post},
+        };
+        use openagents_account::{
+            Controller,
+            desktop::{self, MemoryStore},
+            openagents::{Client, Deployment, owner_notifications::NotifyOwner},
+        };
+        use openagents_proto::{ChatConfig, SandboxLevel, saved_agent::ASSIGNMENT};
+        use serde_json::json;
+
+        let root = tempfile::tempdir().unwrap();
+        let registry = Arc::new(HarnessRegistry::new());
+        let core = crate::EngineCore::assemble_with_identity(
+            root.path(),
+            registry.clone(),
+            HarnessId::Mock,
+            None,
+            "acct_stall_fixture",
+            "stall_fixture",
+        )
+        .unwrap();
+        let host = &core.doc_host;
+        let agent = "b".repeat(64);
+        let assignment = "a".repeat(64);
+        let definition = json!({
+            "id": agent, "revision": 1, "deleted": false,
+            "spec": {"name": "Any helper", "description": "", "instructions": "Check the work",
+                "runtime": "codex", "model": null, "access": "read_only", "fallbacks": []}
+        });
+        let binding = json!({
+            "id": assignment, "revision": 1,
+            "spec": {"agent": agent, "agent_revision": 1,
+                "host": host.inner.config.device_id, "project": null, "task": "Check work"},
+            "definition": definition, "chat": FOREMAN, "state": "queued", "commands": [],
+            "result": null, "archived": false, "active_command": null, "after_seq": 0
+        });
+        let received = Arc::new(std::sync::Mutex::new(Vec::<NotifyOwner>::new()));
+        let captured = received.clone();
+        // A local fake replaces the account's gateway boundary. Service tests
+        // separately exercise delivery through the NIP-98 fake push gateway.
+        let api = Router::new()
+            .route(
+                "/v1/account",
+                get(|| async {
+                    Json(
+                        json!({"account": {"id": "acct_stall_fixture", "label": "Stall fixture"},
+                    "workspaces": []}),
+                    )
+                }),
+            )
+            .route(
+                &format!("/v1/agent-assignments/{assignment}"),
+                get(move || {
+                    let binding = binding.clone();
+                    async move { Json(binding) }
+                }),
+            )
+            .route(
+                &format!("/v1/agent-definitions/{agent}"),
+                get(move || {
+                    let definition = definition.clone();
+                    async move { Json(definition) }
+                }),
+            )
+            .route(
+                "/v1/notify",
+                post(move |Json(note): Json<NotifyOwner>| {
+                    let captured = captured.clone();
+                    async move {
+                        captured.lock().unwrap().push(note);
+                        Json(json!({"ok": true}))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+        let controller = Controller::new(
+            Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap(),
+            Arc::new(MemoryStore::default()),
+            root.path().join("account/signed-out"),
+        );
+        controller
+            .import_credential(format!("sess_{:064x}", 9004))
+            .await;
+        assert!(controller.lease().is_some());
+        desktop::register(root.path(), &controller);
+        let auth = crate::Engine::build_auth(&crate::EngineConfig {
+            data_dir: root.path().into(),
+            edge_url: origin,
+            edge_token: None,
+            ipc_port: 0,
+            default_harness: HarnessId::Mock,
+            org_id: None,
+            workos_client_id: None,
+        })
+        .await;
+        host.start_custom_agents(auth, registry, root.path().join("labs"));
+        core.workspace
+            .create_chat(
+                FOREMAN,
+                None,
+                Some(&host.inner.config.device_id),
+                Some(ChatConfig {
+                    harness: HarnessId::Mock,
+                    model: None,
+                    reasoning: None,
+                    model_options: [(ASSIGNMENT.into(), json!(assignment))]
+                        .into_iter()
+                        .collect(),
+                    sandbox: SandboxLevel::WorkspaceWrite,
+                }),
+                Some(root.path().to_string_lossy().into_owned()),
+            )
+            .unwrap();
+        // Keep this clock-driven ladder separate from the host's background loop.
+        let foreman = Foreman::open(&root.path().join("fixture-ladder"));
+        foreman
+            .set(
+                ForemanSettings {
+                    chat_id: Some(FOREMAN.into()),
+                    stall_minutes: 20,
+                    ..ForemanSettings::default()
+                },
+                0,
+            )
+            .unwrap();
+        let working = Session {
+            started_at: chrono::DateTime::from_timestamp_millis(0),
+            last_output_at: chrono::DateTime::from_timestamp_millis(0),
+            ..row(WORKER, SessionStatus::Working, None)
+        };
+        foreman
+            .observe(&[working], |_| true, |_| "Worker".into(), 20 * MIN)
+            .unwrap();
+        for minute in [20, 30, 39] {
+            host.foreman_tell_owner(&foreman, FOREMAN, minute * MIN)
+                .await;
+            assert!(
+                received.lock().unwrap().is_empty(),
+                "only the last rung notifies"
+            );
+        }
+        host.foreman_tell_owner(&foreman, FOREMAN, 40 * MIN).await;
+        host.foreman_tell_owner(&foreman, FOREMAN, 50 * MIN).await;
+        {
+            let received = received.lock().unwrap();
+            assert_eq!(received.len(), 1, "one request per stall");
+            let request = &received[0];
+            assert_eq!(request.note.agent, agent);
+            assert_eq!(request.note.chat, FOREMAN);
+            assert_eq!(request.note.title, "Work has stalled");
+            assert!(request.note.body.contains("Worker"));
+            assert!(request.note.body.contains("40 minutes"));
+            assert_eq!(
+                request.note.deep_link(),
+                format!("openagents://chat/{FOREMAN}")
+            );
+            assert!(openagents_account::openagents::agents::valid_id(
+                &request.request_id
+            ));
+        }
+        core.shutdown().await;
+        server.abort();
+    }
 
     fn request(cwd: &str) -> impl FnOnce(&str) -> Option<openagents_proto::RunRequest> + '_ {
         move |text| {
