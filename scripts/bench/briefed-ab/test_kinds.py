@@ -86,7 +86,8 @@ class KindsTests(unittest.TestCase):
 
     def test_script_tests_are_found_by_name_and_by_mention(self):
         plan = {c["id"]: c for c in kinds.plan(["scripts/dev/tool.py", "scripts/run-thing.sh"], self.tree)}
-        self.assertIn("scripts/tests/test_tool.py", plan["tests:scripts/dev"]["argv"])
+        self.assertEqual(plan["tests:scripts/dev"]["argv"],
+                         ["python3", "-m", "unittest", "scripts.tests.test_tool"])
         self.assertEqual(plan["tests:scripts"]["argv"], ["bash", "scripts/run-thing.test.sh"])
 
     def test_a_test_named_test_dash_script_is_found(self):

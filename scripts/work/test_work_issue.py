@@ -44,5 +44,42 @@ class LandingBriefTests(unittest.TestCase):
                 self.assertTrue(prompt.endswith(work.landing_instructions(12038, "queue")))
 
 
+class ReplayChecksTests(unittest.TestCase):
+    def test_openagents_packages_replay_in_nested_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            files = []
+            for name in ("client", "mobile", "engine"):
+                directory = root / "apps/openagents/crates" / name
+                (directory / "src").mkdir(parents=True)
+                (directory / "Cargo.toml").write_text(
+                    f'[package]\nname = "openagents-{name}"\nversion = "0.1.0"\n'
+                )
+                source = directory / "src/lib.rs"
+                source.write_text("")
+                files.extend([str(source.relative_to(root)),
+                              str((directory / "Cargo.toml").relative_to(root))])
+            kinds = work.kinds_mod()
+            result = {"ok": True, "available": True, "secs": 0, "tail": ""}
+            with patch.object(work, "changed_files", return_value=files), \
+                    patch.object(work, "cargo") as cargo, \
+                    patch.object(kinds, "run_check", return_value=result) as check:
+                checks = work.replay_checks(Mock(), root, "base")
+            cargo.assert_not_called()
+            self.assertEqual(len(checks), 6)
+            for call in check.call_args_list:
+                planned, check_root, _ = call.args
+                self.assertEqual(check_root, root)
+                self.assertEqual(planned["kind"], "rust-nested")
+                argv = planned["argv"]
+                self.assertEqual(argv[2:4],
+                                 ["--manifest-path", "apps/openagents/Cargo.toml"])
+            self.assertEqual(
+                {c["id"] for c in checks},
+                {f"{step}:openagents-{name}" for step in ("test", "fmt")
+                 for name in ("client", "mobile", "engine")},
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
