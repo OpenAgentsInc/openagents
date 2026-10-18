@@ -4,8 +4,7 @@
 //! voice-agent picker remain the authority for call and selection changes.
 
 use crate::client_ffi::{
-    CoreError, CoreResult, VoiceCallPhase, VoiceCallState, VoiceCallWork, VoiceUsagePhase,
-    VoiceUsageSnapshot,
+    VoiceCallPhase, VoiceCallState, VoiceCallWork, VoiceUsagePhase, VoiceUsageSnapshot,
 };
 use rust_native::{Axis, Element, Node, TextRole, View};
 use serde::{Deserialize, Serialize};
@@ -16,6 +15,14 @@ pub enum VoiceIntent {
     EndCall,
     OpenCall,
     RefreshUsage,
+}
+
+/// The only app-shell action a call view can return after Rust validates it.
+/// Mute and end run on the Rust call handle inside `VoiceCall::activate_view`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum VoiceUiAction {
+    Handled,
+    OpenCall,
 }
 
 fn text(key: &str, value: impl Into<String>, role: TextRole) -> Node<VoiceIntent> {
@@ -204,6 +211,17 @@ pub fn voice_usage_view(
             TextRole::Status,
         )),
     }
+    if usage.error.is_some() {
+        children.push(text(
+            "voice-usage-refresh-error",
+            if usage.windows.is_empty() {
+                "Couldn't refresh usage. Try again."
+            } else {
+                "Couldn't refresh usage. Showing the last update."
+            },
+            TextRole::Status,
+        ));
+    }
     if let Some(host) = &usage.host_name {
         children.push(text("voice-usage-host", host, TextRole::Body));
     }
@@ -245,47 +263,6 @@ pub fn voice_usage_view(
     .validate()
 }
 
-fn encode_view(
-    view: Result<rust_native::ValidatedView<VoiceIntent>, rust_native::ViewError>,
-) -> CoreResult<String> {
-    let view = view.map_err(|_| CoreError::InvalidArgument {
-        message: "Couldn't open voice settings.".into(),
-    })?;
-    serde_json::to_string(view.view()).map_err(|_| CoreError::InvalidArgument {
-        message: "Couldn't open voice settings.".into(),
-    })
-}
-
-/// Build the compact native tree from the current Rust-owned call snapshot.
-#[uniffi::export]
-pub fn voice_call_capsule_view(
-    instance: String,
-    revision: u64,
-    state: VoiceCallState,
-) -> CoreResult<String> {
-    encode_view(call_capsule(&instance, revision, &state))
-}
-
-/// Build the full call tree from the current Rust-owned call snapshot.
-#[uniffi::export]
-pub fn voice_call_screen_view(
-    instance: String,
-    revision: u64,
-    state: VoiceCallState,
-) -> CoreResult<String> {
-    encode_view(call_screen(&instance, revision, &state))
-}
-
-/// Build settings from the existing voice-agent choice and usage snapshots.
-#[uniffi::export]
-pub fn voice_usage_view_json(
-    instance: String,
-    revision: u64,
-    usage: VoiceUsageSnapshot,
-) -> CoreResult<String> {
-    encode_view(voice_usage_view(&instance, revision, &usage))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn usage_view_keeps_saved_voice_selection_in_existing_picker() {
+    fn usage_view_shows_existing_account_data() {
         let usage = VoiceUsageSnapshot {
             phase: VoiceUsagePhase::Ready,
             host_id: Some("host-1".into()),
@@ -329,5 +306,25 @@ mod tests {
             refreshing: false,
         };
         assert!(voice_usage_view("voice-settings", 1, &usage).is_ok());
+    }
+
+    #[test]
+    fn usage_view_keeps_last_known_windows_when_refresh_fails() {
+        let usage = VoiceUsageSnapshot {
+            phase: VoiceUsagePhase::Ready,
+            host_id: Some("host-1".into()),
+            host_name: Some("Office computer".into()),
+            account: Some("test@example.com".into()),
+            plan: Some("Plus".into()),
+            windows: vec![crate::client_ffi::VoiceUsageWindow {
+                label: "Session".into(),
+                used_fraction: 0.5,
+                resets_at_ms: None,
+            }],
+            fetched_at_ms: Some(1),
+            error: Some("upstream details are private".into()),
+            refreshing: false,
+        };
+        assert!(voice_usage_view("voice-settings", 2, &usage).is_ok());
     }
 }

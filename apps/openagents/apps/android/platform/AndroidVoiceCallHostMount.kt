@@ -7,17 +7,20 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import com.openagents.app.SemanticViewAdapter
+import uniffi.openagents_core.CoreVoiceAgent
+import uniffi.openagents_core.CoreVoiceUsage
 import uniffi.openagents_core.VoiceCall
 import uniffi.openagents_core.VoiceCallState
 
 /** Typed handoff for the app shell to mount Rust Native call views and service controls. */
 interface AndroidVoiceCallHostMount {
-    fun mountCapsule(viewJson: String, activate: (instance: String, revision: Long, node: String) -> Unit)
-    fun mountCallScreen(viewJson: String, activate: (instance: String, revision: Long, node: String) -> Unit)
+    fun mountCapsule(viewJson: String, call: VoiceCall)
+    fun mountCallScreen(viewJson: String, call: VoiceCall)
     fun mountVoiceSettings(
         pickerJson: String,
         usageJson: String,
-        activate: (instance: String, revision: Long, node: String) -> Unit,
+        picker: CoreVoiceAgent,
+        usage: CoreVoiceUsage,
     )
     fun dismissCallViews()
 }
@@ -68,23 +71,20 @@ class AndroidVoiceCallHost(
         service?.update(snapshot)
     }
 
-    /** Mounts views returned by voice_call_capsule_view/voice_call_screen_view. */
+    /** Fetch and mount the active call's Rust-owned views. */
     fun mountViews(
-        capsuleJson: String,
-        callScreenJson: String,
-        activate: (instance: String, revision: Long, node: String) -> Unit,
+        call: VoiceCall,
     ) {
-        mount.mountCapsule(capsuleJson, activate)
-        mount.mountCallScreen(callScreenJson, activate)
+        mount.mountCapsule(call.capsuleView(), call)
+        mount.mountCallScreen(call.screenView(), call)
     }
 
     /** Mount CoreVoiceAgent.snapshot() with the Rust voice-usage projection. */
     fun mountVoiceSettings(
-        pickerJson: String,
-        usageJson: String,
-        activate: (instance: String, revision: Long, node: String) -> Unit,
+        picker: CoreVoiceAgent,
+        usage: CoreVoiceUsage,
     ) {
-        mount.mountVoiceSettings(pickerJson, usageJson, activate)
+        mount.mountVoiceSettings(picker.snapshot(), usage.viewJson(), picker, usage)
     }
 
     /** Register on the shell's SemanticViewAdapter when it mounts the call screen. */
