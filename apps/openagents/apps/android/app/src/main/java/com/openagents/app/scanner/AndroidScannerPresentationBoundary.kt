@@ -1,4 +1,4 @@
-package com.openagents.app
+package com.openagents.app.scanner
 
 /** Scanner presentation states. Permission and camera implementations stay in the app shell. */
 enum class AndroidScannerState {

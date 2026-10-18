@@ -1,4 +1,4 @@
-package com.openagents.app
+package com.openagents.app.scanner
 
 import android.test.InstrumentationTestCase
 
