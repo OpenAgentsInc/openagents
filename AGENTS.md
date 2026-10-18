@@ -246,6 +246,10 @@ another claim holds (`openagents issue status N`) alone. The one exception
 progress through the whole stall ladder (messaged, then interrupted and
 restarted, then the owner told), after posting a takeover note on the issue
 that names the holder and the stall.
+Each working chat claims its own issue. A coordinator does not claim issues it
+hands to other chats. A chat holds one issue, or declares an active batch of at
+most three with `openagents issue claim N --batch N,M[,P]`; finish or release
+that work before claiming more.
 
 Coordinate issue work only in an app chat (#12031). A session that files,
 claims, hands out, or integrates several issues runs as a chat in the

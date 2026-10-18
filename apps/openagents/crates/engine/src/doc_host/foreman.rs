@@ -60,6 +60,7 @@ impl DocHost {
                 if let Some(foreman) = host.foreman() {
                     let rows = rows.borrow_and_update().clone();
                     let chats = chats.borrow().clone();
+                    foreman.observe_claim_chats(&chats, &rows, now_ms());
                     let chat = foreman.chat();
                     let is_child = |id: &str| {
                         chats
@@ -147,6 +148,7 @@ impl DocHost {
                 let seen = local.titled.entry(number).or_insert(last);
                 *seen = (*seen).max(last);
             }
+            local.chats.insert(format!("chat:{}", chat.id), last);
             let (Some(config), Some(id)) = (
                 chat.config.as_ref(),
                 chat.harness_session_id.as_deref().filter(|s| !s.is_empty()),

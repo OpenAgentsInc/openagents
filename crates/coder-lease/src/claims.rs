@@ -31,6 +31,9 @@ pub const CLAIM_SCHEMA: &str = "openagents.lease.issue-claim.v1";
 /// GitHub markers (`CLAIM_HOURS` in `scripts/project-sync.sh`).
 pub const DEFAULT_CLAIM_AGE: Duration = Duration::from_secs(6 * 3_600);
 
+/// A chat may declare this many issues as one active batch.
+pub const MAX_BATCH: usize = 3;
+
 /// One session's claim on one issue.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IssueClaim {
@@ -53,6 +56,9 @@ pub struct IssueClaim {
     pub pid_started: Option<String>,
     /// When the session claimed or last renewed it, in Unix milliseconds.
     pub claimed_at_ms: u64,
+    /// Issues named together for this session in this repository.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub batch: Vec<u64>,
 }
 
 /// The session that takes a claim.
@@ -73,12 +79,23 @@ impl Claimant {
     #[must_use]
     pub fn detect() -> Claimant {
         let tree = crate::ancestors();
-        let session = crate::Session::detect(&|name| std::env::var(name).ok(), &|| tree.clone());
+        Self::detect_with(&|name| std::env::var(name).ok(), &tree)
+    }
+
+    fn detect_with(env: &dyn Fn(&str) -> Option<String>, tree: &[(u32, String)]) -> Claimant {
+        let session = crate::Session::detect(env, &|| tree.to_vec());
         let pid = crate::scratch::session_pid(&session.id)
-            .or_else(|| crate::agent_ancestor(&tree).map(|(pid, _)| pid))
+            .or_else(|| crate::agent_ancestor(tree).map(|(pid, _)| pid))
             .or_else(|| tree.first().map(|(pid, _)| *pid));
+        let chat = env("OPENAGENTS_CHAT_ID").filter(|id| {
+            !id.is_empty()
+                && id.len() <= 128
+                && id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        });
         Claimant {
-            session: session.id,
+            session: chat.map(|id| format!("chat:{id}")).unwrap_or(session.id),
             agent: session.agent,
             pid,
         }
@@ -126,6 +143,8 @@ impl Held {
 /// Why a claim was not taken.
 #[derive(Debug)]
 pub enum Refused {
+    /// This session's workload would exceed its declared batch.
+    Batch(String),
     /// Another live session holds it.
     Held(Held),
     /// The caller's own check refused it, such as a fresh GitHub marker
@@ -138,6 +157,7 @@ pub enum Refused {
 impl std::fmt::Display for Refused {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Refused::Batch(why) => f.write_str(why),
             Refused::Held(held) => f.write_str(&held.sentence()),
             Refused::Vetoed(why) => f.write_str(why),
             Refused::Broker(error) => write!(f, "{error}"),
@@ -249,8 +269,42 @@ pub fn claim(
     force: bool,
     veto: &dyn Fn(Option<&IssueClaim>) -> Option<String>,
 ) -> Result<Claimed, Refused> {
+    claim_batch(
+        root,
+        repository,
+        issue,
+        claimant,
+        now_ms,
+        max_age,
+        force,
+        &[],
+        veto,
+    )
+}
+
+/// Claims an issue from a batch of at most [`MAX_BATCH`] named issues.
+/// An empty batch uses the session's existing declaration, or one issue.
+/// `force` can replace another holder, but cannot expand a session's batch.
+///
+/// # Errors
+/// The batch is invalid, this session holds another issue outside it, or
+/// [`claim`] refuses the issue.
+#[allow(clippy::too_many_arguments)]
+pub fn claim_batch(
+    root: &Path,
+    repository: &str,
+    issue: u64,
+    claimant: &Claimant,
+    now_ms: u64,
+    max_age: Duration,
+    force: bool,
+    batch: &[u64],
+    veto: &dyn Fn(Option<&IssueClaim>) -> Option<String>,
+) -> Result<Claimed, Refused> {
     let path = path(root, repository, issue)?;
     let _lock = lock(root)?;
+    let held = held_by(root, &claimant.session, now_ms, max_age)?;
+    let batch = admit_batch(repository, issue, batch, &held)?;
     let previous = read(root, repository, issue)?;
     let outcome = match previous {
         Some(previous) if previous.session == claimant.session => Claimed::Renewed,
@@ -284,6 +338,7 @@ pub fn claim(
         pid: claimant.pid,
         pid_started: claimant.pid.and_then(started),
         claimed_at_ms: now_ms,
+        batch,
     };
     if let Some(parent) = path.parent() {
         private_dirs(parent)?;
@@ -292,6 +347,107 @@ pub fn claim(
     bytes.push(b'\n');
     crate::table::write_atomic(&path, &bytes)?;
     Ok(outcome)
+}
+
+/// Live claims held by one session, across repositories on this computer.
+///
+/// # Errors
+/// A claim or the lease table cannot be read.
+pub fn held_by(
+    root: &Path,
+    session: &str,
+    now_ms: u64,
+    max_age: Duration,
+) -> Result<Vec<IssueClaim>, Error> {
+    crate::root::refuse_real_home(root);
+    let mut found = Vec::new();
+    let owners = match std::fs::read_dir(root.join("claims")) {
+        Ok(owners) => owners,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(found),
+        Err(error) => return Err(error.into()),
+    };
+    for owner in owners {
+        let owner = owner?;
+        if !owner.file_type()?.is_dir() {
+            continue;
+        }
+        for repo in std::fs::read_dir(owner.path())? {
+            let repo = repo?;
+            if !repo.file_type()?.is_dir() {
+                continue;
+            }
+            for entry in std::fs::read_dir(repo.path())? {
+                let entry = entry?;
+                if !entry.file_type()?.is_file()
+                    || !entry.file_name().to_string_lossy().starts_with("issue-")
+                    || entry.path().extension().is_none_or(|e| e != "json")
+                {
+                    continue;
+                }
+                let claim: IssueClaim = serde_json::from_slice(&std::fs::read(entry.path())?)
+                    .map_err(|error| Error::Corrupt(error.to_string()))?;
+                if claim.schema == CLAIM_SCHEMA
+                    && claim.session == session
+                    && live(root, &claim, now_ms, max_age)?.is_some()
+                {
+                    found.push(claim);
+                }
+            }
+        }
+    }
+    found.sort_by(|a, b| (&a.repository, a.issue).cmp(&(&b.repository, b.issue)));
+    Ok(found)
+}
+
+/// Checks a proposed batch against the session's live claims.
+/// Returns its sorted issue numbers, or an empty list for one issue.
+/// Callers supply only claims that still hold their issues.
+///
+/// # Errors
+/// The batch is invalid or excludes work the session already holds.
+pub fn admit_batch(
+    repository: &str,
+    issue: u64,
+    declared: &[u64],
+    held: &[IssueClaim],
+) -> Result<Vec<u64>, Refused> {
+    let mut batch = declared.to_vec();
+    batch.sort_unstable();
+    batch.dedup();
+    if !declared.is_empty()
+        && (declared.len() != batch.len()
+            || batch.len() > MAX_BATCH
+            || batch.contains(&0)
+            || !batch.contains(&issue))
+    {
+        return Err(Refused::Batch("Name one to three different issue numbers in --batch, including the issue you are claiming.".into()));
+    }
+    if batch.is_empty() {
+        batch = held
+            .iter()
+            .find(|c| c.repository.eq_ignore_ascii_case(repository) && !c.batch.is_empty())
+            .map(|c| c.batch.clone())
+            .unwrap_or_default();
+    }
+    let same = |c: &IssueClaim| c.repository.eq_ignore_ascii_case(repository) && c.issue == issue;
+    if (!batch.is_empty() && !batch.contains(&issue))
+        || held.iter().any(|c| {
+            !same(c)
+                && (batch.is_empty()
+                    || !c.repository.eq_ignore_ascii_case(repository)
+                    || !batch.contains(&c.issue))
+        })
+    {
+        let claims = held
+            .iter()
+            .map(|c| format!("{}#{}", c.repository, c.issue))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(Refused::Batch(format!(
+            "This chat already holds {claims}. Finish or release that work first, or name up to three issues together with --batch."
+        )));
+    }
+    Ok(batch)
 }
 
 /// Releases `issue`'s claim for `session`: removes the record when this
@@ -523,5 +679,248 @@ mod tests {
             claim(root, "a/two", 1, &me("b", None), HOUR, age, false, &none).unwrap(),
             Claimed::New
         );
+    }
+
+    #[test]
+    fn one_session_cannot_accumulate_claims_even_with_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let me = me("chat:one", Some(std::process::id()));
+        claim(
+            dir.path(),
+            REPO,
+            7,
+            &me,
+            HOUR,
+            DEFAULT_CLAIM_AGE,
+            false,
+            &none,
+        )
+        .unwrap();
+        for force in [false, true] {
+            let error = claim(
+                dir.path(),
+                REPO,
+                8,
+                &me,
+                HOUR,
+                DEFAULT_CLAIM_AGE,
+                force,
+                &none,
+            )
+            .unwrap_err();
+            assert!(matches!(error, Refused::Batch(_)));
+            assert!(error.to_string().contains("#7"));
+            assert!(read(dir.path(), REPO, 8).unwrap().is_none());
+        }
+        assert!(
+            claim(
+                dir.path(),
+                "another/repo",
+                7,
+                &me,
+                HOUR,
+                DEFAULT_CLAIM_AGE,
+                false,
+                &none
+            )
+            .is_err()
+        );
+        release(
+            dir.path(),
+            REPO,
+            7,
+            &me.session,
+            HOUR,
+            DEFAULT_CLAIM_AGE,
+            false,
+        )
+        .unwrap();
+        claim(
+            dir.path(),
+            REPO,
+            8,
+            &me,
+            HOUR,
+            DEFAULT_CLAIM_AGE,
+            false,
+            &none,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn an_explicit_batch_names_at_most_three_issues() {
+        let dir = tempfile::tempdir().unwrap();
+        let me = me("chat:batch", Some(std::process::id()));
+        for invalid in [vec![1, 2, 3, 4], vec![1, 1], vec![0, 1], vec![2, 3]] {
+            assert!(
+                claim_batch(
+                    dir.path(),
+                    REPO,
+                    1,
+                    &me,
+                    HOUR,
+                    DEFAULT_CLAIM_AGE,
+                    false,
+                    &invalid,
+                    &none
+                )
+                .is_err()
+            );
+        }
+        claim_batch(
+            dir.path(),
+            REPO,
+            1,
+            &me,
+            HOUR,
+            DEFAULT_CLAIM_AGE,
+            false,
+            &[3, 1, 2],
+            &none,
+        )
+        .unwrap();
+        for issue in [2, 3] {
+            claim(
+                dir.path(),
+                REPO,
+                issue,
+                &me,
+                HOUR,
+                DEFAULT_CLAIM_AGE,
+                false,
+                &none,
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            held_by(dir.path(), &me.session, HOUR, DEFAULT_CLAIM_AGE)
+                .unwrap()
+                .len(),
+            3
+        );
+        assert!(
+            claim_batch(
+                dir.path(),
+                REPO,
+                4,
+                &me,
+                HOUR,
+                DEFAULT_CLAIM_AGE,
+                true,
+                &[2, 3, 4],
+                &none
+            )
+            .is_err()
+        );
+        assert!(read(dir.path(), REPO, 4).unwrap().is_none());
+    }
+
+    #[test]
+    fn concurrent_claims_cannot_bypass_the_session_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let outcomes = std::thread::scope(|scope| {
+            let handles: Vec<_> = [1, 2]
+                .into_iter()
+                .map(|issue| {
+                    let root = dir.path();
+                    scope.spawn(move || {
+                        claim(
+                            root,
+                            REPO,
+                            issue,
+                            &me("same", Some(std::process::id())),
+                            HOUR,
+                            DEFAULT_CLAIM_AGE,
+                            false,
+                            &none,
+                        )
+                        .is_ok()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|h| h.join().unwrap())
+                .filter(|ok| *ok)
+                .count()
+        });
+        assert_eq!(outcomes, 1);
+    }
+
+    #[test]
+    fn legacy_claims_cannot_renew_an_undeclared_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let me = me("legacy", Some(std::process::id()));
+        claim(
+            dir.path(),
+            REPO,
+            1,
+            &me,
+            HOUR,
+            DEFAULT_CLAIM_AGE,
+            false,
+            &none,
+        )
+        .unwrap();
+        let mut second = read(dir.path(), REPO, 1).unwrap().unwrap();
+        second.issue = 2;
+        std::fs::write(
+            path(dir.path(), REPO, 2).unwrap(),
+            serde_json::to_vec(&second).unwrap(),
+        )
+        .unwrap();
+        let error = claim(
+            dir.path(),
+            REPO,
+            1,
+            &me,
+            HOUR,
+            DEFAULT_CLAIM_AGE,
+            false,
+            &none,
+        )
+        .unwrap_err();
+        assert!(matches!(error, Refused::Batch(_)));
+        assert!(error.to_string().contains("#2"));
+        claim_batch(
+            dir.path(),
+            REPO,
+            1,
+            &me,
+            HOUR,
+            DEFAULT_CLAIM_AGE,
+            false,
+            &[1, 2],
+            &none,
+        )
+        .unwrap();
+        claim(
+            dir.path(),
+            REPO,
+            2,
+            &me,
+            HOUR,
+            DEFAULT_CLAIM_AGE,
+            false,
+            &none,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn app_chats_have_distinct_claims_even_with_an_inherited_harness_session() {
+        let detect = |chat: &str| {
+            Claimant::detect_with(
+                &|key| match key {
+                    "CLAUDE_CODE_SESSION_ID" => Some("coordinator".into()),
+                    "OPENAGENTS_CHAT_ID" => Some(chat.into()),
+                    _ => None,
+                },
+                &[],
+            )
+        };
+        assert_eq!(detect("one").session, "chat:one");
+        assert_eq!(detect("two").session, "chat:two");
     }
 }

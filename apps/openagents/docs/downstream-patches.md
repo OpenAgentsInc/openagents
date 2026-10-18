@@ -30,6 +30,10 @@ Keep fork-specific changes here so upstream updates can review each integration.
   and the phone form, reached from both call controls. Voice reads the choice
   again before each question.
 
+- OpenAgents #12035: a generic session-keyed claim activity helper joins claim
+  holders to working chats, reports chatless claims, and treats stalled work as
+  unclaimed in coordinator prompts before the six-hour claim expiry.
+
 - OpenAgents #12060: each voice call uses a fresh chat and isolated Codex home,
   copies authentication only, refuses messages after hang-up, and keeps
   compaction notices out of assistant text.

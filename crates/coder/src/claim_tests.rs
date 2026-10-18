@@ -551,3 +551,81 @@ fn a_fresh_marker_from_another_session_refuses_until_it_ages_or_force() {
     )
     .unwrap();
 }
+
+#[test]
+fn claims_share_one_session_limit_and_closed_issues_free_the_slot() {
+    let leases = tempfile::tempdir().unwrap();
+    let github = Fake::plain("octo");
+    for n in 1..=4 {
+        github.issue(n, None, &[], &[]);
+    }
+    let me = claimant("chat:worker", Some(std::process::id()));
+    let body = session_body(&me.session);
+    let project = Project::default();
+    take(
+        &github,
+        leases.path(),
+        REPO,
+        1,
+        &body,
+        &project,
+        &me,
+        github.now,
+        6,
+        false,
+    )
+    .unwrap();
+    let error = take(
+        &github,
+        leases.path(),
+        REPO,
+        2,
+        &body,
+        &project,
+        &me,
+        github.now,
+        6,
+        true,
+    )
+    .unwrap_err();
+    assert!(
+        error.contains("#1") && !error.contains("take it anyway"),
+        "{error}"
+    );
+    assert!(github.state(2).comments.is_empty());
+    github.issues.lock().unwrap().get_mut(&1).unwrap().open = false;
+    take_batch(
+        &github,
+        leases.path(),
+        REPO,
+        2,
+        &body,
+        &project,
+        &me,
+        github.now,
+        6,
+        false,
+        &[2, 3, 4],
+    )
+    .unwrap();
+    assert!(
+        coder_lease::claims::read(leases.path(), REPO, 1)
+            .unwrap()
+            .is_none()
+    );
+    for n in [3, 4] {
+        take(
+            &github,
+            leases.path(),
+            REPO,
+            n,
+            &body,
+            &project,
+            &me,
+            github.now,
+            6,
+            false,
+        )
+        .unwrap();
+    }
+}

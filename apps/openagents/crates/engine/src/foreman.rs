@@ -407,6 +407,8 @@ pub(crate) struct Foreman {
     problem: Mutex<Option<String>>,
     /// When each throttled job last ran, Unix ms.
     ran: Mutex<HashMap<&'static str, i64>>,
+    /// Working-chat observations and claims, keyed by session.
+    claims: Mutex<crate::claim_activity::Claims>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -427,6 +429,7 @@ impl Foreman {
             own: Mutex::new(None),
             problem: Mutex::new(None),
             ran: Mutex::new(HashMap::new()),
+            claims: Mutex::new(crate::claim_activity::Claims::default()),
         }
     }
 
@@ -842,7 +845,7 @@ impl Foreman {
             .iter()
             .map(|k| k.line(now, s.settings.stall_minutes))
             .collect();
-        let text = prompt(
+        let mut text = prompt(
             reason,
             now,
             lead.as_deref(),
@@ -850,6 +853,9 @@ impl Foreman {
             &stalls,
             s.authority.as_ref(),
             &recent,
+        );
+        text.push_str(
+            &lock(&self.claims).summary(now, i64::from(s.settings.stall_minutes) * 60_000),
         );
         self.update(|st| {
             st.pending.clear();
@@ -926,6 +932,15 @@ impl Foreman {
             s.last_github = now;
             events
         })?;
+        {
+            let mut claims = lock(&self.claims);
+            for issue in issues
+                .iter()
+                .filter(|issue| !issue.state.eq_ignore_ascii_case("open"))
+            {
+                claims.remove(issue.number);
+            }
+        }
         self.push_events(events, now)
     }
 
@@ -939,7 +954,43 @@ impl Foreman {
         local: &LocalProgress,
         now: i64,
     ) -> Result<(), EngineError> {
-        let window = i64::from(self.state().settings.stall_minutes) * 60_000;
+        let state = self.state();
+        let window = i64::from(state.settings.stall_minutes) * 60_000;
+        let observed: Vec<_> = issues
+            .iter()
+            .filter(|issue| state.issues.get(&issue.number) != Some(&false))
+            .filter_map(|issue| {
+                let claim = active_claim(issue)?;
+                let progress = claim_progress(issue, &claim)
+                    .into_iter()
+                    .chain(local.chats.get(&claim.session).copied())
+                    .chain(local.runs.get(&claim.session).copied())
+                    .chain(local.titled.get(&issue.number).copied())
+                    .chain(local.builds.get(&issue.number).copied())
+                    .max()
+                    .unwrap_or(claim.at)
+                    .max(claim.at);
+                Some(crate::claim_activity::Claim {
+                    number: issue.number,
+                    holder: claim.session,
+                    claimed_at: claim.at,
+                    last_progress_at: progress,
+                })
+            })
+            .collect();
+        let mut claims = lock(&self.claims);
+        let progress: BTreeMap<_, _> = observed
+            .iter()
+            .map(|c| {
+                (
+                    c.number,
+                    c.last_progress_at
+                        .max(claims.progress(&c.holder).unwrap_or(0)),
+                )
+            })
+            .collect();
+        claims.replace(observed);
+        drop(claims);
         let events = self.update(|s| {
             let mut events = Vec::new();
             let mut claimed = BTreeSet::new();
@@ -954,14 +1005,7 @@ impl Foreman {
                 let chat = local.chats.get(&claim.session).copied();
                 let run = local.runs.get(&claim.session).copied();
                 let titled = local.titled.get(&issue.number).copied();
-                let last = claim_progress(issue, &claim)
-                    .into_iter()
-                    .chain(chat)
-                    .chain(run)
-                    .chain(titled)
-                    .chain(local.builds.get(&issue.number).copied())
-                    .max()
-                    .unwrap_or(claim.at);
+                let last = progress.get(&issue.number).copied().unwrap_or(claim.at);
                 let key = format!("claim:{}", issue.number);
                 if now - last >= window {
                     if s.stalls.get(&key).is_none_or(|k| k.since != last) {
@@ -1011,6 +1055,15 @@ impl Foreman {
             events
         })?;
         self.push_events(events, now)
+    }
+
+    pub fn observe_claim_chats(
+        &self,
+        chats: &[openagents_proto::Chat],
+        rows: &[Session],
+        now: i64,
+    ) {
+        lock(&self.claims).observe_chats(chats, rows, now);
     }
 
     /// Stalls that reached the last rung of the ladder and the owner hasn't
@@ -2044,6 +2097,35 @@ mod tests {
         node
     }
 
+    #[test]
+    fn sixteen_chatless_claims_are_unclaimed_for_planning_at_the_stall_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let nodes: Vec<_> = (1..=16)
+            .map(|n| {
+                claim(
+                    n,
+                    "Work",
+                    "claude-code:coordinator",
+                    0,
+                    serde_json::json!({}),
+                )
+            })
+            .collect();
+        let issues = claim_issues(&serde_json::json!({"data":{"search":{"nodes":nodes}}}));
+        f.observe_claims(&issues, &LocalProgress::default(), 20 * MIN)
+            .unwrap();
+        let wake = f.due(false, 21 * MIN).unwrap().unwrap();
+        assert!(wake.text.contains("Claims with no live chat: #1"));
+        assert!(
+            wake.text
+                .contains("plan as unclaimed and use the stall ladder: #1")
+        );
+        assert!(wake.text.contains("#16"));
+        assert!(wake.text.contains("rung 1: message it"));
+        assert_eq!(f.state().stalls.len(), 16);
+    }
+
     /// #12032, 2026-10-17's case: a claim with no live, progressing chat for
     /// 20 minutes is raised once, and the check-ins carry it up the ladder
     /// (message, then restart, then the owner); a claim whose worktree shows
@@ -2080,8 +2162,21 @@ mod tests {
             1,
             "one event per stall"
         );
-        assert!(!all.contains("#12002"), "an active build is progress");
-        assert!(!all.contains("#12005"), "a chat with output is progress");
+        assert!(
+            !all.contains("The claim on #12002"),
+            "an active build is progress"
+        );
+        assert!(
+            !all.contains("The claim on #12005"),
+            "a chat with output is progress"
+        );
+        for line in all
+            .lines()
+            .filter(|line| line.contains("plan as unclaimed"))
+        {
+            assert!(!line.contains("#12002"));
+            assert!(!line.contains("#12005"));
+        }
         let rung = |n: &str| {
             prompts
                 .iter()
@@ -2244,6 +2339,11 @@ mod tests {
         assert_eq!(f.state().stalls.len(), 1, "stalled, rung 3 due");
         f.observe_issues(&[issue("CLOSED")], 41 * MIN).unwrap();
         assert!(f.state().stalls.is_empty(), "closing it ends the stall");
+        assert!(
+            !lock(&f.claims)
+                .summary(41 * MIN, 20 * MIN)
+                .contains("#12062")
+        );
         assert!(f.owner_notices(45 * MIN).unwrap().is_empty());
         // The lagging search still lists it: still no stall.
         f.observe_claims(&issues, &LocalProgress::default(), 50 * MIN)
@@ -2256,6 +2356,13 @@ mod tests {
             wake.text
         );
         assert!(!wake.text.contains("Stalled work"), "{}", wake.text);
+        for line in wake
+            .text
+            .lines()
+            .filter(|line| line.starts_with("Claims with"))
+        {
+            assert!(!line.contains("#12062"), "{line}");
+        }
     }
 
     /// A claim held by a coordinator session counts as progressing while an

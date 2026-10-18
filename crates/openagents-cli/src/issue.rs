@@ -18,12 +18,13 @@ use crate::{Args, Output};
 use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents issue COMMAND [OPTIONS]
-  claim N [--repo OWNER/NAME] [--note TEXT] [--force]
+  claim N [--repo OWNER/NAME] [--note TEXT] [--batch ISSUES] [--force]
         Claim issue N for this agent session: hold it on this computer, then
         a claim comment naming the session, you as assignee, and
         \"In progress\" on each project it is on. Refused while another live
         session holds it or a fresh claim comment names another session;
-        --force takes it anyway.
+        --force takes it anyway. Each chat holds one issue, or a batch of
+        up to three issues named together with --batch N,M[,P].
   release N [--repo OWNER/NAME] [--note TEXT] [--force]
         Release a claim: drop this session's hold, then a release comment,
         you off the assignees, and \"Ready\" (or \"Todo\") on each project.
@@ -130,7 +131,14 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                         Err(message) => return output.fail("issue", &message),
                     };
                     let claimant = coder_lease::claims::Claimant::detect();
-                    let done = hold(
+                    let batch = match parse_batch(args.option("batch")) {
+                        Ok(batch) => batch,
+                        Err(message) => return output.usage("issue", &message, USAGE),
+                    };
+                    if command != "claim" && !batch.is_empty() {
+                        return output.usage("issue", "--batch is for claim", USAGE);
+                    }
+                    let done = hold_batch(
                         &hub,
                         &leases,
                         command == "claim",
@@ -141,6 +149,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                         args.option("note"),
                         unix_now(),
                         args.switch("force"),
+                        &batch,
                     );
                     match done {
                         Ok(lines) => said(command, &repository, number, lines),
@@ -246,6 +255,7 @@ fn place(named: Option<&str>) -> Result<(String, Policy), String> {
 /// Claims (`take`) or releases issue `number` for `claimant` through
 /// [`claim::take`] and [`claim::give_back`].
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn hold<H: Hub + ?Sized>(
     hub: &H,
     leases: &std::path::Path,
@@ -258,6 +268,55 @@ fn hold<H: Hub + ?Sized>(
     now: u64,
     force: bool,
 ) -> Result<Vec<String>, String> {
+    hold_batch(
+        hub,
+        leases,
+        take,
+        repository,
+        number,
+        policy,
+        claimant,
+        note,
+        now,
+        force,
+        &[],
+    )
+}
+
+fn parse_batch(value: Option<&str>) -> Result<Vec<u64>, String> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let issues: Vec<u64> = value
+        .split(',')
+        .map(|n| n.trim().trim_start_matches('#').parse())
+        .collect::<Result<_, _>>()
+        .map_err(|_| "Name one to three issue numbers with --batch N,M[,P].".to_owned())?;
+    let distinct: std::collections::BTreeSet<_> = issues.iter().copied().collect();
+    if issues.is_empty()
+        || issues.len() > coder_lease::claims::MAX_BATCH
+        || distinct.len() != issues.len()
+        || distinct.contains(&0)
+    {
+        return Err("Name one to three different issue numbers with --batch N,M[,P].".into());
+    }
+    Ok(issues)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn hold_batch<H: Hub + ?Sized>(
+    hub: &H,
+    leases: &std::path::Path,
+    take: bool,
+    repository: &str,
+    number: u64,
+    policy: &Policy,
+    claimant: &coder_lease::claims::Claimant,
+    note: Option<&str>,
+    now: u64,
+    force: bool,
+    batch: &[u64],
+) -> Result<Vec<String>, String> {
     let hours = policy.claim_hours;
     if take {
         let note = note.map(|note| format!("{note}\n\n")).unwrap_or_default();
@@ -265,7 +324,7 @@ fn hold<H: Hub + ?Sized>(
             "Claimed: an agent is working on this.\n\n{note}{}",
             claim::marker("cli", &claimant.session)
         );
-        claim::take(
+        claim::take_batch(
             hub,
             leases,
             repository,
@@ -276,6 +335,7 @@ fn hold<H: Hub + ?Sized>(
             now,
             hours,
             force,
+            batch,
         )
     } else {
         let body = format!("{} {RELEASE_MARK}", note.unwrap_or("Released the claim."));
@@ -392,6 +452,71 @@ mod tests {
             session: id.into(),
             agent: "claude-code".into(),
             pid,
+        }
+    }
+
+    #[test]
+    fn a_chat_must_name_its_small_batch_before_holding_more_work() {
+        let root = tempfile::tempdir().unwrap();
+        let hub = Fake::plain("octo");
+        for n in 1..=4 {
+            hub.issue(n, None, &[], &[]);
+        }
+        let policy = Policy::default();
+        let worker = session("chat:worker", Some(std::process::id()));
+        let batch = parse_batch(Some("1,2,3")).unwrap();
+        hold_batch(
+            &hub,
+            root.path(),
+            true,
+            "acme/app",
+            1,
+            &policy,
+            &worker,
+            None,
+            hub.now,
+            false,
+            &batch,
+        )
+        .unwrap();
+        assert!(
+            hub.state(1).comments[0]
+                .body
+                .contains("Active batch: #1, #2, #3")
+        );
+        for n in [2, 3] {
+            hold(
+                &hub,
+                root.path(),
+                true,
+                "acme/app",
+                n,
+                &policy,
+                &worker,
+                None,
+                hub.now,
+                false,
+            )
+            .unwrap();
+        }
+        assert!(
+            hold(
+                &hub,
+                root.path(),
+                true,
+                "acme/app",
+                4,
+                &policy,
+                &worker,
+                None,
+                hub.now,
+                true
+            )
+            .is_err()
+        );
+        assert!(hub.state(4).comments.is_empty());
+        for invalid in ["", "1,1", "0", "1,2,3,4", "no"] {
+            assert!(parse_batch(Some(invalid)).is_err(), "{invalid}");
         }
     }
 

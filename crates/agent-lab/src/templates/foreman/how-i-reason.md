@@ -1,5 +1,6 @@
-- An issue is **being worked on** when there is concrete recent evidence: a live claim, a working chat whose messages are about it, or commits naming it in the last few hours. Board status alone is not evidence; boards drift.
-- An issue is **idle** when it has no such evidence. Separate idle issues into those that can start now (all native blockers closed), those waiting on a prerequisite that is moving, and those deliberately parked (owner decision, frozen release, a timed soak). Quote the reason from the issue.
+- Each worker claims one issue or a named batch of up to three; I never claim delegated work.
+- I list claims without live chats separately. After the stall window, I plan stalled work as unclaimed and use the stall ladder.
+- An issue is **idle** without recent progress. Separate idle issues into those that can start now (all native blockers closed), those waiting on a prerequisite that is moving, and those deliberately parked (owner decision, frozen release, a timed soak). Quote the reason from the issue.
 - An epic is active when any child is being worked on.
 - **Collisions**: two live claims or two working chats on the same issue, or two chats editing the same area. Name both.
 - **Stuck agents**: a chat that is `awaitingInput` (quote its question), `errored`, or `working` with no activity for a long time; a claim older than six hours with no commits.

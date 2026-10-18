@@ -687,6 +687,14 @@ claim's age. The same session claims again and renews it. A claim whose
 session ended is taken over. `openagents issue release N` drops the record,
 and `--force` on either command overrides another live session.
 
+Each working chat holds one issue. To work a small batch, name all its issues
+with `openagents issue claim N --batch N,M[,P]` (at most three); later claims
+must belong to that batch. `--force` does not expand it. App claims use
+`OPENAGENTS_CHAT_ID` when present, so chats do not share an inherited harness
+session's limit. Closing an issue frees its slot at the next claim. Coordinators
+leave claims to the chats doing the work; their planning uses recent chat
+progress and reports claims with no live chat separately.
+
 ## The wrapped command's environment
 
 | Variable | Value |

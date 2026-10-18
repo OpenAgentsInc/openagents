@@ -22,6 +22,7 @@ pub mod change_requests;
 pub mod chat2_host;
 mod chat_fork;
 mod chat_persistence;
+mod claim_activity;
 pub mod connect_phone;
 pub mod diff_sync;
 pub mod doc_host;

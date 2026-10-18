@@ -144,6 +144,13 @@ pub trait Hub: Send + Sync {
     /// # Errors
     /// Why they cannot be read.
     fn comments(&self, repository: &str, number: u64) -> Result<Vec<Comment>, String>;
+    /// Whether an issue is still open. A failed read keeps its claim.
+    ///
+    /// # Errors
+    /// Why the issue cannot be read.
+    fn is_open(&self, _repository: &str, _number: u64) -> Result<bool, String> {
+        Ok(true)
+    }
     /// The open issues with `label`, oldest first.
     ///
     /// # Errors
@@ -626,7 +633,64 @@ pub fn take<H: Hub + ?Sized>(
     hours: u64,
     force: bool,
 ) -> Result<Vec<String>, String> {
+    take_batch(
+        hub,
+        lease_root,
+        repository,
+        number,
+        body,
+        project,
+        claimant,
+        now,
+        hours,
+        force,
+        &[],
+    )
+}
+
+/// Takes a claim with a named batch of up to three issues. All callers
+/// share the same session limit in `coder_lease::claims`.
+///
+/// # Errors
+/// The claim or batch is refused.
+#[allow(clippy::too_many_arguments)]
+pub fn take_batch<H: Hub + ?Sized>(
+    hub: &H,
+    lease_root: &std::path::Path,
+    repository: &str,
+    number: u64,
+    body: &str,
+    project: &Project,
+    claimant: &coder_lease::claims::Claimant,
+    now: u64,
+    hours: u64,
+    force: bool,
+    batch: &[u64],
+) -> Result<Vec<String>, String> {
     use coder_lease::claims::{self, Claimed};
+    let max_age = std::time::Duration::from_secs(hours * 3_600);
+    // Closing through gh or the board helper must free the chat's slot too.
+    for held in claims::held_by(
+        lease_root,
+        &claimant.session,
+        now.saturating_mul(1_000),
+        max_age,
+    )
+    .map_err(|error| error.to_string())?
+    {
+        if hub.is_open(&held.repository, held.issue) == Ok(false) {
+            claims::release(
+                lease_root,
+                &held.repository,
+                held.issue,
+                &claimant.session,
+                now.saturating_mul(1_000),
+                max_age,
+                false,
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
     let veto = |replaced: Option<&claims::IssueClaim>| {
         let comments = hub.comments(repository, number).ok()?;
         foreign_marker(
@@ -638,21 +702,35 @@ pub fn take<H: Hub + ?Sized>(
             replaced.map(|claim| claim.session.as_str()),
         )
     };
-    let taken = claims::claim(
+    let taken = claims::claim_batch(
         lease_root,
         repository,
         number,
         claimant,
         now.saturating_mul(1_000),
-        std::time::Duration::from_secs(hours * 3_600),
+        max_age,
         force,
+        batch,
         &veto,
     )
     .map_err(|refused| match refused {
         claims::Refused::Broker(error) => format!("The claim could not be recorded: {error}."),
+        claims::Refused::Batch(why) => why,
         refused => format!("{refused}. Leave it, or pass --force to take it anyway."),
     })?;
     let session = &claimant.session;
+    let body = if batch.is_empty() {
+        body.to_owned()
+    } else {
+        format!(
+            "{body}\n\nActive batch: {}.",
+            batch
+                .iter()
+                .map(|n| format!("#{n}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
     let mut said = vec![match taken {
         Claimed::New => format!("Holding #{number} for session {session}."),
         Claimed::Renewed => format!("Renewed session {session}'s hold on #{number}."),
@@ -661,7 +739,7 @@ pub fn take<H: Hub + ?Sized>(
             previous.session
         ),
     }];
-    said.extend(claim(hub, repository, number, body, project));
+    said.extend(claim(hub, repository, number, &body, project));
     Ok(said)
 }
 
@@ -1004,6 +1082,18 @@ impl Gh {
 }
 
 impl Hub for Gh {
+    fn is_open(&self, repository: &str, number: u64) -> Result<bool, String> {
+        let raw = gh(
+            None,
+            &["api", &format!("repos/{repository}/issues/{number}")],
+        )?;
+        let value: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        match value.get("state").and_then(Value::as_str) {
+            Some("open") => Ok(true),
+            Some("closed") => Ok(false),
+            _ => Err("GitHub did not report whether the issue is open.".into()),
+        }
+    }
     fn comment(&self, repository: &str, number: u64, body: &str) -> Result<(), String> {
         gh(
             None,

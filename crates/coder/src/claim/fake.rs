@@ -104,6 +104,9 @@ impl Fake {
 }
 
 impl Hub for Fake {
+    fn is_open(&self, _: &str, number: u64) -> Result<bool, String> {
+        self.with(number, |state| state.open)
+    }
     fn comment(&self, _: &str, number: u64, body: &str) -> Result<(), String> {
         let at = self.now;
         self.with(number, |state| {
