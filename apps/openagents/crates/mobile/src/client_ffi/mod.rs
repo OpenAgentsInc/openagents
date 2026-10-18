@@ -23,8 +23,8 @@ pub use cloud_chat::*;
 mod cloud_host;
 pub use agent_lab::*;
 mod custom_agents;
-mod identity;
 mod demo;
+mod identity;
 pub use demo::*;
 mod host_config;
 mod labs;
@@ -137,6 +137,7 @@ impl CoreClient {
         credentials: Credentials,
         listener: Arc<dyn ClientListener>,
     ) -> CoreResult<Arc<Self>> {
+        crate::android_bootstrap::ensure_initialized()?;
         let client = zc::Client::new(
             config.into(),
             credentials.into(),

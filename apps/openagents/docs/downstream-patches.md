@@ -10,6 +10,11 @@ Keep fork-specific changes here so upstream updates can review each integration.
   sign-in flow reserves event and challenge before making an account, so
   concurrent replays create no account as a side effect.
 
+- OpenAgents #12081: Android startup initializes the JVM context and platform
+  certificate verifier before any live Rust client can start. Kotlin retries
+  after failed setup, ignores repeated successful callbacks, and rejects calls
+  that arrive before initialization.
+
 - [OpenAgents #12075](https://github.com/OpenAgentsInc/openagents/issues/12075):
   Queued messages publish their ID after attachments and delivery settings, so
   concurrent drains read complete rows. Engine fixtures use SDK sign-in,
