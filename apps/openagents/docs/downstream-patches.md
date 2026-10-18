@@ -764,11 +764,14 @@ links remain readable. Upstream fixes now require manual ports.
   for its API 35 compile SDK.
   Scanning sends bounded raw text only to the Rust classifier callback; Kotlin
   does not classify or authorize links. Gradle resolved the scanner dependencies
-  during compilation, but the app has not been assembled or run on a device.
+  during compilation and assembled the debug APK; no APK has run on a device.
   `scripts/android/app.sh compile` passed debug and release Kotlin compilation,
   scanner instrumentation source compilation, and debug JVM tests on CoderOS.
   The scanner instrumentation still needs `:app:connectedDebugAndroidTest` on an
-  isolated device. `scripts/android/app.sh check` and API 26 install/run checks
+  isolated device. `scripts/android/app.sh check` assembled the debug APK, then
+  failed release lint because Fragment 1.1.0 was below the 1.3.0 minimum for
+  Activity Result APIs. B1 now pins Fragment 1.3.0; rerun the check after disk
+  headroom returns above the 100 GiB build floor. API 26 install/run checks
   remain pending. The Rust classifier
   fixture check (`cargo test --locked -p openagents-mobile app_links`) was not
   run by this chat. The ABI libraries were built and Kotlin was generated from

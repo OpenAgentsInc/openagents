@@ -91,6 +91,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.5.3")
     implementation("androidx.camera:camera-view:1.5.3")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.fragment:fragment:1.3.0")
     implementation("com.google.zxing:core:3.5.4")
     implementation("org.rustls:rustls-platform-verifier")
     implementation("com.google.android.play:integrity:1.5.0")
