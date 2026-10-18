@@ -60,6 +60,26 @@ impl RegistryDoc {
         );
         Ok(true)
     }
+    /// The chat no longer continues elsewhere: the account dropped the link.
+    /// False when the chat is unknown or had no destination.
+    pub fn clear_chat_destination(&mut self, chat: &str) -> Result<bool, DocError> {
+        let Some(row) = self.chat(chat)? else {
+            return Ok(false);
+        };
+        if row.links.continued_by.is_none() {
+            return Ok(false);
+        }
+        self.write(
+            KIND_CHATS,
+            chat,
+            OpKind::Update,
+            fields([
+                ("continued_by", serde_json::Value::Null),
+                ("move_target", serde_json::Value::Null),
+            ]),
+        );
+        Ok(true)
+    }
     /// References only: the session index never reads transcript text.
     pub fn chat_continuations(&self) -> HashMap<String, chat_home::PartRef> {
         #[derive(Deserialize)]
@@ -124,6 +144,7 @@ mod tests {
         assert_eq!(doc.chat_move_targets().get(id), Some(&source));
         doc.set_chat_destination(id, &source).unwrap();
         assert!(doc.chat_move_targets().is_empty());
+        assert!(doc.chat(id).unwrap().unwrap().links.continued_by.is_some());
         let links = doc.chat_continuations();
         assert_eq!(links.get(id), Some(&source));
         assert_eq!(doc.chat(id).unwrap().unwrap().links.continues, Some(source));
@@ -132,5 +153,9 @@ mod tests {
                 .unwrap()
                 .contains("private transcript text")
         );
+        // The account dropped the link: the chat is its own again.
+        assert!(doc.clear_chat_destination(id).unwrap());
+        assert!(doc.chat(id).unwrap().unwrap().links.continued_by.is_none());
+        assert!(!doc.clear_chat_destination(id).unwrap());
     }
 }

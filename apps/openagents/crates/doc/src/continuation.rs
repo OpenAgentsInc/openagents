@@ -53,6 +53,17 @@ pub fn set_outgoing(doc: &SessionDoc, value: &Outgoing) -> Result<(), DocError> 
     Ok(())
 }
 
+/// Make the source editable again once the account no longer records where
+/// it continues (the destination was removed). False when it wasn't set.
+pub fn clear_outgoing(doc: &SessionDoc) -> Result<bool, DocError> {
+    if !read_only(doc) {
+        return Ok(false);
+    }
+    doc.doc().get_map("meta").delete(OUTGOING)?;
+    doc.doc().commit();
+    Ok(true)
+}
+
 pub fn pending(doc: &SessionDoc) -> Option<chat_home::Source> {
     let ValueOrContainer::Value(LoroValue::String(value)) = doc
         .doc()

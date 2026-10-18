@@ -94,7 +94,10 @@ pub(crate) async fn token_changed(changes: &mut Option<tokio::sync::watch::Recei
 
 async fn token_revoked(token: &Option<Arc<dyn openagents_rpc::TokenSource>>) -> bool {
     match token {
-        Some(token) => matches!(token.token().await, Err(openagents_rpc::TokenError::SignedOut)),
+        Some(token) => matches!(
+            token.token().await,
+            Err(openagents_rpc::TokenError::SignedOut)
+        ),
         // Fixed test/dev URLs have no revocable credential source.
         None => false,
     }
@@ -377,7 +380,11 @@ impl WorkspaceHost {
     /// server through this. Production always goes through [`Self::join_room`].
     #[doc(hidden)]
     pub fn connect_registry_url(&self, url: &str) {
-        self.spawn_join(Arc::new(openagents_sync::StaticUrl(url.to_string())), None, None);
+        self.spawn_join(
+            Arc::new(openagents_sync::StaticUrl(url.to_string())),
+            None,
+            None,
+        );
     }
 
     fn spawn_join(
@@ -1199,6 +1206,13 @@ impl WorkspaceHost {
         target: &chat_home::PartRef,
     ) -> Result<bool, EngineError> {
         Ok(self.mutate(|doc| doc.set_chat_destination(chat, target))?)
+    }
+    pub fn clear_chat_destination(&self, chat: &str) -> Result<bool, EngineError> {
+        let changed = self.mutate(|doc| doc.clear_chat_destination(chat))?;
+        if changed {
+            self.persist_continuation()?;
+        }
+        Ok(changed)
     }
     pub(crate) fn persist_continuation(&self) -> Result<(), EngineError> {
         self.inner.persist_snapshot().map(|_| ())

@@ -307,6 +307,39 @@ impl DocHost {
         let Some(workspace) = self.workspace() else {
             return Ok(());
         };
+        // The account records where a chat continues. A chat whose link the
+        // account dropped (its web part was removed) is this computer's
+        // again: clear the copy here so it lists and takes messages.
+        let continued: Vec<String> = workspace
+            .read_chats()?
+            .into_iter()
+            .filter(|c| c.links.continued_by.is_some())
+            .map(|c| c.id)
+            .take(4)
+            .collect();
+        for chat in continued {
+            if !lease.is_current() {
+                break;
+            }
+            let Ok(remote) = openagents_account::openagents::sessions::get(
+                lease.client(),
+                lease.session(),
+                &chat,
+                &lease.cancel,
+            )
+            .await
+            else {
+                continue;
+            };
+            if remote.session.continued_by.is_none() && workspace.clear_chat_destination(&chat)? {
+                if let Ok(handle) = self.open(&chat) {
+                    if openagents_doc::continuation::clear_outgoing(&handle.writer())? {
+                        self.persist_fork(&handle)?;
+                    }
+                }
+                tracing::info!(chat = %chat, "the account no longer continues this chat elsewhere; it's local again");
+            }
+        }
         let mut moves = workspace.chat_move_targets();
         let requested = match openagents_account::openagents::sessions::pending_moves(
             lease.client(),
