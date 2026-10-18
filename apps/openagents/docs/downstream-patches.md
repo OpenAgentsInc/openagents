@@ -727,3 +727,32 @@ links remain readable. Upstream fixes now require manual ports.
   The app owns client creation, foreground suppression, notification routing,
   and tap handling. Android channel setup and permission checks live in
   `platform/AndroidPushNotifications.kt`.
+- [OpenAgents #12096](https://github.com/OpenAgentsInc/openagents/issues/12096):
+  classify only bounded HTTPS links on `openagents.com` for computer pairing
+  and project invitations in the Rust mobile FFI. The existing connect-code
+  parser checks shape and expiry; the server still authorizes invitation use.
+  Synthetic fixtures cover the connect fragment, project path, and rejected
+  URL forms. `AndroidScannerPresentationBoundary.kt` adds bounded raw-text
+  handoff, permission denial/cancel/retry states, and duplicate/late callback
+  fencing. `CameraXQrScannerDriver.kt` uses `ImageAnalysis` with
+  `KEEP_ONLY_LATEST`, a 1280×720 target, and QR-only ML Kit decoding; decoded
+  raw text goes to the Rust classifier callback. Synthetic fake analyzer and
+  decoder cases cover duplicates and late results. It does not perform link
+  approval. B1 owns the Gradle and manifest changes. The official CameraX
+  release page lists 1.6.2 as stable, and the official ML Kit page documents
+  bundled `com.google.mlkit:barcode-scanning:17.3.0` ([CameraX](https://developer.android.com/jetpack/androidx/releases/camera),
+  [ML Kit](https://developers.google.com/ml-kit/vision/barcode-scanning/android)).
+  Both production files now live in the app source set under
+  `apps/android/app/src/main/java/com/openagents/app/scanner/`, with synthetic
+  instrumentation coverage under `apps/android/app/src/androidTest/java/com/openagents/app/scanner/`.
+  B1 owns `MainActivity.startQrScanner(previewView, classifyWithRust, onFailure)`,
+  permission-result handling, and the Activity shell wiring. It should call the
+  scanner's Rust classifier callback with raw text only; Kotlin does not
+  classify or authorize links. Neither dependency has been resolved in an
+  Android build.
+  `cargo test --locked -p openagents-mobile app_links` from `apps/openagents`
+  and `scripts/android/build-core.sh` remain unrun below the 100 GiB build
+  floor. The latter generates bindings and builds arm64 then x86_64. The
+  scanner instrumentation test remains unrun pending the capacity gate and
+  B1's Activity shell integration. #12082 and #12091 remain native blockers. Release-certificate
+  verification is an owner-only After-close check in `NEEDS_OWNER.md`.
