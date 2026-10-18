@@ -28,7 +28,7 @@ class CoreSemanticsPort(private val core: CoreAccessibilitySurface) : SemanticsP
     override fun restore(bookmark: String) = core.restore(bookmark)
     override fun environment(fontScale: Float, density: Float, reducedMotion: Boolean) = core.environment(fontScale, density, reducedMotion)
     override fun lifecycle(event: String) = core.lifecycle(event)
-    override fun close() { core.close(); core.destroy() }
+    override fun close() { core.shutdown(); core.destroy() }
 }
 
 /** Maps Rust roles to platform nodes. It never dispatches intents or saves field values. */

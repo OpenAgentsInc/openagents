@@ -1,4 +1,6 @@
 [bindings.kotlin.rename]
+"CoreAndroidRecovery.close" = "shutdown"
+"CoreAccessibilitySurface.close" = "shutdown"
 "CoreAndroidSessions.close" = "shutdown"
 "CoreOwnComputerOffer.close" = "dismiss"
 "TranscriptView.close" = "shutdown"

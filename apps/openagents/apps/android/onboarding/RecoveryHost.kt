@@ -25,7 +25,7 @@ class CoreRecoveryPort(private val core: CoreAndroidRecovery, private val ownsCo
     override fun change(instance: String, revision: Long, key: String, value: String) = core.change(instance, revision.toULong(), key, value)
     override fun authenticated(token: ULong, accepted: Boolean) = core.authenticated(token, accepted)
     override fun redact() = core.redact()
-    override fun close() { if (ownsCore) { core.close(); core.destroy() } else core.redact() }
+    override fun close() { if (ownsCore) { core.shutdown(); core.destroy() } else core.redact() }
 }
 
 /** A screen, not an Activity. Supply one bounded serial worker owned by the Android shell. */
