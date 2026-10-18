@@ -78,8 +78,8 @@ class AndroidPushCoordinator(
 
     private fun AndroidPushWake.toRustKind(): PushWakeKind =
         when (this) {
-            AndroidPushWake.RECONNECT -> PushWakeKind.Reconnect
-            AndroidPushWake.ATTENTION -> PushWakeKind.Attention
+            AndroidPushWake.RECONNECT -> PushWakeKind.RECONNECT
+            AndroidPushWake.ATTENTION -> PushWakeKind.ATTENTION
         }
 
     private fun withCurrentClient(action: (uniffi.openagents_core.CoreClient) -> Unit) {

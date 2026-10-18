@@ -25,20 +25,20 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
 
     @Volatile
     private var ownerNotificationHandler: ((OwnerNoteView) -> Unit)? = null
-    private lateinit var encryptedFileStore: AndroidEncryptedFileStore
+    private lateinit var secretStorage: AndroidEncryptedFileStore
 
     override fun onCreate() {
         super.onCreate()
         AndroidCoreBootstrap.initialize(this)
-        encryptedFileStore = AndroidEncryptedFileStore(this)
+        secretStorage = AndroidEncryptedFileStore(this)
         if (AndroidPushFlavor.enabled) AndroidPushNotifications.createChannels(this)
     }
 
     /** The single platform store passed to Rust account and wallet adapters. */
     fun encryptedFileStore(): AndroidEncryptedFileStore {
         AndroidCoreBootstrap.requireInitialized()
-        check(::encryptedFileStore.isInitialized)
-        return encryptedFileStore
+        check(::secretStorage.isInitialized)
+        return secretStorage
     }
 
     override fun currentClient(): CoreClient? = signedInClient

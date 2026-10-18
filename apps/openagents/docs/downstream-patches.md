@@ -26,13 +26,15 @@ Keep fork-specific changes here so upstream updates can review each integration.
   transfer. The app owns one encrypted storage adapter and exposes it to the
   Rust account and wallet integration. The `ComponentActivity` owns typed photo,
   document, camera, and permission results; QR scanning forwards bounded raw
-  text through a Rust classifier callback. The checked-in UniFFI source still
-  lacks A2/A3's `PushWakeKind`, `CoreClient.handlePushWake`, `AndroidSecretStorage`,
-  `SecretRead`, `SecretMutation`, `CoreAccount.newWithSecureStorage`, and
-  `androidWalletKeyStore` bindings, as well as the app-link classifier binding.
-  The Rust account and wallet call sites remain pending binding generation.
-  `scripts/android/build-core.sh` must regenerate the bindings and both ABI
-  libraries before the app can compile.
+  text through a Rust classifier callback. `scripts/android/build-core.sh`
+  builds both Android ABIs, then generates Kotlin from the arm64 Android ELF
+  metadata. UniFFI 0.32.2 reads metadata from the library file without loading
+  it. `crates/mobile/uniffi.toml` gives Kotlin-only names to the exported
+  `close` methods and error `message` fields that conflict with Kotlin's
+  `AutoCloseable` and `Throwable` APIs; Rust and Swift names stay unchanged.
+  The Android-generated binding includes the secure-storage, wallet-store,
+  and push-wake APIs. `CoreAndroidSessions` is not in this Rust source set yet,
+  so its binding remains pending D3 integration.
 
 - OpenAgents #12081: Android startup initializes the JVM context and platform
   certificate verifier before any live Rust client can start. Kotlin retries
@@ -744,29 +746,33 @@ links remain readable. Upstream fixes now require manual ports.
   URL forms. `AndroidScannerPresentationBoundary.kt` adds bounded raw-text
   handoff, permission denial/cancel/retry states, and duplicate/late callback
   fencing. `CameraXQrScannerDriver.kt` uses `ImageAnalysis` with
-  `KEEP_ONLY_LATEST`, a 1280×720 target, and QR-only ML Kit decoding; decoded
-  raw text goes to the Rust classifier callback. Synthetic fake analyzer and
-  decoder cases cover duplicates and late results. It does not perform link
-  approval. B1 owns the Gradle and manifest changes. The official CameraX
-  release page lists 1.6.2 as stable, and the official ML Kit page documents
-  bundled `com.google.mlkit:barcode-scanning:17.3.0` ([CameraX](https://developer.android.com/jetpack/androidx/releases/camera),
-  [ML Kit](https://developers.google.com/ml-kit/vision/barcode-scanning/android)).
+  `KEEP_ONLY_LATEST`, a 1280×720 target, and QR-only ZXing decoding; decoded
+  raw text goes to the Rust classifier callback. Synthetic luminance fixtures
+  cover stride, rotation, decoder cleanup, invalid frames, and exact raw text.
+  It does not perform link approval. B1 owns the Gradle and manifest changes.
+  The app uses CameraX 1.5.3 with ZXing core 3.5.4; CameraX 1.5.3 supports the
+  API 35 compile SDK and the pinned Android Gradle Plugin. See the
+  [CameraX release notes](https://developer.android.com/jetpack/androidx/releases/camera)
+  and [ZXing core](https://github.com/zxing/zxing).
   Both production files now live in the app source set under
   `apps/android/app/src/main/java/com/openagents/app/scanner/`, with synthetic
   instrumentation coverage under `apps/android/app/src/androidTest/java/com/openagents/app/scanner/`.
   B1 owns `MainActivity.startQrScanner(previewView, classifyWithRust, onFailure)`,
-  permission-result handling, the Activity shell wiring, and pins CameraX 1.6.2
-  with bundled ML Kit 17.3.0. The app manifest requests camera permission.
+  permission-result handling, the Activity shell wiring, and pins CameraX 1.5.3
+  with ZXing core 3.5.4. The app manifest requests camera permission. Java and
+  Kotlin compile targets are both Java 17, and the app pins build tools 35.0.0
+  for its API 35 compile SDK.
   Scanning sends bounded raw text only to the Rust classifier callback; Kotlin
-  does not classify or authorize links. Neither dependency has been resolved in
-  an Android build.
-  `scripts/android/app.sh compile` runs the debug and release Kotlin compile,
-  compiles scanner instrumentation sources, and runs debug JVM tests; it remains
-  unrun below the 100 GiB build floor. The scanner instrumentation test still
-  needs a device run through `:app:connectedDebugAndroidTest`. The release check
-  (`scripts/android/app.sh check`) and API 26 install/run check remain pending. The Rust classifier
-  fixture check (`cargo test --locked -p openagents-mobile app_links`) and
-  `scripts/android/build-core.sh` also remain unrun; the latter generates
-  bindings and builds arm64 then x86_64. #12082 and #12091 remain native blockers.
+  does not classify or authorize links. Gradle resolved the scanner dependencies
+  during compilation, but the app has not been assembled or run on a device.
+  `scripts/android/app.sh compile` passed debug and release Kotlin compilation,
+  scanner instrumentation source compilation, and debug JVM tests on CoderOS.
+  The scanner instrumentation still needs `:app:connectedDebugAndroidTest` on an
+  isolated device. `scripts/android/app.sh check` and API 26 install/run checks
+  remain pending. The Rust classifier
+  fixture check (`cargo test --locked -p openagents-mobile app_links`) was not
+  run by this chat. The ABI libraries were built and Kotlin was generated from
+  the arm64 library; the reordered `scripts/android/build-core.sh` was syntax
+  checked but was not rerun end to end. #12082 and #12091 remain native blockers.
   Release-certificate
   verification is an owner-only After-close check in `NEEDS_OWNER.md`.

@@ -61,14 +61,14 @@ class AndroidEncryptedFileStore(context: Context) : AndroidSecretStorage {
             val target = fileFor(namespace, key)
             withFileLock(target) {
                 if (target.exists()) {
-                    if (!target.delete()) return@withFileLock SecretMutation.Failed
-                    SecretMutation.Stored
+                    if (!target.delete()) return@withFileLock SecretMutation.FAILED
+                    SecretMutation.STORED
                 } else {
-                    SecretMutation.Absent
+                    SecretMutation.ABSENT
                 }
             }
         } catch (_: Exception) {
-            SecretMutation.Failed
+            SecretMutation.FAILED
         }
     }
 
@@ -81,8 +81,8 @@ class AndroidEncryptedFileStore(context: Context) : AndroidSecretStorage {
         try {
             val target = fileFor(namespace, key)
             withFileLock(target) {
-                if (bytes.size > MAX_VALUE_BYTES) return@withFileLock SecretMutation.Failed
-                if (!replace && target.exists()) return@withFileLock SecretMutation.AlreadyExists
+                if (bytes.size > MAX_VALUE_BYTES) return@withFileLock SecretMutation.FAILED
+                if (!replace && target.exists()) return@withFileLock SecretMutation.ALREADY_EXISTS
                 val envelope = encrypt(namespace, key, bytes)
                 val temporary = File(directory, "${target.name}.${UUID.randomUUID()}.tmp")
                 try {
@@ -91,16 +91,16 @@ class AndroidEncryptedFileStore(context: Context) : AndroidSecretStorage {
                         file.fd.sync()
                     }
                     Os.rename(temporary.absolutePath, target.absolutePath)
-                    SecretMutation.Stored
+                    SecretMutation.STORED
                 } finally {
                     envelope.fill(0)
                     temporary.delete()
                 }
             }
         } catch (_: UserNotAuthenticatedException) {
-            SecretMutation.Locked
+            SecretMutation.LOCKED
         } catch (_: Exception) {
-            SecretMutation.Failed
+            SecretMutation.FAILED
         } finally {
             bytes.fill(0)
         }

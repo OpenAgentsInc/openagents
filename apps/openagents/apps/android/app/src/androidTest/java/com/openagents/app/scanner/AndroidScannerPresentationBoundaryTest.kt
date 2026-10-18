@@ -1,6 +1,9 @@
 package com.openagents.app.scanner
 
 import android.test.InstrumentationTestCase
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import java.nio.ByteBuffer
 
 /** Synthetic camera results exercise permission, bounds, retry, and duplicate fencing. */
 class AndroidScannerPresentationBoundaryTest : InstrumentationTestCase() {
@@ -90,6 +93,73 @@ class AndroidScannerPresentationBoundaryTest : InstrumentationTestCase() {
         assertEquals(listOf(FakeCameraScan.PROJECT_INVITATION), classified)
         assertEquals(1, stopCount)
     }
+
+    fun testZxingDecodesBoundedCameraYPlaneWithoutNormalizingText() {
+        val expected = "https://openagents.com/connect#synthetic-qr"
+        val matrix = QRCodeWriter().encode(expected, BarcodeFormat.QR_CODE, 256, 256)
+        val rowStride = matrix.width * 2 + 9
+        val pixelStride = 2
+        val bufferOffset = 5
+        val yPlane = ByteBuffer.allocate(bufferOffset + rowStride * matrix.height)
+        yPlane.position(bufferOffset)
+        for (y in 0 until matrix.height) {
+            for (x in 0 until matrix.width) {
+                val luminance = if (matrix.get(x, y)) 0.toByte() else 0xff.toByte()
+                yPlane.put(bufferOffset + y * rowStride + x * pixelStride, luminance)
+            }
+        }
+
+        val decoder = ZxingQrDecoder()
+        assertEquals(
+            expected,
+            decoder.decode(yPlane, matrix.width, matrix.height, rowStride, pixelStride, rotationDegrees = 0),
+        )
+        decoder.close()
+        assertNull(decoder.decode(yPlane, matrix.width, matrix.height, rowStride, pixelStride, rotationDegrees = 0))
+    }
+
+    fun testZxingAppliesCameraRotationBeforeDecoding() {
+        val expected = "https://openagents.com/projects/join/synthetic-qr"
+        val matrix = QRCodeWriter().encode(expected, BarcodeFormat.QR_CODE, 256, 256)
+        val upright = cameraYPlane(matrix)
+        val rawCounterClockwise = ByteArray(upright.size)
+        for (y in 0 until matrix.height) {
+            for (x in 0 until matrix.width) {
+                rawCounterClockwise[(matrix.height - 1 - x) * matrix.width + y] = upright[y * matrix.width + x]
+            }
+        }
+
+        val decoder = ZxingQrDecoder()
+        assertEquals(
+            expected,
+            decoder.decode(
+                ByteBuffer.wrap(rawCounterClockwise),
+                matrix.width,
+                matrix.height,
+                rowStride = matrix.width,
+                pixelStride = 1,
+                rotationDegrees = 90,
+            ),
+        )
+        decoder.close()
+    }
+
+    fun testZxingRejectsUnboundedOrMalformedCameraFrames() {
+        val decoder = ZxingQrDecoder()
+        val frame = ByteBuffer.allocate(8)
+
+        assertNull(decoder.decode(frame, 1281, 1, 1281, 1, rotationDegrees = 0))
+        assertNull(decoder.decode(frame, 2, 2, 2, 1, rotationDegrees = 45))
+        assertNull(decoder.decode(frame, 4, 2, 3, 1, rotationDegrees = 0))
+        decoder.close()
+    }
+
+    private fun cameraYPlane(matrix: com.google.zxing.common.BitMatrix): ByteArray =
+        ByteArray(matrix.width * matrix.height) { index ->
+            val x = index % matrix.width
+            val y = index / matrix.width
+            if (matrix.get(x, y)) 0.toByte() else 0xff.toByte()
+        }
 
     private class FakeQrDecoder(private val frames: Map<String, String?>) {
         fun decode(frame: String): String? = frames[frame]
