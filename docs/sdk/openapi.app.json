@@ -30785,6 +30785,14 @@
           },
           "spec": {
             "$ref": "#/components/schemas/AgentAssignmentSpec"
+          },
+          "chat": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "description": "An existing chat on the selected host for the agent to run in from now on, instead of a new chat. One unarchived assignment per chat; the host adopts it only when it isn't another assignment's chat."
           }
         }
       },
