@@ -337,6 +337,37 @@ pub fn started_for(pool: &Pool, host: &Host, actor: Option<&str>) {
     });
 }
 
+/// Records a sandbox this process just started (`chat work --on archil`),
+/// so the daily cap counts it while it runs.
+pub fn sandbox_started(name: &str, machine: &str, actor: Option<&str>) {
+    let at = now();
+    let _ = Ledger::update(|ledger| {
+        ledger.hosts.retain(|h| h.name != name);
+        ledger.hosts.push(HostSpend {
+            name: name.to_owned(),
+            pool: crate::archil_backend::COMPUTER.to_owned(),
+            zone: String::new(),
+            machine: machine.to_owned(),
+            spot: false,
+            started: at,
+            last_running: at,
+            gone: None,
+            agent: actor.map(str::to_owned),
+        });
+    });
+}
+
+/// Records that a sandbox [`sandbox_started`] recorded is deleted.
+pub fn sandbox_gone(name: &str) {
+    let at = now();
+    let _ = Ledger::update(|ledger| {
+        if let Some(entry) = ledger.hosts.iter_mut().find(|h| h.name == name) {
+            entry.last_running = at;
+            entry.gone.get_or_insert(at);
+        }
+    });
+}
+
 /// Records a listing of `pool`.
 pub fn observe(pool: &str, listed: &[Host]) {
     let at = now();
