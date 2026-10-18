@@ -862,15 +862,16 @@ oa_install() {
 # runs that each let rustup install a missing pin at once leave it without
 # rustfmt or clippy, and every check then fails as a checker error.
 oa_toolchains() {
-  local rev=$1 file channel
+  local rev=$1 file channel log="$HOME/.oa-pool/toolchain.log"
+  mkdir -p "$HOME/.oa-pool" || return 3
   for file in rust-toolchain.toml apps/openagents/rust-toolchain.toml; do
     channel=$(git show "$rev:$file" 2>/dev/null | sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' | head -n 1)
     [ -n "$channel" ] || continue
     rustup run "$channel" rustfmt --version >/dev/null 2>&1 && rustup run "$channel" cargo clippy --version >/dev/null 2>&1 && continue
     echo "pool: installing Rust $channel with rustfmt and clippy" >&2
     rustup toolchain uninstall "$channel" >/dev/null 2>&1
-    rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy >/tmp/oa-pool-toolchain.log 2>&1 \
-      || { tail -n 20 /tmp/oa-pool-toolchain.log >&2; return 3; }
+    rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy >"$log" 2>&1 \
+      || { tail -n 20 "$log" >&2; return 3; }
   done
 }
 oa_build() {
