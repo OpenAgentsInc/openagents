@@ -1087,20 +1087,30 @@ impl Gate {
                 let mut left_alone = 0usize;
                 let staged = staged_paths(worktree);
                 for package in &packages {
+                    // A nested workspace's package is named through its
+                    // manifest (#12129).
+                    let mut args = vec!["fmt".to_owned(), "-p".to_owned(), package.clone()];
+                    if let Some(manifest) = coder_delegate::issue::manifest_of(worktree, package) {
+                        args.extend(["--manifest-path".to_owned(), manifest]);
+                    }
                     let output = std::process::Command::new("cargo")
-                        .args(["fmt", "-p", package, "--", "--check"])
+                        .args(&args)
+                        .args(["--", "--check"])
                         .current_dir(worktree)
                         .stdin(std::process::Stdio::null())
                         .output();
                     match output {
                         Ok(output) if output.status.success() => {}
                         Ok(output) => {
-                            let (in_change, untouched) =
-                                fmt_drift_in_change(&String::from_utf8_lossy(&output.stdout), &staged);
+                            let (in_change, untouched) = fmt_drift_in_change(
+                                &String::from_utf8_lossy(&output.stdout),
+                                &staged,
+                            );
                             left_alone += untouched;
                             if !in_change.is_empty() {
                                 unformatted.push(format!(
-                                    "`cargo fmt -p {package} -- --check` finds unformatted code: {}",
+                                    "`cargo {} -- --check` finds unformatted code: {}",
+                                    args.join(" "),
                                     clip(&in_change, FAILING_MAX / 2)
                                 ));
                             }

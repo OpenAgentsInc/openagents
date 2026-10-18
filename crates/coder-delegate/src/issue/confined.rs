@@ -277,22 +277,20 @@ pub enum Suite {
 }
 
 impl Suite {
-    /// The cargo arguments for `package`.
+    /// The cargo arguments for `package`, with `--manifest-path` when it
+    /// belongs to the nested workspace whose manifest is `manifest`.
     #[must_use]
-    pub fn args(self, package: &str) -> Vec<String> {
-        let words: &[&str] = match self {
-            Suite::Tests => &["test", "-q", "-p", package, "--all-features"],
-            Suite::Clippy => &[
-                "clippy",
-                "-q",
-                "-p",
-                package,
-                "--all-targets",
-                "--",
-                "-D",
-                "warnings",
-            ],
+    pub fn args(self, package: &str, manifest: Option<&str>) -> Vec<String> {
+        let mut words: Vec<&str> = match self {
+            Suite::Tests => vec!["test", "-q", "-p", package, "--all-features"],
+            Suite::Clippy => vec!["clippy", "-q", "-p", package, "--all-targets"],
         };
+        if let Some(manifest) = manifest {
+            words.extend(["--manifest-path", manifest]);
+        }
+        if self == Suite::Clippy {
+            words.extend(["--", "-D", "warnings"]);
+        }
         words.iter().map(|word| (*word).to_string()).collect()
     }
 
@@ -428,7 +426,8 @@ async fn run_commands(
     let mut failures = Vec::new();
     for package in packages {
         say!("issue ▸ running the {package} {}", suite.noun());
-        let mut args = suite.args(package);
+        let manifest = super::manifest_of(&setup.workdir, package);
+        let mut args = suite.args(package, manifest.as_deref());
         if let Some(test) = selected {
             args.extend([test.to_string(), "--".to_string(), "--exact".to_string()]);
         }
@@ -473,8 +472,8 @@ async fn run_commands(
             );
         }
         let failed = match suite {
-            Suite::Tests => failure(package, &ended),
-            Suite::Clippy => lint_failure(package, &ended),
+            Suite::Tests => failure(package, &args, &ended),
+            Suite::Clippy => lint_failure(package, &args, &ended),
         };
         // A missing or ignored test is not evidence that it passes.
         let failed = if selected.is_some() && failed.is_none() && !ran_test(&ended) {
@@ -515,7 +514,7 @@ pub async fn prefetch(setup: &Setup, cargo: &Path) -> String {
 
 /// The problem one package's Clippy command leaves, or `None` when it
 /// finds nothing.
-pub fn lint_failure(package: &str, ended: &supervise::Ended) -> Option<String> {
+pub fn lint_failure(package: &str, args: &[String], ended: &supervise::Ended) -> Option<String> {
     match &ended.ending {
         ending if ending.success() => None,
         supervise::Ending::TimedOut => Some(format!(
@@ -530,8 +529,8 @@ pub fn lint_failure(package: &str, ended: &supervise::Ended) -> Option<String> {
                 .filter(|l| l.starts_with("error") || l.starts_with("warning") || l.contains("-->"))
                 .collect();
             Some(format!(
-                "Clippy finds problems in {package} (`cargo clippy -p {package} --all-targets -- \
-                 -D warnings`): {}",
+                "Clippy finds problems in {package} (`cargo {}`): {}",
+                args.join(" "),
                 crate::judge::clip(&lines.join("\n"), TEST_OUTPUT_KEPT)
             ))
         }
@@ -540,7 +539,7 @@ pub fn lint_failure(package: &str, ended: &supervise::Ended) -> Option<String> {
 
 /// The problem one package's test command leaves, or `None` when its
 /// tests pass.
-pub fn failure(package: &str, ended: &supervise::Ended) -> Option<String> {
+pub fn failure(package: &str, args: &[String], ended: &supervise::Ended) -> Option<String> {
     match &ended.ending {
         ending if ending.success() => None,
         supervise::Ending::TimedOut => Some(format!(
@@ -562,7 +561,8 @@ pub fn failure(package: &str, ended: &supervise::Ended) -> Option<String> {
                 })
                 .collect();
             Some(format!(
-                "the {package} tests fail (`cargo test -p {package} --all-features`): {}",
+                "the {package} tests fail (`cargo {}`): {}",
+                args.join(" "),
                 crate::judge::clip(&lines.join("\n"), TEST_OUTPUT_KEPT)
             ))
         }
