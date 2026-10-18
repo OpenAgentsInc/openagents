@@ -2880,9 +2880,11 @@ impl DocHost {
     /// chat2 host duties on the doc-quiesce tick (docs/chat2-sync.md C3):
     /// - threshold checkpoint: when the room's row log passes 512KB or 200
     ///   rows, post a full checkpoint so cold readers load one compact blob
-    ///   instead of replaying the log (the alert-shaped growth bound);
-    /// - tail sidecar: publish the last-64 transcript JSON for thin/instant
-    ///   readers (the iOS fallback path).
+    ///   instead of replaying the log (the alert-shaped growth bound).
+    ///
+    /// The tail sidecar (`PUT /chat2/{id}/tail`) is gone: coder-sync never
+    /// served it, and a whale's multi-MB tail upload reset sync connections
+    /// until Cloud Run ran out of routable instances (#12128).
     async fn chat2_maintenance(&self, handle: &Arc<ChatDocHandle>) {
         if handle.retired.load(Ordering::Relaxed) {
             return;
@@ -2891,48 +2893,8 @@ impl DocHost {
             Some(client) => client.stats(),
             None => return,
         };
-        let Some(edge) = self.inner.config.edge.clone() else {
+        if self.inner.config.edge.is_none() {
             return;
-        };
-        let chat_id = handle.chat_id.clone();
-        // A whale's last 64 joined messages can still contain its entire
-        // history. Materialization/encoding must not occupy a network worker.
-        let doc = handle.doc.clone();
-        let body = tokio::task::spawn_blocking(move || {
-            let tail =
-                openagents_doc::materialize_tail(&doc, now_ms(), openagents_doc::TAIL_MESSAGE_COUNT).ok()?;
-            serde_json::to_vec(&tail).ok()
-        })
-        .await
-        .ok()
-        .flatten();
-        if let Some(body) = body {
-            let http = self.inner.http.clone();
-            let edge_tail = edge.clone();
-            let chat = chat_id.clone();
-            self.spawn_worker(async move {
-                let Ok(bearer) = edge_tail.bearer().await else {
-                    return;
-                };
-                let url = format!(
-                    "{}/chat2/{}/tail",
-                    edge_tail.url.trim_end_matches('/'),
-                    chat
-                );
-                let Ok(_permit) = openagents_sync::budget::shared()
-                    .http(openagents_sync::budget::Priority::Background)
-                    .await
-                else {
-                    return;
-                };
-                let _ = http
-                    .put(&url)
-                    .bearer_auth(&bearer)
-                    .header("content-type", "application/json")
-                    .body(body)
-                    .send()
-                    .await;
-            });
         }
         // Threshold checkpoint (rowBytes > 512KB || rows > 200), one in
         // flight at a time (review H1).
