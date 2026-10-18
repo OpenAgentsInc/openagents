@@ -1,8 +1,12 @@
 //! Offscreen capture of a saved agent's chat in the sidebar and session
-//! header (#11966): the Foreman chat beside an ordinary Claude Code chat.
-//! Nothing is shown on screen: a headless context renders into an image.
+//! header (#11966), and its composer's placeholder and agent chip (#12027):
+//! the Foreman chat beside an ordinary Claude Code chat. Nothing is shown on
+//! screen: a headless context renders into an image. Pass `chat` as the
+//! second argument to capture the ordinary chat selected instead.
 //!
-//! cargo run -p openagents-ui --example agent-identity-fixture --features account-fixture -- OUT.png
+//! OPENAGENTS_OPEN_ROUTE=new cargo run -p openagents-ui --example agent-identity-fixture --features account-fixture -- OUT.png [foreman|chat]
+//!
+//! `OPENAGENTS_OPEN_ROUTE=new` opens the chat instead of Home, so the composer shows.
 use gpui::{AppContext, px, size};
 use openagents_ui::*;
 use serde_json::json;
@@ -16,6 +20,7 @@ fn main() -> anyhow::Result<()> {
             .nth(1)
             .expect("pass the PNG path to write"),
     );
+    let selected = std::env::args().nth(2).unwrap_or_else(|| "foreman".into());
     let runtime = tokio::runtime::Runtime::new()?;
     let dir = tempfile::tempdir()?;
     let data = dir.path().to_path_buf();
@@ -65,7 +70,7 @@ fn main() -> anyhow::Result<()> {
                 serde_json::from_value(json!({"id":"foreman","deviceId":"local","spaceId":"project","title":"Foreman","archived":false,"createdAt":"2026-10-17T01:00:00Z","lastMessageAt":"2026-10-17T02:00:00Z","config":{"harness":"claude-code","model":"claude-opus-5-5","reasoning":null,"sandbox":"danger-full-access","modelOptions":{"openagentsAssignment":"a","openagentsAgentName":"Foreman"}}})).unwrap(),
                 serde_json::from_value(json!({"id":"chat","deviceId":"local","spaceId":"project","title":"Polish the composer footer","archived":false,"createdAt":"2026-10-17T00:00:00Z","lastMessageAt":"2026-10-17T01:30:00Z","config":{"harness":"claude-code","model":"claude-opus-5-5","reasoning":null,"sandbox":"workspace-write"}})).unwrap(),
             ];
-            s.selected_chat = Some("foreman".into());
+            s.selected_chat = Some(selected.clone());
             s.selected_space = Some("project".into());
             s.auto_selected = true;
             s.chats_synced = true;

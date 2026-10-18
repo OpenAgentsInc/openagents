@@ -16352,6 +16352,15 @@ public struct SessionRow: Equatable, Hashable {
      * name instead of the runtime (#11966).
      */
     public var agentName: String?
+    /**
+     * "Foreman · custom agent · Claude Code", shown under the session
+     * title of a saved agent's chat (#12027).
+     */
+    public var agentLine: String?
+    /**
+     * The page where the saved agent is managed (Agent Lab).
+     */
+    public var agentUrl: String?
     public var model: String?
     public var modelLabel: String?
     /**
@@ -16411,7 +16420,14 @@ public struct SessionRow: Equatable, Hashable {
         /**
          * The saved agent this chat runs; draw the OpenAgents mark and this
          * name instead of the runtime (#11966).
-         */agentName: String?, model: String?, modelLabel: String?, 
+         */agentName: String?, 
+        /**
+         * "Foreman · custom agent · Claude Code", shown under the session
+         * title of a saved agent's chat (#12027).
+         */agentLine: String?, 
+        /**
+         * The page where the saved agent is managed (Agent Lab).
+         */agentUrl: String?, model: String?, modelLabel: String?, 
         /**
          * Wire effort (`xhigh`).
          */reasoning: String?, branch: String?, cwd: String?, 
@@ -16445,6 +16461,8 @@ public struct SessionRow: Equatable, Hashable {
         self.harness = harness
         self.harnessLabel = harnessLabel
         self.agentName = agentName
+        self.agentLine = agentLine
+        self.agentUrl = agentUrl
         self.model = model
         self.modelLabel = modelLabel
         self.reasoning = reasoning
@@ -16494,6 +16512,8 @@ public struct FfiConverterTypeSessionRow: FfiConverterRustBuffer {
                 harness: FfiConverterOptionString.read(from: &buf), 
                 harnessLabel: FfiConverterOptionString.read(from: &buf), 
                 agentName: FfiConverterOptionString.read(from: &buf), 
+                agentLine: FfiConverterOptionString.read(from: &buf), 
+                agentUrl: FfiConverterOptionString.read(from: &buf), 
                 model: FfiConverterOptionString.read(from: &buf), 
                 modelLabel: FfiConverterOptionString.read(from: &buf), 
                 reasoning: FfiConverterOptionString.read(from: &buf), 
@@ -16529,6 +16549,8 @@ public struct FfiConverterTypeSessionRow: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.harness, into: &buf)
         FfiConverterOptionString.write(value.harnessLabel, into: &buf)
         FfiConverterOptionString.write(value.agentName, into: &buf)
+        FfiConverterOptionString.write(value.agentLine, into: &buf)
+        FfiConverterOptionString.write(value.agentUrl, into: &buf)
         FfiConverterOptionString.write(value.model, into: &buf)
         FfiConverterOptionString.write(value.modelLabel, into: &buf)
         FfiConverterOptionString.write(value.reasoning, into: &buf)

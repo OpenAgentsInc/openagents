@@ -33,6 +33,22 @@ pub fn agent_name(config: Option<&ChatConfig>, title: Option<&str>) -> Option<St
     )
 }
 
+/// Where people find and manage their saved agents (#12027).
+pub const AGENT_LAB_URL: &str = "https://openagents.com/labs/agent";
+
+/// The line a saved agent's chat shows beside or under its title, so the
+/// chat reads as an agent rather than a plain runtime chat (#12027):
+/// "Foreman · custom agent · Claude Code".
+pub fn identity_line(agent: &str, harness: HarnessId) -> String {
+    format!("{agent} · custom agent · {}", runtime_label(harness))
+}
+
+/// [`identity_line`] for a chat, or `None` for an ordinary chat.
+pub fn chat_identity_line(config: Option<&ChatConfig>, title: Option<&str>) -> Option<String> {
+    let name = agent_name(config, title)?;
+    Some(identity_line(&name, config?.harness))
+}
+
 /// The runtime's name as people know it.
 pub fn runtime_label(harness: HarnessId) -> &'static str {
     match harness {
@@ -81,5 +97,17 @@ mod tests {
             Some("Foreman")
         );
         assert_eq!(agent_name(Some(&old), Some("  ")).as_deref(), Some("Agent"));
+    }
+
+    #[test]
+    fn agent_chats_say_they_run_a_custom_agent() {
+        let named = config(serde_json::json!({ASSIGNMENT: "a", AGENT_NAME: "Foreman"}));
+        assert_eq!(
+            chat_identity_line(Some(&named), Some("Foreman")).as_deref(),
+            Some("Foreman · custom agent · Claude Code")
+        );
+        let plain = config(serde_json::json!({}));
+        assert_eq!(chat_identity_line(Some(&plain), Some("Fix CI")), None);
+        assert_eq!(chat_identity_line(None, Some("Foreman")), None);
     }
 }

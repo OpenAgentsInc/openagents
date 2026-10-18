@@ -484,6 +484,11 @@ pub struct SessionRow {
     /// The saved agent this chat runs; draw the OpenAgents mark and this
     /// name instead of the runtime (#11966).
     pub agent_name: Option<String>,
+    /// "Foreman · custom agent · Claude Code", shown under the session
+    /// title of a saved agent's chat (#12027).
+    pub agent_line: Option<String>,
+    /// The page where the saved agent is managed (Agent Lab).
+    pub agent_url: Option<String>,
     pub model: Option<String>,
     pub model_label: Option<String>,
     /// Wire effort (`xhigh`).
@@ -531,6 +536,11 @@ impl From<&zc::SessionRow> for SessionRow {
             harness: r.harness.clone(),
             harness_label: r.harness_label.clone(),
             agent_name: r.agent_name.clone(),
+            agent_line: r.agent_line.clone(),
+            agent_url: r
+                .agent_name
+                .as_ref()
+                .map(|_| openagents_proto::saved_agent::AGENT_LAB_URL.to_owned()),
             model: r.model.clone(),
             model_label: r.model_label.clone(),
             reasoning: r.reasoning.clone(),

@@ -399,7 +399,8 @@ impl Shell {
         ) = {
             let state = self.state.read(cx);
             let chat = state.selected_chat_row();
-            // A saved agent's session is titled with the agent (#11966).
+            // A saved agent's session keeps its title and names the agent
+            // beside it (#11966, #12027).
             let identity = crate::openagents_saved_agent::Identity::of(
                 chat,
                 chat.and_then(|c| c.config.as_ref().map(|c| c.harness)),
@@ -407,11 +408,12 @@ impl Shell {
             match chat {
                 Some(chat) => (
                     SharedString::from(transcript::single_line(
-                        &identity
-                            .agent
-                            .clone()
-                            .or_else(|| chat.title.clone())
-                            .unwrap_or_else(|| "New session".into()),
+                        chat.title
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|t| !t.is_empty())
+                            .or(identity.agent.as_deref())
+                            .unwrap_or("New session"),
                     )),
                     identity,
                     false,
@@ -656,12 +658,15 @@ impl Shell {
                                 })
                                 .child(title),
                         )
-                        .children(identity.runtime.map(|runtime| {
+                        .children(identity.line.map(|line| {
                             div()
-                                .flex_none()
+                                .id("session-agent-line")
+                                .debug_selector(|| "session-agent-line".into())
+                                .min_w(px(0.))
+                                .truncate()
                                 .text_size(crate::typography::ui_rems(11.0))
                                 .text_color(theme.text_muted)
-                                .child(runtime)
+                                .child(line)
                         })),
                 )
             })

@@ -54,11 +54,15 @@ final class CoreSessionSource: SessionSource {
         var next = SessionChrome()
         next.title = c.title
         let project = row?.project?.name ?? "No project"
-        next.subtitle = c.host.name.map { "\(project) @ \($0)" } ?? project
+        // A saved agent's chat says which agent runs it (#12027).
+        next.subtitle = row?.agentLine ?? c.host.name.map { "\(project) @ \($0)" } ?? project
         next.running = c.live.turnRunning
         next.canSteer = c.host.capabilities.midTurnSteering ?? false
         next.placeholder = "Message \(row?.agentName ?? row?.harnessLabel ?? "the agent")"
         var chips: [ComposerChip] = []
+        if let agent = row?.agentName {
+            chips.append(ComposerChip(id: "agent", title: agent, symbol: nil, icon: BrandMarks.image(for: "openagents", side: 13)))
+        }
         if let model = row?.modelLabel ?? row?.harnessLabel {
             chips.append(ComposerChip(id: "model", title: model, symbol: nil, icon: BrandMarks.image(for: row?.harness ?? "claude-code", side: 13)))
         }
@@ -238,6 +242,11 @@ final class CoreSessionSource: SessionSource {
                     })
                 }
             }])
+        case "agent":
+            guard let url = row.agentUrl.flatMap(URL.init(string:)) else { return nil }
+            return UIMenu(title: row.agentName ?? "", children: [
+                UIAction(title: "Open in Agent Lab", image: UIImage(systemName: "safari")) { _ in UIApplication.shared.open(url) },
+            ])
         case "pr":
             guard let url = row.pullRequest.flatMap({ URL(string: $0.url) }) else { return nil }
             return UIMenu(title: row.pullRequest?.title ?? "", children: [

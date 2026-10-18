@@ -2519,6 +2519,10 @@ impl ComposerInput {
         self.content_height
     }
 
+    pub fn placeholder(&self) -> &SharedString {
+        &self.placeholder
+    }
+
     pub fn set_placeholder(
         &mut self,
         placeholder: impl Into<SharedString>,
@@ -8602,17 +8606,41 @@ impl Composer {
                             .unwrap_or_default();
                         self.input.update(cx, |input, cx| {
                             input.set_text(draft, cx);
-                            input.set_placeholder("Do anything…", cx);
+                            input.set_placeholder(
+                                crate::openagents_saved_agent::DEFAULT_PLACEHOLDER,
+                                cx,
+                            );
                         });
                     }
                 }
             }
         }
+        self.sync_message_placeholder(cx);
         let input_context = message_input_context(self.wizard.is_some());
         self.input
             .update(cx, |input, cx| input.set_key_context(input_context, cx));
         self.on_input_edited(cx);
         cx.notify();
+    }
+
+    /// The input's placeholder outside a question: "Message Foreman" in a
+    /// saved agent's chat, else the default.
+    fn message_placeholder(&self, cx: &App) -> SharedString {
+        crate::openagents_saved_agent::Identity::of(self.state.read(cx).selected_chat_row(), None)
+            .placeholder()
+    }
+
+    /// A saved agent's chat is addressed by name (#12027). A question's
+    /// panel keeps its own placeholder while it borrows the input.
+    fn sync_message_placeholder(&mut self, cx: &mut Context<Self>) {
+        if self.wizard.is_some() {
+            return;
+        }
+        let placeholder = self.message_placeholder(cx);
+        if *self.input.read(cx).placeholder() != placeholder {
+            self.input
+                .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+        }
     }
 
     pub(crate) fn run_live(&self, cx: &App) -> bool {
@@ -9730,6 +9758,7 @@ impl Composer {
         };
         self.advance_task = None;
         self.answered_requests.insert(wizard.request_id.clone());
+        let placeholder = self.message_placeholder(cx);
         let draft = self
             .drafts
             .get(&self.current_key)
@@ -9738,7 +9767,7 @@ impl Composer {
         self.input.update(cx, |input, cx| {
             input.set_text(draft, cx);
             // The panel borrowed the composer input; hand back its identity.
-            input.set_placeholder("Do anything…", cx);
+            input.set_placeholder(placeholder, cx);
             input.set_key_context(MESSAGE_COMPOSER_CONTEXT, cx);
         });
         let Some(engine) = self.state.read(cx).engine().cloned() else {
@@ -10670,6 +10699,8 @@ impl Render for Composer {
         {
             return div().children(self.chat_home_controls(cx));
         }
+        // Rows can land after the last state change this composer saw.
+        self.sync_message_placeholder(cx);
         if self.dictation_blur.is_none() {
             // Stop, Send and keyboard navigation within the composer must not
             // discard capture. Only leaving the whole composer invalidates it.
@@ -11374,6 +11405,14 @@ impl Render for Composer {
             });
         let beneath_voice = 1.0 - voice_t.clamp(0.0, 1.0);
         let model_picker = model_picker.opacity(beneath_voice);
+        // A saved agent's chat carries the agent's chip beside the model
+        // picker; it opens the agent's page (#12027).
+        let agent_chip = crate::openagents_saved_agent::Identity::of(
+            self.state.read(cx).selected_chat_row(),
+            None,
+        )
+        .agent
+        .map(|name| render_agent_chip(name, &theme, surface_width * 0.3).opacity(beneath_voice));
         let body = if expanded {
             // Expanded: textarea on top (`px-4 pb-1 pt-4`), actions row
             // (8px bottom + 2px top, 32px chips → 42px) ABSOLUTE at the pill's
@@ -11426,6 +11465,7 @@ impl Render for Composer {
                                 .gap(px(ACTION_UTILITY_GAP))
                                 .child(attach),
                         )
+                        .children(agent_chip)
                         .child(model_picker)
                         .child(
                             div()
@@ -11492,6 +11532,9 @@ impl Render for Composer {
                                 .opacity(beneath_voice)
                                 .child(self.render_input_with_completion()),
                         )
+                        .children(agent_chip.map(|chip| {
+                            div().min_w_0().relative().top(px(-cluster_dy)).child(chip)
+                        }))
                         .child(
                             div()
                                 .min_w_0()
@@ -16182,4 +16225,38 @@ impl Composer {
     pub fn fixture_continuation_send(&mut self, text: String, cx: &mut Context<Self>) {
         self.send(text, false, cx);
     }
+}
+
+/// The saved agent's chip beside the model picker: the OpenAgents mark and
+/// the agent's name, styled like the picker's ghost pill. It opens Agent Lab,
+/// where the agent is managed (#12027).
+fn render_agent_chip(name: String, theme: &Theme, max_width: f32) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id("composer-agent-chip")
+        .debug_selector(|| "composer-agent-chip".into())
+        .role(gpui::Role::Link)
+        .aria_label(format!("Open {name} in Agent Lab"))
+        .flex_none()
+        .min_w_0()
+        .max_w(px(max_width.max(96.0)))
+        .h(px(32.0))
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .px(px(6.0))
+        .rounded(px(8.0))
+        .text_size(crate::typography::ui_rems(12.0))
+        .font_weight(gpui::FontWeight::MEDIUM)
+        .text_color(theme.text.opacity(0.9))
+        .hover(|s| s.bg(theme.element_hover))
+        .cursor_pointer()
+        .on_click(|_, _, cx| cx.open_url(openagents_proto::saved_agent::AGENT_LAB_URL))
+        .child(
+            crate::icons::icon(crate::icons::OPENAGENTS_LOGO)
+                .size(px(16.0))
+                .flex_none()
+                .text_color(theme.text.opacity(0.9)),
+        )
+        .child(div().min_w_0().truncate().child(name))
 }
