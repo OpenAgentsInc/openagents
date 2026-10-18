@@ -42,10 +42,15 @@ pub(crate) fn init(state: Entity<AppState>, data_dir: PathBuf, ipc_port: u16, cx
         else {
             return;
         };
-        if let Some((entry, _chat)) =
+        if let Some((entry, chat)) =
             upgrade_app::reopened(&data_dir, &bundle, openagents_host_upgrade::now_ms())
         {
-            tracing::info!(upgrade = %entry.id, summary = %entry.summary(), "reopened after a host upgrade");
+            tracing::info!(
+                upgrade = %entry.id,
+                summary = %entry.summary(),
+                chat = chat.as_deref().unwrap_or("none"),
+                "reopened after a host upgrade"
+            );
             crate::toast::success(cx, upgrade_app::reopened_line(&entry));
         }
         let mut watcher = Watcher::new(&data_dir, bundle.clone());
@@ -161,7 +166,12 @@ fn restart(
         crate::toast::error(cx, format!("The upgrade couldn't restart the app: {e}"));
         return false;
     }
-    tracing::info!(upgrade = %pending.id, to = %pending.to, "restarting into a host upgrade");
+    tracing::info!(
+        upgrade = %pending.id,
+        to = %pending.to,
+        chat = chat.as_deref().unwrap_or("none"),
+        "restarting into a host upgrade"
+    );
     crate::app_menus::request_quit(cx);
     true
 }
