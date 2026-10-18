@@ -15,7 +15,9 @@ mod android_sessions;
 pub use android_sessions::*;
 mod android_recovery;
 pub use android_recovery::*;
+mod accessibility;
 mod account;
+pub use accessibility::*;
 mod android_storage;
 pub use android_storage::{
     AndroidIdentityVault, AndroidPairings, AndroidPasswords, AndroidSecretStorage,

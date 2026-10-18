@@ -15,6 +15,7 @@ pub mod motion;
 pub mod presentation;
 pub mod press;
 pub mod selection;
+pub mod semantics;
 pub mod style;
 pub mod surface;
 #[cfg(feature = "syntax")]

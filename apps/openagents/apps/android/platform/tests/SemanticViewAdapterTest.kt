@@ -4,6 +4,7 @@ import android.test.InstrumentationTestCase
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
 import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,9 +20,11 @@ class SemanticViewAdapterTest : InstrumentationTestCase() {
             .put("placeholder", "Name").put("value", "Foreman").put("secret", false)
             .put("multiline", false).put("enabled", enabled).put("max_bytes", 64))
         val save = node("save", "button", JSONObject().put("label", "Save").put("enabled", enabled))
+        val choice = node("theme", "choice", JSONObject().put("label", "Use dark theme")
+            .put("selected", true).put("enabled", enabled))
         val heading = node("heading", "text", JSONObject().put("value", "Agents").put("role", "heading"))
         val root = node("home", "stack", JSONObject().put("axis", "vertical")
-            .put("children", JSONArray().put(heading).put(field).put(save)))
+            .put("children", JSONArray().put(heading).put(field).put(save).put(choice)))
         return JSONObject().put("schema", "rust-native.view.v3").put("instance", "fixture")
             .put("revision", revision).put("root", root).toString().toByteArray(Charsets.UTF_8)
     }
@@ -39,12 +42,16 @@ class SemanticViewAdapterTest : InstrumentationTestCase() {
         adapter.mount(parent, fixture(1))
         val field = parent.findViewWithTag<EditText>("name")
         val save = parent.findViewWithTag<View>("save")
+        val choice = parent.findViewWithTag<LinearLayout>("theme").getChildAt(0) as RadioButton
         assertEquals("Agent name", field.contentDescription)
+        assertEquals("Use dark theme", choice.text.toString())
+        assertTrue(choice.isChecked)
         assertTrue(parent.findViewWithTag<TextView>("heading").isAccessibilityHeading)
         field.setText("Test agent")
         assertEquals(listOf("1:name:Test agent"), changes)
         save.performClick()
-        assertEquals(listOf("fixture:1:save"), actions)
+        choice.performClick()
+        assertEquals(listOf("fixture:1:save", "fixture:1:theme"), actions)
         adapter.mount(parent, fixture(2, false))
         assertSame(field, parent.findViewWithTag<EditText>("name"))
         assertFalse(field.isEnabled)
