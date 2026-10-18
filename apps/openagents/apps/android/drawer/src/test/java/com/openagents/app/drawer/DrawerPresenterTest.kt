@@ -141,4 +141,19 @@ class DrawerPresenterTest {
             DrawerFrame(listOf(row(live, "One"), row(live, "Two")), null, false)
         }
     }
+    @Test fun indexed_rows_preserve_metadata_and_never_alias_legacy_navigation() = runBlocking {
+        val indexed = DrawerKey(DrawerOrigin.INDEXED, saved.id)
+        val supplied = DrawerRow(indexed, "Indexed", "Synthetic computer", "Shared project",
+            "Custom agent", "Waiting for you", true, false, false, emptySet())
+        val fixture = Fixture(DrawerFrame(listOf(row(saved, "Legacy"), supplied), indexed, false))
+        val frames = mutableListOf<DrawerFrame>()
+        val presenter = DrawerPresenter(fixture, this, frames::add)
+        presenter.restore(indexed, DrawerRequest(DrawerTab.SAVED, projectId = "prj_shared"))
+        yield()
+        assertEquals(listOf(indexed), fixture.restores)
+        assertEquals(supplied, frames.single().rows[1])
+        assertNotEquals(saved, frames.single().selected)
+        assertTrue(frames.single().rows[1].actions.isEmpty())
+    }
+
 }

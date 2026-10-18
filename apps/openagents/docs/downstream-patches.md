@@ -775,3 +775,11 @@ links remain readable. Upstream fixes now require manual ports.
   for live and saved rows. Saved metadata without a verified Rust source stays
   optional. Shell wiring, binding regeneration, and executable checks remain open; see
   `apps/android/drawer/README.md`. No checks requiring a build have passed yet.
+
+- [OpenAgents #12087](https://github.com/OpenAgentsInc/openagents/issues/12087):
+  preserve separately authorized indexed sessions through the account, UniFFI,
+  and Android drawer. Agent/status/project data stays on its own identity;
+  a bounded viewer-owned read-marker API acknowledges only the exact published
+  row version. The SDK and server changes land together. Indexed transcript reads
+  keep shared-project authorization; no legacy-ID join or second room path is
+  added. New source fixtures and binding/integration checks remain unrun.

@@ -98,9 +98,19 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
     }
     // Computer sessions (#11897) ride beside the first page: their rows
     // aren't chats in this store, so they never join `data` or its cursor.
-    let sessions = if page.after.is_none() && query.is_empty() {
+    let sessions = if page.after.is_none() {
         match crate::session_index::listed(&app, &headers, &owner, page.project.as_deref()).await {
-            Ok(rows) => rows,
+            Ok(rows) => rows
+                .into_iter()
+                .filter(|row| {
+                    query.is_empty()
+                        || row["title"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(&query)
+                })
+                .collect(),
             Err(r) => return r,
         }
     } else {
