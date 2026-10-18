@@ -688,3 +688,12 @@ links remain readable. Upstream fixes now require manual ports.
   connect the bridge and provide transcript, composer, Markdown, and local
   surface adapters. This baseline has no Gradle app shell; Android compilation,
   device input, TalkBack, deployment, and store checks have not run.
+
+- [OpenAgents #12102](https://github.com/OpenAgentsInc/openagents/issues/12102):
+  derive native accessibility metadata and applied-revision focus restoration in
+  `rust-native::semantics`; expose account-fenced mobile semantics and bounded
+  transcript navigation. Add Android Views metadata mapping and lifecycle requests
+  under `apps/android/accessibility`, plus optional `SemanticViewAdapter` wiring
+  and API 26 heading guards. Account/session/media owners retain authority. Binding
+  regeneration, app source-set/host wiring, Rust/Kotlin checks, and device checks
+  remain pending; this source checkpoint claims no runtime pass.

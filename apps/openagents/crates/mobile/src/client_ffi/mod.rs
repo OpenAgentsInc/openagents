@@ -11,6 +11,8 @@
 //! through [`CoreClient::session_handle`] → [`openagents_client::SessionHandle`]
 //! (`snapshot()` / `subscribe()`), never over FFI.
 
+mod accessibility;
+pub use accessibility::*;
 mod account;
 mod owner_notifications;
 pub use owner_notifications::*;

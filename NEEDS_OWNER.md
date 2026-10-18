@@ -2943,3 +2943,17 @@ afterward. No production or live Play check ran during H1 source work.
 Keep rollout off until this qualification passes; code completion does not
 wait for Play Console access, a physical device, or store action. See
 [the contract](docs/auth/README.md#android-play-integrity-12086).
+
+### Qualify Android accessibility and lifecycle (#12102)
+
+After the shared Android shell and accessibility bridge pass their offline checks,
+use an API 26 device and a current Android device with a dedicated test account.
+Check TalkBack names, roles, states, reading order, dialog focus restoration,
+earlier/later transcript actions, long streaming answers, keyboard and switch
+navigation, large font/display scales, contrast in light/dark modes, and reduced
+motion. Check system/predictive back, rotation/process recreation, offline/reconnect,
+background/foreground, permission revocation, and interrupted uploads/calls. Confirm
+drafts and account identity survive, and revoked permissions require approval again.
+Use synthetic files and sessions; never test on the owner's production account.
+These physical checks do not replace the pending Rust, binding, Kotlin, and offline
+instrumentation checks. No device pass is recorded for the source checkpoint.
