@@ -34,6 +34,10 @@ pub struct Schedule {
     pub chat: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_title: Option<String>,
+    /// The saved agent this schedule wakes, by definition ID (#12044), so
+    /// it is known by its agent rather than its prompt text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
     #[serde(default)]

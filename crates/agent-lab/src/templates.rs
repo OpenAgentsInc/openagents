@@ -90,6 +90,7 @@ pub fn foreman() -> Experiment {
                     // The host's 20-minute default stall window.
                     stall_minutes: None,
                     shell_timeout_secs: Some(120),
+                    ..Default::default()
                 }),
             },
             source: None,

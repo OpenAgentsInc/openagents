@@ -508,7 +508,10 @@ async fn remote_voice_crosses_two_engines_and_owner_drop_releases_host() {
 #[cfg(unix)]
 #[tokio::test]
 async fn voice_requires_a_saved_agent_and_resolves_the_default_by_ids() {
-    use openagents_proto::{foreman::ForemanSettings, voice::remote as wire};
+    use openagents_proto::{
+        agent_wakes::{SetWakes, WakeSettings},
+        voice::remote as wire,
+    };
     let temp = tempfile::tempdir().unwrap();
     let (core, account) = native_core(&temp).await;
     account.choice.lock().unwrap().target = None;
@@ -535,9 +538,12 @@ async fn voice_requires_a_saved_agent_and_resolves_the_default_by_ids() {
             .all(|c| !openagents_proto::voice::is_orchestrator_chat(&c.id))
     );
     core.doc_host
-        .set_foreman(ForemanSettings {
-            chat_id: Some(account.targets[0].chat_id.clone()),
-            ..Default::default()
+        .set_agent_wakes(SetWakes {
+            agent: account.targets[0].agent_id.clone(),
+            settings: WakeSettings {
+                chat_id: Some(account.targets[0].chat_id.clone()),
+                ..Default::default()
+            },
         })
         .unwrap();
     core.workspace

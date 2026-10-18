@@ -17,12 +17,12 @@ use serde::{Deserialize, Serialize};
 use openagents_proto::{AuthState, WorkspaceScope};
 
 pub mod accounts;
+mod agent_wakes;
 pub mod appearance;
 pub mod archived;
 pub mod composer;
 pub mod devices;
 pub mod files;
-mod foreman;
 pub(crate) mod voice_agent;
 pub mod harnesses;
 pub mod notifications;

@@ -111,7 +111,7 @@ impl DocHost {
                     .agent_lab_tick(&lease, &binding.lab_root, &binding.registry)
                     .await;
                 let _ = host.custom_agent_tick(&lease).await;
-                let _ = host.foreman_tick(&lease).await;
+                let _ = host.agent_wakes_tick(&lease).await;
             }
         });
     }
@@ -220,10 +220,9 @@ impl DocHost {
                 .ok_or_else(|| error("Choose a folder for this conversation."))?
         };
         bind_agent_request(&mut request, spec, harness, &id, chat_id)?;
-        let check_ins_on = self.foreman().is_some_and(|f| {
-            let s = f.state().settings;
-            s.chat_id.as_deref() == Some(chat_id) && !s.paused
-        });
+        let check_ins_on = self
+            .wake_engine_for_chat(chat_id)
+            .is_some_and(|e| !e.state().settings.paused);
         note_check_ins_off(&mut request, spec, check_ins_on);
         Ok((harness, request))
     }
@@ -439,7 +438,7 @@ impl DocHost {
                         a.definition.spec.name, a.spec.agent, a.spec.agent_revision
                     ),
                 )?;
-                self.foreman_adopt_bound(&bound)?;
+                self.adopt_bound(&bound)?;
             }
         }
         // Older chats learn their agent's name (#11966), definition and
@@ -686,6 +685,14 @@ fn stamp_agent(
             every_minutes: a.every_minutes,
             authority: a.authority,
             stall_minutes: a.stall_minutes,
+            // Wakes are the same words on both sides; one this host doesn't
+            // know is skipped.
+            wakes: a
+                .wakes
+                .iter()
+                .filter_map(|w| serde_json::from_value(serde_json::to_value(w).ok()?).ok())
+                .collect(),
+            coalesce_secs: a.coalesce_secs,
         })
         .filter(|d| *d != Declared::default());
     match declared.and_then(|d| serde_json::to_value(d).ok()) {
@@ -1121,6 +1128,7 @@ mod tests {
             authority: true,
             stall_minutes: None,
             shell_timeout_secs: None,
+            ..Default::default()
         });
         let chat = |options: serde_json::Value| -> openagents_proto::Chat {
             serde_json::from_value(serde_json::json!({
@@ -1163,6 +1171,7 @@ mod tests {
             authority: true,
             stall_minutes: Some(15),
             shell_timeout_secs: Some(120),
+            ..Default::default()
         });
         stamp_agent(&mut options, &a.spec.agent, &a.definition.spec);
         assert_eq!(

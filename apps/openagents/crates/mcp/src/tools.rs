@@ -345,7 +345,7 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: RECORD_DECISION,
-            description: "Foreman only: add one entry to Foreman's decision log, which the owner sees in the app and the next check-in reads. Call it once per check-in with what you saw, what you decided and what you did. Pass `working` with every issue you track, the chat that owns it and its status: the host saves it and puts it in every check-in, even after a restart, with how long each item has been in its status. In judgments, pass the receipt of each judge call the decision used.",
+            description: "For a saved agent with check-ins: add one entry to your decision log, which the owner sees in the app and your next check-in reads. Call it once per check-in with what you saw, what you decided and what you did. It works only from the agent's own chat.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -354,7 +354,7 @@ fn catalog() -> Vec<ToolDef> {
                     "did": { "type": "string", "description": "What you changed, or \"nothing\"." },
                     "working": {
                         "type": "array",
-                        "maxItems": openagents_proto::foreman::MAX_WORK_ITEMS,
+                        "maxItems": openagents_proto::agent_wakes::MAX_WORK_ITEMS,
                         "description": "Your whole working state now, replacing the saved one. Leave it out to keep the saved state.",
                         "items": {
                             "type": "object",
@@ -657,10 +657,10 @@ struct DecisionArgs {
     did: String,
     /// The whole working state, replacing the saved one (#12057).
     #[serde(default)]
-    working: Option<Vec<openagents_proto::foreman::WorkItem>>,
+    working: Option<Vec<openagents_proto::agent_wakes::WorkItem>>,
     /// Receipts from `judge` for the judgments this decision used.
     #[serde(default)]
-    judgments: Vec<openagents_proto::foreman::JudgmentReceipt>,
+    judgments: Vec<openagents_proto::agent_wakes::JudgmentReceipt>,
 }
 
 #[derive(Deserialize)]
@@ -1736,17 +1736,17 @@ impl Tools {
         plan_reply(plan)
     }
 
-    /// Foreman's decision log lives on its chat's host (#11965).
+    /// An agent's decision log lives on its chat's host (#11965, #12044).
     async fn record_decision(&self, args: DecisionArgs) -> anyhow::Result<Value> {
         let origin = self
             .openagents
             .origin()
             .chat_id
             .clone()
-            .context("record_decision only works from Foreman's own chat")?;
+            .context("record_decision only works from an agent's own chat")?;
         self.openagents
             .call(
-                openagents_rpc::methods::RECORD_FOREMAN_DECISION,
+                openagents_rpc::methods::RECORD_AGENT_DECISION,
                 json!({
                     "originChatId": origin,
                     "saw": args.saw,
@@ -2362,7 +2362,7 @@ mod tests {
                         RpcReply::Value(plan)
                     }
                 }
-                methods::RECORD_FOREMAN_DECISION | methods::NOTIFY_OWNER => {
+                methods::RECORD_AGENT_DECISION | methods::NOTIFY_OWNER => {
                     self.writes
                         .lock()
                         .unwrap()
@@ -2798,7 +2798,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn foremans_writes_name_its_chat_and_reach_its_log() {
+    async fn an_agents_writes_name_its_chat_and_reach_its_log() {
         let world = Arc::new(World::default());
         let outside = tools(world.clone(), Origin::default());
         assert!(!outside.has("record_decision"));
@@ -2827,7 +2827,7 @@ mod tests {
         assert_eq!(method, methods::QUEUE_COMMAND);
         assert_eq!(params["originChatId"], "chat-alpha-1");
         let (method, params) = writes.last().unwrap();
-        assert_eq!(method, methods::RECORD_FOREMAN_DECISION);
+        assert_eq!(method, methods::RECORD_AGENT_DECISION);
         assert_eq!(params["originChatId"], "chat-alpha-1");
         assert_eq!(params["did"], "stopped Beta");
         assert_eq!(params["working"][0]["status"], "handoff");
@@ -2869,13 +2869,13 @@ mod tests {
             .unwrap();
         let writes = world.writes.lock().unwrap();
         let (method, params) = writes.last().unwrap();
-        assert_eq!(method, methods::RECORD_FOREMAN_DECISION);
+        assert_eq!(method, methods::RECORD_AGENT_DECISION);
         assert_eq!(params["judgments"][0]["decision"], "dec_7");
         assert_eq!(
             params["judgments"][0]["questionSet"],
             "openagents.run-progress.v1"
         );
-        let record: openagents_proto::foreman::RecordDecision =
+        let record: openagents_proto::agent_wakes::RecordDecision =
             serde_json::from_value(params.clone()).unwrap();
         assert_eq!(record.judgments[0].door.as_deref(), Some("clef"));
     }

@@ -20,14 +20,25 @@ pub(crate) fn extend(doc: &mut Value) {
     "every_minutes":{"type":"integer","minimum":5,"maximum":1440,"description":"Minutes between check-ins when the host turns them on."},
     "stall_minutes":{"type":"integer","minimum":5,"maximum":240,"description":"Minutes a chat or claim the agent manages may go with no progress before the host raises it. Hosts default to 20."},
     "authority":{"type":"boolean","description":"The agent asks for standing authority over other chats with its check-ins. The host grants it, logged; the owner can turn it off."},
-    "shell_timeout_secs":{"type":"integer","minimum":10,"maximum":3600,"description":"The longest one shell command may run, in seconds. The host passes it to the runtime."}}}}});
+    "shell_timeout_secs":{"type":"integer","minimum":10,"maximum":3600,"description":"The longest one shell command may run, in seconds. The host passes it to the runtime."},
+    "wakes":{"type":"array","maxItems":16,"description":"What the agent wakes on; omitted or empty is every wake the host knows. Readers skip wakes they don't know.","items":{"type":"string","examples":["chat_finished","chat_errored","chat_needs_answer","issue_opened","issue_closed","claim_stale","chat_stalled","claim_no_progress"]}},
+    "coalesce_secs":{"type":"integer","minimum":0,"maximum":1800,"description":"Seconds events wait for quiet before they start one check-in."}}}}});
+    let scope = json!({"type":"string","enum":["chat.message","chat.start","chat.steer","chat.stop","land.submit","work.dispatch"]});
+    let over = json!({"oneOf":[
+        {"type":"string","enum":["account"]},
+        {"type":"object","additionalProperties":false,"required":["project"],"properties":{"project":{"type":"string","minLength":1,"maxLength":128}}},
+        {"type":"object","additionalProperties":false,"required":["chats"],"properties":{"chats":{"type":"array","minItems":1,"maxItems":64,"items":{"type":"string","minLength":1,"maxLength":128}}}}]});
     let schemas = json!({
      "CustomAgentSpec":spec,
      "CustomAgentDefinition":{"type":"object","additionalProperties":false,"required":["id","revision","spec","deleted"],"properties":{"id":id,"revision":revision,"spec":r("Spec"),"deleted":{"type":"boolean"}}},
      "CustomAgentCreate":{"type":"object","additionalProperties":false,"required":["request_id","spec"],"properties":{"request_id":id,"spec":r("Spec")}},
      "CustomAgentUpdate":{"type":"object","additionalProperties":false,"required":["request_id","expected_revision","spec"],"properties":{"request_id":id,"expected_revision":revision,"spec":r("Spec")}},
      "CustomAgentDelete":{"type":"object","additionalProperties":false,"required":["request_id","expected_revision"],"properties":{"request_id":id,"expected_revision":revision}},
-     "CustomAgentPage":{"type":"object","required":["data","next"],"properties":{"data":{"type":"array","maxItems":100,"items":r("Definition")},"next":{"type":["string","null"]}}}
+     "CustomAgentPage":{"type":"object","required":["data","next"],"properties":{"data":{"type":"array","maxItems":100,"items":r("Definition")},"next":{"type":["string","null"]}}},
+     "CustomAgentGrant":{"type":"object","additionalProperties":false,"required":["id","scopes","over","grantedAt"],"description":"A power the account owner gave the agent over other chats. Grants belong to the account, never to the definition: a fork asks its own owner.","properties":{"id":id,"scopes":{"type":"array","items":scope},"over":over,"grantedAt":{"type":"integer","description":"Unix milliseconds."}}},
+     "CustomAgentGrantCreate":{"type":"object","additionalProperties":false,"required":["request_id","scopes","over"],"description":"Scopes are words. Money, keys, secrets, deploys and closing other agents' issues can't be granted to any agent and answer 400 not_grantable.","properties":{"request_id":id,"scopes":{"type":"array","minItems":1,"items":{"type":"string"}},"over":over}},
+     "CustomAgentGrantList":{"type":"object","additionalProperties":false,"required":["data"],"properties":{"data":{"type":"array","maxItems":32,"items":r("Grant")}}},
+     "CustomAgentGrantRevoked":{"type":"object","additionalProperties":false,"required":["revoked"],"properties":{"revoked":{"type":"boolean"}}}
     });
     doc["components"]["schemas"]
         .as_object_mut()
@@ -69,12 +80,36 @@ pub(crate) fn extend(doc: &mut Value) {
             Some("Delete"),
             "Definition",
         ),
+        (
+            "/v1/agent-definitions/{id}/grants",
+            "get",
+            "listAgentGrants",
+            None,
+            "GrantList",
+        ),
+        (
+            "/v1/agent-definitions/{id}/grants",
+            "post",
+            "grantAgent",
+            Some("GrantCreate"),
+            "Grant",
+        ),
+        (
+            "/v1/agent-definitions/{id}/grants/{grant}",
+            "delete",
+            "revokeAgentGrant",
+            None,
+            "GrantRevoked",
+        ),
     ] {
         let mut parameters = vec![];
         if path.contains("{id}") {
             parameters.push(json!({"name":"id","in":"path","required":true,"schema":id}));
         }
-        if method == "get" {
+        if path.contains("{grant}") {
+            parameters.push(json!({"name":"grant","in":"path","required":true,"schema":id}));
+        }
+        if method == "get" && !path.ends_with("/grants") {
             if result == "Page" {
                 parameters.push(json!({"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":100,"default":100}}));
                 parameters.push(json!({"name":"after","in":"query","schema":id}));

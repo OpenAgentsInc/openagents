@@ -14,7 +14,7 @@ use std::time::Duration;
 use futures::future::BoxFuture;
 use jev::decisions::{DecisionsRequest, DecisionsResponse};
 use jev::question_set::{Judgment, MODEL, coordination};
-use openagents_proto::foreman::JudgmentReceipt;
+use openagents_proto::agent_wakes::JudgmentReceipt;
 use serde_json::{Value, json};
 
 use crate::tools::ToolDef;

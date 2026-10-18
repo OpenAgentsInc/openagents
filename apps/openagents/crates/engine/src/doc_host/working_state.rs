@@ -5,14 +5,26 @@
 //! check-in, so the first check-in after a restart or a context reset
 //! resumes from it. Nothing here branches on the agent's name.
 use super::*;
-use openagents_proto::foreman::{MAX_WORK_ITEMS, MAX_WORK_NOTE, WorkItem, WorkingState};
+use openagents_proto::agent_wakes::{MAX_WORK_ITEMS, MAX_WORK_NOTE, WorkItem, WorkingState};
 
 const FILE: &str = "working.json";
 
 impl DocHost {
-    /// Save the working state next to `root`, the decision log's folder.
+    /// Save each agent's working state under `root`, next to its decision
+    /// log: `ROOT/<definition ID>/working.json` (#12044), or
+    /// `ROOT/chat-<ID>/working.json` for a chat with no saved agent.
     pub(super) fn start_working_state(&self, root: &std::path::Path) {
-        let _ = self.inner.working.set(root.join(FILE));
+        let _ = self.inner.working.set(root.to_path_buf());
+    }
+
+    /// Where the working state of the agent `chat` runs is saved.
+    fn working_path(&self, chat: &str) -> Option<std::path::PathBuf> {
+        let root = self.inner.working.get()?;
+        let dir = match self.agent_of(chat) {
+            Some(agent) if crate::agent_wakes::valid_agent(&agent) => agent,
+            _ => format!("chat-{}", chat.replace(['/', '\\', '.'], "_")),
+        };
+        Some(root.join(dir).join(FILE))
     }
 
     /// The definition ID of the saved agent `chat` runs, if any.
@@ -30,7 +42,7 @@ impl DocHost {
     /// The saved working state of the agent `chat` runs, or `None` when it
     /// has never saved one here.
     pub(crate) fn working_state(&self, chat: &str) -> Option<WorkingState> {
-        let path = self.inner.working.get()?;
+        let path = self.working_path(chat)?;
         let state: WorkingState = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
         belongs(&state, self.agent_of(chat).as_deref(), chat).then_some(state)
     }
@@ -43,9 +55,7 @@ impl DocHost {
         now: i64,
     ) -> Result<WorkingState, EngineError> {
         let path = self
-            .inner
-            .working
-            .get()
+            .working_path(chat)
             .ok_or_else(|| EngineError::Other("Check-ins aren't available here.".into()))?;
         let previous = self.working_state(chat).unwrap_or_default();
         let state = WorkingState {
@@ -61,7 +71,7 @@ impl DocHost {
             serde_json::to_vec_pretty(&state).map_err(|e| EngineError::Other(e.to_string()))?;
         let temporary = path.with_extension("json.tmp");
         std::fs::write(&temporary, bytes)?;
-        std::fs::rename(&temporary, path)?;
+        std::fs::rename(&temporary, &path)?;
         Ok(state)
     }
 }
@@ -173,7 +183,7 @@ fn minutes(ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openagents_proto::foreman::WorkStatus;
+    use openagents_proto::agent_wakes::WorkStatus;
 
     const MIN: i64 = 60_000;
 

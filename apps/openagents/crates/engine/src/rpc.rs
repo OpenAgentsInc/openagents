@@ -153,8 +153,8 @@ struct QueueCommandParams {
     /// durably queued — never as a gate in front of it.
     #[serde(default)]
     transfers: Vec<crate::uploads::AttachmentTransfer>,
-    /// The chat whose agent sent this through the app's tools, for
-    /// Foreman's standing authority (#11965).
+    /// The chat whose agent sent this through the app's tools, for that
+    /// agent's grants (#11965, #12044).
     #[serde(default)]
     origin_chat_id: Option<String>,
 }
@@ -1562,10 +1562,12 @@ fn forwardable(method: &str) -> bool {
             | methods::LIST_FOLDERS
             | methods::GET_WORKTREE_SETTINGS
             | methods::SET_WORKTREE_SETTINGS
-            // Foreman's schedule, authority and log live on its chat's host.
-            | methods::GET_FOREMAN
+            // An agent's wakes, grants and log live on its chat's host.
+            | methods::GET_AGENT_WAKES
+            | methods::SET_AGENT_WAKES
+            | methods::GRANT_AGENT
+            | methods::REVOKE_AGENT_GRANT
             | methods::GET_VOICE_AGENT
-            | methods::SET_FOREMAN
             | methods::LIST_DRIVES
             | methods::SEARCH_HOME_FOLDERS
             | methods::RELEASE_HOME_FOLDER_SEARCH
@@ -2044,7 +2046,7 @@ impl RpcService for EngineRpc {
                 let p: QueueCommandParams = parse_params(params)?;
                 self.admit_voice_message(&p.chat_id)?;
                 self.doc_host
-                    .foreman_admit(p.origin_chat_id.as_deref(), &p.chat_id, Some(&p.command))
+                    .agent_admit(p.origin_chat_id.as_deref(), &p.chat_id, Some(&p.command))
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 let command_id = self
                     .doc_host
@@ -2146,7 +2148,7 @@ impl RpcService for EngineRpc {
                 let p: QueueMessageParams = parse_params(params)?;
                 self.admit_voice_message(&p.chat_id)?;
                 self.doc_host
-                    .foreman_admit(p.origin_chat_id.as_deref(), &p.chat_id, None)
+                    .agent_admit(p.origin_chat_id.as_deref(), &p.chat_id, None)
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 let id = self
                     .doc_host
@@ -3231,19 +3233,37 @@ impl RpcService for EngineRpc {
                     .map_err(|_| RpcError::Failed("This voice call has ended.".into()))?;
                 RpcReply::value(&context)
             }
-            methods::GET_FOREMAN => RpcReply::value(&self.doc_host.foreman_status()),
-            methods::SET_FOREMAN => {
-                let settings: openagents_proto::foreman::ForemanSettings = parse_params(params)?;
+            methods::GET_AGENT_WAKES => RpcReply::value(&self.doc_host.agent_wakes_status()),
+            methods::SET_AGENT_WAKES => {
+                let set: openagents_proto::agent_wakes::SetWakes = parse_params(params)?;
                 let status = self
                     .doc_host
-                    .set_foreman(settings)
+                    .set_agent_wakes(set)
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&status)
             }
-            methods::RECORD_FOREMAN_DECISION => {
-                let record: openagents_proto::foreman::RecordDecision = parse_params(params)?;
+            methods::GRANT_AGENT => {
+                let grant: openagents_proto::agent_wakes::GrantRequest = parse_params(params)?;
+                let status = self
+                    .doc_host
+                    .grant_agent(grant)
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&status)
+            }
+            methods::REVOKE_AGENT_GRANT => {
+                let revoke: openagents_proto::agent_wakes::RevokeGrant = parse_params(params)?;
+                let status = self
+                    .doc_host
+                    .revoke_agent_grant(revoke)
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&status)
+            }
+            methods::RECORD_AGENT_DECISION => {
+                let record: openagents_proto::agent_wakes::RecordDecision = parse_params(params)?;
                 self.doc_host
-                    .record_foreman_decision(record)
+                    .record_agent_decision(record)
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&serde_json::json!({ "recorded": true }))
             }

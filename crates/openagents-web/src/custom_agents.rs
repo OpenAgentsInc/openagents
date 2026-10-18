@@ -12,7 +12,8 @@ use axum::{
     routing::get,
 };
 use openagents_sdk::agents::{
-    AgentDefinition, AgentPage, AgentSpec, CreateAgent, DeleteAgent, UpdateAgent, valid_id,
+    AgentDefinition, AgentGrant, AgentPage, AgentSpec, CreateAgent, DeleteAgent, GrantAgent,
+    GrantList, GrantScope, UpdateAgent, valid_id,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -24,7 +25,20 @@ const MAX_BYTES: usize = 4 * 1024 * 1024;
 struct Book {
     definitions: BTreeMap<String, Vec<AgentDefinition>>,
     receipts: BTreeMap<String, Receipt>,
+    /// Grants the owner gave each agent, by definition ID (#12044). Kept off
+    /// the file until there is one, so files without grants read anywhere.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    grants: BTreeMap<String, Vec<AgentGrant>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    grant_receipts: BTreeMap<String, GrantReceipt>,
 }
+#[derive(Clone, Serialize, Deserialize)]
+struct GrantReceipt {
+    fingerprint: String,
+    result: AgentGrant,
+}
+/// The most grants one agent may hold.
+const MAX_GRANTS: usize = 32;
 #[derive(Clone, Serialize, Deserialize)]
 struct Receipt {
     fingerprint: String,
@@ -33,6 +47,8 @@ struct Receipt {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Refusal {
     Invalid(&'static str),
+    /// A scope no agent can be granted, or one that doesn't exist.
+    NotGrantable(&'static str),
     Missing,
     Version,
     Retry,
@@ -42,6 +58,7 @@ impl Refusal {
     pub(super) fn response(&self) -> Response {
         let (status, code, message) = match self {
             Self::Invalid(message) => (StatusCode::BAD_REQUEST, "invalid_agent", *message),
+            Self::NotGrantable(message) => (StatusCode::BAD_REQUEST, "not_grantable", *message),
             Self::Missing => (
                 StatusCode::NOT_FOUND,
                 "not_found",
@@ -101,6 +118,78 @@ impl Mutation {
     }
 }
 impl Book {
+    /// Grant the agent `id` what `request` asks. Never-list scopes are
+    /// refused for every agent; a repeated request returns the same grant.
+    fn grant(
+        &mut self,
+        id: &str,
+        request: &GrantAgent,
+        now_ms: i64,
+    ) -> Result<AgentGrant, Refusal> {
+        if !valid_id(id) || !valid_id(&request.request_id) {
+            return Err(Refusal::Invalid("The request ID is invalid."));
+        }
+        let mut scopes = request
+            .scopes
+            .iter()
+            .map(|w| GrantScope::grantable(w))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Refusal::NotGrantable)?;
+        if scopes.is_empty() {
+            return Err(Refusal::NotGrantable("Choose at least one power to grant."));
+        }
+        scopes.sort();
+        scopes.dedup();
+        request.over.validate().map_err(Refusal::Invalid)?;
+        if self.get(id, None)?.deleted {
+            return Err(Refusal::Missing);
+        }
+        let bytes = serde_json::to_vec(&(id, request))
+            .map_err(|_| Refusal::Invalid("The grant could not be saved."))?;
+        let fingerprint = crate::chat_store::digest(&bytes);
+        if let Some(previous) = self.grant_receipts.get(&request.request_id) {
+            return if previous.fingerprint == fingerprint {
+                Ok(previous.result.clone())
+            } else {
+                Err(Refusal::Retry)
+            };
+        }
+        let held = self.grants.entry(id.to_owned()).or_default();
+        if held.len() >= MAX_GRANTS {
+            return Err(Refusal::Full);
+        }
+        let grant = AgentGrant {
+            id: crate::chat_store::digest(format!("grant:{id}:{}", request.request_id).as_bytes()),
+            scopes,
+            over: request.over.clone(),
+            granted_at: now_ms,
+        };
+        held.push(grant.clone());
+        while self.grant_receipts.len() >= 4096 {
+            self.grant_receipts.pop_first();
+        }
+        self.grant_receipts.insert(
+            request.request_id.clone(),
+            GrantReceipt {
+                fingerprint,
+                result: grant.clone(),
+            },
+        );
+        Ok(grant)
+    }
+    /// End the grant `grant` of the agent `id`; whether it was there.
+    fn revoke(&mut self, id: &str, grant: &str) -> bool {
+        let Some(held) = self.grants.get_mut(id) else {
+            return false;
+        };
+        let before = held.len();
+        held.retain(|g| g.id != grant);
+        let removed = held.len() != before;
+        if held.is_empty() {
+            self.grants.remove(id);
+        }
+        removed
+    }
     fn get(&self, id: &str, revision: Option<u64>) -> Result<AgentDefinition, Refusal> {
         let history = self.definitions.get(id).ok_or(Refusal::Missing)?;
         history
@@ -242,10 +331,18 @@ pub(super) async fn mutate(
     owner: &str,
     m: Mutation,
 ) -> Result<Result<AgentDefinition, Refusal>, Error> {
+    edit(store, owner, |book| book.apply(&m)).await
+}
+/// Change the owner's book with `f`, retrying on a concurrent write.
+async fn edit<R>(
+    store: &Store,
+    owner: &str,
+    mut f: impl FnMut(&mut Book) -> Result<R, Refusal>,
+) -> Result<Result<R, Refusal>, Error> {
     let key = Store::owner_key(owner, "custom-agents.json")?;
     for _ in 0..16 {
         let (mut book, generation) = load(store, owner).await?;
-        let result = match book.apply(&m) {
+        let result = match f(&mut book) {
             Ok(d) => d,
             Err(r) => return Ok(Err(r)),
         };
@@ -268,6 +365,14 @@ pub(crate) fn routes() -> Router<App> {
         .route(
             "/v1/agent-definitions/{id}",
             get(detail).put(update).delete(delete),
+        )
+        .route(
+            "/v1/agent-definitions/{id}/grants",
+            get(list_grants).post(create_grant),
+        )
+        .route(
+            "/v1/agent-definitions/{id}/grants/{grant}",
+            axum::routing::delete(delete_grant),
         )
         // The instructions, escaped as JSON at worst six bytes a byte, and
         // the rest of the request (#12114).
@@ -406,6 +511,79 @@ async fn delete(
     )
     .await
 }
+/// The grants the owner gave the agent `id` (#12044).
+async fn list_grants(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let owner = match crate::coder_sync::owner(&app, &headers).await {
+        Ok(o) => o,
+        Err(r) => return r,
+    };
+    if !valid_id(&id) {
+        return Refusal::Missing.response();
+    }
+    match load(&app.config.chat_store, &owner).await {
+        Ok((book, _)) => match book.get(&id, None) {
+            Ok(_) => answer(
+                StatusCode::OK,
+                json!(GrantList {
+                    data: book.grants.get(&id).cloned().unwrap_or_default(),
+                }),
+            ),
+            Err(r) => r.response(),
+        },
+        Err(e) => stored(&e),
+    }
+}
+/// Only the account owner grants: the grant lands in their own book.
+async fn create_grant(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Result<Json<GrantAgent>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let owner = match crate::coder_sync::owner(&app, &headers).await {
+        Ok(o) => o,
+        Err(r) => return r,
+    };
+    let Ok(Json(request)) = body else {
+        return Refusal::Invalid("Check the grant fields and try again.").response();
+    };
+    let now_ms = (crate::chat_store::now_unix() as i64).saturating_mul(1000);
+    match edit(&app.config.chat_store, &owner, |book| {
+        book.grant(&id, &request, now_ms)
+    })
+    .await
+    {
+        Ok(Ok(grant)) => answer(StatusCode::OK, json!(grant)),
+        Ok(Err(r)) => r.response(),
+        Err(e) => stored(&e),
+    }
+}
+async fn delete_grant(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, grant)): Path<(String, String)>,
+) -> Response {
+    let owner = match crate::coder_sync::owner(&app, &headers).await {
+        Ok(o) => o,
+        Err(r) => return r,
+    };
+    if !valid_id(&id) || !valid_id(&grant) {
+        return Refusal::Missing.response();
+    }
+    match edit(&app.config.chat_store, &owner, |book| {
+        Ok(book.revoke(&id, &grant))
+    })
+    .await
+    {
+        Ok(Ok(revoked)) => answer(StatusCode::OK, json!({ "revoked": revoked })),
+        Ok(Err(r)) => r.response(),
+        Err(e) => stored(&e),
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -428,6 +606,71 @@ mod tests {
             spec: spec(),
         }
     }
+    #[tokio::test]
+    async fn grants_refuse_the_never_list_and_repeat_by_request() {
+        use openagents_sdk::agents::{GrantOver, NEVER_GRANTED_REFUSAL};
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::local(root.path().into());
+        let owner = crate::chat_store::account_owner("acct-test-one");
+        let saved = mutate(&store, &owner, create(1)).await.unwrap().unwrap();
+        let ask = |scopes: &[&str], n: u8| GrantAgent {
+            request_id: format!("{n:064x}"),
+            scopes: scopes.iter().map(|s| s.to_string()).collect(),
+            over: GrantOver::Account,
+        };
+        for never in ["money", "keys", "secrets", "deploy", "close_issue"] {
+            let r = edit(&store, &owner, |b| b.grant(&saved.id, &ask(&[never], 7), 1))
+                .await
+                .unwrap();
+            assert_eq!(
+                r,
+                Err(Refusal::NotGrantable(NEVER_GRANTED_REFUSAL)),
+                "{never}"
+            );
+        }
+        let first = edit(&store, &owner, |b| {
+            b.grant(&saved.id, &ask(&["chat.stop"], 8), 1)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        let again = edit(&store, &owner, |b| {
+            b.grant(&saved.id, &ask(&["chat.stop"], 8), 2)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(first, again, "a repeated request returns the same grant");
+        assert_eq!(
+            edit(&store, &owner, |b| b.grant(
+                &saved.id,
+                &ask(&["chat.start"], 8),
+                3
+            ))
+            .await
+            .unwrap(),
+            Err(Refusal::Retry)
+        );
+        let missing = "f".repeat(64);
+        assert_eq!(
+            edit(&store, &owner, |b| b.grant(
+                &missing,
+                &ask(&["chat.stop"], 9),
+                1
+            ))
+            .await
+            .unwrap(),
+            Err(Refusal::Missing)
+        );
+        assert_eq!(
+            edit(&store, &owner, |b| Ok(b.revoke(&saved.id, &first.id)))
+                .await
+                .unwrap(),
+            Ok(true)
+        );
+        assert_eq!(load(&store, &owner).await.unwrap().0.grants.len(), 0);
+    }
+
     #[tokio::test]
     async fn retries_revisions_deletion_restart_and_account_isolation() {
         let root = tempfile::tempdir().unwrap();
@@ -694,6 +937,52 @@ mod tests {
             client.agents(&b).unwrap().create(&request, &cancel).await,
             Err(openagents_sdk::Error::WrongAccount)
         ));
+        // Grants (#12044): only the owner's own agents, never the never-list.
+        use openagents_sdk::agents::{GrantOver, GrantScope};
+        let grant = agents
+            .grant(
+                &saved.id,
+                vec!["chat.message".into(), "chat.steer".into()],
+                GrantOver::Project("p1".into()),
+                &cancel,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            grant.scopes,
+            [GrantScope::ChatMessage, GrantScope::ChatSteer]
+        );
+        assert_eq!(
+            agents.grants(&saved.id, &cancel).await.unwrap(),
+            [grant.clone()]
+        );
+        assert!(matches!(
+            client.agents(&b).unwrap().grants(&saved.id, &cancel).await,
+            Err(openagents_sdk::Error::Refused { status: 404, .. })
+        ));
+        let http = reqwest::Client::new();
+        for scopes in [
+            json!(["deploy"]),
+            json!(["chat.message", "secrets"]),
+            json!(["money"]),
+        ] {
+            let refused = http
+                .post(format!("{base}/v1/agent-definitions/{}/grants", saved.id))
+                .bearer_auth(format!("sess_{}", "a".repeat(64)))
+                .json(&json!({"request_id": "9".repeat(64), "scopes": scopes, "over": "account"}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(refused.status(), 400, "{scopes}");
+            let body: serde_json::Value = refused.json().await.unwrap();
+            assert_eq!(body["error"]["code"], "not_grantable", "{body}");
+        }
+        assert_eq!(agents.grants(&saved.id, &cancel).await.unwrap().len(), 1);
+        agents
+            .revoke_grant(&saved.id, &grant.id, &cancel)
+            .await
+            .unwrap();
+        assert!(agents.grants(&saved.id, &cancel).await.unwrap().is_empty());
         use openagents_sdk::agents::assignments::{
             AssignmentAction, AssignmentSpec, AssignmentState,
         };

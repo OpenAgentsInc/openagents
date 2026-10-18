@@ -484,6 +484,16 @@ should be built once, for every agent.
   branch on the name; a fork of Foreman under another name, with the same
   grants, completes a check-in and a steer on a test host.
 - **Size:** L.
+- **Status:** built in #12044. `engine/src/agent_wakes.rs` and
+  `doc_host/agent_wakes.rs` run one wake engine per agent definition ID
+  (state under `<profile>/agent-wakes/<id>/`; old `foreman/` state moves
+  over once, log and all). Wakes are definition data (`autonomy.wakes`,
+  `coalesce_secs`); grants are account data
+  (`/v1/agent-definitions/{id}/grants`, `agents.grant`/`revoke_grant`), and
+  the never-list can't be granted. The engine RPC is `GetAgentWakes`,
+  `SetAgentWakes`, `GrantAgent`, `RevokeAgentGrant`, `RecordAgentDecision`,
+  and the desktop card is Settings → General → Check-ins. Machine grants
+  (#12033, #12067) stay keyed by chat ID with their per-chat proof.
 
 ### 20. A decision log and an autonomy card for any agent
 

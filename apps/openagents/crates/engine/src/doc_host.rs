@@ -17,13 +17,13 @@
 //! the host's relay receives it and warm-opens the doc, which drains the queue.
 
 mod agent_lab;
+mod agent_wakes;
 mod continuations;
 mod custom_agents;
 mod voice_agent;
 mod owner_notifications;
 mod run_commands;
 pub use run_commands::RunCommandAuthority;
-mod foreman;
 mod session_index;
 mod transfer;
 mod working_state;
@@ -261,8 +261,10 @@ struct DocHostInner {
     #[cfg(unix)]
     owner_wait_seen: Mutex<openagents_mcp::machine_status::NewEntries>,
     run_command_authority: Mutex<Option<Arc<RunCommandAuthority>>>,
-    /// Foreman's schedule, authority and decision log (#11965).
-    foreman: OnceLock<Arc<crate::foreman::Foreman>>,
+    /// Every agent's wakes, grants and decision log (#11965, #12044).
+    agent_wakes: OnceLock<Arc<crate::agent_wakes::AgentWakes>>,
+    /// Where wake state saved before #12044 lives, to move once.
+    agent_wakes_legacy: OnceLock<std::path::PathBuf>,
     /// Where the checked-in agent's working state is saved (#12057).
     working: OnceLock<std::path::PathBuf>,
     store: Arc<DocsStore>,
@@ -1007,7 +1009,8 @@ impl DocHost {
                 #[cfg(unix)]
                 owner_wait_seen: Mutex::new(Default::default()),
                 run_command_authority: Mutex::new(None),
-                foreman: OnceLock::new(),
+                agent_wakes: OnceLock::new(),
+                agent_wakes_legacy: OnceLock::new(),
                 working: OnceLock::new(),
                 store,
                 config,

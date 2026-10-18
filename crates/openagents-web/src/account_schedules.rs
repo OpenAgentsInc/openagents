@@ -116,6 +116,10 @@ pub(crate) struct Schedule {
     pub chat: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chat_title: Option<String>,
+    /// The saved agent this schedule wakes, by definition ID (#12044), so
+    /// it is known by its agent rather than its prompt text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
     #[serde(default)]
@@ -558,6 +562,8 @@ async fn save(store: &Store, owner: &str, edit: &Edit, chats: &[Chat]) -> Result
             every_secs: edit.every_secs,
             chat: edit.chat.clone(),
             chat_title,
+            // An edit on the website keeps the agent the schedule wakes.
+            agent: existing.and_then(|have| have.agent.clone()),
             workspace,
             paused: edit.paused,
             updated,

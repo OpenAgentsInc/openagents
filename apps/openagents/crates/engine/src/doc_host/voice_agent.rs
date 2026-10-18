@@ -17,9 +17,10 @@ impl DocHost {
             .voice_agent(&lease.cancel)
             .await
             .map_err(|e| EngineError::Other(e.to_string()))?;
-        // The default is a configured chat, never a display-name lookup.
+        // The default is a configured chat, never a display-name lookup:
+        // the one agent chat with check-ins on this computer, if only one.
         if choice.target.is_none() {
-            if let Some(chat_id) = self.foreman_status().settings.chat_id {
+            if let Some(chat_id) = self.only_checked_in_chat() {
                 let assignment = self
                     .workspace()
                     .and_then(|w| w.chat(&chat_id).ok().flatten())

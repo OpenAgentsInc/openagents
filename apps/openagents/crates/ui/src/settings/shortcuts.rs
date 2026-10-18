@@ -85,7 +85,7 @@ pub struct ShortcutsPage {
     /// Settings → General's thread naming card (its own title-bound picker).
     thread_naming: Entity<crate::settings::thread_naming::ThreadNamingCard>,
     worktrees: Entity<super::worktrees::WorktreeSettingsCard>,
-    foreman: Entity<super::foreman::ForemanCard>,
+    agent_wakes: Entity<super::agent_wakes::AgentWakesCard>,
     voice_agent: Entity<super::voice_agent::VoiceAgentCard>,
     _state: Entity<AppState>,
 }
@@ -132,7 +132,7 @@ impl ShortcutsPage {
                 cx.new(|cx| crate::settings::thread_naming::ThreadNamingCard::new(state, cx))
             },
             worktrees: cx.new(|cx| super::worktrees::WorktreeSettingsCard::new(state.clone(), cx)),
-            foreman: cx.new(|cx| super::foreman::ForemanCard::new(state.clone(), cx)),
+            agent_wakes: cx.new(|cx| super::agent_wakes::AgentWakesCard::new(state.clone(), cx)),
             voice_agent: cx.new(super::voice_agent::VoiceAgentCard::new),
             _state: state,
         }
@@ -964,7 +964,7 @@ impl Render for ShortcutsPage {
                                     ))
                                     .child(self.thread_naming.clone())
                                     .child(self.worktrees.clone())
-                                    .child(self.foreman.clone()),
+                                    .child(self.agent_wakes.clone()),
                             ),
                     )
                     .fade_overflow_y(&self.scroll.scroll),

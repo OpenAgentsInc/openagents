@@ -1,21 +1,24 @@
-//! Foreman autonomy (#11965). The host that runs Foreman's chat wakes it
-//! on its account schedule and when something it manages changes, holds the
-//! standing authority the owner granted, and keeps the decision log.
+//! Agent wakes and grants (#11965, #12044). For every saved agent whose
+//! definition declares wakes, the host that runs its chat wakes it on its
+//! account schedule and when something it manages changes, enforces the
+//! grants the account owner gave it, and keeps its decision log. Each agent
+//! has its own engine, keyed by its definition ID; nothing here knows an
+//! agent by name.
 //!
 //! This module is the host-independent part: the saved state, the
 //! append-only log, the coalescing of events into one check-in, the
-//! check-in prompt, and reading GitHub's answers. `doc_host/foreman.rs`
+//! check-in prompt, and reading GitHub's answers. `doc_host/agent_wakes.rs`
 //! drives it from the existing host loop.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
-use openagents_proto::foreman::{
-    Authority, DecisionEntry, ForemanSettings, JudgmentReceipt, MAX_EVERY_MINUTES,
-    MAX_STALL_MINUTES, MAX_STUCK_MINUTES, MIN_EVERY_MINUTES, MIN_STALL_MINUTES, MIN_STUCK_MINUTES,
-    STALL_RUNG_MINUTES, Scope, WakeReason,
+use openagents_proto::agent_wakes::{
+    DecisionEntry, Grant, JudgmentReceipt, MAX_EVERY_MINUTES, MAX_STALL_MINUTES, MAX_STUCK_MINUTES,
+    MIN_EVERY_MINUTES, MIN_STALL_MINUTES, MIN_STUCK_MINUTES, STALL_RUNG_MINUTES, Scope,
+    Wake as WakeOn, WakeReason, WakeSettings,
 };
 use openagents_proto::saved_agent::Declared;
 use openagents_proto::{Session, SessionStatus, ToolCall};
@@ -24,7 +27,8 @@ use sha2::{Digest, Sha256};
 
 use crate::EngineError;
 
-/// Events wait this long for quiet before they start a check-in…
+/// Events wait this long for quiet before they start a check-in, unless the
+/// agent's definition sets its own coalescing window…
 pub(crate) const QUIET_MS: i64 = 60_000;
 /// …but never longer than this after the first one.
 pub(crate) const MAX_WAIT_MS: i64 = 5 * 60_000;
@@ -36,7 +40,7 @@ pub(crate) const STALE_CLAIM_MS: i64 = 6 * 3600 * 1000;
 const PROMPT_ENTRIES: usize = 12;
 /// The most entries the settings card shows.
 pub(crate) const STATUS_ENTRIES: usize = 20;
-/// A field Foreman records is cut at this many bytes.
+/// A field an agent records is cut at this many bytes.
 const MAX_FIELD: usize = 2000;
 /// The most judgment receipts one decision keeps.
 const MAX_JUDGMENTS: usize = 8;
@@ -47,7 +51,7 @@ const MAX_MANAGED: usize = 512;
 const CLAIM_MARK: &str = "<!-- openagents-coder-claim";
 const RELEASE_MARK: &str = "<!-- openagents-coder-release";
 
-/// Something that happened that Foreman should hear about.
+/// Something that happened that an agent should hear about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum Event {
@@ -96,6 +100,20 @@ pub(crate) enum Event {
 }
 
 impl Event {
+    /// What an agent declares to wake on this.
+    pub fn kind(&self) -> WakeOn {
+        match self {
+            Self::ChatFinished { .. } => WakeOn::ChatFinished,
+            Self::ChatErrored { .. } => WakeOn::ChatErrored,
+            Self::ChatAwaitingInput { .. } => WakeOn::ChatNeedsAnswer,
+            Self::IssueOpened { .. } => WakeOn::IssueOpened,
+            Self::IssueClosed { .. } => WakeOn::IssueClosed,
+            Self::StaleClaim { .. } => WakeOn::ClaimStale,
+            Self::ChatStalled { .. } => WakeOn::ChatStalled,
+            Self::ClaimNoProgress { .. } => WakeOn::ClaimNoProgress,
+        }
+    }
+
     /// One plain line for the prompt and the log.
     pub fn line(&self) -> String {
         match self {
@@ -271,12 +289,34 @@ impl Stuck {
     }
 }
 
-/// The saved part of Foreman's state on this host.
+/// A standing authority saved before grants (#11965). The host turns it into
+/// an account grant once, then drops it (#12044).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LegacyAuthority {
+    pub granted_at: i64,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+}
+
+/// The saved part of one agent's wake state on this host.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub(crate) struct State {
-    pub settings: ForemanSettings,
-    pub authority: Option<Authority>,
+    pub settings: WakeSettings,
+    /// The agent's grants, as the account last listed them. Enforced on
+    /// every command its chat sends.
+    pub grants: Vec<Grant>,
+    /// A standing authority from before grants, still to become a grant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authority: Option<LegacyAuthority>,
+    /// The agent's definition asked for standing authority when this host
+    /// turned its check-ins on; the host asks the account to grant it once.
+    pub wants_standing: bool,
+    /// What the agent's definition declares it wakes on; empty is every wake.
+    pub wakes_on: Vec<WakeOn>,
+    /// The definition's coalescing window, when it sets one.
+    pub coalesce_ms: Option<i64>,
     /// The account schedule this host mirrors, and the `updated` time of
     /// the copy it last wrote or adopted.
     pub schedule_id: Option<String>,
@@ -286,7 +326,7 @@ pub(crate) struct State {
     /// Unix ms of the last check-in of any kind, and of the last scheduled one.
     pub last_check_in: i64,
     pub last_scheduled: i64,
-    /// Chats Foreman created, messaged, steered or stopped.
+    /// Chats the agent created, messaged, steered or stopped.
     pub managed: BTreeSet<String>,
     /// Recent check-in message ids, newest last.
     pub wakes: VecDeque<String>,
@@ -314,8 +354,12 @@ pub(crate) struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
-            settings: ForemanSettings::default(),
+            settings: WakeSettings::default(),
+            grants: Vec::new(),
             authority: None,
+            wants_standing: false,
+            wakes_on: Vec::new(),
+            coalesce_ms: None,
             schedule_id: None,
             schedule_updated: 0,
             schedule_dirty: false,
@@ -347,7 +391,7 @@ pub(crate) struct Declaring {
     pub declared: Declared,
 }
 
-/// What [`Foreman::adopt`] did.
+/// What [`WakeEngine::adopt`] did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Adopt {
     /// A chat is already chosen, or no agent here declares check-ins.
@@ -397,12 +441,15 @@ fn own_turn(row: &Session, before: Option<OwnTurn>, now: i64) -> OwnTurn {
     OwnTurn { turn, last_output }
 }
 
-pub(crate) struct Foreman {
+/// One agent's wake engine on this host.
+pub(crate) struct WakeEngine {
+    /// The agent's definition ID.
+    agent: String,
     root: PathBuf,
     state: Mutex<State>,
     /// Not saved: the first look after a start only records a baseline.
     marks: Mutex<HashMap<String, Mark>>,
-    /// Foreman's own chat was seen working since the open check-in began.
+    /// The agent's own chat was seen working since the open check-in began.
     wake_seen_working: Mutex<bool>,
     /// The chat's own turn, while it works.
     own: Mutex<Option<OwnTurn>>,
@@ -417,13 +464,15 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-impl Foreman {
-    pub fn open(root: &Path) -> Self {
+impl WakeEngine {
+    /// The engine for the agent `agent`, saved under `root`.
+    pub fn open(root: &Path, agent: &str) -> Self {
         let state = std::fs::read(root.join("state.json"))
             .ok()
             .and_then(|b| serde_json::from_slice::<State>(&b).ok())
             .unwrap_or_default();
         Self {
+            agent: agent.to_owned(),
             root: root.to_path_buf(),
             state: Mutex::new(state),
             marks: Mutex::new(HashMap::new()),
@@ -443,6 +492,11 @@ impl Foreman {
             ran.insert(job, now);
         }
         due
+    }
+
+    /// The agent's definition ID.
+    pub fn agent(&self) -> &str {
+        &self.agent
     }
 
     pub fn state(&self) -> State {
@@ -476,9 +530,9 @@ impl Foreman {
         Ok(out)
     }
 
-    /// The owner's settings. Granting or revoking the authority is logged.
-    pub fn set(&self, settings: ForemanSettings, now: i64) -> Result<(), EngineError> {
-        let settings = ForemanSettings {
+    /// The owner's settings.
+    pub fn set(&self, settings: WakeSettings, now: i64) -> Result<(), EngineError> {
+        let settings = WakeSettings {
             every_minutes: settings
                 .every_minutes
                 .clamp(MIN_EVERY_MINUTES, MAX_EVERY_MINUTES),
@@ -491,7 +545,7 @@ impl Foreman {
                 .clamp(MIN_STALL_MINUTES, MAX_STALL_MINUTES),
             ..settings
         };
-        let change = self.update(|s| {
+        self.update(|s| {
             let schedule_changed = s.settings.chat_id != settings.chat_id
                 || s.settings.every_minutes != settings.every_minutes
                 || s.settings.paused != settings.paused;
@@ -511,32 +565,67 @@ impl Foreman {
             if schedule_changed {
                 s.schedule_dirty = true;
             }
-            let was = s.authority.is_some();
-            s.authority = match (settings.authority, s.authority.take()) {
-                (true, Some(kept)) => Some(kept),
-                (true, None) => Some(Authority {
-                    granted_at: now,
-                    scopes: Scope::ALL.to_vec(),
-                }),
-                (false, _) => None,
-            };
             s.settings = settings.clone();
-            (was != s.authority.is_some()).then(|| s.authority.clone())
+        })
+    }
+
+    /// The agent's grants as the account lists them. Each grant that
+    /// appears or goes away is logged.
+    pub fn set_grants(&self, grants: Vec<Grant>, now: i64) -> Result<(), EngineError> {
+        let (added, removed) = self.update(|s| {
+            let added: Vec<Grant> = grants
+                .iter()
+                .filter(|g| !s.grants.iter().any(|h| h.id == g.id))
+                .cloned()
+                .collect();
+            let removed: Vec<Grant> = s
+                .grants
+                .iter()
+                .filter(|h| !grants.iter().any(|g| g.id == h.id))
+                .cloned()
+                .collect();
+            s.grants = grants;
+            (added, removed)
         })?;
-        if let Some(authority) = change {
-            self.append(&DecisionEntry::Authority {
+        for (granted, grant) in added
+            .into_iter()
+            .map(|g| (true, g))
+            .chain(removed.into_iter().map(|g| (false, g)))
+        {
+            self.append(&DecisionEntry::Grant {
                 at: now,
-                granted: authority.is_some(),
-                scopes: authority.map(|a| a.scopes).unwrap_or_default(),
+                granted,
+                id: grant.id,
+                scopes: grant.scopes,
+                over: grant.over,
             })?;
         }
         Ok(())
     }
 
+    /// What the agent's definition declares: the events it wakes on (all
+    /// when it lists none) and its coalescing window.
+    pub fn declare(
+        &self,
+        wakes_on: Vec<WakeOn>,
+        coalesce_ms: Option<i64>,
+    ) -> Result<(), EngineError> {
+        self.update(|s| {
+            s.wakes_on = wakes_on;
+            s.coalesce_ms = coalesce_ms;
+        })
+    }
+
+    /// Whether the agent wakes on `kind`.
+    pub fn wakes_on(&self, kind: WakeOn) -> bool {
+        let s = lock(&self.state);
+        s.wakes_on.is_empty() || s.wakes_on.contains(&kind)
+    }
+
     /// On by default (#12030): with no chat chosen yet, pick the one chat on
-    /// this host whose agent's definition declares check-ins, whatever its
-    /// name, and turn on check-ins and, when it asks, standing authority,
-    /// logged like a grant from the card. Two or more such chats pick none:
+    /// this host of this agent, whose definition declares check-ins, and
+    /// turn check-ins on; when it asks for standing authority, the host asks
+    /// the account to grant it. Two or more chats of the agent pick none:
     /// the owner chooses. A chat picked once is never picked again, so an
     /// owner who changes the choice keeps it.
     pub fn adopt(&self, declaring: &[Declaring], now: i64) -> Result<Adopt, EngineError> {
@@ -558,14 +647,13 @@ impl Foreman {
             }
         };
         self.set(
-            ForemanSettings {
+            WakeSettings {
                 chat_id: Some(pick.chat_id.clone()),
                 every_minutes: pick
                     .declared
                     .every_minutes
                     .unwrap_or(s.settings.every_minutes),
                 paused: false,
-                authority: pick.declared.authority,
                 stall_minutes: pick
                     .declared
                     .stall_minutes
@@ -578,28 +666,35 @@ impl Foreman {
             st.adopted.insert(pick.chat_id.clone());
             st.turned_on_at = Some(now);
             st.agent = pick.agent.clone();
+            st.wants_standing = pick.declared.authority;
         })?;
         Ok(Adopt::Picked(pick))
     }
 
-    /// Whether Foreman's chat may do `scope` to another chat. Turns the
-    /// owner starts are theirs to direct; a check-in turn needs the
-    /// standing authority.
-    pub fn admits(&self, scope: Scope, check_in_turn: bool) -> Result<(), String> {
+    /// Whether the agent's chat may use `scope` on the chat `chat` in the
+    /// project `project`. Turns the owner starts are theirs to direct; a
+    /// check-in turn needs a grant that covers it.
+    pub fn admits(
+        &self,
+        scope: Scope,
+        chat: &str,
+        project: Option<&str>,
+        check_in_turn: bool,
+    ) -> Result<(), String> {
         if !check_in_turn {
             return Ok(());
         }
         let state = lock(&self.state);
-        match &state.authority {
-            Some(a) if a.scopes.contains(&scope) => Ok(()),
-            _ => Err(
-                "Foreman doesn't have standing authority to change other chats. The owner can turn it on in Settings."
-                    .into(),
-            ),
+        if state.grants.iter().any(|g| g.allows(scope, chat, project)) {
+            return Ok(());
         }
+        Err(format!(
+            "This agent has no grant for {} on that chat. The owner can grant it in Settings.",
+            scope.word()
+        ))
     }
 
-    /// Record a chat Foreman acted on, so its turns wake Foreman later.
+    /// Record a chat the agent acted on, so its turns wake the agent later.
     pub fn manage(&self, chat: &str) -> Result<(), EngineError> {
         self.update(|s| {
             if s.settings.chat_id.as_deref() != Some(chat) && s.managed.len() < MAX_MANAGED {
@@ -618,6 +713,9 @@ impl Foreman {
         }
         self.update(|s| {
             for event in events {
+                if !(s.wakes_on.is_empty() || s.wakes_on.contains(&event.kind())) {
+                    continue;
+                }
                 if !s.pending.iter().any(|p| p.event == event) {
                     s.pending.push(Pending { at: now, event });
                 }
@@ -628,8 +726,8 @@ impl Foreman {
     }
 
     /// Look at every device's session rows: managed chats' finished, errored
-    /// and waiting turns become events, and the end of Foreman's own
-    /// check-in turn is logged. `is_child(chat)` is whether Foreman's chat
+    /// and waiting turns become events, and the end of the agent's own
+    /// check-in turn is logged. `is_child(chat)` is whether the agent's chat
     /// is its parent; `title(chat)` names it.
     pub fn observe(
         &self,
@@ -639,7 +737,7 @@ impl Foreman {
         now: i64,
     ) -> Result<(), EngineError> {
         let state = self.state();
-        let Some(foreman) = state.settings.chat_id.clone() else {
+        let Some(own_chat) = state.settings.chat_id.clone() else {
             return Ok(());
         };
         let mut events = Vec::new();
@@ -651,7 +749,7 @@ impl Foreman {
                 status: row.status.clone(),
                 completed: row.last_completed_turn.clone(),
             };
-            if row.chat_id == foreman {
+            if row.chat_id == own_chat {
                 let mut own = lock(&self.own);
                 if mark.status == SessionStatus::Working {
                     *lock(&self.wake_seen_working) = true;
@@ -689,8 +787,8 @@ impl Foreman {
             }
         }
         drop(marks);
-        let foreman_row = rows.iter().find(|r| r.chat_id == foreman);
-        if let (Some(wake), Some(row)) = (state.open_wake.clone(), foreman_row) {
+        let own_row = rows.iter().find(|r| r.chat_id == own_chat);
+        if let (Some(wake), Some(row)) = (state.open_wake.clone(), own_row) {
             let ended = matches!(row.status, SessionStatus::Idle | SessionStatus::Errored);
             let started = *lock(&self.wake_seen_working)
                 || now.saturating_sub(state.last_check_in) > 2 * 60_000;
@@ -795,7 +893,7 @@ impl Foreman {
             .then(|| s.last_scheduled + i64::from(s.settings.every_minutes) * 60_000)
     }
 
-    /// The check-in to start now, if any. `busy` is whether Foreman's chat
+    /// The check-in to start now, if any. `busy` is whether the agent's chat
     /// has a turn in flight; nothing starts over it. Saves the check-in and
     /// logs it before returning, so the caller only has to queue it.
     pub fn due(&self, busy: bool, now: i64) -> Result<Option<Wake>, EngineError> {
@@ -814,7 +912,7 @@ impl Foreman {
         let events_ready = !s.pending.is_empty() && {
             let first = s.pending.iter().map(|p| p.at).min().unwrap_or(now);
             let last = s.pending.iter().map(|p| p.at).max().unwrap_or(now);
-            (now - last >= QUIET_MS || now - first >= MAX_WAIT_MS)
+            (now - last >= s.coalesce_ms.unwrap_or(QUIET_MS) || now - first >= MAX_WAIT_MS)
                 && now - s.last_check_in >= MIN_GAP_MS
         };
         let window = s.settings.stall_minutes;
@@ -838,7 +936,7 @@ impl Foreman {
             },
             WakeReason::Stuck => format!("stuck:{}", stuck.as_ref().map_or(0, |k| k.turn)),
         };
-        let id = uuid_from(&format!("foreman:{chat}:{slot}"));
+        let id = uuid_from(&format!("wake:{}:{chat}:{slot}", self.agent));
         let recent = self.read(PROMPT_ENTRIES);
         let lead = stuck.as_ref().map(Stuck::line);
         let mut open: Vec<&Stall> = s.stalls.values().collect();
@@ -853,7 +951,7 @@ impl Foreman {
             lead.as_deref(),
             &events,
             &stalls,
-            s.authority.as_ref(),
+            &s.grants,
             &recent,
         );
         text.push_str(
@@ -1094,7 +1192,7 @@ impl Foreman {
         })
     }
 
-    /// Foreman's own record of a check-in, with the receipts of the
+    /// The agent's own record of a check-in, with the receipts of the
     /// judgments it used.
     pub fn record(
         &self,
@@ -1163,18 +1261,18 @@ impl Foreman {
     }
 }
 
-/// The check-in prompt. Plain words: it shows in Foreman's chat.
+/// The check-in prompt. Plain words: it shows in the agent's chat.
 pub(crate) fn prompt(
     reason: WakeReason,
     now: i64,
     lead: Option<&str>,
     events: &[String],
     stalls: &[String],
-    authority: Option<&Authority>,
+    grants: &[Grant],
     recent: &[DecisionEntry],
 ) -> String {
     let mut text = format!(
-        "Foreman check-in, {} ({}).\n\n",
+        "Check-in, {} ({}).\n\n",
         clock(now),
         match reason {
             WakeReason::Schedule => "scheduled",
@@ -1205,14 +1303,27 @@ pub(crate) fn prompt(
         }
     }
     text.push('\n');
-    match authority {
-        Some(a) => text.push_str(&format!(
+    match grants.iter().find(|g| g.is_standing()) {
+        Some(g) => text.push_str(&format!(
             "You have the owner's standing authority (since {}) to message, start, steer and stop chats on the owner's computers without asking. Use it for routine coordination.\n",
-            clock(a.granted_at)
+            clock(g.granted_at)
         )),
-        None => text.push_str(
-            "You don't have standing authority right now, so you can only report: look and report, but don't message, start, steer or stop other chats.\n",
+        None if grants.is_empty() => text.push_str(
+            "You hold no grants right now, so you can only report: look and report, but don't message, start, steer or stop other chats.\n",
         ),
+        None => {
+            text.push_str("The owner granted you, for routine coordination without asking:\n");
+            for g in grants {
+                let scopes: Vec<&str> = g.scopes.iter().map(|s| s.word()).collect();
+                let over = match &g.over {
+                    openagents_proto::agent_wakes::Over::Account => "every chat".to_owned(),
+                    openagents_proto::agent_wakes::Over::Project(p) => format!("chats in project {p}"),
+                    openagents_proto::agent_wakes::Over::Chats(c) => format!("chats {}", c.iter().map(|c| short(c)).collect::<Vec<_>>().join(", ")),
+                };
+                text.push_str(&format!("- {} over {over}\n", scopes.join(", ")));
+            }
+            text.push_str("Anything else, only report.\n");
+        }
     }
     text.push_str(
         "Money, keys, secrets, deploys and closing other agents' issues still need the owner's approval.\n",
@@ -1331,7 +1442,7 @@ pub(crate) struct GhComment {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// The GraphQL search Foreman's instructions use for claims.
+/// The GraphQL search for open issues, their claims, commits and branches.
 pub(crate) const CLAIMS_QUERY: &str = "{search(query:\"repo:OpenAgentsInc/openagents is:issue is:open\",type:ISSUE,first:100){nodes{... on Issue{number title comments(last:20){nodes{body createdAt}} timelineItems(last:10,itemTypes:[REFERENCED_EVENT]){nodes{... on ReferencedEvent{createdAt}}} linkedBranches(first:5){nodes{ref{target{... on Commit{committedDate}}}}}}}}}";
 
 /// `gh api graphql` answer for [`CLAIMS_QUERY`].
@@ -1539,11 +1650,117 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), EngineError> {
     Ok(())
 }
 
+/// Every agent's wake engine on this host, each saved under
+/// `ROOT/<definition ID>/`.
+pub(crate) struct AgentWakes {
+    root: PathBuf,
+    engines: Mutex<BTreeMap<String, Arc<WakeEngine>>>,
+}
+
+/// Whether `id` is an agent definition ID (64 lowercase hex characters).
+pub(crate) fn valid_agent(id: &str) -> bool {
+    id.len() == 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+impl AgentWakes {
+    /// Open every engine saved under `root`.
+    pub fn open(root: &Path) -> Self {
+        let mut engines = BTreeMap::new();
+        if let Ok(dirs) = std::fs::read_dir(root) {
+            for dir in dirs.flatten() {
+                let name = dir.file_name().to_string_lossy().into_owned();
+                if valid_agent(&name) && dir.path().join("state.json").is_file() {
+                    engines.insert(name.clone(), Arc::new(WakeEngine::open(&dir.path(), &name)));
+                }
+            }
+        }
+        Self {
+            root: root.to_path_buf(),
+            engines: Mutex::new(engines),
+        }
+    }
+
+    /// The engine for `agent`, if it has one.
+    pub fn engine(&self, agent: &str) -> Option<Arc<WakeEngine>> {
+        lock(&self.engines).get(agent).cloned()
+    }
+
+    /// The engine for `agent`, made on first use.
+    pub fn ensure(&self, agent: &str) -> Result<Arc<WakeEngine>, EngineError> {
+        if !valid_agent(agent) {
+            return Err(EngineError::Other("Choose a saved agent.".into()));
+        }
+        let mut engines = lock(&self.engines);
+        Ok(engines
+            .entry(agent.to_owned())
+            .or_insert_with(|| Arc::new(WakeEngine::open(&self.root.join(agent), agent)))
+            .clone())
+    }
+
+    pub fn all(&self) -> Vec<Arc<WakeEngine>> {
+        lock(&self.engines).values().cloned().collect()
+    }
+
+    /// The engine whose agent runs in the chat `chat`.
+    pub fn by_chat(&self, chat: &str) -> Option<Arc<WakeEngine>> {
+        lock(&self.engines)
+            .values()
+            .find(|e| e.chat().as_deref() == Some(chat))
+            .cloned()
+    }
+
+    /// Move one agent's state saved before #12044 (a single `foreman/`
+    /// folder with `state.json` and `decisions.jsonl`) under `agent`, once,
+    /// keeping its decision log whole. The old folder is renamed, not
+    /// deleted. Returns whether anything moved.
+    pub fn migrate(&self, legacy: &Path, agent: &str) -> Result<bool, EngineError> {
+        if !legacy.join("state.json").is_file() || !valid_agent(agent) {
+            return Ok(false);
+        }
+        let to = self.root.join(agent);
+        if to.join("state.json").is_file() {
+            return Ok(false);
+        }
+        std::fs::create_dir_all(&to)?;
+        for file in ["decisions.jsonl", "working.json", "state.json"] {
+            let from = legacy.join(file);
+            if from.is_file() {
+                std::fs::copy(&from, to.join(file))?;
+            }
+        }
+        let mut done = legacy.as_os_str().to_owned();
+        done.push(".migrated");
+        std::fs::rename(legacy, PathBuf::from(done))?;
+        lock(&self.engines).insert(agent.to_owned(), Arc::new(WakeEngine::open(&to, agent)));
+        Ok(true)
+    }
+
+    /// The chat a pre-#12044 state saved in `legacy` ran in.
+    pub fn legacy_chat(legacy: &Path) -> Option<String> {
+        let state: State =
+            serde_json::from_slice(&std::fs::read(legacy.join("state.json")).ok()?).ok()?;
+        state.settings.chat_id
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const MIN: i64 = 60_000;
+    const AGENT: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+
+    fn standing(id: &str, at: i64) -> Grant {
+        Grant {
+            id: id.into(),
+            scopes: Scope::CHAT.to_vec(),
+            over: openagents_proto::agent_wakes::Over::Account,
+            granted_at: at,
+        }
+    }
 
     fn row(chat: &str, status: SessionStatus, completed: Option<&str>) -> Session {
         Session {
@@ -1559,15 +1776,14 @@ mod tests {
         }
     }
 
-    fn configured(dir: &Path) -> Foreman {
-        let f = Foreman::open(dir);
+    fn configured(dir: &Path) -> WakeEngine {
+        let f = WakeEngine::open(dir, AGENT);
         f.set(
-            ForemanSettings {
-                chat_id: Some("foreman".into()),
+            WakeSettings {
+                chat_id: Some("own".into()),
                 every_minutes: 20,
                 paused: false,
-                authority: false,
-                ..ForemanSettings::default()
+                ..WakeSettings::default()
             },
             0,
         )
@@ -1588,7 +1804,7 @@ mod tests {
             wake.text
                 .contains("even when nothing changed, post a short status of 3 to 6 lines")
         );
-        assert!(wake.text.contains("don't have standing authority"));
+        assert!(wake.text.contains("You hold no grants right now"));
         assert_eq!(f.due(false, 21 * MIN).unwrap(), None, "one per slot");
         assert!(f.is_wake(&wake.id));
         let log = f.read(10);
@@ -1641,21 +1857,21 @@ mod tests {
         }
         // The check-in turn ending is logged once.
         f.observe(
-            &[row("foreman", SessionStatus::Working, None)],
+            &[row("own", SessionStatus::Working, None)],
             child,
             title,
             6 * MIN,
         )
         .unwrap();
         f.observe(
-            &[row("foreman", SessionStatus::Idle, Some("w"))],
+            &[row("own", SessionStatus::Idle, Some("w"))],
             child,
             title,
             7 * MIN,
         )
         .unwrap();
         f.observe(
-            &[row("foreman", SessionStatus::Idle, Some("w"))],
+            &[row("own", SessionStatus::Idle, Some("w"))],
             child,
             title,
             8 * MIN,
@@ -1670,42 +1886,138 @@ mod tests {
     }
 
     #[test]
-    fn authority_is_explicit_revocable_logged_and_only_gates_check_ins() {
+    fn grants_are_explicit_revocable_logged_and_only_gate_check_ins() {
+        use openagents_proto::agent_wakes::Over;
         let dir = tempfile::tempdir().unwrap();
         let f = configured(dir.path());
         assert!(
-            f.admits(Scope::Message, false).is_ok(),
+            f.admits(Scope::ChatMessage, "w", None, false).is_ok(),
             "owner turns unchanged"
         );
-        assert!(f.admits(Scope::Message, true).is_err());
-        let mut on = f.state().settings;
-        on.authority = true;
-        f.set(on.clone(), 5).unwrap();
-        assert!(f.admits(Scope::Stop, true).is_ok());
-        assert!(
-            prompt(
-                WakeReason::Schedule,
-                6,
-                None,
-                &[],
-                &[],
-                f.state().authority.as_ref(),
-                &[]
-            )
-            .contains("standing authority (since")
+        assert!(f.admits(Scope::ChatMessage, "w", None, true).is_err());
+        // A grant over one project covers only that project's chats.
+        let project = Grant {
+            id: "g1".into(),
+            scopes: vec![Scope::ChatMessage, Scope::ChatSteer],
+            over: Over::Project("p".into()),
+            granted_at: 4,
+        };
+        f.set_grants(vec![project.clone()], 5).unwrap();
+        assert!(f.admits(Scope::ChatSteer, "w", Some("p"), true).is_ok());
+        assert!(f.admits(Scope::ChatSteer, "w", Some("q"), true).is_err());
+        assert!(f.admits(Scope::ChatStop, "w", Some("p"), true).is_err());
+        let text = prompt(
+            WakeReason::Schedule,
+            6,
+            None,
+            &[],
+            &[],
+            &f.state().grants,
+            &[],
         );
-        on.authority = false;
-        f.set(on, 7).unwrap();
-        assert!(f.admits(Scope::Create, true).is_err());
-        let granted: Vec<bool> = f
+        assert!(
+            text.contains("- chat.message, chat.steer over chats in project p"),
+            "{text}"
+        );
+        // Standing authority is every chat scope over the account.
+        f.set_grants(vec![project, standing("g2", 6)], 7).unwrap();
+        assert!(f.admits(Scope::ChatStop, "z", None, true).is_ok());
+        let text = prompt(
+            WakeReason::Schedule,
+            8,
+            None,
+            &[],
+            &[],
+            &f.state().grants,
+            &[],
+        );
+        assert!(text.contains("standing authority (since"));
+        f.set_grants(vec![], 9).unwrap();
+        assert!(f.admits(Scope::ChatStart, "z", None, true).is_err());
+        let log: Vec<(bool, String)> = f
             .read(10)
             .into_iter()
             .filter_map(|e| match e {
-                DecisionEntry::Authority { granted, .. } => Some(granted),
+                DecisionEntry::Grant { granted, id, .. } => Some((granted, id)),
                 _ => None,
             })
             .collect();
-        assert_eq!(granted, [true, false]);
+        assert_eq!(
+            log,
+            [
+                (true, "g1".into()),
+                (true, "g2".into()),
+                (false, "g1".into()),
+                (false, "g2".into())
+            ]
+        );
+    }
+
+    /// #12044: an agent wakes only on what its definition declares.
+    #[test]
+    fn an_agent_wakes_only_on_what_it_declares() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        f.declare(vec![WakeOn::IssueClosed], Some(10_000)).unwrap();
+        let issue = |number, state: &str| GhIssue {
+            number,
+            title: format!("T{number}"),
+            state: state.into(),
+        };
+        f.observe_issues(&[issue(10, "OPEN"), issue(9, "OPEN")], 0)
+            .unwrap();
+        f.observe_issues(&[issue(11, "OPEN"), issue(10, "CLOSED")], 4 * MIN)
+            .unwrap();
+        // Its 10-second window, not the default minute of quiet.
+        assert_eq!(f.due(false, 4 * MIN + 5_000).unwrap(), None);
+        let wake = f
+            .due(false, 4 * MIN + 10_000)
+            .unwrap()
+            .expect("its own window");
+        assert!(wake.text.contains("Issue #10 closed"));
+        assert!(!wake.text.contains("#11 opened"), "not declared");
+    }
+
+    /// #12044: every agent has its own engine under its definition ID, and
+    /// state saved before grants moves over once with its whole log.
+    #[test]
+    fn old_state_moves_under_its_agent_with_its_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = dir.path().join("foreman");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(
+            legacy.join("state.json"),
+            r#"{"settings":{"chatId":"c1","everyMinutes":10,"paused":false,"authority":true},"authority":{"grantedAt":3,"scopes":["message","create","steer","stop"]}}"#,
+        )
+        .unwrap();
+        let lines = [
+            r#"{"kind":"authority","at":3,"granted":true,"scopes":["message","create","steer","stop"]}"#,
+            r#"{"kind":"decision","at":4,"saw":"a","decided":"b","did":"c"}"#,
+        ];
+        std::fs::write(legacy.join("decisions.jsonl"), lines.join("\n") + "\n").unwrap();
+        let wakes = AgentWakes::open(&dir.path().join("agents"));
+        assert!(wakes.all().is_empty());
+        assert_eq!(AgentWakes::legacy_chat(&legacy).as_deref(), Some("c1"));
+        assert!(wakes.migrate(&legacy, AGENT).unwrap());
+        assert!(!legacy.exists() && dir.path().join("foreman.migrated").is_dir());
+        let engine = wakes.engine(AGENT).expect("moved");
+        assert_eq!(engine.chat().as_deref(), Some("c1"));
+        assert_eq!(engine.read(10).len(), 2, "the whole log");
+        let old = engine
+            .state()
+            .authority
+            .expect("kept until it becomes a grant");
+        assert_eq!(old.granted_at, 3);
+        assert!(wakes.by_chat("c1").is_some());
+        assert!(!wakes.migrate(&legacy, AGENT).unwrap(), "once");
+        // A restart finds it by its definition ID.
+        let again = AgentWakes::open(&dir.path().join("agents"));
+        assert_eq!(again.engine(AGENT).unwrap().read(10).len(), 2);
+        // Two agents, two engines.
+        let other = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+        again.ensure(other).unwrap();
+        assert_eq!(again.all().len(), 2);
+        assert!(again.ensure("Foreman").is_err(), "a name is no agent ID");
     }
 
     #[test]
@@ -1727,7 +2039,7 @@ mod tests {
                 .contains("saw two idle issues; decided start one; did created a chat")
         );
         drop(f);
-        let f = Foreman::open(dir.path());
+        let f = WakeEngine::open(dir.path(), AGENT);
         assert!(f.state().managed.contains("a"));
         assert!(f.is_wake(&wake.id));
         assert_eq!(f.read(10).len(), 2);
@@ -1807,12 +2119,12 @@ mod tests {
     }
 
     #[test]
-    fn a_new_foreman_checks_in_at_least_every_ten_minutes_with_a_status() {
+    fn a_new_agent_checks_in_at_least_every_ten_minutes_with_a_status() {
         let dir = tempfile::tempdir().unwrap();
-        let f = Foreman::open(dir.path());
-        let settings = ForemanSettings {
-            chat_id: Some("foreman".into()),
-            ..ForemanSettings::default()
+        let f = WakeEngine::open(dir.path(), AGENT);
+        let settings = WakeSettings {
+            chat_id: Some("own".into()),
+            ..WakeSettings::default()
         };
         assert!(settings.every_minutes <= 10);
         f.set(settings, 0).unwrap();
@@ -1830,11 +2142,11 @@ mod tests {
         Session {
             started_at: at(started),
             last_output_at: at(output),
-            ..row("foreman", status, None)
+            ..row("own", status, None)
         }
     }
 
-    fn stuck_outcomes(f: &Foreman) -> usize {
+    fn stuck_outcomes(f: &WakeEngine) -> usize {
         f.read(50)
             .iter()
             .filter(|e| matches!(e, DecisionEntry::Outcome { status, .. } if status == "stuck"))
@@ -1974,7 +2286,7 @@ mod tests {
                 check_ins,
                 every_minutes: Some(10),
                 authority: true,
-                stall_minutes: None,
+                ..Declared::default()
             },
         }
     }
@@ -1984,7 +2296,7 @@ mod tests {
     #[test]
     fn the_declaring_agent_is_picked_whatever_its_name() {
         let dir = tempfile::tempdir().unwrap();
-        let f = Foreman::open(dir.path());
+        let f = WakeEngine::open(dir.path(), AGENT);
         let chats = [
             declaring("plain", "Foreman", false),
             declaring("night", "Night shift", true),
@@ -1999,19 +2311,19 @@ mod tests {
         assert!(!s.settings.paused);
         assert_eq!(s.turned_on_at, Some(5 * MIN));
         assert_eq!(s.agent.as_deref(), Some("def-night"));
-        assert!(f.admits(Scope::Steer, true).is_ok(), "authority is on");
+        assert!(s.wants_standing, "the host asks the account for the grant");
         assert_eq!(f.next_scheduled(), Some(15 * MIN), "first check-in in 10");
-        // The grant is logged like one from the card.
+        // The account grants it; the grant is logged like one from the card.
+        f.set_grants(vec![standing("g", 5 * MIN)], 5 * MIN).unwrap();
+        assert!(f.admits(Scope::ChatSteer, "w", None, true).is_ok());
         assert!(matches!(
             &f.read(10)[..],
-            [DecisionEntry::Authority { granted: true, scopes, .. }] if *scopes == Scope::ALL
+            [DecisionEntry::Grant { granted: true, scopes, .. }] if *scopes == Scope::CHAT
         ));
         let wake = f.due(false, 15 * MIN).unwrap().expect("first check-in");
         assert!(wake.text.contains("standing authority (since"));
-        // The owner turns authority off: the next check-in can only report.
-        let mut off = f.state().settings;
-        off.authority = false;
-        f.set(off, 16 * MIN).unwrap();
+        // The owner revokes it: the next check-in can only report.
+        f.set_grants(vec![], 16 * MIN).unwrap();
         let wake = f.due(false, 25 * MIN).unwrap().expect("next check-in");
         assert!(wake.text.contains("so you can only report"));
         // Choosing another chat clears the mark, and the old one is never
@@ -2024,7 +2336,7 @@ mod tests {
         assert_eq!(f.state().settings.chat_id, None);
         // A name alone never picks.
         let dir = tempfile::tempdir().unwrap();
-        let f = Foreman::open(dir.path());
+        let f = WakeEngine::open(dir.path(), AGENT);
         assert_eq!(
             f.adopt(&[declaring("plain", "Foreman", false)], 0).unwrap(),
             Adopt::Nothing
@@ -2035,7 +2347,7 @@ mod tests {
     #[test]
     fn two_declaring_chats_pick_none_and_ask() {
         let dir = tempfile::tempdir().unwrap();
-        let f = Foreman::open(dir.path());
+        let f = WakeEngine::open(dir.path(), AGENT);
         let chats = [
             declaring("a", "Foreman", true),
             declaring("b", "Release Foreman", true),
@@ -2048,7 +2360,7 @@ mod tests {
         assert!(f.read(10).is_empty(), "nothing granted");
     }
 
-    fn stall_events(f: &Foreman, from: i64, to: i64) -> Vec<String> {
+    fn stall_events(f: &WakeEngine, from: i64, to: i64) -> Vec<String> {
         // Drain check-ins over the range and collect every stall event.
         let mut lines = Vec::new();
         let mut at = from;
@@ -2477,7 +2789,7 @@ mod tests {
     #[test]
     fn paused_or_unset_never_wakes() {
         let dir = tempfile::tempdir().unwrap();
-        let f = Foreman::open(dir.path());
+        let f = WakeEngine::open(dir.path(), AGENT);
         assert_eq!(f.due(false, 100 * MIN).unwrap(), None);
         let f = configured(dir.path());
         let mut s = f.state().settings;

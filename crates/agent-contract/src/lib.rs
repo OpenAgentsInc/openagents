@@ -46,6 +46,143 @@ pub struct Autonomy {
     /// hang the agent's turn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shell_timeout_secs: Option<u32>,
+    /// What the agent wakes on (#12044); empty is every wake the host knows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wakes: Vec<WakeEvent>,
+    /// Seconds events wait for quiet before they start one check-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coalesce_secs: Option<u32>,
+}
+
+/// Something an agent can declare to wake on (#12044).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WakeEvent {
+    ChatFinished,
+    ChatErrored,
+    ChatNeedsAnswer,
+    IssueOpened,
+    IssueClosed,
+    ClaimStale,
+    ChatStalled,
+    ClaimNoProgress,
+    /// A wake a newer writer knows and this reader doesn't; hosts skip it.
+    #[serde(other)]
+    Other,
+}
+
+/// The allowed range of [`Autonomy::coalesce_secs`].
+pub const MAX_COALESCE_SECS: u32 = 30 * 60;
+/// The most wakes an agent may list.
+pub const MAX_WAKES: usize = 16;
+
+/// A power the account owner grants an agent over other chats (#12044).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum GrantScope {
+    #[serde(rename = "chat.message")]
+    ChatMessage,
+    #[serde(rename = "chat.start")]
+    ChatStart,
+    #[serde(rename = "chat.steer")]
+    ChatSteer,
+    #[serde(rename = "chat.stop")]
+    ChatStop,
+    #[serde(rename = "land.submit")]
+    LandSubmit,
+    #[serde(rename = "work.dispatch")]
+    WorkDispatch,
+}
+
+/// Powers no agent can be granted: money, keys, secrets, deploys, and
+/// closing other agents' issues stay with the owner.
+pub const NEVER_GRANTED: [&str; 5] = ["money", "keys", "secrets", "deploy", "close_issue"];
+
+/// The refusal for a never-list scope.
+pub const NEVER_GRANTED_REFUSAL: &str =
+    "Money, keys, secrets, deploys and closing other agents' issues can't be granted to any agent.";
+
+impl GrantScope {
+    pub const ALL: [GrantScope; 6] = [
+        GrantScope::ChatMessage,
+        GrantScope::ChatStart,
+        GrantScope::ChatSteer,
+        GrantScope::ChatStop,
+        GrantScope::LandSubmit,
+        GrantScope::WorkDispatch,
+    ];
+
+    pub fn word(self) -> &'static str {
+        match self {
+            GrantScope::ChatMessage => "chat.message",
+            GrantScope::ChatStart => "chat.start",
+            GrantScope::ChatSteer => "chat.steer",
+            GrantScope::ChatStop => "chat.stop",
+            GrantScope::LandSubmit => "land.submit",
+            GrantScope::WorkDispatch => "work.dispatch",
+        }
+    }
+
+    /// A scope someone asks to grant. Never-list words are refused with a
+    /// plain reason, and anything else unknown is refused too.
+    pub fn grantable(word: &str) -> Result<GrantScope, &'static str> {
+        let word = word.trim().to_ascii_lowercase();
+        let bare = word.replace(['.', '-'], "_");
+        if bare == "deploys"
+            || NEVER_GRANTED
+                .iter()
+                .any(|never| bare == *never || bare.starts_with(&format!("{never}_")))
+        {
+            return Err(NEVER_GRANTED_REFUSAL);
+        }
+        GrantScope::ALL
+            .into_iter()
+            .find(|s| s.word() == word)
+            .ok_or("Choose powers an agent can be granted.")
+    }
+}
+
+/// What a grant covers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GrantOver {
+    /// These chats, by ID.
+    Chats(Vec<String>),
+    /// Every chat in this project, by ID.
+    Project(String),
+    /// Every chat on the account.
+    Account,
+}
+
+/// The most chats one grant may name.
+pub const MAX_GRANT_CHATS: usize = 64;
+
+impl GrantOver {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        let id =
+            |s: &String| !s.trim().is_empty() && s.len() <= 128 && !s.chars().any(char::is_control);
+        match self {
+            GrantOver::Account => Ok(()),
+            GrantOver::Project(p) if id(p) => Ok(()),
+            GrantOver::Chats(c)
+                if !c.is_empty() && c.len() <= MAX_GRANT_CHATS && c.iter().all(id) =>
+            {
+                Ok(())
+            }
+            _ => Err("Choose the chats or the project the grant covers."),
+        }
+    }
+}
+
+/// One grant the account owner gave an agent. Granted powers belong to the
+/// account, not the definition: a fork asks its own owner for its grants.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentGrant {
+    pub id: String,
+    pub scopes: Vec<GrantScope>,
+    pub over: GrantOver,
+    /// Unix milliseconds.
+    pub granted_at: i64,
 }
 
 /// The most UTF-8 bytes a saved agent's `instructions` may hold, skills
@@ -149,6 +286,11 @@ impl AgentSpec {
                 .is_some_and(|m| !(MIN_STALL_MINUTES..=MAX_STALL_MINUTES).contains(&m))
         {
             return Err("Choose a stall window between 5 minutes and 4 hours.");
+        }
+        if let Some(a) = &self.autonomy
+            && (a.wakes.len() > MAX_WAKES || a.coalesce_secs.is_some_and(|c| c > MAX_COALESCE_SECS))
+        {
+            return Err("Choose fewer wakes or a shorter wait.");
         }
         if self.fallbacks.len() > MAX_FALLBACKS {
             return Err("Choose fewer fallback runtimes.");
@@ -305,6 +447,7 @@ mod tests {
             authority: true,
             stall_minutes: Some(10),
             shell_timeout_secs: Some(120),
+            ..Default::default()
         });
         s.validate().unwrap();
         assert!(s.same_identity(&plain), "a setting, not identity");
@@ -341,6 +484,47 @@ mod tests {
             serde_json::to_value(&read).unwrap(),
             serde_json::json!({"shell_timeout_secs": 60})
         );
+    }
+
+    #[test]
+    fn wakes_are_declared_data_and_grants_refuse_the_never_list() {
+        let mut s = spec();
+        s.autonomy = Some(Autonomy {
+            wakes: vec![WakeEvent::ChatFinished, WakeEvent::ClaimNoProgress],
+            coalesce_secs: Some(60),
+            ..Autonomy::default()
+        });
+        s.validate().unwrap();
+        let json = serde_json::to_value(&s).unwrap();
+        assert_eq!(
+            json["autonomy"]["wakes"],
+            serde_json::json!(["chat_finished", "claim_no_progress"])
+        );
+        // A wake this reader doesn't know is skipped, not a broken definition.
+        let newer: Autonomy =
+            serde_json::from_value(serde_json::json!({"wakes": ["chat_finished", "pr_merged"]}))
+                .unwrap();
+        assert_eq!(newer.wakes, [WakeEvent::ChatFinished, WakeEvent::Other]);
+        for word in [
+            "money",
+            "keys",
+            "secrets",
+            "deploy",
+            "deploys",
+            "close_issue",
+            "secrets.read",
+        ] {
+            assert_eq!(
+                GrantScope::grantable(word),
+                Err(NEVER_GRANTED_REFUSAL),
+                "{word}"
+            );
+        }
+        assert_eq!(GrantScope::grantable("chat.stop"), Ok(GrantScope::ChatStop));
+        assert!(GrantScope::grantable("chat.delete").is_err());
+        assert!(serde_json::from_value::<GrantScope>(serde_json::json!("deploy")).is_err());
+        assert!(GrantOver::Chats(vec![]).validate().is_err());
+        assert!(GrantOver::Project("p".into()).validate().is_ok());
     }
 
     #[test]

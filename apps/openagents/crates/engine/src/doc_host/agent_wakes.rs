@@ -1,45 +1,94 @@
-//! Foreman's wake-ups on the host that runs its chat (#11965). The account
-//! schedule is an ordinary scheduled prompt for this computer, kept through
-//! the SDK; a check-in is a message queued into Foreman's chat the way the
-//! app sends one, so the existing ledger runs it and a retry never doubles
-//! it. See `crate::foreman` for the state, log and coalescing.
+//! Agent wakes on the host that runs each agent's chat (#11965, #12044).
+//! Every saved agent whose definition declares wakes gets its own engine,
+//! keyed by its definition ID. Its account schedule is an ordinary scheduled
+//! prompt for this computer, kept through the SDK; a check-in is a message
+//! queued into the agent's chat the way the app sends one, so the existing
+//! ledger runs it and a retry never doubles it. Grants come from the account
+//! and are enforced on every command the agent's chat sends. See
+//! `crate::agent_wakes` for the state, log and coalescing.
 use super::*;
-use crate::foreman::{
-    Adopt, CLAIMS_QUERY, Declaring, Foreman, GhIssue, LocalProgress, Wake, claim_issues, tool_label,
+use crate::agent_wakes::{
+    Adopt, AgentWakes, CLAIMS_QUERY, Declaring, GhIssue, LocalProgress, Wake, WakeEngine,
+    claim_issues, tool_label,
 };
 use openagents_account::{
     Lease,
     openagents::schedules::{self, Schedule},
 };
-use openagents_proto::foreman::{
-    ForemanCandidate, ForemanSettings, ForemanStatus, RecordDecision, Scope,
+use openagents_proto::agent_wakes::{
+    AgentWakeStatus, DecisionEntry, Grant, GrantRequest, MAX_EVERY_MINUTES, MIN_EVERY_MINUTES,
+    NEVER_REFUSAL, Over, RecordDecision, RevokeGrant, Scope, SetWakes, Wake as WakeOn,
+    WakeCandidate, WakeSettings, WakesStatus,
 };
 use std::sync::Arc;
 
 const SCHEDULE_EVERY_MS: i64 = 60_000;
+const GRANTS_EVERY_MS: i64 = 60_000;
 const GITHUB_EVERY_MS: i64 = 5 * 60_000;
 const REPO: &str = "OpenAgentsInc/openagents";
-/// What the account's Scheduled prompts page shows for Foreman's schedule.
-const SCHEDULE_PROMPT: &str =
-    "Foreman check-in: review every open issue and every agent, and act on what needs it.";
 
 fn error(message: &str) -> EngineError {
     EngineError::Other(message.into())
 }
 
+/// A chat's saved agent: its definition ID, from the chat config the host
+/// stamps from the definition.
+fn chat_agent(chat: &openagents_proto::Chat) -> Option<String> {
+    chat.config
+        .as_ref()
+        .filter(|c| openagents_proto::saved_agent::is_agent_chat(Some(c)))?
+        .model_options
+        .get(openagents_proto::saved_agent::AGENT)?
+        .as_str()
+        .map(str::to_owned)
+}
+
+fn title_of(chat: &openagents_proto::Chat) -> String {
+    chat.title
+        .clone()
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| "Untitled".into())
+}
+
+/// An account grant in the app's terms; the two share one JSON shape.
+fn from_account(grant: openagents_account::openagents::agents::AgentGrant) -> Option<Grant> {
+    serde_json::from_value(serde_json::to_value(grant).ok()?).ok()
+}
+
+/// What the agent's definition declares to wake on, from the chat config.
+fn declared_wakes(chat: &openagents_proto::Chat) -> (Vec<WakeOn>, Option<i64>) {
+    openagents_proto::saved_agent::declared(chat.config.as_ref())
+        .map(|d| (d.wakes, d.coalesce_secs.map(|s| i64::from(s) * 1000)))
+        .unwrap_or_default()
+}
+
 impl DocHost {
-    /// Open Foreman's state under `root` and watch every device's chat
-    /// status for the chats it manages. Called once at engine assembly.
-    pub fn start_foreman(&self, root: std::path::PathBuf) {
-        self.start_working_state(&root);
+    /// Open every agent's wake state under `root` (`<profile>/agent-wakes`), move
+    /// state saved before #12044 from `legacy` (`<profile>/foreman`) once its
+    /// agent is known, and watch every device's chat status for the chats
+    /// the agents manage. Called once at engine assembly.
+    pub fn start_agent_wakes(&self, root: std::path::PathBuf, legacy: std::path::PathBuf) {
         if self
             .inner
-            .foreman
-            .set(Arc::new(Foreman::open(&root)))
+            .agent_wakes
+            .set(Arc::new(AgentWakes::open(&root)))
             .is_err()
         {
             return;
         }
+        let _ = self.inner.agent_wakes_legacy.set(legacy);
+        self.start_working_state(&root);
+        // Remote run commands (#12054) act for an agent only within the
+        // same account grants its own chat's commands are held to.
+        let weak = Arc::downgrade(&self.inner);
+        self.set_run_command_authority(Some(Arc::new(
+            move |agent: &str, scope: &str, target: &str| {
+                let inner = weak
+                    .upgrade()
+                    .ok_or_else(|| "This computer is shutting down.".to_owned())?;
+                DocHost { inner }.agent_allows(agent, Scope::grantable(scope)?, target)
+            },
+        )));
         let weak = Arc::downgrade(&self.inner);
         self.spawn_worker(async move {
             // The workspace and sessions attach after assembly.
@@ -57,26 +106,27 @@ impl DocHost {
             loop {
                 let Some(inner) = weak.upgrade() else { return };
                 let host = DocHost { inner };
-                if let Some(foreman) = host.foreman() {
+                if let Some(wakes) = host.agent_wakes() {
                     let rows = rows.borrow_and_update().clone();
                     let chats = chats.borrow().clone();
-                    foreman.observe_claim_chats(&chats, &rows, now_ms());
-                    let chat = foreman.chat();
-                    let is_child = |id: &str| {
-                        chats
-                            .iter()
-                            .any(|c| c.id == id && chat.is_some() && c.parent_chat_id == chat)
-                    };
                     let title = |id: &str| {
                         chats
                             .iter()
                             .find(|c| c.id == id)
-                            .and_then(|c| c.title.clone())
-                            .filter(|t| !t.trim().is_empty())
+                            .map(title_of)
                             .unwrap_or_else(|| "Untitled".into())
                     };
-                    if let Err(e) = foreman.observe(&rows, is_child, title, now_ms()) {
-                        tracing::warn!(error = %e, "foreman: session look failed");
+                    for engine in wakes.all() {
+                        engine.observe_claim_chats(&chats, &rows, now_ms());
+                        let chat = engine.chat();
+                        let is_child = |id: &str| {
+                            chats
+                                .iter()
+                                .any(|c| c.id == id && chat.is_some() && c.parent_chat_id == chat)
+                        };
+                        if let Err(e) = engine.observe(&rows, is_child, title, now_ms()) {
+                            tracing::warn!(error = %e, "agent wakes: session look failed");
+                        }
                     }
                 }
                 drop(host);
@@ -91,31 +141,52 @@ impl DocHost {
                 tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                 let Some(inner) = weak.upgrade() else { return };
                 let host = DocHost { inner };
-                let Some(foreman) = host.foreman().cloned() else {
+                let Some(wakes) = host.agent_wakes().cloned() else {
                     return;
                 };
-                let state = foreman.state();
-                if state.settings.chat_id.is_none()
-                    || state.settings.paused
-                    || now_ms() - state.last_github < GITHUB_EVERY_MS
-                {
-                    continue;
+                // One GitHub look feeds every agent that's due and wakes on
+                // issues or claims.
+                let mut due = Vec::new();
+                for engine in wakes.all() {
+                    let state = engine.state();
+                    let wants = [
+                        WakeOn::IssueOpened,
+                        WakeOn::IssueClosed,
+                        WakeOn::ClaimStale,
+                        WakeOn::ClaimNoProgress,
+                    ]
+                    .into_iter()
+                    .any(|w| engine.wakes_on(w));
+                    if state.settings.chat_id.is_some()
+                        && !state.settings.paused
+                        && wants
+                        && now_ms() - state.last_github >= GITHUB_EVERY_MS
+                    {
+                        let local = match host.local_progress(&engine).await {
+                            Ok(local) => Some(local),
+                            Err(e) => {
+                                tracing::warn!(error = %e, "agent run look failed");
+                                engine.set_problem(Some(format!(
+                                    "Couldn't check terminal sessions: {e}"
+                                )));
+                                None
+                            }
+                        };
+                        due.push((engine, local));
+                    }
                 }
-                let local = host.local_progress().await;
                 drop(host);
-                if let Err(e) = &local {
-                    tracing::warn!(error = %e, "agent run look failed");
-                    foreman.set_problem(Some(format!("Couldn't check terminal sessions: {e}")));
+                if !due.is_empty() {
+                    look_at_github(&due).await;
                 }
-                look_at_github(&foreman, local.as_ref().ok()).await;
             }
         });
     }
 
-    /// This computer's app output and terminal activity by the harness
-    /// session a claim marker names, and builds running in worktrees of
-    /// the agent's checkout named for an issue.
-    async fn local_progress(&self) -> Result<LocalProgress, EngineError> {
+    /// What this computer sees of claims (#12032): each app chat's last
+    /// output by the harness session a claim marker names, and builds
+    /// running in worktrees of the agent's checkout named for an issue.
+    async fn local_progress(&self, engine: &WakeEngine) -> Result<LocalProgress, EngineError> {
         let now = now_ms();
         let runs = tokio::task::spawn_blocking(coder_lease::runs::here)
             .await
@@ -144,7 +215,7 @@ impl DocHost {
             };
             // An app chat titled for an issue works it, whoever holds the
             // claim (a coordinator session often does).
-            for number in crate::foreman::issue_refs(chat.title.as_deref().unwrap_or("")) {
+            for number in crate::agent_wakes::issue_refs(chat.title.as_deref().unwrap_or("")) {
                 let seen = local.titled.entry(number).or_insert(last);
                 *seen = (*seen).max(last);
             }
@@ -164,9 +235,8 @@ impl DocHost {
             local.chats.insert(format!("{harness}:{id}"), last);
         }
         // The checkout the agent's chat works in.
-        let checkout = self
-            .foreman()
-            .and_then(|f| f.chat())
+        let checkout = engine
+            .chat()
             .and_then(|id| chats.iter().find(|c| c.id == id))
             .and_then(|c| {
                 c.cwd.clone().or_else(|| {
@@ -180,25 +250,38 @@ impl DocHost {
         Ok(local)
     }
 
-    pub(crate) fn foreman(&self) -> Option<&Arc<Foreman>> {
-        self.inner.foreman.get()
+    pub(crate) fn agent_wakes(&self) -> Option<&Arc<AgentWakes>> {
+        self.inner.agent_wakes.get()
     }
 
-    /// The settings card's view.
-    pub fn foreman_status(&self) -> ForemanStatus {
-        let Some(foreman) = self.foreman() else {
-            return ForemanStatus {
-                settings: ForemanSettings::default(),
-                chat_title: None,
-                candidates: Vec::new(),
-                authority: None,
-                next_check_in: None,
-                problem: Some("Foreman isn't available on this computer.".into()),
-                decisions: Vec::new(),
-                turned_on_at: None,
+    /// The chat of the only agent with check-ins on this computer, when
+    /// exactly one has a chat chosen.
+    pub(crate) fn only_checked_in_chat(&self) -> Option<String> {
+        let chats: Vec<String> = self
+            .agent_wakes()?
+            .all()
+            .into_iter()
+            .filter_map(|e| e.chat())
+            .collect();
+        match chats.as_slice() {
+            [one] => Some(one.clone()),
+            _ => None,
+        }
+    }
+
+    /// The engine whose agent runs in the chat `chat`, if any.
+    pub(crate) fn wake_engine_for_chat(&self, chat: &str) -> Option<Arc<WakeEngine>> {
+        self.agent_wakes()?.by_chat(chat)
+    }
+
+    /// The settings card's view: every agent's wake engine on this host.
+    pub fn agent_wakes_status(&self) -> WakesStatus {
+        let Some(wakes) = self.agent_wakes() else {
+            return WakesStatus {
+                problem: Some("Agent check-ins aren't available on this computer.".into()),
+                ..WakesStatus::default()
             };
         };
-        let state = foreman.state();
         let chats = self
             .workspace()
             .map(|w| w.watch_chats().borrow().clone())
@@ -206,41 +289,64 @@ impl DocHost {
         let device = &self.inner.config.device_id;
         let candidates = chats
             .iter()
-            .filter(|c| {
-                &c.device_id == device
-                    && !c.archived
-                    && c.config.as_ref().is_some_and(|k| {
-                        k.model_options
-                            .contains_key(super::custom_agents::ASSIGNMENT)
-                    })
-            })
-            .map(|c| ForemanCandidate {
-                chat_id: c.id.clone(),
-                title: c.title.clone().unwrap_or_else(|| "Untitled".into()),
+            .filter(|c| &c.device_id == device && !c.archived)
+            .filter_map(|c| {
+                Some(WakeCandidate {
+                    chat_id: c.id.clone(),
+                    title: title_of(c),
+                    agent: chat_agent(c)?,
+                })
             })
             .collect();
-        ForemanStatus {
-            chat_title: state.settings.chat_id.as_ref().and_then(|id| {
-                chats
-                    .iter()
-                    .find(|c| &c.id == id)
-                    .map(|c| c.title.clone().unwrap_or_else(|| "Untitled".into()))
-            }),
-            settings: state.settings.clone(),
+        let agents = wakes
+            .all()
+            .into_iter()
+            .map(|engine| {
+                let state = engine.state();
+                let chat = state
+                    .settings
+                    .chat_id
+                    .as_ref()
+                    .and_then(|id| chats.iter().find(|c| &c.id == id));
+                AgentWakeStatus {
+                    agent: engine.agent().to_owned(),
+                    agent_name: chat
+                        .and_then(|c| {
+                            openagents_proto::saved_agent::agent_name(
+                                c.config.as_ref(),
+                                c.title.as_deref(),
+                            )
+                        })
+                        .unwrap_or_else(|| "Agent".into()),
+                    chat_title: chat.map(title_of),
+                    wakes: if state.wakes_on.is_empty() {
+                        WakeOn::ALL.to_vec()
+                    } else {
+                        state.wakes_on.clone()
+                    },
+                    grants: state.grants.clone(),
+                    next_check_in: engine.next_scheduled(),
+                    problem: engine.problem(),
+                    turned_on_at: state.turned_on_at,
+                    decisions: engine.read(crate::agent_wakes::STATUS_ENTRIES),
+                    settings: state.settings,
+                }
+            })
+            .collect();
+        WakesStatus {
+            agents,
             candidates,
-            authority: state.authority,
-            next_check_in: foreman.next_scheduled(),
-            problem: foreman.problem(),
-            decisions: foreman.read(crate::foreman::STATUS_ENTRIES),
-            turned_on_at: state.turned_on_at,
+            problem: None,
         }
     }
 
-    pub fn set_foreman(&self, settings: ForemanSettings) -> Result<ForemanStatus, EngineError> {
-        let foreman = self
-            .foreman()
-            .ok_or_else(|| error("Foreman isn't available on this computer."))?;
-        if let Some(chat) = &settings.chat_id {
+    /// The owner's settings for one agent; its chat must run on this
+    /// computer and belong to that agent.
+    pub fn set_agent_wakes(&self, set: SetWakes) -> Result<WakesStatus, EngineError> {
+        let wakes = self
+            .agent_wakes()
+            .ok_or_else(|| error("Agent check-ins aren't available on this computer."))?;
+        if let Some(chat) = &set.settings.chat_id {
             let row = self
                 .workspace()
                 .ok_or_else(|| error("This computer is not ready."))?
@@ -249,25 +355,145 @@ impl DocHost {
             if row.device_id != self.inner.config.device_id {
                 return Err(error("Choose a chat that runs on this computer."));
             }
+            // A chat stamped with another agent is refused; an older chat
+            // learns its agent's stamp on its next turn.
+            if !openagents_proto::saved_agent::is_agent_chat(row.config.as_ref())
+                || chat_agent(&row).is_some_and(|a| a != set.agent)
+            {
+                return Err(error("Choose a chat that runs this agent."));
+            }
         }
-        foreman.set(settings, now_ms())?;
-        foreman.set_problem(None);
-        Ok(self.foreman_status())
+        let engine = wakes.ensure(&set.agent)?;
+        engine.set(set.settings, now_ms())?;
+        engine.set_problem(None);
+        Ok(self.agent_wakes_status())
     }
 
-    /// Foreman's own record of a check-in; only its chat may write it.
-    pub fn record_foreman_decision(&self, record: RecordDecision) -> Result<(), EngineError> {
-        let foreman = self
-            .foreman()
-            .ok_or_else(|| error("Foreman isn't available on this computer."))?;
-        if record.origin_chat_id.is_none() || record.origin_chat_id != foreman.chat() {
-            return Err(error("Only Foreman's own chat can write its decision log."));
+    /// The owner grants an agent scopes, through the account. Never-list
+    /// scopes are refused here before anything is sent.
+    pub async fn grant_agent(&self, request: GrantRequest) -> Result<WakesStatus, EngineError> {
+        let scopes = request
+            .scopes
+            .iter()
+            .map(|w| Scope::grantable(w))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(EngineError::Other)?;
+        if scopes.is_empty() {
+            return Err(error("Choose at least one power to grant."));
         }
+        let engine = self
+            .agent_wakes()
+            .ok_or_else(|| error("Agent check-ins aren't available on this computer."))?
+            .ensure(&request.agent)?;
+        let lease = self
+            .wakes_lease()
+            .ok_or_else(|| error("Sign in to OpenAgents to grant an agent powers."))?;
+        let agents = lease
+            .client()
+            .agents(lease.session())
+            .map_err(|_| error("Sign in to OpenAgents again."))?;
+        let words: Vec<String> = scopes.iter().map(|s| s.word().to_owned()).collect();
+        let over = serde_json::from_value(
+            serde_json::to_value(&request.over).map_err(|e| error(&e.to_string()))?,
+        )
+        .map_err(|e| error(&e.to_string()))?;
+        agents
+            .grant(&request.agent, words, over, &lease.cancel)
+            .await
+            .map_err(EngineError::AgentService)?;
+        self.refresh_grants(&engine, &lease).await?;
+        Ok(self.agent_wakes_status())
+    }
+
+    /// The owner revokes one of an agent's grants, through the account.
+    pub async fn revoke_agent_grant(
+        &self,
+        revoke: RevokeGrant,
+    ) -> Result<WakesStatus, EngineError> {
+        let engine = self
+            .agent_wakes()
+            .and_then(|w| w.engine(&revoke.agent))
+            .ok_or_else(|| error("That agent has no check-ins on this computer."))?;
+        let lease = self
+            .wakes_lease()
+            .ok_or_else(|| error("Sign in to OpenAgents to change an agent's powers."))?;
+        let agents = lease
+            .client()
+            .agents(lease.session())
+            .map_err(|_| error("Sign in to OpenAgents again."))?;
+        agents
+            .revoke_grant(&revoke.agent, &revoke.grant, &lease.cancel)
+            .await
+            .map_err(EngineError::AgentService)?;
+        self.refresh_grants(&engine, &lease).await?;
+        Ok(self.agent_wakes_status())
+    }
+
+    fn wakes_lease(&self) -> Option<Lease> {
+        self.openagents_lease()
+    }
+
+    /// Read the agent's grants from the account into its engine. A standing
+    /// authority saved before grants, or one its definition asked for when
+    /// this host turned its check-ins on, becomes an account grant once.
+    async fn refresh_grants(&self, engine: &WakeEngine, lease: &Lease) -> Result<(), EngineError> {
+        let agents = lease
+            .client()
+            .agents(lease.session())
+            .map_err(|_| error("Sign in to OpenAgents again."))?;
+        let state = engine.state();
+        if state.authority.is_some() || state.wants_standing {
+            let listed = agents
+                .grants(engine.agent(), &lease.cancel)
+                .await
+                .map_err(EngineError::AgentService)?;
+            let has_standing = listed
+                .into_iter()
+                .filter_map(from_account)
+                .any(|g| g.is_standing());
+            if !has_standing {
+                let words = Scope::CHAT.iter().map(|s| s.word().to_owned()).collect();
+                agents
+                    .grant(
+                        engine.agent(),
+                        words,
+                        openagents_account::openagents::agents::GrantOver::Account,
+                        &lease.cancel,
+                    )
+                    .await
+                    .map_err(EngineError::AgentService)?;
+            }
+            engine.update(|s| {
+                s.authority = None;
+                s.wants_standing = false;
+            })?;
+        }
+        let grants = agents
+            .grants(engine.agent(), &lease.cancel)
+            .await
+            .map_err(EngineError::AgentService)?
+            .into_iter()
+            .filter_map(from_account)
+            .collect();
+        engine.set_grants(grants, now_ms())
+    }
+
+    /// An agent's own record of a check-in; only its chat may write it.
+    pub fn record_agent_decision(&self, record: RecordDecision) -> Result<(), EngineError> {
+        let engine = record
+            .origin_chat_id
+            .as_deref()
+            .and_then(|chat| self.wake_engine_for_chat(chat))
+            .ok_or_else(|| {
+                error(
+                    "Only an agent's own chat, with check-ins set up, can write its decision log.",
+                )
+            })?;
         let now = now_ms();
         if let (Some(items), Some(chat)) = (record.working, record.origin_chat_id.as_deref()) {
             self.save_working_state(chat, items, now)?;
         }
-        foreman.record(
+        engine.record(
             &record.saw,
             &record.decided,
             &record.did,
@@ -276,22 +502,23 @@ impl DocHost {
         )
     }
 
-    /// Whether a command `origin` sends to `target` is within Foreman's
-    /// standing authority, and remember the chat it acted on. Commands from
-    /// other chats, and from turns the owner started, pass unchanged.
-    pub(crate) fn foreman_admit(
+    /// Whether a command `origin` sends to `target` is within the grants of
+    /// the agent that runs in `origin`, and remember the chat it acted on.
+    /// Commands from other chats, and from turns the owner started, pass
+    /// unchanged.
+    pub(crate) fn agent_admit(
         &self,
         origin: Option<&str>,
         target: &str,
         payload: Option<&SessionCommandPayload>,
     ) -> Result<(), EngineError> {
-        let Some(foreman) = self.foreman() else {
+        let Some(origin) = origin else {
             return Ok(());
         };
-        let Some(chat) = foreman.chat() else {
+        let Some(engine) = self.wake_engine_for_chat(origin) else {
             return Ok(());
         };
-        if origin != Some(chat.as_str()) || target == chat {
+        if target == origin {
             return Ok(());
         }
         let fresh = self
@@ -300,22 +527,44 @@ impl DocHost {
             .and_then(|h| h.doc.read_entries().ok())
             .is_some_and(|e| e.is_empty());
         let scope = match payload {
-            _ if fresh => Scope::Create,
-            Some(SessionCommandPayload::Steer { .. }) => Scope::Steer,
-            Some(SessionCommandPayload::Interrupt {}) => Scope::Stop,
-            _ => Scope::Message,
+            _ if fresh => Scope::ChatStart,
+            Some(SessionCommandPayload::Steer { .. }) => Scope::ChatSteer,
+            Some(SessionCommandPayload::Interrupt {}) => Scope::ChatStop,
+            _ => Scope::ChatMessage,
         };
-        foreman
-            .admits(scope, self.foreman_in_check_in(&chat))
+        let project = self
+            .workspace()
+            .and_then(|w| w.chat(target).ok().flatten())
+            .and_then(|c| c.space_id);
+        engine
+            .admits(
+                scope,
+                target,
+                project.as_deref(),
+                self.in_check_in(&engine, origin),
+            )
             .map_err(EngineError::Other)?;
-        foreman.manage(target)
+        engine.manage(target)
     }
 
-    /// Whether Foreman's current turn answers a check-in, not the owner.
-    fn foreman_in_check_in(&self, chat: &str) -> bool {
-        let Some(foreman) = self.foreman() else {
-            return false;
-        };
+    /// Whether the agent `agent` (a definition ID) holds a grant for `scope`
+    /// on the chat `target`, from its cached account grants. For callers
+    /// that have already proved which agent acts, such as remote run
+    /// commands (#12054); there is no owner's-turn exception here.
+    pub fn agent_allows(&self, agent: &str, scope: Scope, target: &str) -> Result<(), String> {
+        let engine = self
+            .agent_wakes()
+            .and_then(|w| w.engine(agent))
+            .ok_or_else(|| "This agent has no grants on this computer.".to_owned())?;
+        let project = self
+            .workspace()
+            .and_then(|w| w.chat(target).ok().flatten())
+            .and_then(|c| c.space_id);
+        engine.admits(scope, target, project.as_deref(), true)
+    }
+
+    /// Whether the agent's current turn answers a check-in, not the owner.
+    fn in_check_in(&self, engine: &WakeEngine, chat: &str) -> bool {
         self.open(chat)
             .ok()
             .and_then(|h| h.doc.read_entries().ok())
@@ -324,22 +573,16 @@ impl DocHost {
                     .iter()
                     .rev()
                     .find(|e| e.role == openagents_doc::MessageRole::User)
-                    .map(|e| foreman.is_wake(&e.id))
+                    .map(|e| engine.is_wake(&e.id))
             })
             .unwrap_or(false)
     }
 
-    /// One pass from the host loop: mirror the account schedule, then start
-    /// a check-in when one is due.
-    pub(super) async fn foreman_tick(&self, lease: &Lease) -> Result<(), EngineError> {
-        let Some(foreman) = self.foreman().cloned() else {
-            return Ok(());
-        };
-        self.foreman_drop_trial(&foreman)?;
-        if foreman.chat().is_none() {
-            self.foreman_adopt(&foreman, now_ms())?;
-        }
-        let Some(chat) = foreman.chat() else {
+    /// One pass from the host loop: move old state, turn wakes on for agents
+    /// that ask, read grants, then for each agent mirror its account
+    /// schedule and start a check-in when one is due.
+    pub(super) async fn agent_wakes_tick(&self, lease: &Lease) -> Result<(), EngineError> {
+        let Some(wakes) = self.agent_wakes().cloned() else {
             return Ok(());
         };
         let workspace = self
@@ -348,55 +591,102 @@ impl DocHost {
         let sessions = self
             .sessions()
             .ok_or_else(|| error("This computer is not ready."))?;
-        match workspace.chat(&chat)? {
-            Some(row) if row.device_id == self.inner.config.device_id => {}
-            Some(_) => {
-                foreman.set_problem(Some(
-                    "Foreman's chat runs on another computer. Set it up there.".into(),
-                ));
-                return Ok(());
-            }
-            None => {
-                foreman.set_problem(Some(
-                    "Foreman's chat no longer exists. Choose it again.".into(),
-                ));
-                return Ok(());
-            }
+        let chats = workspace.watch_chats().borrow().clone();
+        self.migrate_legacy_wakes(&wakes, &chats)?;
+        for engine in wakes.all() {
+            self.drop_trial(&engine)?;
         }
-        let now = now_ms();
-        if foreman.throttle("schedule", SCHEDULE_EVERY_MS, now) {
-            match self.sync_foreman_schedule(&foreman, lease, now).await {
-                Ok(()) => foreman.set_problem(None),
-                Err(e) => {
-                    tracing::warn!(error = %e, "foreman: schedule sync failed");
-                    foreman.set_problem(Some(
-                        "Foreman's schedule couldn't reach your account. It keeps running here."
-                            .into(),
+        self.adopt_declaring(&wakes, &chats, now_ms())?;
+        for engine in wakes.all() {
+            let Some(chat) = engine.chat() else {
+                continue;
+            };
+            let now = now_ms();
+            let row = match workspace.chat(&chat)? {
+                Some(row) if row.device_id == self.inner.config.device_id => row,
+                Some(_) => {
+                    engine.set_problem(Some(
+                        "This agent's chat runs on another computer. Set it up there.".into(),
                     ));
+                    continue;
+                }
+                None => {
+                    engine.set_problem(Some(
+                        "This agent's chat no longer exists. Choose it again.".into(),
+                    ));
+                    continue;
+                }
+            };
+            let (wakes_on, coalesce) = declared_wakes(&row);
+            engine.declare(wakes_on, coalesce)?;
+            if engine.throttle("grants", GRANTS_EVERY_MS, now)
+                && let Err(e) = self.refresh_grants(&engine, lease).await
+            {
+                tracing::warn!(error = %e, "agent wakes: grants not read");
+            }
+            if engine.throttle("schedule", SCHEDULE_EVERY_MS, now) {
+                let name = openagents_proto::saved_agent::agent_name(
+                    row.config.as_ref(),
+                    row.title.as_deref(),
+                )
+                .unwrap_or_else(|| "Agent".into());
+                match self.sync_wake_schedule(&engine, &name, lease, now).await {
+                    Ok(()) => engine.set_problem(None),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "agent wakes: schedule sync failed");
+                        engine.set_problem(Some(
+                            "This agent's schedule couldn't reach your account. It keeps running here."
+                                .into(),
+                        ));
+                    }
                 }
             }
+            let busy = sessions.turn_in_flight(&chat);
+            self.watch_own_turn(&engine, &chat, busy, now)?;
+            self.tell_owner(&engine, &chat, now);
+            self.start_check_in(&engine, &chat, busy, now, |text| {
+                self.request_from_chat_row(&chat, text)
+            })
+            .await?;
         }
-        let busy = sessions.turn_in_flight(&chat);
-        self.foreman_watch(&chat, busy, now)?;
-        self.foreman_tell_owner(&foreman, &chat, now).await;
-        self.foreman_wake(&chat, busy, now, |text| {
-            self.request_from_chat_row(&chat, text)
-        })
-        .await?;
         Ok(())
     }
 
-    /// On by default (#12030): with no chat chosen, pick the one chat on this
-    /// computer whose agent declares check-ins, and tell that chat so.
-    fn foreman_adopt(&self, foreman: &Foreman, now: i64) -> Result<(), EngineError> {
-        let Some(workspace) = self.workspace() else {
+    /// State saved before #12044 moves under its agent's definition ID once
+    /// the chat it ran in shows which agent that is.
+    fn migrate_legacy_wakes(
+        &self,
+        wakes: &AgentWakes,
+        chats: &[openagents_proto::Chat],
+    ) -> Result<(), EngineError> {
+        let Some(legacy) = self.inner.agent_wakes_legacy.get() else {
             return Ok(());
         };
-        let chats = workspace.watch_chats().borrow().clone();
-        let declaring = declaring_chats(&chats, &self.inner.config.device_id, |a| {
+        let Some(chat) = AgentWakes::legacy_chat(legacy) else {
+            return Ok(());
+        };
+        let Some(agent) = chats.iter().find(|c| c.id == chat).and_then(chat_agent) else {
+            return Ok(());
+        };
+        if wakes.migrate(legacy, &agent)? {
+            tracing::info!(agent = %agent, "agent wakes: moved state saved before grants");
+        }
+        Ok(())
+    }
+
+    /// On by default (#12030): for each agent whose definition declares
+    /// check-ins and has no chat chosen here, pick its one chat on this
+    /// computer and tell that chat so.
+    fn adopt_declaring(
+        &self,
+        wakes: &AgentWakes,
+        chats: &[openagents_proto::Chat],
+        now: i64,
+    ) -> Result<(), EngineError> {
+        let declaring = declaring_chats(chats, &self.inner.config.device_id, |a| {
             self.is_lab_trial(a)
         });
-        self.foreman_adopt_from(foreman, now, declaring)
+        self.adopt_from(wakes, declaring, now)
     }
 
     /// Whether `assignment` is an Agent Lab trial on this computer.
@@ -407,11 +697,11 @@ impl DocHost {
             .is_some_and(|b| super::agent_lab::is_trial(&b.lab_root, assignment))
     }
 
-    /// A trial chat this host picked by itself (#12109) loses check-ins and
-    /// the authority, logged, so the next pick or bind is the real agent.
-    /// An owner's own choice is left alone.
-    fn foreman_drop_trial(&self, foreman: &Foreman) -> Result<(), EngineError> {
-        let state = foreman.state();
+    /// A trial chat this host picked by itself (#12109) loses check-ins,
+    /// logged, so the next pick or bind is the real agent. An owner's own
+    /// choice is left alone.
+    fn drop_trial(&self, engine: &WakeEngine) -> Result<(), EngineError> {
+        let state = engine.state();
         let (Some(chat), Some(_)) = (&state.settings.chat_id, state.turned_on_at) else {
             return Ok(());
         };
@@ -421,11 +711,10 @@ impl DocHost {
         if !assignment_of(&row).is_some_and(|a| self.is_lab_trial(a)) {
             return Ok(());
         }
-        tracing::warn!(chat = %chat, "foreman: dropping a test chat picked for check-ins");
-        foreman.set(
-            ForemanSettings {
+        tracing::warn!(chat = %chat, "agent wakes: dropping a test chat picked for check-ins");
+        engine.set(
+            WakeSettings {
                 chat_id: None,
-                authority: false,
                 ..state.settings
             },
             now_ms(),
@@ -433,13 +722,10 @@ impl DocHost {
     }
 
     /// A chat the owner just bound to a saved agent (#12057) is their
-    /// choice: when no chat checks in yet and its agent declares check-ins,
-    /// it's picked, whatever other chats declare.
-    pub(super) fn foreman_adopt_bound(
-        &self,
-        chat: &openagents_proto::Chat,
-    ) -> Result<(), EngineError> {
-        let Some(foreman) = self.foreman().cloned() else {
+    /// choice: when its agent declares check-ins and has no chat checking in
+    /// here yet, it's picked.
+    pub(super) fn adopt_bound(&self, chat: &openagents_proto::Chat) -> Result<(), EngineError> {
+        let Some(wakes) = self.agent_wakes().cloned() else {
             return Ok(());
         };
         let declaring = declaring_chats(
@@ -447,42 +733,48 @@ impl DocHost {
             &self.inner.config.device_id,
             |a| self.is_lab_trial(a),
         );
-        self.foreman_adopt_from(&foreman, now_ms(), declaring)
+        self.adopt_from(&wakes, declaring, now_ms())
     }
 
-    fn foreman_adopt_from(
+    fn adopt_from(
         &self,
-        foreman: &Foreman,
-        now: i64,
+        wakes: &AgentWakes,
         declaring: Vec<Declaring>,
+        now: i64,
     ) -> Result<(), EngineError> {
-        match foreman.adopt(&declaring, now)? {
-            Adopt::Nothing => {}
-            Adopt::Choose(titles) => foreman.set_problem(Some(format!(
-                "{} saved agents on this computer ask to check in on their own: {}. Choose the one that does in Foreman's chat above.",
-                titles.len(),
-                titles.join(", ")
-            ))),
-            Adopt::Picked(pick) => {
-                foreman.set_problem(None);
-                let state = foreman.state();
-                let what = if state.authority.is_some() {
-                    "check-ins and standing authority"
-                } else {
-                    "check-ins"
-                };
-                let text = format!(
-                    "This computer turned on {what} for {}, because its definition asks for them: it checks in every {} minutes{}. Turn either off in Settings → General → Foreman.",
-                    pick.title,
-                    state.settings.every_minutes,
-                    if state.authority.is_some() {
-                        " and may message, start, steer and stop chats without asking"
-                    } else {
-                        ""
+        let mut agents: Vec<String> = declaring.iter().filter_map(|d| d.agent.clone()).collect();
+        agents.sort();
+        agents.dedup();
+        for agent in agents {
+            let engine = wakes.ensure(&agent)?;
+            let mine: Vec<Declaring> = declaring
+                .iter()
+                .filter(|d| d.agent.as_deref() == Some(agent.as_str()))
+                .cloned()
+                .collect();
+            match engine.adopt(&mine, now)? {
+                Adopt::Nothing => {}
+                Adopt::Choose(titles) => engine.set_problem(Some(format!(
+                    "{} chats on this computer run this agent: {}. Choose the one that checks in.",
+                    titles.len(),
+                    titles.join(", ")
+                ))),
+                Adopt::Picked(pick) => {
+                    engine.set_problem(None);
+                    let state = engine.state();
+                    let text = format!(
+                        "This computer turned on check-ins for {}, because its definition asks for them: it checks in every {} minutes{}. Turn them off in Settings → General → Check-ins.",
+                        pick.title,
+                        state.settings.every_minutes,
+                        if state.wants_standing {
+                            ", and the account is asked to grant it standing authority to message, start, steer and stop chats without asking"
+                        } else {
+                            ""
+                        }
+                    );
+                    if let Err(e) = self.runtime_note(&pick.chat_id, text) {
+                        tracing::warn!(error = %e, "agent wakes: couldn't tell the chosen chat");
                     }
-                );
-                if let Err(e) = self.runtime_note(&pick.chat_id, text) {
-                    tracing::warn!(error = %e, "foreman: couldn't tell the chosen chat");
                 }
             }
         }
@@ -491,11 +783,11 @@ impl DocHost {
 
     /// The stall ladder's last rung (#12032): tell the owner once per stall.
     /// Until then the check-in also puts it first in the agent's status.
-    async fn foreman_tell_owner(&self, foreman: &Foreman, chat: &str, now: i64) {
-        let notices = match foreman.owner_notices(now) {
+    async fn tell_owner(&self, engine: &WakeEngine, chat: &str, now: i64) {
+        let notices = match engine.owner_notices(now) {
             Ok(notices) => notices,
             Err(e) => {
-                tracing::warn!(error = %e, "foreman: owner notices failed");
+                tracing::warn!(error = %e, "agent wakes: owner notices failed");
                 return;
             }
         };
@@ -508,7 +800,7 @@ impl DocHost {
                     chat = %chat,
                     request = %notice.request_id,
                     error = %error,
-                    "foreman: couldn't notify the owner"
+                    "agent wakes: couldn't notify the owner"
                 );
             }
         }
@@ -518,16 +810,19 @@ impl DocHost {
     /// the stuck window with no output is interrupted once, and the next
     /// check-in says which call was stuck and for how long. Returns whether
     /// it stopped a turn.
-    fn foreman_watch(&self, chat: &str, busy: bool, now: i64) -> Result<bool, EngineError> {
-        let Some(foreman) = self.foreman().cloned() else {
+    fn watch_own_turn(
+        &self,
+        engine: &WakeEngine,
+        chat: &str,
+        busy: bool,
+        now: i64,
+    ) -> Result<bool, EngineError> {
+        let Some(stuck) = engine.watchdog(busy, now, || self.waiting_tool(chat))? else {
             return Ok(false);
         };
-        let Some(stuck) = foreman.watchdog(busy, now, || self.waiting_tool(chat))? else {
-            return Ok(false);
-        };
-        tracing::warn!(chat = %chat, since = stuck.since, "foreman: stopping a stuck turn");
+        tracing::warn!(chat = %chat, since = stuck.since, "agent wakes: stopping a stuck turn");
         if let Err(e) = self.queue_command(chat, SessionCommandPayload::Interrupt {}) {
-            foreman.set_problem(Some(format!("A stuck turn couldn't be stopped: {e}")));
+            engine.set_problem(Some(format!("A stuck turn couldn't be stopped: {e}")));
             return Err(e);
         }
         Ok(true)
@@ -551,19 +846,17 @@ impl DocHost {
         })
     }
 
-    /// Start the check-in that is due, if any, as a message queued into
-    /// Foreman's chat. Returns its message id.
-    async fn foreman_wake(
+    /// Start the check-in that is due, if any, as a message queued into the
+    /// agent's chat. Returns its message id.
+    async fn start_check_in(
         &self,
+        engine: &WakeEngine,
         chat: &str,
         busy: bool,
         now: i64,
         request: impl FnOnce(&str) -> Option<openagents_proto::RunRequest>,
     ) -> Result<Option<String>, EngineError> {
-        let Some(foreman) = self.foreman().cloned() else {
-            return Ok(None);
-        };
-        let Some(mut wake) = foreman.due(busy, now)? else {
+        let Some(mut wake) = engine.due(busy, now)? else {
             return Ok(None);
         };
         // The agent's saved working state rides every check-in (#12057).
@@ -613,7 +906,7 @@ impl DocHost {
         } else {
             None
         };
-        match self.queue_foreman_wake(chat, &wake, request) {
+        match self.queue_check_in(chat, &wake, request) {
             Ok(()) => {
                 #[cfg(unix)]
                 if let Some((agent, report)) = owner_wait {
@@ -622,20 +915,20 @@ impl DocHost {
                 Ok(Some(wake.id))
             }
             Err(e) => {
-                tracing::warn!(error = %e, "foreman: check-in not queued");
-                foreman.update(|s| s.open_wake = None)?;
-                foreman.append(&openagents_proto::foreman::DecisionEntry::Outcome {
+                tracing::warn!(error = %e, "agent wakes: check-in not queued");
+                engine.update(|s| s.open_wake = None)?;
+                engine.append(&DecisionEntry::Outcome {
                     at: now,
                     id: wake.id,
                     status: "not started".into(),
                 })?;
-                foreman.set_problem(Some(format!("A check-in couldn't start: {e}")));
+                engine.set_problem(Some(format!("A check-in couldn't start: {e}")));
                 Ok(None)
             }
         }
     }
 
-    fn queue_foreman_wake(
+    fn queue_check_in(
         &self,
         chat: &str,
         wake: &Wake,
@@ -648,7 +941,7 @@ impl DocHost {
         if queued {
             return Ok(());
         }
-        let request = request(&wake.text).ok_or_else(|| error("Foreman's chat is not ready."))?;
+        let request = request(&wake.text).ok_or_else(|| error("The agent's chat is not ready."))?;
         self.queue_command(
             chat,
             SessionCommandPayload::Run {
@@ -659,11 +952,14 @@ impl DocHost {
         Ok(())
     }
 
-    /// Keep the account's copy of Foreman's schedule and this host's copy
-    /// together: the newer change wins, as the account merges it.
-    async fn sync_foreman_schedule(
+    /// Keep the account's copy of the agent's schedule and this host's copy
+    /// together: the newer change wins, as the account merges it. The
+    /// schedule names the agent's definition ID, so it is found by agent,
+    /// not by its prompt text.
+    async fn sync_wake_schedule(
         &self,
-        foreman: &Foreman,
+        engine: &WakeEngine,
+        name: &str,
         lease: &Lease,
         now: i64,
     ) -> Result<(), EngineError> {
@@ -672,7 +968,7 @@ impl DocHost {
             .schedules(lease.session())
             .map_err(|_| error("We couldn't connect to your account. Try again."))?;
         let device = self.inner.config.device_id.clone();
-        let state = foreman.state();
+        let state = engine.state();
         let now_secs = (now / 1000).max(1) as u64;
         let mut changed = Vec::new();
         if state.schedule_dirty || state.schedule_id.is_none() {
@@ -685,10 +981,13 @@ impl DocHost {
                 Some(chat) => Schedule {
                     id,
                     computer: device.clone(),
-                    prompt: Some(SCHEDULE_PROMPT.into()),
+                    prompt: Some(format!(
+                        "{name} check-in: look at what it manages, and act on what needs it."
+                    )),
                     every_secs: Some(u64::from(state.settings.every_minutes) * 60),
                     chat: Some(chat.clone()),
-                    chat_title: Some("Foreman".into()),
+                    chat_title: Some(name.to_owned()),
+                    agent: Some(engine.agent().to_owned()),
                     paused: state.settings.paused,
                     updated,
                     ..Schedule::default()
@@ -707,7 +1006,7 @@ impl DocHost {
             .await
             .map_err(EngineError::AgentService)?;
         if let Some(sent) = changed.first() {
-            foreman.update(|s| {
+            engine.update(|s| {
                 s.schedule_id = (!sent.deleted).then(|| sent.id.clone());
                 s.schedule_updated = sent.updated;
                 s.schedule_dirty = false;
@@ -724,7 +1023,7 @@ impl DocHost {
         if theirs.updated <= state.schedule_updated {
             return Ok(());
         }
-        foreman.update(|s| {
+        engine.update(|s| {
             s.schedule_updated = theirs.updated;
             if theirs.deleted {
                 // Deleted on the website: stop until the owner turns it on again.
@@ -736,10 +1035,8 @@ impl DocHost {
                 }
                 s.settings.paused = theirs.paused;
                 if let Some(every) = theirs.every_secs {
-                    s.settings.every_minutes = ((every / 60) as u32).clamp(
-                        openagents_proto::foreman::MIN_EVERY_MINUTES,
-                        openagents_proto::foreman::MAX_EVERY_MINUTES,
-                    );
+                    s.settings.every_minutes =
+                        ((every / 60) as u32).clamp(MIN_EVERY_MINUTES, MAX_EVERY_MINUTES);
                 }
             }
         })?;
@@ -764,17 +1061,8 @@ fn declaring_chats(
             let declared = openagents_proto::saved_agent::declared(c.config.as_ref())?;
             declared.check_ins.then(|| Declaring {
                 chat_id: c.id.clone(),
-                title: c
-                    .title
-                    .clone()
-                    .filter(|t| !t.trim().is_empty())
-                    .unwrap_or_else(|| "Untitled".into()),
-                agent: c
-                    .config
-                    .as_ref()
-                    .and_then(|k| k.model_options.get(openagents_proto::saved_agent::AGENT))
-                    .and_then(|v| v.as_str())
-                    .map(str::to_owned),
+                title: title_of(c),
+                agent: chat_agent(c),
                 declared,
             })
         })
@@ -791,7 +1079,7 @@ fn assignment_of(chat: &openagents_proto::Chat) -> Option<&str> {
 
 /// Ask the host's GitHub CLI what changed. A missing or signed-out `gh`
 /// leaves only chat and schedule wake-ups.
-async fn look_at_github(foreman: &Foreman, local: Option<&LocalProgress>) {
+async fn look_at_github(engines: &[(Arc<WakeEngine>, Option<LocalProgress>)]) {
     let now = now_ms();
     let listed = gh(&[
         "issue",
@@ -811,21 +1099,32 @@ async fn look_at_github(foreman: &Foreman, local: Option<&LocalProgress>) {
     .and_then(|v| serde_json::from_value::<Vec<GhIssue>>(v).ok());
     let Some(listed) = listed else {
         // Try again at the next look rather than every half minute.
-        let _ = foreman.update(|s| s.last_github = now);
+        for (engine, _) in engines {
+            let _ = engine.update(|s| s.last_github = now);
+        }
         return;
     };
-    if let Err(e) = foreman.observe_issues(&listed, now) {
-        tracing::warn!(error = %e, "foreman: issue look failed");
+    for (engine, _) in engines {
+        if let Err(e) = engine.observe_issues(&listed, now) {
+            tracing::warn!(error = %e, "agent wakes: issue look failed");
+        }
     }
-    // An unreadable run record is not evidence that its session is dead.
-    // Keep the previous claim observations until the next successful read.
-    let Some(local) = local else {
+    // An unreadable run record is not evidence that its session is dead:
+    // an agent without one keeps its previous claim observations until the
+    // next successful read.
+    if engines.iter().all(|(_, local)| local.is_none()) {
         return;
-    };
+    }
     let query = format!("query={CLAIMS_QUERY}");
     if let Some(answer) = gh(&["api", "graphql", "-f", &query]).await {
-        if let Err(e) = foreman.observe_claims(&claim_issues(&answer), local, now) {
-            tracing::warn!(error = %e, "foreman: claim look failed");
+        let issues = claim_issues(&answer);
+        for (engine, local) in engines {
+            let Some(local) = local else {
+                continue;
+            };
+            if let Err(e) = engine.observe_claims(&issues, local, now) {
+                tracing::warn!(error = %e, "agent wakes: claim look failed");
+            }
         }
     }
 }
@@ -949,10 +1248,11 @@ async fn gh(args: &[&str]) -> Option<serde_json::Value> {
 mod tests {
     use super::*;
     use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
-    use openagents_proto::foreman::{DecisionEntry, WakeReason};
+    use openagents_proto::agent_wakes::{WakeReason, WakeSettings};
     use openagents_proto::{Session, SessionStatus};
 
-    const FOREMAN: &str = "f0000000-0000-4000-8000-000000000001";
+    const OWN: &str = "f0000000-0000-4000-8000-000000000001";
+    const AGENT: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
     const WORKER: &str = "f0000000-0000-4000-8000-000000000002";
     const MIN: i64 = 60_000;
 
@@ -999,7 +1299,7 @@ mod tests {
             "id": assignment, "revision": 1,
             "spec": {"agent": agent, "agent_revision": 1,
                 "host": host.inner.config.device_id, "project": null, "task": "Check work"},
-            "definition": definition, "chat": FOREMAN, "state": "queued", "commands": [],
+            "definition": definition, "chat": OWN, "state": "queued", "commands": [],
             "result": null, "archived": false, "active_command": null, "after_seq": 0
         });
         let received = Arc::new(std::sync::Mutex::new(Vec::<NotifyOwner>::new()));
@@ -1066,7 +1366,7 @@ mod tests {
         host.start_custom_agents(auth, registry, root.path().join("labs"));
         core.workspace
             .create_chat(
-                FOREMAN,
+                OWN,
                 None,
                 Some(&host.inner.config.device_id),
                 Some(ChatConfig {
@@ -1085,13 +1385,13 @@ mod tests {
             )
             .unwrap();
         // Keep this clock-driven ladder separate from the host's background loop.
-        let foreman = Foreman::open(&root.path().join("fixture-ladder"));
+        let foreman = WakeEngine::open(&root.path().join("fixture-ladder"), &agent);
         foreman
             .set(
-                ForemanSettings {
-                    chat_id: Some(FOREMAN.into()),
+                WakeSettings {
+                    chat_id: Some(OWN.into()),
                     stall_minutes: 20,
-                    ..ForemanSettings::default()
+                    ..WakeSettings::default()
                 },
                 0,
             )
@@ -1105,28 +1405,24 @@ mod tests {
             .observe(&[working], |_| true, |_| "Worker".into(), 20 * MIN)
             .unwrap();
         for minute in [20, 30, 39] {
-            host.foreman_tell_owner(&foreman, FOREMAN, minute * MIN)
-                .await;
+            host.tell_owner(&foreman, OWN, minute * MIN).await;
             assert!(
                 received.lock().unwrap().is_empty(),
                 "only the last rung notifies"
             );
         }
-        host.foreman_tell_owner(&foreman, FOREMAN, 40 * MIN).await;
-        host.foreman_tell_owner(&foreman, FOREMAN, 50 * MIN).await;
+        host.tell_owner(&foreman, OWN, 40 * MIN).await;
+        host.tell_owner(&foreman, OWN, 50 * MIN).await;
         {
             let received = received.lock().unwrap();
             assert_eq!(received.len(), 1, "one request per stall");
             let request = &received[0];
             assert_eq!(request.note.agent, agent);
-            assert_eq!(request.note.chat, FOREMAN);
+            assert_eq!(request.note.chat, OWN);
             assert_eq!(request.note.title, "Work has stalled");
             assert!(request.note.body.contains("Worker"));
             assert!(request.note.body.contains("40 minutes"));
-            assert_eq!(
-                request.note.deep_link(),
-                format!("openagents://chat/{FOREMAN}")
-            );
+            assert_eq!(request.note.deep_link(), format!("openagents://chat/{OWN}"));
             assert!(openagents_account::openagents::agents::valid_id(
                 &request.request_id
             ));
@@ -1142,9 +1438,9 @@ mod tests {
                     "deploy_permission": null, "errors": [], "read_sources": ["NEEDS_OWNER.md"]
                 }))
                 .unwrap();
-            host.notify_new_owner_items(FOREMAN, &agent, &report).await;
+            host.notify_new_owner_items(OWN, &agent, &report).await;
             report.entries[0].age_seconds = Some(500);
-            host.notify_new_owner_items(FOREMAN, &agent, &report).await;
+            host.notify_new_owner_items(OWN, &agent, &report).await;
             let notes = received.lock().unwrap();
             assert_eq!(
                 notes.len(),
@@ -1152,7 +1448,7 @@ mod tests {
                 "one new owner item sends one request; age changes stay silent"
             );
             assert_eq!(notes[0].note.agent, agent);
-            assert_eq!(notes[0].note.chat, FOREMAN);
+            assert_eq!(notes[0].note.chat, OWN);
             assert_eq!(notes[0].note.title, "Your help is needed");
             assert_eq!(notes[0].note.body, "Approve the store release");
             assert!(openagents_account::openagents::agents::valid_id(
@@ -1183,7 +1479,7 @@ mod tests {
     }
 
     fn runs(host: &DocHost) -> Vec<(String, String)> {
-        host.open(FOREMAN)
+        host.open(OWN)
             .unwrap()
             .doc()
             .read_commands()
@@ -1289,12 +1585,150 @@ mod tests {
         assert_eq!(issue_numbers("/x/openagents", "main"), Vec::<u64>::new());
     }
 
+    fn fixture_host(root: &std::path::Path) -> DocHost {
+        let store = Arc::new(openagents_sync::DocsStore::open(root).unwrap());
+        let host = DocHost::new(
+            store,
+            DocHostConfig {
+                device_id: "fixture-mac".into(),
+                default_harness: HarnessId::Mock,
+                edge: None,
+            },
+        );
+        host.start_agent_wakes(root.join("agent-wakes"), root.join("foreman"));
+        host
+    }
+
+    /// #12044: a never-list scope is refused by the host before anything
+    /// reaches the account, for every agent.
+    #[tokio::test]
+    async fn the_host_refuses_never_list_grants() {
+        let root = tempfile::tempdir().unwrap();
+        let host = fixture_host(root.path());
+        for scopes in [
+            vec!["deploy"],
+            vec!["chat.message", "secrets"],
+            vec!["close_issue"],
+        ] {
+            let refused = host
+                .grant_agent(GrantRequest {
+                    agent: AGENT.into(),
+                    scopes: scopes.iter().map(|s| s.to_string()).collect(),
+                    over: Over::Account,
+                })
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains(NEVER_REFUSAL), "{refused}");
+        }
+    }
+
+    /// #12044: a fork of an agent under another name, with the same grants,
+    /// checks in and steers on the same terms; each agent has its own log.
+    #[tokio::test]
+    async fn a_fork_with_the_same_grants_checks_in_and_steers() {
+        const FORK: &str = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+        const FORK_CHAT: &str = "f0000000-0000-4000-8000-000000000003";
+        let root = tempfile::tempdir().unwrap();
+        let host = fixture_host(root.path());
+        let cwd = root.path().to_string_lossy().into_owned();
+        for (agent, chat) in [(AGENT, OWN), (FORK, FORK_CHAT)] {
+            let engine = host.agent_wakes().unwrap().ensure(agent).unwrap();
+            engine
+                .set(
+                    WakeSettings {
+                        chat_id: Some(chat.into()),
+                        ..WakeSettings::default()
+                    },
+                    0,
+                )
+                .unwrap();
+            engine
+                .set_grants(
+                    vec![Grant {
+                        id: format!("g-{agent}"),
+                        scopes: Scope::CHAT.to_vec(),
+                        over: Over::Account,
+                        granted_at: 0,
+                    }],
+                    0,
+                )
+                .unwrap();
+            let wake = host
+                .start_check_in(&engine, chat, false, 10 * MIN, request(&cwd))
+                .await
+                .unwrap()
+                .expect("a check-in");
+            // Its turn answers the check-in, so steering needs its grant.
+            host.open(chat)
+                .unwrap()
+                .writer()
+                .push_message(&SessionMessageEntry {
+                    id: wake,
+                    role: MessageRole::User,
+                    parts: vec![MessagePart::Text {
+                        id: "t".into(),
+                        text: "check-in".into(),
+                    }],
+                    created_at: 1,
+                    device_id: "fixture-mac".into(),
+                    status: Some(MessageStatus::Complete),
+                    continuation_of: None,
+                    duration_ms: None,
+                })
+                .unwrap();
+            host.agent_admit(
+                Some(chat),
+                WORKER,
+                Some(&SessionCommandPayload::Steer {
+                    prompt: "carry on".into(),
+                    message_id: None,
+                }),
+            )
+            .unwrap();
+        }
+        let status = host.agent_wakes_status();
+        assert_eq!(status.agents.len(), 2);
+        assert!(status.agents.iter().all(|a| a.standing()));
+        // Revoking the fork's grant stops only the fork.
+        let fork = host.agent_wakes().unwrap().engine(FORK).unwrap();
+        fork.set_grants(vec![], 11 * MIN).unwrap();
+        let stop = SessionCommandPayload::Interrupt {};
+        assert!(
+            host.agent_admit(Some(FORK_CHAT), WORKER, Some(&stop))
+                .is_err()
+        );
+        assert!(host.agent_admit(Some(OWN), WORKER, Some(&stop)).is_ok());
+        // The same grants answer a caller that proved which agent acts.
+        assert!(host.agent_allows(AGENT, Scope::ChatStop, WORKER).is_ok());
+        assert!(host.agent_allows(FORK, Scope::ChatStop, WORKER).is_err());
+        assert!(
+            host.agent_allows(&"c".repeat(64), Scope::ChatStop, WORKER)
+                .is_err()
+        );
+        // Remote run commands (#12054) ask the same grants through the hook.
+        let hook = host
+            .inner
+            .run_command_authority
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("installed at start");
+        assert!(hook(AGENT, "chat.stop", WORKER).is_ok());
+        assert!(hook(FORK, "chat.stop", WORKER).is_err());
+        assert!(
+            hook(AGENT, "deploy", WORKER)
+                .unwrap_err()
+                .contains(NEVER_REFUSAL)
+        );
+    }
+
     /// #12057: the working state the agent saves with a decision is in
     /// the first check-in after a restart, with its stall timer still
     /// counting from when the host first saw it.
     #[tokio::test]
     async fn the_first_check_in_after_a_restart_resumes_the_working_state() {
-        use openagents_proto::foreman::{WorkItem, WorkStatus};
+        use openagents_proto::agent_wakes::{WorkItem, WorkStatus};
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().to_string_lossy().into_owned();
         let open = || {
@@ -1307,23 +1741,23 @@ mod tests {
                     edge: None,
                 },
             );
-            host.start_foreman(root.path().join("foreman"));
+            host.start_agent_wakes(root.path().join("agent-wakes"), root.path().join("foreman"));
             host
         };
         let host = open();
-        host.foreman()
-            .unwrap()
+        let engine = host.agent_wakes().unwrap().ensure(AGENT).unwrap();
+        engine
             .set(
-                ForemanSettings {
-                    chat_id: Some(FOREMAN.into()),
+                WakeSettings {
+                    chat_id: Some(OWN.into()),
                     every_minutes: 10,
-                    ..ForemanSettings::default()
+                    ..WakeSettings::default()
                 },
                 0,
             )
             .unwrap();
         let first = host
-            .foreman_wake(FOREMAN, false, 10 * MIN, request(&cwd))
+            .start_check_in(&engine, OWN, false, 10 * MIN, request(&cwd))
             .await
             .unwrap()
             .expect("a check-in");
@@ -1333,8 +1767,8 @@ mod tests {
                 .any(|(id, text)| *id == first && text.contains("no saved working state yet"))
         );
         // The record_decision call is stamped at the host's clock.
-        host.record_foreman_decision(RecordDecision {
-            origin_chat_id: Some(FOREMAN.into()),
+        host.record_agent_decision(RecordDecision {
+            origin_chat_id: Some(OWN.into()),
             saw: "#12071 is on a chat".into(),
             decided: "watch it".into(),
             did: "nothing".into(),
@@ -1351,8 +1785,9 @@ mod tests {
         drop(host);
 
         let host = open();
+        let engine = host.agent_wakes().unwrap().engine(AGENT).expect("saved");
         let wake = host
-            .foreman_wake(FOREMAN, false, now_ms() + 60 * MIN, request(&cwd))
+            .start_check_in(&engine, OWN, false, now_ms() + 60 * MIN, request(&cwd))
             .await
             .unwrap()
             .expect("the scheduled check-in after the restart");
@@ -1366,7 +1801,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            host.record_foreman_decision(RecordDecision {
+            host.record_agent_decision(RecordDecision {
                 origin_chat_id: Some(WORKER.into()),
                 saw: "x".into(),
                 decided: "x".into(),
@@ -1380,7 +1815,7 @@ mod tests {
     }
 
     fn interrupts(host: &DocHost) -> usize {
-        host.open(FOREMAN)
+        host.open(OWN)
             .unwrap()
             .doc()
             .read_commands()
@@ -1406,14 +1841,14 @@ mod tests {
                 edge: None,
             },
         );
-        host.start_foreman(root.path().join("foreman"));
-        let foreman = host.foreman().unwrap().clone();
-        foreman
+        host.start_agent_wakes(root.path().join("agent-wakes"), root.path().join("foreman"));
+        let engine = host.agent_wakes().unwrap().ensure(AGENT).unwrap();
+        engine
             .set(
-                ForemanSettings {
-                    chat_id: Some(FOREMAN.into()),
+                WakeSettings {
+                    chat_id: Some(OWN.into()),
                     every_minutes: 60,
-                    ..ForemanSettings::default()
+                    ..WakeSettings::default()
                 },
                 0,
             )
@@ -1427,7 +1862,7 @@ mod tests {
             "resolved": false
         }))
         .unwrap();
-        host.open(FOREMAN)
+        host.open(OWN)
             .unwrap()
             .writer()
             .push_message(&SessionMessageEntry {
@@ -1444,18 +1879,18 @@ mod tests {
         let working = Session {
             started_at: chrono::DateTime::from_timestamp_millis(2 * MIN),
             last_output_at: chrono::DateTime::from_timestamp_millis(2 * MIN),
-            ..row(FOREMAN, SessionStatus::Working, None)
+            ..row(OWN, SessionStatus::Working, None)
         };
-        let title = |_: &str| "Foreman".to_string();
-        foreman
+        let title = |_: &str| "Agent".to_string();
+        engine
             .observe(std::slice::from_ref(&working), |_| false, title, 2 * MIN)
             .unwrap();
-        assert!(!host.foreman_watch(FOREMAN, true, 11 * MIN).unwrap());
-        assert!(host.foreman_watch(FOREMAN, true, 12 * MIN).unwrap());
+        assert!(!host.watch_own_turn(&engine, OWN, true, 11 * MIN).unwrap());
+        assert!(host.watch_own_turn(&engine, OWN, true, 12 * MIN).unwrap());
         assert_eq!(interrupts(&host), 1);
         // The interrupt takes a while to land: no second stop, no check-in.
         for minute in [13, 20, 25] {
-            foreman
+            engine
                 .observe(
                     std::slice::from_ref(&working),
                     |_| false,
@@ -1463,25 +1898,29 @@ mod tests {
                     minute * MIN,
                 )
                 .unwrap();
-            assert!(!host.foreman_watch(FOREMAN, true, minute * MIN).unwrap());
+            assert!(
+                !host
+                    .watch_own_turn(&engine, OWN, true, minute * MIN)
+                    .unwrap()
+            );
             assert_eq!(
-                host.foreman_wake(FOREMAN, true, minute * MIN, request(&cwd))
+                host.start_check_in(&engine, OWN, true, minute * MIN, request(&cwd))
                     .await
                     .unwrap(),
                 None
             );
         }
         assert_eq!(interrupts(&host), 1);
-        foreman
+        engine
             .observe(
-                &[row(FOREMAN, SessionStatus::Idle, None)],
+                &[row(OWN, SessionStatus::Idle, None)],
                 |_| false,
                 title,
                 26 * MIN,
             )
             .unwrap();
         let id = host
-            .foreman_wake(FOREMAN, false, 26 * MIN, request(&cwd))
+            .start_check_in(&engine, OWN, false, 26 * MIN, request(&cwd))
             .await
             .unwrap()
             .expect("one check-in");
@@ -1492,12 +1931,12 @@ mod tests {
             "Your last turn was stuck in `Bash` (`curl -s https://openagents.com/api/health`) for 10 minutes, so the host stopped it."
         ), "{}", queued[0].1);
         assert_eq!(
-            host.foreman_wake(FOREMAN, false, 27 * MIN, request(&cwd))
+            host.start_check_in(&engine, OWN, false, 27 * MIN, request(&cwd))
                 .await
                 .unwrap(),
             None
         );
-        let log = host.foreman_status().decisions;
+        let log = host.agent_wakes_status().agents[0].decisions.clone();
         assert_eq!(
             log.iter()
                 .filter(|e| matches!(e, DecisionEntry::Outcome { status, .. } if status == "stuck"))
@@ -1524,16 +1963,15 @@ mod tests {
                 edge: None,
             },
         );
-        host.start_foreman(root.path().join("foreman"));
-        let foreman = host.foreman().unwrap().clone();
-        foreman
+        host.start_agent_wakes(root.path().join("agent-wakes"), root.path().join("foreman"));
+        let engine = host.agent_wakes().unwrap().ensure(AGENT).unwrap();
+        engine
             .set(
-                ForemanSettings {
-                    chat_id: Some(FOREMAN.into()),
+                WakeSettings {
+                    chat_id: Some(OWN.into()),
                     every_minutes: 20,
                     paused: false,
-                    authority: false,
-                    ..ForemanSettings::default()
+                    ..WakeSettings::default()
                 },
                 0,
             )
@@ -1542,38 +1980,37 @@ mod tests {
 
         // The schedule tick.
         assert_eq!(
-            host.foreman_wake(FOREMAN, false, 19 * MIN, request(&cwd))
+            host.start_check_in(&engine, OWN, false, 19 * MIN, request(&cwd))
                 .await
                 .unwrap(),
             None
         );
         let scheduled = host
-            .foreman_wake(FOREMAN, false, 20 * MIN, request(&cwd))
+            .start_check_in(&engine, OWN, false, 20 * MIN, request(&cwd))
             .await
             .unwrap()
             .expect("the schedule starts a turn");
         let queued = runs(&host);
         assert_eq!(queued.len(), 1);
         assert_eq!(queued[0].0, scheduled);
-        assert!(queued[0].1.starts_with("Foreman check-in"));
+        assert!(queued[0].1.starts_with("Check-in"));
         // Queuing the same check-in again changes nothing.
         let wake = Wake {
             id: scheduled.clone(),
             text: queued[0].1.clone(),
         };
-        host.queue_foreman_wake(FOREMAN, &wake, request(&cwd))
-            .unwrap();
+        host.queue_check_in(OWN, &wake, request(&cwd)).unwrap();
         assert_eq!(runs(&host).len(), 1);
 
         // A chat Foreman messaged finishes its turn.
-        host.foreman_admit(
-            Some(FOREMAN),
+        host.agent_admit(
+            Some(OWN),
             WORKER,
             Some(&SessionCommandPayload::Interrupt {}),
         )
         .unwrap();
         let title = |_: &str| "Fix the build".to_string();
-        foreman
+        engine
             .observe(
                 &[row(WORKER, SessionStatus::Working, None)],
                 |_| false,
@@ -1581,7 +2018,7 @@ mod tests {
                 21 * MIN,
             )
             .unwrap();
-        foreman
+        engine
             .observe(
                 &[row(WORKER, SessionStatus::Idle, Some("turn-1"))],
                 |_| false,
@@ -1590,14 +2027,14 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            host.foreman_wake(FOREMAN, true, 30 * MIN, request(&cwd))
+            host.start_check_in(&engine, OWN, true, 30 * MIN, request(&cwd))
                 .await
                 .unwrap(),
             None,
-            "never over Foreman's own turn"
+            "never over the agent's own turn"
         );
         let finished = host
-            .foreman_wake(FOREMAN, false, 30 * MIN, request(&cwd))
+            .start_check_in(&engine, OWN, false, 30 * MIN, request(&cwd))
             .await
             .unwrap()
             .expect("the finished chat starts a turn");
@@ -1611,8 +2048,8 @@ mod tests {
         );
 
         // Both turns are in the log, which only Foreman's chat may add to.
-        host.record_foreman_decision(RecordDecision {
-            origin_chat_id: Some(FOREMAN.into()),
+        host.record_agent_decision(RecordDecision {
+            origin_chat_id: Some(OWN.into()),
             saw: "the build chat finished".into(),
             decided: "nothing else needed".into(),
             did: "nothing".into(),
@@ -1621,7 +2058,7 @@ mod tests {
         })
         .unwrap();
         assert!(
-            host.record_foreman_decision(RecordDecision {
+            host.record_agent_decision(RecordDecision {
                 origin_chat_id: Some(WORKER.into()),
                 saw: "x".into(),
                 decided: "x".into(),
@@ -1631,7 +2068,7 @@ mod tests {
             })
             .is_err()
         );
-        let log = host.foreman_status().decisions;
+        let log = host.agent_wakes_status().agents[0].decisions.clone();
         let wakes: Vec<(String, WakeReason)> = log
             .iter()
             .filter_map(|e| match e {
@@ -1650,7 +2087,7 @@ mod tests {
 
         // While Foreman answers a check-in, changing other chats needs the
         // standing authority; the owner's own turns don't.
-        let handle = host.open(FOREMAN).unwrap();
+        let handle = host.open(OWN).unwrap();
         handle
             .writer()
             .push_message(&SessionMessageEntry {
@@ -1668,29 +2105,22 @@ mod tests {
             })
             .unwrap();
         let stop = SessionCommandPayload::Interrupt {};
+        assert!(host.agent_admit(Some(OWN), WORKER, Some(&stop)).is_err());
         assert!(
-            host.foreman_admit(Some(FOREMAN), WORKER, Some(&stop))
-                .is_err()
-        );
-        assert!(
-            host.foreman_admit(Some("someone-else"), WORKER, Some(&stop))
+            host.agent_admit(Some("someone-else"), WORKER, Some(&stop))
                 .is_ok()
         );
-        foreman
-            .set(
-                ForemanSettings {
-                    chat_id: Some(FOREMAN.into()),
-                    every_minutes: 20,
-                    paused: false,
-                    authority: true,
-                    ..ForemanSettings::default()
-                },
+        engine
+            .set_grants(
+                vec![Grant {
+                    id: "g".into(),
+                    scopes: Scope::CHAT.to_vec(),
+                    over: Over::Account,
+                    granted_at: 31 * MIN,
+                }],
                 31 * MIN,
             )
             .unwrap();
-        assert!(
-            host.foreman_admit(Some(FOREMAN), WORKER, Some(&stop))
-                .is_ok()
-        );
+        assert!(host.agent_admit(Some(OWN), WORKER, Some(&stop)).is_ok());
     }
 }

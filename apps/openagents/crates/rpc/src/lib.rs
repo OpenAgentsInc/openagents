@@ -179,12 +179,17 @@ pub mod methods {
     pub const NOTIFY_OWNER: &str = "NotifyOwner";
     pub const GET_VOICE_CONTEXT: &str = "GetVoiceContext";
     pub const UPDATE_VOICE_CONTEXT_V2: &str = "UpdateVoiceContextV2";
-    /// Foreman autonomy (#11965): `ForemanStatus`.
-    pub const GET_FOREMAN: &str = "GetForeman";
-    /// `ForemanSettings` in, `ForemanStatus` out.
-    pub const SET_FOREMAN: &str = "SetForeman";
-    /// `RecordDecision` from Foreman's own chat.
-    pub const RECORD_FOREMAN_DECISION: &str = "RecordForemanDecision";
+    /// Agent wakes and grants (#11965, #12044), keyed by agent definition
+    /// ID: `WakesStatus`, every agent's wake engine on the host.
+    pub const GET_AGENT_WAKES: &str = "GetAgentWakes";
+    /// `SetWakes` in, `WakesStatus` out.
+    pub const SET_AGENT_WAKES: &str = "SetAgentWakes";
+    /// `GrantRequest` in, `WakesStatus` out. Never-list scopes are refused.
+    pub const GRANT_AGENT: &str = "GrantAgent";
+    /// `RevokeGrant` in, `WakesStatus` out.
+    pub const REVOKE_AGENT_GRANT: &str = "RevokeAgentGrant";
+    /// `RecordDecision` from an agent's own chat.
+    pub const RECORD_AGENT_DECISION: &str = "RecordAgentDecision";
     /// The device's browse roots: home plus mounted drives/volumes.
     pub const LIST_DRIVES: &str = "ListDrives";
     /// Folders under the host's home by name (new-project picker).

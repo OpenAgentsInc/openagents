@@ -22,7 +22,7 @@ pub const SHELL_TIMEOUT_MS: &str = "openagentsShellTimeoutMs";
 /// The part of a saved agent's declared autonomy a host acts on (#12030):
 /// turn check-ins on for its chat without being asked, how often, and
 /// whether it asks for standing authority with them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Declared {
     pub check_ins: bool,
@@ -31,6 +31,12 @@ pub struct Declared {
     /// Minutes of no progress before a chat or claim it manages is raised.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stall_minutes: Option<u32>,
+    /// What it wakes on; empty is every wake (#12044).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub wakes: Vec<crate::agent_wakes::Wake>,
+    /// Seconds events wait for quiet before they start a check-in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coalesce_secs: Option<u32>,
 }
 
 /// What a saved-agent chat's definition declares, from its config. `None`
@@ -149,7 +155,7 @@ mod tests {
                 check_ins: true,
                 every_minutes: Some(10),
                 authority: true,
-                stall_minutes: None,
+                ..Declared::default()
             })
         );
         assert!(declares_check_ins(Some(&declaring)));

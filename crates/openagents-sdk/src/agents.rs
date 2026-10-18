@@ -8,9 +8,38 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 pub use agent_contract::{
-    ANY_RUNTIME, Access, AgentDefinition, AgentSpec, Autonomy, MAX_FALLBACKS,
-    MAX_INSTRUCTIONS_BYTES, Profile, RuntimeChoice, valid_id,
+    ANY_RUNTIME, Access, AgentDefinition, AgentGrant, AgentSpec, Autonomy, GrantOver, GrantScope,
+    MAX_FALLBACKS, MAX_INSTRUCTIONS_BYTES, NEVER_GRANTED_REFUSAL, Profile, RuntimeChoice,
+    WakeEvent, valid_id,
 };
+
+/// The request body that grants an agent scopes (#12044). Scopes travel as
+/// words so the server can refuse never-list requests by name.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GrantAgent {
+    pub request_id: String,
+    pub scopes: Vec<String>,
+    pub over: GrantOver,
+}
+
+/// An agent's grants, oldest first.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GrantList {
+    pub data: Vec<AgentGrant>,
+}
+
+/// What an agent declares to wake on: a definition setting, so a fork copies
+/// it (#12044).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Wakes {
+    /// The events it wakes on; empty is every wake.
+    pub events: Vec<WakeEvent>,
+    /// Minutes between timed check-ins, when hosts turn them on.
+    pub every_minutes: Option<u32>,
+    /// Seconds events wait for quiet before one check-in.
+    pub coalesce_secs: Option<u32>,
+}
 /// The request body that saves a new agent definition.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -131,6 +160,97 @@ impl Agents<'_> {
             return Err(Error::WrongDeployment);
         }
         serde_json::to_value(&request.body).map_err(|_| Error::InvalidReference)
+    }
+    /// The grants the account owner gave the agent `id` (#12044).
+    pub async fn grants(
+        &self,
+        id: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<AgentGrant>, Error> {
+        if !valid_id(id) {
+            return Err(Error::InvalidReference);
+        }
+        let list: GrantList = self
+            .send(
+                Method::GET,
+                &["agent-definitions", id, "grants"],
+                &[],
+                None,
+                cancel,
+            )
+            .await?;
+        Ok(list.data)
+    }
+    /// Grants the agent `id` the scopes `scopes` over `over`. Only the
+    /// account owner can; money, keys, secrets, deploys and closing other
+    /// agents' issues are refused for every agent.
+    pub async fn grant(
+        &self,
+        id: &str,
+        scopes: Vec<String>,
+        over: GrantOver,
+        cancel: &CancellationToken,
+    ) -> Result<AgentGrant, Error> {
+        if !valid_id(id) || over.validate().is_err() {
+            return Err(Error::InvalidReference);
+        }
+        for word in &scopes {
+            GrantScope::grantable(word).map_err(|_| Error::InvalidReference)?;
+        }
+        let body = GrantAgent {
+            request_id: request_id()?,
+            scopes,
+            over,
+        };
+        let body = serde_json::to_value(body).map_err(|_| Error::InvalidReference)?;
+        self.send(
+            Method::POST,
+            &["agent-definitions", id, "grants"],
+            &[],
+            Some(body),
+            cancel,
+        )
+        .await
+    }
+    /// Revokes the grant `grant` of the agent `id`.
+    pub async fn revoke_grant(
+        &self,
+        id: &str,
+        grant: &str,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        if !valid_id(id) || !valid_id(grant) {
+            return Err(Error::InvalidReference);
+        }
+        let _: serde_json::Value = self
+            .send(
+                Method::DELETE,
+                &["agent-definitions", id, "grants", grant],
+                &[],
+                None,
+                cancel,
+            )
+            .await?;
+        Ok(())
+    }
+    /// Sets what the agent `id` wakes on, as a new revision of its
+    /// definition's `autonomy`. Wakes are definition data, so a fork copies
+    /// them; grants never copy.
+    pub async fn set_wakes(
+        &self,
+        id: &str,
+        wakes: Wakes,
+        cancel: &CancellationToken,
+    ) -> Result<AgentDefinition, Error> {
+        let current = self.get(id, None, cancel).await?;
+        let mut spec = current.spec.clone();
+        let mut autonomy = spec.autonomy.take().unwrap_or_default();
+        autonomy.wakes = wakes.events;
+        autonomy.every_minutes = wakes.every_minutes;
+        autonomy.coalesce_secs = wakes.coalesce_secs;
+        spec.autonomy = Some(autonomy);
+        let request = self.update_request(current.revision, spec)?;
+        self.update(id, &request, cancel).await
     }
     /// Lists up to `limit` agent definitions (1 to 100), starting after the cursor `after`.
     pub async fn list(

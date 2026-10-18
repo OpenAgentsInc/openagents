@@ -6457,6 +6457,374 @@
         }
       }
     },
+    "/v1/agent-definitions/{id}/grants": {
+      "get": {
+        "operationId": "listAgentGrants",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "responses": {
+          "200": {
+            "description": "The account-owned result; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentGrantList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "grantAgent",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "responses": {
+          "200": {
+            "description": "The account-owned result; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentGrant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomAgentGrantCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-definitions/{id}/grants/{grant}": {
+      "delete": {
+        "operationId": "revokeAgentGrant",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          {
+            "name": "grant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "responses": {
+          "200": {
+            "description": "The account-owned result; no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentGrantRevoked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid fields, signed out, denied, missing, version_conflict/idempotency_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/voice-agent": {
       "get": {
         "operationId": "getVoiceAgent",
@@ -16241,6 +16609,79 @@
         }
       }
     },
+    "/v1/runs/{id}/commands": {
+      "post": {
+        "operationId": "commandRun",
+        "tags": [
+          "Runs"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "not": {
+                "enum": [
+                  ".",
+                  ".."
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Send a message, steer a running turn, stop, or restart through this account's explicitly enabled NIP-HOST binding. The host checks the native operate grant and any calling agent's definition grant. The host resolves the signed native grant through an operator-set caller binding; a request cannot choose its agent identity. Unbound grants refuse. Agent controls default to refused until the shared account-grant checker is installed. The run's computer selects the binding. App chats resolve by run ID or one matching harness session on that host. Other run kinds currently answer not_steerable. Acceptance means the host recorded a command, not that a turn finished. Keep the request ID and command unchanged on retry; changed retries conflict. An unavailable result may have reached the host: retry the same ID. Requests save the exact signed host packet before sending; retries never create a second native operation. At most 4096 command records and 8 MiB per account; records are not evicted. Maximum body 20 KiB. Responses are private and no-store.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Host receipt or a typed refusal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunCommandReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid command or storage limit."
+          },
+          "401": {
+            "description": "Sign in required."
+          },
+          "404": {
+            "description": "Unknown account-owned run."
+          },
+          "409": {
+            "description": "Changed request or host binding."
+          },
+          "413": {
+            "description": "Body too large."
+          },
+          "503": {
+            "description": "Account or storage service unavailable."
+          }
+        }
+      }
+    },
     "/v1/keys": {
       "get": {
         "operationId": "listAccountKeys",
@@ -25172,79 +25613,6 @@
           }
         }
       }
-    },
-    "/v1/runs/{id}/commands": {
-      "post": {
-        "operationId": "commandRun",
-        "tags": [
-          "Runs"
-        ],
-        "security": [
-          {
-            "appBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128,
-              "pattern": "^[A-Za-z0-9_.:-]+$",
-              "not": {
-                "enum": [
-                  ".",
-                  ".."
-                ]
-              }
-            }
-          }
-        ],
-        "description": "Send a message, steer a running turn, stop, or restart through this account's explicitly enabled NIP-HOST binding. The host checks the native operate grant and any calling agent's definition grant. The host resolves the signed native grant through an operator-set caller binding; a request cannot choose its agent identity. Unbound grants refuse. Agent controls default to refused until the shared account-grant checker is installed. The run's computer selects the binding. App chats resolve by run ID or one matching harness session on that host. Other run kinds currently answer not_steerable. Acceptance means the host recorded a command, not that a turn finished. Keep the request ID and command unchanged on retry; changed retries conflict. An unavailable result may have reached the host: retry the same ID. Requests save the exact signed host packet before sending; retries never create a second native operation. At most 4096 command records and 8 MiB per account; records are not evicted. Maximum body 20 KiB. Responses are private and no-store.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RunCommand"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Host receipt or a typed refusal.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunCommandReceipt"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid command or storage limit."
-          },
-          "401": {
-            "description": "Sign in required."
-          },
-          "404": {
-            "description": "Unknown account-owned run."
-          },
-          "409": {
-            "description": "Changed request or host binding."
-          },
-          "413": {
-            "description": "Body too large."
-          },
-          "503": {
-            "description": "Account or storage service unavailable."
-          }
-        }
-      }
     }
   },
   "components": {
@@ -30117,6 +30485,30 @@
                 "minimum": 10,
                 "maximum": 3600,
                 "description": "The longest one shell command may run, in seconds. The host passes it to the runtime."
+              },
+              "wakes": {
+                "type": "array",
+                "maxItems": 16,
+                "description": "What the agent wakes on; omitted or empty is every wake the host knows. Readers skip wakes they don't know.",
+                "items": {
+                  "type": "string",
+                  "examples": [
+                    "chat_finished",
+                    "chat_errored",
+                    "chat_needs_answer",
+                    "issue_opened",
+                    "issue_closed",
+                    "claim_stale",
+                    "chat_stalled",
+                    "claim_no_progress"
+                  ]
+                }
+              },
+              "coalesce_secs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1800,
+                "description": "Seconds events wait for quiet before they start one check-in."
               }
             }
           }
@@ -30224,6 +30616,178 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "CustomAgentGrant": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "scopes",
+          "over",
+          "grantedAt"
+        ],
+        "description": "A power the account owner gave the agent over other chats. Grants belong to the account, never to the definition: a fork asks its own owner.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "chat.message",
+                "chat.start",
+                "chat.steer",
+                "chat.stop",
+                "land.submit",
+                "work.dispatch"
+              ]
+            }
+          },
+          "over": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "account"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "project"
+                ],
+                "properties": {
+                  "project": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "chats"
+                ],
+                "properties": {
+                  "chats": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "grantedAt": {
+            "type": "integer",
+            "description": "Unix milliseconds."
+          }
+        }
+      },
+      "CustomAgentGrantCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "scopes",
+          "over"
+        ],
+        "description": "Scopes are words. Money, keys, secrets, deploys and closing other agents' issues can't be granted to any agent and answer 400 not_grantable.",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "scopes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "over": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "account"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "project"
+                ],
+                "properties": {
+                  "project": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "chats"
+                ],
+                "properties": {
+                  "chats": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "CustomAgentGrantList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/CustomAgentGrant"
+            }
+          }
+        }
+      },
+      "CustomAgentGrantRevoked": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "revoked"
+        ],
+        "properties": {
+          "revoked": {
+            "type": "boolean"
           }
         }
       },
@@ -34970,6 +35534,184 @@
           }
         }
       },
+      "SessionCommand": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "text"
+            ],
+            "properties": {
+              "kind": {
+                "const": "message"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16384,
+                "description": "Nonblank text, at most 16 KiB of UTF-8, without NUL."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "text"
+            ],
+            "properties": {
+              "kind": {
+                "const": "steer"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16384,
+                "description": "Nonblank text, at most 16 KiB of UTF-8, without NUL."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "stop"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "restart"
+              },
+              "brief": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16384,
+                    "description": "Nonblank text, at most 16 KiB of UTF-8, without NUL."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RunCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "command"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "not": {
+              "enum": [
+                ".",
+                ".."
+              ]
+            }
+          },
+          "command": {
+            "$ref": "#/components/schemas/SessionCommand"
+          }
+        }
+      },
+      "RunCommandReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "run",
+          "request_id",
+          "outcome"
+        ],
+        "properties": {
+          "run": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "not": {
+              "enum": [
+                ".",
+                ".."
+              ]
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "not": {
+              "enum": [
+                ".",
+                ".."
+              ]
+            }
+          },
+          "outcome": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "const": "accepted"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "reason"
+                ],
+                "properties": {
+                  "status": {
+                    "const": "refused"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "not_steerable",
+                      "no_grant",
+                      "run_ended",
+                      "offline",
+                      "unavailable"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
       "AppManagedKeySignin": {
         "type": "object",
         "required": [
@@ -38564,184 +39306,6 @@
           "cost_usd": {
             "type": "number",
             "minimum": 0
-          }
-        }
-      },
-      "SessionCommand": {
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "kind",
-              "text"
-            ],
-            "properties": {
-              "kind": {
-                "const": "message"
-              },
-              "text": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 16384,
-                "description": "Nonblank text, at most 16 KiB of UTF-8, without NUL."
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "kind",
-              "text"
-            ],
-            "properties": {
-              "kind": {
-                "const": "steer"
-              },
-              "text": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 16384,
-                "description": "Nonblank text, at most 16 KiB of UTF-8, without NUL."
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "const": "stop"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "const": "restart"
-              },
-              "brief": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 16384,
-                    "description": "Nonblank text, at most 16 KiB of UTF-8, without NUL."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            }
-          }
-        ]
-      },
-      "RunCommand": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "request_id",
-          "command"
-        ],
-        "properties": {
-          "request_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9_.:-]+$",
-            "not": {
-              "enum": [
-                ".",
-                ".."
-              ]
-            }
-          },
-          "command": {
-            "$ref": "#/components/schemas/SessionCommand"
-          }
-        }
-      },
-      "RunCommandReceipt": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "run",
-          "request_id",
-          "outcome"
-        ],
-        "properties": {
-          "run": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9_.:-]+$",
-            "not": {
-              "enum": [
-                ".",
-                ".."
-              ]
-            }
-          },
-          "request_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9_.:-]+$",
-            "not": {
-              "enum": [
-                ".",
-                ".."
-              ]
-            }
-          },
-          "outcome": {
-            "oneOf": [
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "status"
-                ],
-                "properties": {
-                  "status": {
-                    "const": "accepted"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "status",
-                  "reason"
-                ],
-                "properties": {
-                  "status": {
-                    "const": "refused"
-                  },
-                  "reason": {
-                    "type": "string",
-                    "enum": [
-                      "not_steerable",
-                      "no_grant",
-                      "run_ended",
-                      "offline",
-                      "unavailable"
-                    ]
-                  }
-                }
-              }
-            ]
           }
         }
       }

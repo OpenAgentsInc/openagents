@@ -16,6 +16,7 @@ use openagents_rpc::{RpcError, RpcReply, RpcService, methods};
 use openagents_sync::DocsStore;
 
 pub mod agent_accounts;
+mod agent_wakes;
 pub mod auth;
 mod change_request_store;
 pub mod change_requests;
@@ -26,7 +27,6 @@ mod claim_activity;
 pub mod connect_phone;
 pub mod diff_sync;
 pub mod doc_host;
-mod foreman;
 mod fs_watch;
 pub mod handoff;
 pub mod harness_updates;
@@ -384,8 +384,10 @@ impl EngineCore {
 
     /// Attach the auth service (before building the RPC service / relays).
     pub fn set_auth(&self, auth: Auth) {
-        self.doc_host
-            .start_foreman(self.agent_lab_root.with_file_name("foreman"));
+        self.doc_host.start_agent_wakes(
+            self.agent_lab_root.with_file_name("agent-wakes"),
+            self.agent_lab_root.with_file_name("foreman"),
+        );
         self.doc_host.start_custom_agents(
             auth.clone(),
             self.registry.clone(),

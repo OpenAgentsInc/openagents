@@ -510,6 +510,7 @@ fn schedules_rows(headers: &HeaderMap) -> Response {
         every_secs: None,
         chat: Some("chat-sample-1".into()),
         chat_title: Some("Morning check".into()),
+        agent: None,
         workspace: Some("~/code/sample-app".into()),
         paused: false,
         updated: NOW - DAY,
