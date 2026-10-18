@@ -698,3 +698,12 @@ links remain readable. Upstream fixes now require manual ports.
   atomic private-file adapter. Rust owns the account, identity, wallet-seed,
   and paired-grant records and decides when they may be created or replaced;
   cloud backup and device transfer exclude the encrypted store.
+
+- [OpenAgents #12095](https://github.com/OpenAgentsInc/openagents/issues/12095):
+  add the account-owned `CoreAndroidSessions` bridge and Rust Native new-session
+  menus. Its default cloud-chat object survives native view recreation; project,
+  branch, provider, model, effort, sharing, and continuation choices stay in Rust.
+  A strict selected-computer catalog API never substitutes cached/bundled choices.
+  The optional Android host forwards typed actions using the existing Views
+  adapter. Binding/host integration and focused fixtures are unrun. Automatic
+  own-computer-card dismissal still needs authoritative cloud-device classification.
