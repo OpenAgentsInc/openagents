@@ -127,6 +127,13 @@ mod tests {
     }
 
     #[test]
+    fn mobile_identity_matches_the_existing_phone_app() {
+        assert_eq!(MOBILE_BUNDLE_ID, "com.openagents.app");
+        assert_ne!(MOBILE_BUNDLE_ID, BUNDLE_ID);
+        assert!(!MOBILE_BUNDLE_ID.starts_with("com.openagents.coder"));
+    }
+
+    #[test]
     fn sync_uses_openagents_and_upstream_login_and_updates_are_off() {
         assert!(UPDATE_FEED.is_none());
         assert_eq!(default_edge_url(), "https://sync.openagents.com");
