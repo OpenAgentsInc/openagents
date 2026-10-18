@@ -814,4 +814,10 @@ links remain readable. Upstream fixes now require manual ports.
   interaction delta. It preserves the C1 Canvas renderer and adds the borrowed
   viewport snapshot/observer hook and ordering fixture. B1's Gradle source roots
   include the C2 main, JVM, and Android-test sources. The focused compile, JVM,
-  and Android-test source checks are pending coordinator admission.
+  and Android-test source checks passed on `a71ded33ca8c800469ee51385794d6f7a1626e80`:
+  26 JVM tests passed, five Android-test classes compiled, and 17 API 35
+  instrumentation tests passed. A later C2 follow-up adds the optional
+  `TranscriptVirtualActionDelegate` to the existing selection host so Q1 can
+  forward Rust paging actions without adding another accessibility provider.
+  Its new synthetic instrumentation fixture is authored but unrun; the earlier
+  results apply to the source at `a71ded33` only.
