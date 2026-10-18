@@ -891,3 +891,11 @@ links remain readable. Upstream fixes now require manual ports.
   cover layout, editor admission, failed sends, cancellation, and bookmark
   restoration. Binding generation and executable checks remain unrun; additional
   feature-route integration is still in progress.
+
+- [OpenAgents #12100](https://github.com/OpenAgentsInc/openagents/issues/12100):
+  indexed transcript opening stays in Rust and uses the existing authorized
+  history detail API. Typed copied-message roles feed the shared layout; a late
+  load cannot replace a newer navigation choice. The Android host acknowledges
+  live/indexed reads only after rows paint, with the indexed activity revision
+  selected by Rust. Legacy drawer callers keep their existing default behavior.
+  New source fixtures are authored; compilation and executable checks are unrun.

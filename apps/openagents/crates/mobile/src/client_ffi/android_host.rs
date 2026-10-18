@@ -48,12 +48,20 @@ impl AndroidTranscriptAnchor {
         self.inside.is_finite() && (0.0..=1_000_000.0).contains(&self.inside)
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum AndroidHostContent {
+    Cloud,
+    Live,
+    Saved,
+    Indexed,
+}
 #[derive(Clone, uniffi::Record)]
 pub struct AndroidHostSnapshot {
     pub generation: u64,
     pub route: AndroidHostRoute,
     pub content_revision: u64,
     pub selected_chat: Option<String>,
+    pub source: AndroidHostContent,
     pub signed_in: bool,
     pub notice: Option<String>,
     pub composer: Option<Arc<CoreAndroidComposer>>,
@@ -74,8 +82,14 @@ enum Content {
         id: String,
         history: Arc<CoreSavedHistory>,
     },
+    Indexed {
+        row: SavedIndexedRow,
+        history: Arc<CoreSavedHistory>,
+        input: crate::layout::TranscriptInput,
+    },
 }
 struct State {
+    navigation_revision: u64,
     anchor: Option<AndroidTranscriptAnchor>,
     generation: u64,
     content_revision: u64,
@@ -85,6 +99,31 @@ struct State {
     history: Option<Arc<CoreSavedHistory>>,
     content: Content,
     composer: Option<Arc<CoreAndroidComposer>>,
+}
+struct NavigationStamp {
+    generation: u64,
+    content: u64,
+    request: u64,
+}
+impl NavigationStamp {
+    fn accepts(&self, state: &State) -> bool {
+        self.generation == state.generation
+            && self.content == state.content_revision
+            && self.request == state.navigation_revision
+    }
+}
+impl State {
+    fn begin_navigation(&mut self) -> CoreResult<NavigationStamp> {
+        self.navigation_revision = self
+            .navigation_revision
+            .checked_add(1)
+            .ok_or(CoreError::Closed)?;
+        Ok(NavigationStamp {
+            generation: self.generation,
+            content: self.content_revision,
+            request: self.navigation_revision,
+        })
+    }
 }
 #[derive(uniffi::Object)]
 pub struct CoreAndroidHost {
@@ -210,6 +249,7 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                navigation_revision: 0,
                 anchor: None,
                 generation,
                 content_revision: 1,
@@ -241,6 +281,7 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                navigation_revision: 0,
                 anchor: None,
                 generation: 0,
                 content_revision: 1,
@@ -283,6 +324,13 @@ impl CoreAndroidHost {
             selected_chat: match &s.content {
                 Content::Cloud(c) => c.snapshot().chat,
                 Content::Live { id, .. } | Content::Saved { id, .. } => Some(id.clone()),
+                Content::Indexed { row, .. } => Some(row.key.clone()),
+            },
+            source: match &s.content {
+                Content::Cloud(_) => AndroidHostContent::Cloud,
+                Content::Live { .. } => AndroidHostContent::Live,
+                Content::Saved { .. } => AndroidHostContent::Saved,
+                Content::Indexed { .. } => AndroidHostContent::Indexed,
             },
             signed_in,
             notice,
@@ -364,6 +412,11 @@ impl CoreAndroidHost {
                 }
             }
             Content::Saved { history, .. } => history.render_transcript(view),
+            Content::Indexed { input, .. } => {
+                view.clear();
+                view.set_input(input.clone());
+                Ok(())
+            }
         }
     }
     /// Refresh a saved reader without detaching a live/cloud layout subscription.
@@ -394,6 +447,7 @@ impl CoreAndroidHost {
     pub fn navigate(&self, route: AndroidHostRoute) -> CoreResult<()> {
         let mut s = self.state.lock().map_err(|_| CoreError::Closed)?;
         self.refresh(&mut s)?;
+        s.begin_navigation()?;
         if self.account.is_none() && route != AndroidHostRoute::Chat {
             return Err(CoreError::Closed);
         }
@@ -405,6 +459,7 @@ impl CoreAndroidHost {
     pub fn select_default_chat(&self) -> CoreResult<()> {
         let mut s = self.state.lock().map_err(|_| CoreError::Closed)?;
         self.refresh(&mut s)?;
+        s.begin_navigation()?;
         let cloud = s
             .sessions
             .as_ref()
@@ -423,6 +478,7 @@ impl CoreAndroidHost {
     pub fn select_session(&self, id: String) -> CoreResult<()> {
         let mut s = self.state.lock().map_err(|_| CoreError::Closed)?;
         self.refresh(&mut s)?;
+        s.begin_navigation()?;
         if !matches!(&s.content, Content::Live { id: current, .. } if current == &id) {
             let client = s.client.clone().ok_or(CoreError::Closed)?;
             let session = client.open_session(id.clone())?;
@@ -442,9 +498,63 @@ impl CoreAndroidHost {
         self.events.0.on_android_host_changed();
         Ok(())
     }
+    pub async fn select_indexed_chat(&self, key: String) -> CoreResult<()> {
+        let (history, navigation) = {
+            let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+            self.refresh(&mut state)?;
+            (
+                state.history.clone().ok_or(CoreError::Closed)?,
+                state.begin_navigation()?,
+            )
+        };
+        let (row, input) = history.indexed_layout(key).await?;
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if !navigation.accepts(&state) {
+            return Err(CoreError::Closed);
+        }
+        self.replace(
+            &mut state,
+            Content::Indexed {
+                row,
+                history,
+                input,
+            },
+            None,
+        )?;
+        drop(state);
+        self.events.0.on_android_host_changed();
+        Ok(())
+    }
+    /// The native view reports its first painted rows; Rust supplies the authorized read-marker identity.
+    pub async fn transcript_mounted(&self, generation: u64, revision: u64) -> CoreResult<()> {
+        let indexed = {
+            let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+            self.refresh(&mut state)?;
+            if state.generation != generation || state.content_revision != revision {
+                return Err(CoreError::Closed);
+            }
+            match &state.content {
+                Content::Indexed { row, history, .. } => row
+                    .activity_revision
+                    .as_ref()
+                    .map(|activity| (history.clone(), row.key.clone(), activity.clone())),
+                Content::Live { client, id, .. } => {
+                    client.mark_seen(id.clone());
+                    None
+                }
+                _ => None,
+            }
+        };
+        if let Some((history, key, activity)) = indexed {
+            history.mark_indexed_seen(key, activity).await?;
+        }
+        Ok(())
+    }
     pub fn select_saved_chat(&self, id: String) -> CoreResult<()> {
         let mut s = self.state.lock().map_err(|_| CoreError::Closed)?;
         self.refresh(&mut s)?;
+        s.begin_navigation()?;
         let history = s.history.clone().ok_or(CoreError::Closed)?;
         history.action(SavedHistoryAction::Open { id: id.clone() })?;
         history.follow(true);
@@ -477,6 +587,14 @@ mod tests {
         assert!(before.account.is_none());
         assert!(after.client.is_none());
         assert_eq!(before.content_revision, after.content_revision);
+    }
+    #[test]
+    fn a_late_indexed_load_cannot_replace_a_newer_navigation_intent() {
+        let owner = CoreAndroidHost::demo(Arc::new(Listener));
+        let stamp = owner.state.lock().unwrap().begin_navigation().unwrap();
+        assert!(stamp.accepts(&owner.state.lock().unwrap()));
+        owner.navigate(AndroidHostRoute::Chat).unwrap();
+        assert!(!stamp.accepts(&owner.state.lock().unwrap()));
     }
     #[test]
     fn bookmark_rejects_stale_content_and_unbounded_coordinates() {
