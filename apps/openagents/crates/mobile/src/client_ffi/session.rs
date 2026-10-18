@@ -2,6 +2,9 @@
 //! Transcript rows never cross here — the layout engine reads
 //! [`openagents_client::SessionSnapshot`] in Rust.
 
+mod android_composer;
+pub use android_composer::*;
+
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -533,12 +536,20 @@ impl SessionHandle {
             .ok_or_else(|| CoreError::InvalidArgument {
                 message: "composer edit has no input token".into(),
             })?;
-        let limit = lock_registry(&self.native_views)?.composer_max_bytes(
-            &instance,
-            view_revision,
-            &token,
-        )?;
-        let mounting = request.get("op").and_then(serde_json::Value::as_str) == Some("mount");
+        let operation = request.get("op").and_then(serde_json::Value::as_str);
+        if !matches!(operation, Some("mount" | "apply")) {
+            return Err(CoreError::InvalidArgument {
+                message: "composer edit is invalid".into(),
+            });
+        }
+        let mounting = operation == Some("mount");
+        let registry = lock_registry(&self.native_views)?;
+        let limit = if mounting {
+            registry.composer_mount_max_bytes(&instance, view_revision, &token)?
+        } else {
+            registry.composer_max_bytes(&instance, view_revision, &token)?
+        };
+        drop(registry);
         if mounting
             && request.get("max_bytes").and_then(serde_json::Value::as_u64) != Some(limit as u64)
         {

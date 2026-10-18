@@ -4,14 +4,19 @@ package com.openagents.app.composer
 import android.os.SystemClock
 import org.json.JSONArray
 import org.json.JSONObject
+import uniffi.openagents_core.CoreAndroidComposer
 import uniffi.openagents_core.NativeActionResult
 import uniffi.openagents_core.OutgoingAttachment
 import uniffi.openagents_core.SessionHandle
 
 /** Calls the existing mobile Rust session and Rust Native editor contracts. */
-class RustComposerCorePort(
-    private val session: SessionHandle,
+class RustComposerCorePort private constructor(
+    private val session: SessionHandle?,
+    private val host: CoreAndroidComposer?,
 ) : ComposerCorePort {
+    constructor(session: SessionHandle) : this(session, null)
+    constructor(host: CoreAndroidComposer) : this(null, host)
+
     override fun mountEditor(
         stamp: ComposerEditorStamp,
         maxBytes: Int,
@@ -42,7 +47,13 @@ class RustComposerCorePort(
         text: String,
         attachments: List<ComposerAttachmentPayload>,
     ): Boolean {
-        val result = session.submitNativeComposer(
+        if (host != null) return host.submit(
+            stamp.instance, unsigned(stamp.viewRevision, "view revision"), stamp.inputToken,
+            lifetime(stamp.editingLifetime), unsigned(stamp.editorRevision, "editor revision"),
+            choiceToken, text,
+            attachments.map { OutgoingAttachment(it.name, it.mimeType, it.data.copyOf()) },
+        )
+        val result = requireNotNull(session).submitNativeComposer(
             stamp.instance,
             unsigned(stamp.viewRevision, "view revision"),
             stamp.inputToken,
@@ -63,11 +74,13 @@ class RustComposerCorePort(
     }
 
     override fun activate(instance: String, revision: Long, node: String) {
-        session.activateNative(instance, unsigned(revision, "view revision"), node, null, emptyList())
+        if (host != null) host.activate(instance, unsigned(revision, "view revision"), node)
+        else requireNotNull(session).activateNative(instance, unsigned(revision, "view revision"), node, null, emptyList())
     }
 
     override fun activateAttachment(instance: String, revision: Long, node: String): Boolean {
-        return session.activateNative(
+        if (host != null) return host.activate(instance, unsigned(revision, "view revision"), node)
+        return requireNotNull(session).activateNative(
             instance,
             unsigned(revision, "view revision"),
             node,
@@ -77,22 +90,21 @@ class RustComposerCorePort(
     }
 
     override fun changeField(instance: String, revision: Long, node: String, value: String) {
-        session.changeNativeField(instance, unsigned(revision, "view revision"), node, value)
+        requireNotNull(session).changeNativeField(instance, unsigned(revision, "view revision"), node, value)
     }
 
     override fun acknowledge(instance: String, revision: Long) {
-        session.acknowledgeNativeView(instance, unsigned(revision, "view revision"))
+        if (host != null) host.acknowledge(instance, unsigned(revision, "view revision"))
+        else requireNotNull(session).acknowledgeNativeView(instance, unsigned(revision, "view revision"))
     }
 
     fun prepareNativeView(viewJson: String): String =
-        session.prepareNativeView(viewJson.toByteArray(Charsets.UTF_8)).toString(Charsets.UTF_8)
+        requireNotNull(session).prepareNativeView(viewJson.toByteArray(Charsets.UTF_8)).toString(Charsets.UTF_8)
 
     private fun callEditor(stamp: ComposerEditorStamp, request: String): ComposerEditorAck {
-        val response = session.composerEditor(
-            stamp.instance,
-            unsigned(stamp.viewRevision, "view revision"),
-            request.toByteArray(Charsets.UTF_8),
-        )
+        val bytes = request.toByteArray(Charsets.UTF_8)
+        val response = host?.editor(stamp.instance, unsigned(stamp.viewRevision, "view revision"), bytes)
+            ?: requireNotNull(session).composerEditor(stamp.instance, unsigned(stamp.viewRevision, "view revision"), bytes)
         val root = JSONObject(response.toString(Charsets.UTF_8))
         val state = root.optJSONObject("state")
             ?: throw IllegalStateException("Rust could not restore the composer draft.")

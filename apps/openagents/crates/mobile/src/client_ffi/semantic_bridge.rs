@@ -135,6 +135,26 @@ impl NativeViewRegistry {
         })
     }
 
+    /// Mounting may restore the pending editor before acknowledgment; edits and sends still require applied authority.
+    pub(crate) fn composer_mount_max_bytes(
+        &self,
+        instance: &str,
+        revision: u64,
+        token: &str,
+    ) -> CoreResult<usize> {
+        if self.disposed {
+            return Err(view_error(ViewError::StaleActivation));
+        }
+        if let Some(pending) = &self.pending {
+            if pending.view().instance == instance && pending.view().revision == revision {
+                return find_composer(&pending.view().root, token)
+                    .map(|(limit, _)| limit)
+                    .ok_or_else(|| view_error(ViewError::StaleActivation));
+            }
+        }
+        self.composer_max_bytes(instance, revision, token)
+    }
+
     pub(crate) fn composer_max_bytes(
         &self,
         instance: &str,
@@ -387,5 +407,66 @@ mod tests {
             registry.change_field(&event),
             Ok(SessionViewIntent::SaveDraft)
         ));
+    }
+    #[test]
+    fn pending_composer_can_mount_but_cannot_edit_or_submit() {
+        let bytes = View::new_v3(
+            "editor",
+            1,
+            Node {
+                key: "composer".into(),
+                style: Style::default(),
+                element: Element::Composer {
+                    token: "message".into(),
+                    placeholder: "Message".into(),
+                    max_bytes: 16000,
+                    enabled: true,
+                    busy: false,
+                    stop: None,
+                    choices: vec![],
+                    draft: Some("hello".into()),
+                    focus: false,
+                    attach: None,
+                },
+            },
+        )
+        .validate()
+        .unwrap()
+        .to_json()
+        .unwrap();
+        let mut registry = NativeViewRegistry::default();
+        registry.prepare(&bytes).unwrap();
+        assert_eq!(
+            registry
+                .composer_mount_max_bytes("editor", 1, "message")
+                .unwrap(),
+            16000
+        );
+        assert!(registry.composer_max_bytes("editor", 1, "message").is_err());
+        assert!(
+            registry
+                .composer_busy_policy("editor", 1, "message", "hello")
+                .is_err()
+        );
+        assert!(
+            registry
+                .composer_mount_max_bytes("editor", 2, "message")
+                .is_err()
+        );
+        assert!(
+            registry
+                .composer_mount_max_bytes("editor", 1, "other")
+                .is_err()
+        );
+        registry.acknowledge("editor", 1).unwrap();
+        assert_eq!(
+            registry.composer_max_bytes("editor", 1, "message").unwrap(),
+            16000
+        );
+        assert!(
+            registry
+                .composer_busy_policy("editor", 1, "message", "hello")
+                .is_ok()
+        );
     }
 }

@@ -140,6 +140,16 @@ impl CoreCloudChat {
         })
     }
 
+    pub(crate) fn send_completion(
+        &self,
+        text: String,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        match &self.chat {
+            Chat::Live(chat) => Box::pin(chat.send(text)),
+            Chat::Demo(chat) => Box::pin(chat.send(text)),
+        }
+    }
+
     pub(crate) fn watch(&self) -> tokio::sync::watch::Receiver<Snapshot> {
         match &self.chat {
             Chat::Live(chat) => chat.watch(),

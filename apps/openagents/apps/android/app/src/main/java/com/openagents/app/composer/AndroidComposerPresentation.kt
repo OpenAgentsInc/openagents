@@ -380,6 +380,9 @@ class AndroidComposerPresentation(
         renderChips(contextRow, next.contextChips)
         renderAttachments(next.attachments)
         renderMentions(next.mentionSuggestions)
+        if (next.sharedCardsJson == null) {
+            core.acknowledge(next.stamp.instance, next.stamp.viewRevision)
+        }
     }
 
     override fun close() {
