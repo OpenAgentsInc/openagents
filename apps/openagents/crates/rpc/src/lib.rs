@@ -28,9 +28,11 @@ mod server;
 
 pub use client::{RpcClient, RpcSubscription, connect_ws};
 pub use device_room::{
-    DeviceFrameHeader, DeviceLink, HostRelay, HostRelayConfig, LinkCache, LinkCacheConfig,
-    NudgeHandler, PeerLiveness, PeerLivenessProbe, StaticToken, TokenError, TokenSource,
-    decode_device_frame, device_room_ws_url, encode_device_frame,
+    DeviceFrameHeader, DeviceLink, DirectIo, DirectRoutes, DirectStream, HostRelay,
+    HostRelayConfig, LinkCache, LinkCacheConfig, LinkRoute, NudgeHandler, PeerLiveness,
+    PeerLivenessProbe, STATUS_CONNECTED_DIRECTLY, STATUS_SYNC_UNAVAILABLE, StaticToken,
+    TokenError, TokenSource, decode_device_frame, device_room_ws_url, encode_device_frame,
+    serve_direct,
 };
 pub use server::{serve_connection, serve_ws_listener};
 
@@ -47,6 +49,10 @@ pub mod methods {
     pub const CANCEL_VOICE_ATTEMPT_V2: &str = "CancelVoiceAttemptV2";
     pub const WATCH_PREVIEWS: &str = "WatchPreviews";
     pub const LIST_HARNESSES: &str = "ListHarnesses";
+    /// A peer's direct route and admission ticket for the calling device,
+    /// issued over the authorized relay path so the caller can reach this
+    /// computer while sync is down (#12130).
+    pub const PEER_DIRECT_ROUTE: &str = "PeerDirectRoute";
     pub const CANCEL_INSTALL: &str = "CancelInstall";
     pub const INSTALL_HARNESS: &str = "InstallHarness";
     /// Flip a harness's enablement on the target device (Settings → Providers);
