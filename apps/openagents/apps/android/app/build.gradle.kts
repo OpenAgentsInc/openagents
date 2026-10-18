@@ -61,6 +61,9 @@ android {
 
     sourceSets["main"].assets.srcDir("../../ios/OpenAgents/Fonts")
     sourceSets["main"].java.srcDir("../transcript/src/main/java")
+    sourceSets["main"].java.srcDir("../sessions")
+    sourceSets["main"].java.srcDir("../settings/src/main/java")
+    sourceSets["test"].java.srcDir("../settings/src/test/java")
     sourceSets["test"].java.srcDir("../transcript/src/test/java")
     sourceSets["androidTest"].java.srcDir("../transcript/src/androidTest/java")
     sourceSets["main"].java.srcDir("../platform")
