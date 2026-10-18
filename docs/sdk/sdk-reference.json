@@ -3144,6 +3144,12 @@
               "calls": []
             },
             {
+              "name": "land",
+              "doc": "Returns the landing client for `session` on this deployment.",
+              "declaration": "pub fn land<'a>(&'a self, session: &'a Session) -> Result<Land<'a>, Error>",
+              "calls": []
+            },
+            {
               "name": "notify_owner",
               "doc": "Notify once for `request_id`. Reuse the same ID and note after a failed request.\nThe account must have enabled notifications for this agent. At most six\nnew notes per agent per hour are accepted, including across host restarts.",
               "declaration": "pub async fn notify_owner(\n    &self,\n    session: &Session,\n    request_id: &str,\n    note: OwnerNote,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
@@ -3593,6 +3599,105 @@
           "name": "protocol"
         }
       ]
+    },
+    {
+      "path": "land",
+      "doc": "Submit and inspect changes in the shared landing queue (`/v1/land`).",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Land",
+          "doc": "A signed-in client's access to the shared landing queue.",
+          "declaration": "pub struct Land<'a> {}",
+          "methods": [
+            {
+              "name": "submit",
+              "doc": "Submits a pushed branch. Reuse `request_id` and the same body after an uncertain response.",
+              "declaration": "pub async fn submit(\n    &self,\n    request_id: &str,\n    entry: LandSubmit,\n    cancel: &CancellationToken,\n) -> Result<LandEntry, Error>",
+              "calls": []
+            },
+            {
+              "name": "status",
+              "doc": "Reads the integrator's state and waiting, active, and failed changes.",
+              "declaration": "pub async fn status(&self, cancel: &CancellationToken) -> Result<LandStatus, Error>",
+              "calls": []
+            },
+            {
+              "name": "show",
+              "doc": "Fetches a change and all recorded landing attempts.",
+              "declaration": "pub async fn show(\n    &self,\n    id: &str,\n    cancel: &CancellationToken,\n) -> Result<LandEntry, Error>",
+              "calls": []
+            },
+            {
+              "name": "withdraw",
+              "doc": "Removes a waiting change from the queue.",
+              "declaration": "pub async fn withdraw(&self, id: &str, cancel: &CancellationToken) -> Result<(), Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "LandBusy",
+          "doc": "A change the integrator is currently checking.",
+          "declaration": "pub struct LandBusy {\n    pub slot: String,\n    pub lane: String,\n    pub entry: String,\n    pub since: u64,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LandEntry",
+          "doc": "A submitted change and the results of its landing attempts, when requested.",
+          "declaration": "pub struct LandEntry {\n    pub id: String,\n    pub branch: String,\n    pub target: String,\n    pub issue: Option<u64>,\n    pub close: bool,\n    pub author: String,\n    pub machine: String,\n    pub summary: String,\n    pub head: String,\n    pub submitted_at: u64,\n    pub state: LandState,\n    pub updated_at: u64,\n    pub tries: u32,\n    pub commit: Option<String>,\n    pub reason: Option<String>,\n    pub worker: Option<String>,\n    pub lane: Option<LandLane>,\n    pub slot: Option<String>,\n    pub started_at: Option<u64>,\n    pub waiting_for: Option<String>,\n    pub records: Vec<LandRecord>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LandHeartbeat",
+          "doc": "The integrator's latest report of its work and capacity.",
+          "declaration": "pub struct LandHeartbeat {\n    pub machine: String,\n    pub at: u64,\n    pub current: Option<String>,\n    pub instance: Option<LandInstance>,\n    pub slots: Vec<LandBusy>,\n    pub capacity: Option<u32>,\n    pub draining: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LandInstance",
+          "doc": "The cloud computer that runs the integrator.",
+          "declaration": "pub struct LandInstance {\n    pub project: String,\n    pub zone: String,\n    pub name: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LandIntegrator",
+          "doc": "Whether the integrator has sent a recent heartbeat, and its latest report.",
+          "declaration": "pub struct LandIntegrator {\n    pub running: bool,\n    pub heartbeat: Option<LandHeartbeat>,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "LandLane",
+          "doc": "Which checks the integrator runs for a change.",
+          "declaration": "pub enum LandLane {\n    Fast,\n    Code,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LandRecord",
+          "doc": "The checks, result, and progress notes from one landing attempt.",
+          "declaration": "pub struct LandRecord {\n    pub entry: String,\n    pub number: u32,\n    pub worker: String,\n    pub started_at: u64,\n    pub ended_at: u64,\n    pub outcome: String,\n    pub target_before: String,\n    pub commit: Option<String>,\n    pub landing: Vec<String>,\n    pub checks: Vec<String>,\n    pub problems: Vec<String>,\n    pub repaired: bool,\n    pub notes: Vec<String>,\n    pub lane: String,\n    pub slot: String,\n    pub regenerated: Vec<String>,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "LandState",
+          "doc": "Where a submitted change stands.",
+          "declaration": "pub enum LandState {\n    Queued,\n    Landing,\n    Landed,\n    Bounced,\n    Withdrawn,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LandStatus",
+          "doc": "The integrator and changes waiting, landing, or returned to their authors.",
+          "declaration": "pub struct LandStatus {\n    pub queue: String,\n    pub integrator: LandIntegrator,\n    pub waiting: Vec<LandEntry>,\n    pub landing: Vec<LandEntry>,\n    pub failed: Vec<LandEntry>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LandSubmit",
+          "doc": "A branch already pushed to its repository's `origin`, ready to land.",
+          "declaration": "pub struct LandSubmit {\n    pub repo: String,\n    pub branch: String,\n    pub issue: Option<u64>,\n    pub summary: Option<String>,\n}"
+        }
+      ],
+      "reexports": []
     },
     {
       "path": "owner_notifications",

@@ -2,9 +2,9 @@
 //!
 //! `openagents mcp` speaks MCP (JSON-RPC 2.0, newline-delimited) on stdin/stdout
 //! and proxies every tool into the engine's localhost IPC — the same
-//! `openagents_rpc` WebSocket the headed app and `openagents sync` dial. Nothing here
-//! talks to the edge: the engine stays the single authority for chats,
-//! devices, projects, and the command plane. Several tools work locally:
+//! `openagents_rpc` WebSocket the headed app and `openagents sync` dial.
+//! The engine supplies its signed-in account to the public SDK for `land_status`
+//! and handles chats, devices, projects, and commands. Several tools work locally:
 //! `changed_paths` runs `git diff` in a chat's folder, and `build_status`
 //! reads this computer's agent builds and writes their limit (#11971).
 //! `machine_action` prunes a build cache or stops a process under the

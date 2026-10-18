@@ -95,6 +95,7 @@ mod lab_card_view;
 mod labs;
 pub mod labs_api;
 pub(crate) mod labs_kinds;
+pub mod landing;
 mod layout;
 mod link_preview;
 pub mod mac_jobs;
@@ -363,6 +364,8 @@ pub struct Config {
     pub chat_store: Arc<chat_store::Store>,
     /// Sync service that stores owner notes and phone delivery grants.
     pub owner_notifications_url: String,
+    /// The repository's landing queue, shared with the CLI and integrator.
+    pub landing: Option<Arc<landing::LandingQueue>>,
     /// Small Rust/Wasm input and scroll adapter.
     pub chat_build: Option<PathBuf>,
     /// The sand garden browser build.
@@ -515,6 +518,7 @@ impl Config {
             lab_backend: None,
             project_uploads: ProjectUploadPolicy::default(),
             chat_store: Arc::new(chat_store::Store::local(store.with_file_name("web-chats"))),
+            landing: None,
             chat_build: None,
             sand_build: PathBuf::from("/srv/sand"),
             vault_store: None,
@@ -662,6 +666,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(mac_jobs::routes())
         .merge(mac_jobs_page::routes())
         .merge(work_runs::routes())
+        .merge(landing::routes())
         .merge(agents_page::routes())
         .merge(traces::routes())
         .merge(account_memory::routes())

@@ -142,6 +142,14 @@ NO_LANDING = "Do not commit, push, open a pull request, or comment on or close t
 GITHUB_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
 
 
+def landing_instructions(issue: int, how: str) -> str:
+    """Tell the sandboxed agent which landing step its driver owns."""
+    if how == "queue":
+        return (f"{NO_LANDING}\nAfter replaying your checks, the driver finishes with "
+                f"`openagents land submit --issue {issue}`. Leave that step to the driver; never push to `main`.")
+    return NO_LANDING
+
+
 def agent_env(out: Path) -> dict:
     """The engine's environment: no GitHub credential, `gh` and
     `openagents` refuse, and `git push` has nowhere to go."""
@@ -402,7 +410,7 @@ def backend_of(engine: str) -> str:
 
 
 def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: int,
-                backend: str = "claude") -> dict:
+                backend: str = "claude", land_mode: str = "pr") -> dict:
     out.mkdir(parents=True, exist_ok=True)
     if "packages" in b:
         packages = [p["id"] for p in b["packages"] if p["kind"] == "rust"]
@@ -412,7 +420,7 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
             pkg = c["id"].split(":", 1)[1]
             if pkg not in packages:
                 packages.append(pkg)
-    system = SYSTEM + "\n\n" + b["markdown"]
+    system = SYSTEM + "\n\n" + b["markdown"] + "\n\n" + landing_instructions(b["issue"], land_mode)
     (out / "system.md").write_text(system)
     (out / "prompt.md").write_text(f"Complete issue #{b['issue']} as the briefing describes.")
     config = {
@@ -472,11 +480,12 @@ def relay_verify(run: Run, log: Path, seen: int) -> int:
     return len(rows)
 
 
-def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: int) -> dict:
+def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: int,
+             land_mode: str = "pr") -> dict:
     """Bare Claude Code, told "Complete this issue." (#11211's arm A)."""
     out.mkdir(parents=True, exist_ok=True)
     prompt = (f"Complete this issue.\n\n#{issue['number']} {issue['title']}\n\n{issue.get('body') or ''}"
-              f"\n\n{NO_LANDING}")
+              f"\n\n{landing_instructions(issue['number'], land_mode)}")
     argv = [shutil.which("claude") or "claude", "-p", prompt, "--output-format", "stream-json", "--verbose",
             "--dangerously-skip-permissions", "--no-session-persistence", "--strict-mcp-config"]
     if model:
@@ -596,9 +605,9 @@ def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: 
     if start_from:
         sh(["git", "-C", str(wt), "apply", "--binary", "--whitespace=nowarn", "-"], input=start_from, check=False)
     if engine.startswith("briefed"):
-        agent = run_briefed(run, b, wt, out, args.model, args.timeout, backend_of(engine))
+        agent = run_briefed(run, b, wt, out, args.model, args.timeout, backend_of(engine), args.land)
     else:
-        agent = run_bare(run, issue, wt, out, args.model, args.timeout)
+        agent = run_bare(run, issue, wt, out, args.model, args.timeout, args.land)
     files = changed_files(wt, base)
     checks = replay_checks(run, wt, base) if files else []
     stat = diff_stat(wt, base) if files else {"files": [], "added": 0, "removed": 0}

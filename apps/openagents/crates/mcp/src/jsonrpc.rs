@@ -55,6 +55,8 @@ Pruning a build cache or stopping a process goes through `machine_action`, only 
 owner's grant to this chat, and every action is logged. \
 To run the newest main in this computer's app, use `upgrade_host` (it needs the \
 host.upgrade scope); never rebuild or restart the app yourself.\n\
+Use `land_status` to read the shared landing queue through the signed-in app account: \
+the integrator, waiting changes, active landings, and failures.\n\
 \n\
 When a chart, table, diagram, dashboard, or 3D view would say more than prose and \
 `show_visual` is available, write a Luau visual script and show it with `show_visual` before \

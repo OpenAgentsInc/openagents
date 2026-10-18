@@ -23618,6 +23618,422 @@
           }
         }
       }
+    },
+    "/v1/land": {
+      "post": {
+        "operationId": "submitLanding",
+        "tags": [
+          "Landing queue"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "description": "Uses the configured repository's CLI landing queue. Requires an account allowed to run agent work. Reuse the request ID and exact inputs on retry. Only the submitter or an administrator may withdraw a queued change.",
+        "responses": {
+          "201": {
+            "description": "Landing queue result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LandSubmit"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "landingStatus",
+        "tags": [
+          "Landing queue"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Uses the configured repository's CLI landing queue. Requires an account allowed to run agent work. Reuse the request ID and exact inputs on retry. Only the submitter or an administrator may withdraw a queued change.",
+        "responses": {
+          "200": {
+            "description": "Landing queue result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/land/{id}": {
+      "get": {
+        "operationId": "showLanding",
+        "tags": [
+          "Landing queue"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Uses the configured repository's CLI landing queue. Requires an account allowed to run agent work. Reuse the request ID and exact inputs on retry. Only the submitter or an administrator may withdraw a queued change.",
+        "responses": {
+          "200": {
+            "description": "Landing queue result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "withdrawLanding",
+        "tags": [
+          "Landing queue"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Uses the configured repository's CLI landing queue. Requires an account allowed to run agent work. Reuse the request ID and exact inputs on retry. Only the submitter or an administrator may withdraw a queued change.",
+        "responses": {
+          "204": {
+            "description": "Landing queue result."
+          },
+          "400": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid request, signed out, denied, missing, conflict, too large, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -35704,6 +36120,1060 @@
             "minimum": 0
           }
         }
+      },
+      "LandSubmit": {
+        "title": "LandSubmit",
+        "description": "A branch already pushed to its repository's `origin`, ready to land.",
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "issue": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "repo",
+          "branch"
+        ]
+      },
+      "LandEntry": {
+        "title": "LandEntry",
+        "description": "A submitted change and the results of its landing attempts, when requested.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "issue": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "close": {
+            "type": "boolean",
+            "default": false
+          },
+          "author": {
+            "type": "string"
+          },
+          "machine": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "state": {
+            "description": "Where a submitted change stands.",
+            "type": "string",
+            "enum": [
+              "queued",
+              "landing",
+              "landed",
+              "bounced",
+              "withdrawn"
+            ]
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "tries": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 0
+          },
+          "commit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "worker": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lane": {
+            "description": "Which checks the integrator runs for a change.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "fast",
+              "code",
+              null
+            ]
+          },
+          "slot": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "waiting_for": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "description": "The checks, result, and progress notes from one landing attempt.",
+              "type": "object",
+              "properties": {
+                "entry": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "worker": {
+                  "type": "string"
+                },
+                "started_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "ended_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "outcome": {
+                  "type": "string"
+                },
+                "target_before": {
+                  "type": "string"
+                },
+                "commit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "landing": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "checks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "problems": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "repaired": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "lane": {
+                  "type": "string"
+                },
+                "slot": {
+                  "type": "string"
+                },
+                "regenerated": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "entry",
+                "number",
+                "worker",
+                "started_at",
+                "ended_at",
+                "outcome",
+                "target_before"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "branch",
+          "target",
+          "author",
+          "machine",
+          "summary",
+          "head",
+          "submitted_at",
+          "state",
+          "updated_at"
+        ]
+      },
+      "LandStatus": {
+        "title": "LandStatus",
+        "description": "The integrator and changes waiting, landing, or returned to their authors.",
+        "type": "object",
+        "properties": {
+          "queue": {
+            "type": "string",
+            "default": ""
+          },
+          "integrator": {
+            "description": "Whether the integrator has sent a recent heartbeat, and its latest report.",
+            "type": "object",
+            "properties": {
+              "running": {
+                "type": "boolean"
+              },
+              "heartbeat": {
+                "description": "The integrator's latest report of its work and capacity.",
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "machine": {
+                    "type": "string"
+                  },
+                  "at": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0
+                  },
+                  "current": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "instance": {
+                    "description": "The cloud computer that runs the integrator.",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "project": {
+                        "type": "string"
+                      },
+                      "zone": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "project",
+                      "zone",
+                      "name"
+                    ]
+                  },
+                  "slots": {
+                    "type": "array",
+                    "items": {
+                      "description": "A change the integrator is currently checking.",
+                      "type": "object",
+                      "properties": {
+                        "slot": {
+                          "type": "string"
+                        },
+                        "lane": {
+                          "type": "string"
+                        },
+                        "entry": {
+                          "type": "string"
+                        },
+                        "since": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "slot",
+                        "lane",
+                        "entry",
+                        "since"
+                      ]
+                    }
+                  },
+                  "capacity": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "draining": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "machine",
+                  "at"
+                ]
+              }
+            },
+            "required": [
+              "running"
+            ]
+          },
+          "waiting": {
+            "type": "array",
+            "items": {
+              "description": "A submitted change and the results of its landing attempts, when requested.",
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "issue": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "close": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "author": {
+                  "type": "string"
+                },
+                "machine": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "head": {
+                  "type": "string"
+                },
+                "submitted_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "state": {
+                  "description": "Where a submitted change stands.",
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "landing",
+                    "landed",
+                    "bounced",
+                    "withdrawn"
+                  ]
+                },
+                "updated_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "tries": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "default": 0
+                },
+                "commit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "worker": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "lane": {
+                  "description": "Which checks the integrator runs for a change.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "fast",
+                    "code",
+                    null
+                  ]
+                },
+                "slot": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "started_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "waiting_for": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "records": {
+                  "type": "array",
+                  "items": {
+                    "description": "The checks, result, and progress notes from one landing attempt.",
+                    "type": "object",
+                    "properties": {
+                      "entry": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "integer",
+                        "format": "uint32",
+                        "minimum": 0
+                      },
+                      "worker": {
+                        "type": "string"
+                      },
+                      "started_at": {
+                        "type": "integer",
+                        "format": "uint64",
+                        "minimum": 0
+                      },
+                      "ended_at": {
+                        "type": "integer",
+                        "format": "uint64",
+                        "minimum": 0
+                      },
+                      "outcome": {
+                        "type": "string"
+                      },
+                      "target_before": {
+                        "type": "string"
+                      },
+                      "commit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "landing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "checks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "problems": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "repaired": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "notes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "lane": {
+                        "type": "string"
+                      },
+                      "slot": {
+                        "type": "string"
+                      },
+                      "regenerated": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "entry",
+                      "number",
+                      "worker",
+                      "started_at",
+                      "ended_at",
+                      "outcome",
+                      "target_before"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "branch",
+                "target",
+                "author",
+                "machine",
+                "summary",
+                "head",
+                "submitted_at",
+                "state",
+                "updated_at"
+              ]
+            },
+            "default": []
+          },
+          "landing": {
+            "type": "array",
+            "items": {
+              "description": "A submitted change and the results of its landing attempts, when requested.",
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "issue": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "close": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "author": {
+                  "type": "string"
+                },
+                "machine": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "head": {
+                  "type": "string"
+                },
+                "submitted_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "state": {
+                  "description": "Where a submitted change stands.",
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "landing",
+                    "landed",
+                    "bounced",
+                    "withdrawn"
+                  ]
+                },
+                "updated_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "tries": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "default": 0
+                },
+                "commit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "worker": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "lane": {
+                  "description": "Which checks the integrator runs for a change.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "fast",
+                    "code",
+                    null
+                  ]
+                },
+                "slot": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "started_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "waiting_for": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "records": {
+                  "type": "array",
+                  "items": {
+                    "description": "The checks, result, and progress notes from one landing attempt.",
+                    "type": "object",
+                    "properties": {
+                      "entry": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "integer",
+                        "format": "uint32",
+                        "minimum": 0
+                      },
+                      "worker": {
+                        "type": "string"
+                      },
+                      "started_at": {
+                        "type": "integer",
+                        "format": "uint64",
+                        "minimum": 0
+                      },
+                      "ended_at": {
+                        "type": "integer",
+                        "format": "uint64",
+                        "minimum": 0
+                      },
+                      "outcome": {
+                        "type": "string"
+                      },
+                      "target_before": {
+                        "type": "string"
+                      },
+                      "commit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "landing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "checks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "problems": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "repaired": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "notes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "lane": {
+                        "type": "string"
+                      },
+                      "slot": {
+                        "type": "string"
+                      },
+                      "regenerated": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "entry",
+                      "number",
+                      "worker",
+                      "started_at",
+                      "ended_at",
+                      "outcome",
+                      "target_before"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "branch",
+                "target",
+                "author",
+                "machine",
+                "summary",
+                "head",
+                "submitted_at",
+                "state",
+                "updated_at"
+              ]
+            },
+            "default": []
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "description": "A submitted change and the results of its landing attempts, when requested.",
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "issue": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "close": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "author": {
+                  "type": "string"
+                },
+                "machine": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "head": {
+                  "type": "string"
+                },
+                "submitted_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "state": {
+                  "description": "Where a submitted change stands.",
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "landing",
+                    "landed",
+                    "bounced",
+                    "withdrawn"
+                  ]
+                },
+                "updated_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "tries": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "default": 0
+                },
+                "commit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "worker": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "lane": {
+                  "description": "Which checks the integrator runs for a change.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "fast",
+                    "code",
+                    null
+                  ]
+                },
+                "slot": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "started_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "waiting_for": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "records": {
+                  "type": "array",
+                  "items": {
+                    "description": "The checks, result, and progress notes from one landing attempt.",
+                    "type": "object",
+                    "properties": {
+                      "entry": {
+                        "type": "string"
+                      },
+                      "number": {
+                        "type": "integer",
+                        "format": "uint32",
+                        "minimum": 0
+                      },
+                      "worker": {
+                        "type": "string"
+                      },
+                      "started_at": {
+                        "type": "integer",
+                        "format": "uint64",
+                        "minimum": 0
+                      },
+                      "ended_at": {
+                        "type": "integer",
+                        "format": "uint64",
+                        "minimum": 0
+                      },
+                      "outcome": {
+                        "type": "string"
+                      },
+                      "target_before": {
+                        "type": "string"
+                      },
+                      "commit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "landing": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "checks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "problems": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "repaired": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "notes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "lane": {
+                        "type": "string"
+                      },
+                      "slot": {
+                        "type": "string"
+                      },
+                      "regenerated": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "entry",
+                      "number",
+                      "worker",
+                      "started_at",
+                      "ended_at",
+                      "outcome",
+                      "target_before"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "branch",
+                "target",
+                "author",
+                "machine",
+                "summary",
+                "head",
+                "submitted_at",
+                "state",
+                "updated_at"
+              ]
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "integrator"
+        ]
       }
     }
   }

@@ -234,6 +234,10 @@ flowchart TD
   reaches `main` through a landing entry, and `land show` has a record for
   each.
 - **Size:** S.
+- **Status (2026-10-18, #12038):** briefs use the queue, and each check-in
+  calls the public `land_status` app tool. The SDK's `Land` client and
+  `/v1/land` routes share the CLI's queue. A stopped integrator is reported
+  first. The working-day check is in After-close checks.
 
 ### 7. Machine and queue facts in every check-in
 

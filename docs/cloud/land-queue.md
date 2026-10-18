@@ -28,6 +28,25 @@ to Done (through `scripts/dev/issue-board.sh`); `--no-close` only comments.
 When the integrator's environment is stopped, `submit` starts it
 (`--no-wake` skips that).
 
+## App and SDK access
+
+`client.land(&session)` provides `submit`, `status`, `show`, and `withdraw`
+through `POST /v1/land`, `GET /v1/land`, `GET /v1/land/{id}`, and
+`DELETE /v1/land/{id}`. The `/api/v1/land` aliases answer too. These routes
+require an app bearer for an account allowed to run agent work. Submit a
+branch already on origin with a stable `Idempotency-Key`; retry with the
+same key and inputs. Only its submitter or an administrator can withdraw a
+queued change. Withdrawal does not stop an integrator that has already taken
+the change; check its status. `show` includes each landing attempt; `status` groups waiting,
+landing, and failed changes and reports the integrator's heartbeat.
+
+The web server uses its cloud identity to read and write the CLI's queue
+objects. `OPENAGENTS_LAND_QUEUE` selects the same bucket prefix or local
+folder as the CLI, and `OPENAGENTS_LAND_REPO` names the integrator's
+repository (default `OpenAgentsInc/openagents`). Other repositories are
+refused. The app's `land_status` tool reads this API through its signed-in
+account, so any custom agent can use it.
+
 ## Lanes
 
 Before an entry lands the integrator plans it (`coder::task::land_plan`) in

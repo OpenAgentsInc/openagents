@@ -304,6 +304,43 @@ impl Client {
         Self::decode(response, segments, limit).await
     }
 
+    pub(crate) async fn request_with_idempotency<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        segments: &[&str],
+        body: Value,
+        token: &str,
+        request_id: &str,
+    ) -> Result<T, Error> {
+        let response = self
+            .send_with_timeout(
+                method,
+                segments,
+                &[],
+                Some(body),
+                Some(token),
+                None,
+                Some(request_id),
+            )
+            .await?;
+        Self::decode(response, segments, 1024 * 1024).await
+    }
+
+    pub(crate) async fn request_empty(
+        &self,
+        method: Method,
+        segments: &[&str],
+        token: &str,
+    ) -> Result<(), Error> {
+        let response = self.send(method, segments, &[], None, Some(token)).await?;
+        if response.status().is_success() {
+            return Ok(());
+        }
+        Self::decode::<Value>(response, segments, 1024 * 1024)
+            .await
+            .map(|_| ())
+    }
+
     pub(crate) async fn history_json<T: DeserializeOwned>(
         &self,
         segments: &[&str],
@@ -345,7 +382,7 @@ impl Client {
         body: Option<Value>,
         token: Option<&str>,
     ) -> Result<reqwest::Response, Error> {
-        self.send_with_timeout(method, segments, query, body, token, None)
+        self.send_with_timeout(method, segments, query, body, token, None, None)
             .await
     }
 
@@ -362,6 +399,7 @@ impl Client {
             None,
             Some(token),
             Some(Duration::from_secs(310)),
+            None,
         )
         .await
     }
@@ -374,6 +412,7 @@ impl Client {
         body: Option<Value>,
         token: Option<&str>,
         timeout: Option<Duration>,
+        request_id: Option<&str>,
     ) -> Result<reqwest::Response, Error> {
         let mut url = self.deployment.api.clone();
         {
@@ -395,6 +434,11 @@ impl Client {
         }
         if let Some(token) = token {
             request = request.bearer_auth(token);
+        }
+        if let Some(request_id) = request_id {
+            let value = reqwest::header::HeaderValue::from_str(request_id)
+                .map_err(|_| Error::InvalidReference)?;
+            request = request.header("Idempotency-Key", value);
         }
         if let Some(body) = body {
             request = request.json(&body);

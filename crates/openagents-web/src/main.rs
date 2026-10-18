@@ -290,6 +290,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?));
     }
     let shared_chats = chat_bucket.is_some();
+    if config.cloud.is_some() {
+        config.landing = Some(std::sync::Arc::new(
+            openagents_web::landing::LandingQueue::from_env()?,
+        ));
+    }
     if let Some(bucket) = chat_bucket {
         config.chat_store = std::sync::Arc::new(openagents_web::chat_store::Store::gcs(
             bucket,

@@ -438,6 +438,12 @@ fn foreman_template_is_a_valid_claude_code_experiment() {
     assert_eq!(autonomy.every_minutes, Some(10));
     assert!(text.contains("Check-ins are off on this computer, so I only wake when you ask."));
     assert!(text.contains("`timeout 60 CMD`") && text.contains("`curl -m 20`"));
+    // Every check-in reads the shared queue; every issue brief names its submit step.
+    assert!(text.contains("Every check-in calls `land_status`"));
+    assert!(text.contains("If the integrator isn't running, put that first"));
+    assert!(text.contains("finish with `openagents land submit --issue N`; never push to `main`"));
+    assert!(text.contains("I don't assign push order"));
+    assert!(!text.contains("Every other chat pushes as soon as its own tests pass"));
     // The stall ladder acts in three recorded rungs (#12032).
     for rung in [
         "**Message it** (rung 1",

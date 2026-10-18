@@ -13,6 +13,7 @@ pub mod dashboard;
 pub mod generated;
 pub mod history;
 pub mod labs;
+pub mod land;
 pub mod owner_notifications;
 mod payment;
 pub mod rooms;

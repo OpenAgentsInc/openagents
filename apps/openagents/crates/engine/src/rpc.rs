@@ -50,6 +50,7 @@
 //! handlers stay transport-agnostic. This includes the workspace file surface,
 //! whose checkout always lives on the routed target device.
 
+mod land;
 mod moves;
 mod voice_chat;
 mod voice_remote;
@@ -1931,6 +1932,7 @@ impl RpcService for EngineRpc {
         match method {
             methods::ENGINE_INFO => RpcReply::value(&self.engine_info),
             methods::ENGINE_READY => RpcReply::value(&serde_json::json!({ "ready": true })),
+            methods::LAND_STATUS => land::status(self.auth()?).await,
             methods::LIST_HARNESSES => RpcReply::value(&self.registry.descriptors()),
             methods::INSTALL_HARNESS => {
                 let p: ListModelsParams = parse_params(params)?;

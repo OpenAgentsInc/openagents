@@ -151,6 +151,11 @@ fn catalog() -> Vec<ToolDef> {
             input_schema: json!({ "type": "object", "properties": {} }),
         },
         ToolDef {
+            name: "land_status",
+            description: "Read the shared landing queue with this app's signed-in account: whether the integrator is running, changes waiting or landing, and failed entries. Check it at every check-in; report a stopped integrator first.",
+            input_schema: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+        },
+        ToolDef {
             name: "list_projects",
             description: "Projects: folders on specific devices. Filter by device (id or name); omit for all projects. Use ids when names or paths repeat.",
             input_schema: json!({ "type": "object", "properties": { "device": device_schema() } }),
@@ -920,6 +925,11 @@ impl Tools {
             crate::work::NAME => return crate::work::call(&self.openagents, args).await,
             "whoami" => self.whoami().await,
             "list_devices" => self.list_devices().await,
+            "land_status" => {
+                self.openagents
+                    .call(openagents_rpc::methods::LAND_STATUS, json!({}))
+                    .await
+            }
             "list_projects" => self.list_projects(parse(args)?).await,
             "list_harnesses" => self.list_harnesses(parse(args)?).await,
             "list_models" => self.list_models(parse(args)?).await,
@@ -2068,6 +2078,13 @@ mod tests {
                 methods::GET_VOICE_AGENT => {
                     RpcReply::Value(self.voice_target.lock().unwrap().clone())
                 }
+                methods::LAND_STATUS => {
+                    self.reads.lock().unwrap().push((method.into(), params));
+                    RpcReply::Value(json!({
+                        "integrator": {"running": false},
+                        "waiting": [], "landing": [], "failed": []
+                    }))
+                }
                 methods::LOCAL_DEVICE => RpcReply::Value(json!({ "deviceId": "dev-local" })),
                 methods::ENGINE_INFO => RpcReply::Value(json!({
                     "deviceId": "dev-local", "workspaceScope": "local"
@@ -2259,6 +2276,19 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(error, "stall_minutes must be between 1 and 1440");
+    }
+
+    #[tokio::test]
+    async fn landing_status_is_available_to_any_app_client() {
+        let world = Arc::new(World::default());
+        let tools = tools(world.clone(), Origin::default());
+        assert!(tools.has("land_status"));
+        let status = tools.call("land_status", json!({})).await.unwrap();
+        assert_eq!(status["integrator"]["running"], false);
+        assert_eq!(
+            world.reads.lock().unwrap().as_slice(),
+            &[(methods::LAND_STATUS.into(), json!({}))]
+        );
     }
 
     #[tokio::test]

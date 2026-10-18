@@ -1811,9 +1811,8 @@ pub(crate) async fn act(
 // ---------------------------------------------------------------- the API
 
 /// The signed-in person behind an API request (`Bearer sess_…`) or a
-/// browser request (the sign-in cookie), with the workspace their Claude
-/// sign-in is saved under.
-async fn person(app: &App, headers: &HeaderMap) -> Result<(Viewer, Requester), Response> {
+/// browser request (the sign-in cookie), allowed to run agent work.
+pub(crate) async fn agent_viewer(app: &App, headers: &HeaderMap) -> Result<Viewer, Response> {
     let Some(service) = app.config.cloud.as_deref() else {
         return Err(refused(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -1882,6 +1881,11 @@ async fn person(app: &App, headers: &HeaderMap) -> Result<(Viewer, Requester), R
             "Working on issues isn't open to this account yet.",
         ));
     }
+    Ok(viewer)
+}
+
+async fn person(app: &App, headers: &HeaderMap) -> Result<(Viewer, Requester), Response> {
+    let viewer = agent_viewer(app, headers).await?;
     let requester = requester(&viewer).ok_or_else(|| {
         refused(
             StatusCode::FORBIDDEN,

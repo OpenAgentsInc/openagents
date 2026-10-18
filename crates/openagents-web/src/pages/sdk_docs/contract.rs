@@ -151,6 +151,12 @@ publish.",
         tags: &["Attention"],
     },
     Area {
+        slug: "land",
+        title: "Landing changes",
+        lead: "Submit changes and follow their checks and landing results.",
+        tags: &["Landing queue"],
+    },
+    Area {
         slug: "computers",
         title: "Computers",
         lead: "Create cloud computers, run commands on them, move files, and read usage.",
