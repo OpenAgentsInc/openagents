@@ -15,6 +15,7 @@ pub(crate) mod contact;
 pub(crate) mod content;
 pub(crate) mod download;
 pub(crate) mod efficiency;
+pub(crate) mod foreman;
 mod everglade;
 mod gpui_demo;
 pub(crate) mod home;
@@ -90,6 +91,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(live::routes())
         .merge(stats::routes())
         .merge(efficiency::routes())
+        .merge(foreman::routes())
         .merge(affiliates::routes())
         .merge(everglade::routes())
         .merge(lander3::routes())

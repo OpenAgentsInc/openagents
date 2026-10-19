@@ -126,6 +126,12 @@ pub(crate) fn screens() -> Vec<Screen> {
             vec![state("default", "As served", efficiency)],
         ),
         page(
+            "agent-foreman",
+            "Foreman",
+            &[crate::pages::foreman::PATH],
+            vec![state("default", "As served", foreman)],
+        ),
+        page(
             "connect-google",
             "Connecting Google",
             &["/auth/google/callback"],
@@ -340,6 +346,10 @@ fn live_one(headers: &HeaderMap) -> Response {
 
 fn efficiency(headers: &HeaderMap) -> Response {
     crate::pages::efficiency::page(headers)
+}
+
+fn foreman(headers: &HeaderMap) -> Response {
+    crate::pages::foreman::page(headers)
 }
 
 fn connecting_google(headers: &HeaderMap) -> Response {

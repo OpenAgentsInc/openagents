@@ -1,0 +1,312 @@
+/*
+ * An agent's map (`/agent/foreman` in openagents-web): a server-drawn SVG
+ * with the agent in the middle and the parts of its definition around it,
+ * then a card per part. Hover and focus are CSS only; the page runs no
+ * script. Each part carries `data-accent` (info, discovery, warning,
+ * success, danger) and sets `--oa-agent-map-accent` from it.
+ */
+
+.oa-agent-map [data-accent="info"] {
+  --oa-agent-map-accent: var(--color-text-info);
+}
+
+.oa-agent-map [data-accent="discovery"] {
+  --oa-agent-map-accent: var(--color-text-discovery);
+}
+
+.oa-agent-map [data-accent="warning"] {
+  --oa-agent-map-accent: var(--color-text-warning);
+}
+
+.oa-agent-map [data-accent="success"] {
+  --oa-agent-map-accent: var(--color-text-success);
+}
+
+.oa-agent-map [data-accent="danger"] {
+  --oa-agent-map-accent: var(--color-text-danger);
+}
+
+.oa-agent-map-figure {
+  margin: calc(var(--spacing) * 6) auto calc(var(--spacing) * 8);
+  max-width: 52rem;
+}
+
+.oa-agent-map-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-sans);
+}
+
+.oa-agent-map-figure figcaption {
+  margin-top: calc(var(--spacing) * 2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+  text-align: center;
+}
+
+.oa-agent-map-orbit {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 9;
+}
+
+.oa-agent-map-ring {
+  fill: none;
+  stroke: var(--color-border-strong);
+  stroke-width: 2;
+}
+
+.oa-agent-map-ring-spin {
+  fill: none;
+  stroke: var(--color-text-tertiary);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 14;
+  transform-origin: 550px 500px;
+  animation: oa-agent-map-spin 90s linear infinite;
+}
+
+@keyframes oa-agent-map-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-agent-map-ring-spin {
+    animation: none;
+  }
+}
+
+.oa-agent-map-core-glow {
+  fill: var(--color-surface-secondary);
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.oa-agent-map-core {
+  fill: var(--color-surface-elevated);
+  stroke: var(--color-text);
+  stroke-width: 3;
+}
+
+.oa-agent-map-name {
+  fill: var(--color-text);
+  font-size: 46px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
+}
+
+.oa-agent-map-runtime {
+  fill: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 19px;
+}
+
+.oa-agent-map-spoke {
+  stroke: var(--oa-agent-map-accent);
+  stroke-width: 2;
+  stroke-opacity: 0.45;
+  transition: stroke-opacity 150ms, stroke-width 150ms;
+}
+
+.oa-agent-map-dot {
+  fill: var(--oa-agent-map-accent);
+}
+
+.oa-agent-map-box {
+  fill: var(--color-surface-elevated);
+  stroke: var(--oa-agent-map-accent);
+  stroke-width: 2;
+  transition: stroke-width 150ms, fill 150ms;
+}
+
+.oa-agent-map-bar {
+  fill: var(--oa-agent-map-accent);
+}
+
+.oa-agent-map-title {
+  fill: var(--color-text);
+  font-size: 24px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-agent-map-line {
+  fill: var(--oa-agent-map-accent);
+  font-family: var(--font-mono);
+  font-size: 19px;
+}
+
+.oa-agent-map-badge {
+  fill: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 15px;
+}
+
+.oa-agent-map-node a {
+  outline: none;
+}
+
+.oa-agent-map-node:hover .oa-agent-map-spoke,
+.oa-agent-map-node a:focus-visible .oa-agent-map-spoke {
+  stroke-opacity: 1;
+  stroke-width: 4;
+}
+
+.oa-agent-map-node:hover .oa-agent-map-box,
+.oa-agent-map-node a:focus-visible .oa-agent-map-box {
+  fill: var(--color-surface-secondary);
+  stroke-width: 4;
+}
+
+.oa-agent-map-skill circle {
+  fill: var(--color-surface);
+  stroke: var(--color-text);
+  stroke-width: 2;
+}
+
+.oa-agent-map-skill text {
+  fill: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-agent-map-skill:hover circle {
+  fill: var(--color-text);
+}
+
+.oa-agent-map-skill:hover text {
+  fill: var(--color-surface);
+}
+
+.oa-agent-map-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: calc(var(--spacing) * 4);
+  margin-bottom: calc(var(--spacing) * 10);
+}
+
+.oa-agent-map-card {
+  min-width: 0;
+  padding: calc(var(--spacing) * 4) calc(var(--spacing) * 5);
+  border: 1px solid var(--color-border-subtle);
+  border-top: 3px solid var(--oa-agent-map-accent);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  scroll-margin-top: calc(var(--spacing) * 6);
+}
+
+.oa-agent-map-card:target {
+  border-color: var(--oa-agent-map-accent);
+}
+
+.oa-agent-map-card > h3 {
+  margin: 0 0 calc(var(--spacing) * 3);
+  font-size: var(--font-heading-xs-size);
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-agent-map-card .oa-markdown {
+  font-size: var(--font-text-sm-size);
+}
+
+.oa-agent-map-card h4 {
+  margin: calc(var(--spacing) * 3) 0 calc(var(--spacing) * 1);
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-secondary);
+}
+
+.oa-agent-map-card pre {
+  max-height: 18rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-agent-map-facts {
+  display: grid;
+  gap: calc(var(--spacing) * 2);
+  margin: 0 0 calc(var(--spacing) * 3);
+}
+
+.oa-agent-map-facts dt {
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-agent-map-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.oa-agent-map-quote {
+  padding-left: calc(var(--spacing) * 3);
+  border-left: 2px solid var(--oa-agent-map-accent);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.oa-agent-map .oa-agent-map-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 1.5);
+  margin: 0 0 calc(var(--spacing) * 2);
+  padding: 0;
+  list-style: none;
+}
+
+.oa-agent-map .oa-agent-map-chips > li {
+  margin: 0;
+  padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-agent-map .oa-agent-map-chips code {
+  background: none;
+  padding: 0;
+}
+
+.oa-agent-map-list,
+.oa-agent-map-ladder,
+.oa-agent-map-skills,
+.oa-agent-map-lesson-list {
+  overflow-wrap: anywhere;
+}
+
+.oa-agent-map-ladder > li::marker {
+  color: var(--oa-agent-map-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+.oa-agent-map-skills summary {
+  cursor: pointer;
+}
+
+.oa-agent-map-tag {
+  display: inline-block;
+  padding: 0 calc(var(--spacing) * 1.5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-agent-map-never {
+  color: var(--color-text-danger);
+}
+
+.oa-agent-map-lessons {
+  margin: calc(var(--spacing) * 3) 0 0;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-text-xs-size);
+}
+
+.oa-agent-map .oa-agent-map-lesson-list {
+  columns: 2 16rem;
+}
