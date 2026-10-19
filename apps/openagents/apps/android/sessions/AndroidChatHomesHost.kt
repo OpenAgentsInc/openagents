@@ -233,7 +233,7 @@ class AndroidChatHomesHost(
                         draft.activate(instance, revision.toULong(), key)
                     }
                 }
-                if (action == ContinuationDraftAction.Updated) {
+                if (action == ContinuationDraftAction.UPDATED) {
                     val bytes = withContext(Dispatchers.IO) { draft.view() }
                     withContext(Dispatchers.Main.immediate) {
                         if (!closed && generation == stamp && activeDraft === draft) {
