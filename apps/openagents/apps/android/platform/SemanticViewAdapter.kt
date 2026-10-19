@@ -88,7 +88,7 @@ class SemanticViewAdapter(
             acknowledge(instance, revision)
             if (semanticTree != null) semantics?.mounted(semanticTree, controls.mapValues { (_, control) ->
                 if (control.kind == "choice") (control.view as ViewGroup).getChildAt(0) else control.view
-            })
+            }) { key -> event(key) }
         } catch (error: Exception) {
             dispose()
             throw error

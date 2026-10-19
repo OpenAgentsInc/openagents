@@ -49,6 +49,7 @@ class NativeSemanticsTest : InstrumentationTestCase() {
     private class TrackingButton(context: Context) : Button(context) {
         var delegate: View.AccessibilityDelegate? = null
         override fun setAccessibilityDelegate(value: View.AccessibilityDelegate?) { delegate = value; super.setAccessibilityDelegate(value) }
+        fun perform(action: Int) = delegate?.performAccessibilityAction(this, action, null) ?: false
     }
     fun testRolesNamesPasswordAndTraversal() = runTestOnUiThread {
         val context = instrumentation.targetContext
@@ -84,6 +85,25 @@ class NativeSemanticsTest : InstrumentationTestCase() {
         val delegate = replacement.delegate!!; bridge.close()
         delegate.sendAccessibilityEvent(replacement, AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED)
         assertEquals(1, port.focused.size)
+    }
+    fun testRustDismissActionUsesCurrentViewActivationAndLabel() = runTestOnUiThread {
+        val port = FakePort(); val bridge = NativeSemantics(port)
+        val dialog = TrackingButton(instrumentation.targetContext)
+        val dismissNode = node("dialog", "dialog", "Confirmation").put("actions",
+            JSONArray().put(JSONObject().put("kind", "dismiss").put("label", "Close confirmation")))
+        val fixture = tree(1).put("nodes", JSONArray().put(dismissNode)).put("order", JSONArray().put("dialog"))
+        val activated = mutableListOf<String>()
+        bridge.mounted(fixture, mapOf("dialog" to dialog)) { activated.add(it) }
+        val info = dialog.createAccessibilityNodeInfo()
+        val action = info.actionList.single { it.id == NativeSemantics.ACTION_DISMISS }
+        assertEquals("Close confirmation", action.label.toString())
+        assertTrue(dialog.perform(action.id))
+        assertEquals(listOf("dialog"), activated)
+        val stale = dialog.delegate!!
+        bridge.mounted(tree(2), mapOf("dialog" to dialog)) { activated.add(it) }
+        assertFalse(stale.performAccessibilityAction(dialog, NativeSemantics.ACTION_DISMISS, null))
+        assertEquals(listOf("dialog"), activated)
+        bridge.close()
     }
     fun testRotationProcessRecreationAndPermissionRevocationRetireCallbacks() = runTestOnUiThread {
         val port = FakePort(); val bridge = NativeSemantics(port)

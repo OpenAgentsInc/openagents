@@ -54,7 +54,7 @@ class NativeSemantics(private val port: SemanticsPort) : AutoCloseable {
         return tree
     }
     /** Call only after the view owner acknowledges the successful native mount. */
-    fun mounted(tree: JSONObject, controls: Map<String, View>) {
+    fun mounted(tree: JSONObject, controls: Map<String, View>, dismiss: (String) -> Unit = {}) {
         check(!closed)
         generation++
         mounted = tree
@@ -97,6 +97,17 @@ class NativeSemantics(private val port: SemanticsPort) : AutoCloseable {
                     }
                     if (Build.VERSION.SDK_INT >= 30) info.stateDescription = node.optString("state").takeUnless { node.isNull("state") }
                     else if (!node.isNull("state") && view !is EditText) info.contentDescription = listOf(node.getString("name"), node.getString("state")).filter { it.isNotEmpty() }.joinToString(", ")
+                    actionLabel(node, "dismiss")?.let { label ->
+                        info.addAction(AccessibilityNodeInfo.AccessibilityAction(ACTION_DISMISS, label))
+                    }
+                }
+                override fun performAccessibilityAction(host: View, action: Int, arguments: android.os.Bundle?): Boolean {
+                    if (closed || generation != stamp) return false
+                    if (action == ACTION_DISMISS && actionLabel(node, "dismiss") != null) {
+                        dismiss(key)
+                        return true
+                    }
+                    return super.performAccessibilityAction(host, action, arguments)
                 }
                 override fun sendAccessibilityEvent(host: View, eventType: Int) {
                     if (!closed && generation == stamp && eventType in setOf(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED, AccessibilityEvent.TYPE_VIEW_FOCUSED)) {
@@ -150,5 +161,16 @@ class NativeSemantics(private val port: SemanticsPort) : AutoCloseable {
         closed = true; generation++; mounted = null
         views.values.forEach { it.setAccessibilityDelegate(null) }
         views = emptyMap(); port.close()
+    }
+    private fun actionLabel(node: JSONObject, kind: String): String? {
+        val actions = node.optJSONArray("actions") ?: return null
+        for (i in 0 until actions.length()) {
+            val action = actions.getJSONObject(i)
+            if (action.optString("kind") == kind) return action.optString("label").takeIf { it.isNotBlank() }
+        }
+        return null
+    }
+    companion object {
+        const val ACTION_DISMISS = 0x01020003
     }
 }
