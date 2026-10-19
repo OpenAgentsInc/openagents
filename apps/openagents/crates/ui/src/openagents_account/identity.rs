@@ -790,12 +790,22 @@ impl AppAccount {
                             .flex()
                             .gap(px(6.))
                             .child(
+                                // Wide enough for "12." in the mono font, right
+                                // aligned so the periods line up.
                                 div()
-                                    .w(px(20.))
+                                    .w(px(28.))
+                                    .flex_none()
+                                    .flex()
+                                    .justify_end()
+                                    .whitespace_nowrap()
                                     .text_color(theme.text_muted)
                                     .child(SharedString::from(format!("{}.", ix + 1))),
                             )
-                            .child(SharedString::from(word.clone())),
+                            .child(
+                                div()
+                                    .whitespace_nowrap()
+                                    .child(SharedString::from(word.clone())),
+                            ),
                     );
                 }
                 card.child(grid).child(
