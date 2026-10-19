@@ -222,35 +222,52 @@ pub async fn enroll(
     match state.installation.clone() {
         Some(held) if same_place(&held) && held.expires_at > now + GRANT_SECONDS => {
             if held.token_digest != digest {
-                let epoch = gateway
+                match gateway
                     .rotate(&secret, &held.handle, held.epoch, token)
                     .await
-                    .map_err(|e| e.to_string())?;
-                state.installation = Some(Installation {
-                    epoch,
-                    token_digest: digest,
-                    ..held
-                });
-                state.grant = None;
-                save(state)?;
+                {
+                    Ok(epoch) => {
+                        state.installation = Some(Installation {
+                            epoch,
+                            token_digest: digest.clone(),
+                            ..held
+                        });
+                        state.grant = None;
+                        save(state)?;
+                    }
+                    // FCM can invalidate an endpoint before its local expiry.
+                    // Forget its grant before attempting a replacement.
+                    Err(GatewayError::Refused {
+                        status: 404 | 410, ..
+                    }) => {
+                        state.installation = None;
+                        state.grant = None;
+                        save(state)?;
+                    }
+                    Err(error) => return Err(error.to_string()),
+                }
             }
         }
         _ => {
-            let made = gateway
-                .register(&secret, &config.profile, token, now + INSTALLATION_SECONDS)
-                .await
-                .map_err(|e| e.to_string())?;
-            state.installation = Some(Installation {
-                registration: config.registration.clone(),
-                profile: config.profile.clone(),
-                handle: made.installation_handle,
-                epoch: made.endpoint_epoch,
-                token_digest: digest,
-                expires_at: made.expires_at,
-            });
+            state.installation = None;
             state.grant = None;
-            save(state)?;
         }
+    }
+    if state.installation.is_none() {
+        let made = gateway
+            .register(&secret, &config.profile, token, now + INSTALLATION_SECONDS)
+            .await
+            .map_err(|e| e.to_string())?;
+        state.installation = Some(Installation {
+            registration: config.registration.clone(),
+            profile: config.profile.clone(),
+            handle: made.installation_handle,
+            epoch: made.endpoint_epoch,
+            token_digest: digest,
+            expires_at: made.expires_at,
+        });
+        state.grant = None;
+        save(state)?;
     }
     let held = state
         .installation
@@ -372,6 +389,7 @@ mod tests {
     #[derive(Default)]
     struct Fake {
         calls: Mutex<Vec<String>>,
+        rotation_error: Option<GatewayError>,
     }
     #[async_trait]
     impl Registrar for Fake {
@@ -400,6 +418,9 @@ mod tests {
             token: &str,
         ) -> Result<u64, GatewayError> {
             self.calls.lock().unwrap().push(format!("rotate {token}"));
+            if let Some(error) = &self.rotation_error {
+                return Err(error.clone());
+            }
             Ok(epoch + 1)
         }
         async fn delegate(
@@ -495,6 +516,79 @@ mod tests {
         .await;
         assert!(result.is_err());
         assert!(gateway.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn android_expired_endpoint_registers_again_and_replaces_the_grant() {
+        let mut config = config();
+        config.transport = Transport::Fcm;
+        config.profile = "app.android".into();
+        for status in [404, 410] {
+            let gateway = Fake {
+                rotation_error: Some(GatewayError::Refused {
+                    status,
+                    error: "endpoint_gone".into(),
+                }),
+                ..Fake::default()
+            };
+            let mut state = State::fresh();
+            let mut saved = Vec::new();
+            for token in ["fcm:initial-token", "fcm:replacement-token"] {
+                enroll(&mut state, &config, token, NOW, &gateway, &mut |state| {
+                    saved.push(state.clone());
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            }
+            let calls = gateway.calls.lock().unwrap();
+            assert_eq!(calls[0], "register app.android fcm:initial-token");
+            assert_eq!(calls[2], "rotate fcm:replacement-token");
+            assert_eq!(calls[3], "register app.android fcm:replacement-token");
+            assert!(calls[4].ends_with(" 1 2"));
+            assert!(
+                saved
+                    .iter()
+                    .any(|s| s.installation.is_none() && s.grant.is_none())
+            );
+            assert_eq!(state.grant.unwrap().grant, "pg1_2");
+        }
+    }
+
+    #[tokio::test]
+    async fn android_rotation_network_failure_does_not_register_another_endpoint() {
+        let gateway = Fake {
+            rotation_error: Some(GatewayError::Transport("offline".into())),
+            ..Fake::default()
+        };
+        let mut config = config();
+        config.transport = Transport::Fcm;
+        let mut state = State::fresh();
+        enroll(
+            &mut state,
+            &config,
+            "fcm:initial-token",
+            NOW,
+            &gateway,
+            &mut |_| Ok(()),
+        )
+        .await
+        .unwrap();
+        let before = state.clone();
+        assert!(
+            enroll(
+                &mut state,
+                &config,
+                "fcm:replacement-token",
+                NOW,
+                &gateway,
+                &mut |_| Ok(())
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(state, before);
+        assert_eq!(gateway.calls.lock().unwrap().len(), 3);
     }
 
     #[test]
