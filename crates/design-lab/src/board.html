@@ -129,7 +129,7 @@
 <div id="canvas"><div id="world"></div></div>
 <div id="bar">
   <span class="chip"><span id="title">Design Lab</span> <span id="count"></span></span>
-  <span id="apps" title="Show the phone app or the desktop app (P)"></span>
+  <span id="apps" title="Show the phone app, the Android app or the desktop app (P)"></span>
   <input id="search" type="search" placeholder="Find a screen" autocomplete="off">
   <select id="areas"><option value="">All areas</option></select>
   <span class="spacer"></span>
@@ -141,7 +141,7 @@
   <button id="removed" title="Also show screens the app no longer has">Show removed</button>
   <button id="newmock" class="edit" title="Start a blank mock screen the size of this app's screens (N)">New mock screen</button>
 </div>
-<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it, select its elements and pin notes · D switches light and dark · P switches phone and desktop</div>
+<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it, select its elements and pin notes · D switches light and dark · P switches phone, Android and desktop</div>
 <div id="empty">No screens match.</div>
 <div id="view">
   <div class="stage"><div id="shot"><img id="big" alt=""><div id="marks"></div><div id="pins"></div></div></div>
@@ -247,11 +247,13 @@ document.getElementById("removed").onclick = () => {
 };
 function visible(s) { return (showRemoved || s.current !== false) && appOf(s) === app; }
 
-// The board shows one app at a time: the phone or the desktop app. Each has
+// The board shows one app at a time: the phone, Android or desktop app. Each has
 // its own screens; mocks and notes are shared.
 const APPS = [
   { id: "phone", name: "Phone", w: 440, h: 956,
     capture: "apps/openagents/scripts/design-lab-capture.sh" },
+  { id: "android", name: "Android", w: 412, h: 915,
+    capture: "apps/openagents/scripts/design-lab-capture-android.sh" },
   { id: "desktop", name: "Desktop", w: 1280, h: 800,
     capture: "apps/openagents/scripts/design-lab-capture-desktop.sh" },
 ];
@@ -584,7 +586,7 @@ addEventListener("keydown", (e) => {
   if (e.key === "!" || (e.shiftKey && e.key === "1") || e.key === "0") fit();
   if (e.key === "/") { e.preventDefault(); document.getElementById("search").focus(); }
   if (e.key === "d" || e.key === "D") setMode(mode === "dark" ? "light" : "dark");
-  if (e.key === "p" || e.key === "P") setApp(app === "phone" ? "desktop" : "phone");
+  if (e.key === "p" || e.key === "P") setApp(APPS[(APPS.findIndex((a) => a.id === app) + 1) % APPS.length].id);
   if ((e.key === "n" || e.key === "N") && editable) newMock();
 });
 
@@ -1321,7 +1323,7 @@ Promise.all([fetch("board.json").then((r) => r.json()), loadMocks()]).then(([b])
   // `#q=words` opens the board already searched, so a view can be linked.
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.get("q")) document.getElementById("search").value = hash.get("q");
-  // `#app=desktop` opens the desktop board; a linked screen opens its own app.
+  // `#app=android` or `#app=desktop` opens that app's board; a linked screen opens its own app.
   const linked = hash.get("screen") && board.screens.find((x) => x.id === hash.get("screen"));
   if (linked) app = appOf(linked);
   else if (hash.get("app")) app = hash.get("app");
@@ -1332,7 +1334,7 @@ Promise.all([fetch("board.json").then((r) => r.json()), loadMocks()]).then(([b])
   setMode(mode);
   layout();
   fit();
-  // `#mock=m1` opens a mock and `#screen=area--name` (or `desktop:area--name`) a
+  // `#mock=m1` opens a mock and `#screen=area--name` (or `android:area--name`, `desktop:area--name`) a
   // screen, so either can be linked.
   if (hash.get("mock")) { const m = mockById(hash.get("mock")); if (m) openEditor(m.id); }
   if (hash.get("screen")) {

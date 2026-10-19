@@ -1,6 +1,6 @@
 //! Mock screens and revision notes: the `mock.v1` document.
 //!
-//! A mock is a blank phone- or desktop-sized frame that holds pieces cut from captured
+//! A mock is a blank phone-, Android- or desktop-sized frame that holds pieces cut from captured
 //! screens (each keeping the element it came from), plain rectangles and text
 //! boxes. A note is pinned to a point or a box on a screen version or a mock,
 //! with its text, its author and whether it is resolved. The document lives
@@ -26,6 +26,9 @@ pub const FILE: &str = "design-lab-mocks.json";
 
 /// A phone frame in points when nothing says otherwise (iPhone 17 Pro Max).
 pub const PHONE: (f64, f64) = (440.0, 956.0);
+/// An Android phone frame in dp (Pixel 7 class).
+/// The board asks for it when it starts a mock on the Android board.
+pub const ANDROID: (f64, f64) = (412.0, 915.0);
 /// A desktop window in points, the size the desktop tour draws at (16:10).
 /// The board asks for it when it starts a mock on the Desktop board.
 pub const DESKTOP: (f64, f64) = (1280.0, 800.0);
@@ -193,7 +196,8 @@ fn refuse(message: impl Into<String>) -> Refusal {
 }
 
 /// `<run>/<file>.png` inside the captures folder, or
-/// `desktop/<run>/<file>.png` for the desktop app; nothing else.
+/// `android/<run>/<file>.png` and `desktop/<run>/<file>.png` for the Android
+/// and desktop apps; nothing else.
 pub fn safe_picture(p: &str) -> bool {
     crate::capture_path_ok(p, ".png")
 }

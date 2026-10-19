@@ -199,7 +199,8 @@ impl LabKind for Design {
                 ));
             }
             // A picture is `<run>/<file>.png` inside the captures folder, or
-            // `desktop/<run>/<file>.png` for the desktop app.
+            // `android/<run>/<file>.png` and `desktop/<run>/<file>.png` for the
+            // Android and desktop apps.
             if !crate::APPS.iter().any(|(app, _)| *app == screen.app) {
                 return Err(Refusal::new(
                     "board_check",
@@ -471,6 +472,12 @@ mod tests {
             Design::check(&climbing, &Value::Null).unwrap_err().code,
             "board_check"
         );
+        // An Android screen keeps its pictures under `android/`.
+        let mut android = base.content.clone();
+        android["screens"][0]["app"] = json!("android");
+        android["screens"][0]["versions"][0]["image"] =
+            json!("android/20261017-100000-aaaa/home--home.png");
+        assert!(Design::check(&android, &Value::Null).is_ok());
         let mut stranger = desktop.clone();
         stranger["screens"][0]["app"] = json!("watch");
         assert_eq!(

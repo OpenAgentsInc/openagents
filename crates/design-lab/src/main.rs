@@ -9,8 +9,10 @@
 //! `serve` also edits mocks and notes: `POST /mocks/change` takes one checked
 //! change, and only from this computer.
 //! Capture runs come from `apps/openagents/scripts/design-lab-capture.sh`
-//! (the phone) and `apps/openagents/scripts/design-lab-capture-desktop.sh`
-//! (the desktop app, in the captures folder's `desktop/` folder).
+//! (the phone), `apps/openagents/scripts/design-lab-capture-android.sh` (the
+//! Android app, in the captures folder's `android/` folder), and
+//! `apps/openagents/scripts/design-lab-capture-desktop.sh` (the desktop app,
+//! in the captures folder's `desktop/` folder).
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -191,6 +193,7 @@ fn serve(args: &[String]) -> Result<(), String> {
             .route("/healthz", get(|| async { "ok" }))
             .route("/board.json", get(board))
             .route("/img/{run}/{file}", get(image))
+            .route("/img/android/{run}/{file}", get(android_image))
             .route("/img/desktop/{run}/{file}", get(desktop_image))
             .route("/mocks.json", get(mocks))
             .route("/mocks/change", post(change))
@@ -366,6 +369,15 @@ async fn spec_route(State(lab): State<Arc<Lab>>, UrlPath(name): UrlPath<String>)
 
 async fn board(State(lab): State<Arc<Lab>>) -> Json<Board> {
     Json(lab.board.clone())
+}
+
+/// An Android capture: `img/android/<run>/<file>`.
+async fn android_image(
+    State(lab): State<Arc<Lab>>,
+    UrlPath((run, file)): UrlPath<(String, String)>,
+) -> Response {
+    let picture = format!("{}/{run}/{file}", design_lab::ANDROID_DIR);
+    served(lab, picture).await
 }
 
 /// A desktop capture: `img/desktop/<run>/<file>`.

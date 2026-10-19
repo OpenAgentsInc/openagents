@@ -1,9 +1,12 @@
 //! Design Lab: every screen of the current OpenAgents apps on one board.
 //!
-//! The board holds two apps ([`APPS`]), the phone and the desktop app, both in
-//! `apps/openagents/`. `apps/openagents/scripts/design-lab-capture.sh` drives
-//! the phone's offline demo through every screen, and its runs sit in the
-//! captures folder itself. `apps/openagents/scripts/design-lab-capture-desktop.sh`
+//! The board holds three apps ([`APPS`]), the phone (iOS), the Android app,
+//! and the desktop app, all in `apps/openagents/`.
+//! `apps/openagents/scripts/design-lab-capture.sh` drives the phone's offline
+//! demo through every screen, and its runs sit in the captures folder itself.
+//! `apps/openagents/scripts/design-lab-capture-android.sh` does the same for
+//! the Android app, and its runs sit in the folder's `android/` folder
+//! ([`ANDROID_DIR`]). `apps/openagents/scripts/design-lab-capture-desktop.sh`
 //! draws every desktop screen offscreen, and its runs sit in the folder's
 //! `desktop/` folder ([`DESKTOP_DIR`]). Each capture run is a folder named
 //! `<YYYYmmdd-HHMMSS>-<commit>[-dirty]` of `<area>--<screen>.png` files, plus
@@ -31,11 +34,16 @@ use std::path::{Path, PathBuf};
 pub const SCHEMA: &str = "board.v1";
 
 /// The apps on the board, in toolbar order: id and name.
-pub const APPS: [(&str, &str); 2] = [(PHONE, "Phone"), (DESKTOP, "Desktop")];
+pub const APPS: [(&str, &str); 3] = [(PHONE, "Phone"), (ANDROID, "Android"), (DESKTOP, "Desktop")];
 pub const PHONE: &str = "phone";
+pub const ANDROID: &str = "android";
 pub const DESKTOP: &str = "desktop";
+/// The Android app's capture runs, inside the captures folder.
+pub const ANDROID_DIR: &str = "android";
 /// The desktop app's capture runs, inside the captures folder.
 pub const DESKTOP_DIR: &str = "desktop";
+/// The apps whose runs sit in a folder of their own: app and folder.
+const APP_DIRS: [(&str, &str); 2] = [(ANDROID, ANDROID_DIR), (DESKTOP, DESKTOP_DIR)];
 /// The marker a capture script keeps in a run folder until the run is done.
 pub const CAPTURING: &str = ".capturing";
 
@@ -50,12 +58,13 @@ pub struct Board {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Screen {
-    /// `<area>--<screen>` for a phone screen, `desktop:<area>--<screen>` for
-    /// a desktop one.
+    /// `<area>--<screen>` for a phone screen, `android:<area>--<screen>` or
+    /// `desktop:<area>--<screen>` for an Android or desktop one.
     pub id: String,
     pub title: String,
     pub area: String,
-    /// Which app the screen belongs to: `phone` or `desktop` ([`APPS`]).
+    /// Which app the screen belongs to: `phone`, `android`, or `desktop`
+    /// ([`APPS`]).
     /// Boards saved before the desktop app joined hold only phone screens.
     #[serde(default = "phone")]
     pub app: String,
@@ -79,8 +88,8 @@ fn phone() -> String {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScreenVersion {
-    /// `<run>/<file>` inside the captures folder, or `desktop/<run>/<file>`
-    /// for a desktop screen.
+    /// `<run>/<file>` inside the captures folder, or `android/<run>/<file>`
+    /// and `desktop/<run>/<file>` for an Android or desktop screen.
     pub image: String,
     /// SHA-256 of the picture.
     pub sha256: String,
@@ -179,12 +188,13 @@ impl Board {
 }
 
 /// Whether `path` names a capture file inside the captures folder:
-/// `<run>/<file>.<ext>`, or `desktop/<run>/<file>.<ext>` for the desktop app.
+/// `<run>/<file>.<ext>`, or `android/<run>/<file>.<ext>` and
+/// `desktop/<run>/<file>.<ext>` for the Android and desktop apps.
 /// Nothing that climbs out of the folder or names another folder.
 pub fn capture_path_ok(path: &str, ext: &str) -> bool {
-    let rest = path
-        .strip_prefix(DESKTOP_DIR)
-        .and_then(|r| r.strip_prefix('/'))
+    let rest = APP_DIRS
+        .iter()
+        .find_map(|(_, dir)| path.strip_prefix(dir).and_then(|r| r.strip_prefix('/')))
         .unwrap_or(path);
     rest.ends_with(ext)
         && rest.split('/').count() == 2
@@ -283,7 +293,8 @@ struct Shot {
 }
 
 /// Builds the board from every capture run, oldest run first: the phone's
-/// runs in `captures` and the desktop app's in `captures/desktop`.
+/// runs in `captures`, the Android app's in `captures/android`, and the
+/// desktop app's in `captures/desktop`.
 pub fn scan(captures: &Path) -> Result<Board, String> {
     if !captures.is_dir() {
         return Err(format!(
@@ -292,9 +303,11 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
         ));
     }
     let mut screens = scan_app(captures, "", PHONE)?;
-    let desktop = captures.join(DESKTOP_DIR);
-    if desktop.is_dir() {
-        screens.extend(scan_app(&desktop, DESKTOP_DIR, DESKTOP)?);
+    for (app, folder) in APP_DIRS {
+        let dir = captures.join(folder);
+        if dir.is_dir() {
+            screens.extend(scan_app(&dir, folder, app)?);
+        }
     }
     let order = |app: &str| {
         APPS.iter()
@@ -626,6 +639,68 @@ mod tests {
     }
 
     #[test]
+    fn android_runs_form_their_own_app() {
+        let dir = std::env::temp_dir().join(format!("design-lab-android-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        png.extend(1080u32.to_be_bytes());
+        png.extend(2400u32.to_be_bytes());
+        // One phone run, two Android runs (the newer one dropped Settings),
+        // and one desktop run.
+        let phone = dir.join("20261017-100000-aaaa");
+        let android_old = dir.join(ANDROID_DIR).join("20261017-110000-bbbb");
+        let android_new = dir.join(ANDROID_DIR).join("20261017-130000-dddd");
+        let desktop = dir.join(DESKTOP_DIR).join("20261017-120000-cccc");
+        for run in [&phone, &android_old, &android_new, &desktop] {
+            std::fs::create_dir_all(run).unwrap();
+        }
+        std::fs::write(phone.join("home--home.png"), &png).unwrap();
+        std::fs::write(android_old.join("home--home.png"), &png).unwrap();
+        std::fs::write(android_old.join("settings--settings.png"), &png).unwrap();
+        std::fs::write(android_new.join("home--home.png"), &png).unwrap();
+        std::fs::write(android_new.join("home--home@dark.png"), &png).unwrap();
+        std::fs::write(desktop.join("chat--conversation.png"), &png).unwrap();
+        let board = scan(&dir).unwrap();
+        let ids = |app| {
+            board
+                .screens_of(app)
+                .map(|s| s.id.as_str())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(PHONE), ["home--home"]);
+        assert_eq!(
+            ids(ANDROID),
+            ["android:home--home", "android:settings--settings"]
+        );
+        assert_eq!(ids(DESKTOP), ["desktop:chat--conversation"]);
+        let screen = |id: &str| board.screens.iter().find(|s| s.id == id).unwrap();
+        // The Android app's own newest run decides what is current.
+        assert!(screen("home--home").current);
+        assert!(screen("android:home--home").current);
+        assert!(!screen("android:settings--settings").current);
+        // The same picture in the newer run keeps the first version and
+        // gains its dark picture.
+        let home = &screen("android:home--home").versions;
+        assert_eq!(home.len(), 1);
+        assert_eq!(home[0].image, "android/20261017-110000-bbbb/home--home.png");
+        assert_eq!(
+            home[0].dark.as_deref(),
+            Some("android/20261017-130000-dddd/home--home@dark.png")
+        );
+        assert_eq!((home[0].width, home[0].height), (1080, 2400));
+        assert_eq!(home[0].elements, None);
+        assert!(image(&dir, &board, &home[0].image).is_some());
+        // Phone screens come first, then Android, then desktop.
+        let apps: Vec<&str> = board.screens.iter().map(|s| s.app.as_str()).collect();
+        assert_eq!(
+            apps,
+            [PHONE, ANDROID, ANDROID, DESKTOP],
+            "screens in app order"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn capture_paths_stay_inside_the_captures_folder() {
         assert!(capture_path_ok(
             "20261017-100000-aaaa/home--home.png",
@@ -635,6 +710,12 @@ mod tests {
             "desktop/20261017-100000-aaaa/chat--conversation@dark.png",
             ".png"
         ));
+        assert!(capture_path_ok(
+            "android/20261017-100000-aaaa/home--home.json",
+            ".json"
+        ));
+        assert!(!capture_path_ok("android/../x.png", ".png"));
+        assert!(!capture_path_ok("android/x/y/z.png", ".png"));
         assert!(!capture_path_ok("desktop/../../etc/passwd.png", ".png"));
         assert!(!capture_path_ok("desktop/x/y/z.png", ".png"));
         assert!(!capture_path_ok("phone/x/y.png", ".png"));

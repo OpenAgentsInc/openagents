@@ -1,16 +1,18 @@
 # Design Lab
 
 A Figma-style board with every screen of the current OpenAgents apps, the
-phone app and the desktop app (both in `apps/openagents/`), so you can zoom
+iOS phone app, the Android app, and the desktop app (all in
+`apps/openagents/`), so you can zoom
 around a whole app in one place. Nothing on it is an old screenshot: every
 picture is captured from the app's code.
 
 ```sh
 apps/openagents/scripts/design-lab-capture.sh          # every phone screen (simulator)
+apps/openagents/scripts/design-lab-capture-android.sh  # every Android screen (emulator)
 apps/openagents/scripts/design-lab-capture-desktop.sh  # every desktop screen (offscreen)
-cargo run -p design-lab -- serve                        # http://127.0.0.1:8798
-cargo run -p design-lab -- export /tmp/board            # static index.html + board.json + img/
-cargo run -p design-lab -- spec m1                      # a mock's spec as Markdown, plus its PNG
+cargo run -p design-lab -- serve                       # http://127.0.0.1:8798
+cargo run -p design-lab -- export /tmp/board           # static index.html + board.json + img/
+cargo run -p design-lab -- spec m1                     # a mock's spec as Markdown, plus its PNG
 ```
 
 - **Capturing.** `design-lab-capture.sh` runs `DesignLabTourTests` (in
@@ -25,6 +27,12 @@ cargo run -p design-lab -- spec m1                      # a mock's spec as Markd
   (button, text field, text, image, cell, ...), identifier, label, value
   and frame in points, plus the picture's scale. Add a screen by adding a
   `shot` to the tour.
+- **Capturing the Android app.** `design-lab-capture-android.sh` drives the
+  Android app through its screens and saves each run in
+  `<captures>/android/<time>-<commit>/`, with the same file names as the
+  phone's: `<area>--<screen>.png`, `<area>--<screen>@dark.png`, and, when the
+  tour writes them, element trees in the same JSON shape as the iOS tour's.
+  Without element trees the board offers box selection.
 - **Capturing the desktop app.** `design-lab-capture-desktop.sh` runs the
   `design-lab-tour` example in `apps/openagents/crates/ui`, which draws the
   whole desktop app offscreen (GPUI's headless renderer, no window) in a
@@ -40,11 +48,13 @@ cargo run -p design-lab -- spec m1                      # a mock's spec as Markd
   To build it without running it:
   `cargo check -p openagents-ui --example design-lab-tour --features account-fixture`
   from `apps/openagents`.
-- **Apps.** **Phone** and **Desktop** in the toolbar (or `P`) switch between
-  the two apps' screens; `#app=desktop` in the address opens the desktop
-  board. Each app's newest run decides which of its screens are current, and
-  desktop screens are drawn at the desktop's aspect ratio. A desktop
-  screen's id is `desktop:<area>--<screen>`.
+- **Apps.** **Phone**, **Android**, and **Desktop** in the toolbar switch
+  between the three apps' screens, and `P` steps to the next app;
+  `#app=android` or `#app=desktop` in the address opens that app's board.
+  Each app's newest run decides which of its screens are current, and each
+  app's screens are drawn at its own aspect ratio (412 × 915 dp for
+  Android). An Android screen's id is `android:<area>--<screen>`, and a
+  desktop screen's id is `desktop:<area>--<screen>`.
 - **Versions.** Each capture run is a version of every screen it took. A
   screen that looks exactly as it did in the run before keeps its earlier
   version, so a screen's versions are the commits that changed it.
@@ -60,7 +70,7 @@ cargo run -p design-lab -- spec m1                      # a mock's spec as Markd
   more. Drag to select a box instead; a screen captured before element
   trees offers only the box.
 - **Mock screens.** **New mock screen** (or `N`) adds a blank frame the size
-  of the showing app's screens (phone or desktop) to the Mocks section. On a
+  of the showing app's screens (phone, Android, or desktop) to the Mocks section. On a
   screen, pick a mock under **Selected** and choose **Copy to mock**: each
   selection becomes a piece cut from that picture (light or dark, whichever
   is showing) that keeps its element.
