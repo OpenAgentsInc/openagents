@@ -41,6 +41,8 @@ gltf = { version = "=1.4.1", default-features = false, features = ["import", "ut
 miniz_oxide = "0.8.9"
 openagents-chat-app = { path = "../openagents-chat-app", optional = true }
 openagents-connect = { path = "../openagents-connect", optional = true }
+# The CAD physics and the shapes it shares with the website (#12183).
+cad-world = { path = "../cad-world" }
 physics = { path = "../physics" }
 png = "0.18.1"
 serde = { version = "1", features = ["derive"] }

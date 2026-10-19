@@ -15,8 +15,7 @@
 
 pub mod columns;
 pub mod controller;
-pub mod everglade;
-pub mod everglade_water;
+pub use cad_world::{everglade, everglade_water};
 pub mod hosted;
 pub mod nav;
 pub mod seats;

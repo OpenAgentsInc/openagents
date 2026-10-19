@@ -15,11 +15,22 @@ platforms = [
 ]
 
 [traversal-excludes]
+# pay-host needs serde_json's arbitrary_precision. Unified into every crate,
+# it turns numbers read through untagged or buffered values into maps, which
+# breaks the Verse packs and the spell checkpoint replays (#12183).
+workspace-members = ["pay-host"]
 # These optional backends must remain opt-in on supported platforms.
 third-party = [
     { name = "candle-core" },
     { name = "candle-nn" },
     { name = "candle-transformers" },
+    # The renderer stack stays out of the workspace-hack, so a crate without
+    # a renderer (openagents-web, #12183) doesn't build it.
+    { name = "wgpu" },
+    { name = "wgpu-core" },
+    { name = "wgpu-hal" },
+    { name = "wgpu-types" },
+    { name = "naga" },
     # Wallet test helpers must not become normal dependencies.
     { name = "breez-sdk-spark", git = "https://github.com/breez/spark-sdk", tag = "0.26.0" },
     { name = "spark", git = "https://github.com/breez/spark-sdk", tag = "0.26.0" },

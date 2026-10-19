@@ -151,6 +151,9 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.physics]
 opt-level = 3
+# The CAD physics the website and Everglade run (#12183).
+[profile.dev.package.cad-world]
+opt-level = 3
 [profile.dev.package.wgpu]
 opt-level = 3
 [profile.dev.package.wgpu-core]

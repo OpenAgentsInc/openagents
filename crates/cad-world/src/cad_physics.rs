@@ -2,7 +2,7 @@
 //! Mass and full inertia integrate the exported triangles; seams use the
 //! same class 8.8 bolt capacities as the meteor rover.
 
-use crate::pbr::LitVertex;
+use crate::LitVertex;
 pub mod blast;
 pub mod sync;
 /// Pin and standing-load settings shared with the meteor scene.
@@ -1326,7 +1326,7 @@ impl Rig {
     }
 
     /// The same height-aware blockers the avatar uses for other solids.
-    pub fn blocks(&self, world: &World, feet: Vec3) -> Vec<(crate::controller::Footprint, f32)> {
+    pub fn blocks(&self, world: &World, feet: Vec3) -> Vec<(crate::Footprint, f32)> {
         self.colliders
             .iter()
             .filter_map(|id| {
@@ -1343,7 +1343,7 @@ impl Rig {
                     return None;
                 }
                 Some((
-                    crate::controller::Footprint {
+                    crate::Footprint {
                         min: [lo.x as f32, lo.z as f32],
                         max: [hi.x as f32, hi.z as f32],
                     },
@@ -1430,10 +1430,9 @@ mod tests {
     }
     #[test]
     fn triangle_mass_matches_checked_rover_and_retains_full_tensor() {
-        let bytes = include_bytes!("../../../../../assets/verse/cad/rover.glb");
+        let bytes = include_bytes!("../../../assets/verse/cad/rover.glb");
         let spec: Value =
-            serde_json::from_str(include_str!("../../../../../assets/verse/cad/rover.json"))
-                .unwrap();
+            serde_json::from_str(include_str!("../../../assets/verse/cad/rover.json")).unwrap();
         let solids = parse_glb(bytes, &spec).unwrap();
         let expected: f64 = spec["instances"]
             .as_array()
@@ -1537,10 +1536,9 @@ mod tests {
 
     #[test]
     fn checked_rover_stands_before_a_spell_or_blast() {
-        let bytes = include_bytes!("../../../../../assets/verse/cad/rover.glb");
+        let bytes = include_bytes!("../../../assets/verse/cad/rover.glb");
         let spec: Value =
-            serde_json::from_str(include_str!("../../../../../assets/verse/cad/rover.json"))
-                .unwrap();
+            serde_json::from_str(include_str!("../../../assets/verse/cad/rover.json")).unwrap();
         let model = std::sync::Arc::new(Model {
             solids: parse_glb(bytes, &spec).unwrap(),
             spec,
@@ -1578,7 +1576,7 @@ mod tests {
 
     #[test]
     fn a_placed_body_rests_on_the_zones_raised_terrain() {
-        use super::super::demolition::site::Site;
+        use crate::site::Site;
         let mut site = Site::new(Vec::new(), 42);
         site.set_cad_terrain(|_, _| 2.);
         site.put_cad("hill", "v1", model(), DVec3::new(100., 4., 100.), 0., 1.);
@@ -1608,8 +1606,8 @@ mod tests {
             );
             assert_eq!(r.broken(), 0);
             let rest = w[r.bodies[0]].pos.y;
-            let gravity = verse_world::reverse_gravity::Gravity {
-                cylinder: verse_world::reverse_gravity::Cylinder::at(DVec3::ZERO),
+            let gravity = crate::reverse_gravity::Gravity {
+                cylinder: crate::reverse_gravity::Cylinder::at(DVec3::ZERO),
                 active: true,
             };
             for _ in 0..120 {
@@ -1640,7 +1638,7 @@ mod tests {
     }
     #[test]
     fn pushing_at_the_avatars_blocker_edge_moves_a_placed_assembly() {
-        use super::super::demolition::site::Site;
+        use crate::site::Site;
         let mut site = Site::new(Vec::new(), 42);
         site.put_cad("cart", "v1", model(), DVec3::ZERO, 0., 1.);
         for _ in 0..240 {
@@ -1663,7 +1661,7 @@ mod tests {
 
     #[test]
     fn site_blasts_and_replacements_use_the_existing_world() {
-        use super::super::demolition::site::Site;
+        use crate::site::Site;
         let mut site = Site::new(Vec::new(), 42);
         site.put_cad("a", "v1", model(), DVec3::ZERO, 0., 1.);
         site.put_cad("b", "v1", model(), DVec3::X * 3., 0., 1.);

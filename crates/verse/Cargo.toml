@@ -108,6 +108,9 @@ rust-native-desktop = { path = "../rust-native-desktop", default-features = fals
 openagents-chat-app = { path = "../openagents-chat-app", optional = true }
 # The control protocol the studio reaches a host on this computer with.
 openagents-connect = { path = "../openagents-connect", optional = true }
+# CAD placements and the meteor zones' arrival points, shared with the
+# website (#12183).
+cad-world = { path = "../cad-world" }
 physics = { path = "../physics" }
 # Robot Lab's inspection scene: URDF import and forward kinematics.
 robot-description = { path = "../robot-description" }
@@ -150,6 +153,8 @@ png = "0.18.1"
 miniz_oxide = "0.8.9"
 pollster = "0.4"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
+# The baked `/lander3` scene's arrays (`grid_scene`).
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.9"

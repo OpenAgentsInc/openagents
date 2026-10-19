@@ -39,6 +39,12 @@ pub const OUTER_SLOPE: f32 = 0.1;
 pub const SPAWN: Vec3 = Vec3::new(0.0, 0.0, -20.0);
 /// The heading the player arrives with, as the controller's yaw.
 pub const SPAWN_YAW: f32 = 0.0;
+
+/// Where the player arrives, standing on the ground.
+#[must_use]
+pub fn spawn() -> Vec3 {
+    Vec3::new(SPAWN.x, height(SPAWN.x, SPAWN.z), SPAWN.z)
+}
 /// Distance from a station's standing point within which the caption names
 /// the station, m.
 pub const STATION_RANGE: f32 = 3.0;

@@ -423,6 +423,73 @@ The "after" run for `mobile` and `client` was stopped before it reached them
 to free capacity; their crates are on the incremental list, like `engine`.
 The before target was 189 GB.
 
+### openagents-web without the Verse stack (#12183)
+
+Issue: [#12183](https://github.com/OpenAgentsInc/openagents/issues/12183).
+
+`openagents-web` used `verse` for the CAD physics it runs for placed models
+(`crates/openagents-web/src/cad_web/world_physics.rs`) and `verse` plus
+`verse-engine` to build the `/lander3` scene. That pulled `verse-world`,
+`verse-zone-everglade`, `verse-content`, `verse-pbr`, `verse` and
+`verse-engine`, all at `opt-level = 3`, into every web build, and every
+Verse commit recompiled the site.
+
+#### What moved
+
+- `crates/cad-world` (glam, serde, serde_json, sha2, bytemuck, physics) now
+  holds the demolition `Site`, the CAD rigs and their sync messages
+  (`cad_physics`), the placements (`cad_place`, without the zone-file
+  poller), the Everglade ground (`everglade`, `everglade_water`), Reverse
+  Gravity and Wind Wall, `Footprint`, `box_hit`, `LitVertex`, and the
+  meteor zones' arrival points. The files moved unchanged apart from their
+  paths; `verse`, `verse-world`, `verse-pbr` and `verse-zone-everglade`
+  re-export each under its old path. The sledgehammer and Meteor Swarm
+  `Target` trait stays in Everglade, since it reads the zone's sight rules.
+- `/lander3`'s scene builder moved to `verse::grid_scene`, which bakes
+  `assets/verse/grid/lander3-scene.json`. The site embeds that file. A
+  `verse` test fails when the file is stale;
+  `UPDATE_FIXTURES=1 cargo test -p verse --lib grid_scene` rewrites it.
+
+#### Measurements
+
+`cargo tree -p openagents-web` (normal and build edges, distinct package
+versions) at `e00039ebda` and with this change:
+
+| | Before | After |
+| --- | ---: | ---: |
+| Package versions | 912 | 860 |
+| `verse`, `verse-engine`, `verse-world`, `verse-zone-*`, `verse-content`, `verse-pbr`, `verse-core`, `verse-gfx` | in the tree | none |
+| `wgpu`, `wgpu-core`, `wgpu-hal`, `naga` | in the tree | none |
+
+The only crates named `verse-*` still in the tree are `verse-lagrange` and
+`verse-lagrange2`, which `ship-lab` uses for the spacecraft model. They depend
+on glam, serde and physics only.
+
+The cold build was timed by the earlier Codex run on this issue, on an
+equivalent split that was never merged (`a09123d6ea`, before the
+cargo-hakari change #12185): an Apple M5 Max, Rust 1.97.1, eight jobs,
+incremental compilation and the compiler cache off,
+`scripts/dev/build-bench.sh --cold --only build --variant noincr --no-wrapper --jobs 8 openagents-web`,
+single samples on a shared machine.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Cold `cargo build -p openagents-web`, seconds | 592.2 | 381.6 |
+| Compiled units | 1,073 | 999 |
+
+This change wasn't timed again from cold.
+
+#### wgpu and naga through the workspace-hack
+
+Since #12185, `wgpu`, `wgpu-core`, `wgpu-hal` and `naga` also reached
+`openagents-web` through `openagents-workspace-hack` (by way of `acp-client`
+and others), not only through Verse. `.config/hakari.toml` now leaves
+`wgpu`, `wgpu-core`, `wgpu-hal`, `wgpu-types` and `naga` out of the hack's
+traversal, so only the crates that render build them.
+
+The Docker native stage wasn't timed here either; it's in the master
+delegation's after-close checks.
+
 ## The extreme options
 
 The owner asked whether to rewrite, change language, or change patterns.

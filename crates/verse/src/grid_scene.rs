@@ -1,0 +1,399 @@
+//! The Grid as one JSON file, for `/lander3`'s three.js view (#12180).
+//!
+//! The site draws the Grid without the Verse's renderer, and since #12183
+//! without building this crate: [`scene`] reads the pinned Grid pack
+//! ([`grid_pack`], `assets/verse/grid/`), the arches the Grid stands
+//! ([`Gate`] under the `zones::gate` switches), the robots' patrols
+//! ([`grid_robot`]), and the Grid's clear color
+//! ([`WorldRuntime::bare`](crate::runtime::WorldRuntime::bare)), and samples
+//! the robots' skin matrices with the engine's own
+//! [`verse_engine::animation`]. [`FILE`] holds what it builds, which the site
+//! serves as `/lander3/scene.json`; a test here keeps it current
+//! (`UPDATE_FIXTURES=1 cargo test -p verse --lib grid_scene` rewrites it).
+
+use std::collections::BTreeMap;
+
+use base64::Engine as _;
+use glam::{Mat4, Quat};
+use serde::Serialize;
+use verse_engine::assets::{Model, Pack, Topology};
+use verse_engine::motion::Selection;
+
+use crate::grid_pack;
+use crate::grid_robot::{self, Pose};
+use crate::zones::{Gate, gate};
+
+/// The baked scene, from the workspace root.
+pub const FILE: &str = "assets/verse/grid/lander3-scene.json";
+
+/// Skin samples per second for the robots' clips and patrols.
+const RATE: f32 = 24.0;
+
+/// [`scene`] as the JSON the site serves.
+///
+/// # Errors
+///
+/// As [`scene`].
+pub fn json() -> Result<String, String> {
+    serde_json::to_string(&scene()?).map_err(|e| e.to_string())
+}
+
+/// Everything the page draws.
+#[derive(Serialize)]
+pub struct Scene {
+    /// The Grid's clear color, linear RGB.
+    background: [f32; 3],
+    /// Each pack texture's address, by its pack slot.
+    textures: Vec<String>,
+    models: BTreeMap<String, ModelOut>,
+    /// The pack's placements: the floor, the Gym, its boards.
+    statics: Vec<Placed>,
+    /// The arches the Grid stands, and the Everglade portal's view.
+    gates: Vec<Placed>,
+    robots: Robots,
+}
+
+#[derive(Serialize)]
+struct ModelOut {
+    /// Bones in the skin, or zero for a rigid model.
+    bones: usize,
+    surfaces: Vec<SurfaceOut>,
+}
+
+/// One surface: unlit, its texture times its tint. Arrays are base64 of
+/// little-endian values.
+#[derive(Serialize)]
+struct SurfaceOut {
+    lines: bool,
+    tint: [f32; 3],
+    texture: usize,
+    /// `f32` x, y, z per vertex.
+    positions: String,
+    /// `f32` u, v per vertex.
+    uvs: String,
+    /// `u32` per index.
+    indices: String,
+    /// `u16` four joints per vertex, for a skinned model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    joints: Option<String>,
+    /// `f32` four weights per vertex, for a skinned model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    weights: Option<String>,
+}
+
+#[derive(Serialize)]
+struct Placed {
+    model: String,
+    /// Column-major, as three.js `Matrix4.fromArray` reads it.
+    matrix: [f32; 16],
+}
+
+#[derive(Serialize)]
+struct Robots {
+    /// The model drawn near the eye, and the one beyond `far_meters`.
+    near: &'static str,
+    far: &'static str,
+    far_meters: f32,
+    scale: f32,
+    /// Samples per second, for the clips and the patrols.
+    rate: f32,
+    /// The clips the robots play, by name; `patrols` names them by index.
+    clips: Vec<String>,
+    /// Per model, per clip in `clips`: its length in seconds and its skin
+    /// matrices, 16 `f32` per bone per sample.
+    poses: BTreeMap<&'static str, Vec<ClipOut>>,
+    /// Each robot's round: its seconds and its samples, five `f32` each
+    /// (x, z, heading, clip index, clip time).
+    patrols: Vec<Patrol>,
+}
+
+#[derive(Serialize)]
+struct ClipOut {
+    duration: f32,
+    frames: String,
+}
+
+#[derive(Serialize)]
+struct Patrol {
+    round: f32,
+    samples: String,
+}
+
+fn base64_of<T: Copy>(values: &[T], bytes: impl Fn(T) -> Vec<u8>) -> String {
+    let raw: Vec<u8> = values.iter().flat_map(|v| bytes(*v)).collect();
+    base64::engine::general_purpose::STANDARD.encode(raw)
+}
+
+fn floats(values: &[f32]) -> String {
+    base64_of(values, |v| v.to_le_bytes().to_vec())
+}
+
+fn model_out(model: &Model) -> ModelOut {
+    let skinned = model.skin.is_some();
+    let surfaces = model
+        .surfaces
+        .iter()
+        .map(|surface| {
+            let positions: Vec<f32> = surface.vertices.iter().flat_map(|v| v.position).collect();
+            let uvs: Vec<f32> = surface.vertices.iter().flat_map(|v| v.uv).collect();
+            SurfaceOut {
+                lines: matches!(surface.topology, Topology::Lines),
+                tint: surface.tint,
+                texture: surface.texture,
+                positions: floats(&positions),
+                uvs: floats(&uvs),
+                indices: base64_of(&surface.indices, |v| v.to_le_bytes().to_vec()),
+                joints: skinned.then(|| {
+                    let joints: Vec<u16> = surface
+                        .vertices
+                        .iter()
+                        .flat_map(|v| v.joints.map(|j| j as u16))
+                        .collect();
+                    base64_of(&joints, |v| v.to_le_bytes().to_vec())
+                }),
+                weights: skinned.then(|| {
+                    let weights: Vec<f32> =
+                        surface.vertices.iter().flat_map(|v| v.weights).collect();
+                    floats(&weights)
+                }),
+            }
+        })
+        .collect();
+    ModelOut {
+        bones: model.skin.as_ref().map_or(0, |skin| skin.names.len()),
+        surfaces,
+    }
+}
+
+/// The arches a Grid with zone storage stands: each one its switch in
+/// `zones::gate` opens, with the Everglade portal's view in its arch. The
+/// RITUAL arch needs a desktop's pinned chamber, so it has none here.
+fn gates() -> Vec<Placed> {
+    let layout = crate::blocks::Layout::grid();
+    let everglade = Gate::everglade(&layout);
+    [
+        (
+            grid_pack::ARCH_LAGRANGE,
+            gate::GRID_PORTAL_OPEN,
+            Gate::grid(&layout),
+        ),
+        (
+            grid_pack::ARCH_EVERGLADE,
+            gate::GRID_EVERGLADE_OPEN,
+            everglade,
+        ),
+        (
+            grid_pack::PORTAL_EVERGLADE,
+            gate::GRID_EVERGLADE_OPEN,
+            everglade,
+        ),
+        (
+            grid_pack::ARCH_LAGRANGE2,
+            gate::GRID_LAGRANGE2_OPEN,
+            Gate::lagrange2(&layout),
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, open, _)| *open)
+    .map(|(model, _, gate)| Placed {
+        model: model.into(),
+        matrix: Mat4::from_rotation_translation(Quat::from_rotation_y(gate.yaw), gate.at)
+            .to_cols_array(),
+    })
+    .collect()
+}
+
+/// A clip's length: the clip its selection plays on `model`.
+fn duration(model: &Model, selection: Selection) -> Option<f32> {
+    let clip = match selection {
+        Selection::Named(state) => model.states.get(&state)?.clip,
+        Selection::Legacy(id) => id,
+    };
+    model
+        .clips
+        .iter()
+        .find(|c| c.id == clip)
+        .map(|c| c.duration)
+}
+
+fn samples(seconds: f32) -> usize {
+    ((seconds * RATE).ceil() as usize).max(1)
+}
+
+fn robots(pack: &Pack) -> Result<Robots, String> {
+    // Each robot's round: the four patrols, then the dancer, whose loop is
+    // its dance.
+    let mut rounds: Vec<(f32, Box<dyn Fn(f64) -> Pose>)> = (0..grid_robot::ROUTES.len())
+        .map(|route| {
+            let walk: Box<dyn Fn(f64) -> Pose> =
+                Box::new(move |clock| grid_robot::patroller(route, clock));
+            (grid_robot::round_seconds(route), walk)
+        })
+        .collect();
+    rounds.push((grid_robot::DANCE_SECONDS, Box::new(grid_robot::dancer)));
+
+    let mut clips: Vec<Selection> = Vec::new();
+    let mut patrols = Vec::new();
+    for (round, pose) in &rounds {
+        let mut values = Vec::new();
+        for n in 0..samples(*round) {
+            let pose = pose(f64::from(n as f32 / RATE));
+            let index = match clips.iter().position(|c| *c == pose.animation) {
+                Some(index) => index,
+                None => {
+                    clips.push(pose.animation);
+                    clips.len() - 1
+                }
+            };
+            values.extend([pose.pos.x, pose.pos.z, pose.yaw, index as f32, pose.time]);
+        }
+        patrols.push(Patrol {
+            round: *round,
+            samples: floats(&values),
+        });
+    }
+
+    let mut poses = BTreeMap::new();
+    for name in [grid_robot::ROBOT, grid_robot::ROBOT_FAR] {
+        let model = pack
+            .models
+            .get(name)
+            .ok_or_else(|| format!("the pack has no {name}"))?;
+        let mut out = Vec::new();
+        for selection in &clips {
+            let duration = duration(model, *selection)
+                .ok_or_else(|| format!("{name} has no clip for {selection:?}"))?;
+            let mut frames = Vec::new();
+            for n in 0..samples(duration) {
+                let matrices = verse_engine::animation::pose_selected(
+                    model,
+                    *selection,
+                    (n as f32 / RATE).min(duration),
+                )?;
+                frames.extend(matrices.iter().flat_map(Mat4::to_cols_array));
+            }
+            out.push(ClipOut {
+                duration,
+                frames: floats(&frames),
+            });
+        }
+        poses.insert(name, out);
+    }
+
+    Ok(Robots {
+        near: grid_robot::ROBOT,
+        far: grid_robot::ROBOT_FAR,
+        far_meters: grid_robot::FAR_METERS,
+        scale: grid_robot::SCALE,
+        rate: RATE,
+        clips: clips.iter().map(|c| format!("{c:?}")).collect(),
+        poses,
+        patrols,
+    })
+}
+
+/// The Grid as `/lander3` draws it.
+///
+/// # Errors
+///
+/// When the pinned pack can't be read or a robot model lacks a clip.
+pub fn scene() -> Result<Scene, String> {
+    let pack = grid_pack::embedded()?;
+    let statics = grid_pack::placements(&pack)
+        .into_iter()
+        .map(|instance| Placed {
+            model: instance.model,
+            matrix: instance.transform.to_cols_array(),
+        })
+        .collect();
+    let gates = gates();
+    // The models the page places: the statics, the arches, the robots. The
+    // figure and the spade stand for players and agents, who are not here.
+    let robot_models = [grid_robot::ROBOT, grid_robot::ROBOT_FAR];
+    let models = pack
+        .models
+        .iter()
+        .filter(|(name, _)| {
+            pack.placements.iter().any(|p| &p.model == *name)
+                || gates.iter().any(|g| &g.model == *name)
+                || robot_models.contains(&name.as_str())
+        })
+        .map(|(name, model)| (name.clone(), model_out(model)))
+        .collect();
+    Ok(Scene {
+        background: crate::runtime::WorldRuntime::bare().atmosphere().color,
+        textures: pack
+            .textures
+            .iter()
+            .map(|t| format!("/lander3/texture/{}", t.file))
+            .collect(),
+        models,
+        statics,
+        gates,
+        robots: robots(&pack)?,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use sha2::{Digest, Sha256};
+
+    use super::*;
+
+    #[test]
+    fn the_scene_comes_from_the_pinned_pack() {
+        let pack = grid_pack::embedded().unwrap();
+        let scene = scene().unwrap();
+        assert_eq!(scene.statics.len(), pack.placements.len());
+        for placed in scene.statics.iter().chain(&scene.gates) {
+            assert!(scene.models.contains_key(&placed.model), "{}", placed.model);
+        }
+        assert!(
+            scene
+                .gates
+                .iter()
+                .any(|g| g.model == grid_pack::ARCH_EVERGLADE)
+        );
+        assert!(
+            scene
+                .gates
+                .iter()
+                .any(|g| g.model == grid_pack::ARCH_LAGRANGE2)
+        );
+        assert_eq!(scene.textures.len(), pack.textures.len());
+        // Every robot walks; each clip has a pose for each model.
+        assert_eq!(scene.robots.patrols.len(), grid_robot::ROUTES.len() + 1);
+        for clips in scene.robots.poses.values() {
+            assert_eq!(clips.len(), scene.robots.clips.len());
+        }
+    }
+
+    /// The file the site serves is what [`scene`] builds now. Under
+    /// `UPDATE_FIXTURES=1` the test writes it instead.
+    #[test]
+    fn the_baked_scene_is_current() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(FILE);
+        let json = json().unwrap();
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(&path, &json).unwrap();
+        }
+        let baked = std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("no {FILE}; run with UPDATE_FIXTURES=1"));
+        assert!(
+            baked == json,
+            "{FILE} is out of date; run `UPDATE_FIXTURES=1 cargo test -p verse --lib grid_scene`"
+        );
+    }
+
+    #[test]
+    fn the_pack_textures_are_the_files_beside_it() {
+        let pack = grid_pack::embedded().unwrap();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/grid");
+        for texture in &pack.textures {
+            let bytes = std::fs::read(dir.join(&texture.file)).unwrap();
+            assert_eq!(format!("{:x}", Sha256::digest(bytes)), texture.sha256);
+        }
+    }
+}

@@ -49,22 +49,7 @@ pub use verse_engine::lighting::{Grade, HeightFog};
 pub const SUN_ILLUMINANCE: f32 = 130_000.0;
 
 /// One vertex of a physically lit triangle.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable)]
-pub struct LitVertex {
-    /// World position in meters.
-    pub pos: [f32; 3],
-    /// Unit surface normal.
-    pub normal: [f32; 3],
-    /// Unit tangent, the brushing direction for anisotropic metal.
-    pub tangent: [f32; 3],
-    /// Object-space position, so procedural detail moves with its part.
-    pub local: [f32; 3],
-    /// Linear base color: albedo for dielectrics, F0 for metals.
-    pub color: [f32; 3],
-    /// Metallic, roughness, [`Material`] code, and baked ambient occlusion.
-    pub params: [f32; 4],
-}
+pub use cad_world::LitVertex;
 
 /// One vertex of an additive, emissive quad (sunlit specks and glints).
 #[repr(C)]

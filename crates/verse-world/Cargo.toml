@@ -28,6 +28,8 @@ verse-engine = { path = "../verse-engine" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order", "raw_value"] }
 glam = { version = "0.30.10", features = ["serde"] }
+# The CAD physics and the shapes it shares with the website (#12183).
+cad-world = { path = "../cad-world" }
 physics = { path = "../physics" }
 coder-reach = { path = "../coder-reach", optional = true }
 coder-access = { path = "../coder-access", default-features = false, optional = true }

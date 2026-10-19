@@ -125,26 +125,7 @@ impl Reach {
 /// Where, from 0 to 1, the segment from `from` to `to` first enters the box
 /// from `min` to `max` grown by `radius` on every side, or `None` when it
 /// misses it or starts inside it.
-#[must_use]
-pub fn box_hit(from: Vec3, to: Vec3, radius: f32, min: Vec3, max: Vec3) -> Option<f32> {
-    let delta = to - from;
-    let (min, max) = (min - Vec3::splat(radius), max + Vec3::splat(radius));
-    let mut enter = f32::NEG_INFINITY;
-    let mut leave = f32::INFINITY;
-    for axis in 0..3 {
-        let (o, d, lo, hi) = (from[axis], delta[axis], min[axis], max[axis]);
-        if d.abs() < 1e-9 {
-            if o < lo || o > hi {
-                return None;
-            }
-            continue;
-        }
-        let (a, b) = ((lo - o) / d, (hi - o) / d);
-        enter = enter.max(a.min(b));
-        leave = leave.min(a.max(b));
-    }
-    (enter <= leave && enter > 0.0 && enter <= 1.0).then_some(enter)
-}
+pub use cad_world::box_hit;
 
 /// [`box_hit`] for a footprint standing from `bottom` to `top`, m.
 #[must_use]

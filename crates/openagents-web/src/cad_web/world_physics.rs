@@ -1,13 +1,11 @@
 //! Account-scoped CAD physics authority, persisted with conditional writes.
 use super::*;
 use axum::{Json, extract::DefaultBodyLimit};
-use verse::zones::{
-    cad_place,
-    everglade::{
-        self,
-        cad_physics::sync::{Binding, Inputs, Object, Snapshot},
-        demolition::site::Site,
-    },
+use cad_world::{
+    cad_physics::sync::{Binding, Inputs, Object, Snapshot},
+    cad_place, everglade,
+    site::Site,
+    spawns,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -88,12 +86,9 @@ async fn models(
     let mut total = 0;
     let mut triangles = 0;
     let arrive = match zone {
-        "verse-meteor-showcase" => verse::zones::meteor_showcase::SPAWN,
-        "verse-meteor-stress-test" => verse::zones::meteor_stress::SPAWN,
-        _ => cad_place::ahead(
-            everglade::Everglade::spawn(),
-            everglade::Everglade::spawn_yaw(),
-        ),
+        "verse-meteor-showcase" => spawns::METEOR_SHOWCASE,
+        "verse-meteor-stress-test" => spawns::METEOR_STRESS,
+        _ => cad_place::ahead(everglade::spawn(), everglade::SPAWN_YAW),
     };
     let default = glam::Vec3::new(arrive.x, everglade::land(arrive.x, arrive.z), arrive.z);
     for entry in entries.iter().filter(|p| p["zone"] == zone) {

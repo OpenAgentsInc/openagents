@@ -48,8 +48,8 @@ pub struct Snapshot {
 pub struct Forces {
     pub player: Vec3,
     pub push: Vec3,
-    pub gravity: Option<verse_world::reverse_gravity::Gravity>,
-    pub winds: Vec<verse_world::wind_wall::Wall>,
+    pub gravity: Option<crate::reverse_gravity::Gravity>,
+    pub winds: Vec<crate::wind_wall::Wall>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

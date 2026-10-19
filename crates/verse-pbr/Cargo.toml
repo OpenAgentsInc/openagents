@@ -24,6 +24,8 @@ gltf = { version = "=1.4.1", default-features = false, features = ["import", "ut
 half = "2.7"
 # Deflate for offline-baked light layers; already in the tree through `png`.
 miniz_oxide = "0.8.9"
+# The CAD physics and the shapes it shares with the website (#12183).
+cad-world = { path = "../cad-world" }
 physics = { path = "../physics" }
 png = "0.18.1"
 pollster = "0.4"

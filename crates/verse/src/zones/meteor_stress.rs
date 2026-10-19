@@ -7,7 +7,7 @@ use everglade::studio::{Posture, SeatFigure};
 use glam::Vec3;
 use std::sync::Arc;
 
-pub const SPAWN: Vec3 = Vec3::new(0.0, 0.0, -84.0);
+pub const SPAWN: Vec3 = cad_world::spawns::METEOR_STRESS;
 pub const RETURN_PORTAL: Vec3 = Vec3::new(0.0, 0.0, -102.0);
 
 /// The Grove's concrete tower forms the keep, turrets, and curtain walls.

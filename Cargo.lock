@@ -2903,6 +2903,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cad-world"
+version = "1.0.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "openagents-workspace-hack",
+ "physics",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "calendrical_calculations"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13088,6 +13101,7 @@ dependencies = [
  "bitcoin",
  "boat",
  "cad",
+ "cad-world",
  "chat-home",
  "coder",
  "coder-access",
@@ -13180,8 +13194,6 @@ dependencies = [
  "ttf-parser",
  "url",
  "user-home",
- "verse",
- "verse-engine",
  "verse-lagrange2",
  "video-lab",
  "workbench",
@@ -13305,8 +13317,6 @@ dependencies = [
  "memchr",
  "miniz_oxide 0.8.9",
  "mio",
- "naga",
- "naga-types",
  "nom 7.1.3",
  "noq",
  "noq-proto",
@@ -13322,7 +13332,6 @@ dependencies = [
  "objc2-app-kit 0.2.2",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
- "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "objc2-system-configuration",
  "once_cell",
@@ -13338,7 +13347,6 @@ dependencies = [
  "potential_utf",
  "ppv-lite86",
  "proc-macro2",
- "profiling",
  "prost 0.13.5",
  "pulldown-cmark 0.13.4",
  "pulley-interpreter",
@@ -13360,7 +13368,6 @@ dependencies = [
  "reqwest 0.13.5",
  "resvg",
  "ring",
- "rustc-hash 1.1.0",
  "rustc-hash 2.1.3",
  "rustix 0.38.44",
  "rustix 1.1.5",
@@ -13431,8 +13438,6 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-server",
  "wayland-sys",
- "wgpu",
- "wgpu-core",
  "winapi",
  "windows",
  "windows-core",
@@ -13768,7 +13773,6 @@ dependencies = [
  "hex",
  "nostr",
  "openagents-chat-app",
- "openagents-workspace-hack",
  "pay-ledger",
  "route-contract",
  "rusqlite",
@@ -20160,7 +20164,9 @@ version = "1.0.0"
 dependencies = [
  "arboard",
  "atif",
+ "base64 0.22.1",
  "bytemuck",
+ "cad-world",
  "coder",
  "coder-access",
  "coder-delegate",
@@ -20490,6 +20496,7 @@ name = "verse-pbr"
 version = "1.0.0"
 dependencies = [
  "bytemuck",
+ "cad-world",
  "coder-ui",
  "glam",
  "gltf",
@@ -20558,6 +20565,7 @@ dependencies = [
 name = "verse-world"
 version = "1.0.0"
 dependencies = [
+ "cad-world",
  "coder-access",
  "coder-reach",
  "futures-util",
@@ -20631,6 +20639,7 @@ name = "verse-zone-everglade"
 version = "1.0.0"
 dependencies = [
  "atif",
+ "cad-world",
  "coder",
  "coder-access",
  "coder-lease",

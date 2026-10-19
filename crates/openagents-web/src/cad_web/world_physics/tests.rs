@@ -1,5 +1,5 @@
 use super::*;
-use verse::zones::everglade::cad_physics::sync::{Blast, Forces};
+use cad_world::cad_physics::sync::{Blast, Forces};
 const ROVER: &[u8] = include_bytes!("../../../../../assets/verse/cad/rover.glb");
 fn scope(name: &str) -> Scope {
     Scope::personal(&crate::chat_store::account_owner(name)).unwrap()

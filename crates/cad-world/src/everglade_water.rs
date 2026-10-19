@@ -23,7 +23,7 @@
 //!
 //! Nothing here renders; the zone draws these bodies with the shared water
 //! shader and walks its characters through them with
-//! [`crate::water`]'s rules.
+//! `verse_world::water`'s rules.
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -658,8 +658,8 @@ pub fn nearest_bank(x: f32, z: f32) -> [f32; 2] {
 
 #[cfg(test)]
 mod tests {
-    use super::super::everglade::{height, land};
     use super::*;
+    use crate::everglade::{height, land};
 
     #[test]
     fn each_pond_is_a_bowl_to_its_depth_under_a_level_surface() {

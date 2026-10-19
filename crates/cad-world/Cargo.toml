@@ -1,0 +1,21 @@
+[package]
+name = "cad-world"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "CAD Lab models in Everglade's physics: the demolition site, the CAD rigs and their sync messages, placements, and the ground they stand on. Shared by Verse and the website without the renderer (#12183)."
+publish.workspace = true
+
+[dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
+glam = { version = "0.30.10", features = ["serde"] }
+physics = { path = "../physics" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

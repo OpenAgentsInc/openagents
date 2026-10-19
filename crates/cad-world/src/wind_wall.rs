@@ -554,7 +554,7 @@ impl WindWall {
         self.before_step_with_support(world, props, ledger, &grounded);
     }
     /// Uses retained support state when transient contact reports are unavailable.
-    pub(crate) fn before_step_with_support(
+    pub fn before_step_with_support(
         &mut self,
         world: &mut World,
         props: &[Prop],
@@ -646,7 +646,7 @@ pub fn set_blocked(world: &mut World, body: BodyId, blocked: bool) {
 
 /// Bodies the last step's contacts held up from below, not counting the
 /// wall's own bodies.
-pub(crate) fn supported(world: &World, wall: &[BodyId]) -> BTreeSet<BodyId> {
+pub fn supported(world: &World, wall: &[BodyId]) -> BTreeSet<BodyId> {
     let mut out = BTreeSet::new();
     for c in &world.contacts {
         if wall.contains(&c.body_a) || wall.contains(&c.body_b) {

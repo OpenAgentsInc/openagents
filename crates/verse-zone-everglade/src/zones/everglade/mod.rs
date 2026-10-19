@@ -18,7 +18,7 @@
 pub mod baked;
 pub mod boards;
 pub mod boats;
-pub mod cad_physics;
+pub use cad_world::cad_physics;
 pub mod compute;
 pub mod demolition;
 pub mod detail;
