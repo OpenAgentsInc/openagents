@@ -117,7 +117,8 @@ pub fn identities(data: &Path) -> crate::identity::Identities {
 }
 
 /// Where a desktop without the Apple Keychain keeps its sign-in and
-/// identity: `0700` and `0600` files under the data folder.
+/// identity: `0700` and `0600` files under the data folder (on Windows, the
+/// per-user local app data folder keeps them private).
 pub fn secrets_dir(data: &Path) -> PathBuf {
     data.join("openagents-account/secrets")
 }
@@ -214,7 +215,7 @@ fn saved_store(data: &Path) -> PlatformStore {
     let profile = data.to_string_lossy().into_owned();
     let store = PlatformStore::new(format!("{bundle}.account"), profile)
         .with_legacy(legacy_entries(data, bundle, legacy_bundle));
-    #[cfg(not(any(target_os = "macos", target_os = "ios", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     let store = store.with_passwords(Arc::new(crate::file_secrets::FileSecrets::new(
         secrets_dir(data),
     )));
@@ -316,7 +317,7 @@ mod identity_service_tests {
         assert_eq!(identity_service_for(a.path(), false), scoped_a);
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "ios", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     #[test]
     fn linux_keeps_the_identity_and_sign_in_in_private_files() {
         let dir = tempfile::tempdir().unwrap();

@@ -7,6 +7,8 @@
 mod auth_cli;
 mod daemon;
 mod host_upgrade_cli;
+#[cfg(windows)]
+mod msvc_compat;
 mod paths;
 mod update_cli;
 
