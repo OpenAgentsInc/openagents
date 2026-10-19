@@ -19,6 +19,7 @@ mod everglade;
 pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
+pub(crate) mod lander2;
 mod landing;
 mod layertree;
 pub(crate) mod live;
@@ -79,6 +80,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
         .merge(landing::routes())
+        .merge(lander2::routes())
         .merge(contact::routes())
         .merge(blue_rush::routes())
         .merge(chat::routes())

@@ -12,6 +12,9 @@ apps/openagents/dist/openagents.png
 # The generated UniFFI Kotlin binding the Android app compiles (scripts/android/build-core.sh).
 apps/openagents/apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt
 bins/*
+# The /lander2 promo video, served from the binary (crates/openagents-web/src/pages/lander2.rs).
+crates/openagents-web/static/landing/promo.mp4
+crates/openagents-web/static/landing/promo.webm
 *.ttf
 *.otf
 *.woff

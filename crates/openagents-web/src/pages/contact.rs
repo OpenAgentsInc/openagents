@@ -41,7 +41,7 @@ const RESEND: &str = "https://api.resend.com/emails";
 
 /// The topics, in the dropdown's order: value and label. The first is the
 /// default.
-pub(crate) const TOPICS: [(&str, &str); 9] = [
+pub(crate) const TOPICS: [(&str, &str); 10] = [
     ("sales", "Sales inquiry"),
     ("investor", "Investor inquiry"),
     ("feedback", "Customer feedback"),
@@ -50,6 +50,7 @@ pub(crate) const TOPICS: [(&str, &str); 9] = [
     ("partnership", "Partnership"),
     ("press", "Press or media"),
     ("security", "Security report"),
+    ("beta", "Join the beta"),
     ("other", "Something else"),
 ];
 

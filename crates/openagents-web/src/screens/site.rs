@@ -14,6 +14,18 @@ const GOOGLE_NEXT: &str = "/auth/google/finish?state=sample-state&code=sample-co
 pub(crate) fn screens() -> Vec<Screen> {
     vec![
         page(
+            "lander2",
+            "Landing page 2",
+            &["/lander2"],
+            vec![state("default", "As served", lander2)],
+        ),
+        page(
+            "beta",
+            "Join the beta",
+            &["/beta"],
+            vec![state("default", "As served", beta)],
+        ),
+        page(
             "download",
             "Download",
             &["/download"],
@@ -161,6 +173,14 @@ fn page(
         routes,
         states,
     }
+}
+
+fn lander2(headers: &HeaderMap) -> Response {
+    crate::pages::lander2::lander(headers)
+}
+
+fn beta(headers: &HeaderMap) -> Response {
+    crate::pages::lander2::beta(headers)
 }
 
 fn download(headers: &HeaderMap) -> Response {

@@ -29,7 +29,7 @@ use crate::pages::download::{CODER_PS1, CODER_SH};
 use openagents_ui::content::CodeBlock;
 
 const CSS: &str = include_str!("../../static/landing/landing.css");
-const CSS_PATH: &str = "/landing/landing.css";
+pub(super) const CSS_PATH: &str = "/landing/landing.css";
 const RESEARCH: &str =
     "https://github.com/OpenAgentsInc/openagents/blob/main/docs/inference/briefed-agent-ab.md";
 const HOW: &str = "/docs/coder-how-it-works";
@@ -81,7 +81,7 @@ pub(crate) fn routes() -> Router<App> {
 }
 
 /// Initium's Button styles, as a link: `default`, `outline`, and `3d`.
-fn button(label: &str, href: &str, variant: &str) -> Markup {
+pub(super) fn button(label: &str, href: &str, variant: &str) -> Markup {
     html! {
         a class=(format!("button button-{variant}")) data-slot="button" href=(href) { (label) }
     }
@@ -106,9 +106,17 @@ const SECTIONS: [(&str, &str); 6] = [
 /// Download. At phone and tablet width (900px and under): the brand,
 /// Download, and a Menu button that opens the rest. The menu is a
 /// `<details>`, so it opens and closes with no script, from the keyboard
-/// too (Tab to it, Enter or Space).
-fn navbar() -> Markup {
+/// too (Tab to it, Enter or Space). `home` goes before the in-page
+/// section links: empty on this page, `/` on a page without the sections.
+pub(super) fn navbar(home: &str) -> Markup {
     let log_in = crate::auth::login_href("/", false);
+    let link = |href: &str| {
+        if href.starts_with('#') {
+            format!("{home}{href}")
+        } else {
+            href.to_owned()
+        }
+    };
     html! {
         header.navbar data-slot="navbar" {
             a.navbar-brand href="/" {
@@ -116,7 +124,7 @@ fn navbar() -> Markup {
                 span { "OpenAgents" }
             }
             nav.navbar-links aria-label="Sections" {
-                @for (label, href) in SECTIONS { a href=(href) { (label) } }
+                @for (label, href) in SECTIONS { a href=(link(href)) { (label) } }
             }
             div.navbar-account {
                 a.navbar-login href=(super::home::NEW) { "Try it in your browser" }
@@ -128,7 +136,7 @@ fn navbar() -> Markup {
                     span.navbar-menu-icon aria-hidden="true" { span {} span {} span {} }
                 }
                 nav.navbar-menu-panel aria-label="Menu" {
-                    @for (label, href) in SECTIONS { a href=(href) { (label) } }
+                    @for (label, href) in SECTIONS { a href=(link(href)) { (label) } }
                     hr;
                     a href=(super::home::NEW) { "Try it in your browser" }
                     a href=(log_in) { "Log in" }
@@ -443,7 +451,7 @@ fn cta_section() -> Markup {
     }
 }
 
-fn footer() -> Markup {
+pub(super) fn footer() -> Markup {
     html! {
         footer.footer data-slot="footer" {
             div.footer-brand {
@@ -490,7 +498,7 @@ pub(crate) fn page(theme: Option<openagents_ui::shell::Theme>) -> Markup {
                 link rel="stylesheet" href=(CSS_PATH);
             }
             body.landing {
-                (navbar())
+                (navbar(""))
                 main {
                     (hero_section())
                     (problem_section())
