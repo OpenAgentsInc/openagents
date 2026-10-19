@@ -119,3 +119,14 @@ bookmark. The fixture has no composer or scripted streaming controls.
 unrun. The new source also awaits debug/release Kotlin and AndroidTest compilation
 against the coordinator's matching Android ABI and generated bindings. No build
 or runtime result is claimed for this source checkpoint.
+
+
+The source-only `CoreAndroidDemo` seam can later supply the existing SDK demo's
+picker, visuals, CJK, and Veil sessions to the same host/composer/transcript path.
+`new(dataDir, listener)` refuses existing or relative directories and always
+constructs `Credentials::Demo`; `choices()` returns typed fixture identities and
+existing Rust session rows. `select(fixture)` retires the previous content;
+`host()` borrows the host; `shutdown()` closes synthetic work after views close.
+Calls and account routes are unavailable. Synthetic files remain for receipts.
+This seam is not mounted by the debug dispatcher yet and requires matching ABI
+and binding generation before Kotlin can consume it. Its Rust fixtures are unrun.

@@ -1177,3 +1177,5 @@ links remain readable. Upstream fixes now require manual ports.
   checks remain pending.
 
 - Android #12100: add a debug-only transcript Lab launch using the existing Rust markdown fixture, TextSystem, C1 Canvas, and C2 selection host; release ignores fixture routes. Background/close retire the layout listener, worker, selection, and frames; resume/recreation restore a row-based viewport bookmark. Route JVM fixtures and lifecycle instrumentation are authored but unrun.
+
+- Android #12100: prepare a finite Rust SDK demo host seam for existing picker/visuals/CJK/Veil fixtures, with new-directory-only synthetic storage, typed Rust selection, shared live-session composer/layout, retired-content fencing, and terminal cleanup. Voice/account routes remain unavailable; Kotlin mounting, bindings, and the new Rust fixtures are pending.
