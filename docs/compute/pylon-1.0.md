@@ -1,7 +1,13 @@
 # Pylon 1.0: specification
 
-Status: spec, 2026-10-19; decisions recorded the same day; build under way.
-Nothing here is built unless a row says **built**.
+Status: built on main, 2026-10-19: #12195 (e231cd404a), #12191 (60c78b055d),
+#12192 (fbf1ae4652), #12197 (b86ce5645e), #12187 (7dbbc57073, 596b24cf9c),
+#12188 (96d1eb1f0e), #12189 (71a684b4dc), #12193 (dd9457ab7a), #12194
+(c7b0a7fcd0), #12190 (40add3218e), #12196 (6a7cd7a7b3). Turning it on (the
+gateway, reference and checker deploys, mainnet caps, the first payout, and
+device checks) waits on the owner in the workspace NEEDS_OWNER.md; the
+Psionic engine binaries wait on the release agent. The "Status" columns
+below describe the code before this build.
 The current operator guide is [pylon.md](pylon.md), and the protocol is
 [NIP-PYLON](../../nips/openagents/NIP-PYLON.md). This document says what
 "Pylon 1.0" means, what ships in it, and what has to be true before we call
