@@ -92,15 +92,37 @@ class AndroidVoiceCallServiceHostTest {
         assertEquals(1, platform.stopCount)
     }
 
+    @Test
+    fun disconnectedServiceUnbindsStopsAndTerminatesItsCapturedCall() {
+        val platform = FakeVoiceServicePlatform<String>()
+        val attached = mutableListOf<Pair<String, String>>()
+        val detached = mutableListOf<String>()
+        val stoppedCalls = mutableListOf<String>()
+        val host = host(platform, attached, stoppedCalls, detached)
+
+        host.attach("first-call")
+        val connection = platform.listeners.single()
+        connection.onConnected("voice-service")
+        connection.onDisconnected()
+        connection.onConnected("late-service")
+
+        assertEquals(listOf("voice-service" to "first-call"), attached)
+        assertEquals(listOf("voice-service"), detached)
+        assertEquals(listOf("first-call"), stoppedCalls)
+        assertEquals(1, platform.unbindCount)
+        assertEquals(1, platform.stopCount)
+    }
+
     private fun host(
         platform: FakeVoiceServicePlatform<String>,
         attached: MutableList<Pair<String, String>>,
         stoppedCalls: MutableList<String>,
+        detached: MutableList<String> = mutableListOf(),
     ) = VoiceCallServiceHost(
         platform = platform,
         attach = { service, call -> attached += service to call },
         update = { _, _ -> },
-        detach = {},
+        detach = detached::add,
         stopCall = stoppedCalls::add,
     )
 }

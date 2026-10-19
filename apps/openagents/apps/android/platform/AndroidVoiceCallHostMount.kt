@@ -207,6 +207,10 @@ private class AndroidVoiceCallServicePlatform(
             }
 
             override fun onServiceDisconnected(name: ComponentName?) = listener.onDisconnected()
+
+            override fun onBindingDied(name: ComponentName?) = listener.onDisconnected()
+
+            override fun onNullBinding(name: ComponentName?) = listener.onDisconnected()
         }
         connections[listener] = connection
         val bound = context.bindService(intent(), connection, Context.BIND_AUTO_CREATE)
