@@ -1175,3 +1175,5 @@ links remain readable. Upstream fixes now require manual ports.
   invalid-coverage, and reduced-motion rows do not request animation frames.
   Scheduler fixtures are authored but unrun; Cargo, Kotlin, API 26, and device
   checks remain pending.
+
+- Android #12100: add a debug-only transcript Lab launch using the existing Rust markdown fixture, TextSystem, C1 Canvas, and C2 selection host; release ignores fixture routes. Background/close retire the layout listener, worker, selection, and frames; resume/recreation restore a row-based viewport bookmark. Route JVM fixtures and lifecycle instrumentation are authored but unrun.

@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
         catch (_: Exception) { credentialPending = false; credentialResult = null; result(false) }
         return AutoCloseable { if (credentialResult === result) credentialResult = null }
     }
+    private var debugFixture: AndroidDebugFixture? = null
     private var rootPresentation: AndroidRootPresentation? = null
     private var attachmentResults: AndroidAttachmentActivityResultOwner? = null
     private var attachmentResultListener: ((AndroidAttachmentResult) -> Unit)? = null
@@ -83,8 +84,13 @@ class MainActivity : ComponentActivity() {
         window.navigationBarColor = getColor(R.color.oa_background)
         val debugLaunch = DebugLaunchExtras.read(intent)
         val app = application as OpenAgentsApplication
-        rootPresentation = AndroidRootPresentation(this, app, app.androidHost(BuildConfig.DEBUG && debugLaunch.demo))
-        setContentView(requireNotNull(rootPresentation).view())
+        debugFixture = DebugFixtureRoutes.mount(this, app, debugLaunch, savedInstanceState)
+        if (debugFixture != null) {
+            setContentView(requireNotNull(debugFixture).view)
+        } else {
+            rootPresentation = AndroidRootPresentation(this, app, app.androidHost(BuildConfig.DEBUG && debugLaunch.demo))
+            setContentView(requireNotNull(rootPresentation).view())
+        }
         if (savedInstanceState == null) routeAppLink(intent)
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -115,18 +121,27 @@ class MainActivity : ComponentActivity() {
     override fun onConfigurationChanged(configuration: android.content.res.Configuration) {
         super.onConfigurationChanged(configuration)
         rootPresentation?.configurationChanged()
+        debugFixture?.configurationChanged()
     }
 
     override fun onPause() {
+        debugFixture?.background()
         rootPresentation?.background()
         super.onPause()
     }
     override fun onResume() {
         super.onResume()
         rootPresentation?.foreground()
+        debugFixture?.foreground()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        debugFixture?.saveState(outState)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {
+        debugFixture?.close(); debugFixture = null
         microphoneResult?.invoke(false); microphoneResult = null
         credentialResult?.invoke(false); credentialResult = null
         rootPresentation?.close()
