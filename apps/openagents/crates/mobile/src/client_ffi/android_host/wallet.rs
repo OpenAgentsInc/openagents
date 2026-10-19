@@ -393,7 +393,10 @@ mod tests {
             .unwrap();
             Ok(String::from_utf8(view).unwrap())
         }
-        fn activate(&self, _: String, _: u64, _: String) -> CoreResult<String> {
+        fn activate(&self, instance: String, revision: u64, key: String) -> CoreResult<String> {
+            if instance != "fixture-wallet" || revision != 1 || key != "backup" {
+                return Err(CoreError::Closed);
+            }
             Ok("{\"kind\":\"backup\"}".into())
         }
         fn field(&self, _: String, _: u64, _: String, _: String) -> CoreResult<()> {

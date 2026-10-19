@@ -62,7 +62,7 @@ impl Fake {
     fn flow(self: &Arc<Self>) -> CoreAndroidRecovery {
         CoreAndroidRecovery {
             backend: self.clone(),
-            state: Mutex::new(State::new(true)),
+            state: Mutex::new(State::new(self.should_show())),
         }
     }
 }
