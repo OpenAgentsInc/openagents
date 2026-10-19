@@ -411,7 +411,7 @@ mod tests {
     }
     #[test]
     fn pending_composer_can_mount_but_cannot_edit_or_submit() {
-        let bytes = View::new_v3(
+        let bytes = View::<SessionViewIntent>::new_v3(
             "editor",
             1,
             Node {
