@@ -564,7 +564,9 @@ internal class AndroidRootPresentation(
 
     private fun bindDrawer(next: AndroidHostSnapshot) {
         val client = next.client ?: return
-        val history = next.history ?: return
+        // The offline demo has computer sessions but no saved account chats.
+        val history = next.history
+        if (history == null && next.account != null) return
         val core = RustDrawerCore(client, history, {
             snapshot?.let { current -> current.selectedChat?.let { id ->
                 when (current.source) {
@@ -643,7 +645,7 @@ internal class AndroidRootPresentation(
         scope.launch {
             try { owner.selectIndexedChat(key); panes.showSession(); refresh() }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (!closed) showFailure() }
+            catch (error: Exception) { if (!closed) showFailure(error) }
         }
     }
 
@@ -764,9 +766,13 @@ internal class AndroidRootPresentation(
     }
     private fun guarded(action: () -> Unit) {
         if (closed) return
-        try { action(); refresh() } catch (_: Exception) { showFailure() }
+        try { action(); refresh() } catch (error: Exception) { showFailure(error) }
     }
-    private fun showFailure() { notice.text = "Couldn't open this screen. Try again."; notice.visibility = View.VISIBLE }
+    private fun showFailure(error: Throwable? = null) {
+        // The kind of failure goes to the log for diagnosis; people see plain copy.
+        if (error != null) android.util.Log.w("OpenAgents", "Screen action failed", error)
+        notice.text = "Couldn't open this screen. Try again."; notice.visibility = View.VISIBLE
+    }
     private fun closeRoutes() {
         sharing?.close(); sharing = null
         voiceSettings?.close(); voiceSettings = null
