@@ -627,12 +627,17 @@ impl Store {
         attempts: i32,
         error: Option<&str>,
         done: bool,
+        seen_generation: i64,
     ) -> Result<(), DbError> {
         let c = self.db.client().await?;
+        // An intent that arrived during the visit (a wake, stop, or delete)
+        // set next_attempt_at to now; keep that instead of delaying it to the
+        // visit's own revisit time, which left wakes waiting about 30 s.
         c.execute(
             "UPDATE computers.computers
              SET lease_holder = NULL, lease_until = NULL,
-                 next_attempt_at = GREATEST(next_attempt_at, now() + make_interval(secs => $3)),
+                 next_attempt_at = CASE WHEN intent_generation > $7 THEN now()
+                     ELSE GREATEST(next_attempt_at, now() + make_interval(secs => $3)) END,
                  attempts = $4, last_error = $5, done = $6, updated_at = now()
              WHERE id = $1 AND lease_holder = $2",
             &[
@@ -642,6 +647,7 @@ impl Store {
                 &attempts,
                 &error,
                 &done,
+                &seen_generation,
             ],
         )
         .await?;

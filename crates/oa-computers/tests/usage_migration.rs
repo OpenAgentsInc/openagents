@@ -204,7 +204,15 @@ async fn migration_preserves_unknown_allocation_and_recovers_with_the_new_writer
             .unwrap()
     );
     store
-        .release(&unknown.id, old_holder, Duration::ZERO, 0, None, false)
+        .release(
+            &unknown.id,
+            old_holder,
+            Duration::ZERO,
+            0,
+            None,
+            false,
+            i64::MAX,
+        )
         .await
         .unwrap();
     store.poke(&unknown.id).await.unwrap();
@@ -307,7 +315,15 @@ async fn migration_preserves_unknown_allocation_and_recovers_with_the_new_writer
             .unwrap()
     );
     store
-        .release(&unknown.id, old_holder, Duration::ZERO, 0, None, false)
+        .release(
+            &unknown.id,
+            old_holder,
+            Duration::ZERO,
+            0,
+            None,
+            false,
+            i64::MAX,
+        )
         .await
         .unwrap();
     store.poke(&unknown.id).await.unwrap();

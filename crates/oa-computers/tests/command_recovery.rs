@@ -116,7 +116,7 @@ impl Rig {
 
     async fn release(&self) {
         self.store
-            .release(&self.id, HOLDER, Duration::ZERO, 0, None, false)
+            .release(&self.id, HOLDER, Duration::ZERO, 0, None, false, i64::MAX)
             .await
             .unwrap();
     }

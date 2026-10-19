@@ -372,7 +372,7 @@ async fn expired_lost_stale_or_wrong_deployment_observations_are_fenced() {
                 Err(StoreError::Busy)
             ));
             let current = lease.read().await.unwrap();
-            rig.store.release(&entry.id, HOLDER, Duration::ZERO, 0, None, false).await.unwrap();
+            rig.store.release(&entry.id, HOLDER, Duration::ZERO, 0, None, false, i64::MAX).await.unwrap();
             let replacement = rig.claim(&entry.id, "replacement-worker").await;
             assert_eq!(replacement.record, current);
             assert!(matches!(
@@ -475,7 +475,7 @@ async fn reconciler_records_unknown_storage_without_inventing_zero_or_cleanup() 
             let Some(rig) = Rig::new().await else { return };
             let (_, entry) = rig.boot("reconciled-storage").await;
             rig.store
-                .release(&entry.id, HOLDER, Duration::ZERO, 0, None, false)
+                .release(&entry.id, HOLDER, Duration::ZERO, 0, None, false, i64::MAX)
                 .await
                 .unwrap();
             let entry = rig.claim(&entry.id, "reconciler-storage-worker").await;
@@ -522,7 +522,7 @@ async fn deleted_entry(rig: &Rig, owner: &str) -> (Entry, String) {
     assert_eq!(result.computer().phase, Phase::Deleted);
     assert_eq!(result.computer().resource(), None);
     rig.store
-        .release(&e.id, HOLDER, Duration::ZERO, 0, None, true)
+        .release(&e.id, HOLDER, Duration::ZERO, 0, None, true, i64::MAX)
         .await
         .unwrap();
     (
@@ -656,7 +656,7 @@ async fn deleted_storage_scan_wraps_and_finds_done_and_prior_live_allocations() 
                 .unwrap();
             assert_eq!(later.computer().phase, Phase::Deleted);
             rig.store
-                .release(&alice.id, HOLDER, Duration::ZERO, 0, None, true)
+                .release(&alice.id, HOLDER, Duration::ZERO, 0, None, true, i64::MAX)
                 .await
                 .unwrap();
             let alice_before = lifecycle_row(&rig, &alice.id).await;

@@ -180,6 +180,7 @@ impl<D: Drivers + 'static> Reconciler<D> {
                             e.attempts.saturating_add(1),
                             Some(&error.to_string()),
                             false,
+                            e.intent_generation,
                         )
                         .await;
                     return;
@@ -199,6 +200,7 @@ impl<D: Drivers + 'static> Reconciler<D> {
                         e.attempts.saturating_add(1),
                         Some(&error.to_string()),
                         false,
+                        e.intent_generation,
                     )
                     .await;
                 return;
@@ -244,6 +246,7 @@ impl<D: Drivers + 'static> Reconciler<D> {
                             e.attempts.saturating_add(1),
                             Some(&error.to_string()),
                             false,
+                            e.intent_generation,
                         )
                         .await;
                     return;
@@ -411,6 +414,7 @@ impl<D: Drivers + 'static> Reconciler<D> {
                 attempts,
                 error.as_deref(),
                 done,
+                e.intent_generation,
             )
             .await
         {

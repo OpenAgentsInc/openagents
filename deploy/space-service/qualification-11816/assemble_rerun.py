@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Assemble the #11816 rerun on the final private image into docs/sdk/evidence/space-qualification-2026-10-19/raw.
+"""Assemble a #11816 rerun into a docs/sdk/evidence/space-qualification-*/raw directory.
 
-Usage: assemble_v3.py SCRATCH DOCS_EVIDENCE_DIR
-SCRATCH holds raw/v3 (the control node's v3 directory), v3cases (cases recorded
-from the operator machine), and the scrubbed staging workflow files.
+Usage: assemble_rerun.py SCRATCH DOCS_EVIDENCE_DIR TAG
+SCRATCH holds raw/TAG (the control node's TAG directory), TAGcases (cases
+recorded from the operator machine), raw/TAG-guests.json, and the scrubbed
+staging workflow files raw/staging-*-TAG.json.
 """
 import json, sys
 from collections import Counter
 from pathlib import Path
 
-S = Path(sys.argv[1]); D = Path(sys.argv[2]); V = S / 'raw' / 'v3'; X = S / 'v3cases'
+S = Path(sys.argv[1]); D = Path(sys.argv[2]); TAG = sys.argv[3]; V = S / 'raw' / TAG; X = S / f'{TAG}cases'
 raw = D / 'raw'; (raw / 'cases').mkdir(parents=True, exist_ok=True); (raw / 'trials').mkdir(exist_ok=True)
 def j(p): return json.loads(Path(p).read_text())
 def jl(p): return [json.loads(l) for l in Path(p).read_text().splitlines() if l.strip()]
@@ -28,18 +29,18 @@ def put(name, value):
 def brief(fault):
     return {k: v for k, v in fault.items() if k not in ('natives',)} | {'natives': fault.get('natives')}
 
-for f in ['trials-v3-cold-warm-c1.jsonl', 'trials-v3-cold-warm-c2.jsonl', 'trials-v3-wake-warm-c1.jsonl', 'trials-v3-wake-warm-c2.jsonl']:
+for f in [f'trials-{TAG}-{k}.jsonl' for k in ('cold-warm-c1', 'cold-warm-c2', 'wake-warm-c1', 'wake-warm-c2')]:
     (raw / 'trials' / f).write_text((V / f).read_text())
-cold = jl(V / 'trials-v3-cold-warm-c1.jsonl') + jl(V / 'trials-v3-cold-warm-c2.jsonl')
-wake = jl(V / 'trials-v3-wake-warm-c1.jsonl') + jl(V / 'trials-v3-wake-warm-c2.jsonl')
-guests = j(S / 'raw' / 'v3-guests.json')
+cold = jl(V / f'trials-{TAG}-cold-warm-c1.jsonl') + jl(V / f'trials-{TAG}-cold-warm-c2.jsonl')
+wake = jl(V / f'trials-{TAG}-wake-warm-c1.jsonl') + jl(V / f'trials-{TAG}-wake-warm-c2.jsonl')
+guests = j(S / 'raw' / f'{TAG}-guests.json')
 (raw / 'worker-guest-observations.json').write_text(json.dumps(guests, indent=1, sort_keys=True) + '\n')
 modes = Counter(m for v in guests.values() for m in v['boot_modes_by_process'].values())
 shapes = Counter(json.dumps({k: v['machine_config'][k] for k in ('vcpu_count', 'mem_size_mib')}, sort_keys=True) for v in guests.values())
 staging = {'account': 'acct_4570d993d9897bdd (dedicated staging test account; not the owner)',
            'owner_digest': 'account:8054ef2df12c490f3e0153403b42b613bfb73ad25077b5dbfea5abc8c19b2166', 'test_header': True,
            'binding': {'other_owners_see': ['our-cloud'], 'test_owner_sees': ['our-cloud', 'fast-sandbox'], 'default': 'our-cloud (Boat)', 'pricing': 'off'}}
-sdk = j(S / 'raw' / 'staging-space-sdk-v3.json'); boat = j(S / 'raw' / 'staging-boat-sdk-v3.json'); legacy = j(S / 'raw' / 'legacy-space-ops-v3.json')
+sdk = j(S / 'raw' / f'staging-space-sdk-{TAG}.json'); boat = j(S / 'raw' / f'staging-boat-sdk-{TAG}.json'); legacy = j(S / 'raw' / f'legacy-space-ops-{TAG}.json')
 
 put('public_sdk', {'status': 'passed', **staging, 'run': sdk,
     'note': 'crates/openagents-sdk/examples/computers.rs against staging: create, upload, command, read, stop, wake, read after wake, command after wake, and cleanup on fast-sandbox (#12146 fixed: files and commands are offered on SPACE).'})
@@ -91,8 +92,8 @@ put('egress_bypass', {'status': 'passed', 'scope': 'Guest denial under the deny-
     'probes': j(V / 'egress.json') if (V / 'egress.json').exists() else jsonl_objects(V / 'egress.log')})
 cap = jsonl_objects(V / 'capacity-third.json')
 put('capacity_exhaustion', {'status': 'passed' if cap and all(x['status'] == 429 for x in cap) else 'failed', 'over_capacity_creates': cap,
-    'bound': 'deployment capacity 3 (one slot held by the #12164 stranded row), service and account limits 5 computers / 8 vCPUs / 8 GiB during the rerun'})
-put('concurrent_wake', {'status': 'passed' if all(r.get('succeeded') for r in jl(V / 'trials-v3-wake-warm-c2.jsonl')) else 'failed', 'trials': jl(V / 'trials-v3-wake-warm-c2.jsonl')})
+    'bound': 'deployment capacity 3 with one slot held by the stopped retention computer; service and account limits 5 computers / 8 vCPUs / 8 GiB during the rerun'})
+put('concurrent_wake', {'status': 'passed' if all(r.get('succeeded') for r in jl(V / f'trials-{TAG}-wake-warm-c2.jsonl')) else 'failed', 'trials': jl(V / f'trials-{TAG}-wake-warm-c2.jsonl')})
 qo = jsonl_objects(V / 'quota-over.json'); qa = jsonl_objects(V / 'quota-at-limit.json')
 put('quotas_and_accounting', {'status': 'passed' if qo and qo[0]['status'] == 429 and qa else 'failed', 'turn_over_limit': qo, 'turn_at_limit': qa,
     'usage_read': j(V / 'usage.json').get('value', {}).get('allocation_allowance') if (V / 'usage.json').exists() else None,
@@ -100,5 +101,5 @@ put('quotas_and_accounting', {'status': 'passed' if qo and qo[0]['status'] == 42
 fc = jsonl_objects(V / 'files-commands-controls.json')
 put('unsupported_controls', {'status': 'passed' if fc else 'failed', 'checks': fc[-1] if fc else None})
 up = j(V / 'fault-upgrade.json')
-put('upgrade_and_rollback', {'status': 'passed' if up.get('passed') else 'failed', **({} if up.get('passed') else {'issue': 12141}), **up})
+put('upgrade_and_rollback', {'status': 'passed' if up.get('passed') else 'failed', **up})
 print('assembled', len(list((raw / 'cases').glob('*.json'))))

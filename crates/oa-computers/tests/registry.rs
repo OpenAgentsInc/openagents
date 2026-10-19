@@ -1537,7 +1537,7 @@ async fn memory_legacy_turn_recovery_keeps_the_execution_fence_until_explicit_de
             holder: settings.holder.clone(), lease: settings.lease };
         lease.apply(&coder_working_computer::Command::StartTurn { generation: 1 }, oa_computers::reconcile::now_ms()).await.unwrap();
         db.client().await.unwrap().execute("UPDATE computers.turns SET state='running',generation=1,started_at=now() WHERE id='interrupted-legacy'", &[]).await.unwrap();
-        store.release(&entry.id, &settings.holder, Duration::ZERO, 0, None, false).await.unwrap();
+        store.release(&entry.id, &settings.holder, Duration::ZERO, 0, None, false, i64::MAX).await.unwrap();
         let before = backend.fake.calls().len();
         for _ in 0..2 { visit(&db, &store, registry.clone(), &entry.id).await; }
         let turn = store.turn("alice", &entry.id, "interrupted-legacy").await.unwrap().unwrap();
@@ -1548,4 +1548,74 @@ async fn memory_legacy_turn_recovery_keeps_the_execution_fence_until_explicit_de
         phase(&db, &store, &registry, &entry.id, "deleted").await;
         assert!(backend.fake.live().is_empty());
     }).await;
+}
+
+/// A wake accepted while a reconciler visit holds the lease stays due now;
+/// the visit's own revisit time must not delay it (#12169).
+#[tokio::test(flavor = "current_thread")]
+async fn an_intent_during_a_visit_is_not_delayed_by_its_release() {
+    let Some(db) = database().await else {
+        eprintln!("skipping: OA_COMPUTERS_TEST_DATABASE_URL is unset");
+        return;
+    };
+    let store = Store::new(db.clone());
+    let root = tempfile::tempdir().unwrap();
+    let backend = Simulated::new(root.path(), true);
+    let registry = Registry::new(
+        Catalog::new("b", "p1", [backend.target("b")]).unwrap(),
+        [("b".into(), backend.clone())].into(),
+    )
+    .unwrap();
+    let (entry, _) = store
+        .create_placed("alice", &CreateIntent::default(), registry.catalog())
+        .await
+        .unwrap();
+    let settings = settings();
+    let claimed = store
+        .claim(&settings.holder, settings.lease)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .set_desired("alice", &entry.id, Desired::Stopped)
+        .await
+        .unwrap();
+    store
+        .release(
+            &entry.id,
+            &settings.holder,
+            Duration::from_secs(30),
+            0,
+            None,
+            false,
+            claimed.intent_generation,
+        )
+        .await
+        .unwrap();
+    let due: bool = db.client().await.unwrap()
+        .query_one("SELECT next_attempt_at <= now() + interval '1 second' FROM computers.computers WHERE id=$1", &[&entry.id])
+        .await.unwrap().get(0);
+    assert!(due, "the new intent must stay due");
+    // Without a new intent the visit's revisit time applies.
+    let claimed = store
+        .claim(&settings.holder, settings.lease)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .release(
+            &entry.id,
+            &settings.holder,
+            Duration::from_secs(30),
+            0,
+            None,
+            false,
+            claimed.intent_generation,
+        )
+        .await
+        .unwrap();
+    let later: bool = db.client().await.unwrap()
+        .query_one("SELECT next_attempt_at > now() + interval '20 seconds' FROM computers.computers WHERE id=$1", &[&entry.id])
+        .await.unwrap().get(0);
+    assert!(later);
 }

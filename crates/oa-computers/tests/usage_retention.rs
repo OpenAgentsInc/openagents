@@ -83,7 +83,7 @@ async fn stopped(
         assert_eq!(stopped.computer().phase, Phase::Stopped);
     }
     store
-        .release(&entry.id, HOLDER, Duration::ZERO, 0, None, false)
+        .release(&entry.id, HOLDER, Duration::ZERO, 0, None, false, i64::MAX)
         .await
         .unwrap();
     (entry.id, resource)
@@ -212,7 +212,7 @@ async fn a_saved_retention_ceiling_survives_later_meter_reads_and_a_longer_defau
                 .unwrap();
             assert!(updated.updated_ms > entry.record.updated_ms);
             store
-                .release(&id, HOLDER, Duration::ZERO, 0, None, false)
+                .release(&id, HOLDER, Duration::ZERO, 0, None, false, i64::MAX)
                 .await
                 .unwrap();
             assert!(
