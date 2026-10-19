@@ -672,3 +672,4 @@ Already in `NEEDS_OWNER.md`, and they don't block closing: the CAD history copy 
 
 - #12090 (D2): Android composer needs Kotlin compile/JVM tests, binding regeneration, and device checks for CJK IME, keyboard insets, rotation, hardware keyboard, camera and picker denial.
 - [ ] #12097: on an Android device, run a voice call, minimize to the ongoing-call notification (mute and end actions), reopen, and check the microphone foreground service under background restrictions; regenerate UniFFI bindings and compile the Kotlin shell. Main-shell mount and listener wiring is still open.
+- #12170: on a phone, check that device calls no longer arrive 15-30 s late over the relay (emulator, and a physical phone on cellular).
