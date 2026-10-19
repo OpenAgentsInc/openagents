@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-10-19-gpui-web-chat.md](2026-10-19-gpui-web-chat.md) | Replacing the web app's chat surfaces with the desktop GPUI UI on the web: surface inventory, architecture from the desktop crates, measured wasm size and first paint, accessibility gaps, and phased rollout (#12216 to #12226) |
 | [2026-10-19-rust-compile-times.md](2026-10-19-rust-compile-times.md) | Rust compile times: the edit loop, land-queue checks and deploy builds measured, incremental leaf crates and line tables (edits 81 to 82% faster), ranked options, and why not to rewrite |
 | [2026-10-17-spark-wallet.md](2026-10-17-spark-wallet.md) | Spark wallet: what the Breez SDK offers at `fc7ae22`, what the phone, CLI, and x402 payer use, the ranked gaps for a full wallet, x402 fit, custody with one seed, and a phased plan |
 | [2026-10-16-coder-desktop-monorepo-merge.md](2026-10-16-coder-desktop-monorepo-merge.md) | Merging the Coder Desktop (Zeron) fork into the monorepo as the OpenAgents desktop and mobile apps: size, conflicts, identity, plan |
