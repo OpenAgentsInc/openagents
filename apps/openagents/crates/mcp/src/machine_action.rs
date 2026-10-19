@@ -24,7 +24,7 @@ pub const NAME: &str = "machine_action";
 pub fn tool() -> ToolDef {
     ToolDef {
         name: NAME,
-        description: "Act on this computer under the owner's grant, logged: prune a build cache (a Cargo target folder no build holds) or stop a process with SIGTERM. Each needs the owner's machine grant to this chat (`openagents lease grant machine CHAT_ID --scope prune,stop`) and a reason; without the grant it's refused, so hand the job to a chat or ask the owner. Deploys are never stopped. Every action and refusal goes in the log with the time, size or pid, and reason. Use action log to read the log and action grants to see what this chat holds.",
+        description: "Act on this computer, logged: prune a build cache (a Cargo target folder no build holds) or stop a process with SIGTERM. Each needs a reason. Deploys are never stopped. Every action and refusal goes in the log with the time, size or pid, and reason. Use action log to read the log.",
         input_schema: json!({
             "type": "object",
             "properties": {

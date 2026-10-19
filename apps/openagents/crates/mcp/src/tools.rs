@@ -1237,16 +1237,16 @@ impl Tools {
 
     async fn get_chat(&self, args: ChatArgs) -> anyhow::Result<Value> {
         let chat = self.openagents.resolve_chat(&args.chat).await?;
-        let (spaces, sessions, entries, sidebar) = tokio::try_join!(
+        let (spaces, sessions, (total, entries), sidebar) = tokio::try_join!(
             self.openagents.spaces(),
             self.openagents.sessions(),
             self.openagents
-                .transcript_on(&chat.id, Some(&chat.device_id)),
+                .chat_window_on(&chat.id, Some(&chat.device_id), 40, 0),
             self.openagents.sidebar_preferences()
         )?;
         let rendered = render_entries(&entries, RenderOptions::default());
         let mut summary = summarize_chat(&chat, &spaces, &sessions, &sidebar);
-        summary["messageCount"] = json!(rendered.len());
+        summary["messageCount"] = json!(total);
         summary["pendingInput"] = last_pending_input(&rendered).unwrap_or(Value::Null);
         summary["lastMessage"] = rendered.last().map(|m| json!(m)).unwrap_or(Value::Null);
         Ok(summary)
@@ -1485,22 +1485,26 @@ impl Tools {
 
     async fn read_chat(&self, args: ReadChatArgs) -> anyhow::Result<Value> {
         let chat = self.openagents.resolve_chat(&args.chat).await?;
-        let entries = self
+        let limit = args.limit.unwrap_or(40).clamp(1, 500);
+        let (total, entries) = self
             .openagents
-            .transcript_on(&chat.id, Some(&chat.device_id))
+            .chat_window_on(&chat.id, Some(&chat.device_id), limit, args.offset)
             .await?;
-        let rendered = render_entries(
+        let window = render_entries(
             &entries,
             RenderOptions {
                 include_reasoning: args.include_reasoning,
                 include_tools: args.include_tools.unwrap_or(true),
             },
         );
-        let total = rendered.len();
-        let limit = args.limit.unwrap_or(40).clamp(1, 500);
         let end = total.saturating_sub(args.offset);
         let start = end.saturating_sub(limit);
-        let window = &rendered[start..end];
+        // Only the newest window can hold the request still waiting on input.
+        let pending = if args.offset == 0 {
+            last_pending_input(&window)
+        } else {
+            None
+        };
         Ok(json!({
             "chatId": chat.id,
             "title": chat.title,
@@ -1508,7 +1512,7 @@ impl Tools {
             "returned": window.len(),
             "olderRemaining": start,
             "newerSkipped": total - end,
-            "pendingInput": last_pending_input(&rendered),
+            "pendingInput": pending,
             "messages": window,
         }))
     }
@@ -2359,6 +2363,29 @@ mod tests {
                         "issuedBy": "dev-local", "issuedAt": 3 }] }),
                 ),
                 methods::WATCH_QUEUE => stream(json!({ "items": [] })),
+                methods::READ_CHAT_WINDOW => {
+                    let chat = params["chatId"].as_str().unwrap_or_default();
+                    let entries: Vec<Value> = match self.live_transcripts.as_ref() {
+                        Some(live) => live
+                            .lock()
+                            .unwrap()
+                            .get(chat)
+                            .cloned()
+                            .unwrap_or_default(),
+                        None => vec![
+                            json!({ "id": "u1", "role": "user", "createdAt": 1, "deviceId": "dev-local",
+                              "parts": [{ "kind": "text", "id": "t", "text": "hi" }] }),
+                            json!({ "id": "a1", "role": "assistant", "createdAt": 2, "deviceId": "dev-local",
+                              "status": "complete",
+                              "parts": [{ "kind": "text", "id": "t", "text": "hello back" }] }),
+                        ],
+                    };
+                    let limit = params["limit"].as_u64().unwrap_or(40) as usize;
+                    let offset = params["offset"].as_u64().unwrap_or(0) as usize;
+                    let end = entries.len().saturating_sub(offset);
+                    let start = end.saturating_sub(limit);
+                    RpcReply::Value(json!({ "total": entries.len(), "entries": entries[start..end] }))
+                }
                 methods::WATCH_DOC_MESSAGES if self.live_transcripts.is_some() => {
                     let chat = params["chatId"].as_str().unwrap_or_default();
                     let live = self.live_transcripts.as_ref().unwrap().lock().unwrap();

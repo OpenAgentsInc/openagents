@@ -207,19 +207,30 @@ pub trait Hub: Send + Sync {
     }
 }
 
+/// Openings of the claim comments agents write by hand.
+const CLAIM_WORDS: [&str; 5] = ["claimed", "claiming", "i claim", "i'm claiming", "claim:"];
+
+/// Openings of the release comments agents write by hand.
+const RELEASE_WORDS: [&str; 3] = ["released", "releasing", "release:"];
+
+/// Whether `body` opens with one of `words`, ignoring case, Markdown
+/// emphasis, and a leading bullet.
+fn hand_written(body: &str, words: &[&str]) -> bool {
+    let head = body
+        .trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '*' | '_' | '-' | '>' | '`'))
+        .to_ascii_lowercase();
+    words.iter().any(|word| head.starts_with(word))
+}
+
 /// The latest claim comment no later release answered.
 #[must_use]
 pub fn active(comments: &[Comment]) -> Option<&Comment> {
     let mut claim = None;
     for comment in comments {
         let body = comment.body.trim_start();
-        if body.contains(CLAIM_MARK)
-            || body
-                .get(..7)
-                .is_some_and(|head| head.eq_ignore_ascii_case("claimed"))
-        {
+        if body.contains(CLAIM_MARK) || hand_written(body, &CLAIM_WORDS) {
             claim = Some(comment);
-        } else if body.contains(RELEASE_MARK) {
+        } else if body.contains(RELEASE_MARK) || hand_written(body, &RELEASE_WORDS) {
             claim = None;
         }
     }
@@ -648,7 +659,7 @@ pub fn take<H: Hub + ?Sized>(
     )
 }
 
-/// Takes a claim with a named batch of up to three issues. All callers
+/// Takes a claim with a named batch of up to sixteen issues. All callers
 /// share the same session limit in `coder_lease::claims`.
 ///
 /// # Errors

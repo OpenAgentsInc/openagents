@@ -645,6 +645,11 @@ pub trait Driver {
     async fn create(&self, request: &CreateRequest) -> Outcome<String>;
     async fn observe(&self, computer: &str) -> Outcome<Observation>;
     async fn exec(&self, computer: &str, exec: &Exec) -> Outcome<ExecOutput>;
+    /// Cancel the command `exec` is running on this computer and wait until
+    /// it has ended. Unknown when the driver cannot confirm that.
+    async fn cancel_exec(&self, _computer: &str) -> Outcome<()> {
+        Outcome::unknown("This computer cannot confirm a command stop.")
+    }
     /// Start one identity-bound command. Retry by observation, never by a new ID.
     async fn start_command(&self, _computer: &str, _spec: &CommandSpec) -> Outcome<String> {
         Outcome::failed("identified commands are unsupported")
@@ -751,6 +756,9 @@ impl<D: Driver> Driver for std::sync::Arc<D> {
     }
     async fn exec(&self, c: &str, e: &Exec) -> Outcome<ExecOutput> {
         (**self).exec(c, e).await
+    }
+    async fn cancel_exec(&self, c: &str) -> Outcome<()> {
+        (**self).cancel_exec(c).await
     }
     async fn start_command(&self, c: &str, s: &CommandSpec) -> Outcome<String> {
         (**self).start_command(c, s).await

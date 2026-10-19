@@ -62,7 +62,8 @@ GCE is the only list that stays true.
 
 `chat work --on gce` runs every engine on the pool. The default is the
 briefed agent on Codex (`--engine briefed:codex`): the pool's hosts carry
-the orchestrating computer's ChatGPT login copy and no Claude login. Each
+the orchestrating computer's ChatGPT login copy and the pool's Claude
+token, so a run that hands off to Claude Code can sign in. Each
 host runs `openagents chat work --local --engine E`, which makes the
 briefing, runs the agent with `verify` (it compiles, tests and formats on
 the host), replays the checks on the real diff, and lands through the
@@ -196,6 +197,7 @@ The same reader as `--on boat` (`chat_boat::credentials`, engine logins
 | --- | --- |
 | `GH_TOKEN` | `OA_BOAT_GH_TOKEN`; Secret Manager `coder-pool-git-token`; `gh auth token` |
 | `XAI_API_KEY` | `XAI_API_KEY`; Secret Manager `openagents-xai-api-key` |
+| `CLAUDE_CODE_OAUTH_TOKEN` (every engine, for the hand-off to Claude Code) | `CLAUDE_CODE_OAUTH_TOKEN`; Secret Manager `coder-pool-claude-token` (owner-approved pool token, #12139) |
 | `OA_CODEX_AUTH` (preferred) | this computer's `~/.codex/auth.json` (`$CODEX_HOME`, or `OA_CODER_CODEX_AUTH`) | Codex on the owner's ChatGPT login: a copy with the **refresh token blanked**, so no run can rotate it (ChatGPT refresh tokens are single use: Codex's `refresh_token_reused`) and this computer stays signed in. The access token (10 days) must have 2 h left; Codex refreshes it on the Mac within 5 min of expiry. Coder then runs Codex `gpt-6.1-sol`, its first choice |
 | `OA_CODEX_API_KEY` (only without a ChatGPT login) | `OA_CODER_OPENAI_API_KEY`; Secret Manager `coder-openai-api-key` |
 | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; `git config user.name/email` |
@@ -225,8 +227,12 @@ login with its refresh token blanked) the script writes `~/.codex/auth.json`
 its first choice, as one lean `codex exec` session at `gpt-6.1-sol` medium
 (#10275). Grok Build on the key runs `grok-4.7`, not the API's default
 `grok-4.20-0309-non-reasoning`, which fakes edits (see `boat-chat-work.md`).
-Claude Code is not signed in on pool hosts; subscription logins are pending
-in `NEEDS_OWNER.md` ("Boat: choose how coding agents log in").
+Claude Code signs in with `CLAUDE_CODE_OAUTH_TOKEN` from the run's own
+process environment (#12139): every engine carries it, so a briefed Codex run
+that hands off to Claude Code after repeated verify failures no longer stops
+at "no Claude sign-in in this environment". The token is never written to the
+host's disk (no `~/.claude` login, no env file); the runtime test
+`turn_credentials_travel_in_memory_and_no_token_file_is_left` holds that.
 
 ## Operate
 

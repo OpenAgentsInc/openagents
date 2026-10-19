@@ -78,38 +78,40 @@ impl Card {
             TextRole::Body,
         ));
 
-        children.push(text("grants-title", "What it may do", TextRole::Heading));
-        let shown: Vec<&AgentGrant> = self
-            .grants
-            .iter()
-            .filter(|g| g.scopes.iter().any(|s| *s != GrantScope::LogWrite))
-            .collect();
-        if shown.is_empty() {
-            children.push(text(
-                "grants-none",
-                "Nothing yet. It can only work in its own chat.",
-                TextRole::Body,
-            ));
-        }
-        for grant in shown {
-            children.push(row(
-                &format!("grant-{}", grant.id),
-                vec![
-                    text(
-                        &format!("grant-{}-what", grant.id),
-                        &grant_line(grant),
-                        TextRole::Body,
-                    ),
-                    button(
-                        &format!("grant-{}-remove", grant.id),
-                        "Remove",
-                        Intent::Revoke {
-                            grant: grant.id.clone(),
-                        },
-                    ),
-                ],
-            ));
-        }
+        // Grant controls are hidden: agents act without grants (#12135, #12155).
+        // The grants stay in the data.
+        // children.push(text("grants-title", "What it may do", TextRole::Heading));
+        // let shown: Vec<&AgentGrant> = self
+        //     .grants
+        //     .iter()
+        //     .filter(|g| g.scopes.iter().any(|s| *s != GrantScope::LogWrite))
+        //     .collect();
+        // if shown.is_empty() {
+        //     children.push(text(
+        //         "grants-none",
+        //         "Nothing yet. It can only work in its own chat.",
+        //         TextRole::Body,
+        //     ));
+        // }
+        // for grant in shown {
+        //     children.push(row(
+        //         &format!("grant-{}", grant.id),
+        //         vec![
+        //             text(
+        //                 &format!("grant-{}-what", grant.id),
+        //                 &grant_line(grant),
+        //                 TextRole::Body,
+        //             ),
+        //             button(
+        //                 &format!("grant-{}-remove", grant.id),
+        //                 "Remove",
+        //                 Intent::Revoke {
+        //                     grant: grant.id.clone(),
+        //                 },
+        //             ),
+        //         ],
+        //     ));
+        // }
 
         let on = self.log_on();
         let moving = on
@@ -234,6 +236,7 @@ fn wake_words(wake: &WakeEvent) -> Option<&'static str> {
     })
 }
 
+#[allow(dead_code)]
 fn scope_words(scope: GrantScope) -> &'static str {
     match scope {
         GrantScope::ChatMessage => "message",
@@ -246,6 +249,7 @@ fn scope_words(scope: GrantScope) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn grant_line(grant: &AgentGrant) -> String {
     let chats: Vec<&str> = grant
         .scopes
@@ -401,10 +405,8 @@ mod tests {
             ),
             "{texts:?}"
         );
-        assert!(
-            texts.contains(&"Message and steer chats in 2 chats".to_owned()),
-            "{texts:?}"
-        );
+        // Grant rows are hidden while agents act without grants (#12155).
+        assert!(!texts.iter().any(|t| t.contains("steer chats")), "{texts:?}");
         assert!(texts.contains(&"Decision log: off".to_owned()));
         assert!(
             texts.contains(
@@ -412,10 +414,6 @@ mod tests {
             )
         );
         assert_eq!(activate(&view, "log-switch"), Intent::Log { on: true });
-        assert_eq!(
-            activate(&view, "grant-g1-remove"),
-            Intent::Revoke { grant: "g1".into() }
-        );
     }
 
     #[test]

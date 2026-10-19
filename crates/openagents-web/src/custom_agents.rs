@@ -12,8 +12,8 @@ use axum::{
     routing::get,
 };
 use openagents_sdk::agents::{
-    AgentDefinition, AgentGrant, AgentPage, AgentSpec, CreateAgent, DeleteAgent, GrantAgent,
-    GrantList, GrantScope, UpdateAgent, valid_id,
+    AgentDefinition, AgentGrant, AgentPage, AgentSpec, CreateAgent, DecisionPage, DeleteAgent,
+    GrantAgent, GrantList, GrantScope, RecordDecision, StoredDecision, UpdateAgent, valid_id,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -374,6 +374,10 @@ pub(crate) fn routes() -> Router<App> {
             "/v1/agent-definitions/{id}/grants/{grant}",
             axum::routing::delete(delete_grant),
         )
+        .route(
+            "/v1/agent-definitions/{id}/decisions",
+            get(list_decisions).post(record_decision),
+        )
         // The instructions, escaped as JSON at worst six bytes a byte, and
         // the rest of the request (#12114).
         .layer(DefaultBodyLimit::max(
@@ -583,6 +587,152 @@ async fn delete_grant(
         Ok(Err(r)) => r.response(),
         Err(e) => stored(&e),
     }
+}
+
+/// An agent's decision log on the account, append-only (#12046). One file per
+/// definition ID; entries are never edited or removed.
+#[derive(Default, Serialize, Deserialize)]
+struct DecisionLog {
+    entries: Vec<StoredDecision>,
+}
+const MAX_LOG_BYTES: usize = 4 * 1024 * 1024;
+const DECISIONS_PER_PAGE: usize = 100;
+fn decisions_key(owner: &str, id: &str) -> Result<String, Error> {
+    Store::owner_key(owner, &format!("agent-decisions-{id}.json"))
+}
+async fn load_decisions(
+    store: &Store,
+    owner: &str,
+    id: &str,
+) -> Result<(DecisionLog, Option<String>), Error> {
+    match store.read_key(&decisions_key(owner, id)?).await? {
+        None => Ok((DecisionLog::default(), None)),
+        Some((bytes, generation)) => {
+            let log = serde_json::from_slice(&bytes)
+                .map_err(|_| Error::Corrupt("Decision log could not be opened."))?;
+            Ok((log, Some(generation)))
+        }
+    }
+}
+/// Appends `request` unless its request ID is already in the log; the same ID
+/// with a different entry is refused.
+async fn append_decision(
+    store: &Store,
+    owner: &str,
+    id: &str,
+    request: &RecordDecision,
+) -> Result<Result<(), Refusal>, Error> {
+    if !valid_id(id) || !valid_id(&request.request_id) || request.entry.validate().is_err() {
+        return Ok(Err(Refusal::Invalid("Check the decision and try again.")));
+    }
+    if let Err(r) = definition(store, owner, id, None).await? {
+        return Ok(Err(r));
+    }
+    let key = decisions_key(owner, id)?;
+    for _ in 0..16 {
+        let (mut log, generation) = load_decisions(store, owner, id).await?;
+        if let Some(seen) = log
+            .entries
+            .iter()
+            .find(|e| e.request_id == request.request_id)
+        {
+            return Ok(if seen.entry == request.entry {
+                Ok(())
+            } else {
+                Err(Refusal::Retry)
+            });
+        }
+        let cursor = log
+            .entries
+            .last()
+            .and_then(|e| e.cursor.parse::<u64>().ok())
+            .map_or(1, |c| c + 1);
+        log.entries.push(StoredDecision {
+            cursor: cursor.to_string(),
+            request_id: request.request_id.clone(),
+            entry: request.entry.clone(),
+        });
+        let bytes = serde_json::to_vec(&log)
+            .map_err(|_| Error::Invalid("The decision could not be saved."))?;
+        if bytes.len() > MAX_LOG_BYTES {
+            return Ok(Err(Refusal::Full));
+        }
+        match store.write_key(&key, bytes, generation.as_deref()).await {
+            Ok(_) => return Ok(Ok(())),
+            Err(Error::Conflict) => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(Error::Conflict)
+}
+async fn record_decision(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Result<Json<RecordDecision>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let owner = match crate::coder_sync::owner(&app, &headers).await {
+        Ok(o) => o,
+        Err(r) => return r,
+    };
+    let Ok(Json(request)) = body else {
+        return Refusal::Invalid("Check the decision and try again.").response();
+    };
+    match append_decision(&app.config.chat_store, &owner, &id, &request).await {
+        Ok(Ok(())) => answer(StatusCode::OK, json!({ "recorded": true })),
+        Ok(Err(r)) => r.response(),
+        Err(e) => stored(&e),
+    }
+}
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DecisionQuery {
+    after: Option<String>,
+}
+async fn list_decisions(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(q): Query<DecisionQuery>,
+) -> Response {
+    let owner = match crate::coder_sync::owner(&app, &headers).await {
+        Ok(o) => o,
+        Err(r) => return r,
+    };
+    let after = match q.after.as_deref().map(str::parse::<u64>) {
+        None => 0,
+        Some(Ok(n)) => n,
+        Some(Err(_)) => return Refusal::Invalid("Start again from the first page.").response(),
+    };
+    if !valid_id(&id) {
+        return Refusal::Missing.response();
+    }
+    match page_decisions(&app.config.chat_store, &owner, &id, after).await {
+        Ok(Ok(page)) => answer(StatusCode::OK, json!(page)),
+        Ok(Err(r)) => r.response(),
+        Err(e) => stored(&e),
+    }
+}
+/// The entries after the cursor `after` (0 for the start), one page.
+async fn page_decisions(
+    store: &Store,
+    owner: &str,
+    id: &str,
+    after: u64,
+) -> Result<Result<DecisionPage, Refusal>, Error> {
+    if let Err(r) = definition(store, owner, id, None).await? {
+        return Ok(Err(r));
+    }
+    let (log, _) = load_decisions(store, owner, id).await?;
+    let mut rest = log
+        .entries
+        .into_iter()
+        .filter(|e| e.cursor.parse::<u64>().is_ok_and(|c| c > after));
+    let data: Vec<StoredDecision> = rest.by_ref().take(DECISIONS_PER_PAGE).collect();
+    let next = rest
+        .next()
+        .and_then(|_| data.last().map(|e| e.cursor.clone()));
+    Ok(Ok(DecisionPage { data, next }))
 }
 
 #[cfg(test)]
@@ -825,6 +975,87 @@ mod tests {
         let results = [a.unwrap(), b.unwrap()];
         assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
         assert!(results.contains(&Err(Refusal::Version)));
+    }
+
+    #[tokio::test]
+    async fn decision_log_appends_pages_retries_once_and_stays_private() {
+        use openagents_sdk::agents::DecisionEntry;
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::local(root.path().into());
+        let alice = crate::chat_store::account_owner("acct-test-one");
+        let bob = crate::chat_store::account_owner("acct-test-two");
+        let saved = mutate(&store, &alice, create(1)).await.unwrap().unwrap();
+        let entry = |n: i64| DecisionEntry {
+            kind: "decision".into(),
+            at: n,
+            fields: serde_json::from_value(json!({"saw": "s", "decided": "d", "did": "x"}))
+                .unwrap(),
+        };
+        let ask = |n: u64, e: DecisionEntry| RecordDecision {
+            request_id: format!("{n:064x}"),
+            entry: e,
+        };
+        for n in 1..=(DECISIONS_PER_PAGE as u64 + 2) {
+            append_decision(&store, &alice, &saved.id, &ask(n, entry(n as i64)))
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        // The same request ID appends once; a different entry under it is refused.
+        append_decision(&store, &alice, &saved.id, &ask(1, entry(1)))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            append_decision(&store, &alice, &saved.id, &ask(1, entry(99)))
+                .await
+                .unwrap(),
+            Err(Refusal::Retry)
+        );
+        let first = page_decisions(&store, &alice, &saved.id, 0)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.data.len(), DECISIONS_PER_PAGE);
+        assert_eq!(first.data[0].entry, entry(1));
+        let cursor: u64 = first.next.unwrap().parse().unwrap();
+        let second = page_decisions(&store, &alice, &saved.id, cursor)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.data.len(), 2);
+        assert_eq!(second.next, None);
+        assert_eq!(second.data[1].entry.at, DECISIONS_PER_PAGE as i64 + 2);
+        // Another account can neither read nor write it, nor learn it exists.
+        assert_eq!(
+            page_decisions(&store, &bob, &saved.id, 0).await.unwrap(),
+            Err(Refusal::Missing)
+        );
+        assert_eq!(
+            append_decision(&store, &bob, &saved.id, &ask(1000, entry(1)))
+                .await
+                .unwrap(),
+            Err(Refusal::Missing)
+        );
+        // A bad entry is refused, and a reopened store keeps the log.
+        let bad = DecisionEntry {
+            kind: "Not A Word".into(),
+            ..entry(1)
+        };
+        assert!(matches!(
+            append_decision(&store, &alice, &saved.id, &ask(2000, bad))
+                .await
+                .unwrap(),
+            Err(Refusal::Invalid(_))
+        ));
+        let reopened = Store::local(root.path().into());
+        assert_eq!(
+            page_decisions(&reopened, &alice, &saved.id, cursor)
+                .await
+                .unwrap()
+                .unwrap(),
+            second
+        );
     }
 
     #[cfg(unix)]

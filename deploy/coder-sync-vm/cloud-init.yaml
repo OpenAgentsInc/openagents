@@ -1,0 +1,164 @@
+#cloud-config
+# coder-sync on one Container-Optimized OS VM (#12122). One process holds
+# every room, so live rows reach every socket. scripts/coder-sync/deploy.py
+# creates the VM with this file as `user-data`; cloud-init applies it on every
+# boot. The VM reads the rest from its metadata:
+#   coder-sync-image   the image to run (a deploy changes it; the watcher
+#                      pulls it, then restarts the server)
+#   coder-sync-env     KEY=VALUE lines for the server's environment
+#   coder-sync-secret  the Secret Manager secret that holds the database URL
+#   coder-sync-sql     the Cloud SQL connection name for the Auth Proxy
+
+write_files:
+  - path: /etc/coder-sync/lib.sh
+    permissions: "0644"
+    content: |
+      md=http://metadata.google.internal/computeMetadata/v1
+      attr() { curl -fsS -H 'Metadata-Flavor: Google' "$md/instance/attributes/$1"; }
+      token() {
+        curl -fsS -H 'Metadata-Flavor: Google' "$md/instance/service-accounts/default/token" |
+          tr -d '\n ' | sed -E 's/.*"access_token":"([^"]+)".*/\1/'
+      }
+      login() {
+        export HOME=/var/lib/coder-sync
+        mkdir -p "$HOME"
+        docker-credential-gcr configure-docker --registries=us-central1-docker.pkg.dev >/dev/null 2>&1 || true
+      }
+
+  - path: /etc/coder-sync/run.sh
+    permissions: "0644"
+    content: |
+      # Start the server in the foreground: environment, secret, then the container.
+      set -euo pipefail
+      . /etc/coder-sync/lib.sh
+      login
+      image=$(attr coder-sync-image)
+      project=$(curl -fsS -H 'Metadata-Flavor: Google' "$md/project/project-id")
+      secret=$(attr coder-sync-secret)
+      umask 077
+      mkdir -p /run/coder-sync
+      # The database URL stays in tmpfs, readable only by root.
+      url=$(curl -fsS -H "Authorization: Bearer $(token)" \
+        "https://secretmanager.googleapis.com/v1/projects/$project/secrets/$secret/versions/latest:access" |
+        tr -d '\n ' | sed -E 's/.*"data":"([^"]+)".*/\1/' | base64 -d)
+      { attr coder-sync-env; printf '\nCODER_SYNC_DATABASE_URL=%s\n' "$url"; } | grep -v '^$' > /run/coder-sync/env
+      docker image inspect "$image" >/dev/null 2>&1 || docker pull -q "$image" >/dev/null
+      docker rm -f coder-sync >/dev/null 2>&1 || true
+      exec docker run --rm --name coder-sync \
+        --env-file /run/coder-sync/env \
+        -p 8080:8080 \
+        -v /run/cloudsql:/cloudsql \
+        --ulimit nofile=1048576:1048576 \
+        --log-driver=json-file --log-opt max-size=50m --log-opt max-file=4 \
+        "$image"
+
+  - path: /etc/coder-sync/proxy.sh
+    permissions: "0644"
+    content: |
+      # The Cloud SQL Auth Proxy, serving the same /cloudsql socket Cloud Run mounts.
+      set -euo pipefail
+      . /etc/coder-sync/lib.sh
+      mkdir -p /run/cloudsql
+      chown 65532:65532 /run/cloudsql
+      docker rm -f cloud-sql-proxy >/dev/null 2>&1 || true
+      exec docker run --rm --name cloud-sql-proxy \
+        -v /run/cloudsql:/cloudsql \
+        --log-driver=json-file --log-opt max-size=20m --log-opt max-file=2 \
+        gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.26.2 \
+        --unix-socket=/cloudsql --quiet "$(attr coder-sync-sql)"
+
+  - path: /etc/coder-sync/watch.sh
+    permissions: "0644"
+    content: |
+      # Every 10 seconds: start a newly deployed image, and restart a server
+      # whose /health has failed for a minute (the Cloud Run liveness probe's job).
+      set -uo pipefail
+      . /etc/coder-sync/lib.sh
+      login
+      current=$(attr coder-sync-image || true)
+      failures=0
+      # Leave the first boot's image pull and start alone.
+      sleep 90
+      while sleep 10; do
+        wanted=$(attr coder-sync-image || true)
+        if [ -n "$wanted" ] && [ "$wanted" != "$current" ]; then
+          # Pull first, so the restart only swaps the process.
+          if docker pull -q "$wanted" >/dev/null; then
+            echo "coder-sync: starting $wanted"
+            systemctl restart coder-sync.service
+            current=$wanted
+            failures=0
+            sleep 20
+          else
+            echo "coder-sync: could not pull $wanted; keeping the running image"
+          fi
+          continue
+        fi
+        if curl -fsS -m 3 http://127.0.0.1:8080/health >/dev/null 2>&1; then
+          failures=0
+        else
+          failures=$((failures + 1))
+        fi
+        if [ "$failures" -ge 6 ]; then
+          echo "coder-sync: /health failed for a minute; restarting"
+          systemctl restart coder-sync.service
+          failures=0
+          sleep 20
+        fi
+      done
+
+  - path: /etc/systemd/system/cloud-sql-proxy.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Cloud SQL Auth Proxy for coder-sync
+      Wants=network-online.target docker.service
+      After=network-online.target docker.service
+
+      [Service]
+      ExecStart=/bin/bash /etc/coder-sync/proxy.sh
+      ExecStop=/usr/bin/docker stop -t 10 cloud-sql-proxy
+      Restart=always
+      RestartSec=2
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/coder-sync.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=coder-sync (sync.openagents.com)
+      Wants=network-online.target docker.service cloud-sql-proxy.service
+      After=network-online.target docker.service cloud-sql-proxy.service
+
+      [Service]
+      ExecStart=/bin/bash /etc/coder-sync/run.sh
+      ExecStop=/usr/bin/docker stop -t 20 coder-sync
+      Restart=always
+      RestartSec=2
+      TimeoutStopSec=30
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/coder-sync-watch.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=coder-sync deploy and health watcher
+      Wants=coder-sync.service
+      After=coder-sync.service
+
+      [Service]
+      ExecStart=/bin/bash /etc/coder-sync/watch.sh
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - sysctl -w net.core.somaxconn=4096
+  - systemctl daemon-reload
+  - systemctl start cloud-sql-proxy.service coder-sync.service coder-sync-watch.service

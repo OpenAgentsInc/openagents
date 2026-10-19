@@ -321,6 +321,27 @@ impl OpenAgents {
         self.watch_transcript(chat_id, device, true).await
     }
 
+    /// A window of the newest messages: skip `offset` rows from the end, take
+    /// up to `limit` older ones. Returns the chat's total row count and the
+    /// window, so a very long chat is never loaded whole.
+    pub async fn chat_window_on(
+        &self,
+        chat_id: &str,
+        device: Option<&str>,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<(usize, Vec<SessionMessageEntry>)> {
+        let mut params = json!({ "chatId": chat_id, "limit": limit, "offset": offset });
+        if let Some(device) = device {
+            params["targetDeviceId"] = json!(device);
+        }
+        let value = self.call(methods::READ_CHAT_WINDOW, params).await?;
+        let total = value["total"].as_u64().unwrap_or_default() as usize;
+        let entries = serde_json::from_value(value["entries"].clone())
+            .context("ReadChatWindow: bad entries")?;
+        Ok((total, entries))
+    }
+
     async fn watch_transcript(
         &self,
         chat_id: &str,

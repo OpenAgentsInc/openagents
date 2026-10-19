@@ -1,3 +1,22 @@
+## SPACE qualification: four owner steps (#11816, 2026-10-18)
+
+The live run on the private SPACE deployment passed the dedicated-test stage
+but not named-group admission; see `docs/sdk/space-qualification.md`. These
+steps need you:
+
+1. Pick a notification channel for the nine "SPACE private" alert policies
+   in Cloud Monitoring. None has one, so alerts reach nobody (#12147).
+2. Put the staging dedicated test account's credential (`acct_dc7a799879686fc5`)
+   in `~/work/.secrets`, and approve binding only that account to SPACE on
+   staging Computers, with Boat kept as default and pricing off (#12146). The
+   public SDK, web task, stage timing, and legacy Boat cases wait on this.
+3. Give the operator read access to a billing export for `openagentsgemini`, or
+   record the window's cost yourself. Service cost per task is the last budget
+   input the checker needs.
+4. Decide the accepted data loss when a worker fails while a computer is
+   awake. Today that computer can only be deleted, losing its last checkpoint too
+   (#12141).
+
 ## Check the voice relay (#12059)
 
 After updating both apps, choose a saved agent or renamed fork and call with

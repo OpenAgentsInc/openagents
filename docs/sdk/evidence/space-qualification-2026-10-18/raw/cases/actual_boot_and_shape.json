@@ -1,0 +1,26 @@
+{
+ "boot_modes": "Every create is a cold boot (--config-file); every wake is a snapshot load. Creates with a ready clean base snapshot still cold boot (#12145).",
+ "bound_backend": {
+  "deployment": "space-private-11814",
+  "driver": "space",
+  "placement": "fast-sandbox",
+  "template": "code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149"
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "distinct_sandboxes_sampled": 41,
+ "guest_view": "nproc 2 and MemTotal 1008900 kB in every trial turn",
+ "observed_firecracker_processes": {
+  "cold": 41,
+  "snapshot": 53
+ },
+ "observed_machine_configs": {
+  "{\"mem_size_mib\": 1024, \"smt\": false, \"track_dirty_pages\": false, \"vcpu_count\": 2}": 41
+ },
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "runtime": "Firecracker v1.15.1, kernel 6.1.155, firecracker-snapshot 9.0.0, volume_encryption true",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "scope": "Private Computers path; actual backend observed on the worker, not via the public SDK.",
+ "status": "passed"
+}

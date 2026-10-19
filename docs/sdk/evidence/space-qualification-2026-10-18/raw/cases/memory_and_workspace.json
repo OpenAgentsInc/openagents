@@ -1,0 +1,70 @@
+{
+ "canaries": {
+  "canary-cmp_033a0b863352ba6e3074.json": {
+   "boot_id": "bc7a887d-5d26-4efa-aa94-9e98b4555afe",
+   "canary_sha256": "6d849a0db118054bafed64191ad8f19b303c5fa8a4330e36011f62cc99afcf27",
+   "pid": "295",
+   "start_ticks": "1169",
+   "turn": "trn_e72421fc4520ea8eb80c",
+   "workspace_sha256": "85c46dcd13416766d615e57b5b886d90ced9e4602401d88773396506c2ef29a8"
+  },
+  "canary-cmp_0a3f361e82af6e8e39db.json": {
+   "boot_id": "c4aea883-341c-4eaa-b2c6-35d753189a78",
+   "canary_sha256": "9d8b51e2d2f8d1899d07f3c00d7dc3018c07383141229b7866d6586d9c9e16fd",
+   "pid": "294",
+   "start_ticks": "1075",
+   "turn": "trn_534a60bf42d0c56286a8",
+   "workspace_sha256": "a7c1336cbeea4de54fbc730cbf7bd7aa965f54d6570e500b7db06f849fd16529"
+  },
+  "canary-cmp_10e176111f4b9687418a.json": {
+   "boot_id": "3c5d1628-f8bc-435f-b8de-383f78e8db44",
+   "canary_sha256": "7a74b580a006b39ed1a479058711596741b8781734c055e5140c553c0c88b8c8",
+   "pid": "294",
+   "start_ticks": "1111",
+   "turn": "trn_feff3993be7e23bbabff",
+   "workspace_sha256": "d3a2e5c962bf07c1df8e1f679fd1048a0d9ab74119b5a912c2d0eedf3a352237"
+  },
+  "canary-cmp_370b9068edfe52b6c9d4.json": {
+   "boot_id": "d299d08e-e92c-4fb0-a339-88c6b4ea0041",
+   "canary_sha256": "8d89d727a20698defe5ef6c2c30423ed889f2dc28b2eb83338677a8577f2f336",
+   "pid": "293",
+   "start_ticks": "1114",
+   "turn": "trn_21793469bac97462f123",
+   "workspace_sha256": "1f5654b4d933d7f770b111cb5bc0d966984c1c470d363c2ba8127e242f30490d"
+  },
+  "canary-cmp_3c249026a99f0b863fa8.json": {
+   "boot_id": "a37c9843-da11-4ceb-8fb0-c093de360ee0",
+   "canary_sha256": "5d37bd82f2e1614c2b0267b775080b2b69765ee4872a89af11d709d3ce848ce1",
+   "pid": "293",
+   "start_ticks": "1053",
+   "turn": "trn_ddb223c86dc57236bdd6",
+   "workspace_sha256": "b7528e74b481bb38871ffc325a075ebcc027c6210c5b64346bb2268f8da29a1d"
+  },
+  "canary-cmp_6adadafbc610bbcad4e3.json": {
+   "boot_id": "08f80a9c-fe8d-4860-ad7e-a86d948e7564",
+   "canary_sha256": "5061a8e8c1c14ffcbaedb29df789ebcb89e5b4d8e56097bcd92029077b88ddd4",
+   "pid": "295",
+   "start_ticks": "19608",
+   "turn": "trn_17dd711faff1b3ad5535",
+   "workspace_sha256": "1054cbc79f8edea97353d12664fda9166141f0226cbc68a875a27c336f5f0d93"
+  },
+  "canary-cmp_f5abd0d6178073c2ceaa.json": {
+   "boot_id": "e7b1a193-db44-413c-87bc-b2a48bd67203",
+   "canary_sha256": "980d89b02e262cf4110683c573fd33aabaa96f912c865b5797708d79c1fc6753",
+   "pid": "294",
+   "start_ticks": "1007",
+   "turn": "trn_49496decd10b7353a7cc",
+   "workspace_sha256": "129d87788e1141cd9bfaf1f85262dabec49077791493c63f5b90059adb7ddc8e"
+  }
+ },
+ "checked": "boot ID, canary PID, /proc start ticks, SHA-256 of the canary environment value, and SHA-256 of a 1 MiB random workspace file, before suspension and after each wake",
+ "contains_credentials": false,
+ "credential_references": "Not offered: command_sessions false and credential proxy off; credential_ref requests are refused (see unsupported_controls).",
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "memory_preserved": 28,
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "wake_trials_with_memory_check": 28
+}

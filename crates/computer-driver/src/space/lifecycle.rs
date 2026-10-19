@@ -13,7 +13,8 @@ pub enum LifecycleClaim {
 }
 
 /// Save request ownership before sending a mutation, then save the accepted
-/// provider operation before waiting. An uncertain request is never sent again.
+/// provider operation before waiting. An uncertain request is sent again under the same
+/// idempotency key.
 pub trait LifecycleJournal: Send + Sync {
     fn claim<'a>(
         &'a self,

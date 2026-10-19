@@ -1,0 +1,150 @@
+{
+ "schema": "openagents.computers.space-identity-observation.v1",
+ "observed": "2026-10-18T19:20Z-22:40Z",
+ "identity": {
+  "web_commit": "b4442103d26e9723e90cb63f3002c8a10f462b03",
+  "computers_commit": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
+  "sdk_commit": "a53a9731f996a8d93f22f1af11f5158894288c54",
+  "native_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+  "native_image_sha256": "b03fac6e4f70ff5a34d07023a1ae251d20820d32a788b83529a5461f5f1fafe6",
+  "template": "code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149",
+  "runtime_sha256": "7e8b57e88c459396d4680d83dcdd8c7f72305447cb55b11f4ac98ad70a3f7825",
+  "policy_sha256": "65e6dab85820b6bfe9a51244674520ab5d26f0b64713b37d8426889d790b3c51",
+  "schema_sha256": "11e5b9690f6e3e4aa25727cdcf1e347b9c3e564c171a0c0080022a2f7aec676c",
+  "vcpus": 2,
+  "memory_mib": 1024
+ },
+ "how_each_value_was_observed": {
+  "web_commit": "Staging web service openagents-web-1-staging serves image openagents-web@sha256:5b0a1307c84ff33f71ac32042cb8bbca1c67615f0aea5ec15cce14fe504653cd, tagged stg-b4442103d2. The public SDK and web paths were not exercised against SPACE (see public_sdk).",
+  "computers_commit": "Private Computers service oa-space-service-computers runs computers@sha256:a58dc392c6623358490e32ccb0dbe8467652d78e099e4e6b48ceb4e77634c8db, label openagents-image-source.",
+  "sdk_commit": "Repository commit of the operator tooling and SDK source used for this run (origin/main at start).",
+  "native_commit": "Every native service logs version de87b436c35dac056564bdd5b2a113c9046e189b (upstream perplexityai/SPACE pin); the running API image is the previous api-runtime override built from 2fc47130 with seed-kernel.patch.",
+  "native_image_sha256": "Running worker/node image (all node services): native/worker@sha256:b03fac6e...; other running native images recorded below.",
+  "template": "Private registry template and capabilities default_artifact.",
+  "runtime_sha256": "sha256 of /space/bin/firecracker on oa-space-service-worker (Firecracker v1.15.1); jailer 4830a9b1fc6cece036d8992ff12f1fe9c5247aacad77f42c7aba683c7a08622e.",
+  "policy_sha256": "sha256 of raw/policy-digest-input.json: canonical JSON of the three live sandboxes-namespace NetworkPolicy specs and the code-runtime template egress policy (default deny, no allow rules).",
+  "schema_sha256": "sha256 of the comma-joined version:checksum list of the 13 successful native _sqlx_migrations rows (latest 20261015185501).",
+  "shape": "Firecracker GET /machine-config on every sampled guest: vcpu_count 2, mem_size_mib 1024; guest nproc 2, MemTotal 1008900 kB."
+ },
+ "running_native_images": {
+  "space-api, space-admin-api": "native/api-runtime@sha256:45d859ed494fc2e79e9e6aa6a5cde67d480bdfd0c713943711dffff8224dfcc0",
+  "space-cluster-controller": "native/cluster-controller@sha256:9c99c7ee2bfe78c528dc285dba7b05053c22b88779ee259154b1606185246e9e",
+  "space-data-plane": "native/data-plane@sha256:abe42ae6e11d25631b406d1f4555ddaf9d65620a4a46a6adb6ebb118d1b05c43",
+  "node services": "native/worker@sha256:b03fac6e4f70ff5a34d07023a1ae251d20820d32a788b83529a5461f5f1fafe6",
+  "migrator (completed job)": "native/migrator@sha256:6b6f7ccf540d5daad8583e3ad6177baabce59f2ac269085f450dfdca9008c79a",
+  "edge (Cloud Run api and data frontends)": "edge@sha256:e43938f09ba25e260a0829fa536871b9f35745278ce4a35abde5895a522a5c2e",
+  "key broker": "space-key-broker@sha256:4fddc6ad74009cb607ffdc2405fca32e8cd1e27bf3dc56764c809bb28d064ba0"
+ },
+ "native_migrations": [
+  {
+   "version": 20261002070625,
+   "checksum": "1f097edd9d89b614c7557563978f83a64c586464ac7390b5b57b33fa7eee047686f998ef25ef084bc7357bdb2ca8c3b1",
+   "success": true
+  },
+  {
+   "version": 20261003024101,
+   "checksum": "50e88de7a7d40df1c4a6afb797fcbdcc480392b177869bd994670f1252609304b610a658cf77f2429bd690eb772b3f62",
+   "success": true
+  },
+  {
+   "version": 20261006010511,
+   "checksum": "9e5161715a9b7c65eae4759109bb8babd7da72dba37cfbf15ebde71dc92afe2480f3e3e54aac01952ec2b7ed5ef110ab",
+   "success": true
+  },
+  {
+   "version": 20261006031529,
+   "checksum": "41d33a5baa1887f6675e491343019b6ddf8b234152cc238d27b7514635d11acc4ddd39bd1411bf130ed2e1227ec25201",
+   "success": true
+  },
+  {
+   "version": 20261006150412,
+   "checksum": "2cf7036abc01ccb735609f7b4b3c94cc0d039c3507b34e832d0a3743f1ff416ff79ea4b8baf8dd2cd2d27ce1abd972fe",
+   "success": true
+  },
+  {
+   "version": 20261013211248,
+   "checksum": "d3367ef0af62bcced9aa1d727d89ec48e1723245cbf3655d2cd298d70d400c4aca387786bfce5b1016cb13349e46509a",
+   "success": true
+  },
+  {
+   "version": 20261013211249,
+   "checksum": "bf508b97e98f9cca5d209a7e1a6b3378770e489554e4fe4b0fdb18a789ec01ddf4efef772543eb3c189d05112f5eb717",
+   "success": true
+  },
+  {
+   "version": 20261014150325,
+   "checksum": "9562e354419e2d41fa2a0c8b23a3e16e34b1849d1345e3c56d7cec92b5362f4bf821027940e1ea2dc576060f92a52cbc",
+   "success": true
+  },
+  {
+   "version": 20261014181533,
+   "checksum": "391d49f9756e63f5120a62147448edf1f9a2941b9ac43b4fd6ab36a61ab5bdc1f1310d37988951e06c42ef3bd1f14ce7",
+   "success": true
+  },
+  {
+   "version": 20261015070310,
+   "checksum": "43fdbde2f802af4fc63c51988d29c7715dc0190bc36b5e027ba6d57225cb23f55f1ff727fd020b34eba3b30f24931010",
+   "success": true
+  },
+  {
+   "version": 20261015070311,
+   "checksum": "14ed30e430a5f03f264b2927419cc206b1c805837aeb4672f4e8e9be535fc255e411466b3f37225e3afa59c10f8cbffb",
+   "success": true
+  },
+  {
+   "version": 20261015185500,
+   "checksum": "ca829cb86128f8ef427290b141c00ecd605bd9816c2054fdff8bfd6ee463440730c6f9ca1189a5e96bcc8684c8227b09",
+   "success": true
+  },
+  {
+   "version": 20261015185501,
+   "checksum": "66fafd2d5393c6b42a99cd6c76f7d0079c1fe35c83aeeb06a0d378eec5c5e61284659947e507ea47d72833d08464ddd1",
+   "success": true
+  }
+ ],
+ "computers_migrations_latest": null,
+ "template_record": {
+  "name": "code-runtime",
+  "desired_state": "present",
+  "has_base_snapshot": false,
+  "cache_size_bytes": 2540896256,
+  "network_policy": {
+   "version": "v1",
+   "egress": {
+    "default_action": "deny",
+    "allow": [],
+    "deny": []
+   }
+  },
+  "network_policy_generation": 1
+ },
+ "private_computers_configuration": {
+  "revision_during_trials": "oa-space-service-computers-00005-lgs (poll 100 ms)",
+  "registry_secret": "oa-space-service-computers-registry-f9702bb08a60c79d",
+  "deployment": "space-private-11814",
+  "capacity": 2,
+  "admit_new": true,
+  "rollout_accounts": [
+   "account:f9b110d34613b1783bcac550f001f45c76f98fd84d76856b928f172a7ec42d75",
+   "account:352cd3cc4183ce192b8efac43c85a20d1750c133f125f3a74560e40957a7ee0d"
+  ],
+  "pricing": "off",
+  "limits_per_account": {
+   "computer_count": 2,
+   "running_vcpus": 4,
+   "running_memory_mib": 8192,
+   "turn_seconds": 60,
+   "stopped_retention_seconds": 3600
+  },
+  "service_limits": {
+   "computer_count": 2,
+   "running_vcpus": 4,
+   "running_memory_mib": 8192
+  }
+ },
+ "synthetic_accounts": {
+  "a": "digest of acct_space_qual_11816_a (no real account)",
+  "b": "digest of acct_space_qual_11816_b (no real account)"
+ },
+ "contains_credentials": false
+}

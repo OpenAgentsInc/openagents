@@ -33,6 +33,7 @@ Cloud Run runbook).
 | Durable local Coder task owner | [Portable host packaging](../coder/runtime/portable-host.md) |
 | Decision API gateway | [Gateway deployment](../decision-models/service/deployment.md) |
 | NIP-PL push gateway, which holds APNs and FCM credentials for the relay's push executor | [Push gateway](push-gateway.md) |
+| `coder-sync` at `sync.openagents.com` on its single-writer VM, the load balancer, cutover, and rollback | [coder-sync VM](coder-sync-vm.md) |
 | iroh relay at `iroh.openagents.com`, the encrypted fallback path and QUIC address discovery for OpenAgents iroh endpoints | [iroh relay](iroh-relay.md) |
 | Central receiver: the one Lightning node (`crates/wallet`, MoneyDevKit LSPS4) that receives every paid call | [Pay host](pay-host.md) |
 | Daily `oa-coder-host` GCE image: repository, toolchains, engine CLIs (not logged in) and a warm Cargo target, for cloud Coder hosts | [Coder host image](coder-host-image.md) |

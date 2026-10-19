@@ -105,6 +105,9 @@ class KindsTests(unittest.TestCase):
         self.assertEqual([c["kind"] for c in plan], ["rust-nested"] * 3)
         self.assertIn("--manifest-path", plan[1]["argv"])
 
+    def test_the_apps_workspace_is_nested(self):
+        self.assertEqual(kinds.nested_root("apps/openagents/crates/client/src/lib.rs"), "apps/openagents")
+
     def test_an_embedded_document_brings_its_consumer_crate(self):
         got = self.ids(["docs/page.md"])
         self.assertEqual(got[0], "doccheck:docs")

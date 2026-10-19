@@ -1,0 +1,320 @@
+{
+ "instances": [
+  {
+   "name": "oa-space-service-control",
+   "zone": "us-central1-a",
+   "machineType": "e2-standard-4",
+   "status": "RUNNING",
+   "external_access_configs": 0,
+   "ipv6_access_configs": 0,
+   "network": [
+    "oa-space-service"
+   ],
+   "service_accounts": [
+    "oa-space-service-control@openagentsgemini.iam.gserviceaccount.com"
+   ],
+   "disks": [
+    {
+     "name": "oa-space-service-control",
+     "autoDelete": true,
+     "boot": true
+    },
+    {
+     "name": "oa-space-service-control-data",
+     "autoDelete": false,
+     "boot": false
+    }
+   ],
+   "labels": {
+    "openagents-commit": "ac8f1b4ab1a1e67d5ff619d857020edabfc45f76",
+    "openagents-issue": "11814",
+    "openagents-owner": "platform",
+    "openagents-role": "control",
+    "openagents-service": "space"
+   }
+  },
+  {
+   "name": "oa-space-service-worker",
+   "zone": "us-central1-b",
+   "machineType": "n2-standard-8",
+   "status": "RUNNING",
+   "external_access_configs": 0,
+   "ipv6_access_configs": 0,
+   "network": [
+    "oa-space-service"
+   ],
+   "service_accounts": [],
+   "disks": [
+    {
+     "name": "oa-space-service-worker",
+     "autoDelete": true,
+     "boot": true
+    },
+    {
+     "name": "oa-space-service-worker-data",
+     "autoDelete": false,
+     "boot": false
+    }
+   ],
+   "labels": {
+    "openagents-commit": "40064cbf48c54cbb5ad0a318aea479d69c5a1b31",
+    "openagents-issue": "11814",
+    "openagents-owner": "platform",
+    "openagents-role": "worker",
+    "openagents-service": "space"
+   }
+  }
+ ],
+ "firewalls": [
+  {
+   "name": "oa-space-service-builder-cluster",
+   "direction": "INGRESS",
+   "disabled": false,
+   "sourceRanges": [
+    "10.219.14.10/31",
+    "10.219.14.12/32"
+   ],
+   "destinationRanges": null,
+   "allowed": [
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "6443"
+     ]
+    },
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "10250"
+     ]
+    },
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "9800"
+     ]
+    },
+    {
+     "IPProtocol": "udp",
+     "ports": [
+      "51820"
+     ]
+    }
+   ],
+   "denied": null,
+   "targetTags": [
+    "oa-space-service-control",
+    "oa-space-service-worker",
+    "oa-space-service-builder"
+   ],
+   "sourceTags": null,
+   "priority": 1000
+  },
+  {
+   "name": "oa-space-service-cluster",
+   "direction": "INGRESS",
+   "disabled": false,
+   "sourceRanges": [
+    "10.219.14.10/31"
+   ],
+   "destinationRanges": null,
+   "allowed": [
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "6443"
+     ]
+    },
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "10250"
+     ]
+    },
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "9800"
+     ]
+    },
+    {
+     "IPProtocol": "udp",
+     "ports": [
+      "51820"
+     ]
+    }
+   ],
+   "denied": null,
+   "targetTags": [
+    "oa-space-service-control",
+    "oa-space-service-worker"
+   ],
+   "sourceTags": null,
+   "priority": 1000
+  },
+  {
+   "name": "oa-space-service-credential-rpc",
+   "direction": "INGRESS",
+   "disabled": false,
+   "sourceRanges": [
+    "10.219.14.11/32",
+    "10.219.14.12/32"
+   ],
+   "destinationRanges": null,
+   "allowed": [
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "9810"
+     ]
+    }
+   ],
+   "denied": null,
+   "targetTags": [
+    "oa-space-service-control"
+   ],
+   "sourceTags": null,
+   "priority": 1000
+  },
+  {
+   "name": "oa-space-service-iap",
+   "direction": "INGRESS",
+   "disabled": false,
+   "sourceRanges": [
+    "35.235.240.0/20"
+   ],
+   "destinationRanges": null,
+   "allowed": [
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "22"
+     ]
+    }
+   ],
+   "denied": null,
+   "targetTags": [
+    "oa-space-service-operator"
+   ],
+   "sourceTags": null,
+   "priority": 1000
+  },
+  {
+   "name": "oa-space-service-run-edge",
+   "direction": "INGRESS",
+   "disabled": false,
+   "sourceRanges": [
+    "10.219.15.0/24"
+   ],
+   "destinationRanges": null,
+   "allowed": [
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "8443"
+     ]
+    },
+    {
+     "IPProtocol": "tcp",
+     "ports": [
+      "8444"
+     ]
+    }
+   ],
+   "denied": null,
+   "targetTags": [
+    "oa-space-service-control"
+   ],
+   "sourceTags": null,
+   "priority": 1000
+  }
+ ],
+ "cloud_run": [
+  {
+   "name": "oa-space-service-api",
+   "ingress": "internal",
+   "revision": "oa-space-service-api-00001-ld8",
+   "images": [
+    "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/edge@sha256:e43938f09ba25e260a0829fa536871b9f35745278ce4a35abde5895a522a5c2e"
+   ],
+   "egress": "private-ranges-only",
+   "max_scale": "1"
+  },
+  {
+   "name": "oa-space-service-computers",
+   "ingress": "internal",
+   "revision": "oa-space-service-computers-00005-lgs",
+   "images": [
+    "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/computers@sha256:a58dc392c6623358490e32ccb0dbe8467652d78e099e4e6b48ceb4e77634c8db",
+    "gcr.io/cloud-sql-connectors/cloud-sql-proxy@sha256:86e4f3cc266020e7ee07740df78d7511e2c340c274b56f84d80b7251913af9ad"
+   ],
+   "egress": "all-traffic",
+   "max_scale": "1"
+  },
+  {
+   "name": "oa-space-service-data",
+   "ingress": "internal",
+   "revision": "oa-space-service-data-00001-t8x",
+   "images": [
+    "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/edge@sha256:e43938f09ba25e260a0829fa536871b9f35745278ce4a35abde5895a522a5c2e"
+   ],
+   "egress": "private-ranges-only",
+   "max_scale": "1"
+  },
+  {
+   "name": "oa-space-service-keys",
+   "ingress": "internal",
+   "revision": "oa-space-service-keys-00001-mqx",
+   "images": [
+    "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/space-key-broker@sha256:4fddc6ad74009cb607ffdc2405fca32e8cd1e27bf3dc56764c809bb28d064ba0"
+   ],
+   "egress": null,
+   "max_scale": "1"
+  }
+ ],
+ "cloud_sql": {
+  "name": "oa-space-service",
+  "state": "RUNNABLE",
+  "databaseVersion": "POSTGRES_18",
+  "tier": "db-custom-1-3840",
+  "ipv4Enabled": false,
+  "privateNetwork": "oa-space-service",
+  "sslMode": "ENCRYPTED_ONLY",
+  "authorizedNetworks": [],
+  "ip_types": [
+   "PRIVATE"
+  ],
+  "backup": {
+   "enabled": true,
+   "pointInTimeRecoveryEnabled": true,
+   "transactionLogRetentionDays": 7
+  },
+  "retained_backups": {
+   "retainedBackups": 7,
+   "retentionUnit": "COUNT"
+  },
+  "dataDiskSizeGb": "20",
+  "storageAutoResizeLimit": "40"
+ },
+ "buckets_from_operator_machine": {
+  "openagentsgemini-oa-space-service-snapshots": "refused: IP filtering condition",
+  "openagentsgemini-oa-space-service-templates": "not attempted after the first refusal"
+ },
+ "external_ingress_probe_from_operator_machine": [
+  "oa-space-service-api 404 Page not foundError: Page not foundThe requested URL was not found on this server. HTTP404",
+  "oa-space-service-computers 404 Page not foundError: Page not foundThe requested URL was not found on this server. HTTP404",
+  "oa-space-service-data 404 Page not foundError: Page not foundThe requested URL was not found on this server. HTTP404",
+  "oa-space-service-keys 404 Page not foundError: Page not foundThe requested URL was not found on this server. HTTP404"
+ ],
+ "alert_policies": [
+  "nodes_ready channels= 0 cmp= COMPARISON_LT thr= 2.0 dur= 120s",
+  "worker_disk_free_bytes channels= 0 cmp= COMPARISON_LT thr= 64424509440.0 dur= 300s",
+  "oldest_unfinished_upload_seconds channels= 0 cmp= COMPARISON_GT thr= 3600.0 dur= 120s",
+  "oldest_orphan_seconds channels= 0 cmp= COMPARISON_GT thr= 7200.0 dur= 120s",
+  "sandbox_count channels= 0 cmp= COMPARISON_GT thr= 2.0 dur= 120s",
+  "services_ready_ratio channels= 0 cmp= COMPARISON_LT thr= 1.0 dur= 120s",
+  "oldest_operation_seconds channels= 0 cmp= COMPARISON_GT thr= 600.0 dur= 120s",
+  "oldest_transition_seconds channels= 0 cmp= COMPARISON_GT thr= 900.0 dur= 120s",
+  "collector_errors channels= 0 cmp= COMPARISON_GT thr= None dur= 120s"
+ ]
+}

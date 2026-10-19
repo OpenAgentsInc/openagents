@@ -1,0 +1,9 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "reason": "Not advertised: the deployment has one worker and its capabilities advertise no cross-host restore.",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "not_required"
+}

@@ -460,6 +460,10 @@ scope and no record. Machine actions are scoped and logged instead:
 | `process.stop` | Sending `SIGTERM` to a process |
 | `host.upgrade` | Upgrading the host app from `main` (#12056) |
 
+Since 2026-10-18 (#12135) no scope is required: agents prune, stop and
+upgrade without a grant, and the log and the safety refusals still apply. The
+records below stay in case grants come back.
+
 The owner grants scopes to an **agent ID**: the chat's ID for an app chat,
 or its session (`claude-code:ID`, `codex:ID`) for a terminal agent. A grant
 never goes by a role name such as "Foreman": a fork of an agent holds
@@ -480,9 +484,9 @@ An app chat acts through its `machine_action` or `upgrade_host` tool,
 which passes its own chat ID: the tools have no argument for naming another
 agent. From its own shell, a chat can also run `openagents lease prune PATH
 --reason TEXT`, `openagents lease stop PID --reason TEXT`, or `openagents
-host-upgrade --agent CHAT_ID`. Each action needs a reason. Without the
-grant, it's refused, and the agent hands the job to a chat or asks the
-owner.
+host-upgrade --agent CHAT_ID`. Each action needs a reason. No grant is needed
+(#12135); the owner's `openagents lease grant machine` records are kept but
+no longer gate anything.
 
 **Proof of the chat (#12067).** A chat ID is no secret, so naming one
 proves nothing. The engine keeps a key in `grants/machine.key` in the lease

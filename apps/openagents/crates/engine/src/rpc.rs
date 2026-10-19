@@ -1535,6 +1535,7 @@ fn forwardable(method: &str) -> bool {
             | methods::QUEUE_COMMAND
             | methods::TAKE_PROJECT_ACTION_SETUP
             | methods::WATCH_DOC_MESSAGES
+            | methods::READ_CHAT_WINDOW
             // The queue lives on the chat doc, and only its host may send from
             // it — same addressing as the command ledger next door.
             | methods::WATCH_QUEUE
@@ -2124,6 +2125,29 @@ impl RpcService for EngineRpc {
                         })
                         .boxed(),
                 ))
+            }
+            methods::READ_CHAT_WINDOW => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                struct WindowParams {
+                    chat_id: String,
+                    #[serde(default)]
+                    limit: Option<usize>,
+                    #[serde(default)]
+                    offset: Option<usize>,
+                }
+                let p: WindowParams = parse_params(params)?;
+                let limit = p.limit.unwrap_or(40).clamp(1, 500);
+                let offset = p.offset.unwrap_or(0);
+                let host = self.doc_host.clone();
+                let (total, entries) = tokio::task::spawn_blocking(move || {
+                    let handle = host.open(&p.chat_id)?;
+                    Ok::<_, crate::EngineError>(handle.doc().read_window(limit, offset)?)
+                })
+                .await
+                .map_err(|e| RpcError::Failed(e.to_string()))?
+                .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&serde_json::json!({ "total": total, "entries": entries }))
             }
             methods::WATCH_QUEUE => {
                 let p: ChatParams = parse_params(params)?;

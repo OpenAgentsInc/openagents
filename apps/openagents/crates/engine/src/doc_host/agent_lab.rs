@@ -135,6 +135,7 @@ impl DocHost {
                     })
                     .collect(),
                 seen_ms: 0,
+                always_on: self.is_always_on(),
             },
             &lease.cancel,
         )

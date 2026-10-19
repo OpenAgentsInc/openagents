@@ -1,0 +1,117 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "finding": "Stopping a running turn never confirmed cancellation. The turn ended \"We couldn't confirm whether the command stopped\" and the computer stayed in phase turn until deleted, so the delayed-child check could not run.",
+ "issue": 12141,
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "failed",
+ "stopped_turn": {
+  "command": "rm -f /home/user/q16-late*; (sleep 12; echo late1 > /home/user/q16-late1) & setsid sh -c 'sleep 12; echo late2 > /home/user/q16-late2' </dev/null >/dev/null 2>&1 & nohup sh -c 'sleep 12; echo late3 > /home/user/q16-late3' </dev/null >/dev/null 2>&1 & sh -c 'trap \"\" TERM; sleep 12; echo late4 > /home/user/q16-late4' & sleep 40; echo finished",
+  "computer": "cmp_033a0b863352ba6e3074",
+  "created_at": "2026-10-18T20:16:17.994357+00:00",
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "exit_code": null,
+  "finished_at": "2026-10-18T20:16:21.260215+00:00",
+  "generation": 6,
+  "id": "trn_80d5d09fc9d7c6922a08",
+  "started_at": "2026-10-18T20:16:18.230978+00:00",
+  "state": "failed",
+  "stderr": "",
+  "stdout": "",
+  "timeout_seconds": 58
+ },
+ "uncertain_turns_in_run": [
+  {
+   "computer": "cmp_14ca9fd4a34edae55f3e",
+   "created_at": "2026-10-18T19:28:06.551503+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T19:28:06.935663+00:00",
+   "id": "trn_9b0d5a9ec36431cc12b5",
+   "state": "failed",
+   "stdout_bytes": 112
+  },
+  {
+   "computer": "cmp_58e3ee0bc6e14d82e4f5",
+   "created_at": "2026-10-18T19:33:03.791119+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T19:33:04.138631+00:00",
+   "id": "trn_509ae91a8a1edb731043",
+   "state": "failed",
+   "stdout_bytes": 112
+  },
+  {
+   "computer": "cmp_6ec2fd089ad23548b166",
+   "created_at": "2026-10-18T19:34:28.585768+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T19:34:29.146096+00:00",
+   "id": "trn_6d337a175915c14ed3d4",
+   "state": "failed",
+   "stdout_bytes": 75
+  },
+  {
+   "computer": "cmp_033a0b863352ba6e3074",
+   "created_at": "2026-10-18T20:16:17.994357+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T20:16:21.260215+00:00",
+   "id": "trn_80d5d09fc9d7c6922a08",
+   "state": "failed",
+   "stdout_bytes": 0
+  },
+  {
+   "computer": "cmp_e85bfe79222693256361",
+   "created_at": "2026-10-18T20:37:13.347077+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T20:37:13.742346+00:00",
+   "id": "trn_e9c23e4e0e9251cfcb70",
+   "state": "failed",
+   "stdout_bytes": 37
+  },
+  {
+   "computer": "cmp_5c4921832cc839d1f276",
+   "created_at": "2026-10-18T21:14:04.505486+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T21:14:04.875826+00:00",
+   "id": "trn_7a914993f5779644723a",
+   "state": "failed",
+   "stdout_bytes": 176
+  },
+  {
+   "computer": "cmp_0a3f361e82af6e8e39db",
+   "created_at": "2026-10-18T21:51:33.620505+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T21:51:48.980816+00:00",
+   "id": "trn_124f206a67e726930a2b",
+   "state": "failed",
+   "stdout_bytes": 0
+  },
+  {
+   "computer": "cmp_6adadafbc610bbcad4e3",
+   "created_at": "2026-10-18T22:33:02.776644+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T22:33:03.199492+00:00",
+   "id": "trn_454a84a257a03b386084",
+   "state": "failed",
+   "stdout_bytes": 112
+  },
+  {
+   "computer": "cmp_f5abd0d6178073c2ceaa",
+   "created_at": "2026-10-18T22:56:05.06775+00:00",
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "finished_at": "2026-10-18T22:56:05.525174+00:00",
+   "id": "trn_c6084a8a4e4c2e430b66",
+   "state": "failed",
+   "stdout_bytes": 111
+  }
+ ]
+}

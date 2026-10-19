@@ -25,7 +25,7 @@ bindgen = ["uniffi/cli"]
 [dependencies]
 chat-home = { path = "../../../../crates/chat-home", features = ["ui"] }
 uuid.workspace = true
-coder-ui = { path = "../../../../crates/coder-ui" }
+coder-ui = { path = "../../../../crates/coder-ui", default-features = false }
 openagents-brand.workspace = true
 coder-sharing = { path = "../../../../crates/coder-sharing" }
 coder-access = { path = "../../../../crates/coder-access", default-features = false }

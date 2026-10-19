@@ -52,6 +52,8 @@ pub struct SpaceDriver {
     lifecycle_journal: Option<std::sync::Arc<dyn LifecycleJournal>>,
     network_profile: Option<computer_credentials::policy::Profile>,
     identified_commands: bool,
+    /// Command session each computer is running, so a stop can cancel it.
+    active: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
 }
 
 // Never include server bodies, URLs, or websocket frames in errors: an
@@ -153,6 +155,7 @@ impl SpaceDriver {
             lifecycle_journal: None,
             network_profile: None,
             identified_commands: false,
+            active: Default::default(),
         })
     }
 
@@ -390,11 +393,9 @@ impl SpaceDriver {
                         .map_err(|_| Error::unknown("couldn't check the earlier request"))?
                     {
                         LifecycleClaim::Accepted(id) => Some(id),
-                        LifecycleClaim::Uncertain => {
-                            return Err(Error::unknown(
-                                "the earlier request couldn't be confirmed",
-                            ));
-                        }
+                        // Saved without a provider answer: resend under the same
+                        // idempotency key, which SPACE honors.
+                        LifecycleClaim::Uncertain => None,
                         LifecycleClaim::Rejected => {
                             if let Some(next) = journal
                                 .authorized_retry(&request, computer, action)
@@ -609,74 +610,170 @@ impl SpaceDriver {
             ))
             .await
             .map_err(|_| Error::unknown("couldn't authenticate the command attachment"))?;
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        let mut sent = false;
-        while let Some(message) = socket.next().await {
-            let message =
-                message.map_err(|_| Error::unknown("the command stream was interrupted"))?;
-            let Message::Text(text) = message else {
-                continue;
-            };
-            let frame: Value =
-                serde_json::from_str(&text).map_err(|_| Error::unknown("invalid command frame"))?;
-            match field(&frame, "type")? {
-                "process_started" if has_secrets && !sent => {
-                    let mut input = zeroize::Zeroizing::new(String::new());
-                    for (name, value) in &exec.secret_env {
-                        input.push_str(&format!("export {name}={}\n", quote(value.expose())));
+        self.active
+            .lock()
+            .unwrap()
+            .insert(computer.to_owned(), id.to_owned());
+        let lost = std::cell::Cell::new(false);
+        let streamed: Result<ExecOutput> = async {
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            let mut sent = false;
+            while let Some(message) = socket.next().await {
+                let message =
+                    match message {
+                        Ok(m) => m,
+                        Err(_) => {
+                            lost.set(true);
+                            return Err(Error::unknown("the command stream was interrupted"));
+                        }
+                    };
+                let Message::Text(text) = message else {
+                    continue;
+                };
+                let frame: Value =
+                    serde_json::from_str(&text).map_err(|_| Error::unknown("invalid command frame"))?;
+                match field(&frame, "type")? {
+                    "process_started" if has_secrets && !sent => {
+                        let mut input = zeroize::Zeroizing::new(String::new());
+                        for (name, value) in &exec.secret_env {
+                            input.push_str(&format!("export {name}={}\n", quote(value.expose())));
+                        }
+                        let encoded = zeroize::Zeroizing::new(BASE64.encode(input.as_bytes()));
+                        let payload = zeroize::Zeroizing::new(
+                            json!({"type":"input", "seq":1, "data_base64":encoded.as_str()})
+                                .to_string(),
+                        );
+                        socket
+                            .send(Message::Text(payload.to_string().into()))
+                            .await
+                            .map_err(|_| Error::unknown("couldn't send command input"))?;
+                        socket
+                            .send(Message::Text(
+                                json!({"type":"close_stdin", "seq":2}).to_string().into(),
+                            ))
+                            .await
+                            .map_err(|_| Error::unknown("couldn't finish command input"))?;
+                        sent = true;
                     }
-                    let encoded = zeroize::Zeroizing::new(BASE64.encode(input.as_bytes()));
-                    let payload = zeroize::Zeroizing::new(
-                        json!({"type":"input", "seq":1, "data_base64":encoded.as_str()})
-                            .to_string(),
-                    );
-                    socket
-                        .send(Message::Text(payload.to_string().into()))
-                        .await
-                        .map_err(|_| Error::unknown("couldn't send command input"))?;
-                    socket
-                        .send(Message::Text(
-                            json!({"type":"close_stdin", "seq":2}).to_string().into(),
-                        ))
-                        .await
-                        .map_err(|_| Error::unknown("couldn't finish command input"))?;
-                    sent = true;
-                }
-                "stdout" | "stderr" => {
-                    let decoded = BASE64
-                        .decode(field(&frame, "data_base64")?)
-                        .map_err(|_| Error::unknown("invalid command output"))?;
-                    exec.output.append(frame["type"] == "stderr", &decoded);
-                    if decoded.len() > MAX_OUTPUT.saturating_sub(stdout.len() + stderr.len()) {
-                        return Err(Error::unknown("command output exceeded its size limit"));
+                    "stdout" | "stderr" => {
+                        let decoded = BASE64
+                            .decode(field(&frame, "data_base64")?)
+                            .map_err(|_| Error::unknown("invalid command output"))?;
+                        exec.output.append(frame["type"] == "stderr", &decoded);
+                        if decoded.len() > MAX_OUTPUT.saturating_sub(stdout.len() + stderr.len()) {
+                            return Err(Error::unknown("command output exceeded its size limit"));
+                        }
+                        if frame["type"] == "stdout" {
+                            stdout.extend(decoded);
+                        } else {
+                            stderr.extend(decoded);
+                        }
                     }
-                    if frame["type"] == "stdout" {
-                        stdout.extend(decoded);
-                    } else {
-                        stderr.extend(decoded);
+                    "process_exited" => {
+                        let code = frame["exit_code"]
+                            .as_i64()
+                            .ok_or_else(|| Error::unknown("missing command exit code"))?;
+                        let _ = socket.close(None).await;
+                        return Ok(ExecOutput {
+                            code,
+                            stdout: String::from_utf8_lossy(&stdout).into_owned(),
+                            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+                        });
                     }
+                    "error" | "resync_required" | "closed" => {
+                        lost.set(true);
+                        return Err(Error::unknown("the command stream could not finish"));
+                    }
+                    _ => {}
                 }
-                "process_exited" => {
-                    let code = frame["exit_code"]
-                        .as_i64()
-                        .ok_or_else(|| Error::unknown("missing command exit code"))?;
-                    let _ = socket.close(None).await;
-                    return Ok(ExecOutput {
-                        code,
-                        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-                        stderr: String::from_utf8_lossy(&stderr).into_owned(),
-                    });
-                }
-                "error" | "resync_required" | "closed" => {
-                    return Err(Error::unknown("the command stream could not finish"));
-                }
-                _ => {}
             }
+            lost.set(true);
+            Err(Error::unknown(
+                "the command stream ended without an exit result",
+            ))
         }
-        Err(Error::unknown(
-            "the command stream ended without an exit result",
-        ))
+        .await;
+        let result = match streamed {
+            // The data plane can close a stream before its exit frame. The
+            // session's own record still says how the process ended.
+            Err(e) if lost.get() => match self.session_exit(id, false).await {
+                Some(code) => Ok(ExecOutput {
+                    code,
+                    stdout: String::from_utf8_lossy(&stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&stderr).into_owned(),
+                }),
+                None => Err(e),
+            },
+            other => other,
+        };
+        let mut active = self.active.lock().unwrap();
+        if active.get(computer).is_some_and(|s| s == id) {
+            active.remove(computer);
+        }
+        result
+    }
+
+    /// The session's exit code once SPACE reports it ended. With `wait`
+    /// false this still polls briefly for the record to settle.
+    async fn session_exit(&self, id: &str, long: bool) -> Option<i64> {
+        if !valid_id(id, "proc_") {
+            return None;
+        }
+        let tries = if long { 40 } else { 10 };
+        for _ in 0..tries {
+            if let Ok(v) = self
+                .json(Method::GET, &format!("/v1/sessions/{id}"), None, None)
+                .await
+            {
+                let v = v.get("session").unwrap_or(&v);
+                let ended = matches!(
+                    v["state"].as_str().or_else(|| v["status"].as_str()),
+                    Some("exited" | "completed" | "finished" | "killed" | "cancelled")
+                ) || v.get("exited_at").is_some_and(|x| !x.is_null());
+                if ended {
+                    if let Some(code) = v["exit_code"].as_i64() {
+                        return Some(code);
+                    }
+                    // Killed by a signal: no code, but the process is gone.
+                    if let Some(sig) = v["signal"].as_i64() {
+                        return Some(128 + sig);
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        None
+    }
+
+    /// Kill the computer's running command session (its whole process
+    /// group) and wait until SPACE reports it ended.
+    async fn cancel_session(&self, computer: &str) -> Outcome<()> {
+        let id = self.active.lock().unwrap().get(computer).cloned();
+        let Some(id) = id else {
+            return Outcome::unknown("No running command session is known for this computer.");
+        };
+        if !valid_id(&id, "proc_") {
+            return Outcome::unknown("invalid command session ID");
+        }
+        let kill = self
+            .response(
+                Method::POST,
+                &format!("/v1/sessions/{id}/kill"),
+                Some(json!({"signal":"KILL", "process_group":true})),
+                None,
+            )
+            .await;
+        // A refusal because the session already ended is fine; the status
+        // read below decides.
+        let _ = kill;
+        match self.session_exit(&id, true).await {
+            Some(_) => {
+                self.active.lock().unwrap().remove(computer);
+                Outcome::done(())
+            }
+            None => Outcome::unknown("The command stop could not be confirmed."),
+        }
     }
 }
 
@@ -848,6 +945,9 @@ impl Driver for SpaceDriver {
         }
     }
 
+    async fn cancel_exec(&self, computer: &str) -> Outcome<()> {
+        self.cancel_session(computer).await
+    }
     async fn start_command(&self, computer: &str, spec: &CommandSpec) -> Outcome<String> {
         self.start_identified(computer, spec).await
     }

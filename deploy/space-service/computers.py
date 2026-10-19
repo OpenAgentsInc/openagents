@@ -63,7 +63,10 @@ def configure(passwords):
     print(json.dumps({'database':'space_computers','numeric_secret_version':1,'passwords_in_sql_or_argv':False,'password_update_requested':passwords}))
 
 
-def deploy(commit,digest,template,vcpu,memory,disable_creates):
+def deploy(commit,digest,template,vcpu,memory,disable_creates,rollout=None,keep_project_iam=False,poll_ms=None):
+    rollout=rollout or ['space-qualification-11814']
+    # Explicit test owners use the web's digest form; at most two for dedicated tests.
+    if len(rollout)>2 or len(set(rollout))!=len(rollout) or any(not (o=='space-qualification-11814' or re.fullmatch(r'account:[0-9a-f]{64}',o)) for o in rollout): raise RuntimeError('Name one or two exact test owners.')
     if not re.fullmatch(r'[0-9a-f]{40}',commit) or not re.fullmatch(r'sha256:[0-9a-f]{64}',digest): raise RuntimeError('Provide full source and image identities.')
     if not re.fullmatch(r'(seed|code-runtime)@sha256:[0-9a-f]{64}',template): raise RuntimeError('Pin the published system template digest.')
     if (vcpu,memory)!=(None,None) and (vcpu!=2 or memory not in (1024,2048,4096)): raise RuntimeError('Use the measured small template shape within the qualification capacity.')
@@ -81,7 +84,7 @@ def deploy(commit,digest,template,vcpu,memory,disable_creates):
         'id':'space-private-11814','kind':'space','api_url':'https://oa-space-service-api-ezxz4mgdsq-uc.a.run.app',
         'data_plane_url':'https://oa-space-service-data-ezxz4mgdsq-uc.a.run.app','credential_env':'SPACE_API_TOKEN',
         'template':template,'scope':'00000000-0000-4000-8000-000000011814','capacity':2,'admit_new':not disable_creates,
-        'rollout_accounts':['space-qualification-11814'],'shapes':({'small':{'vcpus':vcpu,'memory_mib':memory,'min_disk_gib':None}} if vcpu is not None else {})}]}
+        'rollout_accounts':rollout,'shapes':({'small':{'vcpus':vcpu,'memory_mib':memory,'min_disk_gib':None}} if vcpu is not None else {})}]}
     registry=json.dumps(config,separators=(',',':')).encode()
     registry_key='registry-'+hashlib.sha256(registry).hexdigest()[:16]
     install('computers-'+registry_key,registry)
@@ -89,7 +92,10 @@ def deploy(commit,digest,template,vcpu,memory,disable_creates):
     for key in keys:
         cloud('secrets','add-iam-policy-binding',PREFIX+'-computers-'+key,'--member=serviceAccount:'+identity,'--role=roles/secretmanager.secretAccessor')
     condition=f'''expression=resource.name == "projects/{PROJECT}/instances/{PREFIX}" && resource.type == "sqladmin.googleapis.com/Instance",title=space-native-instance'''
-    cloud('projects','add-iam-policy-binding',PROJECT,'--member=serviceAccount:'+identity,'--role=roles/cloudsql.client','--condition='+condition)
+    # A redeploy by an operator without project IAM rights keeps the existing
+    # instance-scoped binding; the new revision's proxy startup then proves it.
+    if not keep_project_iam:
+        cloud('projects','add-iam-policy-binding',PROJECT,'--member=serviceAccount:'+identity,'--role=roles/cloudsql.client','--condition='+condition)
     previous=cloud('run','services','describe',name,'--region='+REGION,missing=True)
     if previous:
         if previous['metadata'].get('labels',{}).get('openagents-issue')!='11814': raise RuntimeError('The candidate service belongs to another deployment.')
@@ -99,6 +105,10 @@ def deploy(commit,digest,template,vcpu,memory,disable_creates):
     labels.update({'openagents-commit':current_commit,'openagents-image-source':commit})
     env=[{'name':'OA_COMPUTERS_REGISTRY_FILE','value':'/var/run/space-registry/registry.json'},
          {'name':'OA_COMPUTERS_KEEP_STOPPED_DAYS','value':'1'}]
+    if poll_ms is not None:
+        # Service and driver polling bound readiness; the defaults are 1 s and 3 s.
+        if not 50<=poll_ms<=3000: raise RuntimeError('Choose a poll interval from 50 to 3000 ms.')
+        env+=[{'name':'OA_COMPUTERS_POLL_MS','value':str(poll_ms)},{'name':'OA_COMPUTERS_DRIVER_POLL_MS','value':str(poll_ms)}]
     for variable,key in (('OA_COMPUTERS_DATABASE_URL','proxy-dsn'),('OA_COMPUTERS_TOKEN','token'),('SPACE_API_TOKEN','space-token')):
         env.append({'name':variable,'valueFrom':{'secretKeyRef':{'name':PREFIX+'-computers-'+key,'key':'1'}}})
     spec={'apiVersion':'serving.knative.dev/v1','kind':'Service','metadata':{'name':name,'labels':labels,'annotations':{'run.googleapis.com/ingress':'internal'}},
@@ -124,7 +134,7 @@ def deploy(commit,digest,template,vcpu,memory,disable_creates):
         config_path=Path(directory)/'service.json';config_path.write_text(json.dumps(spec));config_path.chmod(0o600)
         result=cloud('run','services','replace',str(config_path),'--region='+REGION)
     cloud('run','services','add-iam-policy-binding',name,'--region='+REGION,'--member=allUsers','--role=roles/run.invoker')
-    print(json.dumps({'service':name,'url':result['status']['url'],'image':digest,'image_source':commit,'deployment_source':current_commit,'template':template,'admit_new':not disable_creates,'qualification_only':True}))
+    print(json.dumps({'service':name,'url':result['status']['url'],'image':digest,'image_source':commit,'deployment_source':current_commit,'template':template,'admit_new':not disable_creates,'rollout_accounts':rollout,'poll_ms':poll_ms,'registry_secret':PREFIX+'-computers-'+registry_key,'qualification_only':True}))
 
 
 if __name__=='__main__':
@@ -136,7 +146,10 @@ if __name__=='__main__':
     parser.add_argument('--small-vcpus',type=int)
     parser.add_argument('--small-memory-mib',type=int)
     parser.add_argument('--disable-creates',action='store_true')
+    parser.add_argument('--poll-ms',type=int,help='Service and driver poll interval in milliseconds.')
+    parser.add_argument('--keep-project-iam',action='store_true',help='Redeploy without changing the existing instance-scoped Cloud SQL binding.')
+    parser.add_argument('--rollout-account',action='append',help='An exact test owner (account:HEX); repeat for a second.')
     args=parser.parse_args()
     if args.deploy_commit:
-        deploy(args.deploy_commit,args.deploy_digest,args.template,args.small_vcpus,args.small_memory_mib,args.disable_creates)
+        deploy(args.deploy_commit,args.deploy_digest,args.template,args.small_vcpus,args.small_memory_mib,args.disable_creates,args.rollout_account,args.keep_project_iam,args.poll_ms)
     else: configure(args.set_password)

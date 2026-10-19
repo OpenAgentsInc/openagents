@@ -1,0 +1,33 @@
+{
+ "clone_operation": {
+  "done": "2026-10-18T20:34:06Z",
+  "id": "c0a059d9-d070-4cbe-bb82-237a00000032",
+  "requested": "2026-10-18T20:28:45Z",
+  "started": "2026-10-18T20:28:56Z"
+ },
+ "computers_check": {
+  "computer_A_present": true,
+  "computers": 48,
+  "latest_turn": "2026-10-18T20:28:22Z",
+  "latest_usage_event": "2026-10-18T20:28:41Z",
+  "migrations": 16,
+  "tls": true
+ },
+ "contains_credentials": false,
+ "data_loss_boundary": "Point in time of the clone request (20:28:45Z); the latest usage event in the copy is 4 s earlier.",
+ "deleted": "copy deleted after the check (operation 064b5c15-db92-4255-bd2d-461400000032)",
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "method": "database-recovery.py clone to the separate oa-space-service-restore-11814 instance; the maintained instance was not changed.",
+ "native_check": {
+  "instance_ca_sha256": "b689ce5da4362ce8d352f41dc222d2ea926410493f22014cf4e4674f07a3a09f",
+  "migrations": 13,
+  "private_tls": true,
+  "published_seed": true,
+  "qualification_org": true
+ },
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "recovery_time_s": 321,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed"
+}

@@ -80,6 +80,10 @@ pub mod methods {
     /// `{chatId, sourceChatId}` → `Chat`. Replaced `ForkSideChat` (#11963).
     pub const FORK_CHAT: &str = "ForkChat";
     pub const WATCH_DOC_MESSAGES: &str = "WatchDocMessages";
+    /// A bounded window of a chat's messages, newest first by offset, so a
+    /// reader never loads a very long transcript. `{ chatId, limit, offset }`
+    /// → `{ total, entries }`; `offset` skips that many rows from the end.
+    pub const READ_CHAT_WINDOW: &str = "ReadChatWindow";
     /// Explicit user navigation, `{chatId}`. Prioritizes this device's sync
     /// connection; automatic subscriptions and retries must not call it.
     pub const FOCUS_CHAT: &str = "FocusChat";

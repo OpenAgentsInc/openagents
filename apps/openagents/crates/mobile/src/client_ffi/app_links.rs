@@ -10,6 +10,7 @@ use openagents_account::openagents::ScannedLogin;
 use openagents_connect::code::ConnectCode;
 
 const CONNECT_PREFIX: &str = "https://openagents.com/connect#";
+const LOGIN_ORIGIN: &str = "https://openagents.com/login/scan";
 const MAX_APP_LINK_BYTES: usize = 2048;
 
 /// A route recognized by the OpenAgents app-link classifier.
@@ -81,10 +82,14 @@ fn dispatch_android_app_link_at(url: &str, now: u64) -> Option<AndroidAppLinkDis
         return Some(AndroidAppLinkDispatch { operation, code });
     }
 
-    ScannedLogin::parse(url).map(|_| AndroidAppLinkDispatch {
-        operation: AndroidAppLinkOperation::ReviewWebsiteSignIn,
-        code: Some(url.to_owned()),
-    })
+    // Only the verified site's sign-in links route here; the parser alone
+    // accepts any HTTPS origin.
+    ScannedLogin::parse(url)
+        .filter(|_| url.trim_start().starts_with(LOGIN_ORIGIN))
+        .map(|_| AndroidAppLinkDispatch {
+            operation: AndroidAppLinkOperation::ReviewWebsiteSignIn,
+            code: Some(url.to_owned()),
+        })
 }
 
 fn classify_android_app_link_at(url: &str, now: u64) -> Option<AndroidAppLink> {

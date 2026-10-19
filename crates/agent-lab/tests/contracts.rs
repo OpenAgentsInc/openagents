@@ -352,6 +352,7 @@ fn no_project_files_is_a_choice_and_the_report_says_so() {
         runners: vec![],
         tools: vec![],
         seen_ms: 1,
+        always_on: false,
     });
     s.draft.host = "mac".into();
     s.action("project-files").unwrap();
@@ -488,6 +489,7 @@ fn legacy_lab_references_cannot_be_added_but_can_be_removed() {
             sha256: "a".repeat(64),
         }],
         seen_ms: 0,
+        always_on: false,
     });
     s.draft.draft.components.push(Component::ToolContext {
         binding: "part".into(),

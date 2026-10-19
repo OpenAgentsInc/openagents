@@ -233,6 +233,11 @@ sends an unspecified create boot mode, which the [node manager resolves
 to cold](https://github.com/perplexityai/SPACE/blob/de87b436c35dac056564bdd5b2a113c9046e189b/crates/libs/sbx/mgr/server/src/service/reconcile.rs#L1044).
 The snapshot API check
 therefore fails its boot-mode guard even with a ready base snapshot.
+The maintained deployment builds the shim with
+`deploy/space-service/shim-boot-mode.patch` (applied by `shim-build.sh`), which
+requests the base snapshot on creates without a custom disk size; the node
+falls back to cold when no ready base exists (#12145). Install the rebuilt
+shim, then rerun the snapshot qualification with the worker observer.
 To measure the available node optimization separately, enable 2 GiB base
 snapshots and use the explicit node CLI:
 

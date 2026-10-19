@@ -1,0 +1,98 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "example_run": "not started: the example accepts only the staging or production origin, neither offers fast-sandbox, and no staging test credential is available",
+ "finding": "The public SDK computers workflow cannot run on fast-sandbox: no public deployment offers the placement, and SPACE placements refuse the workflow file upload and command execution.",
+ "issue": 12146,
+ "owners": "synthetic account digests only; no owner account or host",
+ "private_space_refusals": {
+  "capabilities": [
+   {
+    "offers": [
+     {
+      "command_sessions": false,
+      "default_environment_available": true,
+      "enrolled_host": null,
+      "environment_artifacts": false,
+      "memory_suspend": true,
+      "profiles": [
+       "core",
+       "suspend"
+      ],
+      "shapes": {
+       "large": {
+        "memory_mib": 8192,
+        "vcpus": 8
+       },
+       "medium": {
+        "memory_mib": 4096,
+        "vcpus": 4
+       },
+       "small": {
+        "memory_mib": 1024,
+        "vcpus": 2
+       }
+      },
+      "sizes": [
+       "small",
+       "medium",
+       "large"
+      ],
+      "workspace_attachment": false,
+      "workspace_file_bytes": null
+     }
+    ],
+    "placement": "fast-sandbox"
+   }
+  ],
+  "command": [
+   422,
+   {
+    "error": {
+     "code": "unsupported",
+     "message": "Commands aren't available for this computer."
+    }
+   }
+  ],
+  "computer": "cmp_26605c08d167222f9f21",
+  "get_file": {
+   "body": {
+    "error": "files_unsupported",
+    "message": "File transfers are unavailable on this computer."
+   },
+   "status": 501
+  },
+  "put_file": {
+   "body": {
+    "error": "files_unsupported",
+    "message": "File transfers are unavailable on this computer."
+   },
+   "status": 501
+  }
+ },
+ "public_capabilities": {
+  "credential": "production dedicated test account (#11601); staging rejects it as signed out; no staging test credential is on the operator machine",
+  "observed_at": "2026-10-18T23:17:06.594429Z",
+  "production": {
+   "default_placement": "our-cloud",
+   "error": null,
+   "origin": "https://api.openagents.com/v1",
+   "placements": [
+    "our-cloud"
+   ]
+  },
+  "staging": {
+   "default_placement": null,
+   "error": {
+    "code": "signed_out",
+    "message": "Sign in to continue."
+   },
+   "origin": "https://staging.openagents.com/v1",
+   "placements": []
+  },
+  "test_run_header": true
+ },
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "failed"
+}

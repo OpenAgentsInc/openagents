@@ -83,6 +83,65 @@ pub struct AgentRequest<T> {
     pub body: T,
 }
 
+/// One line of an agent's decision log (#12046). `kind` and `at` (Unix
+/// milliseconds) are the only fields every entry has; the rest belongs to the
+/// host that wrote it and is kept as written, so a new kind of entry needs no
+/// SDK release.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionEntry {
+    pub kind: String,
+    pub at: i64,
+    #[serde(flatten)]
+    pub fields: serde_json::Map<String, serde_json::Value>,
+}
+impl DecisionEntry {
+    /// Whether the entry can be stored: a short word for `kind` and no more
+    /// than [`MAX_DECISION_BYTES`] of JSON.
+    pub fn validate(&self) -> Result<(), Error> {
+        let kind_ok = !self.kind.is_empty()
+            && self.kind.len() <= 32
+            && self
+                .kind
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b == b'_');
+        let size = serde_json::to_vec(self)
+            .map_err(|_| Error::InvalidReference)?
+            .len();
+        if kind_ok && self.at >= 0 && size <= MAX_DECISION_BYTES {
+            Ok(())
+        } else {
+            Err(Error::InvalidReference)
+        }
+    }
+}
+/// The most JSON bytes one decision entry may take.
+pub const MAX_DECISION_BYTES: usize = 16 * 1024;
+
+/// The request body that appends one entry to an agent's decision log. The
+/// same `request_id` appends once, however often it is sent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordDecision {
+    pub request_id: String,
+    pub entry: DecisionEntry,
+}
+
+/// An entry as the account keeps it: `cursor` orders it in the log.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredDecision {
+    pub cursor: String,
+    pub request_id: String,
+    pub entry: DecisionEntry,
+}
+
+/// One page of an agent's decision log, oldest first. `next` is the cursor to
+/// pass as `after` for the following page; `None` means the log ends here.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionPage {
+    pub data: Vec<StoredDecision>,
+    pub next: Option<String>,
+}
+
 /// Returns a new random request ID as 64 hexadecimal characters.
 pub fn request_id() -> Result<String, Error> {
     let mut bytes = [0_u8; 32];
@@ -261,6 +320,64 @@ impl Agents<'_> {
             )
             .await?;
         Ok(())
+    }
+    /// Appends `entry` to the decision log of the agent `agent`. Sending the
+    /// same `request_id` again appends nothing, so a retry after a timeout is
+    /// safe. Only the account owner reads or writes the log.
+    pub async fn record_decision(
+        &self,
+        agent: &str,
+        request_id: &str,
+        entry: &DecisionEntry,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        if !valid_id(agent) || !valid_id(request_id) {
+            return Err(Error::InvalidReference);
+        }
+        entry.validate()?;
+        let body = serde_json::to_value(RecordDecision {
+            request_id: request_id.into(),
+            entry: entry.clone(),
+        })
+        .map_err(|_| Error::InvalidReference)?;
+        let _: serde_json::Value = self
+            .send(
+                Method::POST,
+                &["agent-definitions", agent, "decisions"],
+                &[],
+                Some(body),
+                cancel,
+            )
+            .await?;
+        Ok(())
+    }
+    /// Reads the decision log of the agent `agent`, oldest first, starting
+    /// after the cursor `after` (the whole log from the start when `None`).
+    pub async fn decisions(
+        &self,
+        agent: &str,
+        after: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<DecisionPage, Error> {
+        if !valid_id(agent) {
+            return Err(Error::InvalidReference);
+        }
+        let digits = |a: &str| !a.is_empty() && a.len() <= 20 && a.bytes().all(|b| b.is_ascii_digit());
+        if after.is_some_and(|a| !digits(a)) {
+            return Err(Error::InvalidCursor);
+        }
+        let q: Vec<(&str, String)> = after
+            .map(|a| ("after", a.to_string()))
+            .into_iter()
+            .collect();
+        self.send(
+            Method::GET,
+            &["agent-definitions", agent, "decisions"],
+            &q,
+            None,
+            cancel,
+        )
+        .await
     }
     /// Sets what the agent `id` wakes on, as a new revision of its
     /// definition's `autonomy`. Wakes are definition data, so a fork copies
