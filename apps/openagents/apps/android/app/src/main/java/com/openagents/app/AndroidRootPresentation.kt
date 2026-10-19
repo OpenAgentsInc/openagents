@@ -772,6 +772,14 @@ internal class AndroidRootPresentation(
         }
     }
 
+    /** Debug demo only: open a screen directly, as the iOS `-route` launch option does. */
+    internal fun openDebugRoute(route: String) {
+        when {
+            route == "drawer" -> panes.showNavigation()
+            route.startsWith("chat:") -> guarded { owner.selectSession(route.removePrefix("chat:")); panes.showSession() }
+        }
+    }
+
     fun offerNotificationTap(link: String, request: String) {
         if (!closed) guarded { owner.offerNotificationTap(link, request); panes.showSession() }
     }

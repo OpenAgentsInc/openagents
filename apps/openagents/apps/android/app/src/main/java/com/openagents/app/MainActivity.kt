@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
         } else {
             rootPresentation = AndroidRootPresentation(this, app, app.androidHost(BuildConfig.DEBUG && debugLaunch.demo))
             setContentView(requireNotNull(rootPresentation).view())
+            if (BuildConfig.DEBUG && debugLaunch.demo) debugLaunch.route?.let { rootPresentation?.openDebugRoute(it) }
         }
         if (savedInstanceState == null) routeAppLink(intent)
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
