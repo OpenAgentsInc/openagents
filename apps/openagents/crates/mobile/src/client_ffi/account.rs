@@ -355,17 +355,17 @@ impl CoreAccount {
         let http = invitation_http()?;
         super::on_runtime(async move {
             Ok(async {
-            let body = invitation_post(
-                &http,
-                &website,
-                &bearer,
-                "v1/projects/invitations/preview",
-                &code,
-            )
-            .await?;
-            invitation_preview(&body)
-        }
-        .await)
+                let body = invitation_post(
+                    &http,
+                    &website,
+                    &bearer,
+                    "v1/projects/invitations/preview",
+                    &code,
+                )
+                .await?;
+                invitation_preview(&body)
+            }
+            .await)
         })
         .await?
     }
@@ -381,24 +381,24 @@ impl CoreAccount {
         let http = invitation_http()?;
         super::on_runtime(async move {
             Ok(async {
-            let body = invitation_post(
-                &http,
-                &website,
-                &bearer,
-                "v1/projects/invitations/accept",
-                &code,
-            )
-            .await?;
-            body["id"]
-                .as_str()
-                .or_else(|| body["project"]["id"].as_str())
-                .filter(|id| !id.is_empty())
-                .map(str::to_owned)
-                .ok_or_else(|| CoreError::HostError {
-                    message: "The invitation service returned an invalid project.".into(),
-                })
-        }
-        .await)
+                let body = invitation_post(
+                    &http,
+                    &website,
+                    &bearer,
+                    "v1/projects/invitations/accept",
+                    &code,
+                )
+                .await?;
+                body["id"]
+                    .as_str()
+                    .or_else(|| body["project"]["id"].as_str())
+                    .filter(|id| !id.is_empty())
+                    .map(str::to_owned)
+                    .ok_or_else(|| CoreError::HostError {
+                        message: "The invitation service returned an invalid project.".into(),
+                    })
+            }
+            .await)
         })
         .await?
     }
