@@ -272,6 +272,8 @@ pub enum Suite {
     /// through a nested workspace's manifest. `--all-features` pulled large
     /// optional stacks into every check (#12162).
     Tests,
+    Format,
+    Check,
     /// `cargo clippy -q -p PACKAGE --all-targets -- -D warnings`, which
     /// builds the package's build scripts and macros, so it runs inside
     /// the same boundary as the tests.
@@ -286,10 +288,15 @@ impl Suite {
     pub fn args(self, package: &str, manifest: Option<&str>) -> Vec<String> {
         let mut words: Vec<&str> = match self {
             Suite::Tests => vec!["test", "-q", "-p", package],
+            Suite::Format => vec!["fmt", "-p", package],
+            Suite::Check => vec!["check", "-q", "-p", package, "--tests"],
             Suite::Clippy => vec!["clippy", "-q", "-p", package, "--all-targets"],
         };
         if let Some(manifest) = manifest {
             words.extend(["--manifest-path", manifest]);
+        }
+        if self == Suite::Format {
+            words.extend(["--", "--check"]);
         }
         if self == Suite::Clippy {
             words.extend(["--", "-D", "warnings"]);
@@ -302,6 +309,8 @@ impl Suite {
     pub fn noun(self) -> &'static str {
         match self {
             Suite::Tests => "tests",
+            Suite::Format => "formatting",
+            Suite::Check => "compile checks",
             Suite::Clippy => "Clippy lints",
         }
     }
@@ -362,11 +371,6 @@ async fn run_commands(
             record,
         );
     };
-    // An evaluation run fetched its crates before the flow; fetching here
-    // would let a changed manifest pull code from the network.
-    if !setup.evaluation {
-        record.prefetch = prefetch(setup, &cargo, packages).await;
-    }
     let spec = coder_boundary::Boundary::writing(&setup.workdir);
     let spec = if setup.target.starts_with(&setup.workdir) {
         spec
@@ -427,65 +431,97 @@ async fn run_commands(
     // One boundary covers every package. It stays held, with its scratch
     // directory, until the last test command is reaped.
     let mut failures = Vec::new();
-    for package in packages {
-        say!("issue ▸ running the {package} {}", suite.noun());
-        let manifest = super::manifest_of(&setup.workdir, package);
-        let mut args = suite.args(package, manifest.as_deref());
-        if let Some(test) = selected {
-            args.extend([test.to_string(), "--".to_string(), "--exact".to_string()]);
+    let stages: &[Suite] = if suite == Suite::Tests && selected.is_none() {
+        &[Suite::Format, Suite::Check, Suite::Tests]
+    } else {
+        std::slice::from_ref(&suite)
+    };
+    for &suite in stages {
+        if suite != Suite::Format && !setup.evaluation && record.prefetch == "skipped" {
+            let started = std::time::Instant::now();
+            record.prefetch = prefetch(setup, &cargo, packages).await;
+            record.notes.push(format!(
+                "Dependency fetch: {:.3} s.",
+                started.elapsed().as_secs_f64()
+            ));
+            if record.prefetch.starts_with("failed") {
+                failures.push(format!("Dependency fetch {}", record.prefetch));
+                break;
+            }
         }
-        let command = match &confined {
-            Some(boundary) => match boundary.command(&cargo, &args) {
-                Ok(mut command) => {
-                    environment(&mut command, setup, boundary.scratch());
-                    if boundary.confines_reads() {
-                        let path = command
-                            .get_envs()
-                            .find(|(name, _)| *name == "PATH")
-                            .and_then(|(_, value)| value.map(OsString::from))
-                            .unwrap_or_default();
-                        command.env("PATH", boundary.search_path(&path));
-                        if let Some(scratch) = boundary.scratch() {
-                            command.env("HOME", scratch);
+        let started = std::time::Instant::now();
+        for package in packages {
+            say!("issue ▸ running the {package} {}", suite.noun());
+            let manifest = super::manifest_of(&setup.workdir, package);
+            let mut args = suite.args(package, manifest.as_deref());
+            if let Some(test) = selected {
+                args.extend([test.to_string(), "--".to_string(), "--exact".to_string()]);
+            }
+            let command = match &confined {
+                Some(boundary) => match boundary.command(&cargo, &args) {
+                    Ok(mut command) => {
+                        environment(&mut command, setup, boundary.scratch());
+                        if boundary.confines_reads() {
+                            let path = command
+                                .get_envs()
+                                .find(|(name, _)| *name == "PATH")
+                                .and_then(|(_, value)| value.map(OsString::from))
+                                .unwrap_or_default();
+                            command.env("PATH", boundary.search_path(&path));
+                            if let Some(scratch) = boundary.scratch() {
+                                command.env("HOME", scratch);
+                            }
                         }
+                        command
                     }
+                    Err(error) => {
+                        failures.push(format!("the {package} tests could not run: {error}"));
+                        continue;
+                    }
+                },
+                None => {
+                    let mut command = Command::new(&cargo);
+                    command.args(&args);
+                    environment(&mut command, setup, None);
                     command
                 }
-                Err(error) => {
-                    failures.push(format!("the {package} tests could not run: {error}"));
-                    continue;
-                }
-            },
-            None => {
-                let mut command = Command::new(&cargo);
-                command.args(&args);
-                environment(&mut command, setup, None);
-                command
+            };
+            let ended = supervise::Job::from_command(command)
+                .bounded(supervise::Limits::within(deadline()).keeping(OUTPUT_KEPT))
+                .run()
+                .await;
+            if suite == Suite::Tests {
+                record.failed_tests.extend(
+                    failing_names(&ended)
+                        .into_iter()
+                        .map(|test| (package.clone(), test)),
+                );
             }
-        };
-        let ended = supervise::Job::from_command(command)
-            .bounded(supervise::Limits::within(deadline()).keeping(OUTPUT_KEPT))
-            .run()
-            .await;
-        if suite == Suite::Tests {
-            record.failed_tests.extend(
-                failing_names(&ended)
-                    .into_iter()
-                    .map(|test| (package.clone(), test)),
-            );
+            let failed = match suite {
+                Suite::Tests => failure(package, &args, &ended),
+                Suite::Clippy => lint_failure(package, &args, &ended),
+                Suite::Format | Suite::Check => failure(package, &args, &ended),
+            };
+            // A missing or ignored test is not evidence that it passes.
+            let failed = if selected.is_some() && failed.is_none() && !ran_test(&ended) {
+                Some(format!("the {package} selected test did not run"))
+            } else {
+                failed
+            };
+            if let Some(failure) = failed {
+                failures.push(failure);
+                if suite != Suite::Tests {
+                    break;
+                }
+            }
         }
-        let failed = match suite {
-            Suite::Tests => failure(package, &args, &ended),
-            Suite::Clippy => lint_failure(package, &args, &ended),
-        };
-        // A missing or ignored test is not evidence that it passes.
-        let failed = if selected.is_some() && failed.is_none() && !ran_test(&ended) {
-            Some(format!("the {package} selected test did not run"))
-        } else {
-            failed
-        };
-        if let Some(failure) = failed {
-            failures.push(failure);
+        record.notes.push(format!(
+            "{}: {:.3} s.",
+            suite.noun(),
+            started.elapsed().as_secs_f64()
+        ));
+        if !failures.is_empty() {
+            break;
         }
     }
     drop(confined);
@@ -790,6 +826,7 @@ printf '%s|%s|%s\n' "$PWD" "$*" "$CARGO_TARGET_DIR" >> "$RUN_LOG"
 fail() { echo 'tests::timing --- FAILED'; echo 'test result: FAILED. 0 passed; 1 failed;'; exit 101; }
 pass() { echo 'test result: ok. 1 passed; 0 failed;'; exit 0; }
 case "$*" in
+  fmt*|check*) exit 0 ;;
   *tests::regression*)
     case "$PWD" in */base) pass ;; *) echo "test tests::regression ... FAILED"; exit 101 ;; esac ;;
   *tests::timing*)
@@ -822,8 +859,22 @@ esac
             ],
             build: unavailable,
         };
-        let (problems, record) = run_with_base(&setup, &["example".into()], Some(&base)).await;
+        let (problems, mut record) = run_with_base(&setup, &["example".into()], Some(&base)).await;
+        record.notes.retain(|note| !note.ends_with(" s."));
         let runs = std::fs::read_to_string(log).unwrap();
+        assert!(
+            runs.lines()
+                .next()
+                .unwrap()
+                .contains("fmt -p example -- --check")
+        );
+        assert!(
+            runs.lines()
+                .nth(1)
+                .unwrap()
+                .contains("check -q -p example --tests")
+        );
+        let runs = runs.lines().skip(2).collect::<Vec<_>>().join("\n");
         let lines: Vec<_> = runs.lines().collect();
         assert_eq!(
             lines.len(),
