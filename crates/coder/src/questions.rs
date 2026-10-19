@@ -891,12 +891,14 @@ mod tests {
             [
                 "openagents.agent-request.v1",
                 "openagents.agent-steer.v1",
+                "openagents.change-overlap.v1",
                 "openagents.completion.v1",
                 "openagents.departure-docstring.v1",
                 "openagents.departure-rationale.v1",
                 "openagents.departure-standard-method.v1",
                 "openagents.evidence-relevance.v1",
                 "openagents.expectation-support.v1",
+                "openagents.failure-on-main.v1",
                 "openagents.independence.v1",
                 "openagents.independence.v2",
                 "openagents.insight-share.v1",
@@ -906,8 +908,10 @@ mod tests {
                 "openagents.method-conformance.v1",
                 "openagents.program.v1",
                 "openagents.react-or-continue.v1",
+                "openagents.ready-to-close.v1",
                 "openagents.review-finding.v1",
                 "openagents.rumor-repeat.v1",
+                "openagents.run-progress.v1",
                 "openagents.world-place.v1"
             ]
         );
