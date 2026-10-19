@@ -2,7 +2,7 @@
  "schema": "openagents.computers.space-identity-observation.v1",
  "observed": "2026-10-18T19:20Z-22:40Z",
  "identity": {
-  "web_commit": "b4442103d26e9723e90cb63f3002c8a10f462b03",
+  "web_commit": "c3cb714436f653efae340ebeb252c3c28fc068b8",
   "computers_commit": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
   "sdk_commit": "a53a9731f996a8d93f22f1af11f5158894288c54",
   "native_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
@@ -15,7 +15,7 @@
   "memory_mib": 1024
  },
  "how_each_value_was_observed": {
-  "web_commit": "Staging web service openagents-web-1-staging serves image openagents-web@sha256:5b0a1307c84ff33f71ac32042cb8bbca1c67615f0aea5ec15cce14fe504653cd, tagged stg-b4442103d2. The public SDK and web paths were not exercised against SPACE (see public_sdk).",
+  "web_commit": "Staging web openagents-web-1-staging serves openagents-web@sha256:0dc0b4fcb60a138d76aae781f70f50631cbcb466f6e3926e6e0f97b3b9831bda (tag stg-c3cb714436) at the final observation; earlier in the run it served stg-b4442103d2.",
   "computers_commit": "Private Computers service oa-space-service-computers runs computers@sha256:a58dc392c6623358490e32ccb0dbe8467652d78e099e4e6b48ceb4e77634c8db, label openagents-image-source.",
   "sdk_commit": "Repository commit of the operator tooling and SDK source used for this run (origin/main at start).",
   "native_commit": "Every native service logs version de87b436c35dac056564bdd5b2a113c9046e189b (upstream perplexityai/SPACE pin); the running API image is the previous api-runtime override built from 2fc47130 with seed-kernel.patch.",
@@ -146,5 +146,15 @@
   "a": "digest of acct_space_qual_11816_a (no real account)",
   "b": "digest of acct_space_qual_11816_b (no real account)"
  },
- "contains_credentials": false
+ "contains_credentials": false,
+ "public_path": {
+  "staging_web_revision": "openagents-web-1-staging-00207-vkf",
+  "staging_computers_image": "oa-computers@sha256:616c46f51f2be85205c4f61c5b0146d675e223a5cd8fd1ccd7b4dcbfceec9daa (source 3d30b4ec683c738d003d93e6c1137891d0d11766)",
+  "staging_computers_revision": "oa-computers-staging-00021-qjf",
+  "binding": "deploy/space-service/staging_binding.py; registry default oa-boat-primary; space-private-11814 for acct_4570d993d9897bdd only"
+ },
+ "host_configuration": [
+  "worker: locked dev and deploy accounts (#12144)",
+  "NAT: oa-space-service-staging-run added; 1024 to 8192 ports per instance"
+ ]
 }

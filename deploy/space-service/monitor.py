@@ -7,6 +7,7 @@ import json
 import os
 import socket
 import subprocess
+import time
 import xml.etree.ElementTree as ET
 from cluster_secrets import identity, secret
 from database_check import credential
@@ -93,6 +94,86 @@ def collect():
     return measurements,errors
 
 
+# Email alerts to the owner through Resend (owner decision, 2026-10-18). The
+# conditions match monitoring.py's policies; a condition opens after it holds
+# for its duration and clears when it stops holding. Each change sends one
+# email, at most MAIL_PER_HOUR per hour, deduplicated by a durable state file.
+ALERTS=[('nodes_ready','lt',2,120),('services_ready_ratio','lt',1,120),
+    ('collector_errors','gt',0,120),('oldest_operation_seconds','gt',600,120),
+    ('oldest_transition_seconds','gt',900,120),('worker_disk_free_bytes','lt',60*1024**3,300),
+    ('sandbox_count','gt',2,120),('oldest_orphan_seconds','gt',7200,120),
+    ('oldest_unfinished_upload_seconds','gt',3600,120),
+    ('computers_stranded','gt',0,300),('computers_unknown','gt',0,900),
+    ('oldest_requested_lifecycle_seconds','gt',600,120)]
+ALERT_STATE='/var/lib/oa-space-monitor/alert-state.json'  # the unit's StateDirectory
+MAIL_PER_HOUR=6
+
+
+def breached(kind,value,threshold):
+    return value<threshold if kind=='lt' else value>threshold
+
+
+def transitions(state,values,now):
+    """Advance per-alert state; return the (metric, 'open'|'clear', value) changes."""
+    changes=[]
+    for metric,kind,threshold,duration in ALERTS:
+        entry=state.setdefault(metric,{'since':None,'open':False})
+        if metric not in values: continue
+        if breached(kind,values[metric],threshold):
+            entry['since']=entry['since'] or now
+            if not entry['open'] and now-entry['since']>=duration:
+                entry['open']=True;changes.append((metric,'open',values[metric]))
+        else:
+            if entry['open']: changes.append((metric,'clear',values[metric]))
+            entry['since']=None;entry['open']=False
+    return changes
+
+
+def admit_mail(state,now,count=1):
+    sent=[t for t in state.get('_sent',[]) if now-t<3600]
+    allowed=max(0,MAIL_PER_HOUR-len(sent))
+    state['_sent']=sent
+    return min(allowed,count)
+
+
+def send_mail(subject,text):
+    value=secret('alert-mail',identity())
+    connection=http.client.HTTPSConnection('api.resend.com',timeout=20)
+    try:
+        connection.request('POST','/emails',body=json.dumps({'from':value['from'],'to':[value['to']],'subject':subject,'text':text}),
+            headers={'Authorization':'Bearer '+value['api_key'],'Content-Type':'application/json','User-Agent':'openagents-space-monitor'})
+        response=connection.getresponse();raw=response.read(65536)
+        if response.status!=200: raise RuntimeError(f'Resend returned HTTP {response.status}.')
+        return json.loads(raw).get('id')
+    finally: connection.close()
+
+
+def alert(values,now=None):
+    now=now or time.time()
+    try: state=json.loads(open(ALERT_STATE).read())
+    except (OSError,ValueError): state={}
+    changes=transitions(state,values,now)
+    allowed=admit_mail(state,now,len(changes))
+    if changes and allowed:
+        lines=[f"{'Opened' if change=='open' else 'Cleared'}: {metric} = {value:g}" for metric,change,value in changes]
+        subject='SPACE private: '+', '.join(f"{m} {'opened' if c=='open' else 'cleared'}" for m,c,_ in changes)[:150]
+        text='\n'.join(lines)+'\n\nRunbook: deploy/space-service/README.md (private SPACE service).\n'
+        try:
+            send_mail(subject,text);state['_sent'].append(now)
+        except (OSError,ValueError,KeyError,RuntimeError) as error:
+            # Keep the change pending so the next run retries the email.
+            for metric,change,_ in changes: state[metric]['open']=(change!='open')
+            print(json.dumps({'alert_mail_error':type(error).__name__}))
+    try:
+        tmp=ALERT_STATE+'.tmp'
+        with open(tmp,'w') as handle: handle.write(json.dumps(state))
+        os.chmod(tmp,0o600);os.replace(tmp,ALERT_STATE)
+    except OSError:
+        # Measurements still publish; a missing state file only repeats an email later.
+        print(json.dumps({'alert_state_error':True}))
+    return changes
+
+
 def main(publish):
     if os.getuid()!=0 or socket.gethostname().split('.')[0]!='oa-space-service-control':
         raise RuntimeError('Run measurements on the owned control node.')
@@ -109,11 +190,16 @@ def main(publish):
             response=connection.getresponse();response.read(65536)
             if response.status!=200: raise RuntimeError(f'Metric publication returned HTTP {response.status}.')
         finally: connection.close()
-    print(json.dumps({'observed_at':timestamp,'measurements':values,'probe_errors':errors,'published':publish}))
+    changes=alert(values) if publish else []
+    print(json.dumps({'observed_at':timestamp,'measurements':values,'probe_errors':errors,'published':publish,'alert_changes':changes}))
     if errors: raise SystemExit(1)
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--publish',action='store_true')
-    main(parser.parse_args().publish)
+    parser.add_argument('--test-mail',action='store_true',help='Send one test email and exit.')
+    args=parser.parse_args()
+    if args.test_mail:
+        print(json.dumps({'resend_id':send_mail('SPACE monitoring test','A test email from the private SPACE monitor on oa-space-service-control.\nAlert emails go to this address when a condition opens and clears.\n')}))
+    else: main(args.publish)

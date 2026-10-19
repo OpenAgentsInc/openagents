@@ -1040,11 +1040,15 @@ fn sweep_with_locks(
         Duration::MAX
     });
     let scan_budget = scan_budget_override.unwrap_or(&scan_budget);
+    let mut marker_errors = Vec::new();
     let mut targets: Vec<Target> = layout
         .targets()
         .into_iter()
         .filter(|(path, _)| selected.is_none_or(|selected| path == selected))
         .map(|(path, kind)| {
+            if !dry_run && let Err(error) = super::exclude_from_spotlight(&path) {
+                marker_errors.push((path.clone(), error));
+            }
             let holder = match &procs {
                 Ok(procs) => procs
                     .iter()
@@ -1130,6 +1134,13 @@ fn sweep_with_locks(
             },
         }),
     };
+    for (path, error) in marker_errors {
+        run.flag(
+            &path,
+            0,
+            format!("could not exclude build folder from Spotlight: {error}"),
+        );
+    }
     run.checkpoint(true);
     if !dry_run && let Err(error) = save(&layout.state, &watch) {
         run.flag(
@@ -1891,6 +1902,13 @@ fn measure(path: &Path) -> Measured {
             if let Ok(entries) = std::fs::read_dir(&path) {
                 stack.extend(entries.flatten().map(|entry| entry.path()));
             }
+            continue;
+        }
+        // Repairing Spotlight's marker is not a use of the build artifacts.
+        if path
+            .file_name()
+            .is_some_and(|name| name == ".metadata_never_index")
+        {
             continue;
         }
         if let (Ok(modified), Ok(accessed)) = (meta.modified(), meta.accessed()) {

@@ -5,6 +5,7 @@ struct NewSessionDraft: Equatable, Codable {
     var projectId: String?
     /// Projectless sessions run on an explicit host.
     var hostId: String?
+    var hostName: String?
     var branch: String?
     var worktree = false
     var harness = "claude-code"
@@ -38,12 +39,11 @@ struct HostOption: Equatable {
         name == AppModel.cloudHostName ? "OpenAgents Cloud" : name
     }
 
-    /// OpenAgents Cloud for "Run on" next to a project's checkouts: it has
-    /// none, so without this the menu's only cloud choice was the account
-    /// chat (#12020). Picking it runs the session there with no project.
-    static func cloudBesides(_ checkouts: [ProjectOption], in hosts: [HostOption], continuationDevice: String?) -> HostOption? {
-        hosts.first { h in
-            h.name == AppModel.cloudHostName
+    /// Other online computers can run without the project. Keep the selected
+    /// computer in the list when it goes offline so its status stays visible.
+    static func besides(_ checkouts: [ProjectOption], in hosts: [HostOption], selectedDevice: String?, continuationDevice: String?) -> [HostOption] {
+        hosts.filter { h in
+            (h.online || h.id == selectedDevice)
                 && !checkouts.contains { $0.device == h.id }
                 && (continuationDevice == nil || h.id == continuationDevice)
         }
@@ -99,6 +99,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         if let continuation {
             self.draft.projectId = nil
             self.draft.hostId = continuation.deviceId()
+            self.draft.hostName = app.hostOptions.first { $0.id == continuation.deviceId() }?.displayName
         }
         super.init(nibName: nil, bundle: nil)
         // Pick up where the page was left (closed without sending).
@@ -164,6 +165,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         composer.translatesAutoresizingMaskIntoConstraints = false
         composer.placeholder = "Describe the task"
         composer.chipsAlwaysVisible = true
+        composer.pinnedChipIds = ["model", "host"]
         composer.attachMenu = { [weak self] in
             guard let self else { return UIMenu() }
             return AttachmentPicker.menu(host: self, limit: 8 - self.composer.images.count) { [weak self] in self?.composer.addImages($0) }
@@ -202,12 +204,14 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             fill,
             composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8),
         ])
-        if draft.projectId == nil, draft.hostId == nil { draft.projectId = app.projectOptions.first?.id }
         if draft.projectId == nil, draft.hostId == nil {
-            // No projects yet: run on the first reachable host.
-            draft.hostId = app.hostOptions.first(where: \.online)?.id ?? app.hostOptions.first?.id
+            if let host = app.hostOptions.first(where: \.online) {
+                draft.hostId = host.id
+                draft.hostName = host.displayName
+                draft.projectId = app.projectOptions.first { $0.device == host.id && $0.online }?.id
+            }
         }
-        onOpenAgents = offersOpenAgents && !app.projectOptions.contains(where: \.online) && !app.hostOptions.contains(where: \.online)
+        onOpenAgents = offersOpenAgents && draft.projectId == nil && draft.hostId == nil && !app.hostOptions.contains(where: \.online)
         agentsObservation = app.observe { [weak self] in self?.agentsChanged() }
         app.customAgents?.refresh()
         loadModels()
@@ -307,8 +311,8 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             }
         } else {
             let host = app.hostOptions.first { $0.id == draft.hostId }
-            chips.append(ComposerChip(id: "project", title: "No project", symbol: "tray"))
-            chips.append(ComposerChip(id: "host", title: host?.displayName ?? "Choose host", symbol: "desktopcomputer"))
+            chips.append(ComposerChip(id: "project", title: draft.projectId == nil ? "No project" : "Unavailable project", symbol: "tray"))
+            chips.append(ComposerChip(id: "host", title: host?.displayName ?? draft.hostName ?? (draft.hostId == nil ? "Choose computer" : "Unavailable computer"), symbol: "desktopcomputer"))
         }
         let model = models.first { $0.harness == draft.harness && $0.id == draft.model } ?? models.first { $0.harness == draft.harness }
         // Never the harness name in place of a model: a model this host
@@ -367,18 +371,23 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         sections.append(UIMenu(options: .displayInline, children: [
             UIAction(title: "No Project…", image: UIImage(systemName: "tray"), state: draft.projectId == nil ? .on : .off) { [weak self] _ in
                 guard let self else { return }
+                let computer = self.deviceId
+                let name = self.project?.deviceName ?? self.draft.hostName
+                self.onOpenAgents = false
                 self.draft.projectId = nil
-                self.draft.hostId = self.draft.hostId ?? self.app.hostOptions.first(where: \.online)?.id ?? self.app.hostOptions.first?.id
+                self.draft.hostId = computer.isEmpty ? nil : computer
+                self.draft.hostName = name
+                self.draft.branch = nil
+                self.draft.worktree = false
+                self.rememberDraft()
                 self.loadModels()
             },
             UIAction(title: "New Project…", image: UIImage(systemName: "folder.badge.plus")) { [weak self] _ in
                 guard let self else { return }
                 let vc = NewProjectViewController(app: self.app)
                 vc.onCreated = { [weak self] id in
-                    self?.draft.projectId = id
-                    self?.draft.hostId = nil
-                    self?.draft.branch = nil
-                    self?.loadModels()
+                    guard let self, let project = self.app.projectOptions.first(where: { $0.id == id }) else { return }
+                    self.pickCheckout(project)
                 }
                 self.present(UINavigationController(rootViewController: vc), animated: true)
             },
@@ -398,30 +407,29 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
 
     private func pickCheckout(_ p: ProjectOption) {
         if p.id != draft.projectId { draft.branch = nil }
+        onOpenAgents = false
         draft.projectId = p.id
-        draft.hostId = nil
+        draft.hostId = p.device
+        draft.hostName = p.deviceName
+        rememberDraft()
         loadModels()
     }
 
-    /// With a project: its checkouts, by host (the path tells apart several
-    /// on one host). Without: every host — project-less sessions run in its
-    /// home.
+    /// Every online computer is available. Matching checkouts keep the
+    /// project; other computers start without it.
     private func hostMenu() -> UIMenu {
-        let checkouts = self.checkouts
+        let checkouts = self.checkouts.filter { $0.online || $0.id == draft.projectId }
         var hosts: [UIMenuElement] = openAgentsChoice()
-        if !checkouts.isEmpty {
-            hosts += checkouts.map { p in
-                let shared = checkouts.filter { $0.device == p.device }.count > 1
-                return UIAction(title: p.deviceName, subtitle: shared ? p.path : (p.online ? "Online" : "Offline"), image: UIImage(systemName: "desktopcomputer"), state: !onOpenAgents && p.id == draft.projectId ? .on : .off) { [weak self] _ in
-                    self?.onOpenAgents = false
-                    self?.pickCheckout(p)
-                }
+        hosts += checkouts.map { p in
+            let shared = checkouts.filter { $0.device == p.device }.count > 1
+            return UIAction(title: p.deviceName, subtitle: p.online ? (shared ? p.path : "Online") : "Offline", image: UIImage(systemName: "desktopcomputer"), attributes: p.online ? [] : .disabled, state: !onOpenAgents && p.id == draft.projectId ? .on : .off) { [weak self] _ in
+                self?.pickCheckout(p)
             }
-            if let cloud = HostOption.cloudBesides(checkouts, in: app.hostOptions, continuationDevice: continuation?.deviceId()) {
-                hosts.append(hostAction(cloud, leavingProject: true))
-            }
-        } else {
-            hosts += app.hostOptions.filter { continuation == nil || $0.id == continuation?.deviceId() }.map { hostAction($0) }
+        }
+        hosts += HostOption.besides(checkouts, in: app.hostOptions, selectedDevice: deviceId, continuationDevice: continuation?.deviceId())
+            .map { hostAction($0, leavingProject: draft.projectId != nil) }
+        if !deviceId.isEmpty, !app.hostOptions.contains(where: { $0.id == deviceId }), !checkouts.contains(where: { $0.device == deviceId }) {
+            hosts.append(UIAction(title: draft.hostName ?? "Unavailable computer", subtitle: "Unavailable", image: UIImage(systemName: "desktopcomputer"), attributes: .disabled, state: onOpenAgents ? .off : .on) { _ in })
         }
         if continuation == nil, app.offersCloudHost, app.cloudHostDevice?.online != true {
             let starting = app.cloudHost?.running == true
@@ -445,7 +453,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// to a project's checkouts, it says it leaves the project.
     private func hostAction(_ h: HostOption, leavingProject: Bool = false) -> UIAction {
         let status = h.online ? "Online" : "Offline"
-        return UIAction(title: h.displayName, subtitle: leavingProject ? "No project · \(status)" : status, image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: !onOpenAgents && draft.projectId == nil && h.id == draft.hostId ? .on : .off) { [weak self] _ in
+        return UIAction(title: h.displayName, subtitle: leavingProject ? "No project · \(status)" : status, image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), attributes: h.online ? [] : .disabled, state: !onOpenAgents && draft.projectId == nil && h.id == draft.hostId ? .on : .off) { [weak self] _ in
             guard let self else { return }
             self.onOpenAgents = false
             if self.draft.projectId != nil {
@@ -454,6 +462,8 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
                 self.draft.worktree = false
             }
             self.draft.hostId = h.id
+            self.draft.hostName = h.displayName
+            self.rememberDraft()
             self.loadModels()
         }
     }
@@ -577,6 +587,10 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             app.newSessionImages = []
             return CloudChatViewController.start(text, from: self, app: app)
         }
+        guard app.hostOptions.contains(where: { $0.id == deviceId && $0.online }), draft.projectId == nil || project != nil else {
+            showAgentError("Choose an online computer before sending.")
+            return false
+        }
         if let continuation {
             guard !creatingContinuation else { return false }
             creatingContinuation = true
@@ -606,7 +620,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             return false
         }
         guard let chatId = app.createSession(draft: draft, text: text, images: images) else {
-            let alert = UIAlertController(title: "Couldn't start the session", message: "Choose a project or a host that can run it.", preferredStyle: .alert)
+            let alert = UIAlertController(title: "Couldn't start the session", message: "Choose a project or a computer that can run it.", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))
             present(alert, animated: true)
             return false

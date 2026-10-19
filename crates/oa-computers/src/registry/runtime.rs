@@ -162,6 +162,10 @@ struct Deployment {
     network_profile: Option<computer_credentials::policy::Profile>,
     #[serde(default)]
     credential_proxy: bool,
+    /// SPACE only: run identified commands in this guest directory without the
+    /// credential proxy (#12146). Credential names stay refused.
+    #[serde(default)]
+    command_workspace: Option<String>,
     /// A non-secret provider tenant/installation name, when URLs alone are ambiguous.
     #[serde(default)]
     scope: Option<String>,
@@ -207,6 +211,11 @@ fn load_enrolled(config: &EnrolledConfiguration) -> Result<computer_enrolled::En
 fn yes() -> bool {
     true
 }
+/// Only SPACE runs identified commands from a configured guest workspace (#12146).
+fn command_workspace_allowed(kind: Kind, workspace: Option<&str>) -> bool {
+    workspace.is_none() || matches!(kind, Kind::Space)
+}
+
 fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }
@@ -302,6 +311,7 @@ impl Configuration {
                 withdrawn_artifacts: BTreeSet::new(),
                 network_profile: None,
                 credential_proxy: false,
+                command_workspace: None,
                 scope: match kind {
                     Kind::Archil => env("ARCHIL_REGION"),
                     _ => None,
@@ -405,6 +415,12 @@ async fn load(
                 } else {
                     driver
                 };
+                let driver = match &deployment.command_workspace {
+                    Some(workspace) => driver
+                        .with_command_sessions(workspace)
+                        .map_err(|_| settings())?,
+                    None => driver,
+                };
                 Ok(RuntimeDriver::Space(driver))
             }
             #[cfg(not(feature = "space"))]
@@ -481,6 +497,7 @@ pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
                 || deployment.space_compatibility.is_some()
                 || !deployment.withdrawn_artifacts.is_empty()
                 || deployment.scope.is_some()
+                || deployment.command_workspace.is_some()
                 || deployment
                     .placement
                     .is_some_and(|p| p != Placement::Enrolled)
@@ -498,7 +515,9 @@ pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
             drivers.insert(deployment.id, RuntimeDriver::Enrolled(driver));
             continue;
         }
-        if deployment.enrolled.is_some() {
+        if deployment.enrolled.is_some()
+            || !command_workspace_allowed(deployment.kind, deployment.command_workspace.as_deref())
+        {
             return Err(settings());
         }
 
@@ -623,4 +642,25 @@ pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
         Catalog::new(&config.default, &config.policy, targets)?,
         drivers,
     )
+}
+
+#[cfg(test)]
+mod command_workspace_tests {
+    use super::*;
+
+    #[test]
+    fn only_space_deployments_may_name_a_command_workspace() {
+        let config: Configuration = serde_json::from_value(serde_json::json!({
+            "default": "space-a", "policy": "registry-v1",
+            "deployments": [{"id": "space-a", "kind": "space", "command_workspace": "/home/user"}]
+        }))
+        .unwrap();
+        assert_eq!(
+            config.deployments[0].command_workspace.as_deref(),
+            Some("/home/user")
+        );
+        assert!(command_workspace_allowed(Kind::Space, Some("/home/user")));
+        assert!(command_workspace_allowed(Kind::Boat, None));
+        assert!(!command_workspace_allowed(Kind::Boat, Some("/home/user")));
+    }
 }

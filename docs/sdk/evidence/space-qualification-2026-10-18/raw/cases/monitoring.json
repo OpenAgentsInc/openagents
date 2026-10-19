@@ -1,35 +1,20 @@
 {
- "after_fix": {
-  "commit": "1668c41a3c",
-  "measurements": 15,
-  "new": [
-   "computers_stranded",
-   "oldest_stranded_turn_seconds",
-   "computers_unknown",
-   "oldest_requested_lifecycle_seconds"
-  ],
-  "policies": 12
- },
- "before_fix": "failed",
- "collector": "oa-space-monitor.timer active; 11 measurements every minute; collector_errors 0",
+ "alerts": "monitor.py emails the owner through Resend when one of twelve conditions opens and when it clears (deduplicated by /var/lib/oa-space-monitor/alert-state.json, at most 6 emails an hour); Cloud Monitoring keeps the matching twelve policies",
+ "collector_errors": 0,
  "contains_credentials": false,
  "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
- "finding": "No policy has a notification channel; outages under 120 s never open an incident; Computers-layer stuck states (unknown for 15+ minutes, stranded turns) are not measured.",
- "issue": 12147,
+ "measurements": 15,
+ "owner_decision": "2026-10-18: email the owner through the Resend integration",
  "owners": "synthetic account digests only; no owner account or host",
- "policies": [
-  "nodes_ready channels= 0 cmp= COMPARISON_LT thr= 2.0 dur= 120s",
-  "worker_disk_free_bytes channels= 0 cmp= COMPARISON_LT thr= 64424509440.0 dur= 300s",
-  "oldest_unfinished_upload_seconds channels= 0 cmp= COMPARISON_GT thr= 3600.0 dur= 120s",
-  "oldest_orphan_seconds channels= 0 cmp= COMPARISON_GT thr= 7200.0 dur= 120s",
-  "sandbox_count channels= 0 cmp= COMPARISON_GT thr= 2.0 dur= 120s",
-  "services_ready_ratio channels= 0 cmp= COMPARISON_LT thr= 1.0 dur= 120s",
-  "oldest_operation_seconds channels= 0 cmp= COMPARISON_GT thr= 600.0 dur= 120s",
-  "oldest_transition_seconds channels= 0 cmp= COMPARISON_GT thr= 900.0 dur= 120s",
-  "collector_errors channels= 0 cmp= COMPARISON_GT thr= None dur= 120s"
- ],
  "qualification": 11816,
- "reason": "The #12147 measurements and policies are live; alerts still reach nobody until the owner picks a notification channel (NEEDS_OWNER.md).",
  "schema": "openagents.computers.space-case-evidence.v1",
- "status": "pending"
+ "status": "passed",
+ "test_email": {
+  "created_at": "2026-10-19T00:50:56Z",
+  "last_event": "delivered",
+  "resend_id": "01a151a3-dfc8-72ae-a8a3-918a6e1bb26b",
+  "subject": "SPACE monitoring test",
+  "to": "chris@openagents.com"
+ },
+ "tests": "deploy/space-service/test_monitoring.py, 7 passed"
 }

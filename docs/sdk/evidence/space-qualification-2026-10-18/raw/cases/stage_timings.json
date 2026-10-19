@@ -1,9 +1,15 @@
 {
  "contains_credentials": false,
  "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "finding": "Create and readiness are measured through the public API; upload, first command, stop, wake, read, and post-wake command are not, because the workflow stops at the refused upload. Private-path stages are in the trial files.",
+ "issue": 12146,
+ "measured": {
+  "cleanup_ms": 30071,
+  "create_response_ms": 345,
+  "readiness_ms": 4899
+ },
  "owners": "synthetic account digests only; no owner account or host",
  "qualification": 11816,
- "reason": "Needs the public SDK and web flows (#12146). Private-path stages are kept in the trial files: create response, readiness, first verified output. Reconcile, attach, repository, and model stages were not measured and stay null.",
  "schema": "openagents.computers.space-case-evidence.v1",
- "status": "pending"
+ "status": "failed"
 }

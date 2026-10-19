@@ -1,21 +1,16 @@
-## SPACE qualification: four owner steps (#11816, 2026-10-18)
+## Check the new-chat computer picker on iPhone (#12133)
 
-The live run on the private SPACE deployment passed the dedicated-test stage
-but not named-group admission; see `docs/sdk/space-qualification.md`. These
-steps need you:
-
-1. Pick a notification channel for the twelve "SPACE private" alert policies
-   in Cloud Monitoring and run `deploy/space-service/monitoring.py --keep-project-iam --notification-channel projects/openagentsgemini/notificationChannels/ID`. None has one, so alerts reach nobody (#12147).
-2. Put the staging dedicated test account's credential (`acct_dc7a799879686fc5`)
-   in `~/work/.secrets`, and approve binding only that account to SPACE on
-   staging Computers, with Boat kept as default and pricing off (#12146). The
-   public SDK, web task, stage timing, and legacy Boat cases wait on this.
-3. Give the operator read access to a billing export for `openagentsgemini`, or
-   record the window's cost yourself. Service cost per task is the last budget
-   input the checker needs.
-4. Decide the accepted data loss when a worker fails while a computer is
-   awake. Today that computer can only be deleted, losing its last checkpoint too
-   (#12141).
+After the next app update, use a dedicated test account with an online Mac
+and another online computer. Open **New chat** and check that the computer
+is visible beside the model, with the project below, without scrolling. Switch
+computers before sending, including one without that project's files, and check that
+the chat runs on the chosen computer. Close and reopen the composer and then
+relaunch the app to check that it remembers the choice. A fresh choice should
+prefer the online Mac; an offline saved choice must stay visible without
+switching computers. Check a small iPhone and large text. Delete test chats
+afterward. The demo UI regression is added but needs the next iOS test run;
+The mobile Rust tests passed (129 passed, 1 ignored), and edited-file formatting
+passed. No iOS or TestFlight build ran for this fix.
 
 ## Check the voice relay (#12059)
 

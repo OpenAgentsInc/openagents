@@ -1179,3 +1179,24 @@ links remain readable. Upstream fixes now require manual ports.
 - Android #12100: add a debug-only transcript Lab launch using the existing Rust markdown fixture, TextSystem, C1 Canvas, and C2 selection host; release ignores fixture routes. Background/close retire the layout listener, worker, selection, and frames; resume/recreation restore a row-based viewport bookmark. Route JVM fixtures and lifecycle instrumentation are authored but unrun.
 
 - Android #12100: prepare a finite Rust SDK demo host seam for existing picker/visuals/CJK/Veil fixtures, with new-directory-only synthetic storage, typed Rust selection, shared live-session composer/layout, retired-content fencing, and terminal cleanup. Voice/account routes remain unavailable; Kotlin mounting, bindings, and the new Rust fixtures are pending.
+
+- [OpenAgents #12091](https://github.com/OpenAgentsInc/openagents/issues/12091):
+  add an isolated Android settings presentation directory and a shared Rust
+  Native settings owner. Reuse account deletion, device rename, cloud, and
+  sharing contracts; fence deletion completion and stale confirmations to the
+  account generation that began them. Rust stores presentation preferences;
+  Kotlin reports widget identities and Android picker/chooser results. Source
+  fixtures cover deletion outcomes, account switching, persistence, and surface
+  lifetime. `CoreAccount::project_invitation_share` accepts only the bounded
+  canonical project-invitation URL form and returns chooser text with the URL
+  embedded in that text; it exposes no separate invitation code. Bindings,
+  lockfile resolution, app wiring, and executable checks remain pending.
+  Android push registration belongs to F1.
+- [OpenAgents #12133](https://github.com/OpenAgentsInc/openagents/issues/12133):
+  keep the new-chat computer visible beside the model on iPhone, offer all
+  online computers, and remember the selection before sending. The shared
+  mobile core puts online Macs first for drafts without a saved choice.
+
+- [OpenAgents #12125](https://github.com/OpenAgentsInc/openagents/issues/12125):
+  mark desktop and iOS build targets before building so Spotlight skips them
+  on macOS.

@@ -1,98 +1,54 @@
 {
- "contains_credentials": false,
- "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
- "example_run": "not started: the example accepts only the staging or production origin, neither offers fast-sandbox, and no staging test credential is available",
- "finding": "The public SDK computers workflow cannot run on fast-sandbox: no public deployment offers the placement, and SPACE placements refuse the workflow file upload and command execution.",
- "issue": 12146,
- "owners": "synthetic account digests only; no owner account or host",
- "private_space_refusals": {
-  "capabilities": [
-   {
-    "offers": [
-     {
-      "command_sessions": false,
-      "default_environment_available": true,
-      "enrolled_host": null,
-      "environment_artifacts": false,
-      "memory_suspend": true,
-      "profiles": [
-       "core",
-       "suspend"
-      ],
-      "shapes": {
-       "large": {
-        "memory_mib": 8192,
-        "vcpus": 8
-       },
-       "medium": {
-        "memory_mib": 4096,
-        "vcpus": 4
-       },
-       "small": {
-        "memory_mib": 1024,
-        "vcpus": 2
-       }
-      },
-      "sizes": [
-       "small",
-       "medium",
-       "large"
-      ],
-      "workspace_attachment": false,
-      "workspace_file_bytes": null
-     }
-    ],
-    "placement": "fast-sandbox"
-   }
+ "account": "acct_4570d993d9897bdd (dedicated staging test account, made 2026-10-19 with the staging operator signup token; not the owner)",
+ "binding": {
+  "default": "our-cloud (Boat)",
+  "other_owners_see": [
+   "our-cloud"
   ],
-  "command": [
-   422,
-   {
-    "error": {
-     "code": "unsupported",
-     "message": "Commands aren't available for this computer."
-    }
-   }
-  ],
-  "computer": "cmp_26605c08d167222f9f21",
-  "get_file": {
-   "body": {
-    "error": "files_unsupported",
-    "message": "File transfers are unavailable on this computer."
-   },
-   "status": 501
-  },
-  "put_file": {
-   "body": {
-    "error": "files_unsupported",
-    "message": "File transfers are unavailable on this computer."
-   },
-   "status": 501
+  "pricing": "off",
+  "test_owner_sees": [
+   "our-cloud",
+   "fast-sandbox"
+  ]
+ },
+ "bound_backend": {
+  "computer": "cmp_1d914ecaa8496f6714e4",
+  "deployment": "space-private-11814",
+  "driver": "space",
+  "placement": "fast-sandbox",
+  "shape": {
+   "memory_mib": 1024,
+   "vcpus": 2
   }
  },
- "public_capabilities": {
-  "credential": "production dedicated test account (#11601); staging rejects it as signed out; no staging test credential is on the operator machine",
-  "observed_at": "2026-10-18T23:17:06.594429Z",
-  "production": {
-   "default_placement": "our-cloud",
-   "error": null,
-   "origin": "https://api.openagents.com/v1",
-   "placements": [
-    "our-cloud"
-   ]
-  },
-  "staging": {
-   "default_placement": null,
-   "error": {
-    "code": "signed_out",
-    "message": "Sign in to continue."
-   },
-   "origin": "https://staging.openagents.com/v1",
-   "placements": []
-  },
-  "test_run_header": true
- },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "finding": "The public SDK workflow on staging with fast-sandbox created and readied a SPACE computer (create response 345 ms, ready 4.9 s), then the binary upload was refused with HTTP 501 because SPACE placements advertise no workspace file transfer. Cleanup passed.",
+ "issue": 12146,
+ "owner_digest": "account:8054ef2df12c490f3e0153403b42b613bfb73ad25077b5dbfea5abc8c19b2166",
+ "owners": "synthetic account digests only; no owner account or host",
  "qualification": 11816,
+ "run": {
+  "api": "https://staging.openagents.com/v1",
+  "cleanup_passed": true,
+  "computer": "cmp_1d914ecaa8496f6714e4",
+  "contains_credentials": false,
+  "contains_file_or_command_output": false,
+  "dedicated_test_account": true,
+  "elapsed_ms": 35594,
+  "latency_sample_eligible": false,
+  "placement": "fast-sandbox",
+  "request_key": "a188d2121aa468addf7f4864ef4e305e",
+  "resumed_checkpoint": false,
+  "schema": "openagents.sdk.computers.workflow.v1",
+  "timings_ms": {
+   "cleanup_ms": 30071,
+   "create_response_ms": 345,
+   "readiness_ms": 4899
+  },
+  "workflow_passed": false
+ },
  "schema": "openagents.computers.space-case-evidence.v1",
- "status": "failed"
+ "status": "failed",
+ "test_header": true
 }

@@ -13,9 +13,9 @@
     "sdk_commit": "a53a9731f996a8d93f22f1af11f5158894288c54",
     "template": "code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149",
     "vcpus": 2,
-    "web_commit": "b4442103d26e9723e90cb63f3002c8a10f462b03"
+    "web_commit": "c3cb714436f653efae340ebeb252c3c28fc068b8"
   },
-  "observed_unix": 1792370625,
+  "observed_unix": 1792373557,
   "schema": "openagents.computers.space-case-receipt.v1",
   "source": {
     "path": "evidence/space-qualification-2026-10-18/raw/cases/egress_bypass.json",

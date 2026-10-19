@@ -1,0 +1,129 @@
+{
+ "schema": "openagents.space.cost-estimate.v1",
+ "observed_at": "2026-10-19T01:31:25.289730+00:00",
+ "method": "deployment inventory x on-demand list prices from the Cloud Billing Catalog API; not billing data",
+ "currency": "USD",
+ "usd_per_hour": 0.8014,
+ "hours": 6.0,
+ "usd_total": 4.8086,
+ "missing_lines": [],
+ "lines": [
+  {
+   "line": "control e2-standard-4 cores",
+   "sku": "CF4E-A0C7-E3BF",
+   "description": "E2 Instance Core running in Americas",
+   "unit": "vCPU-hour",
+   "unit_price_usd": 0.02181159,
+   "quantity_per_hour": 4,
+   "usd_per_hour": 0.087246
+  },
+  {
+   "line": "control e2-standard-4 memory",
+   "sku": "F449-33EC-A5EF",
+   "description": "E2 Instance Ram running in Americas",
+   "unit": "GiB-hour",
+   "unit_price_usd": 0.00292353,
+   "quantity_per_hour": 16,
+   "usd_per_hour": 0.046776
+  },
+  {
+   "line": "worker n2-standard-8 cores",
+   "sku": "BB77-5FDA-69D9",
+   "description": "N2 Instance Core running in Americas",
+   "unit": "vCPU-hour",
+   "unit_price_usd": 0.031611,
+   "quantity_per_hour": 8,
+   "usd_per_hour": 0.252888
+  },
+  {
+   "line": "worker n2-standard-8 memory",
+   "sku": "5B01-D157-A097",
+   "description": "N2 Instance Ram running in Americas",
+   "unit": "GiB-hour",
+   "unit_price_usd": 0.004237,
+   "quantity_per_hour": 32,
+   "usd_per_hour": 0.135584
+  },
+  {
+   "line": "pd-balanced 460 GiB",
+   "sku": "6AE1-525F-8B80",
+   "description": "Balanced PD Capacity",
+   "unit": "GiB-month per hour",
+   "unit_price_usd": 0.1,
+   "quantity_per_hour": 0.630137,
+   "usd_per_hour": 0.063014
+  },
+  {
+   "line": "Cloud NAT gateway, 3 instances",
+   "sku": "32E2-4EFC-EF9F",
+   "description": "Networking Cloud Nat Gateway Uptime",
+   "unit": "instance-hour",
+   "unit_price_usd": 0.0014,
+   "quantity_per_hour": 3,
+   "usd_per_hour": 0.0042
+  },
+  {
+   "line": "Cloud NAT external IP",
+   "sku": "8515-9425-D2CE",
+   "description": "Networking Cloud NAT IP Usage",
+   "unit": "IP-hour",
+   "unit_price_usd": 0.005,
+   "quantity_per_hour": 1,
+   "usd_per_hour": 0.005
+  },
+  {
+   "line": "Cloud SQL vCPU",
+   "sku": "965E-7C36-08E6",
+   "description": "Cloud SQL for PostgreSQL: Zonal - vCPU in Americas",
+   "unit": "vCPU-hour",
+   "unit_price_usd": 0.0413,
+   "quantity_per_hour": 1,
+   "usd_per_hour": 0.0413
+  },
+  {
+   "line": "Cloud SQL memory 3.75 GiB",
+   "sku": "93DA-3F55-CB04",
+   "description": "Cloud SQL for PostgreSQL: Zonal - RAM in Americas",
+   "unit": "GiB-hour",
+   "unit_price_usd": 0.007,
+   "quantity_per_hour": 3.75,
+   "usd_per_hour": 0.02625
+  },
+  {
+   "line": "Cloud SQL SSD 20 GiB",
+   "sku": "C18F-7FE0-0717",
+   "description": "Cloud SQL for PostgreSQL: Zonal - Standard storage in Americas",
+   "unit": "GiB-month per hour",
+   "unit_price_usd": 0.17,
+   "quantity_per_hour": 0.027397,
+   "usd_per_hour": 0.004658
+  },
+  {
+   "line": "Cloud Run always-on 2 vCPU",
+   "sku": "011E-3072-CBDB",
+   "description": "Services CPU (Instance-based billing) in us-central1",
+   "unit": "vCPU-second",
+   "unit_price_usd": 1.8e-05,
+   "quantity_per_hour": 7200,
+   "usd_per_hour": 0.1296
+  },
+  {
+   "line": "Cloud Run always-on 0.625 GiB",
+   "sku": "F6D2-B591-E54F",
+   "description": "Services Memory (Instance-based billing) in us-central1",
+   "unit": "GiB-second",
+   "unit_price_usd": 2e-06,
+   "quantity_per_hour": 2250.0,
+   "usd_per_hour": 0.0045
+  },
+  {
+   "line": "object storage about 15 GiB",
+   "sku": "E5F0-6A5D-7BAD",
+   "description": "Standard Storage US Regional",
+   "unit": "GiB-month per hour",
+   "unit_price_usd": 0.02,
+   "quantity_per_hour": 0.020548,
+   "usd_per_hour": 0.000411
+  }
+ ]
+}

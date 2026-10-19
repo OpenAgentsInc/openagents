@@ -2,7 +2,8 @@
 //! contains command metadata and output; real credentials stay in the broker.
 use super::*;
 const ROOT: &str = "/tmp/oa-public-commands";
-const WORKSPACE: &str = "/workspace";
+/// The qualified credential-proxy runtime provides this directory.
+pub(super) const PROXY_WORKSPACE: &str = "/workspace";
 fn id_ok(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 128
@@ -51,7 +52,7 @@ impl SpaceDriver {
         if !valid(spec) {
             return Outcome::failed("Use valid command settings without guest credentials.");
         }
-        let mut exec = Exec::new(launch_script(ROOT, WORKSPACE, spec));
+        let mut exec = Exec::new(launch_script(ROOT, &self.command_workspace, spec));
         exec.timeout_seconds = 10;
         match self.exec(computer, &exec).await {
             Outcome::Done { value } if value.code == 0 => {

@@ -33,10 +33,14 @@ fi
 cd "$ROOT"
 # Optimized profile: the unoptimized dev build made every frame slow (#12152).
 PROFILE="${OPENAGENTS_DEV_PROFILE:-dev-opt}"
+TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+if [[ "$(uname -s)" == Darwin ]]; then
+  mkdir -p "$TARGET_DIR" "$ROOT/target"
+  touch "$TARGET_DIR/.metadata_never_index" "$ROOT/target/.metadata_never_index"
+fi
 cargo build --profile "$PROFILE" -p openagents
 
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$DATA_DIR"
-TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 install -m 755 "$TARGET_DIR/$([ "$PROFILE" = dev ] && echo debug || echo "$PROFILE")/openagents" "$CONTENTS/MacOS/openagents"
 sed "s/__VERSION__/$VERSION/g" "$ROOT/dist/macos/Info-dev.plist" >"$CONTENTS/Info.plist"
 plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$CONTENTS/Info.plist"

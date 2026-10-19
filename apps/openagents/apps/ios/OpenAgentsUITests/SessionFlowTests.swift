@@ -374,7 +374,7 @@ final class SessionFlowTests: XCTestCase {
         }
         XCTAssertTrue(item("hetzner-01").waitForExistence(timeout: 5))
         XCTAssertTrue(item("MacBook Pro").exists)
-        XCTAssertFalse(item("Mac Studio").exists, "only hosts with a checkout")
+        XCTAssertFalse(item("Mac Studio").exists, "offline computers are not offered")
         snapshot(app, "host-menu")
         item("hetzner-01").tap()
         let moved = NSPredicate(format: "label CONTAINS 'hetzner-01'")
@@ -382,6 +382,69 @@ final class SessionFlowTests: XCTestCase {
         waitForExpectations(timeout: 5)
         XCTAssertTrue(project.label.contains("openagents"), "the project stays picked")
         snapshot(app, "picked-clone")
+    }
+
+    func testNewSessionComputerIsVisibleAndCanChangeBeforeSending() {
+        let app = launch()
+        let accessory = app.buttons["new-session"]
+        XCTAssertTrue(accessory.waitForExistence(timeout: 10))
+        accessory.tap()
+        let host = app.buttons["composer-chip-host"]
+        let model = app.buttons["composer-chip-model"]
+        let project = app.buttons["composer-chip-project"]
+        XCTAssertTrue(host.waitForExistence(timeout: 10))
+        for chip in [model, host, project] {
+            XCTAssertTrue(chip.isHittable, "the choice is visible without scrolling")
+            XCTAssertTrue(app.windows.firstMatch.frame.contains(chip.frame), "the whole chip fits on screen")
+        }
+        XCTAssertEqual(host.frame.midY, model.frame.midY, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(host.frame.minX, model.frame.maxX)
+        XCTAssertEqual(host.label, "MacBook Pro", "a new chat starts on the online Mac")
+        snapshot(app, "new-session-computer-visible")
+
+        project.tap()
+        let mobile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "OpenAgents iOS")).firstMatch
+        XCTAssertTrue(mobile.waitForExistence(timeout: 5))
+        mobile.tap()
+        host.tap()
+        let server = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "hetzner-01")).firstMatch
+        XCTAssertTrue(server.waitForExistence(timeout: 5), "an online computer without this project is available")
+        XCTAssertTrue(server.label.contains("No project"))
+        server.tap()
+        XCTAssertEqual(host.label, "hetzner-01")
+        XCTAssertEqual(project.label, "No project")
+        let input = app.textViews["composer-input"]
+        input.tap()
+        input.typeText("Check the computer I picked")
+        snapshot(app, "new-session-computer-changed")
+
+        app.navigationBars["New Session"].buttons["Close"].tap()
+        XCTAssertTrue(input.waitForNonExistence(timeout: 5))
+        accessory.tap()
+        XCTAssertTrue(host.waitForExistence(timeout: 5))
+        XCTAssertEqual(host.label, "hetzner-01", "the next draft keeps the selected computer")
+        XCTAssertEqual(project.label, "No project")
+        XCTAssertEqual(input.value as? String, "Check the computer I picked")
+        app.buttons["composer-send"].tap()
+        XCTAssertTrue(app.scrollViews["transcript"].waitForExistence(timeout: 10))
+        let destination = app.navigationBars.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "hetzner-01")).firstMatch
+        XCTAssertTrue(destination.waitForExistence(timeout: 10), "the created chat runs on the selected computer")
+    }
+
+    func testRemovingProjectKeepsTheChosenComputer() {
+        let app = launch(["-route", "new"])
+        let project = app.buttons["composer-chip-project"]
+        XCTAssertTrue(project.waitForExistence(timeout: 10))
+        project.tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "openagents")).firstMatch.tap()
+        let host = app.buttons["composer-chip-host"]
+        host.tap()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "hetzner-01")).firstMatch.tap()
+        XCTAssertEqual(host.label, "hetzner-01")
+        project.tap()
+        app.buttons["No Project…"].tap()
+        XCTAssertEqual(project.label, "No project")
+        XCTAssertEqual(host.label, "hetzner-01")
     }
 
     func testToolGroupExpandsAndShowsDetail() {

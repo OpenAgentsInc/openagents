@@ -3,6 +3,11 @@
  "data_loss_boundary": "A computer that was awake at the loss is not recoverable: its turn becomes uncertain and the product requires deletion (#12141), so its last durable checkpoint is not offered for restore. A suspended computer loses nothing.",
  "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
  "fault": "gcloud compute instances reset oa-space-service-worker (hard reset, disks kept)",
+ "owner_decision": {
+  "by": "owner",
+  "date": "2026-10-18",
+  "decision": "Accept losing the last checkpoint of a computer that is awake when its worker fails, for now. Suspended computers must lose nothing."
+ },
  "owners": "synthetic account digests only; no owner account or host",
  "prepare": {
   "awake_computer": "cmp_0a3f361e82af6e8e39db",

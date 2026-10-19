@@ -1,9 +1,85 @@
 {
+ "account": "acct_4570d993d9897bdd (dedicated staging test account, made 2026-10-19 with the staging operator signup token; not the owner)",
+ "binding": {
+  "default": "our-cloud (Boat)",
+  "other_owners_see": [
+   "our-cloud"
+  ],
+  "pricing": "off",
+  "test_owner_sees": [
+   "our-cloud",
+   "fast-sandbox"
+  ]
+ },
+ "boat_workflow_while_space_disabled": {
+  "api": "https://staging.openagents.com/v1",
+  "cleanup_passed": true,
+  "computer": "cmp_7fd542a3c4ecab9bdcda",
+  "contains_credentials": false,
+  "contains_file_or_command_output": false,
+  "dedicated_test_account": true,
+  "elapsed_ms": 219557,
+  "latency_sample_eligible": true,
+  "placement": "our-cloud",
+  "request_key": "4af832cddca5c1dea3e39fcedcf39e48",
+  "resumed_checkpoint": false,
+  "schema": "openagents.sdk.computers.workflow.v1",
+  "timings_ms": {
+   "cleanup_ms": 57901,
+   "command_after_wake_ms": 1736,
+   "create_response_ms": 268,
+   "first_command_ms": 2065,
+   "first_useful_output_ms": 57502,
+   "read_after_wake_ms": 567,
+   "readiness_ms": 54392,
+   "stop_ms": 20423,
+   "upload_or_reconcile_ms": 773,
+   "wake_ms": 81419
+  },
+  "workflow_passed": true
+ },
  "contains_credentials": false,
  "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "disabled_space": {
+  "control": "staging_binding.py --disable-space (admit_new false, connection kept)",
+  "existing_space_commands": "unavailable on SPACE placements at any admission state (#12146), not a rollback regression",
+  "existing_space_computer": {
+   "awake_s": 4.8,
+   "delete": 202,
+   "deleted_s": 31.6,
+   "observe": "awake",
+   "stop": 202,
+   "stopped_s": 30.3,
+   "wake": 202
+  },
+  "new_space_create": "refused (environment_managed)"
+ },
+ "first_boat_attempt": {
+  "cause": "Cloud NAT dropped connections (32 ports per instance) after the staging Computers egress moved to the SPACE VPC; NAT raised to 1024 to 8192 ports and the rerun passed",
+  "result": {
+   "api": "https://staging.openagents.com/v1",
+   "cleanup_passed": true,
+   "computer": "cmp_87a169d9d17c8fd40294",
+   "contains_credentials": false,
+   "contains_file_or_command_output": false,
+   "dedicated_test_account": true,
+   "elapsed_ms": 209885,
+   "latency_sample_eligible": false,
+   "placement": "our-cloud",
+   "request_key": "a7e4bd4f1142d7c7431198adaa424797",
+   "resumed_checkpoint": false,
+   "schema": "openagents.sdk.computers.workflow.v1",
+   "timings_ms": {
+    "cleanup_ms": 177905
+   },
+   "workflow_passed": false
+  }
+ },
+ "owner_digest": "account:8054ef2df12c490f3e0153403b42b613bfb73ad25077b5dbfea5abc8c19b2166",
  "owners": "synthetic account digests only; no owner account or host",
  "qualification": 11816,
- "reason": "The private candidate registry has no Boat deployment, and no staging registry mixes Boat and SPACE (#12146). Production and staging still default to Boat (our-cloud).",
+ "restored": "admit_new true again for the test account (oa-computers-staging-00021-qjf)",
  "schema": "openagents.computers.space-case-evidence.v1",
- "status": "pending"
+ "status": "passed",
+ "test_header": true
 }

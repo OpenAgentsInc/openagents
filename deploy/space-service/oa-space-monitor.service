@@ -12,3 +12,5 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+StateDirectory=oa-space-monitor
+StateDirectoryMode=0700

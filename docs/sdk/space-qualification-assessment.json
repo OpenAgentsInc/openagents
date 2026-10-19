@@ -5,14 +5,12 @@
     "broad_admission": false,
     "pricing_enabled": false,
     "incomplete_cases": [
-        "web_task_and_followup",
-        "stage_timings",
-        "credential_revocation",
-        "legacy_boat",
-        "monitoring"
+        "credential_revocation"
     ],
     "failed_cases": [
         "public_sdk",
+        "web_task_and_followup",
+        "stage_timings",
         "cancellation_and_children",
         "lost_command_reply",
         "duplicate_delivery",
@@ -67,15 +65,15 @@
     "observed_error_permille": 191,
     "economics": {
         "schema": "openagents.computers.service-economics.v1",
-        "duration_ms": 19065000,
-        "worker_capacity_vcpu_ms": 152520000,
+        "duration_ms": 21997000,
+        "worker_capacity_vcpu_ms": 175976000,
         "guest_vcpu_ms": null,
         "unallocated_worker_vcpu_ms": null,
         "command_wall_ms": 232319,
         "task_attempts": 63,
         "useful_tasks": 51,
-        "provider_cost_micros": null,
-        "service_cost_per_useful_task_micros": null,
+        "provider_cost_micros": 4896777,
+        "service_cost_per_useful_task_micros": 96016,
         "currency": "USD",
         "customer_charge": null,
         "pricing": "not_enabled"
