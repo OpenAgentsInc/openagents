@@ -118,19 +118,19 @@ Estimated savings are for a day like this one.
 
 | # | Fix | Saves | State |
 | --- | --- | --- | --- |
-| 1 | **Coordinator liveness.** The host treats two empty or errored Foreman turns in a row as down. It starts a fresh session with the saved handoff and tells the owner. | 35 min of no coordination; more on a night run | Proposal |
+| 1 | **Coordinator liveness.** The host treats two empty or errored Foreman turns in a row as down. It starts a fresh session with the saved handoff and tells the owner. | 35 min of no coordination; more on a night run | #12207 |
 | 2 | **The integrator never sleeps on work.** Count queued entries as busy. Let pool hosts start the integrator, or make `submit` fail loudly when it can't. Alert when the heartbeat is older than 5 minutes. | 15–20 min per stall | #12206; idle stop off for the 1.0 push |
-| 3 | **Regenerate in the integrator.** Before checks, run every regenerate command whose test would fail (CLI tree, SDK reference, API contract, route map, Android bindings), commit the result into the entry, then check. | Both bounces; 9 hand commits | Proposal |
+| 3 | **Regenerate in the integrator.** Before checks, run every regenerate command whose test would fail (CLI tree, SDK reference, API contract, route map, Android bindings), commit the result into the entry, then check. | Both bounces; 9 hand commits | #12208 |
 | 4 | **Fail fast in the queue.** `cargo fmt --check` and `cargo check --tests` on the touched packages before full tests: 36–76 s instead of up to 38 min. | 71% of check time went to entries that bounced | #12198 |
-| 5 | **Keep a failed run's diff.** Pool and Archil runs upload the worktree's diff and the failing check's output to GCS before they delete it. The repair starts from it. | One full re-run per failed issue | Proposal |
+| 5 | **Keep a failed run's diff.** Pool and Archil runs upload the worktree's diff and the failing check's output to GCS before they delete it. The repair starts from it. | One full re-run per failed issue | #12209 |
 | 6 | **Repair on the same host.** A pool run whose check fails hands the diff and the failure to a second engine there (Claude through #12203, or Codex again with the failure in its prompt) before it reports failure. | 6 of 8 Pylon runs | #12203 |
 | 7 | **Builds leave the Mac by default.** A delegated chat's build places itself on an idle cloud computer (#12201). The Mac refuses agent builds above a load average of 16, except for the owner's own. | The unusable desktop; slower Mac builds for everyone | #12201 |
-| 8 | **Check what ships, not only tests.** The briefed agent's check runs `cargo check` (no `--tests`) beside `cargo test -p` for each touched package. | `1b756d8b6a`-style follow-ups | Proposal |
+| 8 | **Check what ships, not only tests.** The briefed agent's check runs `cargo check` (no `--tests`) beside `cargo test -p` for each touched package. | `1b756d8b6a`-style follow-ups | #12210 |
 | 9 | **One landing path.** After fixes 2–4, `chat work` and Foreman's dispatch submit to the queue and never push directly. Until then, stop asking chats to use the queue and then withdraw. | Duplicate work: an entry and a push | Decision for the owner |
-| 10 | **More than one Claude login in the capacity book.** Rotate to the next login on a usage limit instead of stopping every Claude chat. Foreman keeps its own session per runtime (`b2fe268778`). | The 21:17 wind-down and restart | Proposal |
+| 10 | **More than one Claude login in the capacity book.** Rotate to the next login on a usage limit instead of stopping every Claude chat. Foreman keeps its own session per runtime (`b2fe268778`). | The 21:17 wind-down and restart | #12211 |
 | 11 | **Archil falls back.** The fan-out runner sends an issue to the GCE pool when its sandbox fails to start or the work needs a blocked host. Archil stays secondary until its start failures are explained. | Four issues an hour late | Proposal |
 | 12 | **Pool hosts stay up under ssh.** | Lost test runs | Done, `595f995341` |
-| 13 | **Measure every day.** A script prints this audit's numbers (closes, median filing-to-close, queue states, failed runs by cause, coordinator downtime) into Foreman's daily check-in (L13). | Finds the next stall in hours, not after a day | Proposal |
+| 13 | **Measure every day.** A script prints this audit's numbers (closes, median filing-to-close, queue states, failed runs by cause, coordinator downtime) into Foreman's daily check-in (L13). | Finds the next stall in hours, not after a day | #12212 |
 
 ### Suggested order
 
