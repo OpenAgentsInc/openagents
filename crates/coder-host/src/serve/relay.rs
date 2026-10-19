@@ -130,6 +130,14 @@ pub(super) async fn host_request(shared: &Arc<Shared>, event: Event, relay: &str
         let reply = worker
             .authority
             .handle(&event, &relay, &mut dispatcher)
+            .inspect_err(|error| {
+                // The device gets no signed reply and waits out its timeout:
+                // say why here.
+                eprintln!(
+                    "openagents host: a device request got no answer ({:?}): {}",
+                    error.code, error.message
+                );
+            })
             .ok();
         (reply, dispatcher.changed)
     })

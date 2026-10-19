@@ -31,6 +31,26 @@ fn row(computer: &PairedComputer) -> openagents_proto::Device {
     }
 }
 
+/// How often a paired computer whose channel stopped answering is dialed
+/// again.
+const REDIAL_EVERY: Duration = Duration::from_secs(15);
+
+/// Whether `device_id` may be dialed again at `now`, recording it when so.
+fn redial_due(
+    redials: &mut std::collections::HashMap<String, std::time::Instant>,
+    device_id: &str,
+    now: std::time::Instant,
+) -> bool {
+    if redials
+        .get(device_id)
+        .is_some_and(|at| now.duration_since(*at) < REDIAL_EVERY)
+    {
+        return false;
+    }
+    redials.insert(device_id.to_owned(), now);
+    true
+}
+
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -40,6 +60,39 @@ fn now() -> u64 {
 impl Client {
     fn pairing_store(&self) -> Option<Arc<dyn PairingStore>> {
         lock(&self.inner.pairings).clone()
+    }
+
+    /// Dial a paired computer again from its saved pairing, when its device
+    /// channel stopped answering: a restart of the computer closes the
+    /// channel, and nothing else reopens it while this app runs. At most
+    /// once every [`REDIAL_EVERY`] a computer.
+    pub(crate) fn redial_paired(&self, device_id: &str) {
+        if self.inner.cancel.is_cancelled() || self.inner.live().is_none() {
+            return;
+        }
+        if !redial_due(
+            &mut lock(&self.inner.redials),
+            device_id,
+            std::time::Instant::now(),
+        ) {
+            return;
+        }
+        let Some(store) = self.pairing_store() else {
+            return;
+        };
+        let Ok(saved) = store.load(self.inner.credentials.user_id()) else {
+            return;
+        };
+        let Some(computer) = saved.into_iter().find(|c| c.device_id == device_id) else {
+            return;
+        };
+        let client = self.clone();
+        crate::runtime::handle().spawn(async move {
+            match paired_device::open(&computer, coder_access_policy()).await {
+                Ok((channel, _)) => client.install_channel(&computer.device_id, channel),
+                Err(error) => tracing::warn!(%error, "a paired computer didn't connect again"),
+            }
+        });
     }
 
     /// Keep pairings made by code in `store` (the Keychain on iOS), and
@@ -157,6 +210,11 @@ impl Client {
             .live()
             .and_then(|live| lock(&live.relay.device_channels).get(device_id).cloned())
             .ok_or_else(|| ClientError::HostError("Connect this computer first.".into()))?;
+        // A computer already on this account has nothing to join: it signs
+        // in as this person already, and it won't sign a new link.
+        if self.inner.workspace.registry_lists(device_id) {
+            return Ok(String::new());
+        }
         let token = self.inner.tokens.bearer().await?;
         let failed = || {
             ClientError::HostUnavailable(
@@ -230,4 +288,27 @@ impl Client {
 
 fn coder_access_policy() -> paired_device::RelayPolicy {
     paired_device::RelayPolicy::Production
+}
+
+#[cfg(test)]
+mod redial_tests {
+    use super::*;
+
+    #[test]
+    fn a_silent_computer_is_dialed_again_at_most_every_interval() {
+        let mut redials = std::collections::HashMap::new();
+        let start = std::time::Instant::now();
+        assert!(redial_due(&mut redials, "mac", start));
+        assert!(!redial_due(
+            &mut redials,
+            "mac",
+            start + Duration::from_secs(1)
+        ));
+        assert!(redial_due(
+            &mut redials,
+            "linux",
+            start + Duration::from_secs(1)
+        ));
+        assert!(redial_due(&mut redials, "mac", start + REDIAL_EVERY));
+    }
 }

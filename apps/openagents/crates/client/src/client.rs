@@ -84,6 +84,9 @@ pub(crate) struct ClientInner {
     /// Where pairings made by code are kept (#12000); memory only until the
     /// platform supplies its store.
     pub(crate) pairings: Mutex<Option<Arc<dyn openagents_sync::paired_device::PairingStore>>>,
+    /// When each paired computer was last dialed again after its channel
+    /// stopped answering (a restart of the computer closes it).
+    pub(crate) redials: Mutex<HashMap<String, std::time::Instant>>,
 }
 
 impl Drop for ClientInner {
@@ -543,6 +546,10 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
+    pub(crate) fn from_inner(inner: Arc<ClientInner>) -> Self {
+        Self { inner }
+    }
+
     /// Pair only for this signed-in client. The private key is discarded on sign-out.
     pub async fn pair_device_channel(&self, device_id: &str, code: &str) -> Result<()> {
         if self.inner.cancel.is_cancelled() {
@@ -723,6 +730,7 @@ impl Client {
             synced: AtomicBool::new(false),
             harness_catalogs: Mutex::new(HashMap::new()),
             pairings: Mutex::new(None),
+            redials: Mutex::new(HashMap::new()),
             credentials: credentials.clone(),
             config,
         });

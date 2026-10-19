@@ -110,6 +110,7 @@ impl Bearer {
             .proof_headers(&public, "GET", b"", inner.credentials.org_id())
             .await
             .map_err(|_| {
+                crate::Client::from_inner(inner.clone()).redial_paired(host);
                 SyncError::Auth(
                     "Couldn't confirm this device's access. Pair this computer again.".into(),
                 )
@@ -140,6 +141,7 @@ impl Bearer {
                 .proof_headers(url, method, body, inner.credentials.org_id())
                 .await
                 .map_err(|_| {
+                    crate::Client::from_inner(inner.clone()).redial_paired(host);
                     SyncError::Auth(
                         "Couldn't confirm this device's access. Pair this computer again.".into(),
                     )

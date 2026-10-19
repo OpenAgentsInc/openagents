@@ -308,10 +308,16 @@ impl CoreAndroidLinkReview {
                 AndroidAppLinkOperation::PairComputer => {
                     let connected = self.client.connect_computer(self.code()?).await?;
                     self.current()?;
-                    self.account
+                    // Paired either way; as on iOS, a link that didn't land
+                    // says so instead of reading as a failed connection.
+                    match self
+                        .account
                         .link_computer(self.client.clone(), connected.device_id)
-                        .await?;
-                    Ok("Computer connected.")
+                        .await
+                    {
+                        Ok(_) => Ok("Computer connected."),
+                        Err(error) => Ok(linked_note(&error)),
+                    }
                 }
                 AndroidAppLinkOperation::ReviewWebsiteSignIn => {
                     self.account.approve_scanned_login(self.code()?).await?;
@@ -434,6 +440,19 @@ mod tests {
         assert!(checked_label("Fixture browser".into(), 300).is_ok());
         assert!(checked_label("x".repeat(301), 300).is_err());
         assert!(checked_label("browser\n".into(), 300).is_err());
+    }
+}
+
+/// The result line when a computer paired but didn't join the account.
+fn linked_note(error: &CoreError) -> &'static str {
+    match error {
+        CoreError::HostError { message } if message.contains("another account") => {
+            "Computer connected. It stays signed in to its other account."
+        }
+        CoreError::HostError { message } if message.contains("hasn't joined") => {
+            "Computer connected, but it hasn't joined your account. Choose Connect your phone on it and scan the new code."
+        }
+        _ => "Computer connected, but it didn't sign in as you. Try again in a minute.",
     }
 }
 

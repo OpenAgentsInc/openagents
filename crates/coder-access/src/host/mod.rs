@@ -1037,6 +1037,12 @@ impl Host {
                         // A read changes nothing, so its reply is not
                         // retained: a thread polled while its reply streams
                         // would otherwise fill the store with pages.
+                        if matches!(request.op, Operation::AppRpc { .. }) {
+                            // An app read can wait on the app for seconds.
+                            // It needs nothing more from the store, so other
+                            // devices' requests don't queue behind it.
+                            store.release();
+                        }
                         let result = match self.execute(
                             &mut store,
                             &mut book,

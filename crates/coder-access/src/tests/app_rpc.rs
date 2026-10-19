@@ -8,6 +8,10 @@ struct App {
     reads: usize,
     effects: usize,
     wrong_method: bool,
+    /// Open the host's store from inside a call, as another device's
+    /// request would, and record whether it could.
+    store: Option<PathBuf>,
+    opened_inside: Option<bool>,
 }
 impl Dispatch for App {
     fn dispatch(&mut self, _: &str, _: &str, _: &Operation) -> std::result::Result<Receipt, Code> {
@@ -21,6 +25,10 @@ impl Dispatch for App {
         request: &Request,
     ) -> std::result::Result<Answer, Code> {
         assert!(grant.is_some());
+        if let Some(dir) = &self.store {
+            self.opened_inside =
+                Some(coder_connect::store::Store::open_named(dir, "access", false).is_ok());
+        }
         if request.method.reads_only() {
             self.reads += 1;
         } else {
@@ -65,6 +73,17 @@ fn request(method: Method) -> Operation {
             },
         },
     }
+}
+
+#[test]
+fn an_app_read_does_not_hold_the_store_while_the_app_answers() {
+    let fixture = Fixture::local();
+    let mut app = App::default();
+    let (_, client) = enrolled(&fixture, "observe", &mut app);
+    app.store = Some(fixture.dir.clone());
+    let pending = client.prepare(request(Method::ListSkills), now()).unwrap();
+    call(&fixture, &client, &pending, &mut app).unwrap();
+    assert_eq!(app.opened_inside, Some(true));
 }
 
 #[test]

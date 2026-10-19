@@ -216,6 +216,14 @@ impl Store {
             .map(Some)
             .map_err(|_| Error::new(ErrorCode::Malformed, "observer store schema differs"))
     }
+    /// Let other processes and threads open the store while this handle
+    /// stays alive, for work that only reads what was already loaded. The
+    /// handle can't save afterwards; reopen the store to write.
+    pub fn release(&mut self) {
+        self.poisoned = true;
+        let _ = self._lock.unlock();
+    }
+
     pub fn save(&mut self, value: &impl Serialize) -> Result<()> {
         if self.poisoned {
             return Err(Error::new(
@@ -340,4 +348,20 @@ pub(crate) fn private_dir(directory: &Path) -> Result<bool> {
     let object = private_fs::open_dir(directory).map_err(io)?;
     let m = object.metadata().map_err(io)?;
     Ok(m.is_dir() && private_fs::is_private(&object).map_err(io)?)
+}
+
+#[cfg(test)]
+mod release_tests {
+    use super::*;
+
+    #[test]
+    fn a_released_store_lets_the_next_open_in_and_cannot_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("store");
+        let mut first = Store::open_named(&path, "access", true).unwrap();
+        first.release();
+        let mut second = Store::open_named(&path, "access", false).unwrap();
+        second.save(&serde_json::json!({"v": 1})).unwrap();
+        assert!(first.save(&serde_json::json!({"v": 2})).is_err());
+    }
 }

@@ -66,6 +66,14 @@ impl WorkspaceStore {
         *lock(&self.cache) = None;
     }
 
+    /// Whether the account's own registry lists `device_id` (a computer
+    /// paired by code but not on the account doesn't count).
+    pub(crate) fn registry_lists(&self, device_id: &str) -> bool {
+        lock(&self.doc)
+            .read_devices()
+            .is_ok_and(|devices| devices.iter().any(|d| d.id == device_id))
+    }
+
     /// Stop showing a computer paired by code.
     pub(crate) fn remove_paired(&self, device_id: &str) {
         lock(&self.paired).retain(|d| d.id != device_id);
@@ -187,5 +195,36 @@ impl WorkspaceStore {
         next.revision = revision;
         *write(&self.snapshot) = Arc::new(next);
         Some(revision)
+    }
+}
+
+#[cfg(test)]
+mod registry_lists_tests {
+    use super::*;
+
+    fn device(id: &str) -> openagents_proto::Device {
+        openagents_proto::Device {
+            id: id.into(),
+            name: id.into(),
+            platform: "linux".into(),
+            last_seen_at: None,
+            created_at: None,
+            version: None,
+            cursor_sdk_version: None,
+            capabilities: vec![],
+            origin: openagents_proto::DeviceOrigin::Unknown,
+        }
+    }
+
+    #[test]
+    fn only_the_accounts_registry_counts_not_a_paired_row() {
+        let mut doc = RegistryDoc::new("phone");
+        doc.set_local_only(true);
+        doc.upsert_device(&device("on-account")).unwrap();
+        let store = WorkspaceStore::new(doc);
+        store.add_paired(device("paired-only"));
+        assert!(store.registry_lists("on-account"));
+        assert!(!store.registry_lists("paired-only"));
+        assert!(!store.registry_lists("unknown"));
     }
 }

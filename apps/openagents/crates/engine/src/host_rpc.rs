@@ -491,6 +491,37 @@ impl Handler for AppRpc {
         request: &Request,
         admission: &coder_access::app_rpc::Admission<'_>,
     ) -> Result<Answer, Code> {
+        // Calls are answered one at a time under the host's access lock,
+        // so a slow one holds up every phone's next call: name it.
+        let started = std::time::Instant::now();
+        let answer = self.call_admitted_inner(request_id, device, grant, request, admission);
+        let took = started.elapsed();
+        if took >= Duration::from_secs(1) {
+            tracing::warn!(method = ?request.method, ?took, ok = answer.is_ok(), "a phone's call was slow");
+        }
+        answer
+    }
+
+    fn call(
+        &self,
+        _: &str,
+        _: &str,
+        _: Option<(&str, u64)>,
+        request: &Request,
+    ) -> Result<Answer, Code> {
+        self.call_plain(request)
+    }
+}
+
+impl AppRpc {
+    fn call_admitted_inner(
+        &self,
+        request_id: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        request: &Request,
+        admission: &coder_access::app_rpc::Admission<'_>,
+    ) -> Result<Answer, Code> {
         if request.method == coder_access::app_rpc::Method::RunCommand {
             request.validate().map_err(|e| e.code)?;
             if !admission.rights.contains(coder_access::Right::Operate) {
@@ -503,13 +534,18 @@ impl Handler for AppRpc {
             return self.call_service(&request);
         }
         if request.method == coder_access::app_rpc::Method::LinkAccount {
-            return self.link_account(grant, request, admission);
+            let answer = self.link_account(grant, request, admission);
+            tracing::info!(
+                signed = answer.is_ok(),
+                "a phone asked this computer to join its account"
+            );
+            return answer;
         }
         if request.method == coder_access::app_rpc::Method::AccountLinked {
             return self.account_linked(grant, request, admission);
         }
         if request.method != coder_access::app_rpc::Method::AuthorizeSync {
-            return self.call(request_id, device, grant, request);
+            return self.call_plain(request);
         }
         let Some(issuer) = self.sync.as_ref() else {
             tracing::warn!("a phone asked for a sync proof before sync was set up here");
@@ -551,13 +587,7 @@ impl Handler for AppRpc {
         })
     }
 
-    fn call(
-        &self,
-        _: &str,
-        _: &str,
-        _: Option<(&str, u64)>,
-        request: &Request,
-    ) -> Result<Answer, Code> {
+    fn call_plain(&self, request: &Request) -> Result<Answer, Code> {
         if request.method == coder_access::app_rpc::Method::RunCommand {
             return Err(Code::Forbidden);
         }
