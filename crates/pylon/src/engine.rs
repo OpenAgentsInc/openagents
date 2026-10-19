@@ -48,6 +48,31 @@ pub struct Psionic {
     base: String,
     model: String,
     client: reqwest::Client,
+    /// The name the server knows the model by, read once from its
+    /// `/v1/models` (see [`served_name`]).
+    served: tokio::sync::OnceCell<String>,
+}
+
+/// The id in a `/v1/models` body to request `model` by. Psionic lists a
+/// model by its file name (`Qwen3.5-0.8B-Q8_0.gguf`) and matches requests
+/// case-sensitively, while a beacon names it `qwen3.5-0.8b-q8_0`; so pick
+/// the listed id that equals `model` ignoring case and a `.gguf` ending,
+/// else the only model listed, else `model` itself.
+#[must_use]
+pub fn served_name(model: &str, models: &Value) -> Option<String> {
+    let plain = |name: &str| {
+        let lower = name.to_lowercase();
+        lower.strip_suffix(".gguf").unwrap_or(&lower).to_string()
+    };
+    let ids: Vec<&str> = models["data"]
+        .as_array()?
+        .iter()
+        .filter_map(|m| m["id"].as_str())
+        .collect();
+    ids.iter()
+        .find(|id| plain(id) == plain(model))
+        .or_else(|| (ids.len() == 1).then(|| &ids[0]))
+        .map(|id| (*id).to_string())
 }
 
 impl Psionic {
@@ -66,7 +91,30 @@ impl Psionic {
             base: base.trim_end_matches('/').to_string(),
             model: model.to_string(),
             client,
+            served: tokio::sync::OnceCell::new(),
         })
+    }
+
+    /// The name to request the model by: [`served_name`] over the
+    /// server's list, remembered once read; `model` while it cannot be read.
+    async fn request_name(&self) -> String {
+        let read = self
+            .served
+            .get_or_try_init(|| async {
+                let body: Value = self
+                    .client
+                    .get(format!("{}/v1/models", self.base))
+                    .timeout(Duration::from_secs(5))
+                    .send()
+                    .await
+                    .map_err(|_| ())?
+                    .json()
+                    .await
+                    .map_err(|_| ())?;
+                served_name(&self.model, &body).ok_or(())
+            })
+            .await;
+        read.map_or_else(|()| self.model.clone(), Clone::clone)
     }
 }
 
@@ -96,11 +144,12 @@ impl Engine for Psionic {
                 .iter()
                 .map(|t| json!({"role": t.role, "content": t.content}))
                 .collect();
+            let request = self.request_name().await;
             let response = self
                 .client
                 .post(format!("{}/v1/chat/completions", self.base))
                 .json(&json!({
-                    "model": self.model,
+                    "model": request,
                     "messages": messages,
                     "max_tokens": max_tokens,
                 }))
@@ -127,7 +176,7 @@ impl Engine for Psionic {
                 text,
                 input_tokens: body["usage"]["prompt_tokens"].as_u64(),
                 output_tokens: body["usage"]["completion_tokens"].as_u64(),
-                model: body["model"].as_str().unwrap_or(&self.model).to_string(),
+                model: self.model.clone(),
             })
         })
     }
@@ -164,5 +213,32 @@ impl Engine for Echo {
                 model: "echo".into(),
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_served_name_matches_the_beacon_name_by_file_name() {
+        let listed = json!({"data": [{"id": "Qwen3.5-0.8B-Q8_0.gguf"}]});
+        assert_eq!(
+            served_name("qwen3.5-0.8b-q8_0", &listed).as_deref(),
+            Some("Qwen3.5-0.8B-Q8_0.gguf")
+        );
+        let two = json!({"data": [{"id": "a.gguf"}, {"id": "Qwen3.5-0.8B-Q8_0"}]});
+        assert_eq!(
+            served_name("qwen3.5-0.8b-q8_0", &two).as_deref(),
+            Some("Qwen3.5-0.8B-Q8_0")
+        );
+        // One model listed under another name: that one.
+        assert_eq!(
+            served_name("m", &listed).as_deref(),
+            Some("Qwen3.5-0.8B-Q8_0.gguf")
+        );
+        // Several and none matching: ask by the given name.
+        assert_eq!(served_name("m", &two), None);
+        assert_eq!(served_name("m", &json!({})), None);
     }
 }
