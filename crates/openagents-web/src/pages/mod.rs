@@ -16,6 +16,7 @@ pub(crate) mod content;
 pub(crate) mod download;
 pub(crate) mod efficiency;
 mod everglade;
+mod gpui_demo;
 pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
@@ -93,6 +94,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(everglade::routes())
         .merge(lander3::routes())
         .merge(bunny::routes())
+        .merge(gpui_demo::routes())
         .merge(icecream::routes())
         .merge(snap::routes())
         .merge(layertree::routes())
