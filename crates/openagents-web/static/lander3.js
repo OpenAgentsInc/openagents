@@ -1,4 +1,5 @@
-// /lander3 (#12180): the Grid from overhead, drawn with three.js. The server
+// /lander3 (#12180): the Grid from above, drawn with three.js, with a camera
+// that turns and tilts around it. The server
 // builds the scene from the verse crate (src/pages/lander3.rs) and names its
 // address in #lander3's data-scene; this script holds no Grid data. Every
 // surface is unlit, its texture times its tint, as the Grid's engine draws
@@ -13,6 +14,7 @@ const buttons = {
   zoomIn: document.getElementById("lander3-in"),
   zoomOut: document.getElementById("lander3-out"),
   fit: document.getElementById("lander3-fit"),
+  above: document.getElementById("lander3-above"),
   robots: document.getElementById("lander3-robots"),
 };
 
@@ -113,12 +115,17 @@ function skinned(parts, bones) {
   const group = new THREE.Group();
   const identity = new THREE.Matrix4();
   for (const part of parts) {
-    if (part.lines) {
-      const lines = new THREE.LineSegments(part.geometry, part.material);
-      group.add(lines);
-      continue;
-    }
     const mesh = new THREE.SkinnedMesh(part.geometry, part.material);
+    if (part.lines) {
+      // three.js has no skinned lines; a skinned mesh drawn as line
+      // segments gets the same skinning in its line material's shader.
+      mesh.isMesh = false;
+      mesh.isLine = true;
+      mesh.isLineSegments = true;
+    }
+    // The sampled matrices are in the model's own space, so the robot's
+    // placement must not be undone as in the attached mode.
+    mesh.bindMode = THREE.DetachedBindMode;
     mesh.bind(skeleton, identity);
     mesh.frustumCulled = false;
     group.add(mesh);
@@ -143,6 +150,8 @@ function start(scene3) {
   const textures = scene3.textures.map((url) => {
     const texture = own(loader.load(url));
     texture.colorSpace = THREE.SRGBColorSpace;
+    // The pack's v runs down from the image's top row, as wgpu samples it.
+    texture.flipY = false;
     return texture;
   });
 
@@ -202,20 +211,21 @@ function start(scene3) {
     skeleton.sample = pose.frames.subarray(at * size, (at + 1) * size);
   }
 
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 6000);
-  const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  // The view: the ground point under the middle of the canvas, and the
-  // camera's height over it. The spawn's forward (+Z) points up the screen.
-  const view = { x: 0, z: 0, height: 60 };
-  let lowest = 6;
-  let highest = 1500;
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.3, 6000);
+  const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
+  // An orbit around a point on the ground: its heading (zero looks along
+  // the spawn's forward, +Z), its tilt above the horizon, and its distance.
+  const view = { x: 0, z: 0, yaw: 0, pitch: 0.9, distance: 80 };
+  const LOWEST_PITCH = THREE.MathUtils.degToRad(4);
+  const HIGHEST_PITCH = THREE.MathUtils.degToRad(89.5);
+  const NEAREST = 2;
+  let farthest = 1500;
 
-  function frame(box, height) {
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    const fitZ = size.z / 2 / halfTan;
-    const fitX = size.x / 2 / (halfTan * camera.aspect);
-    return { x: center.x, z: center.z, height: Math.max(fitZ, fitX) * 1.15 + height };
+  // The distance that fits `box` in the view, whatever the heading.
+  function fitting(box) {
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const across = Math.min(halfFov, Math.atan(Math.tan(halfFov) * camera.aspect));
+    return { center: sphere.center, distance: (sphere.radius / Math.sin(across)) * 1.05 };
   }
 
   function fit() {
@@ -223,48 +233,58 @@ function start(scene3) {
     if (target.isEmpty()) {
       return;
     }
-    Object.assign(view, frame(target, target.max.y));
+    const { center, distance } = fitting(target);
+    Object.assign(view, { x: center.x, z: center.z, yaw: 0, pitch: 0.9, distance });
+    limits();
   }
 
   function limits() {
     if (!ground.isEmpty()) {
-      highest = frame(ground, 0).height;
+      farthest = fitting(ground).distance;
     }
-    lowest = Math.max(4, (standing.isEmpty() ? 0 : standing.max.y) + 3);
-    view.height = THREE.MathUtils.clamp(view.height, lowest, highest);
+    view.distance = THREE.MathUtils.clamp(view.distance, NEAREST, farthest);
+    view.pitch = THREE.MathUtils.clamp(view.pitch, LOWEST_PITCH, HIGHEST_PITCH);
   }
 
   function aim() {
-    camera.position.set(view.x, view.height, view.z);
-    camera.up.set(0, 0, 1);
+    const flat = Math.cos(view.pitch) * view.distance;
+    camera.position.set(
+      view.x - Math.sin(view.yaw) * flat,
+      Math.sin(view.pitch) * view.distance,
+      view.z - Math.cos(view.yaw) * flat
+    );
+    camera.up.set(0, 1, 0);
     camera.lookAt(view.x, 0, view.z);
     camera.updateMatrixWorld();
   }
 
-  // Meters on the ground per CSS pixel at the current height.
+  // Meters on the ground per CSS pixel near the middle of the view.
   function metersPerPixel() {
-    return (2 * view.height * halfTan) / Math.max(1, canvas.clientHeight);
+    return (2 * view.distance * Math.tan(halfFov)) / Math.max(1, canvas.clientHeight);
   }
 
-  // Moves the view so the content follows the pointer by (dx, dy) pixels.
-  // Screen right is world -X and screen up is world +Z.
+  // Moves the point looked at so the ground follows the pointer by
+  // (dx, dy) pixels.
   function pan(dx, dy) {
     const m = metersPerPixel();
-    view.x += dx * m;
-    view.z += dy * m;
+    const ahead = (dy * m) / Math.max(Math.sin(view.pitch), 0.35);
+    const across = dx * m;
+    // Forward on the ground is (sin yaw, cos yaw); screen right is
+    // (-cos yaw, sin yaw).
+    view.x += Math.cos(view.yaw) * across + Math.sin(view.yaw) * ahead;
+    view.z += -Math.sin(view.yaw) * across + Math.cos(view.yaw) * ahead;
   }
 
-  // Zooms by `factor` keeping the ground point under (px, py) still, given
-  // in pixels from the canvas's middle.
-  function zoom(factor, px, py) {
-    const before = metersPerPixel();
-    const height = THREE.MathUtils.clamp(view.height * factor, lowest, highest);
-    const after = (before * height) / view.height;
-    const pointX = view.x - px * before;
-    const pointZ = view.z - py * before;
-    view.x = pointX + px * after;
-    view.z = pointZ + py * after;
-    view.height = height;
+  // Turns around the point looked at and tilts, by pixels dragged.
+  function look(dx, dy) {
+    view.yaw += dx * 0.006;
+    view.pitch += dy * 0.006;
+    limits();
+  }
+
+  function zoom(factor) {
+    view.distance *= factor;
+    limits();
   }
 
   function resize() {
@@ -280,15 +300,12 @@ function start(scene3) {
   observer.observe(root);
   resize();
   fit();
-  limits();
 
-  // Pointer drags pan; two pointers pinch to zoom.
+  // One pointer looks around (or moves, with the right button, the middle
+  // button, or Shift held); two pointers move and pinch to zoom.
   const pointers = new Map();
   let pinch = null;
-  function offset(x, y) {
-    const rect = canvas.getBoundingClientRect();
-    return [x - rect.left - rect.width / 2, y - rect.top - rect.height / 2];
-  }
+  let moving = false;
   function pair() {
     const [a, b] = Array.from(pointers.values());
     return {
@@ -297,9 +314,12 @@ function start(scene3) {
       y: (a.y + b.y) / 2,
     };
   }
+  canvas.addEventListener("contextmenu", (event) => event.preventDefault());
   canvas.addEventListener("pointerdown", (event) => {
+    canvas.focus();
     canvas.setPointerCapture(event.pointerId);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    moving = event.button === 1 || event.button === 2 || event.shiftKey;
     canvas.classList.add("dragging");
     pinch = pointers.size === 2 ? pair() : null;
   });
@@ -308,18 +328,22 @@ function start(scene3) {
     if (!last) {
       return;
     }
+    const dx = event.clientX - last.x;
+    const dy = event.clientY - last.y;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 1) {
-      pan(event.clientX - last.x, event.clientY - last.y);
-      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (moving || event.shiftKey) {
+        pan(dx, dy);
+      } else {
+        look(dx, dy);
+      }
       return;
     }
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 2 && pinch) {
       const now = pair();
       pan(now.x - pinch.x, now.y - pinch.y);
       if (now.distance > 0 && pinch.distance > 0) {
-        const [px, py] = offset(now.x, now.y);
-        zoom(pinch.distance / now.distance, px, py);
+        zoom(pinch.distance / now.distance);
       }
       pinch = now;
     }
@@ -338,33 +362,37 @@ function start(scene3) {
     (event) => {
       event.preventDefault();
       const lines = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1;
-      const [px, py] = offset(event.clientX, event.clientY);
-      zoom(Math.exp(event.deltaY * lines * 0.0015), px, py);
+      zoom(Math.exp(event.deltaY * lines * 0.0015));
     },
     { passive: false }
   );
   canvas.addEventListener("keydown", (event) => {
-    const step = canvas.clientHeight * 0.1;
+    const step = canvas.clientHeight * 0.08;
     const keys = {
       ArrowLeft: () => pan(step, 0),
       ArrowRight: () => pan(-step, 0),
       ArrowUp: () => pan(0, step),
       ArrowDown: () => pan(0, -step),
-      "+": () => zoom(0.8, 0, 0),
-      "=": () => zoom(0.8, 0, 0),
-      "-": () => zoom(1.25, 0, 0),
+      q: () => look(-40, 0),
+      e: () => look(40, 0),
+      r: () => look(0, 25),
+      f: () => look(0, -25),
+      "+": () => zoom(0.8),
+      "=": () => zoom(0.8),
+      "-": () => zoom(1.25),
     };
-    const act = keys[event.key];
+    const act = keys[event.key.length === 1 ? event.key.toLowerCase() : event.key];
     if (act) {
       event.preventDefault();
       act();
     }
   });
 
-  buttons.zoomIn.addEventListener("click", () => zoom(0.7, 0, 0));
-  buttons.zoomOut.addEventListener("click", () => zoom(1 / 0.7, 0, 0));
-  buttons.fit.addEventListener("click", () => {
-    fit();
+  buttons.zoomIn.addEventListener("click", () => zoom(0.7));
+  buttons.zoomOut.addEventListener("click", () => zoom(1 / 0.7));
+  buttons.fit.addEventListener("click", fit);
+  buttons.above.addEventListener("click", () => {
+    view.pitch = HIGHEST_PITCH;
     limits();
   });
   let paused = false;

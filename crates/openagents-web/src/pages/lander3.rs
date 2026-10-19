@@ -104,13 +104,15 @@ fn document() -> String {
 <h1 class=\"unseen\">{title}</h1>\
 <div class=\"glade\" id=\"lander3\" data-scene=\"/lander3/scene.json\">\
 <canvas id=\"lander3-canvas\" tabindex=\"0\" aria-label=\"The Grid seen from above. \
-Drag or use the arrow keys to move; scroll, pinch, or use plus and minus to zoom.\"></canvas>\
+Drag to look around; arrow keys move, Q and E turn, R and F tilt, plus and minus zoom.\"></canvas>\
 <div class=\"lander3-panel\"><p class=\"lander3-title\">The Grid from above</p>\
-<p class=\"lander3-hint\">Drag to move. Scroll or pinch to zoom.</p>\
+<p class=\"lander3-hint\">Drag to look around. Right-drag, Shift-drag, or two fingers to move. \
+Scroll or pinch to zoom.</p>\
 <div class=\"lander3-buttons\">\
 <button type=\"button\" id=\"lander3-in\" disabled>Zoom in</button>\
 <button type=\"button\" id=\"lander3-out\" disabled>Zoom out</button>\
 <button type=\"button\" id=\"lander3-fit\" disabled>Show everything</button>\
+<button type=\"button\" id=\"lander3-above\" disabled>Look from above</button>\
 <button type=\"button\" id=\"lander3-robots\" aria-pressed=\"false\" disabled>Pause robots</button>\
 </div><p class=\"lander3-hint\"><a href=\"/grid\">Walk the Grid</a></p></div>\
 <p class=\"glade-status\" id=\"lander3-status\" aria-live=\"polite\">Loading the Grid…</p>\
