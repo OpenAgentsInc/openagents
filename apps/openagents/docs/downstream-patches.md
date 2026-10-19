@@ -1170,5 +1170,8 @@ links remain readable. Upstream fixes now require manual ports.
   shaping while carrying reveal ages as absolute UTF-16 slices. Android paints
   each original run once and keeps mixed-age or invalid coverage visible at the
   most visible alpha. Synthetic append, relayout, range-validation, and Geist
-  shaping fixtures are authored but unrun; Cargo, Kotlin, API 26, and device
+  shaping fixtures are authored but unrun. Canvas now uses the same validated
+  full-run alpha helper to schedule redraws, so settled, mixed-visible,
+  invalid-coverage, and reduced-motion rows do not request animation frames.
+  Scheduler fixtures are authored but unrun; Cargo, Kotlin, API 26, and device
   checks remain pending.

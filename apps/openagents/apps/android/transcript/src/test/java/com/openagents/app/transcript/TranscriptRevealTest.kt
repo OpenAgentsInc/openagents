@@ -45,4 +45,19 @@ class TranscriptRevealTest {
         )
         assertEquals(1f, transcriptRunRevealAlpha(display, 0u, emojiRun, 0, 200u), 0f)
     }
+
+    @Test fun redrawSchedulingMatchesPainterVisibility() {
+        val active = row(RevealSlice(0u, 0u, 3u, 200u))
+        assertEquals(true, transcriptNeedsRevealFrame(active, 0, reducedMotion = false))
+
+        val settled = active.copy(revealAgeMs = 450u)
+        assertEquals(false, transcriptNeedsRevealFrame(settled, 0, reducedMotion = false))
+
+        val mixedVisible = row(RevealSlice(0u, 0u, 1u, null), RevealSlice(0u, 1u, 2u, 200u))
+        assertEquals(false, transcriptNeedsRevealFrame(mixedVisible, 0, reducedMotion = false))
+
+        val invalid = row(RevealSlice(0u, 0u, 2u, 200u))
+        assertEquals(false, transcriptNeedsRevealFrame(invalid, 0, reducedMotion = false))
+        assertEquals(false, transcriptNeedsRevealFrame(active, 0, reducedMotion = true))
+    }
 }
