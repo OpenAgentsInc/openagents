@@ -250,19 +250,7 @@ impl Remote for Cli {
         // cat-file check below refuses it in words.
         // `${checkout#'~/'}` quotes the pattern: an unquoted `~` tilde-
         // expands inside `${x#p}` under bash and the strip misses.
-        let script = format!(
-            "checkout='{checkout}'; \
-             case \"$checkout\" in '~/'*) checkout=\"$HOME/${{checkout#'~/'}}\";; esac; \
-             if ! git -C \"$checkout\" rev-parse --git-dir >/dev/null 2>&1; then \
-               mkdir -p \"$(dirname \"$checkout\")\" && \
-               git clone -q '{origin}' \"$checkout\" || exit 2; \
-             fi; \
-             git -C \"$checkout\" fetch -q origin '{base}' 2>/dev/null || \
-             git -C \"$checkout\" fetch -q origin || exit 3; \
-             git -C \"$checkout\" cat-file -e '{base}^{{commit}}' && \
-             git -C \"$checkout\" reset --hard -q '{base}' && \
-             git -C \"$checkout\" clean -fdq"
-        );
+        let script = ensure_script(checkout, origin, base);
         self.exec(name, &["sh", "-c", &script])
             .map(|_| ())
             .map_err(|why| {
@@ -378,6 +366,33 @@ impl Remote for Cli {
     }
 }
 
+/// The remote script that clones `checkout` when absent, fetches `base`, and
+/// resets to it. Slots on one host share the checkout, so the fetches take a
+/// lock on the checkout's git directory when `flock` exists and retry a few
+/// times: git refuses a ref update that races another fetch
+/// (`cannot lock ref ...`).
+fn ensure_script(checkout: &str, origin: &str, base: &str) -> String {
+    format!(
+        "checkout='{checkout}'; \
+         case \"$checkout\" in '~/'*) checkout=\"$HOME/${{checkout#'~/'}}\";; esac; \
+         if ! git -C \"$checkout\" rev-parse --git-dir >/dev/null 2>&1; then \
+           mkdir -p \"$(dirname \"$checkout\")\" && \
+           git clone -q '{origin}' \"$checkout\" || \
+           git -C \"$checkout\" rev-parse --git-dir >/dev/null 2>&1 || exit 2; \
+         fi; \
+         gf() {{ if command -v flock >/dev/null 2>&1; then \
+           flock \"$checkout/.git/oa-fetch.lock\" git -C \"$checkout\" fetch -q origin \"$@\"; \
+           else git -C \"$checkout\" fetch -q origin \"$@\"; fi; }}; \
+         fetched=; for try in 1 2 3; do \
+           gf '{base}' 2>/dev/null || gf && {{ fetched=1; break; }}; \
+           sleep \"$try\"; done; \
+         [ -n \"$fetched\" ] || exit 3; \
+         git -C \"$checkout\" cat-file -e '{base}^{{commit}}' && \
+         git -C \"$checkout\" reset --hard -q '{base}' && \
+         git -C \"$checkout\" clean -fdq"
+    )
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -487,6 +502,51 @@ pub(crate) mod tests {
                 .unwrap()
                 .push(format!("cancel {name} {task}"));
             Ok(())
+        }
+    }
+
+    #[test]
+    fn concurrent_ensures_share_one_checkout() {
+        let git = |dir: &std::path::Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .current_dir(dir)
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let root = tempfile::tempdir().unwrap();
+        let origin = root.path().join("origin");
+        std::fs::create_dir(&origin).unwrap();
+        git(&origin, &["init", "-q", "-b", "main"]);
+        git(&origin, &["commit", "-q", "--allow-empty", "-m", "one"]);
+        let checkout = root.path().join("checkout");
+        git(root.path(), &["clone", "-q", origin.to_str().unwrap(), checkout.to_str().unwrap()]);
+        let mut scripts = Vec::new();
+        for n in 0..6 {
+            git(&origin, &["commit", "-q", "--allow-empty", "-m", &format!("c{n}")]);
+            let base = git(&origin, &["rev-parse", "HEAD"]);
+            scripts.push(ensure_script(
+                checkout.to_str().unwrap(),
+                origin.to_str().unwrap(),
+                &base,
+            ));
+        }
+        let children: Vec<_> = scripts
+            .iter()
+            .map(|script| {
+                std::process::Command::new("sh")
+                    .args(["-c", script])
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap()
+            })
+            .collect();
+        for child in children {
+            let out = child.wait_with_output().unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         }
     }
 }
