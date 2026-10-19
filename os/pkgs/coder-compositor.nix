@@ -62,9 +62,12 @@ rustPlatform.buildRustPackage {
     lockFile = src + "/Cargo.lock";
     outputHashes = {
       "bitcoin-payment-instructions-0.6.0" = "sha256-kJz+7u55DiSy+/7Rpvm9aiB2ZGpds91M3QQ0CzOi9q4=";
+      "breez-sdk-common-0.1.0" = "sha256-yaeKcM45rzNgwVySoWF7emMMHMxlhFt3pplnLQJbitk=";
+      "frost-core-2.1.0" = "sha256-U8KCu1wVofNQBeN4zuIgmxN5lSKj/6YXu7J4o5oIvbQ=";
       "ldk-node-0.7.0" = "sha256-qrPzuK+JNloEPKi1R9/qLNmXsZCHgbAjW+01qQV0nTU=";
       "lightning-0.2.5" = "sha256-wTWWuQjp6kdtzL+ndmTgld00HY3jqzIWZFcAJOKhfhY=";
       "lightning-0.3.0+git" = "sha256-uiZaVn2W3LyEh4TTsp7NN6pIcwJ0rWxkR7eZW6cF/9o=";
+      "matext4cgmath-0.1.0" = "sha256-oPW0krqv1MXYEpujpqS16qwmMNWgLZWcCa+VT8Ql7b8=";
       "musig2-0.1.0" = "sha256-+ksLhW4rXHDmi6xkPHrWAUdMvkm1cM/PBuJUnTt0vQk=";
     };
   };
