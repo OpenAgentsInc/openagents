@@ -33,6 +33,7 @@ mod chat_exchange;
 #[cfg(unix)]
 mod build_status;
 mod judge;
+#[cfg(unix)]
 pub mod grant_machine;
 #[cfg(unix)]
 mod machine_action;

@@ -30,6 +30,10 @@ pub mod issue;
 pub mod judge;
 pub mod limit;
 pub mod monitor;
+#[cfg(unix)]
+mod native;
+#[cfg(not(unix))]
+#[path = "native_unsupported.rs"]
 mod native;
 pub mod ops;
 pub mod pack;

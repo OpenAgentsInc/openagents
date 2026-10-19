@@ -188,6 +188,7 @@ fn main() -> anyhow::Result<()> {
     attach_parent_console();
     pin_coder_environment();
     // OpenAgents #11971: agent chats build through the shared build gate.
+    #[cfg(unix)]
     if let Err(error) = openagents_engine::build_gate::enable() {
         eprintln!("openagents: agent builds won't wait for a build slot: {error}");
     }
