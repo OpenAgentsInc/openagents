@@ -94,8 +94,8 @@ case $sub in
   build|b|test|t|check|c|clippy|run|r|bench|nextest) ;;
   *) exec "$real" "$@" ;;
 esac
-CARGO_INCREMENTAL=0
-export CARGO_INCREMENTAL
+# The workspace profile decides which crates compile incrementally (#12178).
+unset CARGO_INCREMENTAL
 if [ -n "${CARGO_TARGET_DIR:-}" ]; then
   . "$shims/build-env.sh" || exit 1
 fi

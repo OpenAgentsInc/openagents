@@ -179,10 +179,35 @@ strip = "symbols"
 [profile.dev]
 # gpui is slow unoptimized; match zed's approach for deps
 opt-level = 0
+# Line tables only: panics and backtraces still name the file and line, and
+# builds skip the rest of the debug information (#12178,
+# docs/audits/2026-10-19-rust-compile-times.md). For a debugger session,
+# build with `--config 'profile.dev.debug="full"'`.
+debug = "line-tables-only"
+# Incremental compilation only for the app's leaf crates, the chain an app
+# build waits on (harness, mcp, engine, ui, openagents) and the phone core.
+# Everything else stays cacheable by kache across worktrees. List only crates
+# whose workspace dependents are listed too (#12178).
+incremental = false
+
+[profile.dev.package.openagents]
+incremental = true
+[profile.dev.package.openagents-ui]
+incremental = true
+[profile.dev.package.openagents-engine]
+incremental = true
+[profile.dev.package.openagents-mcp]
+incremental = true
+[profile.dev.package.openagents-harness]
+incremental = true
+[profile.dev.package.openagents-mobile]
+incremental = true
+[profile.dev.package.openagents-client]
+incremental = true
 
 # The owner's everyday bundle (scripts/run-macos-dev.sh, `host-upgrade`):
 # our crates at opt-level 2 so layout and prepaint aren't unoptimized (#12152).
-# Keeps debug info and incremental builds; `cargo build`/`cargo test` stay on dev.
+# Keeps line tables and the incremental crate list from dev; `cargo build`/`cargo test` stay on dev.
 [profile.dev-opt]
 inherits = "dev"
 opt-level = 2

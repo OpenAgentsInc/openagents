@@ -32,8 +32,11 @@ else
 fi
 [ "${#oa_build_hash}" = 64 ] || return 1
 CARGO_BUILD_BUILD_DIR=$CARGO_TARGET_DIR/worktrees/${oa_build_hash%"${oa_build_hash#??}"}/${oa_build_hash#??}
-CARGO_INCREMENTAL=0
-export CARGO_BUILD_BUILD_DIR CARGO_INCREMENTAL
+export CARGO_BUILD_BUILD_DIR
+# The workspace profile decides which crates compile incrementally (#12178).
+# An inherited CARGO_INCREMENTAL would override it for every crate: 0 turns
+# the edit loop's incremental crates off, 1 takes every crate out of kache.
+unset CARGO_INCREMENTAL
 # The build directory's per-checkout hash would otherwise enter every key
 # that names a build-script output (OUT_DIR, -L), so map it to one fixed root.
 KACHE_BASE_DIR=$CARGO_BUILD_BUILD_DIR

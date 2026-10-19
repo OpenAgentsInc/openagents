@@ -43,6 +43,42 @@ dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 
+# Development and test builds keep line tables only: a panic or backtrace
+# still names the file and line, but the rest of the debug information is
+# not compiled or linked. With full debug information a Linux test binary
+# was about 1.2 GB and linking was the slowest step of `cargo test -p`
+# (docs/audits/2026-10-19-rust-compile-times.md, #12178). For a debugger
+# session, build with `--config 'profile.dev.debug="full"'`.
+[profile.dev]
+debug = "line-tables-only"
+# Incremental compilation only for the large leaf crates agents edit most.
+# An edit then recompiles what changed instead of the whole crate
+# (openagents-web: 92.6 s to 26.6 s on a 22-vCPU Linux VM). Every other crate
+# stays non-incremental, so kache and sccache can reuse it across worktrees;
+# an incremental crate is never cached. List only crates whose workspace
+# dependents are listed too. Incremental state lives in the source-keyed
+# build directory (scripts/dev/cargo-build-env.sh), one per worktree.
+incremental = false
+
+[profile.dev.package.openagents-web]
+incremental = true
+[profile.dev.package.openagents-cli]
+incremental = true
+[profile.dev.package.coder-new]
+incremental = true
+[profile.dev.package.gateway]
+incremental = true
+[profile.dev.package.openagents-desktop]
+incremental = true
+[profile.dev.package.oa-computers]
+incremental = true
+[profile.dev.package.openagents-ui]
+incremental = true
+[profile.dev.package.microcoder]
+incremental = true
+[profile.dev.package.coder-sync]
+incremental = true
+
 # SHA-256 at full speed in development builds too: a task's start digests
 # its workspace and grant, and unoptimized it ran 18 times slower (a 1 GB
 # file: 13.1 s against 0.74 s on CoderOS).

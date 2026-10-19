@@ -271,11 +271,15 @@ shim prepares the build before it runs the real `cargo`:
   leaving incompatible dependencies `Fresh` (#12113). Reload the helper after
   changing `RUSTC`. To switch rustup toolchains, unset `RUSTC`, set
   `RUSTUP_TOOLCHAIN`, and reload the helper.
-- **No incremental state.** Heavy Cargo subcommands set
-  `CARGO_INCREMENTAL=0`, overriding an inherited `1`. Both this and source-path
-  identity apply with `OPENAGENTS_KEEP_TARGET_DIR=1`, inside a build lease,
-  and when `openagents` is unavailable. An inherited build directory is replaced
-  so it cannot point at another worktree's compiler state.
+- **The workspace profile decides incremental compilation.** Heavy Cargo
+  subcommands unset `CARGO_INCREMENTAL`, dropping an inherited `0` or `1`, so
+  each workspace's `[profile.dev]` list applies: a few large leaf crates
+  compile incrementally, and every other crate stays cacheable by kache
+  (#12178). Incremental state lives in the source-keyed build directory, one
+  per worktree. Both this and source-path identity apply with
+  `OPENAGENTS_KEEP_TARGET_DIR=1`, inside a build lease, and when `openagents`
+  is unavailable. An inherited build directory is replaced so it cannot point
+  at another worktree's compiler state.
 - **The disk floor.** It refuses to start when less than 30 GiB is free
   (`OPENAGENTS_AGENT_FLOOR_GIB`), and says how much is free.
 - **The build limit.** It runs `openagents lease build --keep-target-dir`

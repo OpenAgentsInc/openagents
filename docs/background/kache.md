@@ -13,7 +13,13 @@ cap is enforced on an agent machine and how to reclaim the store
 [cache]
 local_max_size = "30GiB"
 gc_evict_shared = true
+preserve_incremental = true
 ```
+
+`preserve_incremental = true` keeps rustc's incremental state for the crates
+the workspace profile compiles incrementally (#12178). Without it, kache
+strips Cargo's `-C incremental` flag and caches the crate instead, so an edit
+recompiles the whole crate. Every other crate is cached as before.
 
 `gc_evict_shared = true` is required on a machine with long-lived agent
 target directories. Without it, the cap isn't enforced:

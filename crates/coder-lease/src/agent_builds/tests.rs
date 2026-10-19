@@ -110,7 +110,7 @@ fn light_subcommands_run_cargo_directly() {
         &["build"],
         &[("OPENAGENTS_LEASES", "build")],
     );
-    assert!(stdout(&output).starts_with("real build incremental=0 build_dir="));
+    assert!(stdout(&output).starts_with("real build incremental= build_dir="));
 }
 
 #[test]
@@ -171,7 +171,7 @@ fn a_build_waits_for_a_slot_under_the_coordinators_limit() {
     let line = stdout(&output);
     assert!(
         line.starts_with(&format!(
-            "lease lease build --keep-target-dir -- {} test -p x builds=5 floor=0 incremental=0 build_dir={}/ws-",
+            "lease lease build --keep-target-dir -- {} test -p x builds=5 floor=0 incremental= build_dir={}/ws-",
             machine.root().join("real/cargo").display(),
             machine.gate.targets.display()
         )),
@@ -216,7 +216,7 @@ fn every_worktree_shares_one_target_folder_per_workspace() {
     ] {
         let output = machine.cargo(&repo, &["check"], &extra);
         let line = stdout(&output);
-        assert!(line.contains("incremental=0"), "{line}");
+        assert!(line.contains("incremental= build_dir="), "{line}");
         assert!(line.contains("/worktrees/"), "{line}");
     }
     assert_eq!(main_app, wt_app);
@@ -318,7 +318,7 @@ fn explicit_shared_targets_stay_without_keep_target_dir() {
             line.contains(&format!("build_dir={}/worktrees/", target.display())),
             "{line}"
         );
-        assert!(line.contains("incremental=0"), "{line}");
+        assert!(line.contains("incremental= build_dir="), "{line}");
         assert!(!String::from_utf8_lossy(&output.stderr).contains("building in the shared folder"));
     }
 }
@@ -343,7 +343,7 @@ fn without_openagents_the_build_runs_and_says_so() {
     std::fs::remove_file(machine.root().join("bin/openagents")).unwrap();
     machine.gate.bin = None;
     let output = machine.cargo(&machine.root(), &["build"], &[]);
-    assert!(stdout(&output).starts_with("real build incremental=0 build_dir="));
+    assert!(stdout(&output).starts_with("real build incremental= build_dir="));
     assert!(String::from_utf8_lossy(&output.stderr).contains("without waiting for a build slot"));
 }
 

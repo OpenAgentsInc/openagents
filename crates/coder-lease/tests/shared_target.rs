@@ -69,6 +69,7 @@ fn two_worktrees_link_their_own_source_in_one_target() {
     write(
         &repo.join("Cargo.toml"),
         "[workspace]\nmembers=[\"source\"]\nexclude=[\"excluded\"]\nresolver=\"3\"\n\
+         [profile.dev]\nincremental=false\n[profile.dev.package.source]\nincremental=true\n\
          [package]\nname=\"worktree-probe\"\nversion=\"0.1.0\"\nedition=\"2024\"\n\
          [dependencies]\nsource={path=\"source\"}\nexcluded={path=\"excluded\"}\nshared-dependency={path=\"../dependency\"}\n",
     );
@@ -202,7 +203,10 @@ fn two_worktrees_link_their_own_source_in_one_target() {
                 .env("KACHE_CACHE_DIR", root.join("kache"))
                 .env("KACHE_RUNTIME_DIR", root.join("kache-runtime"))
                 .env("KACHE_DAEMON_IDLE_TIMEOUT", "1")
-                .env("CARGO_INCREMENTAL", "1") // The gate must force this off.
+                // The gate must drop this, so the profile's list decides: the
+                // crate whose source differs between the trees is incremental.
+                .env("CARGO_INCREMENTAL", "1")
+                .env("KACHE_PRESERVE_INCREMENTAL", "1")
                 .env("CARGO_BUILD_BUILD_DIR", root.join("wrong-shared-state"))
                 .env("OPENAGENTS_AGENT_FLOOR_GIB", "0")
                 .env("OPENAGENTS_LEASE_ROOT", root.join("leases"))
@@ -243,19 +247,29 @@ fn two_worktrees_link_their_own_source_in_one_target() {
     }
     for entry in fs::read_dir(&gate.targets).unwrap() {
         let target = entry.unwrap().path();
+        // Compiler state, incremental state included, stays in each tree's
+        // own source-keyed folder, never on the flat shared target (#12071).
+        assert!(!target.join("debug/incremental").exists(), "{target:?}");
         let mut states = Vec::new();
         for bucket in fs::read_dir(target.join("worktrees")).unwrap() {
             for workspace in fs::read_dir(bucket.unwrap().path()).unwrap() {
                 let state = workspace.unwrap().path();
                 assert!(state.join(".openagents-workspace").is_file());
                 assert_eq!(libraries(&state, "libsource-").len(), 1);
-                assert!(
-                    !state.join("debug/incremental").exists()
-                        || fs::read_dir(state.join("debug/incremental"))
+                // `source` compiled incrementally here: Cargo's folder, or the
+                // one kache keeps when it preserves incremental state.
+                let incremental = ["debug/incremental", "debug/incremental.kache-preserved"]
+                    .iter()
+                    .filter_map(|dir| fs::read_dir(state.join(dir)).ok())
+                    .flatten()
+                    .any(|entry| {
+                        entry
                             .unwrap()
-                            .next()
-                            .is_none()
-                );
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with("source-")
+                    });
+                assert!(incremental, "no incremental state for source in {state:?}");
                 states.push(state);
             }
         }

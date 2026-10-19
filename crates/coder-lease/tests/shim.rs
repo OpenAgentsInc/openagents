@@ -82,7 +82,7 @@ fn the_shim_leases_heavy_subcommands_and_passes_the_rest_through() {
         "{test}"
     );
     assert!(
-        test.contains("real cargo test -p x leases=build incremental=0"),
+        test.contains("real cargo test -p x leases=build incremental=\n"),
         "{test}"
     );
     let toolchain = cargo(&scratch, &["+nightly", "--color", "never", "clippy"], None);
@@ -105,7 +105,7 @@ fn the_shim_passes_through_under_a_build_lease() {
     let out = cargo(&scratch, &["build"], Some("quiet,build"));
     assert_eq!(
         out.trim(),
-        "real cargo build leases=quiet,build incremental=0"
+        "real cargo build leases=quiet,build incremental="
     );
 }
 

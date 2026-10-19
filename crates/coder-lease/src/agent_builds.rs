@@ -14,8 +14,9 @@
 //!   keeps the caller's `CARGO_TARGET_DIR` instead. Explicit recognized shared
 //!   targets already stay without that override (#12104).
 //! - Keys intermediate compiler state by Cargo's workspace manifest path hash
-//!   under the shared target, and disables incremental compilation, including
-//!   builds already inside a lease (#12071).
+//!   under the shared target, including builds already inside a lease
+//!   (#12071), and drops an inherited `CARGO_INCREMENTAL` so the workspace
+//!   profile's list of incremental crates applies (#12178).
 //! - Refuses to start below the disk floor, [`FLOOR_GIB`] GiB free, with a
 //!   plain message.
 //! - Waits for one of the `build` leases under `openagents lease build
@@ -141,8 +142,10 @@ esac
 # Cargo's workspace-relative fingerprints can call another worktree's source
 # Fresh without invoking rustc or kache. Keep compiler state under a manifest-
 # and compiler hash inside the shared target; kache keys outputs by content.
-CARGO_INCREMENTAL=0
-export CARGO_INCREMENTAL
+# The workspace profile decides which crates compile incrementally; their
+# state stays in that source-keyed folder. An inherited setting would apply to
+# every crate, so drop it (#12178).
+unset CARGO_INCREMENTAL
 manifest=
 previous=
 for arg in "$@"; do

@@ -179,8 +179,14 @@ replaces other targets with its one shared folder per workspace under
 `OPENAGENTS_KEEP_TARGET_DIR=1` only to keep another explicit target. Don't
 create both sets for the same workspace or delete a shared target at task end.
 
-Every agent build in a shared target must use `CARGO_INCREMENTAL=0` and
-source-keyed compiler state. After choosing `CARGO_TARGET_DIR`, load
+Every agent build in a shared target must use source-keyed compiler state and
+leave `CARGO_INCREMENTAL` unset (owner, 2026-10-19, #12178). Each workspace's
+`[profile.dev]` compiles a short list of large leaf crates incrementally and
+every other crate without it, so kache still reuses those; a one-line edit to
+`openagents-web` rebuilds in 27 s instead of 93 s. Add a crate to the list only
+when all its workspace dependents are on it. kache needs
+`preserve_incremental = true` in `~/.config/kache/config.toml`, or it strips
+the flag ([kache.md](docs/background/kache.md)). After choosing `CARGO_TARGET_DIR`, load
 `. "$(git rev-parse --show-toplevel)/scripts/dev/cargo-build-env.sh"`, then
 run Cargo directly. The helper pins `RUSTC` to the selected compiler, hashes
 its full `rustc -vV` output and path with the physical workspace manifest path
