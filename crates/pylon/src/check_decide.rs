@@ -690,12 +690,12 @@ mod tests {
         let answer = match q["type"].as_str() {
             Some("noul") => json!({"type": "noul", "noul": p[0]}),
             Some("choice") => {
-                let keys: Vec<&String> = q["criteria"].as_object().unwrap().keys().collect();
+                let keys = crate::verify::option_keys(q);
                 let best = (0..p.len()).max_by(|&a, &b| p[a].total_cmp(&p[b])).unwrap();
                 let probs: serde_json::Map<String, Value> = keys
                     .iter()
                     .zip(p)
-                    .map(|(k, v)| ((*k).clone(), json!(v)))
+                    .map(|(k, v)| (k.clone(), json!(v)))
                     .collect();
                 json!({"type": "choice", "choice": keys[best], "confidence": p[best], "probabilities": probs})
             }

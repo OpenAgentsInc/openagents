@@ -33,9 +33,27 @@ pub const LOG_FLOOR: f64 = 1e-6;
 /// How far the probabilities may be from summing to one.
 pub const SUM_TOLERANCE: f64 = 1e-3;
 
+/// A choice question's option keys in their canonical order: sorted.
+///
+/// The order must not depend on how a JSON object happens to be held:
+/// with serde_json's `preserve_order` feature (which other crates switch
+/// on for the whole build) a map keeps insertion order, and without it a
+/// map is sorted. The shipped self-check reference and the calibration
+/// runs store probabilities in sorted key order, so every comparison
+/// sorts.
+#[must_use]
+pub fn option_keys(question: &Value) -> Vec<String> {
+    let mut keys: Vec<String> = question["criteria"]
+        .as_object()
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default();
+    keys.sort();
+    keys
+}
+
 /// The probabilities of `answer` to `question`, in the question's option
-/// order: a choice's criteria keys, a score's levels, `[true, false]` for
-/// a noul.
+/// order: a choice's criteria keys sorted ([`option_keys`]), a score's
+/// levels, `[true, false]` for a noul.
 ///
 /// # Errors
 ///
@@ -64,10 +82,7 @@ pub fn probabilities(question: &Value, answer: &Value) -> Result<Vec<f64>, Strin
             let p = unit(&answer["noul"], "noul")?;
             return Ok(vec![p, 1.0 - p]);
         }
-        "choice" => question["criteria"]
-            .as_object()
-            .map(|o| o.keys().cloned().collect())
-            .unwrap_or_default(),
+        "choice" => option_keys(question),
         "score" => (0..question["criteria"].as_array().map_or(0, Vec::len))
             .map(|i| i.to_string())
             .collect(),
@@ -118,9 +133,9 @@ pub fn consistent(question: &Value, answer: &Value) -> Result<Vec<f64>, String> 
     match kind {
         "choice" => {
             let chosen = answer["choice"].as_str().ok_or("the choice is missing")?;
-            let index = question["criteria"]
-                .as_object()
-                .and_then(|o| o.keys().position(|k| k == chosen))
+            let index = option_keys(question)
+                .iter()
+                .position(|k| k == chosen)
                 .ok_or_else(|| format!("the choice `{chosen}` is not an option"))?;
             if p[index] < top - 1e-9 {
                 return Err(format!(
@@ -337,6 +352,21 @@ pub fn spread(distances: &[f64]) -> Spread {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn choice_probabilities_come_in_sorted_key_order_whatever_the_map_keeps() {
+        // Built in a non-sorted insertion order: with serde_json's
+        // `preserve_order` the map keeps it, without it the map sorts.
+        let mut criteria = serde_json::Map::new();
+        for key in ["privacy", "billing", "sales"] {
+            criteria.insert(key.into(), json!(key));
+        }
+        let question = json!({"type": "choice", "criteria": criteria});
+        let answer = json!({"type": "choice", "choice": "sales", "confidence": 0.7,
+            "probabilities": {"privacy": 0.2, "billing": 0.1, "sales": 0.7}});
+        assert_eq!(option_keys(&question), ["billing", "privacy", "sales"]);
+        assert_eq!(consistent(&question, &answer).unwrap(), vec![0.1, 0.2, 0.7]);
+    }
 
     fn choice_q() -> Value {
         json!({"type": "choice", "criteria": {"a": "first", "b": "second", "c": "third"}})
