@@ -26,13 +26,14 @@ import monitoring  # noqa: E402
 
 SCHEMA = """
 CREATE SCHEMA computers;
-CREATE TABLE computers.computers (id text PRIMARY KEY, phase text, desired text, record jsonb);
+CREATE TABLE computers.computers (id text PRIMARY KEY, phase text, desired text, done boolean, record jsonb);
 CREATE TABLE computers.turns (id text PRIMARY KEY, computer text, error text, finished_at timestamptz);
 CREATE TABLE computers.lifecycle_operations (operation text PRIMARY KEY, resource text, disposition text, created_at timestamptz);
 INSERT INTO computers.computers VALUES
- ('stranded','turn','running','{}'), ('busy','turn','running','{}'),
- ('lost','unknown','running','{"boots":[{"resource":"sbx_lost"}]}'),
- ('gone','deleted','deleted','{"boots":[{"resource":"sbx_gone"}]}'), ('fine','stopped','stopped','{}');
+ ('stranded','turn','running',false,'{}'), ('busy','turn','running',false,'{}'),
+ ('lost','unknown','running',false,'{"boots":[{"resource":"sbx_lost"}]}'),
+ ('stuck-delete','unknown','deleted',false,'{}'),
+ ('gone','deleted','deleted',true,'{"boots":[{"resource":"sbx_gone"}]}'), ('fine','stopped','stopped',false,'{}');
 INSERT INTO computers.turns VALUES
  ('t1','stranded','We couldn''t confirm whether the command stopped. Delete this computer to end it.', now()-interval '20 minutes'),
  ('t2','busy',NULL,NULL),
@@ -81,7 +82,8 @@ class ComputersQuery(unittest.TestCase):
             finally:
                 subprocess.run(['pg_ctl', '-D', str(data), '-m', 'immediate', 'stop'], capture_output=True)
         self.assertEqual(value['computers_stranded'], 1)
-        self.assertEqual(value['computers_unknown'], 1)
+        # A delete stuck in unknown counts even with no native resource (#12164).
+        self.assertEqual(value['computers_unknown'], 2)
         self.assertGreater(value['oldest_stranded_turn_seconds'], 19 * 60)
         self.assertLess(value['oldest_stranded_turn_seconds'], 21 * 60)
         self.assertGreater(value['oldest_requested_lifecycle_seconds'], 14 * 60)

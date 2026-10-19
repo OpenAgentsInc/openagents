@@ -35,7 +35,7 @@ COMPUTERS_SQL="""SELECT json_build_object(
    AND EXISTS (SELECT 1 FROM computers.turns t WHERE t.computer=c.id AND t.error LIKE 'We couldn''t confirm%')),
  'oldest_stranded_turn_seconds',(SELECT COALESCE(max(extract(epoch FROM now()-t.finished_at)),0) FROM computers.computers c
    JOIN computers.turns t ON t.computer=c.id WHERE c.phase='turn' AND c.desired<>'deleted' AND t.error LIKE 'We couldn''t confirm%'),
- 'computers_unknown',(SELECT count(*) FROM computers.computers WHERE phase='unknown' AND desired<>'deleted'),
+ 'computers_unknown',(SELECT count(*) FROM computers.computers WHERE phase='unknown' AND NOT done),
  'oldest_requested_lifecycle_seconds',(SELECT COALESCE(max(extract(epoch FROM now()-o.created_at)),0) FROM computers.lifecycle_operations o
    WHERE o.disposition='requested' AND EXISTS (SELECT 1 FROM computers.computers c WHERE c.phase<>'deleted' AND strpos(c.record::text,o.resource)>0)));"""
 

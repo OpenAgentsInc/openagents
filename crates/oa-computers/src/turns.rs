@@ -515,7 +515,9 @@ async fn add(
             api.turns.take(&turn);
             return (
                 StatusCode::ACCEPTED,
-                Json(json!({"id": original, "computer": id, "state": "queued", "env_names": names})),
+                Json(
+                    json!({"id": original, "computer": id, "state": "queued", "env_names": names}),
+                ),
             )
                 .into_response();
         }
@@ -685,6 +687,12 @@ pub(crate) async fn uncertain_memory_turn<D: Driver>(
     };
     if deleting {
         use coder_working_computer::provider::Provider;
+        // No resource means the create itself is uncertain, so no live
+        // process can be in memory. The ordinary delete repeats the create
+        // operation to learn its resource and then deletes it (#12164).
+        if computer.resource().is_none() {
+            return driver::delete(p, lease, crate::reconcile::now_ms()).await;
+        }
         if let Some(resource) = computer.resource() {
             lease.read().await?;
             if let Outcome::Done { .. } = p.delete(&computer, resource).await {
@@ -946,12 +954,9 @@ mod output_tests {
         let store = Store::new(db);
         let caps =
             computer_driver::Capabilities::new("fake", computer_driver::Profile::ALL, &["small"]);
-        let record = crate::api::admit_create(
-            &caps,
-            "key-test",
-            &crate::registry::CreateIntent::default(),
-        )
-        .unwrap();
+        let record =
+            crate::api::admit_create(&caps, "key-test", &crate::registry::CreateIntent::default())
+                .unwrap();
         let (entry, _) = store
             .create(&crate::store::NewComputer {
                 owner: "key-test",
@@ -968,12 +973,27 @@ mod output_tests {
             let computer = entry.id.clone();
             async move {
                 store
-                    .add_turn_keyed(id, &computer, "key-test", cmd, None, 30, &[], Some(("k1", digest)))
+                    .add_turn_keyed(
+                        id,
+                        &computer,
+                        "key-test",
+                        cmd,
+                        None,
+                        30,
+                        &[],
+                        Some(("k1", digest)),
+                    )
                     .await
             }
         };
-        assert_eq!(add("first", "true", "d1").await.unwrap(), ("first".into(), true));
-        assert_eq!(add("second", "true", "d1").await.unwrap(), ("first".into(), false));
+        assert_eq!(
+            add("first", "true", "d1").await.unwrap(),
+            ("first".into(), true)
+        );
+        assert_eq!(
+            add("second", "true", "d1").await.unwrap(),
+            ("first".into(), false)
+        );
         let e = add("third", "false", "d2").await.unwrap_err();
         assert_eq!(e.0, CONFLICT_ERROR);
     }
