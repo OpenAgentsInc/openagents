@@ -123,6 +123,7 @@ impl ConnectEndpoint {
                     .build(),
             )
             .alpns(config.alpns)
+            .transport_config(transport_config())
             .address_lookup(lookup.clone());
         if !config.bind.is_empty() {
             builder = builder.clear_ip_transports();
@@ -169,6 +170,22 @@ impl ConnectEndpoint {
     }
 }
 
+/// How long a path may sit idle before QUIC abandons it. iroh's default is
+/// 15 s, so a direct address the phone cannot reach (a Tailscale address from
+/// an emulator) kept stalling calls for 15-30 s before the relay path took
+/// over (#12170).
+const PATH_MAX_IDLE: Duration = Duration::from_secs(4);
+/// Probe each path often enough that a dead one is noticed inside
+/// [`PATH_MAX_IDLE`].
+const PATH_KEEP_ALIVE: Duration = Duration::from_secs(2);
+
+fn transport_config() -> QuicTransportConfig {
+    QuicTransportConfig::builder()
+        .default_path_max_idle_timeout(PATH_MAX_IDLE)
+        .default_path_keep_alive_interval(PATH_KEEP_ALIVE)
+        .build()
+}
+
 fn bind_error(_: BindError) -> Error {
     Error::new(Code::Unavailable, "could not bind the endpoint")
 }
@@ -176,6 +193,13 @@ fn bind_error(_: BindError) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dead_paths_are_dropped_quickly() {
+        assert!(PATH_MAX_IDLE < Duration::from_secs(15));
+        assert!(PATH_KEEP_ALIVE < PATH_MAX_IDLE);
+        let _ = transport_config();
+    }
 
     #[test]
     fn relay_constant_parses() {
