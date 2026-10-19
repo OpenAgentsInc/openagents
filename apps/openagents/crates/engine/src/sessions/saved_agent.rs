@@ -27,6 +27,19 @@ impl SessionsEngine {
             .set_chat_session(chat_id, harness, &session, &cwd);
         mark_changed(doc)
     }
+
+    /// Start `harness`'s next run in this chat in a fresh provider session
+    /// that receives the conversation, the same path a runtime change takes
+    /// when the runtime has no session of its own (#12207). Returns how many
+    /// sessions it retired.
+    pub(crate) fn start_fresh_runtime(
+        &self,
+        chat_id: &str,
+        harness: HarnessId,
+        doc: &SessionDoc,
+    ) -> usize {
+        self.inner.retire_runtime_sessions(chat_id, harness, doc)
+    }
 }
 
 /// Mark the chat so a fresh provider session receives the conversation.

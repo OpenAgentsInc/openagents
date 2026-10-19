@@ -229,6 +229,59 @@ impl Inner {
             }
         }
     }
+
+    /// Retire every session `harness` has in the chat, so the next run
+    /// starts a fresh provider session that receives the conversation
+    /// (#12207: an agent whose check-ins keep ending empty). Returns how
+    /// many sessions it retired.
+    pub(super) fn retire_runtime_sessions(
+        &self,
+        chat_id: &str,
+        harness: HarnessId,
+        doc: &SessionDoc,
+    ) -> usize {
+        let mut retired: Vec<String> = Vec::new();
+        if let Some(known) = lock(&self.harness_sessions).get(chat_id)
+            && known.harness.is_none_or(|owner| owner == harness)
+            && !known.session_id.is_empty()
+        {
+            retired.push(known.session_id.clone());
+        }
+        if let Some(slot) = slot(doc, harness) {
+            retired.push(slot.session);
+        }
+        if let Some(ws) = self.workspace()
+            && let Some((session, _)) = ws.chat_harness_session(chat_id)
+            && !session.is_empty()
+        {
+            retired.push(session);
+        }
+        let mark = |retired: &[String]| {
+            let mut missing = lock(&self.missing_sessions);
+            let ids = missing.entry(chat_id.to_owned()).or_default();
+            for session in retired {
+                ids.insert(session.clone());
+            }
+        };
+        mark(&retired);
+        // The journal can name older sessions of this runtime; each pass
+        // retires one, so this ends.
+        for _ in 0..64 {
+            let Some((session, _)) = self.runtime_session(chat_id, harness, None) else {
+                break;
+            };
+            mark(std::slice::from_ref(&session));
+            retired.push(session);
+        }
+        retired.sort();
+        retired.dedup();
+        for session in &retired {
+            forget_slot(doc, session);
+        }
+        self.set_chat_session(chat_id, harness, "", "");
+        let _ = saved_agent::mark_changed(doc);
+        retired.len()
+    }
 }
 
 #[cfg(test)]

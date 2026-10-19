@@ -176,8 +176,10 @@ pub(crate) struct Stall {
     pub told: bool,
 }
 
-/// A stall on its last rung, for the owner's phone (#12040).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A stall on its last rung, or the agent gone quiet (#12207), for the
+/// owner's phone (#12040).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct OwnerNotice {
     /// Stable per stall (its key and start), so a retry never notifies twice.
     pub request_id: String,
@@ -353,6 +355,12 @@ pub(crate) struct State {
     pub agent: Option<String>,
     /// Open stalls by `chat:ID` or `claim:N`, each raised once.
     pub stalls: BTreeMap<String, Stall>,
+    /// Check-in turns in a row that ended errored or with no reply (#12207).
+    pub empty_turns: u32,
+    /// The host started a fresh session after the last such pair.
+    pub restarted: bool,
+    /// The owner's notice that the agent went quiet, until it is sent.
+    down_notice: Option<OwnerNotice>,
 }
 
 impl Default for State {
@@ -382,6 +390,9 @@ impl Default for State {
             turned_on_at: None,
             agent: None,
             stalls: BTreeMap::new(),
+            empty_turns: 0,
+            restarted: false,
+            down_notice: None,
         }
     }
 }
@@ -413,6 +424,37 @@ pub(crate) enum Adopt {
 pub(crate) struct Wake {
     pub id: String,
     pub text: String,
+}
+
+/// A check-in turn of the agent's own that just ended (#12207).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EndedWake {
+    pub id: String,
+    pub errored: bool,
+}
+
+/// What a check-in turn left in the chat.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct TurnAnswer {
+    /// Any assistant text, tool call or question.
+    pub answered: bool,
+    /// The error the turn ended with, if any.
+    pub error: Option<String>,
+}
+
+/// Two check-ins in a row that end errored or with no reply mean the agent
+/// is down (#12207).
+pub(crate) const DOWN_AFTER: u32 = 2;
+
+/// What the host does after a check-in turn ends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Liveness {
+    /// The agent answered, or one empty turn isn't enough to say.
+    Fine,
+    /// Start a fresh session for the agent's runtime and say why.
+    Restart { reason: String },
+    /// The fresh session failed too: check-ins are paused. Say so.
+    Stopped { reason: String },
 }
 
 /// Status a managed chat had at the last look.
@@ -562,6 +604,9 @@ impl WakeEngine {
                 s.pending.clear();
                 s.open_wake = None;
                 s.last_scheduled = now;
+                s.empty_turns = 0;
+                s.restarted = false;
+                s.down_notice = None;
             }
             if s.settings.paused && !settings.paused {
                 // Resuming starts the clock again instead of firing at once.
@@ -730,10 +775,10 @@ impl WakeEngine {
         is_child: impl Fn(&str) -> bool,
         title: impl Fn(&str) -> String,
         now: i64,
-    ) -> Result<(), EngineError> {
+    ) -> Result<Option<EndedWake>, EngineError> {
         let state = self.state();
         let Some(own_chat) = state.settings.chat_id.clone() else {
-            return Ok(());
+            return Ok(None);
         };
         let mut events = Vec::new();
         // Managed chats with their last output while they work.
@@ -783,6 +828,7 @@ impl WakeEngine {
         }
         drop(marks);
         let own_row = rows.iter().find(|r| r.chat_id == own_chat);
+        let mut ended_wake = None;
         if let (Some(wake), Some(row)) = (state.open_wake.clone(), own_row) {
             let ended = matches!(row.status, SessionStatus::Idle | SessionStatus::Errored);
             let started = *lock(&self.wake_seen_working)
@@ -790,15 +836,17 @@ impl WakeEngine {
             if ended && started {
                 self.update(|s| s.open_wake = None)?;
                 *lock(&self.wake_seen_working) = false;
+                let errored = row.status == SessionStatus::Errored;
                 self.append(&DecisionEntry::Outcome {
                     at: now,
-                    id: wake,
-                    status: if row.status == SessionStatus::Errored {
+                    id: wake.clone(),
+                    status: if errored {
                         "errored".into()
                     } else {
                         "finished".into()
                     },
                 })?;
+                ended_wake = Some(EndedWake { id: wake, errored });
             }
         }
         let window = i64::from(state.settings.stall_minutes) * 60_000;
@@ -835,7 +883,68 @@ impl WakeEngine {
             raised
         })?;
         events.extend(raised);
-        self.push_events(events, now)
+        self.push_events(events, now)?;
+        Ok(ended_wake)
+    }
+
+    /// Count a check-in turn that ended (#12207). Two in a row that end
+    /// errored or with no reply mean the agent is down: the first time, the
+    /// host starts it fresh and the owner hears once; when the fresh session
+    /// fails twice too, check-ins pause instead of firing into the void.
+    pub fn turn_ended(
+        &self,
+        wake: &str,
+        answer: &TurnAnswer,
+        now: i64,
+    ) -> Result<Liveness, EngineError> {
+        let empty = answer.error.is_some() || !answer.answered;
+        let reason = match &answer.error {
+            Some(error) => format!("ended with an error: {}", bounded(error.trim(), 300)),
+            None => "ended without a reply".to_owned(),
+        };
+        let agent = self.agent.clone();
+        let liveness = self.update(|s| {
+            if !empty {
+                s.empty_turns = 0;
+                s.restarted = false;
+                return Liveness::Fine;
+            }
+            s.empty_turns += 1;
+            if s.empty_turns < DOWN_AFTER {
+                return Liveness::Fine;
+            }
+            s.empty_turns = 0;
+            if s.restarted {
+                s.restarted = false;
+                s.settings.paused = true;
+                s.schedule_dirty = true;
+                return Liveness::Stopped {
+                    reason: reason.clone(),
+                };
+            }
+            s.restarted = true;
+            s.down_notice = Some(OwnerNotice {
+                request_id: hex64(&format!("down:{agent}:{wake}")),
+                title: "Your agent stopped answering".into(),
+                body: format!(
+                    "Its last two check-ins {reason}. We started it again in a new session."
+                ),
+            });
+            Liveness::Restart {
+                reason: reason.clone(),
+            }
+        })?;
+        let status = match &liveness {
+            Liveness::Fine => return Ok(liveness),
+            Liveness::Restart { .. } => "down: restarted",
+            Liveness::Stopped { .. } => "down: check-ins paused",
+        };
+        self.append(&DecisionEntry::Outcome {
+            at: now,
+            id: wake.to_owned(),
+            status: status.into(),
+        })?;
+        Ok(liveness)
     }
 
     /// The watchdog over the chat's own turn (#12029). When the chat is busy
@@ -1167,7 +1276,7 @@ impl WakeEngine {
     pub fn owner_notices(&self, now: i64) -> Result<Vec<OwnerNotice>, EngineError> {
         self.update(|s| {
             let window = s.settings.stall_minutes;
-            let mut notices = Vec::new();
+            let mut notices: Vec<OwnerNotice> = s.down_notice.take().into_iter().collect();
             for (key, stall) in s.stalls.iter_mut() {
                 if stall.told || stall.rung_at(now, window) < 3 {
                     continue;
@@ -1277,7 +1386,10 @@ impl WakeEngine {
             .filter_map(|line| serde_json::from_str(&line).ok())
             .map(|entry: openagents_sdk::agents::DecisionEntry| {
                 let canonical = serde_json::to_string(&entry).unwrap_or_default();
-                (hex64(&format!("decision:{}:{canonical}", self.agent)), entry)
+                (
+                    hex64(&format!("decision:{}:{canonical}", self.agent)),
+                    entry,
+                )
             })
             .collect()
     }
@@ -1871,6 +1983,65 @@ mod tests {
         )
         .unwrap();
         f
+    }
+
+    /// #12207: one empty check-in is no alarm and a reply resets the count;
+    /// two in a row restart the agent once and tell the owner once; the
+    /// fresh session failing twice too pauses check-ins.
+    #[test]
+    fn two_empty_check_ins_in_a_row_restart_once_then_pause() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let empty = TurnAnswer::default();
+        let replied = TurnAnswer {
+            answered: true,
+            error: None,
+        };
+        let failed = TurnAnswer {
+            answered: true,
+            error: Some("No conversation found with session ID abc".into()),
+        };
+        assert_eq!(f.turn_ended("w1", &empty, MIN).unwrap(), Liveness::Fine);
+        assert!(
+            f.owner_notices(MIN).unwrap().is_empty(),
+            "one empty turn alone"
+        );
+        assert_eq!(
+            f.turn_ended("w2", &replied, 2 * MIN).unwrap(),
+            Liveness::Fine
+        );
+        assert_eq!(f.turn_ended("w3", &empty, 3 * MIN).unwrap(), Liveness::Fine);
+        let Liveness::Restart { reason } = f.turn_ended("w4", &failed, 4 * MIN).unwrap() else {
+            panic!("two empty turns in a row restart the agent");
+        };
+        assert!(reason.contains("No conversation found"), "{reason}");
+        let notices = f.owner_notices(4 * MIN).unwrap();
+        assert_eq!(notices.len(), 1);
+        assert!(notices[0].body.contains("No conversation found"));
+        assert!(valid_agent(&notices[0].request_id));
+        assert!(f.owner_notices(5 * MIN).unwrap().is_empty(), "told once");
+
+        assert_eq!(
+            f.turn_ended("w5", &empty, 30 * MIN).unwrap(),
+            Liveness::Fine
+        );
+        assert!(matches!(
+            f.turn_ended("w6", &empty, 50 * MIN).unwrap(),
+            Liveness::Stopped { .. }
+        ));
+        assert!(f.owner_notices(50 * MIN).unwrap().is_empty());
+        let state = f.state();
+        assert!(state.settings.paused && state.schedule_dirty);
+        assert_eq!(f.due(false, 500 * MIN).unwrap(), None, "no more check-ins");
+        let outcomes: Vec<String> = f
+            .read(50)
+            .into_iter()
+            .filter_map(|e| match e {
+                DecisionEntry::Outcome { status, .. } => Some(status),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(outcomes, ["down: restarted", "down: check-ins paused"]);
     }
 
     #[test]

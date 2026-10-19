@@ -8,8 +8,8 @@
 //! `crate::agent_wakes` for the state, log and coalescing.
 use super::*;
 use crate::agent_wakes::{
-    Adopt, AgentWakes, CLAIMS_QUERY, Declaring, GhIssue, LocalProgress, Wake, WakeEngine,
-    claim_issues, tool_label,
+    Adopt, AgentWakes, CLAIMS_QUERY, Declaring, EndedWake, GhIssue, Liveness, LocalProgress,
+    TurnAnswer, Wake, WakeEngine, claim_issues, tool_label,
 };
 use openagents_account::{
     Lease,
@@ -130,8 +130,16 @@ impl DocHost {
                                 .iter()
                                 .any(|c| c.id == id && chat.is_some() && c.parent_chat_id == chat)
                         };
-                        if let Err(e) = engine.observe(&rows, is_child, title, now_ms()) {
-                            tracing::warn!(error = %e, "agent wakes: session look failed");
+                        match engine.observe(&rows, is_child, title, now_ms()) {
+                            Ok(Some(ended)) => {
+                                if let Some(chat) = &chat {
+                                    host.after_check_in(&engine, chat, &ended, now_ms());
+                                }
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                tracing::warn!(error = %e, "agent wakes: session look failed")
+                            }
                         }
                     }
                 }
@@ -637,6 +645,103 @@ impl DocHost {
     /// such as remote run commands (#12054).
     pub fn agent_allows(&self, _agent: &str, _scope: Scope, _target: &str) -> Result<(), String> {
         // No grant is needed (owner, 2026-10-18, #12135).
+        Ok(())
+    }
+
+    /// What the agent's check-in turn left in its chat: whether it replied
+    /// (text, a tool call or a question) and the error it ended with.
+    fn wake_answer(&self, chat: &str, ended: &EndedWake) -> TurnAnswer {
+        let entries = self
+            .open(chat)
+            .ok()
+            .and_then(|h| h.doc.read_entries().ok())
+            .unwrap_or_default();
+        let mut answer = TurnAnswer {
+            answered: false,
+            error: ended.errored.then(String::new),
+        };
+        let Some(at) = entries.iter().position(|e| e.id == ended.id) else {
+            // The check-in never reached the chat: only an error says it failed.
+            answer.answered = !ended.errored;
+            return answer;
+        };
+        for entry in &entries[at + 1..] {
+            let reply = entry.role == openagents_doc::MessageRole::Assistant;
+            for part in &entry.parts {
+                match part {
+                    openagents_doc::MessagePart::Text { text, .. }
+                        if reply && !text.trim().is_empty() =>
+                    {
+                        answer.answered = true
+                    }
+                    openagents_doc::MessagePart::Tool { .. }
+                    | openagents_doc::MessagePart::Input { .. }
+                        if reply =>
+                    {
+                        answer.answered = true
+                    }
+                    openagents_doc::MessagePart::Error { message, .. } => {
+                        answer.error = Some(message.clone())
+                    }
+                    _ => {}
+                }
+            }
+        }
+        answer
+    }
+
+    /// The agent's check-in turn ended (#12207): two in a row that end
+    /// errored or with no reply start the agent fresh on its runtime with
+    /// the conversation, and the owner hears once (sent by `tell_owner`).
+    /// When the fresh session fails twice too, check-ins pause. Either way
+    /// the chat says so.
+    fn after_check_in(&self, engine: &WakeEngine, chat: &str, ended: &EndedWake, now: i64) {
+        let answer = self.wake_answer(chat, ended);
+        let text = match engine.turn_ended(&ended.id, &answer, now) {
+            Ok(Liveness::Fine) => return,
+            Ok(Liveness::Restart { reason }) => {
+                tracing::warn!(chat = %chat, %reason, "agent wakes: two empty check-ins, starting the agent fresh");
+                if let Err(e) = self.start_agent_fresh(chat) {
+                    tracing::warn!(chat = %chat, error = %e, "agent wakes: fresh start failed");
+                }
+                format!(
+                    "The last two check-ins {reason}. This computer started the agent again in a new session, with this conversation."
+                )
+            }
+            Ok(Liveness::Stopped { reason }) => {
+                tracing::warn!(chat = %chat, %reason, "agent wakes: the fresh session failed too, pausing check-ins");
+                engine.set_problem(Some(
+                    "Check-ins are paused because the agent stopped answering.".into(),
+                ));
+                format!(
+                    "The new session's first two check-ins {reason} too, so check-ins are paused. Turn them back on in Settings → General → Check-ins."
+                )
+            }
+            Err(e) => {
+                tracing::warn!(chat = %chat, error = %e, "agent wakes: check-in outcome not saved");
+                return;
+            }
+        };
+        if let Err(e) = self.runtime_note(chat, text) {
+            tracing::warn!(chat = %chat, error = %e, "agent wakes: couldn't tell the chat");
+        }
+    }
+
+    /// Start the chat's runtime in a fresh session that receives the
+    /// conversation, the path a runtime change takes (#12205).
+    fn start_agent_fresh(&self, chat: &str) -> Result<(), EngineError> {
+        let sessions = self
+            .sessions()
+            .ok_or_else(|| error("This computer is not ready."))?;
+        let harness = self
+            .workspace()
+            .and_then(|w| w.chat(chat).ok().flatten())
+            .and_then(|row| row.config.map(|c| c.harness))
+            .unwrap_or(self.inner.config.default_harness);
+        let handle = self.open(chat)?;
+        let writer = handle.writer();
+        let retired = sessions.start_fresh_runtime(chat, harness, &writer);
+        tracing::info!(chat = %chat, ?harness, retired, "agent wakes: next check-in starts a fresh session");
         Ok(())
     }
 
@@ -1548,6 +1653,193 @@ mod tests {
         }
         core.shutdown().await;
         server.abort();
+    }
+
+    /// A runtime whose every turn starts a session and ends with no reply,
+    /// like a Codex thread resumed on Claude Code (#12205). It records the
+    /// session each run was asked to resume.
+    struct EmptyHarness {
+        resumes: Arc<std::sync::Mutex<Vec<Option<String>>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl openagents_harness::Harness for EmptyHarness {
+        fn id(&self) -> HarnessId {
+            HarnessId::Mock
+        }
+        fn display_name(&self) -> &str {
+            "Empty"
+        }
+        fn supports_steering(&self) -> bool {
+            false
+        }
+        fn steering_mode(&self) -> openagents_proto::SteeringMode {
+            openagents_proto::SteeringMode::StepBoundary
+        }
+        fn reasoning_levels(&self) -> &[openagents_proto::ReasoningLevel] {
+            &[openagents_proto::ReasoningLevel::Medium]
+        }
+        async fn models(
+            &self,
+        ) -> Result<Vec<openagents_proto::Model>, openagents_harness::HarnessError> {
+            Ok(vec![])
+        }
+        async fn run(
+            &self,
+            request: openagents_proto::RunRequest,
+            _controls: openagents_harness::RunControls,
+        ) -> Result<
+            futures::stream::BoxStream<
+                'static,
+                Result<openagents_proto::AgentEvent, openagents_harness::HarnessError>,
+            >,
+            openagents_harness::HarnessError,
+        > {
+            use futures::StreamExt;
+            use openagents_proto::{AgentEvent, DoneStatus};
+            let mut resumes = self.resumes.lock().unwrap();
+            resumes.push(request.resume.clone());
+            let session = format!("s{}", resumes.len());
+            let events = vec![
+                Ok(AgentEvent::SessionStarted {
+                    harness: HarnessId::Mock,
+                    model: "mock-1".into(),
+                    tools: vec![],
+                    cwd: request.cwd.clone(),
+                    session_id: session.clone(),
+                    assistant_message_id: format!("a-{session}"),
+                }),
+                Ok(AgentEvent::Done {
+                    status: DoneStatus::Completed,
+                    result: None,
+                    error: None,
+                    session_id: Some(session),
+                }),
+            ];
+            Ok(futures::stream::iter(events).boxed())
+        }
+    }
+
+    /// #12207's fixture: a runtime that answers every check-in with an empty
+    /// turn. One empty turn changes nothing; the second starts one fresh
+    /// session and queues one owner notice; the fresh session's two empty
+    /// turns pause check-ins and say so in the chat.
+    #[tokio::test]
+    async fn empty_check_ins_restart_the_agent_once_and_tell_the_owner_once() {
+        use openagents_proto::{ChatConfig, SandboxLevel};
+        let root = tempfile::tempdir().unwrap();
+        let resumes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let registry = crate::HarnessRegistry::new();
+        registry.register(Arc::new(EmptyHarness {
+            resumes: resumes.clone(),
+        }));
+        let core =
+            crate::EngineCore::assemble(root.path(), Arc::new(registry), HarnessId::Mock, None)
+                .unwrap();
+        let host = &core.doc_host;
+        let cwd = root.path().to_string_lossy().into_owned();
+        core.workspace
+            .create_chat(
+                OWN,
+                None,
+                Some(&host.inner.config.device_id),
+                Some(ChatConfig {
+                    harness: HarnessId::Mock,
+                    model: None,
+                    reasoning: None,
+                    model_options: Default::default(),
+                    sandbox: SandboxLevel::WorkspaceWrite,
+                }),
+                Some(cwd.clone()),
+            )
+            .unwrap();
+        let engine = WakeEngine::open(&root.path().join("fixture-wakes"), AGENT);
+        engine
+            .set(
+                WakeSettings {
+                    chat_id: Some(OWN.into()),
+                    every_minutes: 20,
+                    ..WakeSettings::default()
+                },
+                0,
+            )
+            .unwrap();
+        let notes = || {
+            host.open(OWN)
+                .unwrap()
+                .doc
+                .read_entries()
+                .unwrap()
+                .into_iter()
+                .filter(|e| e.role == MessageRole::System)
+                .filter_map(|e| match e.parts.first() {
+                    Some(MessagePart::Text { text, .. }) => Some(text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        // One check-in: queue it the way the host does, run it, and look.
+        async fn check_in(core: &crate::EngineCore, engine: &WakeEngine, cwd: &str, n: i64) {
+            let host = &core.doc_host;
+            let now = n * 20 * MIN;
+            let wake = engine.due(false, now).unwrap().expect("a check-in is due");
+            core.sessions
+                .dispatch(
+                    OWN,
+                    HarnessId::Mock,
+                    request(cwd)(&wake.text).unwrap(),
+                    Some(wake.id),
+                )
+                .await
+                .unwrap();
+            let row = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    if let Some(row) = core.sessions.session_status(OWN)
+                        && row.status == SessionStatus::Idle
+                        && !core.sessions.turn_in_flight(OWN)
+                    {
+                        break row;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("the turn ends");
+            let ended = engine
+                .observe(&[row], |_| false, |_| "Untitled".into(), now + 3 * MIN)
+                .unwrap()
+                .expect("the check-in's turn ended");
+            host.after_check_in(engine, OWN, &ended, now + 3 * MIN);
+        }
+
+        check_in(&core, &engine, &cwd, 1).await;
+        assert!(notes().is_empty(), "one empty turn alone is no alarm");
+        assert!(engine.owner_notices(4 * MIN).unwrap().is_empty());
+
+        check_in(&core, &engine, &cwd, 2).await;
+        let restart = notes();
+        assert_eq!(restart.len(), 1, "{restart:?}");
+        assert!(restart[0].contains("ended without a reply"), "{restart:?}");
+        let notices = engine.owner_notices(44 * MIN).unwrap();
+        assert_eq!(notices.len(), 1, "one notice");
+        assert!(notices[0].body.contains("ended without a reply"));
+        assert!(engine.owner_notices(45 * MIN).unwrap().is_empty());
+
+        // The fresh session resumes nothing; then it fails twice too.
+        check_in(&core, &engine, &cwd, 3).await;
+        check_in(&core, &engine, &cwd, 4).await;
+        let all = notes();
+        assert_eq!(all.len(), 2, "one restart, then the pause: {all:?}");
+        assert!(all[1].contains("check-ins are paused"));
+        assert_eq!(
+            *resumes.lock().unwrap(),
+            [None, Some("s1".into()), None, Some("s3".into())],
+            "the restart started a fresh session"
+        );
+        assert!(engine.owner_notices(90 * MIN).unwrap().is_empty());
+        assert!(engine.state().settings.paused);
+        assert_eq!(engine.due(false, 500 * MIN).unwrap(), None);
+        core.shutdown().await;
     }
 
     fn request(cwd: &str) -> impl FnOnce(&str) -> Option<openagents_proto::RunRequest> + '_ {
