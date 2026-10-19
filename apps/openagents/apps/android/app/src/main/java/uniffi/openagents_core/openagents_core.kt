@@ -669,6 +669,9 @@ internal interface UniffiCallbackInterfaceAccountListenerMethod0 : com.sun.jna.C
 internal interface UniffiCallbackInterfaceAgentLabListenerMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceAndroidHostListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceAndroidSecretStorageMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`namespace`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -680,6 +683,9 @@ internal interface UniffiCallbackInterfaceAndroidSecretStorageMethod2 : com.sun.
 }
 internal interface UniffiCallbackInterfaceAndroidSecretStorageMethod3 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`namespace`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceAndroidRetiredWalletSeedMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceCloudChatDoneMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`error`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
@@ -697,6 +703,9 @@ internal interface UniffiCallbackInterfacePlayIntegrityAttesterMethod0 : com.sun
     fun callback(`uniffiHandle`: Long,`requestHash`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceSavedHistoryListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceSettingsListenerMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceSharingListenerMethod0 : com.sun.jna.Callback {
@@ -817,6 +826,25 @@ internal open class UniffiVTableCallbackInterfaceAgentLabListener(
     }
 
 }
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onAndroidHostChanged")
+internal open class UniffiVTableCallbackInterfaceAndroidHostListener(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `onAndroidHostChanged`: UniffiCallbackInterfaceAndroidHostListenerMethod0? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `onAndroidHostChanged`: UniffiCallbackInterfaceAndroidHostListenerMethod0? = null,
+    ): UniffiVTableCallbackInterfaceAndroidHostListener(`uniffiFree`,`uniffiClone`,`onAndroidHostChanged`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceAndroidHostListener) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `onAndroidHostChanged` = other.`onAndroidHostChanged`
+    }
+
+}
 @Structure.FieldOrder("uniffiFree", "uniffiClone", "read", "create", "replace", "delete")
 internal open class UniffiVTableCallbackInterfaceAndroidSecretStorage(
     @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
@@ -842,6 +870,25 @@ internal open class UniffiVTableCallbackInterfaceAndroidSecretStorage(
         `create` = other.`create`
         `replace` = other.`replace`
         `delete` = other.`delete`
+    }
+
+}
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "readRetiredSeed")
+internal open class UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `readRetiredSeed`: UniffiCallbackInterfaceAndroidRetiredWalletSeedMethod0? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `readRetiredSeed`: UniffiCallbackInterfaceAndroidRetiredWalletSeedMethod0? = null,
+    ): UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed(`uniffiFree`,`uniffiClone`,`readRetiredSeed`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `readRetiredSeed` = other.`readRetiredSeed`
     }
 
 }
@@ -956,6 +1003,25 @@ internal open class UniffiVTableCallbackInterfaceSavedHistoryListener(
         `uniffiFree` = other.`uniffiFree`
         `uniffiClone` = other.`uniffiClone`
         `onSavedHistoryChanged` = other.`onSavedHistoryChanged`
+    }
+
+}
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onSettingsChanged")
+internal open class UniffiVTableCallbackInterfaceSettingsListener(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `onSettingsChanged`: UniffiCallbackInterfaceSettingsListenerMethod0? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `onSettingsChanged`: UniffiCallbackInterfaceSettingsListenerMethod0? = null,
+    ): UniffiVTableCallbackInterfaceSettingsListener(`uniffiFree`,`uniffiClone`,`onSettingsChanged`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceSettingsListener) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `onSettingsChanged` = other.`onSettingsChanged`
     }
 
 }
@@ -1232,6 +1298,10 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_func_android_wallet_key_store(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_func_classify_android_app_link(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_func_dispatch_android_app_link(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_func_demo_autonomy_card(
     ): Int
     external fun uniffi_openagents_mobile_checksum_func_demo_exit_copy(
@@ -1239,6 +1309,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_openagents_mobile_checksum_func_forget_demo_data(
     ): Int
     external fun uniffi_openagents_mobile_checksum_func_owner_notification_chat_from_link(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_func_open_settings(
     ): Int
     external fun uniffi_openagents_mobile_checksum_func_file_mention_link(
     ): Int
@@ -1392,6 +1464,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreclient_chat_read_only(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreclient_drawer_pin_moves(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreclient_available_chat_config(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreclient_handle_push_wake(
@@ -1408,7 +1482,29 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_uploadprogress_on_progress(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_bookmark(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_close(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_environment(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_focused(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_lifecycle(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_prepare(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_restore(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coretranscriptaccessibility_page(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coretranscriptaccessibility_row_part(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_accountlistener_on_account_changed(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccount_accept_project_invitation(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_agent_lab(
     ): Int
@@ -1421,6 +1517,10 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_custom_agents(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_link_computer(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccount_preview_project_invitation(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccount_project_invitation_share(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_project_sharing(
     ): Int
@@ -1441,6 +1541,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_voice_agent(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_delete_account(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccount_restore_words_if_current(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes(
     ): Int
@@ -1488,6 +1590,154 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreagentlab_snapshot(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_androidhostlistener_on_android_host_changed(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_accessibility_surface(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_account(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_activate_voice_agent(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_activate_voice_usage(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_attach_transcript(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_client(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_composer(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_default_push_prefs(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_dismiss_link_review(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_history(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_navigate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_app_link(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_notification_tap(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_refresh_transcript(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_resolve_notification_tap(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_save_text_selection(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_save_transcript_anchor(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_select_cloud_chat(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_select_default_chat(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_select_indexed_chat(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_select_saved_chat(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_select_session(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_selected_session(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_sessions(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_set_foreground(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_sharing(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_snapshot(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_start(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_start_host_voice(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_sync_voice_usage(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_image(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_link(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_mounted(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_visual(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_widget(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_voice_ended(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_voice_settings(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_wallet(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroiddemo_choices(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroiddemo_host(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroiddemo_select(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroiddemo_shutdown(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_id(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_load(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_retire(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_snapshot(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidwallet_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidwallet_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidwallet_authenticated(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidwallet_change_field(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidwallet_open(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidwallet_redact(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidwallet_snapshot(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidrecovery_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidrecovery_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidrecovery_authenticated(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidrecovery_change(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidrecovery_close(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidrecovery_redact(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidrecovery_render(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidrecovery_start(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_attach_client(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_chat_homes(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_close(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_continue_on_selected(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_default_chat(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_saved_chat_homes(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_sharing(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidsessions_view(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_androidsecretstorage_read(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_androidsecretstorage_create(
@@ -1495,6 +1745,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_openagents_mobile_checksum_method_androidsecretstorage_replace(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_androidsecretstorage_delete(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_androidretiredwalletseed_read_retired_seed(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_corechathomes_activate(
     ): Int
@@ -1558,6 +1810,30 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_playintegrityattester_attest(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabactions_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabactions_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabactions_change_field(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabactions_dismiss(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabactions_frame(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabactions_playback_position(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabcard_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabcard_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabcard_dispose(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabcard_is_current(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabcard_media(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corelabcard_snapshot(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreonboarding_finish(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreonboarding_should_show(
@@ -1588,6 +1864,10 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_visible(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_inline_projection(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_projection(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_action(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_attachment_bytes(
@@ -1598,9 +1878,13 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_downloaded_file_part(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_file_chat(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_follow(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_message(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_move_pin(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_render_transcript(
     ): Int
@@ -1610,15 +1894,29 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_snapshot(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_indexed_session(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_mark_indexed_seen(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_savedhistorylistener_on_saved_history_changed(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_acknowledge_native_view(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_activate_native(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_begin_queued_edit(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_change_native_field(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_chat_id(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_clear_composer_draft(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_clear_queue_error(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_composer(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_composer_editor(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_deliver_queued_now(
     ): Int
@@ -1636,13 +1934,19 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_move_queued_by(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_prepare_native_view(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_remove_queued(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_renew_queued_edit(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_respond_input(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_restore_composer_draft(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_retry_delivery(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_save_composer_draft(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_send(
     ): Int
@@ -1650,7 +1954,41 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_set_view_attached(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_sessionhandle_submit_native_composer(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_sessionhandle_transcript_status(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidcomposer_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidcomposer_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidcomposer_change_field(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidcomposer_dispose(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidcomposer_editor(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidcomposer_frame(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidcomposer_submit(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresettings_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresettings_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresettings_change_field(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresettings_dispose(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresettings_preferences(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresettings_refresh_cloud(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresettings_snapshot(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coresettings_wallpaper_selected(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_settingslistener_on_settings_changed(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresharing_activate(
     ): Int
@@ -1662,13 +2000,29 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_sharinglistener_on_sharing_changed(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_voicecall_activate_view(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_voicecall_audio_state(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_voicecall_capsule_view(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_voicecall_complete_media(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_voicecall_screen_view(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_voicecall_set_muted(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_voicecall_stop(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_voicecall_update_audio_focus(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_voicecall_update_audio_route(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_voicecall_update_context(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_voicecall_update_network_state(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_voicecall_update_proximity(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_voicemedialistener_on_request(
     ): Int
@@ -1684,11 +2038,15 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_voiceagentlistener_on_voice_agent_changed(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corevoiceusage_activate_view(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_corevoiceusage_refresh(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_corevoiceusage_snapshot(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_corevoiceusage_track(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corevoiceusage_view_json(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_voiceusagelistener_on_voice_usage_changed(
     ): Int
@@ -1752,6 +2110,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_transcriptview_visual(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_transcriptview_attach_cloud(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_orbrenderer_next_frame(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_orbrenderer_set_audio_levels(
@@ -1804,9 +2164,23 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_coreclient_new(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreaccessibilitysurface_new(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coretranscriptaccessibility_new(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_coreaccount_new(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_coreaccount_new_with_secure_storage(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreandroidhost_demo(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreandroidhost_production(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreandroiddemo_new(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreandroidrecovery_new(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreandroidsessions_new(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_corecloudchat_demo(
     ): Int
@@ -1816,11 +2190,17 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_coreowncomputeroffer_demo(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreandroidcomposer_cloud(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreandroidcomposer_live(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_textsystem_new(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_transcriptview_new(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_orbrenderer_new(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_corewallet_android(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_corewallet_new(
     ): Int
@@ -1842,6 +2222,8 @@ internal object UniffiLib {
         Native.register(UniffiLib::class.java, findLibraryName(componentName = "openagents_core"))
         uniffiCallbackInterfaceAccountListener.register(this)
         uniffiCallbackInterfaceAgentLabListener.register(this)
+        uniffiCallbackInterfaceAndroidHostListener.register(this)
+        uniffiCallbackInterfaceAndroidRetiredWalletSeed.register(this)
         uniffiCallbackInterfaceAndroidSecretStorage.register(this)
         uniffiCallbackInterfaceAppAttester.register(this)
         uniffiCallbackInterfaceClientListener.register(this)
@@ -1853,6 +2235,7 @@ internal object UniffiLib {
         uniffiCallbackInterfacePlatformMeasurer.register(this)
         uniffiCallbackInterfacePlayIntegrityAttester.register(this)
         uniffiCallbackInterfaceSavedHistoryListener.register(this)
+        uniffiCallbackInterfaceSettingsListener.register(this)
         uniffiCallbackInterfaceSharingListener.register(this)
         uniffiCallbackInterfaceUploadProgress.register(this)
         uniffiCallbackInterfaceVisualListener.register(this)
@@ -2017,6 +2400,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreclient_chat_read_only(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
+    external fun uniffi_openagents_mobile_fn_method_coreclient_drawer_pin_moves(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_coreclient_available_chat_config(`ptr`: Long,`deviceId`: RustBuffer.ByValue,`config`: RustBuffer.ByValue,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreclient_handle_push_wake(`ptr`: Long,`kind`: RustBuffer.ByValue,
@@ -2039,6 +2424,38 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_uploadprogress_on_progress(`ptr`: Long,`fraction`: Double,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_clone_coreaccessibilitysurface(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coreaccessibilitysurface(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_coreaccessibilitysurface_new(`account`: Long,`scope`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_bookmark(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_close(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_environment(`ptr`: Long,`fontScale`: Float,`density`: Float,`reducedMotion`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_focused(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_lifecycle(`ptr`: Long,`event`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_prepare(`ptr`: Long,`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_restore(`ptr`: Long,`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_clone_coretranscriptaccessibility(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coretranscriptaccessibility(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_coretranscriptaccessibility_new(`account`: Long,`transcript`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coretranscriptaccessibility_page(`ptr`: Long,`revision`: Long,`anchor`: Long,`direction`: RustBuffer.ByValue,`count`: Int,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coretranscriptaccessibility_row_part(`ptr`: Long,`revision`: Long,`key`: Long,`byte`: Int,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_clone_accountlistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_accountlistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2055,6 +2472,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_constructor_coreaccount_new_with_secure_storage(`dataDir`: RustBuffer.ByValue,`apiUrl`: RustBuffer.ByValue,`websiteUrl`: RustBuffer.ByValue,`listener`: Long,`storage`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreaccount_accept_project_invitation(`ptr`: Long,`link`: RustBuffer.ByValue,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_agent_lab(`ptr`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_cancel(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2067,6 +2486,10 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_link_computer(`ptr`: Long,`client`: Long,`deviceId`: RustBuffer.ByValue,
     ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreaccount_preview_project_invitation(`ptr`: Long,`link`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreaccount_project_invitation_share(`ptr`: Long,`link`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_coreaccount_project_sharing(`ptr`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_restore(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2087,6 +2510,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_delete_account(`ptr`: Long,`forfeitBalance`: Byte,
     ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreaccount_restore_words_if_current(`ptr`: Long,`words`: RustBuffer.ByValue,`generation`: Long,`npub`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_coreaccount_chat_homes(`ptr`: Long,`client`: Long,`chat`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_cloud_chat(`ptr`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2143,6 +2568,194 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreagentlab_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_androidhostlistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_androidhostlistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_init_callback_vtable_androidhostlistener(`vtable`: UniffiVTableCallbackInterfaceAndroidHostListener,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_androidhostlistener_on_android_host_changed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_clone_coreandroidhost(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coreandroidhost(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_coreandroidhost_demo(`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_constructor_coreandroidhost_production(`dataDir`: RustBuffer.ByValue,`deviceId`: RustBuffer.ByValue,`deviceName`: RustBuffer.ByValue,`version`: RustBuffer.ByValue,`storage`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_accessibility_surface(`ptr`: Long,`surface`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_account(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_activate_voice_agent(`ptr`: Long,`generation`: Long,`picker`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_activate_voice_usage(`ptr`: Long,`generation`: Long,`usage`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_attach_transcript(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_client(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_composer(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_default_push_prefs(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_dismiss_link_review(`ptr`: Long,`review`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_history(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_navigate(`ptr`: Long,`route`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_offer_app_link(`ptr`: Long,`raw`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_offer_notification_tap(`ptr`: Long,`link`: RustBuffer.ByValue,`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_refresh_transcript(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_resolve_notification_tap(`ptr`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_save_text_selection(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,`frameRevision`: Long,`selection`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_save_transcript_anchor(`ptr`: Long,`generation`: Long,`contentRevision`: Long,`anchor`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_select_cloud_chat(`ptr`: Long,`chat`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_select_default_chat(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_select_indexed_chat(`ptr`: Long,`key`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_select_saved_chat(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_select_session(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_selected_session(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_sessions(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_set_foreground(`ptr`: Long,`active`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_sharing(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_start(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_start_host_voice(`ptr`: Long,`generation`: Long,`contentRevision`: Long,`media`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_sync_voice_usage(`ptr`: Long,`generation`: Long,`usage`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_image(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,`frameRevision`: Long,`row`: Long,`widget`: Int,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_link(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,`frameRevision`: Long,`top`: Float,`height`: Float,`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_mounted(`ptr`: Long,`generation`: Long,`revision`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_visual(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,`frameRevision`: Long,`row`: Long,`widget`: Int,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_widget(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,`frameRevision`: Long,`row`: Long,`widget`: Int,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_voice_ended(`ptr`: Long,`generation`: Long,`call`: Long,`reason`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_voice_settings(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_wallet(`ptr`: Long,`retired`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_clone_coreandroiddemo(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coreandroiddemo(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_coreandroiddemo_new(`dataDir`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroiddemo_choices(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroiddemo_host(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroiddemo_select(`ptr`: Long,`fixture`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroiddemo_shutdown(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_clone_coreandroidlinkreview(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coreandroidlinkreview(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidlinkreview_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidlinkreview_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidlinkreview_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidlinkreview_load(`ptr`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidlinkreview_retire(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidlinkreview_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_coreandroidwallet(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coreandroidwallet(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidwallet_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidwallet_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidwallet_authenticated(`ptr`: Long,`token`: Long,`success`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidwallet_change_field(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidwallet_open(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidwallet_redact(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidwallet_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_coreandroidrecovery(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coreandroidrecovery(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_coreandroidrecovery_new(`account`: Long,`onboarding`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidrecovery_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidrecovery_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidrecovery_authenticated(`ptr`: Long,`token`: Long,`accepted`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidrecovery_change(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidrecovery_close(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidrecovery_redact(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidrecovery_render(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidrecovery_start(`ptr`: Long,`deviceName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_coreandroidsessions(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coreandroidsessions(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_coreandroidsessions_new(`account`: Long,`cloudListener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_attach_client(`ptr`: Long,`core`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_chat_homes(`ptr`: Long,`chat`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_close(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_continue_on_selected(`ptr`: Long,`draft`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_default_chat(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_saved_chat_homes(`ptr`: Long,`history`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_sharing(`ptr`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidsessions_view(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_clone_androidsecretstorage(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_androidsecretstorage(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2156,6 +2769,14 @@ internal object UniffiLib {
     external fun uniffi_openagents_mobile_fn_method_androidsecretstorage_replace(`ptr`: Long,`namespace`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_androidsecretstorage_delete(`ptr`: Long,`namespace`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_androidretiredwalletseed(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_androidretiredwalletseed(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_init_callback_vtable_androidretiredwalletseed(`vtable`: UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_androidretiredwalletseed_read_retired_seed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_clone_corechathomes(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
@@ -2267,6 +2888,38 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_playintegrityattester_attest(`ptr`: Long,`requestHash`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_corelabactions(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_corelabactions(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corelabactions_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corelabactions_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corelabactions_change_field(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corelabactions_dismiss(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corelabactions_frame(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corelabactions_playback_position(`ptr`: Long,`seconds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_clone_corelabcard(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_corelabcard(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corelabcard_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corelabcard_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corelabcard_dispose(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corelabcard_is_current(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_corelabcard_media(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`resource`: RustBuffer.ByValue,`artifact`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corelabcard_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_clone_coreonboarding(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_coreonboarding(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2315,6 +2968,10 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_lab_visible(`ptr`: Long,`card`: RustBuffer.ByValue,`visible`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coresavedhistory_lab_inline_projection(`ptr`: Long,`card`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coresavedhistory_lab_projection(`ptr`: Long,`card`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_action(`ptr`: Long,`action`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_attachment_bytes(`ptr`: Long,`path`: RustBuffer.ByValue,
@@ -2325,10 +2982,14 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_downloaded_file_part(`ptr`: Long,`part`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coresavedhistory_file_chat(`ptr`: Long,`id`: RustBuffer.ByValue,`change`: RustBuffer.ByValue,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_follow(`ptr`: Long,`visible`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_message(`ptr`: Long,`id`: RustBuffer.ByValue,`part`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coresavedhistory_move_pin(`ptr`: Long,`id`: RustBuffer.ByValue,`after`: RustBuffer.ByValue,`before`: RustBuffer.ByValue,`revision`: Long,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_render_transcript(`ptr`: Long,`view`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_set_foreground(`ptr`: Long,`active`: Byte,uniffi_out_err: UniffiRustCallStatus,
@@ -2337,6 +2998,10 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coresavedhistory_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coresavedhistory_indexed_session(`ptr`: Long,`key`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coresavedhistory_mark_indexed_seen(`ptr`: Long,`key`: RustBuffer.ByValue,`activityRevision`: RustBuffer.ByValue,
+    ): Long
     external fun uniffi_openagents_mobile_fn_clone_savedhistorylistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_savedhistorylistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2349,13 +3014,23 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_free_sessionhandle(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_acknowledge_native_view(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_activate_native(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,`text`: RustBuffer.ByValue,`attachments`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_begin_queued_edit(`ptr`: Long,`id`: RustBuffer.ByValue,`instanceId`: RustBuffer.ByValue,
     ): Long
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_change_native_field(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_chat_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_clear_composer_draft(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_clear_queue_error(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_composer(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_composer_editor(`ptr`: Long,`instance`: RustBuffer.ByValue,`viewRevision`: Long,`requestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_deliver_queued_now(`ptr`: Long,`id`: RustBuffer.ByValue,
     ): Long
@@ -2373,13 +3048,19 @@ internal object UniffiLib {
     ): Byte
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_move_queued_by(`ptr`: Long,`id`: RustBuffer.ByValue,`delta`: Int,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_prepare_native_view(`ptr`: Long,`viewJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_remove_queued(`ptr`: Long,`id`: RustBuffer.ByValue,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_renew_queued_edit(`ptr`: Long,`lease`: RustBuffer.ByValue,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_respond_input(`ptr`: Long,`requestId`: RustBuffer.ByValue,`answers`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_restore_composer_draft(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_retry_delivery(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_save_composer_draft(`ptr`: Long,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_send(`ptr`: Long,`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -2387,8 +3068,60 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_set_view_attached(`ptr`: Long,`attached`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_sessionhandle_submit_native_composer(`ptr`: Long,`instance`: RustBuffer.ByValue,`viewRevision`: Long,`inputToken`: RustBuffer.ByValue,`editingLifetime`: Long,`editorRevision`: Long,`choiceToken`: RustBuffer.ByValue,`text`: RustBuffer.ByValue,`attachments`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_sessionhandle_transcript_status(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_coreandroidcomposer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coreandroidcomposer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_coreandroidcomposer_cloud(`chat`: Long,`account`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_constructor_coreandroidcomposer_live(`session`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidcomposer_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidcomposer_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_coreandroidcomposer_change_field(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidcomposer_dispose(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidcomposer_editor(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidcomposer_frame(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreandroidcomposer_submit(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`token`: RustBuffer.ByValue,`lifetime`: Long,`editorRevision`: Long,`choice`: RustBuffer.ByValue,`text`: RustBuffer.ByValue,`attachments`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_clone_coresettings(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_coresettings(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coresettings_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coresettings_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coresettings_change_field(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coresettings_dispose(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coresettings_preferences(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coresettings_refresh_cloud(`ptr`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_coresettings_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coresettings_wallpaper_selected(`ptr`: Long,`ticket`: RustBuffer.ByValue,`uri`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`permissionSaved`: Byte,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_clone_settingslistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_settingslistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_init_callback_vtable_settingslistener(`vtable`: UniffiVTableCallbackInterfaceSettingsListener,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_settingslistener_on_settings_changed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_clone_coresharing(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_coresharing(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2413,13 +3146,29 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_free_voicecall(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_voicecall_activate_view(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_voicecall_audio_state(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_voicecall_capsule_view(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_voicecall_complete_media(`ptr`: Long,`requestId`: Long,`failure`: RustBuffer.ByValue,`sdp`: RustBuffer.ByValue,`microphone`: Short,`speaker`: Short,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_voicecall_screen_view(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_voicecall_set_muted(`ptr`: Long,`muted`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_voicecall_stop(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_voicecall_update_audio_focus(`ptr`: Long,`focus`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_voicecall_update_audio_route(`ptr`: Long,`route`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_method_voicecall_update_context(`ptr`: Long,`chatId`: RustBuffer.ByValue,`title`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_voicecall_update_network_state(`ptr`: Long,`network`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_voicecall_update_proximity(`ptr`: Long,`near`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_clone_voicemedialistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
@@ -2461,12 +3210,16 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_free_corevoiceusage(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corevoiceusage_activate_view(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`node`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_method_corevoiceusage_refresh(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_corevoiceusage_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_corevoiceusage_track(`ptr`: Long,`preferredHost`: RustBuffer.ByValue,`activeCall`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corevoiceusage_view_json(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_clone_voiceusagelistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_voiceusagelistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2563,6 +3316,8 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_transcriptview_visual(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_transcriptview_attach_cloud(`ptr`: Long,`chat`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
     external fun uniffi_openagents_mobile_fn_clone_orbrenderer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_orbrenderer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2609,6 +3364,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_free_corewallet(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_constructor_corewallet_android(`home`: RustBuffer.ByValue,`current`: Long,`retired`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     external fun uniffi_openagents_mobile_fn_constructor_corewallet_new(`home`: RustBuffer.ByValue,`store`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_corewallet_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -2691,6 +3448,10 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_func_android_wallet_key_store(`storage`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
+    external fun uniffi_openagents_mobile_fn_func_classify_android_app_link(`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_func_dispatch_android_app_link(`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_func_demo_autonomy_card(uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_func_demo_exit_copy(uniffi_out_err: UniffiRustCallStatus,
@@ -2699,6 +3460,8 @@ internal object UniffiLib {
     ): Byte
     external fun uniffi_openagents_mobile_fn_func_owner_notification_chat_from_link(`link`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_func_open_settings(`account`: Long,`client`: RustBuffer.ByValue,`capabilities`: RustBuffer.ByValue,`version`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     external fun uniffi_openagents_mobile_fn_func_file_mention_link(`path`: RustBuffer.ByValue,`isDir`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_func_default_voice_styles(uniffi_out_err: UniffiRustCallStatus,
@@ -2905,6 +3668,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_func_android_wallet_key_store() and 0xFFFF) != 27579) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_func_classify_android_app_link() and 0xFFFF) != 8258) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_func_dispatch_android_app_link() and 0xFFFF) != 26899) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_func_demo_autonomy_card() and 0xFFFF) != 22875) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -2915,6 +3684,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_func_owner_notification_chat_from_link() and 0xFFFF) != 17687) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_func_open_settings() and 0xFFFF) != 24464) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_func_file_mention_link() and 0xFFFF) != 21705) {
@@ -3145,6 +3917,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_coreclient_chat_read_only() and 0xFFFF) != 30414) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreclient_drawer_pin_moves() and 0xFFFF) != 57686) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreclient_available_chat_config() and 0xFFFF) != 58721) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3169,7 +3944,40 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_uploadprogress_on_progress() and 0xFFFF) != 48365) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_acknowledge() and 0xFFFF) != 2878) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_bookmark() and 0xFFFF) != 2179) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_close() and 0xFFFF) != 38145) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_environment() and 0xFFFF) != 27087) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_focused() and 0xFFFF) != 54834) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_lifecycle() and 0xFFFF) != 60200) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_prepare() and 0xFFFF) != 27388) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_restore() and 0xFFFF) != 55995) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coretranscriptaccessibility_page() and 0xFFFF) != 28029) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coretranscriptaccessibility_row_part() and 0xFFFF) != 54886) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_accountlistener_on_account_changed() and 0xFFFF) != 40050) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_accept_project_invitation() and 0xFFFF) != 8940) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_agent_lab() and 0xFFFF) != 15653) {
@@ -3188,6 +3996,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_link_computer() and 0xFFFF) != 29105) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_preview_project_invitation() and 0xFFFF) != 12125) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_project_invitation_share() and 0xFFFF) != 49741) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_project_sharing() and 0xFFFF) != 8843) {
@@ -3218,6 +4032,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_delete_account() and 0xFFFF) != 60111) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_restore_words_if_current() and 0xFFFF) != 42439) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() and 0xFFFF) != 42622) {
@@ -3289,6 +4106,228 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_coreagentlab_snapshot() and 0xFFFF) != 64507) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_androidhostlistener_on_android_host_changed() and 0xFFFF) != 35876) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_accessibility_surface() and 0xFFFF) != 20573) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_account() and 0xFFFF) != 11736) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_activate_voice_agent() and 0xFFFF) != 64212) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_activate_voice_usage() and 0xFFFF) != 54281) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_attach_transcript() and 0xFFFF) != 187) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_client() and 0xFFFF) != 49971) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_composer() and 0xFFFF) != 62007) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_default_push_prefs() and 0xFFFF) != 16504) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_dismiss_link_review() and 0xFFFF) != 59498) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_history() and 0xFFFF) != 56895) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_navigate() and 0xFFFF) != 1188) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_app_link() and 0xFFFF) != 14612) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_notification_tap() and 0xFFFF) != 8193) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_refresh_transcript() and 0xFFFF) != 65138) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_resolve_notification_tap() and 0xFFFF) != 40515) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_save_text_selection() and 0xFFFF) != 20085) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_save_transcript_anchor() and 0xFFFF) != 14037) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_select_cloud_chat() and 0xFFFF) != 35287) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_select_default_chat() and 0xFFFF) != 54699) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_select_indexed_chat() and 0xFFFF) != 13980) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_select_saved_chat() and 0xFFFF) != 2406) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_select_session() and 0xFFFF) != 59213) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_selected_session() and 0xFFFF) != 16905) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_sessions() and 0xFFFF) != 2293) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_set_foreground() and 0xFFFF) != 11809) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_sharing() and 0xFFFF) != 23251) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_snapshot() and 0xFFFF) != 32492) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_start() and 0xFFFF) != 46699) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_start_host_voice() and 0xFFFF) != 64672) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_sync_voice_usage() and 0xFFFF) != 5557) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_image() and 0xFFFF) != 28885) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_link() and 0xFFFF) != 19887) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_mounted() and 0xFFFF) != 24470) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_visual() and 0xFFFF) != 18971) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_widget() and 0xFFFF) != 12490) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_voice_ended() and 0xFFFF) != 27161) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_voice_settings() and 0xFFFF) != 35874) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_wallet() and 0xFFFF) != 27593) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroiddemo_choices() and 0xFFFF) != 18862) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroiddemo_host() and 0xFFFF) != 53647) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroiddemo_select() and 0xFFFF) != 54456) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroiddemo_shutdown() and 0xFFFF) != 54100) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_acknowledge() and 0xFFFF) != 31708) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_activate() and 0xFFFF) != 17854) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_id() and 0xFFFF) != 4425) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_load() and 0xFFFF) != 42028) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_retire() and 0xFFFF) != 10167) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_snapshot() and 0xFFFF) != 51438) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidwallet_acknowledge() and 0xFFFF) != 58000) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidwallet_activate() and 0xFFFF) != 28742) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidwallet_authenticated() and 0xFFFF) != 59011) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidwallet_change_field() and 0xFFFF) != 33558) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidwallet_open() and 0xFFFF) != 64218) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidwallet_redact() and 0xFFFF) != 12525) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidwallet_snapshot() and 0xFFFF) != 49295) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidrecovery_acknowledge() and 0xFFFF) != 29945) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidrecovery_activate() and 0xFFFF) != 44633) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidrecovery_authenticated() and 0xFFFF) != 61380) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidrecovery_change() and 0xFFFF) != 18256) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidrecovery_close() and 0xFFFF) != 33533) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidrecovery_redact() and 0xFFFF) != 49367) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidrecovery_render() and 0xFFFF) != 54435) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidrecovery_start() and 0xFFFF) != 25572) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_acknowledge() and 0xFFFF) != 50) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_activate() and 0xFFFF) != 30288) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_attach_client() and 0xFFFF) != 64252) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_chat_homes() and 0xFFFF) != 16993) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_close() and 0xFFFF) != 15107) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_continue_on_selected() and 0xFFFF) != 34222) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_default_chat() and 0xFFFF) != 43789) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_saved_chat_homes() and 0xFFFF) != 40789) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_sharing() and 0xFFFF) != 24415) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidsessions_view() and 0xFFFF) != 57280) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_androidsecretstorage_read() and 0xFFFF) != 28347) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3299,6 +4338,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_androidsecretstorage_delete() and 0xFFFF) != 56954) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_androidretiredwalletseed_read_retired_seed() and 0xFFFF) != 13277) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_corechathomes_activate() and 0xFFFF) != 47837) {
@@ -3394,6 +4436,42 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_playintegrityattester_attest() and 0xFFFF) != 48301) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabactions_acknowledge() and 0xFFFF) != 20293) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabactions_activate() and 0xFFFF) != 61376) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabactions_change_field() and 0xFFFF) != 28290) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabactions_dismiss() and 0xFFFF) != 26271) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabactions_frame() and 0xFFFF) != 19632) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabactions_playback_position() and 0xFFFF) != 545) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabcard_acknowledge() and 0xFFFF) != 48027) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabcard_activate() and 0xFFFF) != 12380) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabcard_dispose() and 0xFFFF) != 31390) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabcard_is_current() and 0xFFFF) != 62665) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabcard_media() and 0xFFFF) != 63846) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corelabcard_snapshot() and 0xFFFF) != 62790) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreonboarding_finish() and 0xFFFF) != 30618) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3439,6 +4517,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_visible() and 0xFFFF) != 3398) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_inline_projection() and 0xFFFF) != 26842) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_projection() and 0xFFFF) != 26469) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_action() and 0xFFFF) != 4715) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3454,10 +4538,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_downloaded_file_part() and 0xFFFF) != 2055) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_file_chat() and 0xFFFF) != 27842) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_follow() and 0xFFFF) != 17681) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_message() and 0xFFFF) != 57619) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_move_pin() and 0xFFFF) != 34235) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_render_transcript() and 0xFFFF) != 10609) {
@@ -3472,19 +4562,40 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_snapshot() and 0xFFFF) != 54548) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_indexed_session() and 0xFFFF) != 42907) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_mark_indexed_seen() and 0xFFFF) != 16496) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_savedhistorylistener_on_saved_history_changed() and 0xFFFF) != 38424) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_acknowledge_native_view() and 0xFFFF) != 36331) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_activate_native() and 0xFFFF) != 63439) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_begin_queued_edit() and 0xFFFF) != 65066) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_change_native_field() and 0xFFFF) != 60488) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_chat_id() and 0xFFFF) != 55811) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_clear_composer_draft() and 0xFFFF) != 8561) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_clear_queue_error() and 0xFFFF) != 11908) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_composer() and 0xFFFF) != 44897) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_composer_editor() and 0xFFFF) != 24418) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_deliver_queued_now() and 0xFFFF) != 36693) {
@@ -3511,6 +4622,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_move_queued_by() and 0xFFFF) != 23401) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_prepare_native_view() and 0xFFFF) != 35725) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_remove_queued() and 0xFFFF) != 1476) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3520,7 +4634,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_respond_input() and 0xFFFF) != 11537) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_restore_composer_draft() and 0xFFFF) != 11522) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_retry_delivery() and 0xFFFF) != 61808) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_save_composer_draft() and 0xFFFF) != 38204) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_send() and 0xFFFF) != 33402) {
@@ -3532,7 +4652,58 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_set_view_attached() and 0xFFFF) != 32385) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_submit_native_composer() and 0xFFFF) != 40776) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_sessionhandle_transcript_status() and 0xFFFF) != 24478) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidcomposer_acknowledge() and 0xFFFF) != 18370) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidcomposer_activate() and 0xFFFF) != 44632) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidcomposer_change_field() and 0xFFFF) != 25684) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidcomposer_dispose() and 0xFFFF) != 13534) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidcomposer_editor() and 0xFFFF) != 42720) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidcomposer_frame() and 0xFFFF) != 46755) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidcomposer_submit() and 0xFFFF) != 34669) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresettings_acknowledge() and 0xFFFF) != 40773) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresettings_activate() and 0xFFFF) != 24593) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresettings_change_field() and 0xFFFF) != 54547) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresettings_dispose() and 0xFFFF) != 37755) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresettings_preferences() and 0xFFFF) != 1746) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresettings_refresh_cloud() and 0xFFFF) != 312) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresettings_snapshot() and 0xFFFF) != 61927) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coresettings_wallpaper_selected() and 0xFFFF) != 2158) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_settingslistener_on_settings_changed() and 0xFFFF) != 41641) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coresharing_activate() and 0xFFFF) != 63786) {
@@ -3550,7 +4721,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_sharinglistener_on_sharing_changed() and 0xFFFF) != 62009) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_activate_view() and 0xFFFF) != 50099) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_audio_state() and 0xFFFF) != 24789) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_capsule_view() and 0xFFFF) != 45767) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_complete_media() and 0xFFFF) != 40162) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_screen_view() and 0xFFFF) != 57527) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_set_muted() and 0xFFFF) != 61805) {
@@ -3559,7 +4742,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_stop() and 0xFFFF) != 32163) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_update_audio_focus() and 0xFFFF) != 38706) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_update_audio_route() and 0xFFFF) != 20317) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_update_context() and 0xFFFF) != 64757) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_update_network_state() and 0xFFFF) != 47102) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_voicecall_update_proximity() and 0xFFFF) != 56937) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_voicemedialistener_on_request() and 0xFFFF) != 44204) {
@@ -3583,6 +4778,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_voiceagentlistener_on_voice_agent_changed() and 0xFFFF) != 44992) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corevoiceusage_activate_view() and 0xFFFF) != 20799) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_corevoiceusage_refresh() and 0xFFFF) != 39150) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3590,6 +4788,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_corevoiceusage_track() and 0xFFFF) != 32803) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corevoiceusage_view_json() and 0xFFFF) != 14772) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_voiceusagelistener_on_voice_usage_changed() and 0xFFFF) != 17737) {
@@ -3685,6 +4886,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_transcriptview_visual() and 0xFFFF) != 38186) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_transcriptview_attach_cloud() and 0xFFFF) != 17521) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_orbrenderer_next_frame() and 0xFFFF) != 5432) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3763,10 +4967,31 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_constructor_coreclient_new() and 0xFFFF) != 50306) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreaccessibilitysurface_new() and 0xFFFF) != 3436) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coretranscriptaccessibility_new() and 0xFFFF) != 61586) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_coreaccount_new() and 0xFFFF) != 30316) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_coreaccount_new_with_secure_storage() and 0xFFFF) != 54541) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidhost_demo() and 0xFFFF) != 41549) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidhost_production() and 0xFFFF) != 82) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroiddemo_new() and 0xFFFF) != 53302) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidrecovery_new() and 0xFFFF) != 49660) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidsessions_new() and 0xFFFF) != 7455) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_corecloudchat_demo() and 0xFFFF) != 48106) {
@@ -3781,6 +5006,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_constructor_coreowncomputeroffer_demo() and 0xFFFF) != 291) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidcomposer_cloud() and 0xFFFF) != 10045) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidcomposer_live() and 0xFFFF) != 40372) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_textsystem_new() and 0xFFFF) != 39900) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3788,6 +5019,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_orbrenderer_new() and 0xFFFF) != 33643) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_android() and 0xFFFF) != 16399) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_new() and 0xFFFF) != 43285) {
@@ -4901,6 +6135,631 @@ public object FfiConverterTypeAgentLabListener: FfiConverter<AgentLabListener, L
     override fun allocationSize(value: AgentLabListener) = 8UL
 
     override fun write(value: AgentLabListener, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface AndroidHostListener {
+
+    fun `onAndroidHostChanged`()
+
+    companion object
+}
+
+open class AndroidHostListenerImpl: Disposable, AutoCloseable, AndroidHostListener
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_androidhostlistener(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_androidhostlistener(handle, status)
+        }
+    }
+
+    override fun `onAndroidHostChanged`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_androidhostlistener_on_android_host_changed(
+        it,
+        _status)
+}
+    }
+
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceAndroidHostListener {
+    internal object `onAndroidHostChanged`: UniffiCallbackInterfaceAndroidHostListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAndroidHostListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onAndroidHostChanged`(
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeAndroidHostListener.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeAndroidHostListener.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceAndroidHostListener.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `onAndroidHostChanged`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_openagents_mobile_fn_init_callback_vtable_androidhostlistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidHostListener: FfiConverter<AndroidHostListener, Long> {
+    internal val handleMap = UniffiHandleMap<AndroidHostListener>()
+
+    override fun lower(value: AndroidHostListener): Long {
+        if (value is AndroidHostListenerImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): AndroidHostListener {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AndroidHostListenerImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): AndroidHostListener {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: AndroidHostListener) = 8UL
+
+    override fun write(value: AndroidHostListener, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Reads the old encrypted file. This interface cannot create or delete it.
+ */
+public interface AndroidRetiredWalletSeed {
+
+    fun `readRetiredSeed`(): RetiredSeedRead
+
+    companion object
+}
+
+/**
+ * Reads the old encrypted file. This interface cannot create or delete it.
+ */
+open class AndroidRetiredWalletSeedImpl: Disposable, AutoCloseable, AndroidRetiredWalletSeed
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_androidretiredwalletseed(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_androidretiredwalletseed(handle, status)
+        }
+    }
+
+    override fun `readRetiredSeed`(): RetiredSeedRead {
+            return FfiConverterTypeRetiredSeedRead.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_androidretiredwalletseed_read_retired_seed(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceAndroidRetiredWalletSeed {
+    internal object `readRetiredSeed`: UniffiCallbackInterfaceAndroidRetiredWalletSeedMethod0 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAndroidRetiredWalletSeed.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`readRetiredSeed`(
+                )
+            }
+            val writeReturn = { value: RetiredSeedRead -> uniffiOutReturn.setValue(FfiConverterTypeRetiredSeedRead.lower(value)) }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeAndroidRetiredWalletSeed.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeAndroidRetiredWalletSeed.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `readRetiredSeed`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_openagents_mobile_fn_init_callback_vtable_androidretiredwalletseed(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidRetiredWalletSeed: FfiConverter<AndroidRetiredWalletSeed, Long> {
+    internal val handleMap = UniffiHandleMap<AndroidRetiredWalletSeed>()
+
+    override fun lower(value: AndroidRetiredWalletSeed): Long {
+        if (value is AndroidRetiredWalletSeedImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): AndroidRetiredWalletSeed {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AndroidRetiredWalletSeedImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): AndroidRetiredWalletSeed {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: AndroidRetiredWalletSeed) = 8UL
+
+    override fun write(value: AndroidRetiredWalletSeed, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -6988,7 +8847,422 @@ public object FfiConverterTypeCloudChatListener: FfiConverter<CloudChatListener,
 //
 
 
+public interface CoreAccessibilitySurfaceInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong): kotlin.String?
+
+    /**
+     * Only a scope and node key may survive process recreation. Never save field values.
+     */
+    fun `bookmark`(): kotlin.String?
+
+    fun `shutdown`()
+
+    fun `environment`(`fontScale`: kotlin.Float, `density`: kotlin.Float, `reducedMotion`: kotlin.Boolean): kotlin.String
+
+    fun `focused`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): kotlin.Boolean
+
+    /**
+     * Return requests to existing account/session/media owners; do not change their state here.
+     */
+    fun `lifecycle`(`event`: kotlin.String): kotlin.String
+
+    /**
+     * Accept only local Rust view bytes; validation adds no intent authority.
+     */
+    fun `prepare`(`bytes`: kotlin.ByteArray): kotlin.String
+
+    fun `restore`(`bytes`: kotlin.String): kotlin.Boolean
+
+    companion object
+}
+
+open class CoreAccessibilitySurface: Disposable, AutoCloseable, CoreAccessibilitySurfaceInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * Use the same account and screen scope as the Rust view owner.
+     */
+    constructor(`account`: CoreAccount, `scope`: kotlin.String) :
+        this(UniffiWithHandle,
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreaccessibilitysurface_new(
+
+
+        FfiConverterTypeCoreAccount.lower(`account`),
+        FfiConverterString.lower(`scope`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coreaccessibilitysurface(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coreaccessibilitysurface(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Only a scope and node key may survive process recreation. Never save field values.
+     */
+    @Throws(CoreException::class)override fun `bookmark`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_bookmark(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `shutdown`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_close(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `environment`(`fontScale`: kotlin.Float, `density`: kotlin.Float, `reducedMotion`: kotlin.Boolean): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_environment(
+        it,
+
+        FfiConverterFloat.lower(`fontScale`),
+        FfiConverterFloat.lower(`density`),
+        FfiConverterBoolean.lower(`reducedMotion`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `focused`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_focused(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Return requests to existing account/session/media owners; do not change their state here.
+     */
+    @Throws(CoreException::class)override fun `lifecycle`(`event`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_lifecycle(
+        it,
+
+        FfiConverterString.lower(`event`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Accept only local Rust view bytes; validation adds no intent authority.
+     */
+    @Throws(CoreException::class)override fun `prepare`(`bytes`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_prepare(
+        it,
+
+        FfiConverterByteArray.lower(`bytes`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `restore`(`bytes`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_restore(
+        it,
+
+        FfiConverterString.lower(`bytes`),_status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreAccessibilitySurface: FfiConverter<CoreAccessibilitySurface, Long> {
+    override fun lower(value: CoreAccessibilitySurface): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreAccessibilitySurface {
+        return CoreAccessibilitySurface(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreAccessibilitySurface {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreAccessibilitySurface) = 8UL
+
+    override fun write(value: CoreAccessibilitySurface, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
 public interface CoreAccountInterface {
+
+    /**
+     * Accept a project invitation for the active account after the person
+     * confirms the preview. The server checks the invitation, expiry, and
+     * recipient against this account's bearer token.
+     */
+    suspend fun `acceptProjectInvitation`(`link`: kotlin.String): kotlin.String
 
     fun `agentLab`(`listener`: AgentLabListener): CoreAgentLab
 
@@ -7013,6 +9287,17 @@ public interface CoreAccountInterface {
      * answers only shortly after the scan. Answers the computer's key.
      */
     suspend fun `linkComputer`(`client`: CoreClient, `deviceId`: kotlin.String): kotlin.String
+
+    /**
+     * Preview a project invitation with the active account. The invitation
+     * code stays in Rust and is sent only to the account API.
+     */
+    suspend fun `previewProjectInvitation`(`link`: kotlin.String): ProjectInvitationPreview
+
+    /**
+     * Build chooser content from a validated project invitation link.
+     */
+    fun `projectInvitationShare`(`link`: kotlin.String): ProjectInvitationShare
 
     fun `projectSharing`(`listener`: SharingListener): CoreSharing
 
@@ -7050,6 +9335,11 @@ public interface CoreAccountInterface {
      * only after they confirmed giving up paid credit.
      */
     suspend fun `deleteAccount`(`forfeitBalance`: kotlin.Boolean): AccountDeletion
+
+    /**
+     * Restore only for the account/identity that passed this screen's device authentication.
+     */
+    fun `restoreWordsIfCurrent`(`words`: kotlin.String, `generation`: kotlin.ULong, `npub`: kotlin.String?): IdentityView
 
     fun `chatHomes`(`client`: CoreClient, `chat`: kotlin.String): CoreChatHomes
 
@@ -7271,6 +9561,33 @@ open class CoreAccount: Disposable, AutoCloseable, CoreAccountInterface
         }
     }
 
+
+    /**
+     * Accept a project invitation for the active account after the person
+     * confirms the preview. The server checks the invitation, expiry, and
+     * recipient against this account's bearer token.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `acceptProjectInvitation`(`link`: kotlin.String) : kotlin.String {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreaccount_accept_project_invitation(
+                uniffiHandle,
+
+        FfiConverterString.lower(`link`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterString.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
     override fun `agentLab`(`listener`: AgentLabListener): CoreAgentLab {
             return FfiConverterTypeCoreAgentLab.lift(
     callWithHandle {
@@ -7374,6 +9691,50 @@ open class CoreAccount: Disposable, AutoCloseable, CoreAccountInterface
         CoreException.ErrorHandler,
     )
     }
+
+
+    /**
+     * Preview a project invitation with the active account. The invitation
+     * code stays in Rust and is sent only to the account API.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `previewProjectInvitation`(`link`: kotlin.String) : ProjectInvitationPreview {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreaccount_preview_project_invitation(
+                uniffiHandle,
+
+        FfiConverterString.lower(`link`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeProjectInvitationPreview.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Build chooser content from a validated project invitation link.
+     */
+    @Throws(CoreException::class)override fun `projectInvitationShare`(`link`: kotlin.String): ProjectInvitationShare {
+            return FfiConverterTypeProjectInvitationShare.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccount_project_invitation_share(
+        it,
+
+        FfiConverterString.lower(`link`),_status)
+}
+    }
+    )
+    }
+
 
 
     @Throws(CoreException::class)override fun `projectSharing`(`listener`: SharingListener): CoreSharing {
@@ -7532,6 +9893,26 @@ open class CoreAccount: Disposable, AutoCloseable, CoreAccountInterface
         UniffiNullRustCallStatusErrorHandler,
     )
     }
+
+
+    /**
+     * Restore only for the account/identity that passed this screen's device authentication.
+     */
+    @Throws(CoreException::class)override fun `restoreWordsIfCurrent`(`words`: kotlin.String, `generation`: kotlin.ULong, `npub`: kotlin.String?): IdentityView {
+            return FfiConverterTypeIdentityView.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccount_restore_words_if_current(
+        it,
+
+        FfiConverterString.lower(`words`),
+        FfiConverterULong.lower(`generation`),
+        FfiConverterOptionalString.lower(`npub`),_status)
+}
+    }
+    )
+    }
+
 
 
     @Throws(CoreException::class)override fun `chatHomes`(`client`: CoreClient, `chat`: kotlin.String): CoreChatHomes {
@@ -8848,6 +11229,3383 @@ public object FfiConverterTypeCoreAgents: FfiConverter<CoreAgents, Long> {
 //
 
 
+public interface CoreAndroidComposerInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): kotlin.Boolean
+
+    fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+
+    fun `dispose`()
+
+    fun `editor`(`instance`: kotlin.String, `revision`: kotlin.ULong, `request`: kotlin.ByteArray): kotlin.ByteArray
+
+    fun `frame`(): AndroidComposerFrame
+
+    fun `submit`(`instance`: kotlin.String, `revision`: kotlin.ULong, `token`: kotlin.String, `lifetime`: kotlin.ULong, `editorRevision`: kotlin.ULong, `choice`: kotlin.String?, `text`: kotlin.String, `attachments`: List<OutgoingAttachment>): kotlin.Boolean
+
+    companion object
+}
+
+open class CoreAndroidComposer: Disposable, AutoCloseable, CoreAndroidComposerInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coreandroidcomposer(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coreandroidcomposer(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidcomposer_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidcomposer_activate(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidcomposer_change_field(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+        FfiConverterString.lower(`value`),_status)
+}
+    }
+
+
+
+    override fun `dispose`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidcomposer_dispose(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `editor`(`instance`: kotlin.String, `revision`: kotlin.ULong, `request`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidcomposer_editor(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterByteArray.lower(`request`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `frame`(): AndroidComposerFrame {
+            return FfiConverterTypeAndroidComposerFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidcomposer_frame(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `submit`(`instance`: kotlin.String, `revision`: kotlin.ULong, `token`: kotlin.String, `lifetime`: kotlin.ULong, `editorRevision`: kotlin.ULong, `choice`: kotlin.String?, `text`: kotlin.String, `attachments`: List<OutgoingAttachment>): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidcomposer_submit(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`token`),
+        FfiConverterULong.lower(`lifetime`),
+        FfiConverterULong.lower(`editorRevision`),
+        FfiConverterOptionalString.lower(`choice`),
+        FfiConverterString.lower(`text`),
+        FfiConverterSequenceTypeOutgoingAttachment.lower(`attachments`),_status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+    companion object {
+         fun `cloud`(`chat`: CoreCloudChat, `account`: CoreAccount?): CoreAndroidComposer {
+            return FfiConverterTypeCoreAndroidComposer.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroidcomposer_cloud(
+
+
+        FfiConverterTypeCoreCloudChat.lower(`chat`),
+        FfiConverterOptionalTypeCoreAccount.lower(`account`),_status)
+}
+    )
+    }
+
+
+         fun `live`(`session`: SessionHandle): CoreAndroidComposer {
+            return FfiConverterTypeCoreAndroidComposer.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroidcomposer_live(
+
+
+        FfiConverterTypeSessionHandle.lower(`session`),_status)
+}
+    )
+    }
+
+
+
+    }
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreAndroidComposer: FfiConverter<CoreAndroidComposer, Long> {
+    override fun lower(value: CoreAndroidComposer): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreAndroidComposer {
+        return CoreAndroidComposer(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreAndroidComposer {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreAndroidComposer) = 8UL
+
+    override fun write(value: CoreAndroidComposer, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Retains one synthetic SDK workspace. The shell closes its views before shutdown.
+ */
+public interface CoreAndroidDemoInterface {
+
+    /**
+     * Labels, ordering, and metadata come from the same Rust fixture workspace.
+     */
+    fun `choices`(): List<AndroidDemoChoice>
+
+    /**
+     * Borrow the existing host, composer, and transcript attachment path.
+     */
+    fun `host`(): CoreAndroidHost
+
+    /**
+     * Only Rust's finite fixture identities can select a session.
+     */
+    fun `select`(`fixture`: AndroidDemoChat)
+
+    /**
+     * Retire views first. Synthetic files remain in scratch for the capture receipt.
+     */
+    fun `shutdown`()
+
+    companion object
+}
+
+/**
+ * Retains one synthetic SDK workspace. The shell closes its views before shutdown.
+ */
+open class CoreAndroidDemo: Disposable, AutoCloseable, CoreAndroidDemoInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * `data_dir` must be a new absolute child of the caller's scratch directory.
+     * Existing directories are refused, including empty ones; account storage is never opened.
+     */
+    constructor(`dataDir`: kotlin.String, `listener`: AndroidHostListener) :
+        this(UniffiWithHandle,
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroiddemo_new(
+
+
+        FfiConverterString.lower(`dataDir`),
+        FfiConverterTypeAndroidHostListener.lower(`listener`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coreandroiddemo(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coreandroiddemo(handle, status)
+        }
+    }
+
+
+    /**
+     * Labels, ordering, and metadata come from the same Rust fixture workspace.
+     */
+    @Throws(CoreException::class)override fun `choices`(): List<AndroidDemoChoice> {
+            return FfiConverterSequenceTypeAndroidDemoChoice.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroiddemo_choices(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Borrow the existing host, composer, and transcript attachment path.
+     */
+    @Throws(CoreException::class)override fun `host`(): CoreAndroidHost {
+            return FfiConverterTypeCoreAndroidHost.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroiddemo_host(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Only Rust's finite fixture identities can select a session.
+     */
+    @Throws(CoreException::class)override fun `select`(`fixture`: AndroidDemoChat)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroiddemo_select(
+        it,
+
+        FfiConverterTypeAndroidDemoChat.lower(`fixture`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Retire views first. Synthetic files remain in scratch for the capture receipt.
+     */override fun `shutdown`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroiddemo_shutdown(
+        it,
+        _status)
+}
+    }
+
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreAndroidDemo: FfiConverter<CoreAndroidDemo, Long> {
+    override fun lower(value: CoreAndroidDemo): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreAndroidDemo {
+        return CoreAndroidDemo(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreAndroidDemo {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreAndroidDemo) = 8UL
+
+    override fun write(value: CoreAndroidDemo, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface CoreAndroidHostInterface {
+
+    fun `accessibilitySurface`(`surface`: AndroidHostSurface): CoreAccessibilitySurface
+
+    fun `account`(): CoreAccount?
+
+    suspend fun `activateVoiceAgent`(`generation`: kotlin.ULong, `picker`: CoreVoiceAgent, `instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String)
+
+    fun `activateVoiceUsage`(`generation`: kotlin.ULong, `usage`: CoreVoiceUsage, `instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String)
+
+    /**
+     * Binds Rust sources directly to the shared layout worker, without transcript rows crossing FFI.
+     */
+    fun `attachTranscript`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong)
+
+    fun `client`(): CoreClient?
+
+    fun `composer`(): CoreAndroidComposer?
+
+    /**
+     * Android uses the same initial session-notification choices as the other phone shell.
+     */
+    fun `defaultPushPrefs`(): PushPrefs
+
+    fun `dismissLinkReview`(`review`: CoreAndroidLinkReview): kotlin.Boolean
+
+    fun `history`(): CoreSavedHistory?
+
+    fun `navigate`(`route`: AndroidHostRoute)
+
+    /**
+     * One bounded pending link can survive initial sign-in, without moving codes into Kotlin state.
+     */
+    fun `offerAppLink`(`raw`: kotlin.String): kotlin.Boolean
+
+    fun `offerNotificationTap`(`link`: kotlin.String, `request`: kotlin.String): kotlin.Boolean
+
+    /**
+     * Refresh a saved reader without detaching a live/cloud layout subscription.
+     */
+    fun `refreshTranscript`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong)
+
+    suspend fun `resolveNotificationTap`(): AndroidNotificationOpen
+
+    fun `saveTextSelection`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `selection`: AndroidHostSelection?)
+
+    fun `saveTranscriptAnchor`(`generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `anchor`: AndroidTranscriptAnchor)
+
+    /**
+     * Preserve the exact cloud object returned by this account's session action.
+     */
+    fun `selectCloudChat`(`chat`: CoreCloudChat)
+
+    fun `selectDefaultChat`()
+
+    suspend fun `selectIndexedChat`(`key`: kotlin.String)
+
+    fun `selectSavedChat`(`id`: kotlin.String)
+
+    fun `selectSession`(`id`: kotlin.String)
+
+    fun `selectedSession`(): SessionHandle?
+
+    fun `sessions`(): CoreAndroidSessions?
+
+    fun `setForeground`(`active`: kotlin.Boolean)
+
+    fun `sharing`(): CoreSharing
+
+    fun `snapshot`(): AndroidHostSnapshot
+
+    /**
+     * Called by the Application once. Activity recreation never starts another identity flow.
+     */
+    fun `start`()
+
+    /**
+     * Permission callbacks carry the account/content that requested the microphone.
+     */
+    fun `startHostVoice`(`generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `media`: VoiceMediaListener, `listener`: VoiceSessionListener): VoiceCall
+
+    fun `syncVoiceUsage`(`generation`: kotlin.ULong, `usage`: CoreVoiceUsage)
+
+    /**
+     * Read an image from this exact frame's live or saved content source.
+     */
+    suspend fun `transcriptImage`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `row`: kotlin.ULong, `widget`: kotlin.UInt): kotlin.ByteArray?
+
+    /**
+     * Only a link in the current visible Rust rows may reach the platform browser.
+     */
+    fun `transcriptLink`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `top`: kotlin.Float, `height`: kotlin.Float, `url`: kotlin.String): kotlin.String
+
+    /**
+     * The native view reports its first painted rows; Rust supplies the authorized read-marker identity.
+     */
+    suspend fun `transcriptMounted`(`generation`: kotlin.ULong, `revision`: kotlin.ULong)
+
+    /**
+     * Borrow only the visual named by a widget in the current account's frame.
+     */
+    fun `transcriptVisual`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `row`: kotlin.ULong, `widget`: kotlin.UInt): VisualSession?
+
+    /**
+     * Resolves a widget identity against the current Rust display, never a caller-supplied payload.
+     */
+    fun `transcriptWidget`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `row`: kotlin.ULong, `widget`: kotlin.UInt): AndroidTranscriptEffect
+
+    /**
+     * A late terminal callback cannot clear a replacement call or account.
+     */
+    fun `voiceEnded`(`generation`: kotlin.ULong, `call`: VoiceCall, `reason`: VoiceEndReason?): kotlin.Boolean
+
+    fun `voiceSettings`(): AndroidVoiceSettings
+
+    /**
+     * The underlying device wallet is shared across native mounts; account wrappers are fenced.
+     */
+    fun `wallet`(`retired`: AndroidRetiredWalletSeed): CoreAndroidWallet
+
+    companion object
+}
+
+open class CoreAndroidHost: Disposable, AutoCloseable, CoreAndroidHostInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coreandroidhost(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coreandroidhost(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `accessibilitySurface`(`surface`: AndroidHostSurface): CoreAccessibilitySurface {
+            return FfiConverterTypeCoreAccessibilitySurface.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_accessibility_surface(
+        it,
+
+        FfiConverterTypeAndroidHostSurface.lower(`surface`),_status)
+}
+    }
+    )
+    }
+
+
+    override fun `account`(): CoreAccount? {
+            return FfiConverterOptionalTypeCoreAccount.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_account(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `activateVoiceAgent`(`generation`: kotlin.ULong, `picker`: CoreVoiceAgent, `instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_activate_voice_agent(
+                uniffiHandle,
+
+        FfiConverterULong.lower(`generation`),
+        FfiConverterTypeCoreVoiceAgent.lower(`picker`),
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    @Throws(CoreException::class)override fun `activateVoiceUsage`(`generation`: kotlin.ULong, `usage`: CoreVoiceUsage, `instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_activate_voice_usage(
+        it,
+
+        FfiConverterULong.lower(`generation`),
+        FfiConverterTypeCoreVoiceUsage.lower(`usage`),
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Binds Rust sources directly to the shared layout worker, without transcript rows crossing FFI.
+     */
+    @Throws(CoreException::class)override fun `attachTranscript`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_attach_transcript(
+        it,
+
+        FfiConverterTypeTranscriptView.lower(`view`),
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `client`(): CoreClient? {
+            return FfiConverterOptionalTypeCoreClient.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_client(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `composer`(): CoreAndroidComposer? {
+            return FfiConverterOptionalTypeCoreAndroidComposer.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_composer(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Android uses the same initial session-notification choices as the other phone shell.
+     */override fun `defaultPushPrefs`(): PushPrefs {
+            return FfiConverterTypePushPrefs.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_default_push_prefs(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `dismissLinkReview`(`review`: CoreAndroidLinkReview): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_dismiss_link_review(
+        it,
+
+        FfiConverterTypeCoreAndroidLinkReview.lower(`review`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `history`(): CoreSavedHistory? {
+            return FfiConverterOptionalTypeCoreSavedHistory.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_history(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `navigate`(`route`: AndroidHostRoute)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_navigate(
+        it,
+
+        FfiConverterTypeAndroidHostRoute.lower(`route`),_status)
+}
+    }
+
+
+
+
+    /**
+     * One bounded pending link can survive initial sign-in, without moving codes into Kotlin state.
+     */
+    @Throws(CoreException::class)override fun `offerAppLink`(`raw`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_offer_app_link(
+        it,
+
+        FfiConverterString.lower(`raw`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `offerNotificationTap`(`link`: kotlin.String, `request`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_offer_notification_tap(
+        it,
+
+        FfiConverterString.lower(`link`),
+        FfiConverterString.lower(`request`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Refresh a saved reader without detaching a live/cloud layout subscription.
+     */
+    @Throws(CoreException::class)override fun `refreshTranscript`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_refresh_transcript(
+        it,
+
+        FfiConverterTypeTranscriptView.lower(`view`),
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `resolveNotificationTap`() : AndroidNotificationOpen {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_resolve_notification_tap(
+                uniffiHandle,
+
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeAndroidNotificationOpen.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    @Throws(CoreException::class)override fun `saveTextSelection`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `selection`: AndroidHostSelection?)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_save_text_selection(
+        it,
+
+        FfiConverterTypeTranscriptView.lower(`view`),
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),
+        FfiConverterULong.lower(`frameRevision`),
+        FfiConverterOptionalTypeAndroidHostSelection.lower(`selection`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `saveTranscriptAnchor`(`generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `anchor`: AndroidTranscriptAnchor)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_save_transcript_anchor(
+        it,
+
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),
+        FfiConverterTypeAndroidTranscriptAnchor.lower(`anchor`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Preserve the exact cloud object returned by this account's session action.
+     */
+    @Throws(CoreException::class)override fun `selectCloudChat`(`chat`: CoreCloudChat)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_select_cloud_chat(
+        it,
+
+        FfiConverterTypeCoreCloudChat.lower(`chat`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `selectDefaultChat`()
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_select_default_chat(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `selectIndexedChat`(`key`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_select_indexed_chat(
+                uniffiHandle,
+
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    @Throws(CoreException::class)override fun `selectSavedChat`(`id`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_select_saved_chat(
+        it,
+
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `selectSession`(`id`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_select_session(
+        it,
+
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `selectedSession`(): SessionHandle? {
+            return FfiConverterOptionalTypeSessionHandle.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_selected_session(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `sessions`(): CoreAndroidSessions? {
+            return FfiConverterOptionalTypeCoreAndroidSessions.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_sessions(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `setForeground`(`active`: kotlin.Boolean)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_set_foreground(
+        it,
+
+        FfiConverterBoolean.lower(`active`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `sharing`(): CoreSharing {
+            return FfiConverterTypeCoreSharing.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_sharing(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `snapshot`(): AndroidHostSnapshot {
+            return FfiConverterTypeAndroidHostSnapshot.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_snapshot(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Called by the Application once. Activity recreation never starts another identity flow.
+     */override fun `start`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_start(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    /**
+     * Permission callbacks carry the account/content that requested the microphone.
+     */
+    @Throws(CoreException::class)override fun `startHostVoice`(`generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `media`: VoiceMediaListener, `listener`: VoiceSessionListener): VoiceCall {
+            return FfiConverterTypeVoiceCall.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_start_host_voice(
+        it,
+
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),
+        FfiConverterTypeVoiceMediaListener.lower(`media`),
+        FfiConverterTypeVoiceSessionListener.lower(`listener`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `syncVoiceUsage`(`generation`: kotlin.ULong, `usage`: CoreVoiceUsage)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_sync_voice_usage(
+        it,
+
+        FfiConverterULong.lower(`generation`),
+        FfiConverterTypeCoreVoiceUsage.lower(`usage`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Read an image from this exact frame's live or saved content source.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `transcriptImage`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `row`: kotlin.ULong, `widget`: kotlin.UInt) : kotlin.ByteArray? {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_image(
+                uniffiHandle,
+
+        FfiConverterTypeTranscriptView.lower(`view`),
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),
+        FfiConverterULong.lower(`frameRevision`),
+        FfiConverterULong.lower(`row`),
+        FfiConverterUInt.lower(`widget`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterOptionalByteArray.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Only a link in the current visible Rust rows may reach the platform browser.
+     */
+    @Throws(CoreException::class)override fun `transcriptLink`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `top`: kotlin.Float, `height`: kotlin.Float, `url`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_link(
+        it,
+
+        FfiConverterTypeTranscriptView.lower(`view`),
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),
+        FfiConverterULong.lower(`frameRevision`),
+        FfiConverterFloat.lower(`top`),
+        FfiConverterFloat.lower(`height`),
+        FfiConverterString.lower(`url`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The native view reports its first painted rows; Rust supplies the authorized read-marker identity.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `transcriptMounted`(`generation`: kotlin.ULong, `revision`: kotlin.ULong) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_mounted(
+                uniffiHandle,
+
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`revision`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Borrow only the visual named by a widget in the current account's frame.
+     */
+    @Throws(CoreException::class)override fun `transcriptVisual`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `row`: kotlin.ULong, `widget`: kotlin.UInt): VisualSession? {
+            return FfiConverterOptionalTypeVisualSession.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_visual(
+        it,
+
+        FfiConverterTypeTranscriptView.lower(`view`),
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),
+        FfiConverterULong.lower(`frameRevision`),
+        FfiConverterULong.lower(`row`),
+        FfiConverterUInt.lower(`widget`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Resolves a widget identity against the current Rust display, never a caller-supplied payload.
+     */
+    @Throws(CoreException::class)override fun `transcriptWidget`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `row`: kotlin.ULong, `widget`: kotlin.UInt): AndroidTranscriptEffect {
+            return FfiConverterTypeAndroidTranscriptEffect.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_widget(
+        it,
+
+        FfiConverterTypeTranscriptView.lower(`view`),
+        FfiConverterULong.lower(`generation`),
+        FfiConverterULong.lower(`contentRevision`),
+        FfiConverterULong.lower(`frameRevision`),
+        FfiConverterULong.lower(`row`),
+        FfiConverterUInt.lower(`widget`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * A late terminal callback cannot clear a replacement call or account.
+     */
+    @Throws(CoreException::class)override fun `voiceEnded`(`generation`: kotlin.ULong, `call`: VoiceCall, `reason`: VoiceEndReason?): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_voice_ended(
+        it,
+
+        FfiConverterULong.lower(`generation`),
+        FfiConverterTypeVoiceCall.lower(`call`),
+        FfiConverterOptionalTypeVoiceEndReason.lower(`reason`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `voiceSettings`(): AndroidVoiceSettings {
+            return FfiConverterTypeAndroidVoiceSettings.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_voice_settings(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The underlying device wallet is shared across native mounts; account wrappers are fenced.
+     */
+    @Throws(CoreException::class)override fun `wallet`(`retired`: AndroidRetiredWalletSeed): CoreAndroidWallet {
+            return FfiConverterTypeCoreAndroidWallet.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_wallet(
+        it,
+
+        FfiConverterTypeAndroidRetiredWalletSeed.lower(`retired`),_status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+    companion object {
+         fun `demo`(`listener`: AndroidHostListener): CoreAndroidHost {
+            return FfiConverterTypeCoreAndroidHost.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroidhost_demo(
+
+
+        FfiConverterTypeAndroidHostListener.lower(`listener`),_status)
+}
+    )
+    }
+
+
+
+    @Throws(CoreException::class) fun `production`(`dataDir`: kotlin.String, `deviceId`: kotlin.String, `deviceName`: kotlin.String, `version`: kotlin.String, `storage`: AndroidSecretStorage, `listener`: AndroidHostListener): CoreAndroidHost {
+            return FfiConverterTypeCoreAndroidHost.lift(
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroidhost_production(
+
+
+        FfiConverterString.lower(`dataDir`),
+        FfiConverterString.lower(`deviceId`),
+        FfiConverterString.lower(`deviceName`),
+        FfiConverterString.lower(`version`),
+        FfiConverterTypeAndroidSecretStorage.lower(`storage`),
+        FfiConverterTypeAndroidHostListener.lower(`listener`),_status)
+}
+    )
+    }
+
+
+
+    }
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreAndroidHost: FfiConverter<CoreAndroidHost, Long> {
+    override fun lower(value: CoreAndroidHost): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreAndroidHost {
+        return CoreAndroidHost(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreAndroidHost {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreAndroidHost) = 8UL
+
+    override fun write(value: CoreAndroidHost, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface CoreAndroidLinkReviewInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    /**
+     * Only a current, acknowledged Rust Native confirmation starts a mutation.
+     */
+    suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): kotlin.Boolean
+
+    fun `id`(): kotlin.String
+
+    /**
+     * Preview is read-only. None of these branches approves or accepts the link.
+     */
+    suspend fun `load`()
+
+    fun `retire`()
+
+    fun `snapshot`(): kotlin.String
+
+    companion object
+}
+
+open class CoreAndroidLinkReview: Disposable, AutoCloseable, CoreAndroidLinkReviewInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coreandroidlinkreview(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coreandroidlinkreview(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidlinkreview_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Only a current, acknowledged Rust Native confirmation starts a mutation.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String) : kotlin.Boolean {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidlinkreview_activate(
+                uniffiHandle,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_i8(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_i8(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_i8(future) },
+        // lift function
+        { FfiConverterBoolean.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    @Throws(CoreException::class)override fun `id`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidlinkreview_id(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Preview is read-only. None of these branches approves or accepts the link.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `load`() {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidlinkreview_load(
+                uniffiHandle,
+
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+    override fun `retire`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidlinkreview_retire(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `snapshot`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidlinkreview_snapshot(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreAndroidLinkReview: FfiConverter<CoreAndroidLinkReview, Long> {
+    override fun lower(value: CoreAndroidLinkReview): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreAndroidLinkReview {
+        return CoreAndroidLinkReview(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreAndroidLinkReview {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreAndroidLinkReview) = 8UL
+
+    override fun write(value: CoreAndroidLinkReview, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface CoreAndroidRecoveryInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): RecoveryFrame
+
+    /**
+     * Only the platform authenticator's matching, live callback may answer this request.
+     */
+    fun `authenticated`(`token`: kotlin.ULong, `accepted`: kotlin.Boolean): RecoveryFrame
+
+    fun `change`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+
+    fun `shutdown`()
+
+    fun `redact`()
+
+    fun `render`(): RecoveryFrame
+
+    /**
+     * The shared Rust start path preserves a provider account and existing wallet seed.
+     */
+    fun `start`(`deviceName`: kotlin.String): RecoveryFrame
+
+    companion object
+}
+
+open class CoreAndroidRecovery: Disposable, AutoCloseable, CoreAndroidRecoveryInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * Construct after A3 supplies the shared account and identity stores. Does not create an identity.
+     */
+    constructor(`account`: CoreAccount, `onboarding`: CoreOnboarding) :
+        this(UniffiWithHandle,
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroidrecovery_new(
+
+
+        FfiConverterTypeCoreAccount.lower(`account`),
+        FfiConverterTypeCoreOnboarding.lower(`onboarding`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coreandroidrecovery(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coreandroidrecovery(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidrecovery_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): RecoveryFrame {
+            return FfiConverterTypeRecoveryFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidrecovery_activate(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Only the platform authenticator's matching, live callback may answer this request.
+     */
+    @Throws(CoreException::class)override fun `authenticated`(`token`: kotlin.ULong, `accepted`: kotlin.Boolean): RecoveryFrame {
+            return FfiConverterTypeRecoveryFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidrecovery_authenticated(
+        it,
+
+        FfiConverterULong.lower(`token`),
+        FfiConverterBoolean.lower(`accepted`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `change`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidrecovery_change(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+        FfiConverterString.lower(`value`),_status)
+}
+    }
+
+
+
+    override fun `shutdown`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidrecovery_close(
+        it,
+        _status)
+}
+    }
+
+
+
+    override fun `redact`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidrecovery_redact(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `render`(): RecoveryFrame {
+            return FfiConverterTypeRecoveryFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidrecovery_render(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The shared Rust start path preserves a provider account and existing wallet seed.
+     */
+    @Throws(CoreException::class)override fun `start`(`deviceName`: kotlin.String): RecoveryFrame {
+            return FfiConverterTypeRecoveryFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidrecovery_start(
+        it,
+
+        FfiConverterString.lower(`deviceName`),_status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreAndroidRecovery: FfiConverter<CoreAndroidRecovery, Long> {
+    override fun lower(value: CoreAndroidRecovery): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreAndroidRecovery {
+        return CoreAndroidRecovery(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreAndroidRecovery {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreAndroidRecovery) = 8UL
+
+    override fun write(value: CoreAndroidRecovery, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface CoreAndroidSessionsInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): AndroidSessionAction
+
+    /**
+     * Attach only a client created by this account's existing connect method.
+     */
+    fun `attachClient`(`core`: CoreClient)
+
+    /**
+     * The same account/room/grant continuation owner as the other shells.
+     */
+    fun `chatHomes`(`chat`: kotlin.String): CoreChatHomes
+
+    fun `shutdown`()
+
+    /**
+     * Continue through the existing room/grant transfer path, never a second copied session path.
+     */
+    suspend fun `continueOnSelected`(`draft`: CoreContinuationDraft): AndroidSessionAction
+
+    /**
+     * Resume/onboarding completion reuses this exact object; only NewCloud explicitly resets it.
+     */
+    fun `defaultChat`(): CoreCloudChat
+
+    /**
+     * Saved cloud/web chats use the same continuation/grant owner as live computer chats.
+     */
+    fun `savedChatHomes`(`history`: CoreSavedHistory): CoreChatHomes
+
+    fun `sharing`(`listener`: SharingListener): CoreSharing
+
+    fun `view`(): kotlin.ByteArray
+
+    companion object
+}
+
+open class CoreAndroidSessions: Disposable, AutoCloseable, CoreAndroidSessionsInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * Own this for the account's screen lifetime. Construction creates no chat or computer.
+     */
+    constructor(`account`: CoreAccount, `cloudListener`: CloudChatListener) :
+        this(UniffiWithHandle,
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroidsessions_new(
+
+
+        FfiConverterTypeCoreAccount.lower(`account`),
+        FfiConverterTypeCloudChatListener.lower(`cloudListener`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coreandroidsessions(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coreandroidsessions(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String) : AndroidSessionAction {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_activate(
+                uniffiHandle,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeAndroidSessionAction.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Attach only a client created by this account's existing connect method.
+     */
+    @Throws(CoreException::class)override fun `attachClient`(`core`: CoreClient)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_attach_client(
+        it,
+
+        FfiConverterTypeCoreClient.lower(`core`),_status)
+}
+    }
+
+
+
+
+    /**
+     * The same account/room/grant continuation owner as the other shells.
+     */
+    @Throws(CoreException::class)override fun `chatHomes`(`chat`: kotlin.String): CoreChatHomes {
+            return FfiConverterTypeCoreChatHomes.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_chat_homes(
+        it,
+
+        FfiConverterString.lower(`chat`),_status)
+}
+    }
+    )
+    }
+
+
+    override fun `shutdown`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_close(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    /**
+     * Continue through the existing room/grant transfer path, never a second copied session path.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `continueOnSelected`(`draft`: CoreContinuationDraft) : AndroidSessionAction {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_continue_on_selected(
+                uniffiHandle,
+
+        FfiConverterTypeCoreContinuationDraft.lower(`draft`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeAndroidSessionAction.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Resume/onboarding completion reuses this exact object; only NewCloud explicitly resets it.
+     */
+    @Throws(CoreException::class)override fun `defaultChat`(): CoreCloudChat {
+            return FfiConverterTypeCoreCloudChat.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_default_chat(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Saved cloud/web chats use the same continuation/grant owner as live computer chats.
+     */
+    @Throws(CoreException::class)override fun `savedChatHomes`(`history`: CoreSavedHistory): CoreChatHomes {
+            return FfiConverterTypeCoreChatHomes.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_saved_chat_homes(
+        it,
+
+        FfiConverterTypeCoreSavedHistory.lower(`history`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `sharing`(`listener`: SharingListener): CoreSharing {
+            return FfiConverterTypeCoreSharing.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_sharing(
+        it,
+
+        FfiConverterTypeSharingListener.lower(`listener`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `view`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidsessions_view(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreAndroidSessions: FfiConverter<CoreAndroidSessions, Long> {
+    override fun lower(value: CoreAndroidSessions): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreAndroidSessions {
+        return CoreAndroidSessions(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreAndroidSessions {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreAndroidSessions) = 8UL
+
+    override fun write(value: CoreAndroidSessions, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface CoreAndroidWalletInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): AndroidWalletFrame
+
+    fun `authenticated`(`token`: kotlin.ULong, `success`: kotlin.Boolean): AndroidWalletFrame
+
+    fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+
+    fun `open`(): AndroidWalletFrame
+
+    fun `redact`()
+
+    fun `snapshot`(): AndroidWalletFrame
+
+    companion object
+}
+
+open class CoreAndroidWallet: Disposable, AutoCloseable, CoreAndroidWalletInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coreandroidwallet(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coreandroidwallet(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidwallet_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): AndroidWalletFrame {
+            return FfiConverterTypeAndroidWalletFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidwallet_activate(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `authenticated`(`token`: kotlin.ULong, `success`: kotlin.Boolean): AndroidWalletFrame {
+            return FfiConverterTypeAndroidWalletFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidwallet_authenticated(
+        it,
+
+        FfiConverterULong.lower(`token`),
+        FfiConverterBoolean.lower(`success`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidwallet_change_field(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+        FfiConverterString.lower(`value`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `open`(): AndroidWalletFrame {
+            return FfiConverterTypeAndroidWalletFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidwallet_open(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+    override fun `redact`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidwallet_redact(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `snapshot`(): AndroidWalletFrame {
+            return FfiConverterTypeAndroidWalletFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidwallet_snapshot(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreAndroidWallet: FfiConverter<CoreAndroidWallet, Long> {
+    override fun lower(value: CoreAndroidWallet): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreAndroidWallet {
+        return CoreAndroidWallet(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreAndroidWallet {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreAndroidWallet) = 8UL
+
+    override fun write(value: CoreAndroidWallet, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
 public interface CoreChatHomesInterface {
 
     suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): ChatHomeAction
@@ -9391,6 +15149,11 @@ public interface CoreClientInterface {
     fun `workspaceRevision`(): kotlin.ULong
 
     fun `chatReadOnly`(`id`: kotlin.String): kotlin.Boolean
+
+    /**
+     * Present moves as typed intents; `move_pin` remains the write authority.
+     */
+    fun `drawerPinMoves`(): List<DrawerPinHints>
 
     /**
      * Keep a supported draft, or choose from the selected host's successful live catalog.
@@ -10696,6 +16459,22 @@ open class CoreClient: Disposable, AutoCloseable, CoreClientInterface
 
 
     /**
+     * Present moves as typed intents; `move_pin` remains the write authority.
+     */override fun `drawerPinMoves`(): List<DrawerPinHints> {
+            return FfiConverterSequenceTypeDrawerPinHints.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreclient_drawer_pin_moves(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * Keep a supported draft, or choose from the selected host's successful live catalog.
      */
     @Throws(CoreException::class)
@@ -11685,6 +17464,726 @@ public object FfiConverterTypeCoreContinuationDraft: FfiConverter<CoreContinuati
 //
 
 
+public interface CoreLabActionsInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String)
+
+    fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String, `value`: kotlin.String)
+
+    fun `dismiss`()
+
+    fun `frame`(): LabActionsFrame
+
+    /**
+     * A platform playback fact, sampled once before the person edits this note.
+     */
+    fun `playbackPosition`(`seconds`: kotlin.Double?)
+
+    companion object
+}
+
+open class CoreLabActions: Disposable, AutoCloseable, CoreLabActionsInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_corelabactions(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_corelabactions(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabactions_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_corelabactions_activate(
+                uniffiHandle,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    @Throws(CoreException::class)override fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String, `value`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabactions_change_field(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),
+        FfiConverterString.lower(`value`),_status)
+}
+    }
+
+
+
+    override fun `dismiss`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabactions_dismiss(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `frame`(): LabActionsFrame {
+            return FfiConverterTypeLabActionsFrame.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabactions_frame(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * A platform playback fact, sampled once before the person edits this note.
+     */
+    @Throws(CoreException::class)override fun `playbackPosition`(`seconds`: kotlin.Double?)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabactions_playback_position(
+        it,
+
+        FfiConverterOptionalDouble.lower(`seconds`),_status)
+}
+    }
+
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreLabActions: FfiConverter<CoreLabActions, Long> {
+    override fun lower(value: CoreLabActions): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreLabActions {
+        return CoreLabActions(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreLabActions {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreLabActions) = 8UL
+
+    override fun write(value: CoreLabActions, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface CoreLabCardInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    /**
+     * Resolve an identity-only activation through Rust's validated view.
+     */
+    fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): LabCardEffect
+
+    fun `dispose`()
+
+    /**
+     * Check before publishing work decoded asynchronously by the native shell.
+     */
+    fun `isCurrent`(): kotlin.Boolean
+
+    /**
+     * Resource ids resolve only inside this frozen card, never as URLs or paths.
+     */
+    suspend fun `media`(`instance`: kotlin.String, `revision`: kotlin.ULong, `resource`: kotlin.String, `artifact`: kotlin.String): LabMediaFile
+
+    fun `snapshot`(): LabCardProjection
+
+    companion object
+}
+
+open class CoreLabCard: Disposable, AutoCloseable, CoreLabCardInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_corelabcard(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_corelabcard(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabcard_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Resolve an identity-only activation through Rust's validated view.
+     */
+    @Throws(CoreException::class)override fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): LabCardEffect {
+            return FfiConverterTypeLabCardEffect.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabcard_activate(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),_status)
+}
+    }
+    )
+    }
+
+
+    override fun `dispose`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabcard_dispose(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    /**
+     * Check before publishing work decoded asynchronously by the native shell.
+     */override fun `isCurrent`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabcard_is_current(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Resource ids resolve only inside this frozen card, never as URLs or paths.
+     */
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `media`(`instance`: kotlin.String, `revision`: kotlin.ULong, `resource`: kotlin.String, `artifact`: kotlin.String) : LabMediaFile {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_corelabcard_media(
+                uniffiHandle,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`resource`),
+        FfiConverterString.lower(`artifact`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeLabMediaFile.lift(it) },
+        // Error FFI converter
+        UniffiNullRustCallStatusErrorHandler,
+    )
+    }
+
+
+    @Throws(CoreException::class)override fun `snapshot`(): LabCardProjection {
+            return FfiConverterTypeLabCardProjection.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corelabcard_snapshot(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreLabCard: FfiConverter<CoreLabCard, Long> {
+    override fun lower(value: CoreLabCard): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreLabCard {
+        return CoreLabCard(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreLabCard {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreLabCard) = 8UL
+
+    override fun write(value: CoreLabCard, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
 /**
  * Whether this install has seen the tutorial. The record is a file in the
  * core's data folder, so it goes away with the app's data.
@@ -12378,6 +18877,14 @@ public interface CoreSavedHistoryInterface {
      */
     fun `labVisible`(`card`: kotlin.String, `visible`: kotlin.Boolean)
 
+    /**
+     * Read only an existing account-scoped saved or live Lab card.
+     * Mount only the registered media in a Rust transcript's LabMedia rectangle.
+     */
+    fun `labInlineProjection`(`card`: kotlin.String): CoreLabCard
+
+    fun `labProjection`(`card`: kotlin.String): CoreLabCard
+
     fun `action`(`action`: SavedHistoryAction)
 
     /**
@@ -12392,11 +18899,22 @@ public interface CoreSavedHistoryInterface {
     fun `downloadedFilePart`(`part`: kotlin.ULong): SavedFilePart
 
     /**
+     * File an already-loaded owned chat. Refresh only after server confirmation;
+     * neither navigation nor list ordering changes optimistically.
+     */
+    suspend fun `fileChat`(`id`: kotlin.String, `change`: SavedFilingChange)
+
+    /**
      * Native view visibility controls following; navigation never grants write access.
      */
     fun `follow`(`visible`: kotlin.Boolean)
 
     fun `message`(`id`: kotlin.String, `part`: kotlin.ULong): SavedMessagePart
+
+    /**
+     * Move an owned saved pin using the last confirmed owner-order revision.
+     */
+    suspend fun `movePin`(`id`: kotlin.String, `after`: kotlin.String?, `before`: kotlin.String?, `revision`: kotlin.ULong)
 
     /**
      * Render account history through the same Rust layout engine as computer sessions.
@@ -12408,6 +18926,16 @@ public interface CoreSavedHistoryInterface {
     fun `shutdown`()
 
     fun `snapshot`(): SavedHistorySnapshot
+
+    /**
+     * Load an existing indexed session in this history's current account/project scope.
+     */
+    suspend fun `indexedSession`(`key`: kotlin.String): SavedIndexedTranscript
+
+    /**
+     * Call only after the indexed transcript mounted successfully, using its exact revision.
+     */
+    suspend fun `markIndexedSeen`(`key`: kotlin.String, `activityRevision`: kotlin.String)
 
     companion object
 }
@@ -12704,6 +19232,40 @@ open class CoreSavedHistory: Disposable, AutoCloseable, CoreSavedHistoryInterfac
 
 
 
+    /**
+     * Read only an existing account-scoped saved or live Lab card.
+     * Mount only the registered media in a Rust transcript's LabMedia rectangle.
+     */
+    @Throws(CoreException::class)override fun `labInlineProjection`(`card`: kotlin.String): CoreLabCard {
+            return FfiConverterTypeCoreLabCard.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coresavedhistory_lab_inline_projection(
+        it,
+
+        FfiConverterString.lower(`card`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `labProjection`(`card`: kotlin.String): CoreLabCard {
+            return FfiConverterTypeCoreLabCard.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coresavedhistory_lab_projection(
+        it,
+
+        FfiConverterString.lower(`card`),_status)
+}
+    }
+    )
+    }
+
+
+
     @Throws(CoreException::class)override fun `action`(`action`: SavedHistoryAction)
         =
     callWithHandle {
@@ -12786,6 +19348,34 @@ open class CoreSavedHistory: Disposable, AutoCloseable, CoreSavedHistoryInterfac
 
 
     /**
+     * File an already-loaded owned chat. Refresh only after server confirmation;
+     * neither navigation nor list ordering changes optimistically.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `fileChat`(`id`: kotlin.String, `change`: SavedFilingChange) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coresavedhistory_file_chat(
+                uniffiHandle,
+
+        FfiConverterString.lower(`id`),
+        FfiConverterTypeSavedFilingChange.lower(`change`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
      * Native view visibility controls following; navigation never grants write access.
      */override fun `follow`(`visible`: kotlin.Boolean)
         =
@@ -12815,6 +19405,35 @@ open class CoreSavedHistory: Disposable, AutoCloseable, CoreSavedHistoryInterfac
     )
     }
 
+
+
+    /**
+     * Move an owned saved pin using the last confirmed owner-order revision.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `movePin`(`id`: kotlin.String, `after`: kotlin.String?, `before`: kotlin.String?, `revision`: kotlin.ULong) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coresavedhistory_move_pin(
+                uniffiHandle,
+
+        FfiConverterString.lower(`id`),
+        FfiConverterOptionalString.lower(`after`),
+        FfiConverterOptionalString.lower(`before`),
+        FfiConverterULong.lower(`revision`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
 
 
     /**
@@ -12872,6 +19491,58 @@ open class CoreSavedHistory: Disposable, AutoCloseable, CoreSavedHistoryInterfac
 
 
 
+    /**
+     * Load an existing indexed session in this history's current account/project scope.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `indexedSession`(`key`: kotlin.String) : SavedIndexedTranscript {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coresavedhistory_indexed_session(
+                uniffiHandle,
+
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeSavedIndexedTranscript.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Call only after the indexed transcript mounted successfully, using its exact revision.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `markIndexedSeen`(`key`: kotlin.String, `activityRevision`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coresavedhistory_mark_indexed_seen(
+                uniffiHandle,
+
+        FfiConverterString.lower(`key`),
+        FfiConverterString.lower(`activityRevision`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
 
 
 
@@ -12905,6 +19576,423 @@ public object FfiConverterTypeCoreSavedHistory: FfiConverter<CoreSavedHistory, L
     override fun allocationSize(value: CoreSavedHistory) = 8UL
 
     override fun write(value: CoreSavedHistory, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface CoreSettingsInterface {
+
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): SettingsEffect
+
+    fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+
+    fun `dispose`()
+
+    fun `preferences`(): SettingsPreferences
+
+    /**
+     * Cloud controls appear only after an authorized status read succeeds.
+     */
+    suspend fun `refreshCloud`()
+
+    /**
+     * Only bytes prepared by the landed Rust AndroidView bridge may be mounted.
+     */
+    fun `snapshot`(): kotlin.ByteArray
+
+    /**
+     * The platform reports success only after retaining its document permission.
+     */
+    suspend fun `wallpaperSelected`(`ticket`: kotlin.String, `uri`: kotlin.String, `name`: kotlin.String, `permissionSaved`: kotlin.Boolean): SettingsEffect
+
+    companion object
+}
+
+open class CoreSettings: Disposable, AutoCloseable, CoreSettingsInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coresettings(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coresettings(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coresettings_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String) : SettingsEffect {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coresettings_activate(
+                uniffiHandle,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeSettingsEffect.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    @Throws(CoreException::class)override fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coresettings_change_field(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+        FfiConverterString.lower(`value`),_status)
+}
+    }
+
+
+
+    override fun `dispose`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coresettings_dispose(
+        it,
+        _status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)override fun `preferences`(): SettingsPreferences {
+            return FfiConverterTypeSettingsPreferences.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coresettings_preferences(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Cloud controls appear only after an authorized status read succeeds.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `refreshCloud`() {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coresettings_refresh_cloud(
+                uniffiHandle,
+
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Only bytes prepared by the landed Rust AndroidView bridge may be mounted.
+     */
+    @Throws(CoreException::class)override fun `snapshot`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coresettings_snapshot(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * The platform reports success only after retaining its document permission.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `wallpaperSelected`(`ticket`: kotlin.String, `uri`: kotlin.String, `name`: kotlin.String, `permissionSaved`: kotlin.Boolean) : SettingsEffect {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_coresettings_wallpaper_selected(
+                uniffiHandle,
+
+        FfiConverterString.lower(`ticket`),
+        FfiConverterString.lower(`uri`),
+        FfiConverterString.lower(`name`),
+        FfiConverterBoolean.lower(`permissionSaved`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeSettingsEffect.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreSettings: FfiConverter<CoreSettings, Long> {
+    override fun lower(value: CoreSettings): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreSettings {
+        return CoreSettings(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreSettings {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreSettings) = 8UL
+
+    override fun write(value: CoreSettings, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -13327,6 +20415,301 @@ public object FfiConverterTypeCoreSharing: FfiConverter<CoreSharing, Long> {
 //
 
 
+/**
+ * Reads the current immutable frame, with no viewport or session mutation.
+ */
+public interface CoreTranscriptAccessibilityInterface {
+
+    fun `page`(`revision`: kotlin.ULong, `anchor`: kotlin.ULong, `direction`: AccessibilityDirection, `count`: kotlin.UInt): AccessibilityPage
+
+    fun `rowPart`(`revision`: kotlin.ULong, `key`: kotlin.ULong, `byte`: kotlin.UInt): AccessibilityRow
+
+    companion object
+}
+
+/**
+ * Reads the current immutable frame, with no viewport or session mutation.
+ */
+open class CoreTranscriptAccessibility: Disposable, AutoCloseable, CoreTranscriptAccessibilityInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    constructor(`account`: CoreAccount, `transcript`: TranscriptView) :
+        this(UniffiWithHandle,
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coretranscriptaccessibility_new(
+
+
+        FfiConverterTypeCoreAccount.lower(`account`),
+        FfiConverterTypeTranscriptView.lower(`transcript`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_coretranscriptaccessibility(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_coretranscriptaccessibility(handle, status)
+        }
+    }
+
+
+    @Throws(CoreException::class)override fun `page`(`revision`: kotlin.ULong, `anchor`: kotlin.ULong, `direction`: AccessibilityDirection, `count`: kotlin.UInt): AccessibilityPage {
+            return FfiConverterTypeAccessibilityPage.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coretranscriptaccessibility_page(
+        it,
+
+        FfiConverterULong.lower(`revision`),
+        FfiConverterULong.lower(`anchor`),
+        FfiConverterTypeAccessibilityDirection.lower(`direction`),
+        FfiConverterUInt.lower(`count`),_status)
+}
+    }
+    )
+    }
+
+
+
+    @Throws(CoreException::class)override fun `rowPart`(`revision`: kotlin.ULong, `key`: kotlin.ULong, `byte`: kotlin.UInt): AccessibilityRow {
+            return FfiConverterTypeAccessibilityRow.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coretranscriptaccessibility_row_part(
+        it,
+
+        FfiConverterULong.lower(`revision`),
+        FfiConverterULong.lower(`key`),
+        FfiConverterUInt.lower(`byte`),_status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreTranscriptAccessibility: FfiConverter<CoreTranscriptAccessibility, Long> {
+    override fun lower(value: CoreTranscriptAccessibility): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreTranscriptAccessibility {
+        return CoreTranscriptAccessibility(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreTranscriptAccessibility {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreTranscriptAccessibility) = 8UL
+
+    override fun write(value: CoreTranscriptAccessibility, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
 public interface CoreVoiceAgentInterface {
 
     suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String)
@@ -13627,6 +21010,11 @@ public object FfiConverterTypeCoreVoiceAgent: FfiConverter<CoreVoiceAgent, Long>
 
 public interface CoreVoiceUsageInterface {
 
+    /**
+     * Resolve and run refresh from the current Rust Native tree by identity only.
+     */
+    fun `activateView`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String)
+
     fun `refresh`()
 
     fun `snapshot`(): VoiceUsageSnapshot
@@ -13635,6 +21023,11 @@ public interface CoreVoiceUsageInterface {
      * Presence and preferences may change while this screen is open.
      */
     fun `track`(`preferredHost`: kotlin.String?, `activeCall`: VoiceCall?)
+
+    /**
+     * Build and retain the current usage view so activations resolve in Rust.
+     */
+    fun `viewJson`(): kotlin.String
 
     companion object
 }
@@ -13740,6 +21133,25 @@ open class CoreVoiceUsage: Disposable, AutoCloseable, CoreVoiceUsageInterface
         }
     }
 
+
+    /**
+     * Resolve and run refresh from the current Rust Native tree by identity only.
+     */
+    @Throws(CoreException::class)override fun `activateView`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corevoiceusage_activate_view(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),_status)
+}
+    }
+
+
+
     override fun `refresh`()
         =
     callWithHandle {
@@ -13780,6 +21192,23 @@ open class CoreVoiceUsage: Disposable, AutoCloseable, CoreVoiceUsageInterface
 }
     }
 
+
+
+
+    /**
+     * Build and retain the current usage view so activations resolve in Rust.
+     */
+    @Throws(CoreException::class)override fun `viewJson`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corevoiceusage_view_json(
+        it,
+        _status)
+}
+    }
+    )
+    }
 
 
 
@@ -14219,11 +21648,27 @@ open class CoreWallet: Disposable, AutoCloseable, CoreWalletInterface
 
 
 
+    companion object {
 
     /**
-     * @suppress
-     */
-    companion object
+     * Open the Android wallet after checking the retired encrypted seed.
+     */ fun `android`(`home`: kotlin.String, `current`: AndroidSecretStorage, `retired`: AndroidRetiredWalletSeed, `listener`: WalletListener): CoreWallet {
+            return FfiConverterTypeCoreWallet.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_corewallet_android(
+
+
+        FfiConverterString.lower(`home`),
+        FfiConverterTypeAndroidSecretStorage.lower(`current`),
+        FfiConverterTypeAndroidRetiredWalletSeed.lower(`retired`),
+        FfiConverterTypeWalletListener.lower(`listener`),_status)
+}
+    )
+    }
+
+
+
+    }
 
 }
 
@@ -17180,9 +24625,31 @@ public object FfiConverterTypeSavedHistoryListener: FfiConverter<SavedHistoryLis
  */
 public interface SessionHandleInterface {
 
+    /**
+     * Mark a mounted view current only after the native adapter applied it.
+     */
+    fun `acknowledgeNativeView`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    /**
+     * Resolve an activation against the acknowledged view, then call an
+     * existing session operation. Unknown intents fail during view decoding.
+     */
+    fun `activateNative`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String, `text`: kotlin.String?, `attachments`: List<OutgoingAttachment>): NativeActionResult
+
     suspend fun `beginQueuedEdit`(`id`: kotlin.String, `instanceId`: kotlin.String): QueueEditStart
 
+    /**
+     * Resolve a field change against the acknowledged Rust Native view.
+     * Only draft fields may change through this bridge.
+     */
+    fun `changeNativeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String, `value`: kotlin.String): NativeActionResult
+
     fun `chatId`(): kotlin.String
+
+    /**
+     * Remove this session's saved draft after sending or cancelling it.
+     */
+    fun `clearComposerDraft`()
 
     fun `clearQueueError`()
 
@@ -17190,6 +24657,12 @@ public interface SessionHandleInterface {
      * Composer + status strip state (pull after `ComposerChanged`).
      */
     fun `composer`(): ComposerState
+
+    /**
+     * Edit the native composer through Rust Native's UTF-16/IME mirror.
+     * Successful changes are saved in the signed-in account's draft store.
+     */
+    fun `composerEditor`(`instance`: kotlin.String, `viewRevision`: kotlin.ULong, `requestJson`: kotlin.ByteArray): kotlin.ByteArray
 
     /**
      * A row's primary action: steer text into the live turn (never
@@ -17224,6 +24697,12 @@ public interface SessionHandleInterface {
     fun `moveQueuedBy`(`id`: kotlin.String, `delta`: kotlin.Int): kotlin.Boolean
 
     /**
+     * Validate a Rust Native view whose intents use the closed mobile
+     * session action set. Return its canonical bytes for native mounting.
+     */
+    fun `prepareNativeView`(`viewJson`: kotlin.ByteArray): kotlin.ByteArray
+
+    /**
      * Remove a queued row (applied locally after the host acks).
      */
     suspend fun `removeQueued`(`id`: kotlin.String): kotlin.Boolean
@@ -17233,9 +24712,19 @@ public interface SessionHandleInterface {
     fun `respondInput`(`requestId`: kotlin.String, `answers`: List<UserInputAnswer>)
 
     /**
+     * Restore the saved text draft for this session.
+     */
+    fun `restoreComposerDraft`(): kotlin.String?
+
+    /**
      * "Not delivered — tap to retry".
      */
     fun `retryDelivery`()
+
+    /**
+     * Save this session's bounded text draft in the signed-in account store.
+     */
+    fun `saveComposerDraft`(`text`: kotlin.String)
 
     /**
      * Send: a new turn when idle; while working, queue (or steer per `busy`).
@@ -17251,6 +24740,12 @@ public interface SessionHandleInterface {
      * A transcript view is on/off screen (marks seen on attach).
      */
     fun `setViewAttached`(`attached`: kotlin.Boolean)
+
+    /**
+     * Submit the current Rust Native composer input through the existing
+     * session send operation. Rust resolves the choice token and busy policy.
+     */
+    fun `submitNativeComposer`(`instance`: kotlin.String, `viewRevision`: kotlin.ULong, `inputToken`: kotlin.String, `editingLifetime`: kotlin.ULong, `editorRevision`: kotlin.ULong, `choiceToken`: kotlin.String?, `text`: kotlin.String, `attachments`: List<OutgoingAttachment>): NativeActionResult
 
     fun `transcriptStatus`(): TranscriptStatus
 
@@ -17362,6 +24857,47 @@ open class SessionHandle: Disposable, AutoCloseable, SessionHandleInterface
     }
 
 
+    /**
+     * Mark a mounted view current only after the native adapter applied it.
+     */
+    @Throws(CoreException::class)override fun `acknowledgeNativeView`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_acknowledge_native_view(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Resolve an activation against the acknowledged view, then call an
+     * existing session operation. Unknown intents fail during view decoding.
+     */
+    @Throws(CoreException::class)override fun `activateNative`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String, `text`: kotlin.String?, `attachments`: List<OutgoingAttachment>): NativeActionResult {
+            return FfiConverterTypeNativeActionResult.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_activate_native(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),
+        FfiConverterOptionalString.lower(`text`),
+        FfiConverterSequenceTypeOutgoingAttachment.lower(`attachments`),_status)
+}
+    }
+    )
+    }
+
+
+
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
     override suspend fun `beginQueuedEdit`(`id`: kotlin.String, `instanceId`: kotlin.String) : QueueEditStart {
         return uniffiRustCallAsync(
@@ -17383,6 +24919,28 @@ open class SessionHandle: Disposable, AutoCloseable, SessionHandleInterface
     )
     }
 
+
+    /**
+     * Resolve a field change against the acknowledged Rust Native view.
+     * Only draft fields may change through this bridge.
+     */
+    @Throws(CoreException::class)override fun `changeNativeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String, `value`: kotlin.String): NativeActionResult {
+            return FfiConverterTypeNativeActionResult.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_change_native_field(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),
+        FfiConverterString.lower(`value`),_status)
+}
+    }
+    )
+    }
+
+
     override fun `chatId`(): kotlin.String {
             return FfiConverterString.lift(
     callWithHandle {
@@ -17394,6 +24952,22 @@ open class SessionHandle: Disposable, AutoCloseable, SessionHandleInterface
     }
     )
     }
+
+
+
+    /**
+     * Remove this session's saved draft after sending or cancelling it.
+     */
+    @Throws(CoreException::class)override fun `clearComposerDraft`()
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_clear_composer_draft(
+        it,
+        _status)
+}
+    }
+
 
 
     override fun `clearQueueError`()
@@ -17418,6 +24992,27 @@ open class SessionHandle: Disposable, AutoCloseable, SessionHandleInterface
     UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_composer(
         it,
         _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Edit the native composer through Rust Native's UTF-16/IME mirror.
+     * Successful changes are saved in the signed-in account's draft store.
+     */
+    @Throws(CoreException::class)override fun `composerEditor`(`instance`: kotlin.String, `viewRevision`: kotlin.ULong, `requestJson`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_composer_editor(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`viewRevision`),
+        FfiConverterByteArray.lower(`requestJson`),_status)
 }
     }
     )
@@ -17575,6 +25170,25 @@ open class SessionHandle: Disposable, AutoCloseable, SessionHandleInterface
 
 
     /**
+     * Validate a Rust Native view whose intents use the closed mobile
+     * session action set. Return its canonical bytes for native mounting.
+     */
+    @Throws(CoreException::class)override fun `prepareNativeView`(`viewJson`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_prepare_native_view(
+        it,
+
+        FfiConverterByteArray.lower(`viewJson`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * Remove a queued row (applied locally after the host acks).
      */
     @Throws(CoreException::class)
@@ -17636,6 +25250,23 @@ open class SessionHandle: Disposable, AutoCloseable, SessionHandleInterface
 
 
     /**
+     * Restore the saved text draft for this session.
+     */
+    @Throws(CoreException::class)override fun `restoreComposerDraft`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_restore_composer_draft(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * "Not delivered — tap to retry".
      */
     @Throws(CoreException::class)override fun `retryDelivery`()
@@ -17645,6 +25276,23 @@ open class SessionHandle: Disposable, AutoCloseable, SessionHandleInterface
     UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_retry_delivery(
         it,
         _status)
+}
+    }
+
+
+
+
+    /**
+     * Save this session's bounded text draft in the signed-in account store.
+     */
+    @Throws(CoreException::class)override fun `saveComposerDraft`(`text`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_save_composer_draft(
+        it,
+
+        FfiConverterString.lower(`text`),_status)
 }
     }
 
@@ -17709,6 +25357,32 @@ open class SessionHandle: Disposable, AutoCloseable, SessionHandleInterface
 
 
 
+
+    /**
+     * Submit the current Rust Native composer input through the existing
+     * session send operation. Rust resolves the choice token and busy policy.
+     */
+    @Throws(CoreException::class)override fun `submitNativeComposer`(`instance`: kotlin.String, `viewRevision`: kotlin.ULong, `inputToken`: kotlin.String, `editingLifetime`: kotlin.ULong, `editorRevision`: kotlin.ULong, `choiceToken`: kotlin.String?, `text`: kotlin.String, `attachments`: List<OutgoingAttachment>): NativeActionResult {
+            return FfiConverterTypeNativeActionResult.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_sessionhandle_submit_native_composer(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`viewRevision`),
+        FfiConverterString.lower(`inputToken`),
+        FfiConverterULong.lower(`editingLifetime`),
+        FfiConverterULong.lower(`editorRevision`),
+        FfiConverterOptionalString.lower(`choiceToken`),
+        FfiConverterString.lower(`text`),
+        FfiConverterSequenceTypeOutgoingAttachment.lower(`attachments`),_status)
+}
+    }
+    )
+    }
+
+
     override fun `transcriptStatus`(): TranscriptStatus {
             return FfiConverterTypeTranscriptStatus.lift(
     callWithHandle {
@@ -17756,6 +25430,315 @@ public object FfiConverterTypeSessionHandle: FfiConverter<SessionHandle, Long> {
     override fun allocationSize(value: SessionHandle) = 8UL
 
     override fun write(value: SessionHandle, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface SettingsListener {
+
+    fun `onSettingsChanged`()
+
+    companion object
+}
+
+open class SettingsListenerImpl: Disposable, AutoCloseable, SettingsListener
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_settingslistener(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_settingslistener(handle, status)
+        }
+    }
+
+    override fun `onSettingsChanged`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_settingslistener_on_settings_changed(
+        it,
+        _status)
+}
+    }
+
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceSettingsListener {
+    internal object `onSettingsChanged`: UniffiCallbackInterfaceSettingsListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeSettingsListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onSettingsChanged`(
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeSettingsListener.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeSettingsListener.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceSettingsListener.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `onSettingsChanged`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_openagents_mobile_fn_init_callback_vtable_settingslistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSettingsListener: FfiConverter<SettingsListener, Long> {
+    internal val handleMap = UniffiHandleMap<SettingsListener>()
+
+    override fun lower(value: SettingsListener): Long {
+        if (value is SettingsListenerImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): SettingsListener {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return SettingsListenerImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): SettingsListener {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: SettingsListener) = 8UL
+
+    override fun write(value: SettingsListener, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -18484,6 +26467,11 @@ public interface TranscriptViewInterface {
      */
     fun `visual`(`id`: kotlin.String): VisualSession?
 
+    /**
+     * Follow cloud/default-chat or synthetic-demo messages in Rust, without native row copies.
+     */
+    fun `attachCloud`(`chat`: CoreCloudChat): kotlin.Boolean
+
     companion object
 }
 
@@ -18796,6 +26784,23 @@ open class TranscriptView: Disposable, AutoCloseable, TranscriptViewInterface
         it,
 
         FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Follow cloud/default-chat or synthetic-demo messages in Rust, without native row copies.
+     */override fun `attachCloud`(`chat`: CoreCloudChat): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_transcriptview_attach_cloud(
+        it,
+
+        FfiConverterTypeCoreCloudChat.lower(`chat`),_status)
 }
     }
     )
@@ -20320,18 +28325,58 @@ public object FfiConverterTypeVoiceAgentListener: FfiConverter<VoiceAgentListene
 public interface VoiceCallInterface {
 
     /**
+     * Resolve only the current Rust Native tree. No action payload crosses this boundary.
+     */
+    fun `activateView`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): VoiceUiAction
+
+    /**
+     * Read the latest platform state for the active call.
+     */
+    fun `audioState`(): VoiceAudioState
+
+    /**
+     * Current Rust-owned compact call view. A new revision replaces its prior activation tree.
+     */
+    fun `capsuleView`(): kotlin.String
+
+    /**
      * Late native callbacks simply miss the retired request. No resume is possible.
      */
     fun `completeMedia`(`requestId`: kotlin.ULong, `failure`: VoiceMediaFailure?, `sdp`: kotlin.String?, `microphone`: kotlin.UShort, `speaker`: kotlin.UShort)
+
+    /**
+     * Current Rust-owned full call view. A new revision replaces its prior activation tree.
+     */
+    fun `screenView`(): kotlin.String
 
     fun `setMuted`(`muted`: kotlin.Boolean)
 
     fun `stop`()
 
     /**
+     * Record focus changes, including interruptions and ducking.
+     */
+    fun `updateAudioFocus`(`focus`: VoiceAudioFocus)
+
+    /**
+     * Record the current platform route while the call is active.
+     */
+    fun `updateAudioRoute`(`route`: VoiceAudioRoute)
+
+    /**
      * Update presentation context; only the active call may publish it.
      */
     fun `updateContext`(`chatId`: kotlin.String?, `title`: kotlin.String?)
+
+    /**
+     * Record connectivity changes without creating a second reconnect path.
+     */
+    fun `updateNetworkState`(`network`: VoiceNetworkState)
+
+    /**
+     * Record proximity so the platform can select its near/far audio behavior.
+     */
+    fun `updateProximity`(`near`: kotlin.Boolean)
 
     companion object
 }
@@ -20439,6 +28484,59 @@ open class VoiceCall: Disposable, AutoCloseable, VoiceCallInterface
 
 
     /**
+     * Resolve only the current Rust Native tree. No action payload crosses this boundary.
+     */
+    @Throws(CoreException::class)override fun `activateView`(`instance`: kotlin.String, `revision`: kotlin.ULong, `node`: kotlin.String): VoiceUiAction {
+            return FfiConverterTypeVoiceUiAction.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_voicecall_activate_view(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`node`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Read the latest platform state for the active call.
+     */override fun `audioState`(): VoiceAudioState {
+            return FfiConverterTypeVoiceAudioState.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_voicecall_audio_state(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Current Rust-owned compact call view. A new revision replaces its prior activation tree.
+     */
+    @Throws(CoreException::class)override fun `capsuleView`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_voicecall_capsule_view(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * Late native callbacks simply miss the retired request. No resume is possible.
      */override fun `completeMedia`(`requestId`: kotlin.ULong, `failure`: VoiceMediaFailure?, `sdp`: kotlin.String?, `microphone`: kotlin.UShort, `speaker`: kotlin.UShort)
         =
@@ -20455,6 +28553,23 @@ open class VoiceCall: Disposable, AutoCloseable, VoiceCallInterface
 }
     }
 
+
+
+
+    /**
+     * Current Rust-owned full call view. A new revision replaces its prior activation tree.
+     */
+    @Throws(CoreException::class)override fun `screenView`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_voicecall_screen_view(
+        it,
+        _status)
+}
+    }
+    )
+    }
 
 
     override fun `setMuted`(`muted`: kotlin.Boolean)
@@ -20484,6 +28599,38 @@ open class VoiceCall: Disposable, AutoCloseable, VoiceCallInterface
 
 
     /**
+     * Record focus changes, including interruptions and ducking.
+     */override fun `updateAudioFocus`(`focus`: VoiceAudioFocus)
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_voicecall_update_audio_focus(
+        it,
+
+        FfiConverterTypeVoiceAudioFocus.lower(`focus`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Record the current platform route while the call is active.
+     */override fun `updateAudioRoute`(`route`: VoiceAudioRoute)
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_voicecall_update_audio_route(
+        it,
+
+        FfiConverterTypeVoiceAudioRoute.lower(`route`),_status)
+}
+    }
+
+
+
+
+    /**
      * Update presentation context; only the active call may publish it.
      */override fun `updateContext`(`chatId`: kotlin.String?, `title`: kotlin.String?)
         =
@@ -20494,6 +28641,38 @@ open class VoiceCall: Disposable, AutoCloseable, VoiceCallInterface
 
         FfiConverterOptionalString.lower(`chatId`),
         FfiConverterOptionalString.lower(`title`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Record connectivity changes without creating a second reconnect path.
+     */override fun `updateNetworkState`(`network`: VoiceNetworkState)
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_voicecall_update_network_state(
+        it,
+
+        FfiConverterTypeVoiceNetworkState.lower(`network`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Record proximity so the platform can select its near/far audio behavior.
+     */override fun `updateProximity`(`near`: kotlin.Boolean)
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_voicecall_update_proximity(
+        it,
+
+        FfiConverterBoolean.lower(`near`),_status)
 }
     }
 
@@ -21825,6 +30004,163 @@ public object FfiConverterTypeWalletListener: FfiConverter<WalletListener, Long>
 
 
 
+data class AccessibilityBounds (
+    var `x`: kotlin.Float
+    ,
+    var `y`: kotlin.Float
+    ,
+    var `width`: kotlin.Float
+    ,
+    var `height`: kotlin.Float
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAccessibilityBounds: FfiConverterRustBuffer<AccessibilityBounds> {
+    override fun read(buf: ByteBuffer): AccessibilityBounds {
+        return AccessibilityBounds(
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AccessibilityBounds) = (
+            FfiConverterFloat.allocationSize(value.`x`) +
+            FfiConverterFloat.allocationSize(value.`y`) +
+            FfiConverterFloat.allocationSize(value.`width`) +
+            FfiConverterFloat.allocationSize(value.`height`)
+    )
+
+    override fun write(value: AccessibilityBounds, buf: ByteBuffer) {
+            FfiConverterFloat.write(value.`x`, buf)
+            FfiConverterFloat.write(value.`y`, buf)
+            FfiConverterFloat.write(value.`width`, buf)
+            FfiConverterFloat.write(value.`height`, buf)
+    }
+}
+
+
+
+data class AccessibilityPage (
+    var `revision`: kotlin.ULong
+    ,
+    var `rows`: List<AccessibilityRow>
+    ,
+    var `earlier`: kotlin.Boolean
+    ,
+    var `later`: kotlin.Boolean
+    ,
+    var `earlierLabel`: kotlin.String
+    ,
+    var `laterLabel`: kotlin.String
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAccessibilityPage: FfiConverterRustBuffer<AccessibilityPage> {
+    override fun read(buf: ByteBuffer): AccessibilityPage {
+        return AccessibilityPage(
+            FfiConverterULong.read(buf),
+            FfiConverterSequenceTypeAccessibilityRow.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AccessibilityPage) = (
+            FfiConverterULong.allocationSize(value.`revision`) +
+            FfiConverterSequenceTypeAccessibilityRow.allocationSize(value.`rows`) +
+            FfiConverterBoolean.allocationSize(value.`earlier`) +
+            FfiConverterBoolean.allocationSize(value.`later`) +
+            FfiConverterString.allocationSize(value.`earlierLabel`) +
+            FfiConverterString.allocationSize(value.`laterLabel`)
+    )
+
+    override fun write(value: AccessibilityPage, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`revision`, buf)
+            FfiConverterSequenceTypeAccessibilityRow.write(value.`rows`, buf)
+            FfiConverterBoolean.write(value.`earlier`, buf)
+            FfiConverterBoolean.write(value.`later`, buf)
+            FfiConverterString.write(value.`earlierLabel`, buf)
+            FfiConverterString.write(value.`laterLabel`, buf)
+    }
+}
+
+
+
+data class AccessibilityRow (
+    var `key`: kotlin.ULong
+    ,
+    /**
+     * Bounds are measured by Rust in the current transcript frame, in layout points.
+     */
+    var `bounds`: AccessibilityBounds
+    ,
+    var `text`: kotlin.String
+    ,
+    var `nextByte`: kotlin.UInt?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAccessibilityRow: FfiConverterRustBuffer<AccessibilityRow> {
+    override fun read(buf: ByteBuffer): AccessibilityRow {
+        return AccessibilityRow(
+            FfiConverterULong.read(buf),
+            FfiConverterTypeAccessibilityBounds.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AccessibilityRow) = (
+            FfiConverterULong.allocationSize(value.`key`) +
+            FfiConverterTypeAccessibilityBounds.allocationSize(value.`bounds`) +
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterOptionalUInt.allocationSize(value.`nextByte`)
+    )
+
+    override fun write(value: AccessibilityRow, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`key`, buf)
+            FfiConverterTypeAccessibilityBounds.write(value.`bounds`, buf)
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterOptionalUInt.write(value.`nextByte`, buf)
+    }
+}
+
+
+
 data class AccountSnapshot (
     var `generation`: kotlin.ULong
     ,
@@ -21858,6 +30194,644 @@ public object FfiConverterTypeAccountSnapshot: FfiConverterRustBuffer<AccountSna
     override fun write(value: AccountSnapshot, buf: ByteBuffer) {
             FfiConverterULong.write(value.`generation`, buf)
             FfiConverterTypeAccountState.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
+ * A bounded route and optional code for the existing core flow. Invitation
+ * codes stay in Rust and are never returned to the platform.
+ */
+data class AndroidAppLink (
+    var `kind`: AndroidAppLinkKind
+    ,
+    var `code`: kotlin.String?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidAppLink: FfiConverterRustBuffer<AndroidAppLink> {
+    override fun read(buf: ByteBuffer): AndroidAppLink {
+        return AndroidAppLink(
+            FfiConverterTypeAndroidAppLinkKind.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidAppLink) = (
+            FfiConverterTypeAndroidAppLinkKind.allocationSize(value.`kind`) +
+            FfiConverterOptionalString.allocationSize(value.`code`)
+    )
+
+    override fun write(value: AndroidAppLink, buf: ByteBuffer) {
+            FfiConverterTypeAndroidAppLinkKind.write(value.`kind`, buf)
+            FfiConverterOptionalString.write(value.`code`, buf)
+    }
+}
+
+
+
+/**
+ * Rust's decision about which existing core flow may receive a scanned link.
+ * `code` is absent when the Rust account API consumes the original link.
+ */
+data class AndroidAppLinkDispatch (
+    var `operation`: AndroidAppLinkOperation
+    ,
+    var `code`: kotlin.String?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidAppLinkDispatch: FfiConverterRustBuffer<AndroidAppLinkDispatch> {
+    override fun read(buf: ByteBuffer): AndroidAppLinkDispatch {
+        return AndroidAppLinkDispatch(
+            FfiConverterTypeAndroidAppLinkOperation.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidAppLinkDispatch) = (
+            FfiConverterTypeAndroidAppLinkOperation.allocationSize(value.`operation`) +
+            FfiConverterOptionalString.allocationSize(value.`code`)
+    )
+
+    override fun write(value: AndroidAppLinkDispatch, buf: ByteBuffer) {
+            FfiConverterTypeAndroidAppLinkOperation.write(value.`operation`, buf)
+            FfiConverterOptionalString.write(value.`code`, buf)
+    }
+}
+
+
+
+data class AndroidComposerFrame (
+    var `instance`: kotlin.String
+    ,
+    var `revision`: kotlin.ULong
+    ,
+    var `token`: kotlin.String
+    ,
+    var `editingLifetime`: kotlin.ULong
+    ,
+    var `editorRevision`: kotlin.ULong
+    ,
+    var `draft`: kotlin.String
+    ,
+    var `placeholder`: kotlin.String
+    ,
+    var `maxBytes`: kotlin.UInt
+    ,
+    var `enabled`: kotlin.Boolean
+    ,
+    var `busy`: kotlin.Boolean
+    ,
+    var `primaryLabel`: kotlin.String
+    ,
+    var `stopKey`: kotlin.String?
+    ,
+    var `attachmentKey`: kotlin.String?
+    ,
+    var `error`: kotlin.String?
+    ,
+    var `sharedCardsJson`: kotlin.String?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidComposerFrame: FfiConverterRustBuffer<AndroidComposerFrame> {
+    override fun read(buf: ByteBuffer): AndroidComposerFrame {
+        return AndroidComposerFrame(
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidComposerFrame) = (
+            FfiConverterString.allocationSize(value.`instance`) +
+            FfiConverterULong.allocationSize(value.`revision`) +
+            FfiConverterString.allocationSize(value.`token`) +
+            FfiConverterULong.allocationSize(value.`editingLifetime`) +
+            FfiConverterULong.allocationSize(value.`editorRevision`) +
+            FfiConverterString.allocationSize(value.`draft`) +
+            FfiConverterString.allocationSize(value.`placeholder`) +
+            FfiConverterUInt.allocationSize(value.`maxBytes`) +
+            FfiConverterBoolean.allocationSize(value.`enabled`) +
+            FfiConverterBoolean.allocationSize(value.`busy`) +
+            FfiConverterString.allocationSize(value.`primaryLabel`) +
+            FfiConverterOptionalString.allocationSize(value.`stopKey`) +
+            FfiConverterOptionalString.allocationSize(value.`attachmentKey`) +
+            FfiConverterOptionalString.allocationSize(value.`error`) +
+            FfiConverterOptionalString.allocationSize(value.`sharedCardsJson`)
+    )
+
+    override fun write(value: AndroidComposerFrame, buf: ByteBuffer) {
+            FfiConverterString.write(value.`instance`, buf)
+            FfiConverterULong.write(value.`revision`, buf)
+            FfiConverterString.write(value.`token`, buf)
+            FfiConverterULong.write(value.`editingLifetime`, buf)
+            FfiConverterULong.write(value.`editorRevision`, buf)
+            FfiConverterString.write(value.`draft`, buf)
+            FfiConverterString.write(value.`placeholder`, buf)
+            FfiConverterUInt.write(value.`maxBytes`, buf)
+            FfiConverterBoolean.write(value.`enabled`, buf)
+            FfiConverterBoolean.write(value.`busy`, buf)
+            FfiConverterString.write(value.`primaryLabel`, buf)
+            FfiConverterOptionalString.write(value.`stopKey`, buf)
+            FfiConverterOptionalString.write(value.`attachmentKey`, buf)
+            FfiConverterOptionalString.write(value.`error`, buf)
+            FfiConverterOptionalString.write(value.`sharedCardsJson`, buf)
+    }
+}
+
+
+
+data class AndroidDemoChoice (
+    var `fixture`: AndroidDemoChat
+    ,
+    var `row`: SessionRow
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidDemoChoice: FfiConverterRustBuffer<AndroidDemoChoice> {
+    override fun read(buf: ByteBuffer): AndroidDemoChoice {
+        return AndroidDemoChoice(
+            FfiConverterTypeAndroidDemoChat.read(buf),
+            FfiConverterTypeSessionRow.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidDemoChoice) = (
+            FfiConverterTypeAndroidDemoChat.allocationSize(value.`fixture`) +
+            FfiConverterTypeSessionRow.allocationSize(value.`row`)
+    )
+
+    override fun write(value: AndroidDemoChoice, buf: ByteBuffer) {
+            FfiConverterTypeAndroidDemoChat.write(value.`fixture`, buf)
+            FfiConverterTypeSessionRow.write(value.`row`, buf)
+    }
+}
+
+
+
+data class AndroidHostSelection (
+    var `anchor`: AndroidHostTextPoint
+    ,
+    var `focus`: AndroidHostTextPoint
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidHostSelection: FfiConverterRustBuffer<AndroidHostSelection> {
+    override fun read(buf: ByteBuffer): AndroidHostSelection {
+        return AndroidHostSelection(
+            FfiConverterTypeAndroidHostTextPoint.read(buf),
+            FfiConverterTypeAndroidHostTextPoint.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidHostSelection) = (
+            FfiConverterTypeAndroidHostTextPoint.allocationSize(value.`anchor`) +
+            FfiConverterTypeAndroidHostTextPoint.allocationSize(value.`focus`)
+    )
+
+    override fun write(value: AndroidHostSelection, buf: ByteBuffer) {
+            FfiConverterTypeAndroidHostTextPoint.write(value.`anchor`, buf)
+            FfiConverterTypeAndroidHostTextPoint.write(value.`focus`, buf)
+    }
+}
+
+
+
+data class AndroidHostSnapshot (
+    var `generation`: kotlin.ULong
+    ,
+    var `route`: AndroidHostRoute
+    ,
+    var `contentRevision`: kotlin.ULong
+    ,
+    var `selectedChat`: kotlin.String?
+    ,
+    var `source`: AndroidHostContent
+    ,
+    var `signedIn`: kotlin.Boolean
+    ,
+    var `notice`: kotlin.String?
+    ,
+    var `composer`: CoreAndroidComposer?
+    ,
+    var `sessions`: CoreAndroidSessions?
+    ,
+    var `client`: CoreClient?
+    ,
+    var `history`: CoreSavedHistory?
+    ,
+    var `account`: CoreAccount?
+    ,
+    var `anchor`: AndroidTranscriptAnchor?
+    ,
+    var `recovery`: CoreAndroidRecovery?
+    ,
+    var `selection`: AndroidHostSelection?
+    ,
+    var `activeVoice`: VoiceCall?
+    ,
+    var `labActions`: CoreLabActions?
+    ,
+    var `canStartVoice`: kotlin.Boolean
+    ,
+    var `linkReview`: CoreAndroidLinkReview?
+    ,
+    var `pendingNotification`: kotlin.Boolean
+
+): Disposable{
+
+
+
+
+
+    @Suppress("UNNECESSARY_SAFE_CALL") // codegen is much simpler if we unconditionally emit safe calls here
+    override fun destroy() {
+
+    Disposable.destroy(
+        this.`generation`,
+        this.`route`,
+        this.`contentRevision`,
+        this.`selectedChat`,
+        this.`source`,
+        this.`signedIn`,
+        this.`notice`,
+        this.`composer`,
+        this.`sessions`,
+        this.`client`,
+        this.`history`,
+        this.`account`,
+        this.`anchor`,
+        this.`recovery`,
+        this.`selection`,
+        this.`activeVoice`,
+        this.`labActions`,
+        this.`canStartVoice`,
+        this.`linkReview`,
+        this.`pendingNotification`
+    )
+    }
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidHostSnapshot: FfiConverterRustBuffer<AndroidHostSnapshot> {
+    override fun read(buf: ByteBuffer): AndroidHostSnapshot {
+        return AndroidHostSnapshot(
+            FfiConverterULong.read(buf),
+            FfiConverterTypeAndroidHostRoute.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterTypeAndroidHostContent.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalTypeCoreAndroidComposer.read(buf),
+            FfiConverterOptionalTypeCoreAndroidSessions.read(buf),
+            FfiConverterOptionalTypeCoreClient.read(buf),
+            FfiConverterOptionalTypeCoreSavedHistory.read(buf),
+            FfiConverterOptionalTypeCoreAccount.read(buf),
+            FfiConverterOptionalTypeAndroidTranscriptAnchor.read(buf),
+            FfiConverterOptionalTypeCoreAndroidRecovery.read(buf),
+            FfiConverterOptionalTypeAndroidHostSelection.read(buf),
+            FfiConverterOptionalTypeVoiceCall.read(buf),
+            FfiConverterOptionalTypeCoreLabActions.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeCoreAndroidLinkReview.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidHostSnapshot) = (
+            FfiConverterULong.allocationSize(value.`generation`) +
+            FfiConverterTypeAndroidHostRoute.allocationSize(value.`route`) +
+            FfiConverterULong.allocationSize(value.`contentRevision`) +
+            FfiConverterOptionalString.allocationSize(value.`selectedChat`) +
+            FfiConverterTypeAndroidHostContent.allocationSize(value.`source`) +
+            FfiConverterBoolean.allocationSize(value.`signedIn`) +
+            FfiConverterOptionalString.allocationSize(value.`notice`) +
+            FfiConverterOptionalTypeCoreAndroidComposer.allocationSize(value.`composer`) +
+            FfiConverterOptionalTypeCoreAndroidSessions.allocationSize(value.`sessions`) +
+            FfiConverterOptionalTypeCoreClient.allocationSize(value.`client`) +
+            FfiConverterOptionalTypeCoreSavedHistory.allocationSize(value.`history`) +
+            FfiConverterOptionalTypeCoreAccount.allocationSize(value.`account`) +
+            FfiConverterOptionalTypeAndroidTranscriptAnchor.allocationSize(value.`anchor`) +
+            FfiConverterOptionalTypeCoreAndroidRecovery.allocationSize(value.`recovery`) +
+            FfiConverterOptionalTypeAndroidHostSelection.allocationSize(value.`selection`) +
+            FfiConverterOptionalTypeVoiceCall.allocationSize(value.`activeVoice`) +
+            FfiConverterOptionalTypeCoreLabActions.allocationSize(value.`labActions`) +
+            FfiConverterBoolean.allocationSize(value.`canStartVoice`) +
+            FfiConverterOptionalTypeCoreAndroidLinkReview.allocationSize(value.`linkReview`) +
+            FfiConverterBoolean.allocationSize(value.`pendingNotification`)
+    )
+
+    override fun write(value: AndroidHostSnapshot, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`generation`, buf)
+            FfiConverterTypeAndroidHostRoute.write(value.`route`, buf)
+            FfiConverterULong.write(value.`contentRevision`, buf)
+            FfiConverterOptionalString.write(value.`selectedChat`, buf)
+            FfiConverterTypeAndroidHostContent.write(value.`source`, buf)
+            FfiConverterBoolean.write(value.`signedIn`, buf)
+            FfiConverterOptionalString.write(value.`notice`, buf)
+            FfiConverterOptionalTypeCoreAndroidComposer.write(value.`composer`, buf)
+            FfiConverterOptionalTypeCoreAndroidSessions.write(value.`sessions`, buf)
+            FfiConverterOptionalTypeCoreClient.write(value.`client`, buf)
+            FfiConverterOptionalTypeCoreSavedHistory.write(value.`history`, buf)
+            FfiConverterOptionalTypeCoreAccount.write(value.`account`, buf)
+            FfiConverterOptionalTypeAndroidTranscriptAnchor.write(value.`anchor`, buf)
+            FfiConverterOptionalTypeCoreAndroidRecovery.write(value.`recovery`, buf)
+            FfiConverterOptionalTypeAndroidHostSelection.write(value.`selection`, buf)
+            FfiConverterOptionalTypeVoiceCall.write(value.`activeVoice`, buf)
+            FfiConverterOptionalTypeCoreLabActions.write(value.`labActions`, buf)
+            FfiConverterBoolean.write(value.`canStartVoice`, buf)
+            FfiConverterOptionalTypeCoreAndroidLinkReview.write(value.`linkReview`, buf)
+            FfiConverterBoolean.write(value.`pendingNotification`, buf)
+    }
+}
+
+
+
+data class AndroidHostTextPoint (
+    var `row`: kotlin.ULong
+    ,
+    var `utf16`: kotlin.UInt
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidHostTextPoint: FfiConverterRustBuffer<AndroidHostTextPoint> {
+    override fun read(buf: ByteBuffer): AndroidHostTextPoint {
+        return AndroidHostTextPoint(
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidHostTextPoint) = (
+            FfiConverterULong.allocationSize(value.`row`) +
+            FfiConverterUInt.allocationSize(value.`utf16`)
+    )
+
+    override fun write(value: AndroidHostTextPoint, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`row`, buf)
+            FfiConverterUInt.write(value.`utf16`, buf)
+    }
+}
+
+
+
+data class AndroidNotificationOpen (
+    var `retryAfterMs`: kotlin.UInt?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidNotificationOpen: FfiConverterRustBuffer<AndroidNotificationOpen> {
+    override fun read(buf: ByteBuffer): AndroidNotificationOpen {
+        return AndroidNotificationOpen(
+            FfiConverterOptionalUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidNotificationOpen) = (
+            FfiConverterOptionalUInt.allocationSize(value.`retryAfterMs`)
+    )
+
+    override fun write(value: AndroidNotificationOpen, buf: ByteBuffer) {
+            FfiConverterOptionalUInt.write(value.`retryAfterMs`, buf)
+    }
+}
+
+
+
+data class AndroidTranscriptAnchor (
+    var `row`: kotlin.ULong
+    ,
+    var `inside`: kotlin.Float
+    ,
+    var `following`: kotlin.Boolean
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidTranscriptAnchor: FfiConverterRustBuffer<AndroidTranscriptAnchor> {
+    override fun read(buf: ByteBuffer): AndroidTranscriptAnchor {
+        return AndroidTranscriptAnchor(
+            FfiConverterULong.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidTranscriptAnchor) = (
+            FfiConverterULong.allocationSize(value.`row`) +
+            FfiConverterFloat.allocationSize(value.`inside`) +
+            FfiConverterBoolean.allocationSize(value.`following`)
+    )
+
+    override fun write(value: AndroidTranscriptAnchor, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`row`, buf)
+            FfiConverterFloat.write(value.`inside`, buf)
+            FfiConverterBoolean.write(value.`following`, buf)
+    }
+}
+
+
+
+data class AndroidVoiceSettings (
+    var `generation`: kotlin.ULong
+    ,
+    var `picker`: CoreVoiceAgent
+    ,
+    var `usage`: CoreVoiceUsage
+
+): Disposable{
+
+
+
+
+
+    @Suppress("UNNECESSARY_SAFE_CALL") // codegen is much simpler if we unconditionally emit safe calls here
+    override fun destroy() {
+
+    Disposable.destroy(
+        this.`generation`,
+        this.`picker`,
+        this.`usage`
+    )
+    }
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidVoiceSettings: FfiConverterRustBuffer<AndroidVoiceSettings> {
+    override fun read(buf: ByteBuffer): AndroidVoiceSettings {
+        return AndroidVoiceSettings(
+            FfiConverterULong.read(buf),
+            FfiConverterTypeCoreVoiceAgent.read(buf),
+            FfiConverterTypeCoreVoiceUsage.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidVoiceSettings) = (
+            FfiConverterULong.allocationSize(value.`generation`) +
+            FfiConverterTypeCoreVoiceAgent.allocationSize(value.`picker`) +
+            FfiConverterTypeCoreVoiceUsage.allocationSize(value.`usage`)
+    )
+
+    override fun write(value: AndroidVoiceSettings, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`generation`, buf)
+            FfiConverterTypeCoreVoiceAgent.write(value.`picker`, buf)
+            FfiConverterTypeCoreVoiceUsage.write(value.`usage`, buf)
+    }
+}
+
+
+
+data class AndroidWalletFrame (
+    var `json`: kotlin.ByteArray
+    ,
+    var `secure`: kotlin.Boolean
+    ,
+    var `authentication`: RecoveryAuthentication?
+    ,
+    var `clipboard`: RecoveryClipboard?
+    ,
+    var `redactAfterMs`: kotlin.UInt?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidWalletFrame: FfiConverterRustBuffer<AndroidWalletFrame> {
+    override fun read(buf: ByteBuffer): AndroidWalletFrame {
+        return AndroidWalletFrame(
+            FfiConverterByteArray.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeRecoveryAuthentication.read(buf),
+            FfiConverterOptionalTypeRecoveryClipboard.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AndroidWalletFrame) = (
+            FfiConverterByteArray.allocationSize(value.`json`) +
+            FfiConverterBoolean.allocationSize(value.`secure`) +
+            FfiConverterOptionalTypeRecoveryAuthentication.allocationSize(value.`authentication`) +
+            FfiConverterOptionalTypeRecoveryClipboard.allocationSize(value.`clipboard`) +
+            FfiConverterOptionalUInt.allocationSize(value.`redactAfterMs`)
+    )
+
+    override fun write(value: AndroidWalletFrame, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`json`, buf)
+            FfiConverterBoolean.write(value.`secure`, buf)
+            FfiConverterOptionalTypeRecoveryAuthentication.write(value.`authentication`, buf)
+            FfiConverterOptionalTypeRecoveryClipboard.write(value.`clipboard`, buf)
+            FfiConverterOptionalUInt.write(value.`redactAfterMs`, buf)
     }
 }
 
@@ -23245,6 +32219,87 @@ public object FfiConverterTypeDeviceView: FfiConverterRustBuffer<DeviceView> {
 
 
 
+data class DrawerPinHints (
+    var `id`: kotlin.String
+    ,
+    var `earlier`: DrawerPinMove?
+    ,
+    var `later`: DrawerPinMove?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDrawerPinHints: FfiConverterRustBuffer<DrawerPinHints> {
+    override fun read(buf: ByteBuffer): DrawerPinHints {
+        return DrawerPinHints(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeDrawerPinMove.read(buf),
+            FfiConverterOptionalTypeDrawerPinMove.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DrawerPinHints) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterOptionalTypeDrawerPinMove.allocationSize(value.`earlier`) +
+            FfiConverterOptionalTypeDrawerPinMove.allocationSize(value.`later`)
+    )
+
+    override fun write(value: DrawerPinHints, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterOptionalTypeDrawerPinMove.write(value.`earlier`, buf)
+            FfiConverterOptionalTypeDrawerPinMove.write(value.`later`, buf)
+    }
+}
+
+
+
+data class DrawerPinMove (
+    var `after`: kotlin.String?
+    ,
+    var `before`: kotlin.String?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDrawerPinMove: FfiConverterRustBuffer<DrawerPinMove> {
+    override fun read(buf: ByteBuffer): DrawerPinMove {
+        return DrawerPinMove(
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DrawerPinMove) = (
+            FfiConverterOptionalString.allocationSize(value.`after`) +
+            FfiConverterOptionalString.allocationSize(value.`before`)
+    )
+
+    override fun write(value: DrawerPinMove, buf: ByteBuffer) {
+            FfiConverterOptionalString.write(value.`after`, buf)
+            FfiConverterOptionalString.write(value.`before`, buf)
+    }
+}
+
+
+
 data class FaceData (
     var `role`: FaceRole
     ,
@@ -23873,6 +32928,59 @@ public object FfiConverterTypeInputRequest: FfiConverterRustBuffer<InputRequest>
 
 
 
+data class LabActionsFrame (
+    var `instance`: kotlin.String
+    ,
+    var `card`: kotlin.String
+    ,
+    var `needsPlaybackPosition`: kotlin.Boolean
+    ,
+    var `json`: kotlin.ByteArray
+    ,
+    var `closed`: kotlin.Boolean
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLabActionsFrame: FfiConverterRustBuffer<LabActionsFrame> {
+    override fun read(buf: ByteBuffer): LabActionsFrame {
+        return LabActionsFrame(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LabActionsFrame) = (
+            FfiConverterString.allocationSize(value.`instance`) +
+            FfiConverterString.allocationSize(value.`card`) +
+            FfiConverterBoolean.allocationSize(value.`needsPlaybackPosition`) +
+            FfiConverterByteArray.allocationSize(value.`json`) +
+            FfiConverterBoolean.allocationSize(value.`closed`)
+    )
+
+    override fun write(value: LabActionsFrame, buf: ByteBuffer) {
+            FfiConverterString.write(value.`instance`, buf)
+            FfiConverterString.write(value.`card`, buf)
+            FfiConverterBoolean.write(value.`needsPlaybackPosition`, buf)
+            FfiConverterByteArray.write(value.`json`, buf)
+            FfiConverterBoolean.write(value.`closed`, buf)
+    }
+}
+
+
+
 /**
  * What a Lab card's media cell draws, as artifact ids the cell passes to
  * `lab_media`.
@@ -23968,6 +33076,82 @@ public object FfiConverterTypeLabCardFiles: FfiConverterRustBuffer<LabCardFiles>
             FfiConverterOptionalString.write(value.`plays`, buf)
             FfiConverterOptionalString.write(value.`model`, buf)
             FfiConverterBoolean.write(value.`hasPage`, buf)
+    }
+}
+
+
+
+data class LabCardProjection (
+    var `json`: kotlin.ByteArray
+    ,
+    var `surfaces`: List<LabSurfaceRegistration>
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLabCardProjection: FfiConverterRustBuffer<LabCardProjection> {
+    override fun read(buf: ByteBuffer): LabCardProjection {
+        return LabCardProjection(
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceTypeLabSurfaceRegistration.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LabCardProjection) = (
+            FfiConverterByteArray.allocationSize(value.`json`) +
+            FfiConverterSequenceTypeLabSurfaceRegistration.allocationSize(value.`surfaces`)
+    )
+
+    override fun write(value: LabCardProjection, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`json`, buf)
+            FfiConverterSequenceTypeLabSurfaceRegistration.write(value.`surfaces`, buf)
+    }
+}
+
+
+
+data class LabSurfaceRegistration (
+    var `resource`: kotlin.String
+    ,
+    var `files`: LabCardFiles
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLabSurfaceRegistration: FfiConverterRustBuffer<LabSurfaceRegistration> {
+    override fun read(buf: ByteBuffer): LabSurfaceRegistration {
+        return LabSurfaceRegistration(
+            FfiConverterString.read(buf),
+            FfiConverterTypeLabCardFiles.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LabSurfaceRegistration) = (
+            FfiConverterString.allocationSize(value.`resource`) +
+            FfiConverterTypeLabCardFiles.allocationSize(value.`files`)
+    )
+
+    override fun write(value: LabSurfaceRegistration, buf: ByteBuffer) {
+            FfiConverterString.write(value.`resource`, buf)
+            FfiConverterTypeLabCardFiles.write(value.`files`, buf)
     }
 }
 
@@ -24739,6 +33923,98 @@ public object FfiConverterTypePendingSend: FfiConverterRustBuffer<PendingSend> {
 
 
 
+/**
+ * A server-checked invitation preview for the currently signed-in account.
+ */
+data class ProjectInvitationPreview (
+    var `projectName`: kotlin.String
+    ,
+    var `role`: kotlin.String
+    ,
+    var `expiresAt`: kotlin.String
+    ,
+    var `alreadyMember`: kotlin.Boolean
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeProjectInvitationPreview: FfiConverterRustBuffer<ProjectInvitationPreview> {
+    override fun read(buf: ByteBuffer): ProjectInvitationPreview {
+        return ProjectInvitationPreview(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ProjectInvitationPreview) = (
+            FfiConverterString.allocationSize(value.`projectName`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`expiresAt`) +
+            FfiConverterBoolean.allocationSize(value.`alreadyMember`)
+    )
+
+    override fun write(value: ProjectInvitationPreview, buf: ByteBuffer) {
+            FfiConverterString.write(value.`projectName`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterString.write(value.`expiresAt`, buf)
+            FfiConverterBoolean.write(value.`alreadyMember`, buf)
+    }
+}
+
+
+
+/**
+ * Text Android can pass to the system share chooser for a project invitation.
+ */
+data class ProjectInvitationShare (
+    var `title`: kotlin.String
+    ,
+    var `text`: kotlin.String
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeProjectInvitationShare: FfiConverterRustBuffer<ProjectInvitationShare> {
+    override fun read(buf: ByteBuffer): ProjectInvitationShare {
+        return ProjectInvitationShare(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ProjectInvitationShare) = (
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`text`)
+    )
+
+    override fun write(value: ProjectInvitationShare, buf: ByteBuffer) {
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`text`, buf)
+    }
+}
+
+
+
 data class ProjectRef (
     var `id`: kotlin.String
     ,
@@ -25195,6 +34471,148 @@ public object FfiConverterTypeQueueItem: FfiConverterRustBuffer<QueueItem> {
 
 
 
+data class RecoveryAuthentication (
+    var `token`: kotlin.ULong
+    ,
+    var `title`: kotlin.String
+    ,
+    var `description`: kotlin.String
+    ,
+    var `timeoutMs`: kotlin.UInt
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRecoveryAuthentication: FfiConverterRustBuffer<RecoveryAuthentication> {
+    override fun read(buf: ByteBuffer): RecoveryAuthentication {
+        return RecoveryAuthentication(
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RecoveryAuthentication) = (
+            FfiConverterULong.allocationSize(value.`token`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`description`) +
+            FfiConverterUInt.allocationSize(value.`timeoutMs`)
+    )
+
+    override fun write(value: RecoveryAuthentication, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`token`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`description`, buf)
+            FfiConverterUInt.write(value.`timeoutMs`, buf)
+    }
+}
+
+
+
+/**
+ * Only an explicit Copy activation returns this value. It is never kept in a view or frame cache.
+ */
+data class RecoveryClipboard (
+    var `text`: kotlin.String
+    ,
+    var `clearAfterMs`: kotlin.UInt
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRecoveryClipboard: FfiConverterRustBuffer<RecoveryClipboard> {
+    override fun read(buf: ByteBuffer): RecoveryClipboard {
+        return RecoveryClipboard(
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RecoveryClipboard) = (
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterUInt.allocationSize(value.`clearAfterMs`)
+    )
+
+    override fun write(value: RecoveryClipboard, buf: ByteBuffer) {
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterUInt.write(value.`clearAfterMs`, buf)
+    }
+}
+
+
+
+data class RecoveryFrame (
+    var `json`: kotlin.ByteArray
+    ,
+    var `secure`: kotlin.Boolean
+    ,
+    var `authentication`: RecoveryAuthentication?
+    ,
+    var `openChat`: kotlin.Boolean
+    ,
+    var `clipboard`: RecoveryClipboard?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRecoveryFrame: FfiConverterRustBuffer<RecoveryFrame> {
+    override fun read(buf: ByteBuffer): RecoveryFrame {
+        return RecoveryFrame(
+            FfiConverterByteArray.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeRecoveryAuthentication.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeRecoveryClipboard.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RecoveryFrame) = (
+            FfiConverterByteArray.allocationSize(value.`json`) +
+            FfiConverterBoolean.allocationSize(value.`secure`) +
+            FfiConverterOptionalTypeRecoveryAuthentication.allocationSize(value.`authentication`) +
+            FfiConverterBoolean.allocationSize(value.`openChat`) +
+            FfiConverterOptionalTypeRecoveryClipboard.allocationSize(value.`clipboard`)
+    )
+
+    override fun write(value: RecoveryFrame, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`json`, buf)
+            FfiConverterBoolean.write(value.`secure`, buf)
+            FfiConverterOptionalTypeRecoveryAuthentication.write(value.`authentication`, buf)
+            FfiConverterBoolean.write(value.`openChat`, buf)
+            FfiConverterOptionalTypeRecoveryClipboard.write(value.`clipboard`, buf)
+    }
+}
+
+
+
 data class RepoRef (
     var `name`: kotlin.String
     ,
@@ -25239,6 +34657,64 @@ public object FfiConverterTypeRepoRef: FfiConverterRustBuffer<RepoRef> {
             FfiConverterString.write(value.`name`, buf)
             FfiConverterBoolean.write(value.`current`, buf)
             FfiConverterOptionalString.write(value.`worktreePath`, buf)
+    }
+}
+
+
+
+/**
+ * A text range's reveal age, indexed into one original shaped text run.
+ *
+ * `start` and `len` are absolute UTF-16 offsets in [`RowDisplay::text`].
+ * Slices cover the indexed run in order and do not change its shaping.
+ */
+data class RevealSlice (
+    var `runIndex`: kotlin.UInt
+    ,
+    var `start`: kotlin.UInt
+    ,
+    var `len`: kotlin.UInt
+    ,
+    /**
+     * Fade-in start in ms since the row's Rust monotonic reveal clock.
+     * `None` means fully visible.
+     */
+    var `revealMs`: kotlin.UInt?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRevealSlice: FfiConverterRustBuffer<RevealSlice> {
+    override fun read(buf: ByteBuffer): RevealSlice {
+        return RevealSlice(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RevealSlice) = (
+            FfiConverterUInt.allocationSize(value.`runIndex`) +
+            FfiConverterUInt.allocationSize(value.`start`) +
+            FfiConverterUInt.allocationSize(value.`len`) +
+            FfiConverterOptionalUInt.allocationSize(value.`revealMs`)
+    )
+
+    override fun write(value: RevealSlice, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`runIndex`, buf)
+            FfiConverterUInt.write(value.`start`, buf)
+            FfiConverterUInt.write(value.`len`, buf)
+            FfiConverterOptionalUInt.write(value.`revealMs`, buf)
     }
 }
 
@@ -25368,9 +34844,21 @@ data class RowDisplay (
     var `fades`: List<Fade>
     ,
     /**
+     * Age of the row's Rust monotonic reveal clock when this display was
+     * built. Painters may advance this value with their own monotonic clock;
+     * the two clocks do not need to share an origin.
+     */
+    var `revealAgeMs`: kotlin.UInt?
+    ,
+    /**
      * Plain text for copy / accessibility.
      */
     var `copyText`: kotlin.String
+    ,
+    /**
+     * Ages follow grapheme-aligned ranges; slices follow existing runs and do not alter shaping.
+     */
+    var `revealSlices`: List<RevealSlice>
 
 ){
 
@@ -25398,7 +34886,9 @@ public object FfiConverterTypeRowDisplay: FfiConverterRustBuffer<RowDisplay> {
             FfiConverterSequenceTypeScroller.read(buf),
             FfiConverterSequenceTypeWidget.read(buf),
             FfiConverterSequenceTypeFade.read(buf),
+            FfiConverterOptionalUInt.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterSequenceTypeRevealSlice.read(buf),
         )
     }
 
@@ -25414,7 +34904,9 @@ public object FfiConverterTypeRowDisplay: FfiConverterRustBuffer<RowDisplay> {
             FfiConverterSequenceTypeScroller.allocationSize(value.`scrollers`) +
             FfiConverterSequenceTypeWidget.allocationSize(value.`widgets`) +
             FfiConverterSequenceTypeFade.allocationSize(value.`fades`) +
-            FfiConverterString.allocationSize(value.`copyText`)
+            FfiConverterOptionalUInt.allocationSize(value.`revealAgeMs`) +
+            FfiConverterString.allocationSize(value.`copyText`) +
+            FfiConverterSequenceTypeRevealSlice.allocationSize(value.`revealSlices`)
     )
 
     override fun write(value: RowDisplay, buf: ByteBuffer) {
@@ -25429,7 +34921,9 @@ public object FfiConverterTypeRowDisplay: FfiConverterRustBuffer<RowDisplay> {
             FfiConverterSequenceTypeScroller.write(value.`scrollers`, buf)
             FfiConverterSequenceTypeWidget.write(value.`widgets`, buf)
             FfiConverterSequenceTypeFade.write(value.`fades`, buf)
+            FfiConverterOptionalUInt.write(value.`revealAgeMs`, buf)
             FfiConverterString.write(value.`copyText`, buf)
+            FfiConverterSequenceTypeRevealSlice.write(value.`revealSlices`, buf)
     }
 }
 
@@ -25550,6 +35044,30 @@ data class SavedChatRow (
     var `subtitle`: kotlin.String
     ,
     var `group`: kotlin.String
+    ,
+    var `pinned`: kotlin.Boolean
+    ,
+    var `archived`: kotlin.Boolean
+    ,
+    /**
+     * Shared-project rows remain read-only; the server authorizes every write.
+     */
+    var `canFile`: kotlin.Boolean
+    ,
+    var `projectId`: kotlin.String?
+    ,
+    /**
+     * Saved conversations do not publish these live-session fields.
+     */
+    var `agentName`: kotlin.String?
+    ,
+    var `indicator`: ChatIndicator?
+    ,
+    var `unseen`: kotlin.Boolean?
+    ,
+    var `moveEarlier`: SavedPinMove?
+    ,
+    var `moveLater`: SavedPinMove?
 
 ){
 
@@ -25570,6 +35088,15 @@ public object FfiConverterTypeSavedChatRow: FfiConverterRustBuffer<SavedChatRow>
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalTypeChatIndicator.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterOptionalTypeSavedPinMove.read(buf),
+            FfiConverterOptionalTypeSavedPinMove.read(buf),
         )
     }
 
@@ -25577,7 +35104,16 @@ public object FfiConverterTypeSavedChatRow: FfiConverterRustBuffer<SavedChatRow>
             FfiConverterString.allocationSize(value.`id`) +
             FfiConverterString.allocationSize(value.`title`) +
             FfiConverterString.allocationSize(value.`subtitle`) +
-            FfiConverterString.allocationSize(value.`group`)
+            FfiConverterString.allocationSize(value.`group`) +
+            FfiConverterBoolean.allocationSize(value.`pinned`) +
+            FfiConverterBoolean.allocationSize(value.`archived`) +
+            FfiConverterBoolean.allocationSize(value.`canFile`) +
+            FfiConverterOptionalString.allocationSize(value.`projectId`) +
+            FfiConverterOptionalString.allocationSize(value.`agentName`) +
+            FfiConverterOptionalTypeChatIndicator.allocationSize(value.`indicator`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`unseen`) +
+            FfiConverterOptionalTypeSavedPinMove.allocationSize(value.`moveEarlier`) +
+            FfiConverterOptionalTypeSavedPinMove.allocationSize(value.`moveLater`)
     )
 
     override fun write(value: SavedChatRow, buf: ByteBuffer) {
@@ -25585,6 +35121,15 @@ public object FfiConverterTypeSavedChatRow: FfiConverterRustBuffer<SavedChatRow>
             FfiConverterString.write(value.`title`, buf)
             FfiConverterString.write(value.`subtitle`, buf)
             FfiConverterString.write(value.`group`, buf)
+            FfiConverterBoolean.write(value.`pinned`, buf)
+            FfiConverterBoolean.write(value.`archived`, buf)
+            FfiConverterBoolean.write(value.`canFile`, buf)
+            FfiConverterOptionalString.write(value.`projectId`, buf)
+            FfiConverterOptionalString.write(value.`agentName`, buf)
+            FfiConverterOptionalTypeChatIndicator.write(value.`indicator`, buf)
+            FfiConverterOptionalBoolean.write(value.`unseen`, buf)
+            FfiConverterOptionalTypeSavedPinMove.write(value.`moveEarlier`, buf)
+            FfiConverterOptionalTypeSavedPinMove.write(value.`moveLater`, buf)
     }
 }
 
@@ -25680,7 +35225,15 @@ data class SavedHistorySnapshot (
     ,
     var `project`: kotlin.String?
     ,
+    var `query`: kotlin.String
+    ,
+    var `pinOrder`: SavedPinOrder?
+    ,
+    var `pinOrderState`: SavedLoadState
+    ,
     var `rows`: List<SavedChatRow>
+    ,
+    var `sessions`: List<SavedIndexedRow>
     ,
     var `projects`: List<SavedProjectRow>
     ,
@@ -25713,7 +35266,11 @@ public object FfiConverterTypeSavedHistorySnapshot: FfiConverterRustBuffer<Saved
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeSavedPinOrder.read(buf),
+            FfiConverterTypeSavedLoadState.read(buf),
             FfiConverterSequenceTypeSavedChatRow.read(buf),
+            FfiConverterSequenceTypeSavedIndexedRow.read(buf),
             FfiConverterSequenceTypeSavedProjectRow.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
@@ -25728,7 +35285,11 @@ public object FfiConverterTypeSavedHistorySnapshot: FfiConverterRustBuffer<Saved
             FfiConverterBoolean.allocationSize(value.`loginRequired`) +
             FfiConverterBoolean.allocationSize(value.`archived`) +
             FfiConverterOptionalString.allocationSize(value.`project`) +
+            FfiConverterString.allocationSize(value.`query`) +
+            FfiConverterOptionalTypeSavedPinOrder.allocationSize(value.`pinOrder`) +
+            FfiConverterTypeSavedLoadState.allocationSize(value.`pinOrderState`) +
             FfiConverterSequenceTypeSavedChatRow.allocationSize(value.`rows`) +
+            FfiConverterSequenceTypeSavedIndexedRow.allocationSize(value.`sessions`) +
             FfiConverterSequenceTypeSavedProjectRow.allocationSize(value.`projects`) +
             FfiConverterBoolean.allocationSize(value.`hasMore`) +
             FfiConverterBoolean.allocationSize(value.`moreProjects`) +
@@ -25742,13 +35303,141 @@ public object FfiConverterTypeSavedHistorySnapshot: FfiConverterRustBuffer<Saved
             FfiConverterBoolean.write(value.`loginRequired`, buf)
             FfiConverterBoolean.write(value.`archived`, buf)
             FfiConverterOptionalString.write(value.`project`, buf)
+            FfiConverterString.write(value.`query`, buf)
+            FfiConverterOptionalTypeSavedPinOrder.write(value.`pinOrder`, buf)
+            FfiConverterTypeSavedLoadState.write(value.`pinOrderState`, buf)
             FfiConverterSequenceTypeSavedChatRow.write(value.`rows`, buf)
+            FfiConverterSequenceTypeSavedIndexedRow.write(value.`sessions`, buf)
             FfiConverterSequenceTypeSavedProjectRow.write(value.`projects`, buf)
             FfiConverterBoolean.write(value.`hasMore`, buf)
             FfiConverterBoolean.write(value.`moreProjects`, buf)
             FfiConverterTypeSavedLoadState.write(value.`state`, buf)
             FfiConverterTypeSavedLoadState.write(value.`projectsState`, buf)
             FfiConverterTypeSavedTranscript.write(value.`transcript`, buf)
+    }
+}
+
+
+
+data class SavedIndexedRow (
+    var `key`: kotlin.String
+    ,
+    var `id`: kotlin.String
+    ,
+    var `deviceId`: kotlin.String
+    ,
+    var `title`: kotlin.String
+    ,
+    var `subtitle`: kotlin.String
+    ,
+    var `projectId`: kotlin.String?
+    ,
+    var `agentName`: kotlin.String?
+    ,
+    var `status`: kotlin.String?
+    ,
+    var `unseen`: kotlin.Boolean?
+    ,
+    var `online`: kotlin.Boolean
+    ,
+    var `activityRevision`: kotlin.String?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSavedIndexedRow: FfiConverterRustBuffer<SavedIndexedRow> {
+    override fun read(buf: ByteBuffer): SavedIndexedRow {
+        return SavedIndexedRow(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SavedIndexedRow) = (
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`deviceId`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`subtitle`) +
+            FfiConverterOptionalString.allocationSize(value.`projectId`) +
+            FfiConverterOptionalString.allocationSize(value.`agentName`) +
+            FfiConverterOptionalString.allocationSize(value.`status`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`unseen`) +
+            FfiConverterBoolean.allocationSize(value.`online`) +
+            FfiConverterOptionalString.allocationSize(value.`activityRevision`)
+    )
+
+    override fun write(value: SavedIndexedRow, buf: ByteBuffer) {
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`deviceId`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`subtitle`, buf)
+            FfiConverterOptionalString.write(value.`projectId`, buf)
+            FfiConverterOptionalString.write(value.`agentName`, buf)
+            FfiConverterOptionalString.write(value.`status`, buf)
+            FfiConverterOptionalBoolean.write(value.`unseen`, buf)
+            FfiConverterBoolean.write(value.`online`, buf)
+            FfiConverterOptionalString.write(value.`activityRevision`, buf)
+    }
+}
+
+
+
+data class SavedIndexedTranscript (
+    var `row`: SavedIndexedRow
+    ,
+    /**
+     * None means no authorized transcript copy is currently available.
+     */
+    var `messages`: List<SavedMessagePart>?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSavedIndexedTranscript: FfiConverterRustBuffer<SavedIndexedTranscript> {
+    override fun read(buf: ByteBuffer): SavedIndexedTranscript {
+        return SavedIndexedTranscript(
+            FfiConverterTypeSavedIndexedRow.read(buf),
+            FfiConverterOptionalSequenceTypeSavedMessagePart.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SavedIndexedTranscript) = (
+            FfiConverterTypeSavedIndexedRow.allocationSize(value.`row`) +
+            FfiConverterOptionalSequenceTypeSavedMessagePart.allocationSize(value.`messages`)
+    )
+
+    override fun write(value: SavedIndexedTranscript, buf: ByteBuffer) {
+            FfiConverterTypeSavedIndexedRow.write(value.`row`, buf)
+            FfiConverterOptionalSequenceTypeSavedMessagePart.write(value.`messages`, buf)
     }
 }
 
@@ -25845,6 +35534,87 @@ public object FfiConverterTypeSavedMessageRow: FfiConverterRustBuffer<SavedMessa
             FfiConverterString.write(value.`id`, buf)
             FfiConverterString.write(value.`role`, buf)
             FfiConverterString.write(value.`preview`, buf)
+    }
+}
+
+
+
+data class SavedPinMove (
+    var `revision`: kotlin.ULong
+    ,
+    var `after`: kotlin.String?
+    ,
+    var `before`: kotlin.String?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSavedPinMove: FfiConverterRustBuffer<SavedPinMove> {
+    override fun read(buf: ByteBuffer): SavedPinMove {
+        return SavedPinMove(
+            FfiConverterULong.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SavedPinMove) = (
+            FfiConverterULong.allocationSize(value.`revision`) +
+            FfiConverterOptionalString.allocationSize(value.`after`) +
+            FfiConverterOptionalString.allocationSize(value.`before`)
+    )
+
+    override fun write(value: SavedPinMove, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`revision`, buf)
+            FfiConverterOptionalString.write(value.`after`, buf)
+            FfiConverterOptionalString.write(value.`before`, buf)
+    }
+}
+
+
+
+data class SavedPinOrder (
+    var `revision`: kotlin.ULong
+    ,
+    var `ids`: List<kotlin.String>
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSavedPinOrder: FfiConverterRustBuffer<SavedPinOrder> {
+    override fun read(buf: ByteBuffer): SavedPinOrder {
+        return SavedPinOrder(
+            FfiConverterULong.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SavedPinOrder) = (
+            FfiConverterULong.allocationSize(value.`revision`) +
+            FfiConverterSequenceString.allocationSize(value.`ids`)
+    )
+
+    override fun write(value: SavedPinOrder, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`revision`, buf)
+            FfiConverterSequenceString.write(value.`ids`, buf)
     }
 }
 
@@ -26475,6 +36245,160 @@ public object FfiConverterTypeSessionRow: FfiConverterRustBuffer<SessionRow> {
 
 
 
+data class SettingsCapabilities (
+    var `appearance`: kotlin.Boolean
+    ,
+    var `wallpaperPicker`: kotlin.Boolean
+    ,
+    var `pairing`: kotlin.Boolean
+    ,
+    var `cloud`: kotlin.Boolean
+    ,
+    var `archive`: kotlin.Boolean
+    ,
+    var `projectSharing`: kotlin.Boolean
+    ,
+    var `notificationSettings`: kotlin.Boolean
+    ,
+    var `shareChooser`: kotlin.Boolean
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSettingsCapabilities: FfiConverterRustBuffer<SettingsCapabilities> {
+    override fun read(buf: ByteBuffer): SettingsCapabilities {
+        return SettingsCapabilities(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SettingsCapabilities) = (
+            FfiConverterBoolean.allocationSize(value.`appearance`) +
+            FfiConverterBoolean.allocationSize(value.`wallpaperPicker`) +
+            FfiConverterBoolean.allocationSize(value.`pairing`) +
+            FfiConverterBoolean.allocationSize(value.`cloud`) +
+            FfiConverterBoolean.allocationSize(value.`archive`) +
+            FfiConverterBoolean.allocationSize(value.`projectSharing`) +
+            FfiConverterBoolean.allocationSize(value.`notificationSettings`) +
+            FfiConverterBoolean.allocationSize(value.`shareChooser`)
+    )
+
+    override fun write(value: SettingsCapabilities, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`appearance`, buf)
+            FfiConverterBoolean.write(value.`wallpaperPicker`, buf)
+            FfiConverterBoolean.write(value.`pairing`, buf)
+            FfiConverterBoolean.write(value.`cloud`, buf)
+            FfiConverterBoolean.write(value.`archive`, buf)
+            FfiConverterBoolean.write(value.`projectSharing`, buf)
+            FfiConverterBoolean.write(value.`notificationSettings`, buf)
+            FfiConverterBoolean.write(value.`shareChooser`, buf)
+    }
+}
+
+
+
+data class SettingsPreferences (
+    var `schema`: kotlin.UInt
+    ,
+    var `appearance`: SettingsAppearance
+    ,
+    var `wallpaper`: SettingsWallpaper?
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSettingsPreferences: FfiConverterRustBuffer<SettingsPreferences> {
+    override fun read(buf: ByteBuffer): SettingsPreferences {
+        return SettingsPreferences(
+            FfiConverterUInt.read(buf),
+            FfiConverterTypeSettingsAppearance.read(buf),
+            FfiConverterOptionalTypeSettingsWallpaper.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SettingsPreferences) = (
+            FfiConverterUInt.allocationSize(value.`schema`) +
+            FfiConverterTypeSettingsAppearance.allocationSize(value.`appearance`) +
+            FfiConverterOptionalTypeSettingsWallpaper.allocationSize(value.`wallpaper`)
+    )
+
+    override fun write(value: SettingsPreferences, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`schema`, buf)
+            FfiConverterTypeSettingsAppearance.write(value.`appearance`, buf)
+            FfiConverterOptionalTypeSettingsWallpaper.write(value.`wallpaper`, buf)
+    }
+}
+
+
+
+data class SettingsWallpaper (
+    var `uri`: kotlin.String
+    ,
+    var `name`: kotlin.String
+    ,
+    var `effect`: SettingsWallpaperEffect
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSettingsWallpaper: FfiConverterRustBuffer<SettingsWallpaper> {
+    override fun read(buf: ByteBuffer): SettingsWallpaper {
+        return SettingsWallpaper(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeSettingsWallpaperEffect.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SettingsWallpaper) = (
+            FfiConverterString.allocationSize(value.`uri`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterTypeSettingsWallpaperEffect.allocationSize(value.`effect`)
+    )
+
+    override fun write(value: SettingsWallpaper, buf: ByteBuffer) {
+            FfiConverterString.write(value.`uri`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterTypeSettingsWallpaperEffect.write(value.`effect`, buf)
+    }
+}
+
+
+
 /**
  * A style the platform must be able to draw: `id` → (face, size).
  */
@@ -26608,8 +36532,8 @@ data class TextRun (
     var `scroller`: kotlin.UInt?
     ,
     /**
-     * Fade-in start in ms since the row's layout epoch (streaming veil);
-     * `None` = fully visible.
+     * Coarse fade-in age for clients that cannot consume reveal slices.
+     * Android uses [`RowDisplay::reveal_slices`] and paints the full run.
      */
     var `revealMs`: kotlin.UInt?
 
@@ -27224,6 +37148,57 @@ public object FfiConverterTypeVisualSurface: FfiConverterRustBuffer<VisualSurfac
 
 
 /**
+ * Ephemeral audio state owned by the active call and reported by the host OS.
+ */
+data class VoiceAudioState (
+    var `route`: VoiceAudioRoute
+    ,
+    var `focus`: VoiceAudioFocus
+    ,
+    var `network`: VoiceNetworkState
+    ,
+    var `proximityNear`: kotlin.Boolean
+
+){
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVoiceAudioState: FfiConverterRustBuffer<VoiceAudioState> {
+    override fun read(buf: ByteBuffer): VoiceAudioState {
+        return VoiceAudioState(
+            FfiConverterTypeVoiceAudioRoute.read(buf),
+            FfiConverterTypeVoiceAudioFocus.read(buf),
+            FfiConverterTypeVoiceNetworkState.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: VoiceAudioState) = (
+            FfiConverterTypeVoiceAudioRoute.allocationSize(value.`route`) +
+            FfiConverterTypeVoiceAudioFocus.allocationSize(value.`focus`) +
+            FfiConverterTypeVoiceNetworkState.allocationSize(value.`network`) +
+            FfiConverterBoolean.allocationSize(value.`proximityNear`)
+    )
+
+    override fun write(value: VoiceAudioState, buf: ByteBuffer) {
+            FfiConverterTypeVoiceAudioRoute.write(value.`route`, buf)
+            FfiConverterTypeVoiceAudioFocus.write(value.`focus`, buf)
+            FfiConverterTypeVoiceNetworkState.write(value.`network`, buf)
+            FfiConverterBoolean.write(value.`proximityNear`, buf)
+    }
+}
+
+
+
+/**
  * Everything a call screen shows. Ephemeral: never log or persist captions.
  */
 data class VoiceCallState (
@@ -27747,6 +37722,40 @@ public object FfiConverterTypeWorktreeSpec: FfiConverterRustBuffer<WorktreeSpec>
 
 
 
+
+enum class AccessibilityDirection {
+
+    EARLIER,
+    LATER;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAccessibilityDirection: FfiConverterRustBuffer<AccessibilityDirection> {
+    override fun read(buf: ByteBuffer) = try {
+        AccessibilityDirection.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AccessibilityDirection) = 4UL
+
+    override fun write(value: AccessibilityDirection, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 /**
  * What a delete request came to.
  */
@@ -28044,6 +38053,583 @@ public object FfiConverterTypeAccountState : FfiConverterRustBuffer<AccountState
                 buf.putInt(6)
                 FfiConverterString.write(value.`message`, buf)
                 FfiConverterBoolean.write(value.`canRestore`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * A route recognized by the OpenAgents app-link classifier.
+ */
+
+enum class AndroidAppLinkKind {
+
+    CONNECT,
+    PROJECT_INVITATION;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidAppLinkKind: FfiConverterRustBuffer<AndroidAppLinkKind> {
+    override fun read(buf: ByteBuffer) = try {
+        AndroidAppLinkKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AndroidAppLinkKind) = 4UL
+
+    override fun write(value: AndroidAppLinkKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * A closed route to an existing Rust operation. This selects a flow; it does
+ * not authorize it. The account and server APIs still check the operation.
+ */
+
+enum class AndroidAppLinkOperation {
+
+    PAIR_COMPUTER,
+    REVIEW_WEBSITE_SIGN_IN,
+    REVIEW_PROJECT_INVITATION;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidAppLinkOperation: FfiConverterRustBuffer<AndroidAppLinkOperation> {
+    override fun read(buf: ByteBuffer) = try {
+        AndroidAppLinkOperation.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AndroidAppLinkOperation) = 4UL
+
+    override fun write(value: AndroidAppLinkOperation, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+enum class AndroidDemoChat {
+
+    PICKER,
+    VISUALS,
+    CJK,
+    VEIL;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidDemoChat: FfiConverterRustBuffer<AndroidDemoChat> {
+    override fun read(buf: ByteBuffer) = try {
+        AndroidDemoChat.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AndroidDemoChat) = 4UL
+
+    override fun write(value: AndroidDemoChat, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+enum class AndroidHostContent {
+
+    CLOUD,
+    LIVE,
+    SAVED,
+    INDEXED;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidHostContent: FfiConverterRustBuffer<AndroidHostContent> {
+    override fun read(buf: ByteBuffer) = try {
+        AndroidHostContent.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AndroidHostContent) = 4UL
+
+    override fun write(value: AndroidHostContent, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+enum class AndroidHostRoute {
+
+    CHAT,
+    SESSIONS,
+    SETTINGS,
+    RECOVERY,
+    VOICE,
+    LINK_REVIEW,
+    WALLET,
+    VOICE_SETTINGS,
+    SHARING;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidHostRoute: FfiConverterRustBuffer<AndroidHostRoute> {
+    override fun read(buf: ByteBuffer) = try {
+        AndroidHostRoute.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AndroidHostRoute) = 4UL
+
+    override fun write(value: AndroidHostRoute, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+enum class AndroidHostSurface {
+
+    SESSIONS,
+    SETTINGS,
+    RECOVERY,
+    WALLET,
+    VOICE_CAPSULE,
+    VOICE_SCREEN,
+    VOICE_AGENT,
+    VOICE_USAGE,
+    SHARING,
+    LINK_REVIEW,
+    COMPOSER;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidHostSurface: FfiConverterRustBuffer<AndroidHostSurface> {
+    override fun read(buf: ByteBuffer) = try {
+        AndroidHostSurface.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AndroidHostSurface) = 4UL
+
+    override fun write(value: AndroidHostSurface, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+sealed class AndroidSessionAction: Disposable  {
+
+    object Updated : AndroidSessionAction()
+
+
+    data class Cloud(
+        val `chat`: uniffi.openagents_core.CoreCloudChat) : AndroidSessionAction()
+
+    {
+
+
+        companion object
+    }
+
+    data class Session(
+        val `id`: kotlin.String,
+        val `client`: uniffi.openagents_core.CoreClient) : AndroidSessionAction()
+
+    {
+
+
+        companion object
+    }
+
+    object Sharing : AndroidSessionAction()
+
+
+    data class OpenUrl(
+        val `url`: kotlin.String) : AndroidSessionAction()
+
+    {
+
+
+        companion object
+    }
+
+    data class Clipboard(
+        val `text`: kotlin.String) : AndroidSessionAction()
+
+    {
+
+
+        companion object
+    }
+
+
+
+    @Suppress("UNNECESSARY_SAFE_CALL") // codegen is much simpler if we unconditionally emit safe calls here
+    override fun destroy() {
+        when(this) {
+            is AndroidSessionAction.Updated -> {// Nothing to destroy
+            }
+            is AndroidSessionAction.Cloud -> {
+
+    Disposable.destroy(
+        this.`chat`
+    )
+
+            }
+            is AndroidSessionAction.Session -> {
+
+    Disposable.destroy(
+        this.`id`,
+        this.`client`
+    )
+
+            }
+            is AndroidSessionAction.Sharing -> {// Nothing to destroy
+            }
+            is AndroidSessionAction.OpenUrl -> {
+
+    Disposable.destroy(
+        this.`url`
+    )
+
+            }
+            is AndroidSessionAction.Clipboard -> {
+
+    Disposable.destroy(
+        this.`text`
+    )
+
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidSessionAction : FfiConverterRustBuffer<AndroidSessionAction>{
+    override fun read(buf: ByteBuffer): AndroidSessionAction {
+        return when(buf.getInt()) {
+            1 -> AndroidSessionAction.Updated
+            2 -> AndroidSessionAction.Cloud(
+                FfiConverterTypeCoreCloudChat.read(buf),
+                )
+            3 -> AndroidSessionAction.Session(
+                FfiConverterString.read(buf),
+                FfiConverterTypeCoreClient.read(buf),
+                )
+            4 -> AndroidSessionAction.Sharing
+            5 -> AndroidSessionAction.OpenUrl(
+                FfiConverterString.read(buf),
+                )
+            6 -> AndroidSessionAction.Clipboard(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: AndroidSessionAction): ULong = when(value) {
+        is AndroidSessionAction.Updated -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is AndroidSessionAction.Cloud -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeCoreCloudChat.allocationSize(value.`chat`)
+            )
+        }
+        is AndroidSessionAction.Session -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterTypeCoreClient.allocationSize(value.`client`)
+            )
+        }
+        is AndroidSessionAction.Sharing -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is AndroidSessionAction.OpenUrl -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`url`)
+            )
+        }
+        is AndroidSessionAction.Clipboard -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`text`)
+            )
+        }
+    }
+
+    override fun write(value: AndroidSessionAction, buf: ByteBuffer) {
+        when(value) {
+            is AndroidSessionAction.Updated -> {
+                buf.putInt(1)
+                Unit
+            }
+            is AndroidSessionAction.Cloud -> {
+                buf.putInt(2)
+                FfiConverterTypeCoreCloudChat.write(value.`chat`, buf)
+                Unit
+            }
+            is AndroidSessionAction.Session -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterTypeCoreClient.write(value.`client`, buf)
+                Unit
+            }
+            is AndroidSessionAction.Sharing -> {
+                buf.putInt(4)
+                Unit
+            }
+            is AndroidSessionAction.OpenUrl -> {
+                buf.putInt(5)
+                FfiConverterString.write(value.`url`, buf)
+                Unit
+            }
+            is AndroidSessionAction.Clipboard -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.`text`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+sealed class AndroidTranscriptEffect {
+
+    object Handled : AndroidTranscriptEffect()
+
+
+    data class OpenPage(
+        val `url`: kotlin.String) : AndroidTranscriptEffect()
+
+    {
+
+
+        companion object
+    }
+
+    data class Copy(
+        val `text`: kotlin.String) : AndroidTranscriptEffect()
+
+    {
+
+
+        companion object
+    }
+
+    data class Media(
+        val `row`: kotlin.ULong,
+        val `widget`: kotlin.UInt,
+        val `kind`: uniffi.openagents_core.WidgetKind) : AndroidTranscriptEffect()
+
+    {
+
+
+        companion object
+    }
+
+    object Unavailable : AndroidTranscriptEffect()
+
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAndroidTranscriptEffect : FfiConverterRustBuffer<AndroidTranscriptEffect>{
+    override fun read(buf: ByteBuffer): AndroidTranscriptEffect {
+        return when(buf.getInt()) {
+            1 -> AndroidTranscriptEffect.Handled
+            2 -> AndroidTranscriptEffect.OpenPage(
+                FfiConverterString.read(buf),
+                )
+            3 -> AndroidTranscriptEffect.Copy(
+                FfiConverterString.read(buf),
+                )
+            4 -> AndroidTranscriptEffect.Media(
+                FfiConverterULong.read(buf),
+                FfiConverterUInt.read(buf),
+                FfiConverterTypeWidgetKind.read(buf),
+                )
+            5 -> AndroidTranscriptEffect.Unavailable
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: AndroidTranscriptEffect): ULong = when(value) {
+        is AndroidTranscriptEffect.Handled -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is AndroidTranscriptEffect.OpenPage -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`url`)
+            )
+        }
+        is AndroidTranscriptEffect.Copy -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`text`)
+            )
+        }
+        is AndroidTranscriptEffect.Media -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`row`)
+                + FfiConverterUInt.allocationSize(value.`widget`)
+                + FfiConverterTypeWidgetKind.allocationSize(value.`kind`)
+            )
+        }
+        is AndroidTranscriptEffect.Unavailable -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: AndroidTranscriptEffect, buf: ByteBuffer) {
+        when(value) {
+            is AndroidTranscriptEffect.Handled -> {
+                buf.putInt(1)
+                Unit
+            }
+            is AndroidTranscriptEffect.OpenPage -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`url`, buf)
+                Unit
+            }
+            is AndroidTranscriptEffect.Copy -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`text`, buf)
+                Unit
+            }
+            is AndroidTranscriptEffect.Media -> {
+                buf.putInt(4)
+                FfiConverterULong.write(value.`row`, buf)
+                FfiConverterUInt.write(value.`widget`, buf)
+                FfiConverterTypeWidgetKind.write(value.`kind`, buf)
+                Unit
+            }
+            is AndroidTranscriptEffect.Unavailable -> {
+                buf.putInt(5)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -29791,6 +40377,65 @@ public object FfiConverterTypeKeyRead : FfiConverterRustBuffer<KeyRead>{
 
 
 
+sealed class LabCardEffect {
+
+    data class OpenPage(
+        val `url`: kotlin.String) : LabCardEffect()
+
+    {
+
+
+        companion object
+    }
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLabCardEffect : FfiConverterRustBuffer<LabCardEffect>{
+    override fun read(buf: ByteBuffer): LabCardEffect {
+        return when(buf.getInt()) {
+            1 -> LabCardEffect.OpenPage(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: LabCardEffect): ULong = when(value) {
+        is LabCardEffect.OpenPage -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`url`)
+            )
+        }
+    }
+
+    override fun write(value: LabCardEffect, buf: ByteBuffer) {
+        when(value) {
+            is LabCardEffect.OpenPage -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`url`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
 /**
  * One of a card's files.
  */
@@ -29974,6 +40619,169 @@ public object FfiConverterTypeLabMediaView: FfiConverterRustBuffer<LabMediaView>
 
     override fun write(value: LabMediaView, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+sealed class NativeActionResult {
+
+    object DraftSaved : NativeActionResult()
+
+
+    data class SendStarted(
+        val `messageId`: kotlin.String) : NativeActionResult()
+
+    {
+
+
+        companion object
+    }
+
+    data class SendSteered(
+        val `messageId`: kotlin.String) : NativeActionResult()
+
+    {
+
+
+        companion object
+    }
+
+    data class SendQueued(
+        val `queueId`: kotlin.String) : NativeActionResult()
+
+    {
+
+
+        companion object
+    }
+
+    object Interrupted : NativeActionResult()
+
+
+    object InputAnswered : NativeActionResult()
+
+
+    object AttachmentPickerRequested : NativeActionResult()
+
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNativeActionResult : FfiConverterRustBuffer<NativeActionResult>{
+    override fun read(buf: ByteBuffer): NativeActionResult {
+        return when(buf.getInt()) {
+            1 -> NativeActionResult.DraftSaved
+            2 -> NativeActionResult.SendStarted(
+                FfiConverterString.read(buf),
+                )
+            3 -> NativeActionResult.SendSteered(
+                FfiConverterString.read(buf),
+                )
+            4 -> NativeActionResult.SendQueued(
+                FfiConverterString.read(buf),
+                )
+            5 -> NativeActionResult.Interrupted
+            6 -> NativeActionResult.InputAnswered
+            7 -> NativeActionResult.AttachmentPickerRequested
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: NativeActionResult): ULong = when(value) {
+        is NativeActionResult.DraftSaved -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is NativeActionResult.SendStarted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`messageId`)
+            )
+        }
+        is NativeActionResult.SendSteered -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`messageId`)
+            )
+        }
+        is NativeActionResult.SendQueued -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`queueId`)
+            )
+        }
+        is NativeActionResult.Interrupted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is NativeActionResult.InputAnswered -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is NativeActionResult.AttachmentPickerRequested -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: NativeActionResult, buf: ByteBuffer) {
+        when(value) {
+            is NativeActionResult.DraftSaved -> {
+                buf.putInt(1)
+                Unit
+            }
+            is NativeActionResult.SendStarted -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`messageId`, buf)
+                Unit
+            }
+            is NativeActionResult.SendSteered -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`messageId`, buf)
+                Unit
+            }
+            is NativeActionResult.SendQueued -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`queueId`, buf)
+                Unit
+            }
+            is NativeActionResult.Interrupted -> {
+                buf.putInt(5)
+                Unit
+            }
+            is NativeActionResult.InputAnswered -> {
+                buf.putInt(6)
+                Unit
+            }
+            is NativeActionResult.AttachmentPickerRequested -> {
+                buf.putInt(7)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 
@@ -30550,6 +41358,121 @@ public object FfiConverterTypeQueueGate : FfiConverterRustBuffer<QueueGate>{
 
 
 
+sealed class RetiredSeedRead {
+
+    object Absent : RetiredSeedRead()
+
+
+    data class Present(
+        val `bytes`: kotlin.ByteArray) : RetiredSeedRead()
+
+    {
+
+
+        companion object
+    }
+
+    object Locked : RetiredSeedRead()
+
+
+    object Corrupt : RetiredSeedRead()
+
+
+    object Failed : RetiredSeedRead()
+
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRetiredSeedRead : FfiConverterRustBuffer<RetiredSeedRead>{
+    override fun read(buf: ByteBuffer): RetiredSeedRead {
+        return when(buf.getInt()) {
+            1 -> RetiredSeedRead.Absent
+            2 -> RetiredSeedRead.Present(
+                FfiConverterByteArray.read(buf),
+                )
+            3 -> RetiredSeedRead.Locked
+            4 -> RetiredSeedRead.Corrupt
+            5 -> RetiredSeedRead.Failed
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: RetiredSeedRead): ULong = when(value) {
+        is RetiredSeedRead.Absent -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is RetiredSeedRead.Present -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterByteArray.allocationSize(value.`bytes`)
+            )
+        }
+        is RetiredSeedRead.Locked -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is RetiredSeedRead.Corrupt -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is RetiredSeedRead.Failed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: RetiredSeedRead, buf: ByteBuffer) {
+        when(value) {
+            is RetiredSeedRead.Absent -> {
+                buf.putInt(1)
+                Unit
+            }
+            is RetiredSeedRead.Present -> {
+                buf.putInt(2)
+                FfiConverterByteArray.write(value.`bytes`, buf)
+                Unit
+            }
+            is RetiredSeedRead.Locked -> {
+                buf.putInt(3)
+                Unit
+            }
+            is RetiredSeedRead.Corrupt -> {
+                buf.putInt(4)
+                Unit
+            }
+            is RetiredSeedRead.Failed -> {
+                buf.putInt(5)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
 /**
  * Row kinds the painter may style differently (e.g. context menus).
  */
@@ -30624,6 +41547,113 @@ public object FfiConverterTypeSandboxLevel: FfiConverterRustBuffer<SandboxLevel>
 
     override fun write(value: SandboxLevel, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+sealed class SavedFilingChange {
+
+    data class Pin(
+        val `pinned`: kotlin.Boolean) : SavedFilingChange()
+
+    {
+
+
+        companion object
+    }
+
+    data class Archive(
+        val `archived`: kotlin.Boolean) : SavedFilingChange()
+
+    {
+
+
+        companion object
+    }
+
+    data class Rename(
+        val `title`: kotlin.String) : SavedFilingChange()
+
+    {
+
+
+        companion object
+    }
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSavedFilingChange : FfiConverterRustBuffer<SavedFilingChange>{
+    override fun read(buf: ByteBuffer): SavedFilingChange {
+        return when(buf.getInt()) {
+            1 -> SavedFilingChange.Pin(
+                FfiConverterBoolean.read(buf),
+                )
+            2 -> SavedFilingChange.Archive(
+                FfiConverterBoolean.read(buf),
+                )
+            3 -> SavedFilingChange.Rename(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: SavedFilingChange): ULong = when(value) {
+        is SavedFilingChange.Pin -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterBoolean.allocationSize(value.`pinned`)
+            )
+        }
+        is SavedFilingChange.Archive -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterBoolean.allocationSize(value.`archived`)
+            )
+        }
+        is SavedFilingChange.Rename -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`title`)
+            )
+        }
+    }
+
+    override fun write(value: SavedFilingChange, buf: ByteBuffer) {
+        when(value) {
+            is SavedFilingChange.Pin -> {
+                buf.putInt(1)
+                FfiConverterBoolean.write(value.`pinned`, buf)
+                Unit
+            }
+            is SavedFilingChange.Archive -> {
+                buf.putInt(2)
+                FfiConverterBoolean.write(value.`archived`, buf)
+                Unit
+            }
+            is SavedFilingChange.Rename -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`title`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 
@@ -30708,6 +41738,15 @@ sealed class SavedHistoryAction {
     object StopAnswer : SavedHistoryAction()
 
 
+    data class Search(
+        val `query`: kotlin.String) : SavedHistoryAction()
+
+    {
+
+
+        companion object
+    }
+
 
 
 
@@ -30749,6 +41788,9 @@ public object FfiConverterTypeSavedHistoryAction : FfiConverterRustBuffer<SavedH
                 )
             16 -> SavedHistoryAction.RetrySend
             17 -> SavedHistoryAction.StopAnswer
+            18 -> SavedHistoryAction.Search(
+                FfiConverterString.read(buf),
+                )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
     }
@@ -30860,6 +41902,13 @@ public object FfiConverterTypeSavedHistoryAction : FfiConverterRustBuffer<SavedH
                 4UL
             )
         }
+        is SavedHistoryAction.Search -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`query`)
+            )
+        }
     }
 
     override fun write(value: SavedHistoryAction, buf: ByteBuffer) {
@@ -30934,6 +41983,11 @@ public object FfiConverterTypeSavedHistoryAction : FfiConverterRustBuffer<SavedH
             }
             is SavedHistoryAction.StopAnswer -> {
                 buf.putInt(17)
+                Unit
+            }
+            is SavedHistoryAction.Search -> {
+                buf.putInt(18)
+                FfiConverterString.write(value.`query`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -31487,6 +42541,259 @@ public object FfiConverterTypeSessionTarget : FfiConverterRustBuffer<SessionTarg
 
 
 
+enum class SettingsAppearance {
+
+    SYSTEM,
+    LIGHT,
+    DARK;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSettingsAppearance: FfiConverterRustBuffer<SettingsAppearance> {
+    override fun read(buf: ByteBuffer) = try {
+        SettingsAppearance.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: SettingsAppearance) = 4UL
+
+    override fun write(value: SettingsAppearance, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+sealed class SettingsEffect {
+
+    object None : SettingsEffect()
+
+
+    object OpenPairing : SettingsEffect()
+
+
+    object OpenArchive : SettingsEffect()
+
+
+    object OpenProjectSharing : SettingsEffect()
+
+
+    object OpenNotificationSettings : SettingsEffect()
+
+
+    data class ChooseWallpaper(
+        val `ticket`: kotlin.String) : SettingsEffect()
+
+    {
+
+
+        companion object
+    }
+
+    data class PreferencesChanged(
+        val `preferences`: uniffi.openagents_core.SettingsPreferences) : SettingsEffect()
+
+    {
+
+
+        companion object
+    }
+
+    data class ShareText(
+        val `title`: kotlin.String,
+        val `text`: kotlin.String) : SettingsEffect()
+
+    {
+
+
+        companion object
+    }
+
+
+
+
+
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSettingsEffect : FfiConverterRustBuffer<SettingsEffect>{
+    override fun read(buf: ByteBuffer): SettingsEffect {
+        return when(buf.getInt()) {
+            1 -> SettingsEffect.None
+            2 -> SettingsEffect.OpenPairing
+            3 -> SettingsEffect.OpenArchive
+            4 -> SettingsEffect.OpenProjectSharing
+            5 -> SettingsEffect.OpenNotificationSettings
+            6 -> SettingsEffect.ChooseWallpaper(
+                FfiConverterString.read(buf),
+                )
+            7 -> SettingsEffect.PreferencesChanged(
+                FfiConverterTypeSettingsPreferences.read(buf),
+                )
+            8 -> SettingsEffect.ShareText(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: SettingsEffect): ULong = when(value) {
+        is SettingsEffect.None -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is SettingsEffect.OpenPairing -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is SettingsEffect.OpenArchive -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is SettingsEffect.OpenProjectSharing -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is SettingsEffect.OpenNotificationSettings -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is SettingsEffect.ChooseWallpaper -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`ticket`)
+            )
+        }
+        is SettingsEffect.PreferencesChanged -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeSettingsPreferences.allocationSize(value.`preferences`)
+            )
+        }
+        is SettingsEffect.ShareText -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterString.allocationSize(value.`text`)
+            )
+        }
+    }
+
+    override fun write(value: SettingsEffect, buf: ByteBuffer) {
+        when(value) {
+            is SettingsEffect.None -> {
+                buf.putInt(1)
+                Unit
+            }
+            is SettingsEffect.OpenPairing -> {
+                buf.putInt(2)
+                Unit
+            }
+            is SettingsEffect.OpenArchive -> {
+                buf.putInt(3)
+                Unit
+            }
+            is SettingsEffect.OpenProjectSharing -> {
+                buf.putInt(4)
+                Unit
+            }
+            is SettingsEffect.OpenNotificationSettings -> {
+                buf.putInt(5)
+                Unit
+            }
+            is SettingsEffect.ChooseWallpaper -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.`ticket`, buf)
+                Unit
+            }
+            is SettingsEffect.PreferencesChanged -> {
+                buf.putInt(7)
+                FfiConverterTypeSettingsPreferences.write(value.`preferences`, buf)
+                Unit
+            }
+            is SettingsEffect.ShareText -> {
+                buf.putInt(8)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterString.write(value.`text`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+
+enum class SettingsWallpaperEffect {
+
+    NONE,
+    DITHER,
+    ASCII,
+    HALFTONE,
+    SCANLINES;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSettingsWallpaperEffect: FfiConverterRustBuffer<SettingsWallpaperEffect> {
+    override fun read(buf: ByteBuffer) = try {
+        SettingsWallpaperEffect.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: SettingsWallpaperEffect) = 4UL
+
+    override fun write(value: SettingsWallpaperEffect, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
 enum class StreamSpeed {
 
     /**
@@ -31814,6 +43121,86 @@ public object FfiConverterTypeVisualShape : FfiConverterRustBuffer<VisualShape>{
 
 
 
+/**
+ * Audio focus as reported by the platform audio session.
+ */
+
+enum class VoiceAudioFocus {
+
+    GAINED,
+    LOST,
+    LOST_TRANSIENT,
+    LOST_TRANSIENT_CAN_DUCK;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVoiceAudioFocus: FfiConverterRustBuffer<VoiceAudioFocus> {
+    override fun read(buf: ByteBuffer) = try {
+        VoiceAudioFocus.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: VoiceAudioFocus) = 4UL
+
+    override fun write(value: VoiceAudioFocus, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * The currently selected Android output route. Other platforms can report
+ * their closest equivalent; this is state, not a command to the audio device.
+ */
+
+enum class VoiceAudioRoute {
+
+    UNKNOWN,
+    EARPIECE,
+    SPEAKER,
+    WIRED_HEADSET,
+    BLUETOOTH;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVoiceAudioRoute: FfiConverterRustBuffer<VoiceAudioRoute> {
+    override fun read(buf: ByteBuffer) = try {
+        VoiceAudioRoute.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: VoiceAudioRoute) = 4UL
+
+    override fun write(value: VoiceAudioRoute, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 
 enum class VoiceCallPhase {
 
@@ -32019,6 +43406,43 @@ public object FfiConverterTypeVoiceMediaOperation: FfiConverterRustBuffer<VoiceM
 
 
 /**
+ * Connectivity relevant to the active voice media session.
+ */
+
+enum class VoiceNetworkState {
+
+    AVAILABLE,
+    LOST;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVoiceNetworkState: FfiConverterRustBuffer<VoiceNetworkState> {
+    override fun read(buf: ByteBuffer) = try {
+        VoiceNetworkState.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: VoiceNetworkState) = 4UL
+
+    override fun write(value: VoiceNetworkState, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * What the voice orb is showing, in call terms.
  */
 
@@ -32089,6 +43513,44 @@ public object FfiConverterTypeVoiceSpeaker: FfiConverterRustBuffer<VoiceSpeaker>
     override fun allocationSize(value: VoiceSpeaker) = 4UL
 
     override fun write(value: VoiceSpeaker, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * The only app-shell action a call view can return after Rust validates it.
+ * Mute and end run on the Rust call handle inside `VoiceCall::activate_view`.
+ */
+
+enum class VoiceUiAction {
+
+    HANDLED,
+    OPEN_CALL;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeVoiceUiAction: FfiConverterRustBuffer<VoiceUiAction> {
+    override fun read(buf: ByteBuffer) = try {
+        VoiceUiAction.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: VoiceUiAction) = 4UL
+
+    override fun write(value: VoiceUiAction, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -33036,6 +44498,262 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
 /**
  * @suppress
  */
+public object FfiConverterOptionalByteArray: FfiConverterRustBuffer<kotlin.ByteArray?> {
+    override fun read(buf: ByteBuffer): kotlin.ByteArray? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterByteArray.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ByteArray?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterByteArray.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.ByteArray?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterByteArray.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCoreAccount: FfiConverterRustBuffer<CoreAccount?> {
+    override fun read(buf: ByteBuffer): CoreAccount? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCoreAccount.read(buf)
+    }
+
+    override fun allocationSize(value: CoreAccount?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCoreAccount.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CoreAccount?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCoreAccount.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCoreAndroidComposer: FfiConverterRustBuffer<CoreAndroidComposer?> {
+    override fun read(buf: ByteBuffer): CoreAndroidComposer? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCoreAndroidComposer.read(buf)
+    }
+
+    override fun allocationSize(value: CoreAndroidComposer?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCoreAndroidComposer.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CoreAndroidComposer?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCoreAndroidComposer.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCoreAndroidLinkReview: FfiConverterRustBuffer<CoreAndroidLinkReview?> {
+    override fun read(buf: ByteBuffer): CoreAndroidLinkReview? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCoreAndroidLinkReview.read(buf)
+    }
+
+    override fun allocationSize(value: CoreAndroidLinkReview?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCoreAndroidLinkReview.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CoreAndroidLinkReview?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCoreAndroidLinkReview.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCoreAndroidRecovery: FfiConverterRustBuffer<CoreAndroidRecovery?> {
+    override fun read(buf: ByteBuffer): CoreAndroidRecovery? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCoreAndroidRecovery.read(buf)
+    }
+
+    override fun allocationSize(value: CoreAndroidRecovery?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCoreAndroidRecovery.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CoreAndroidRecovery?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCoreAndroidRecovery.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCoreAndroidSessions: FfiConverterRustBuffer<CoreAndroidSessions?> {
+    override fun read(buf: ByteBuffer): CoreAndroidSessions? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCoreAndroidSessions.read(buf)
+    }
+
+    override fun allocationSize(value: CoreAndroidSessions?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCoreAndroidSessions.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CoreAndroidSessions?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCoreAndroidSessions.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCoreClient: FfiConverterRustBuffer<CoreClient?> {
+    override fun read(buf: ByteBuffer): CoreClient? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCoreClient.read(buf)
+    }
+
+    override fun allocationSize(value: CoreClient?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCoreClient.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CoreClient?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCoreClient.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCoreLabActions: FfiConverterRustBuffer<CoreLabActions?> {
+    override fun read(buf: ByteBuffer): CoreLabActions? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCoreLabActions.read(buf)
+    }
+
+    override fun allocationSize(value: CoreLabActions?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCoreLabActions.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CoreLabActions?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCoreLabActions.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeCoreSavedHistory: FfiConverterRustBuffer<CoreSavedHistory?> {
     override fun read(buf: ByteBuffer): CoreSavedHistory? {
         if (buf.get().toInt() == 0) {
@@ -33228,6 +44946,134 @@ public object FfiConverterOptionalTypeVoiceCall: FfiConverterRustBuffer<VoiceCal
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeAndroidAppLink: FfiConverterRustBuffer<AndroidAppLink?> {
+    override fun read(buf: ByteBuffer): AndroidAppLink? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeAndroidAppLink.read(buf)
+    }
+
+    override fun allocationSize(value: AndroidAppLink?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeAndroidAppLink.allocationSize(value)
+        }
+    }
+
+    override fun write(value: AndroidAppLink?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeAndroidAppLink.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeAndroidAppLinkDispatch: FfiConverterRustBuffer<AndroidAppLinkDispatch?> {
+    override fun read(buf: ByteBuffer): AndroidAppLinkDispatch? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeAndroidAppLinkDispatch.read(buf)
+    }
+
+    override fun allocationSize(value: AndroidAppLinkDispatch?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeAndroidAppLinkDispatch.allocationSize(value)
+        }
+    }
+
+    override fun write(value: AndroidAppLinkDispatch?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeAndroidAppLinkDispatch.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeAndroidHostSelection: FfiConverterRustBuffer<AndroidHostSelection?> {
+    override fun read(buf: ByteBuffer): AndroidHostSelection? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeAndroidHostSelection.read(buf)
+    }
+
+    override fun allocationSize(value: AndroidHostSelection?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeAndroidHostSelection.allocationSize(value)
+        }
+    }
+
+    override fun write(value: AndroidHostSelection?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeAndroidHostSelection.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeAndroidTranscriptAnchor: FfiConverterRustBuffer<AndroidTranscriptAnchor?> {
+    override fun read(buf: ByteBuffer): AndroidTranscriptAnchor? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeAndroidTranscriptAnchor.read(buf)
+    }
+
+    override fun allocationSize(value: AndroidTranscriptAnchor?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeAndroidTranscriptAnchor.allocationSize(value)
+        }
+    }
+
+    override fun write(value: AndroidTranscriptAnchor?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeAndroidTranscriptAnchor.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeAppAttestation: FfiConverterRustBuffer<AppAttestation?> {
     override fun read(buf: ByteBuffer): AppAttestation? {
         if (buf.get().toInt() == 0) {
@@ -33378,6 +45224,38 @@ public object FfiConverterOptionalTypeCustomAgentRow: FfiConverterRustBuffer<Cus
         } else {
             buf.put(1)
             FfiConverterTypeCustomAgentRow.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeDrawerPinMove: FfiConverterRustBuffer<DrawerPinMove?> {
+    override fun read(buf: ByteBuffer): DrawerPinMove? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeDrawerPinMove.read(buf)
+    }
+
+    override fun allocationSize(value: DrawerPinMove?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeDrawerPinMove.allocationSize(value)
+        }
+    }
+
+    override fun write(value: DrawerPinMove?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeDrawerPinMove.write(value, buf)
         }
     }
 }
@@ -33644,6 +45522,70 @@ public object FfiConverterOptionalTypePullRequest: FfiConverterRustBuffer<PullRe
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeRecoveryAuthentication: FfiConverterRustBuffer<RecoveryAuthentication?> {
+    override fun read(buf: ByteBuffer): RecoveryAuthentication? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeRecoveryAuthentication.read(buf)
+    }
+
+    override fun allocationSize(value: RecoveryAuthentication?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeRecoveryAuthentication.allocationSize(value)
+        }
+    }
+
+    override fun write(value: RecoveryAuthentication?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeRecoveryAuthentication.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeRecoveryClipboard: FfiConverterRustBuffer<RecoveryClipboard?> {
+    override fun read(buf: ByteBuffer): RecoveryClipboard? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeRecoveryClipboard.read(buf)
+    }
+
+    override fun allocationSize(value: RecoveryClipboard?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeRecoveryClipboard.allocationSize(value)
+        }
+    }
+
+    override fun write(value: RecoveryClipboard?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeRecoveryClipboard.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeRgba: FfiConverterRustBuffer<Rgba?> {
     override fun read(buf: ByteBuffer): Rgba? {
         if (buf.get().toInt() == 0) {
@@ -33740,6 +45682,70 @@ public object FfiConverterOptionalTypeRowPlacement: FfiConverterRustBuffer<RowPl
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeSavedPinMove: FfiConverterRustBuffer<SavedPinMove?> {
+    override fun read(buf: ByteBuffer): SavedPinMove? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeSavedPinMove.read(buf)
+    }
+
+    override fun allocationSize(value: SavedPinMove?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeSavedPinMove.allocationSize(value)
+        }
+    }
+
+    override fun write(value: SavedPinMove?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeSavedPinMove.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeSavedPinOrder: FfiConverterRustBuffer<SavedPinOrder?> {
+    override fun read(buf: ByteBuffer): SavedPinOrder? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeSavedPinOrder.read(buf)
+    }
+
+    override fun allocationSize(value: SavedPinOrder?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeSavedPinOrder.allocationSize(value)
+        }
+    }
+
+    override fun write(value: SavedPinOrder?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeSavedPinOrder.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeSessionRow: FfiConverterRustBuffer<SessionRow?> {
     override fun read(buf: ByteBuffer): SessionRow? {
         if (buf.get().toInt() == 0) {
@@ -33762,6 +45768,38 @@ public object FfiConverterOptionalTypeSessionRow: FfiConverterRustBuffer<Session
         } else {
             buf.put(1)
             FfiConverterTypeSessionRow.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeSettingsWallpaper: FfiConverterRustBuffer<SettingsWallpaper?> {
+    override fun read(buf: ByteBuffer): SettingsWallpaper? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeSettingsWallpaper.read(buf)
+    }
+
+    override fun allocationSize(value: SettingsWallpaper?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeSettingsWallpaper.allocationSize(value)
+        }
+    }
+
+    override fun write(value: SettingsWallpaper?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeSettingsWallpaper.write(value, buf)
         }
     }
 }
@@ -33826,6 +45864,38 @@ public object FfiConverterOptionalTypeAuthCallback: FfiConverterRustBuffer<AuthC
         } else {
             buf.put(1)
             FfiConverterTypeAuthCallback.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeChatIndicator: FfiConverterRustBuffer<ChatIndicator?> {
+    override fun read(buf: ByteBuffer): ChatIndicator? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeChatIndicator.read(buf)
+    }
+
+    override fun allocationSize(value: ChatIndicator?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeChatIndicator.allocationSize(value)
+        }
+    }
+
+    override fun write(value: ChatIndicator?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeChatIndicator.write(value, buf)
         }
     }
 }
@@ -34028,6 +46098,38 @@ public object FfiConverterOptionalTypeVoiceSpeaker: FfiConverterRustBuffer<Voice
 /**
  * @suppress
  */
+public object FfiConverterOptionalSequenceTypeSavedMessagePart: FfiConverterRustBuffer<List<SavedMessagePart>?> {
+    override fun read(buf: ByteBuffer): List<SavedMessagePart>? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterSequenceTypeSavedMessagePart.read(buf)
+    }
+
+    override fun allocationSize(value: List<SavedMessagePart>?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterSequenceTypeSavedMessagePart.allocationSize(value)
+        }
+    }
+
+    override fun write(value: List<SavedMessagePart>?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterSequenceTypeSavedMessagePart.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceUInt: FfiConverterRustBuffer<List<kotlin.UInt>> {
     override fun read(buf: ByteBuffer): List<kotlin.UInt> {
         val len = buf.getInt()
@@ -34102,6 +46204,62 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeAccessibilityRow: FfiConverterRustBuffer<List<AccessibilityRow>> {
+    override fun read(buf: ByteBuffer): List<AccessibilityRow> {
+        val len = buf.getInt()
+        return List<AccessibilityRow>(len) {
+            FfiConverterTypeAccessibilityRow.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<AccessibilityRow>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeAccessibilityRow.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<AccessibilityRow>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeAccessibilityRow.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeAndroidDemoChoice: FfiConverterRustBuffer<List<AndroidDemoChoice>> {
+    override fun read(buf: ByteBuffer): List<AndroidDemoChoice> {
+        val len = buf.getInt()
+        return List<AndroidDemoChoice>(len) {
+            FfiConverterTypeAndroidDemoChoice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<AndroidDemoChoice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeAndroidDemoChoice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<AndroidDemoChoice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeAndroidDemoChoice.write(it, buf)
         }
     }
 }
@@ -34308,6 +46466,34 @@ public object FfiConverterSequenceTypeDeviceView: FfiConverterRustBuffer<List<De
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeDrawerPinHints: FfiConverterRustBuffer<List<DrawerPinHints>> {
+    override fun read(buf: ByteBuffer): List<DrawerPinHints> {
+        val len = buf.getInt()
+        return List<DrawerPinHints>(len) {
+            FfiConverterTypeDrawerPinHints.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<DrawerPinHints>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeDrawerPinHints.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<DrawerPinHints>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeDrawerPinHints.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeFaceData: FfiConverterRustBuffer<List<FaceData>> {
     override fun read(buf: ByteBuffer): List<FaceData> {
         val len = buf.getInt()
@@ -34438,6 +46624,34 @@ public object FfiConverterSequenceTypeHarnessInfo: FfiConverterRustBuffer<List<H
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeHarnessInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLabSurfaceRegistration: FfiConverterRustBuffer<List<LabSurfaceRegistration>> {
+    override fun read(buf: ByteBuffer): List<LabSurfaceRegistration> {
+        val len = buf.getInt()
+        return List<LabSurfaceRegistration>(len) {
+            FfiConverterTypeLabSurfaceRegistration.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LabSurfaceRegistration>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLabSurfaceRegistration.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LabSurfaceRegistration>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLabSurfaceRegistration.write(it, buf)
         }
     }
 }
@@ -34756,6 +46970,34 @@ public object FfiConverterSequenceTypeRepoRef: FfiConverterRustBuffer<List<RepoR
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeRevealSlice: FfiConverterRustBuffer<List<RevealSlice>> {
+    override fun read(buf: ByteBuffer): List<RevealSlice> {
+        val len = buf.getInt()
+        return List<RevealSlice>(len) {
+            FfiConverterTypeRevealSlice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<RevealSlice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeRevealSlice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<RevealSlice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeRevealSlice.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeRowPlacement: FfiConverterRustBuffer<List<RowPlacement>> {
     override fun read(buf: ByteBuffer): List<RowPlacement> {
         val len = buf.getInt()
@@ -34830,6 +47072,62 @@ public object FfiConverterSequenceTypeSavedChatRow: FfiConverterRustBuffer<List<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeSavedChatRow.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeSavedIndexedRow: FfiConverterRustBuffer<List<SavedIndexedRow>> {
+    override fun read(buf: ByteBuffer): List<SavedIndexedRow> {
+        val len = buf.getInt()
+        return List<SavedIndexedRow>(len) {
+            FfiConverterTypeSavedIndexedRow.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<SavedIndexedRow>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeSavedIndexedRow.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<SavedIndexedRow>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeSavedIndexedRow.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeSavedMessagePart: FfiConverterRustBuffer<List<SavedMessagePart>> {
+    override fun read(buf: ByteBuffer): List<SavedMessagePart> {
+        val len = buf.getInt()
+        return List<SavedMessagePart>(len) {
+            FfiConverterTypeSavedMessagePart.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<SavedMessagePart>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeSavedMessagePart.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<SavedMessagePart>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeSavedMessagePart.write(it, buf)
         }
     }
 }
@@ -35710,6 +48008,42 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
 
 
         /**
+         * Classifies an untrusted URL without performing network or account actions.
+         * Returns `None` for other hosts, schemes, paths, expired connect codes, and
+         * malformed or overlong input.
+         */ fun `classifyAndroidAppLink`(`url`: kotlin.String): AndroidAppLink? {
+            return FfiConverterOptionalTypeAndroidAppLink.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_func_classify_android_app_link(
+
+
+        FfiConverterString.lower(`url`),_status)
+}
+    )
+    }
+
+
+        /**
+         * Routes a recognized URL to an existing Rust-owned flow.
+         *
+         * Computer links go to `CoreClient::connect_computer`. Website sign-in links
+         * go first to `CoreAccount::scanned_login`, which returns the browser for the
+         * confirmation step; approval remains a separate explicit call. Project
+         * invitations go to the active account's preview and explicit acceptance
+         * methods; the opaque code is not returned to the platform.
+         */ fun `dispatchAndroidAppLink`(`url`: kotlin.String): AndroidAppLinkDispatch? {
+            return FfiConverterOptionalTypeAndroidAppLinkDispatch.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_func_dispatch_android_app_link(
+
+
+        FfiConverterString.lower(`url`),_status)
+}
+    )
+    }
+
+
+        /**
          * A sample agent's card for the offline demo and Design Lab (#12045).
          */ fun `demoAutonomyCard`(): kotlin.String {
             return FfiConverterString.lift(
@@ -35763,6 +48097,22 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
 
 
         FfiConverterString.lower(`link`),_status)
+}
+    )
+    }
+
+
+    @Throws(CoreException::class) fun `openSettings`(`account`: CoreAccount, `client`: CoreClient?, `capabilities`: SettingsCapabilities, `version`: kotlin.String, `listener`: SettingsListener): CoreSettings {
+            return FfiConverterTypeCoreSettings.lift(
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_func_open_settings(
+
+
+        FfiConverterTypeCoreAccount.lower(`account`),
+        FfiConverterOptionalTypeCoreClient.lower(`client`),
+        FfiConverterTypeSettingsCapabilities.lower(`capabilities`),
+        FfiConverterString.lower(`version`),
+        FfiConverterTypeSettingsListener.lower(`listener`),_status)
 }
     )
     }
