@@ -99,3 +99,23 @@ Collect `onPaintStats` plus Android frame timing; report row counts, cache
 counts, allocation behavior, frame percentiles, and missed deadlines. The
 paint callback's CPU duration alone does not establish frame pacing. C2 owns
 streaming reveal animation and interactions; Q1 owns TalkBack and focus checks.
+
+
+### Offline transcript fixture
+
+The debug app accepts `openagents.demo=true`, `openagents.route=lab`, and
+`openagents.lab=transcript`. The `transcript` route also selects this fixture.
+Release ignores these extras. The fixture paints `layoutFixtureMarkdown()` through
+the existing Rust `TranscriptView`, C1 Canvas, and C2 selection host. It does not
+construct an account or SDK client, load media, or follow links. This supports
+transcript component captures; it does not demonstrate account, wallet, saved
+history, or Lab-note workflows.
+
+The Activity closes the fixture worker, listener, selection, and frames on
+background and teardown. Resume and recreation restore a row-based viewport
+bookmark. The fixture has no composer or scripted streaming controls.
+
+`DebugFixtureRoutesTest` and `AndroidDebugTranscriptFixtureTest` are authored but
+unrun. The new source also awaits debug/release Kotlin and AndroidTest compilation
+against the coordinator's matching Android ABI and generated bindings. No build
+or runtime result is claimed for this source checkpoint.
