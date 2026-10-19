@@ -1754,11 +1754,19 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_corechathomes_parts(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corecontinuationdraft_acknowledge(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corecontinuationdraft_activate(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_corecontinuationdraft_create(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_corecontinuationdraft_device_id(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corecontinuationdraft_shutdown(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_corecontinuationdraft_start(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corecontinuationdraft_view(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_cloudchatdone_on_done(
     ): Int
@@ -2792,12 +2800,20 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_free_corecontinuationdraft(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corecontinuationdraft_acknowledge(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corecontinuationdraft_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_corecontinuationdraft_create(`ptr`: Long,`core`: Long,`newSession`: RustBuffer.ByValue,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_corecontinuationdraft_device_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_corecontinuationdraft_shutdown(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_method_corecontinuationdraft_start(`ptr`: Long,`core`: Long,`newSession`: RustBuffer.ByValue,`request`: RustBuffer.ByValue,
     ): Long
+    external fun uniffi_openagents_mobile_fn_method_corecontinuationdraft_view(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_clone_cloudchatdone(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_cloudchatdone(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -4352,13 +4368,25 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_corechathomes_parts() and 0xFFFF) != 50792) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corecontinuationdraft_acknowledge() and 0xFFFF) != 52868) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corecontinuationdraft_activate() and 0xFFFF) != 21226) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_corecontinuationdraft_create() and 0xFFFF) != 58009) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_corecontinuationdraft_device_id() and 0xFFFF) != 28877) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corecontinuationdraft_shutdown() and 0xFFFF) != 46901) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_corecontinuationdraft_start() and 0xFFFF) != 37618) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corecontinuationdraft_view() and 0xFFFF) != 20931) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_cloudchatdone_on_done() and 0xFFFF) != 48276) {
@@ -17154,6 +17182,10 @@ public object FfiConverterTypeCoreCloudChat: FfiConverter<CoreCloudChat, Long> {
 
 public interface CoreContinuationDraftInterface {
 
+    fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+
+    suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String): ContinuationDraftAction
+
     /**
      * Prepare a durable destination before freezing the earlier computer part.
      */
@@ -17161,7 +17193,11 @@ public interface CoreContinuationDraftInterface {
 
     fun `deviceId`(): kotlin.String
 
+    fun `shutdown`()
+
     suspend fun `start`(`core`: CoreClient, `newSession`: NewSession, `request`: SendRequest): kotlin.String
+
+    fun `view`(): kotlin.ByteArray
 
     companion object
 }
@@ -17268,6 +17304,45 @@ open class CoreContinuationDraft: Disposable, AutoCloseable, CoreContinuationDra
     }
 
 
+    @Throws(CoreException::class)override fun `acknowledge`(`instance`: kotlin.String, `revision`: kotlin.ULong)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corecontinuationdraft_acknowledge(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),_status)
+}
+    }
+
+
+
+
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String) : ContinuationDraftAction {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_corecontinuationdraft_activate(
+                uniffiHandle,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeContinuationDraftAction.lift(it) },
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
     /**
      * Prepare a durable destination before freezing the earlier computer part.
      */
@@ -17306,6 +17381,18 @@ open class CoreContinuationDraft: Disposable, AutoCloseable, CoreContinuationDra
     }
 
 
+    override fun `shutdown`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corecontinuationdraft_shutdown(
+        it,
+        _status)
+}
+    }
+
+
+
 
     @Throws(CoreException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
@@ -17329,6 +17416,20 @@ open class CoreContinuationDraft: Disposable, AutoCloseable, CoreContinuationDra
         CoreException.ErrorHandler,
     )
     }
+
+
+    @Throws(CoreException::class)override fun `view`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corecontinuationdraft_view(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
 
 
 
@@ -39363,6 +39464,40 @@ public object FfiConverterTypeConnectivityState: FfiConverterRustBuffer<Connecti
     override fun allocationSize(value: ConnectivityState) = 4UL
 
     override fun write(value: ConnectivityState, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+enum class ContinuationDraftAction {
+
+    UPDATED,
+    CONTINUE;
+
+
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeContinuationDraftAction: FfiConverterRustBuffer<ContinuationDraftAction> {
+    override fun read(buf: ByteBuffer) = try {
+        ContinuationDraftAction.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ContinuationDraftAction) = 4UL
+
+    override fun write(value: ContinuationDraftAction, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
