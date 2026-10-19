@@ -15,6 +15,8 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.PopupMenu
 import android.widget.TextView
+import com.openagents.app.OaStyle
+import com.openagents.app.R
 
 /** Android Views renderer; every operation is an intent and waits for core output. */
 class DrawerView(context: Context) : LinearLayout(context) {
@@ -26,65 +28,104 @@ class DrawerView(context: Context) : LinearLayout(context) {
     private var scroll: android.os.Parcelable? = null
     private var frame = DrawerFrame(emptyList(), null, false)
     private val search = EditText(context).apply {
-        hint = "Search chats"
+        hint = "Search"
         isSingleLine = true
         maxLines = 1
         filters = arrayOf(android.text.InputFilter.LengthFilter(200))
+        imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+        OaStyle.text(this, 17f)
+        setHintTextColor(context.getColor(R.color.oa_secondary))
+        background = OaStyle.rounded(context, context.getColor(R.color.oa_fill), 22f)
+        setCompoundDrawablesRelativeWithIntrinsicBounds(context.getDrawable(R.drawable.oa_ic_search)?.mutate()?.apply {
+            setTint(context.getColor(R.color.oa_secondary))
+            setBounds(0, 0, dp(20), dp(20))
+        }, null, null, null)
+        compoundDrawablePadding = dp(10)
+        setPadding(dp(16), 0, dp(16), 0)
     }
-    private val notice = TextView(context)
+    private val heading = TextView(context).apply {
+        OaStyle.text(this, 34f, OaStyle.Weight.BOLD)
+        if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+    }
+    private val tabs = LinearLayout(context).apply { setPadding(dp(16), dp(10), dp(16), dp(2)) }
+    private val notice = TextView(context).apply {
+        OaStyle.text(this, 15f, colorResource = R.color.oa_secondary)
+        gravity = android.view.Gravity.CENTER
+    }
     private val rows = Rows()
     private val list = ListView(context).apply {
         adapter = rows
         choiceMode = ListView.CHOICE_MODE_NONE
+        divider = null
+        dividerHeight = 0
+        selector = android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        clipToPadding = false
+        setPadding(0, dp(4), 0, dp(8))
         setOnItemClickListener { _, _, position, _ -> onIntent(DrawerIntent.Open(frame.rows[position].key)) }
         setOnItemLongClickListener { _, view, position, _ -> menu(view, frame.rows[position]); true }
     }
     private val more = Button(context).apply {
         text = "Load more"
+        OaStyle.text(this, 15f, OaStyle.Weight.MEDIUM, R.color.oa_secondary)
+        visibility = View.GONE
         setOnClickListener { onIntent(DrawerIntent.More) }
     }
 
     private val moreProjects = Button(context).apply {
         text = "Load more projects"
+        OaStyle.text(this, 15f, OaStyle.Weight.MEDIUM, R.color.oa_secondary)
+        visibility = View.GONE
         setOnClickListener { onIntent(DrawerIntent.MoreProjects) }
     }
+    private val retry = Button(context).apply {
+        text = "Try again"
+        OaStyle.text(this, 15f, OaStyle.Weight.MEDIUM)
+        visibility = View.GONE
+        setOnClickListener { onIntent(DrawerIntent.Refresh) }
+    }
+    private val tabButtons = mutableListOf<Pair<TextView, (DrawerRequest) -> Boolean>>()
 
     init {
         orientation = VERTICAL
-        val tabs = LinearLayout(context)
-        for ((label, tab) in listOf("Sessions" to DrawerTab.LIVE, "Saved chats" to DrawerTab.SAVED)) {
-            tabs.addView(Button(context).apply {
+        fun tab(label: String, selected: (DrawerRequest) -> Boolean, run: () -> Unit) {
+            val chip = TextView(context).apply {
                 text = label
-                setOnClickListener { change(request.copy(tab = tab, projectId = null)) }
-            })
-        }
-        tabs.addView(Button(context).apply {
-            text = "Archived"
-            setOnClickListener { change(request.copy(archived = !request.archived)) }
-        })
-        tabs.addView(Button(context).apply {
-            text = "Projects"
-            setOnClickListener {
-                val projects = frame.projects
-                val names = arrayOf("All chats", *projects.map { it.name }.toTypedArray())
-                AlertDialog.Builder(context).setTitle("Projects").setItems(names) { _, position ->
-                    change(request.copy(projectId = if (position == 0) null else projects[position - 1].id))
-                }.show()
+                OaStyle.text(this, 14f, OaStyle.Weight.MEDIUM)
+                gravity = android.view.Gravity.CENTER
+                minHeight = dp(34)
+                setPadding(dp(14), 0, dp(14), 0)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { run() }
             }
+            tabs.addView(chip, LayoutParams(LayoutParams.WRAP_CONTENT, dp(34)).apply { marginEnd = dp(6) })
+            tabButtons += chip to selected
+        }
+        for ((label, tab) in listOf("Sessions" to DrawerTab.LIVE, "Saved chats" to DrawerTab.SAVED)) {
+            tab(label, { it.tab == tab && !it.archived }) { change(request.copy(tab = tab, projectId = null)) }
+        }
+        tab("Archived", { it.archived }) { change(request.copy(archived = !request.archived)) }
+        tab("Projects", { it.projectId != null }) {
+            val projects = frame.projects
+            val names = arrayOf("All chats", *projects.map { it.name }.toTypedArray())
+            AlertDialog.Builder(context).setTitle("Projects").setItems(names) { _, position ->
+                change(request.copy(projectId = if (position == 0) null else projects[position - 1].id))
+            }.show()
+        }
+        addView(heading, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            setMargins(dp(20), dp(28), dp(20), dp(14))
         })
+        addView(search, LayoutParams(LayoutParams.MATCH_PARENT, dp(46)).apply { setMargins(dp(16), 0, dp(16), 0) })
         addView(android.widget.HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(tabs)
         })
-        addView(search)
-        addView(notice)
+        addView(notice, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { setMargins(dp(20), dp(8), dp(20), 0) })
         addView(list, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         addView(more)
         addView(moreProjects)
-        addView(Button(context).apply {
-            text = "Try again"
-            setOnClickListener { onIntent(DrawerIntent.Refresh) }
-        })
+        addView(retry)
+        renderTabs()
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -94,7 +135,23 @@ class DrawerView(context: Context) : LinearLayout(context) {
         })
     }
 
-    private fun change(next: DrawerRequest) { request = next; onRequest(next) }
+    private fun change(next: DrawerRequest) { request = next; renderTabs(); onRequest(next) }
+
+    private fun dp(value: Int) = OaStyle.dp(context, value)
+
+    private fun renderTabs() {
+        heading.text = when {
+            request.archived -> "Archived"
+            request.tab == DrawerTab.SAVED -> "Saved chats"
+            else -> "Sessions"
+        }
+        for ((chip, selected) in tabButtons) {
+            val on = selected(request)
+            chip.isSelected = on
+            chip.setTextColor(context.getColor(if (on) R.color.oa_text else R.color.oa_secondary))
+            chip.background = OaStyle.rowBackground(context, if (on) context.getColor(R.color.oa_fill) else 0, 17f)
+        }
+    }
 
     fun render(next: DrawerFrame) {
         frame = next
@@ -106,6 +163,7 @@ class DrawerView(context: Context) : LinearLayout(context) {
         more.visibility = if (next.hasMore) View.VISIBLE else View.GONE
         more.isEnabled = !next.loading
         moreProjects.visibility = if (next.hasMoreProjects) View.VISIBLE else View.GONE
+        retry.visibility = if (next.error != null) View.VISIBLE else View.GONE
         notice.text = next.error ?: when {
             next.loading -> "Loading chats…"
             next.offline -> "Offline"
@@ -114,6 +172,7 @@ class DrawerView(context: Context) : LinearLayout(context) {
             next.rows.isEmpty() -> "No chats found"
             else -> ""
         }
+        notice.visibility = if (notice.text.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun menu(anchor: View, row: DrawerRow) {
@@ -165,6 +224,7 @@ class DrawerView(context: Context) : LinearLayout(context) {
         binding = true
         search.setText(request.query)
         binding = false
+        renderTabs()
         val origin = DrawerOrigin.entries.firstOrNull { it.name == state.getString("origin") }
         val key = state.getString("selected")?.let { id -> origin?.let { DrawerKey(it, id) } }
         @Suppress("DEPRECATION")
@@ -174,23 +234,86 @@ class DrawerView(context: Context) : LinearLayout(context) {
         return key to request
     }
 
+    /** One sidebar row: an optional group header, a bold title, a secondary line, and a status. */
+    private inner class RowViews(context: Context) : LinearLayout(context) {
+        val header = TextView(context).apply {
+            OaStyle.text(this, 15f, OaStyle.Weight.SEMIBOLD, R.color.oa_secondary)
+            setPadding(dp(20), dp(18), dp(20), dp(6))
+            if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+        }
+        val body = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minimumHeight = dp(60)
+            isDuplicateParentStateEnabled = true
+        }
+        val title = TextView(context).apply {
+            OaStyle.text(this, 17f, OaStyle.Weight.SEMIBOLD)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        val subtitle = TextView(context).apply {
+            OaStyle.text(this, 14f, colorResource = R.color.oa_secondary)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        val status = TextView(context).apply {
+            OaStyle.text(this, 14f, OaStyle.Weight.MEDIUM, R.color.oa_secondary)
+            maxLines = 1
+        }
+        init {
+            orientation = VERTICAL
+            val texts = LinearLayout(context).apply {
+                orientation = VERTICAL
+                addView(title)
+                addView(subtitle, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+            }
+            body.addView(texts, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+            // The status lines up with the title, as on iOS.
+            body.addView(status, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                marginStart = dp(10); gravity = android.view.Gravity.TOP; topMargin = dp(2)
+            })
+            addView(header)
+            addView(body, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { setMargins(dp(8), 0, dp(8), 0) })
+        }
+    }
+
+    /** Color and mark for the status Rust supplies; the words stay Rust's. */
+    private fun statusStyle(status: String?): Pair<String, Int>? = when (status) {
+        null -> null
+        "Finished" -> "✓ $status" to R.color.oa_success
+        "Couldn't finish" -> "● $status" to R.color.oa_danger
+        "Waiting for you" -> "● $status" to R.color.oa_warning
+        else -> status to R.color.oa_secondary
+    }
+
     private inner class Rows : BaseAdapter() {
         override fun getCount() = frame.rows.size
         override fun getItem(position: Int) = frame.rows[position]
         override fun getItemId(position: Int) = position.toLong()
         override fun hasStableIds() = false
         override fun getView(position: Int, recycled: View?, parent: ViewGroup): View {
-            val view = (recycled as? TextView) ?: TextView(context).apply {
-                setPadding(24, 20, 24, 20)
-                minHeight = (64 * resources.displayMetrics.density).toInt()
-                setBackgroundResource(android.R.drawable.list_selector_background)
-            }
+            val view = (recycled as? RowViews) ?: RowViews(context)
             val row = getItem(position)
-            view.text = listOfNotNull(row.group, row.title, row.agentLine, row.subtitle, row.status,
+            val selected = frame.selected == row.key
+            val group = row.group.takeIf { it.isNotBlank() && (position == 0 || frame.rows[position - 1].group != row.group) }
+            view.header.text = group.orEmpty()
+            view.header.visibility = if (group == null) View.GONE else View.VISIBLE
+            view.title.text = row.title
+            val secondary = listOfNotNull(row.agentLine, row.subtitle).filter { it.isNotBlank() }.joinToString("  ·  ")
+            view.subtitle.text = secondary
+            view.subtitle.visibility = if (secondary.isEmpty()) View.GONE else View.VISIBLE
+            val status = statusStyle(row.status) ?: if (row.unread == true) "●" to R.color.oa_accent else null
+            view.status.text = status?.first.orEmpty()
+            status?.let { view.status.setTextColor(context.getColor(it.second)) }
+            view.status.visibility = if (status == null) View.GONE else View.VISIBLE
+            view.body.background = OaStyle.rowBackground(context,
+                if (selected) context.getColor(R.color.oa_fill) else 0, 14f)
+            view.isActivated = selected
+            view.isSelected = selected
+            view.contentDescription = listOfNotNull(row.group, row.title, row.agentLine, row.subtitle, row.status,
                 if (row.unread == true) "Unread" else null).joinToString("\n")
-            view.isActivated = frame.selected == row.key
-            view.isSelected = frame.selected == row.key
-            view.contentDescription = view.text
             var down = 0f
             view.setOnTouchListener { _, event ->
                 when (event.actionMasked) {
