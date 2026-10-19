@@ -81,9 +81,17 @@ impl<T: codex_transport::Transport> Lane for crate::models::CodexGenerator<Refus
 /// Generation through the `claude` binary that keeps the usage or rate
 /// limit refusal (an error result with API status 429 or a rejected limit
 /// event) its last call met.
+///
+/// With the capacity book's directory ([`ClaudeLane::with_book`]), each
+/// generation runs on the login the book picks ([`capacity::Book::pick`]):
+/// the signed-in login, else the next named login with capacity (#12211).
+/// A refusal on one login is recorded against that login and the step runs
+/// again on the next one; the lane reports a refusal only when every login
+/// is out.
 pub struct ClaudeLane {
     pub inner: crate::claude::ClaudeGenerator,
     refusal: RefCell<Option<Refusal>>,
+    book: Option<PathBuf>,
 }
 
 impl ClaudeLane {
@@ -92,15 +100,72 @@ impl ClaudeLane {
         ClaudeLane {
             inner,
             refusal: RefCell::new(None),
+            book: None,
         }
+    }
+
+    /// Picks each generation's login from the capacity book in `dir`.
+    #[must_use]
+    pub fn with_book(mut self, dir: PathBuf) -> Self {
+        self.book = Some(dir);
+        self
+    }
+
+    /// Sets the login the next call runs on from the book; `false` when
+    /// every login is out.
+    fn choose_login(&self, dir: &std::path::Path, now: u64) -> bool {
+        let book = capacity::Book::load(dir);
+        let Some(pick) = book.pick(Provider::Claude, now) else {
+            return false;
+        };
+        // A named login whose token can't be read runs on the signed-in one.
+        self.inner.use_login(pick.chosen());
+        true
     }
 }
 
 impl Generate for ClaudeLane {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
-        let invocation = self.inner.invoke(system, prompt).await;
-        *self.refusal.borrow_mut() = invocation.refusal(unix_now());
-        invocation.generated
+        let Some(dir) = self.book.as_deref() else {
+            let invocation = self.inner.invoke(system, prompt).await;
+            *self.refusal.borrow_mut() = invocation.refusal(unix_now());
+            return invocation.generated;
+        };
+        let mut spent: Option<Generated> = None;
+        let mut last: Option<Refusal> = None;
+        // At most one try per login, and never more than a few.
+        let tries = 1 + capacity::Book::load(dir)
+            .logins_of(Provider::Claude)
+            .count()
+            .min(8);
+        for tried in 1..=tries {
+            if !self.choose_login(dir, unix_now()) && tried > 1 {
+                break;
+            }
+            let invocation = self.inner.invoke(system, prompt).await;
+            let refusal = invocation
+                .refusal(unix_now())
+                .map(|refusal| refusal.on_login(self.inner.login()));
+            let generated = merge(spent.take(), invocation.generated);
+            let Some(refusal) = refusal.filter(|_| generated.action.is_err()) else {
+                *self.refusal.borrow_mut() = None;
+                return generated;
+            };
+            let refusal = refusal.with_probed_reset(&crate::usage::Book::load(dir));
+            let _ = capacity::record(dir, refusal.clone());
+            let more = tried < tries
+                && capacity::Book::load(dir)
+                    .pick(Provider::Claude, unix_now())
+                    .is_some();
+            if !more {
+                *self.refusal.borrow_mut() = Some(refusal);
+                return generated;
+            }
+            spent = Some(generated);
+            last = Some(refusal);
+        }
+        *self.refusal.borrow_mut() = last;
+        spent.unwrap_or_else(|| refused_generation(&self.inner.model, false, NO_CAPACITY))
     }
 
     fn warm(&self, system: &str) {
@@ -251,15 +316,20 @@ impl<'a, R: Admitted, L: Lane, J: Journal + ?Sized> Failover<'a, R, L, J> {
 
     /// Whether the route's provider has capacity now, by the book and by
     /// this run's own refusals. A provider without durable capacity, such as
-    /// a fixture, always has.
+    /// a fixture, always has. A refusal this run met on one login blocks
+    /// only while the book would still pick that login, as when the book
+    /// could not be written; otherwise the next login has capacity (#12211).
     fn has_capacity(&self, book: &capacity::Book, route: &R, now: u64) -> bool {
         route.provider().is_none_or(|provider| {
-            book.has_capacity(provider, now)
-                && !self
-                    .refused
-                    .borrow()
-                    .iter()
-                    .any(|refusal| refusal.provider == provider && refusal.holds(now))
+            let next = book
+                .pick(provider, now)
+                .map(|pick| pick.name().map(str::to_owned));
+            next.is_some()
+                && !self.refused.borrow().iter().any(|refusal| {
+                    refusal.provider == provider
+                        && refusal.holds(now)
+                        && next.as_ref().is_none_or(|next| *next == refusal.login)
+                })
         })
     }
 
@@ -342,7 +412,14 @@ impl<R: Admitted, L: Lane, J: Journal + ?Sized> Generate for Failover<'_, R, L, 
             let recorded = capacity::record(&self.book, refusal.clone()).err();
             self.refused.borrow_mut().push(refusal.clone());
             spent = Some(merge(spent, generated));
-            let next = self.next(Some(index));
+            // The same route again when its provider has another login with
+            // capacity (#12211), else the next route.
+            let again = self.has_capacity(&capacity::Book::load(&self.book), route, (self.now)());
+            let next = if again {
+                Some(index)
+            } else {
+                self.next(Some(index))
+            };
             self.current.set(next);
             let book = recorded.map_or_else(|| json!("recorded"), |why| json!({"unrecorded":why}));
             let step = match next {

@@ -32,6 +32,7 @@ pub mod failover;
 pub mod gate;
 pub mod hooks;
 pub mod images;
+pub mod logins;
 pub mod models;
 pub mod reply;
 pub mod run;

@@ -1074,6 +1074,7 @@ mod tests {
             model: None,
             binary: Some(binary),
             credential: Credential::CliLogin,
+            claude_login: None,
             jev: None,
             artifacts,
             issues: false,

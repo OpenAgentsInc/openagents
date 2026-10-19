@@ -296,6 +296,16 @@ fn book() -> Option<PathBuf> {
     crate::delegate_door::capacity_dir()
 }
 
+/// A Claude lane that picks each step's login from the capacity book
+/// (#12211), when there is a book.
+fn claude_lane(generator: microcoder_loop::claude::ClaudeGenerator) -> ClaudeLane {
+    let lane = ClaudeLane::new(generator);
+    match book() {
+        Some(dir) => lane.with_book(dir),
+        None => lane,
+    }
+}
+
 /// Resolve local model providers and the no-setup gateway fallback.
 /// `session` keys the Codex prompt cache; `model` and `effort` override
 /// `CODER_CODEX_MODEL` and `CODER_CODEX_REASONING` for the Codex login.
@@ -355,7 +365,7 @@ pub fn local_generator_for(
             claude_model.as_deref().unwrap_or(microcoder_loop::MODEL),
             None,
         ) {
-            providers.push(LocalProvider::Claude(ClaudeLane::new(generator)));
+            providers.push(LocalProvider::Claude(claude_lane(generator)));
         }
         if std::env::var("CODER_CLOUD").as_deref() != Ok("off") {
             match crate::cloud::door(&|name| std::env::var(name).ok()) {
@@ -411,7 +421,7 @@ pub fn plan_generator_for(
                 microcoder_loop::claude::ClaudeGenerator::from_env(model, effort.clone())
             {
                 found.set(true);
-                providers.push(LocalProvider::Claude(ClaudeLane::new(generator)));
+                providers.push(LocalProvider::Claude(claude_lane(generator)));
             }
         }
     });

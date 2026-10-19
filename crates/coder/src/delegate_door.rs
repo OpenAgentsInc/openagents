@@ -954,6 +954,12 @@ impl DelegateDoor {
         // through the hook bridge (#11529); the host lives as the turn does.
         let bridge = crate::hooks::bridge(&self.workdir, read_only);
         let (hooks, host) = bridge.map_or((None, None), |(hooks, host)| (Some(hooks), Some(host)));
+        // A new Claude Code session runs on the login the book picks
+        // (#12211); a limit it meets is recorded against that login.
+        let claude_login = (cli == Cli::ClaudeCode)
+            .then(|| claude_login(&self.book, (self.now)()))
+            .flatten();
+        let login_name = claude_login.as_ref().map(|login| login.name.clone());
         let request = terminal::Request {
             workdir: self.workdir.clone(),
             request: request.to_string(),
@@ -969,6 +975,7 @@ impl DelegateDoor {
             model: self.named_model.clone(),
             binary: self.target.binary.clone(),
             credential: self.target.credential,
+            claude_login,
             jev: self.jev.clone(),
             artifacts: self.artifacts(turn),
             // The CLI turn never starts the issue flow; Microcoder's turn
@@ -1030,7 +1037,7 @@ impl DelegateDoor {
                     )));
                 }
                 FromThread::Done(answer) => {
-                    self.book_limit(&answer);
+                    self.book_limit(&answer, login_name.clone());
                     if let Ok(mut session) = self.session.lock()
                         && answer.session_id.is_some()
                         && answer.agent.is_cli()
@@ -1066,13 +1073,35 @@ pub fn delegated_refusal(
     Some(capacity::from_limit(provider, &limit, now))
 }
 
+/// The named Claude login the capacity book in `book` picks for a new
+/// Claude Code session at `now` (#12211), or `None` for the signed-in
+/// login, when every login is out, or when the login's token can't be read.
+#[must_use]
+pub fn claude_login(
+    book: &std::path::Path,
+    now: u64,
+) -> Option<coder_delegate::delegate::ClaudeLogin> {
+    let chosen = capacity::Book::load(book)
+        .pick(Provider::Claude, now)?
+        .chosen()?;
+    Some(coder_delegate::delegate::ClaudeLogin::new(
+        chosen.name,
+        chosen.token.expose().to_owned(),
+    ))
+}
+
 impl DelegateDoor {
     /// Record in the capacity book the usage or rate limit a delegated CLI
     /// turn ended on, so the next turn, the auto-start policy, and
     /// `openagents capacity check` pass over that login until its reset.
-    fn book_limit(&self, answer: &terminal::Answer) {
+    fn book_limit(&self, answer: &terminal::Answer, login: Option<String>) {
         let Some(refusal) = delegated_refusal(answer.agent, &answer.report, (self.now)()) else {
             return;
+        };
+        let refusal = if refusal.provider == Provider::Claude {
+            refusal.on_login(login)
+        } else {
+            refusal
         };
         if let Err(why) = capacity::record(&self.book, refusal) {
             eprintln!("coder: the capacity book was not updated: {why}");
@@ -2584,6 +2613,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
                 model: None,
                 binary: None,
                 credential: Credential::Missing,
+                claude_login: None,
                 jev: None,
                 artifacts: dir.path().join("artifacts"),
                 issues: false,
@@ -2656,6 +2686,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             model: None,
             binary: None,
             credential: Credential::Missing,
+            claude_login: None,
             jev: None,
             artifacts: dir.path().join("artifacts"),
             issues: true,

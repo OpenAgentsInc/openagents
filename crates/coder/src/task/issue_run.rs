@@ -823,6 +823,7 @@ async fn asked_with(
         model: None,
         binary: None,
         credential: coder_delegate::delegate::Credential::Missing,
+        claude_login: None,
         jev: Some(jev?),
         artifacts: std::env::temp_dir(),
         issues: true,

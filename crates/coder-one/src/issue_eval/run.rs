@@ -145,6 +145,7 @@ pub async fn run(options: Options) -> Result<Ran, String> {
         model: options.model.clone(),
         binary: None,
         credential: Credential::CodexAuthFile,
+        claude_login: None,
         jev: options.jev.clone(),
         artifacts: artifacts.clone(),
         issues: false,

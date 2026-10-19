@@ -230,6 +230,9 @@ pub struct Request<X = ()> {
     pub binary: Option<PathBuf>,
     /// Where its credential comes from.
     pub credential: Credential,
+    /// The named Claude login a Claude Code session runs on (#12211), or
+    /// `None` for the signed-in login.
+    pub claude_login: Option<crate::delegate::ClaudeLogin>,
     /// The Jev client, when this machine has a TypeSafe key. Without one
     /// the briefing carries the request and nothing Jev chose.
     pub jev: Option<jev::Client>,
@@ -678,13 +681,24 @@ async fn answer_wrapped<X, E: Engine<X>>(
         }
         _ => crate::briefing_knowledge::Knowledge::NONE,
     };
+    // A named Claude login runs on its token alone (#12211).
+    let login = request
+        .claude_login
+        .as_ref()
+        .filter(|_| request.agent == Agent::ClaudeCode);
     let mut cli = policy.executor(ExecutorHost {
         binary: request.binary.clone(),
-        credential: request.credential,
+        credential: if login.is_some() {
+            Credential::OauthToken
+        } else {
+            request.credential
+        },
         workdir: request.workdir.clone(),
         artifacts: request.artifacts.clone(),
         artifacts_label: request.artifacts.to_string_lossy().into_owned(),
-        env: Vec::new(),
+        env: login
+            .map(crate::delegate::ClaudeLogin::vars)
+            .unwrap_or_default(),
     });
     if request.agent != cli.agent {
         // Another agent keeps every lean setting it has an equivalent for
@@ -967,6 +981,7 @@ mod tests {
             model: None,
             binary: Some(binary),
             credential: Credential::CliLogin,
+            claude_login: None,
             jev: None,
             artifacts,
             issues: false,

@@ -285,6 +285,7 @@ mod tests {
                 100,
                 Some(200),
             )],
+            logins: Vec::new(),
         };
         std::fs::write(
             dir.path().join(crate::capacity::FILE),

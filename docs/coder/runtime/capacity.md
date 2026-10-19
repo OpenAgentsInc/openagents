@@ -27,6 +27,36 @@ reset holds for 30 minutes (5 for the OpenAgents cloud). The file is
 output. A refusal applies only to the login it was observed on: once
 another account is signed in, it no longer holds.
 
+## Several Claude logins
+
+The book can hold named Claude logins
+([#12211](https://github.com/OpenAgentsInc/openagents/issues/12211)), so
+one login's weekly limit doesn't stop every Claude agent on the computer.
+Each login's token comes from `claude setup-token` and is saved in its own
+`0600` file, `$OA_SECRETS_DIR/claude-logins/NAME` (else
+`~/work/.secrets/claude-logins/NAME`). The book keeps the login's name and
+the file's path, never the token.
+
+- The Claude Code sign-in on this computer is always the first login,
+  `default`. Named logins follow in the order they were added. Add only
+  other accounts: the book can't tell that a named login is the signed-in
+  account.
+- A refusal is recorded against the login it was observed on (its `login`
+  field; none for `default`).
+- A new turn runs on the first login with capacity. A named login runs
+  Claude Code with its token as `CLAUDE_CODE_OAUTH_TOKEN` alone, never
+  beside an API key, and with `OA_CLAUDE_LOGIN` set to its name.
+- Claude counts as out of capacity only when every login is out, until the
+  first one resets. `openagents capacity check claude` and every reader
+  above answer that way.
+- The Microcoder loop's Claude lane (Coder's delegate door and repository
+  runs) moves a step a limit refused to the next login and runs it again.
+  Coder's Claude Code delegations start each new session on the next login.
+
+A binary from before named logins reads a book that holds them as empty,
+and its next write drops them. Update every `openagents`, `coder`, and
+`microcoder` on the computer before you add a login.
+
 ## Who writes it
 
 | Writer | What it detects |
@@ -107,7 +137,10 @@ book says, and the turn waits queued for a start like any follow-up.
 ```sh
 openagents capacity [--json]
 openagents capacity check PROVIDER
-openagents capacity record PROVIDER [--reset TIME] [--rate]
+openagents capacity record PROVIDER [--login NAME] [--reset TIME] [--rate]
+openagents capacity logins
+claude setup-token | openagents capacity add-login NAME
+openagents capacity remove-login NAME
 ```
 
 - `openagents capacity` (or `capacity list`) prints each provider and, when
@@ -121,7 +154,18 @@ openagents capacity record PROVIDER [--reset TIME] [--rate]
   (a rate limit with `--rate`) until `TIME`. `TIME` is Unix seconds, an ISO
   8601 UTC time, a duration from now (`90m`, `5h`, or `2d`), or a clock
   time as the CLI printed it (`3pm` or `"resets 11:50am (UTC)"`), read as
-  UTC. Without `--reset` the limit holds for 30 minutes.
+  UTC. Without `--reset` the limit holds for 30 minutes. `--login NAME`
+  records it against a named Claude login; `check claude --login NAME`
+  checks one login.
+- `openagents capacity logins` lists each Claude login, `default` first,
+  whether it has capacity, and which login new turns run on. With `--json`
+  it prints `{"book", "now", "next", "logins": [...]}`.
+- `openagents capacity add-login NAME` reads a token from standard input
+  (what `claude setup-token` printed, or the bare `sk-ant-oat…` token),
+  saves it, and adds the login. `--secrets DIR` saves it under
+  `DIR/claude-logins` instead. The token is never printed.
+- `openagents capacity remove-login NAME` removes the login, its
+  refusals, and its saved token.
 
 Every command takes `--store DIR` to read another task store.
 
@@ -129,14 +173,24 @@ Every command takes `--store DIR` to read another task store.
 
 Before you launch a Claude Code subagent, run `openagents capacity check
 claude`, and don't launch it when the command exits 1. When a subagent
-stops on a limit, record it with the reset the subagent printed:
+stops on a limit, record it with the reset the subagent printed, against
+the login it ran on when that was a named one:
 
 ```sh
 openagents capacity record claude --reset "resets 3pm (UTC)"
+openagents capacity record claude --login "$OA_CLAUDE_LOGIN" --reset 5h
 ```
+
+The agent gate (`scripts/dev/agent-gate.sh`) records a limit against
+`OA_CLAUDE_LOGIN` when it is set, and refuses new agents only once every
+login is out.
 
 ## Limits
 
+- A Claude Code subagent runs on its parent session's login. Only new
+  sessions and new Microcoder steps move to another login; a running
+  Claude chat in the OpenAgents app does not move yet
+  ([#12215](https://github.com/OpenAgentsInc/openagents/issues/12215)).
 - An orchestrator's own subagents resume only when the orchestrator
   restarts them. The book and resume points cover tasks in the task store.
 - A turn that hit a limit in Coder's interactive terminal is recorded in the

@@ -204,9 +204,18 @@ struct Claude<'a> {
     inner: crate::claude::ClaudeGenerator,
     /// A usage or rate-limit refusal the last call met.
     refusal: RefCell<Option<Refusal>>,
+    /// The capacity book's directory, which picks each call's login
+    /// (#12211).
+    book: std::path::PathBuf,
 }
 impl Generate for Claude<'_> {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
+        let now = task::autostart::unix_now();
+        if let Some(pick) =
+            crate::capacity::Book::load(&self.book).pick(crate::capacity::Provider::Claude, now)
+        {
+            self.inner.use_login(pick.chosen());
+        }
         let sequence = match self.host.effect(
             "claude_request",
             json!({"binary":self.inner.binary,"args":self.inner.args(system),"model":self.inner.model,
@@ -221,7 +230,9 @@ impl Generate for Claude<'_> {
             .inner
             .invoke_streaming(system, prompt, &mut |text| self.replies.feed(text))
             .await;
-        *self.refusal.borrow_mut() = invocation.refusal(task::autostart::unix_now());
+        *self.refusal.borrow_mut() = invocation
+            .refusal(task::autostart::unix_now())
+            .map(|refusal| refusal.on_login(self.inner.login()));
         let observation = json!({"status":invocation.status,"stdout":invocation.stdout,"stderr":invocation.stderr,
             "stream_events":invocation.stream_events,
             "model":invocation.generated.model,"usd":invocation.generated.usd,"billing":"provider-reported-list-price"});
@@ -328,6 +339,7 @@ pub(super) async fn run_stage<T: codex_transport::Transport>(
                         generator.with_images(images.to_vec())
                     },
                     refusal: RefCell::new(None),
+                    book: book.to_path_buf(),
                 }),
             };
             (route, lane)

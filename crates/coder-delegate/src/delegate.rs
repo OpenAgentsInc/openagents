@@ -1721,6 +1721,40 @@ pub fn classify(ending: &supervise::Ending, summary: &Summary, stderr: &str) -> 
     }
 }
 
+/// A named Claude login a delegated Claude Code session runs on (#12211):
+/// the login's name and its subscription token, which the session gets as
+/// `CLAUDE_CODE_OAUTH_TOKEN` alone, with `OA_CLAUDE_LOGIN` naming it. Its
+/// `Debug` shows the name only.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ClaudeLogin {
+    pub name: String,
+    token: String,
+}
+
+impl ClaudeLogin {
+    #[must_use]
+    pub fn new(name: String, token: String) -> Self {
+        ClaudeLogin { name, token }
+    }
+
+    /// The variables the session gets: the token and the login's name.
+    #[must_use]
+    pub fn vars(&self) -> Vec<(String, String)> {
+        vec![
+            ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), self.token.clone()),
+            ("OA_CLAUDE_LOGIN".to_owned(), self.name.clone()),
+        ]
+    }
+}
+
+impl std::fmt::Debug for ClaudeLogin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClaudeLogin")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Where the delegate's credential comes from, by name only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Credential {

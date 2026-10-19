@@ -310,11 +310,13 @@ impl Lane for Provided {
 
 /// The generator for one connected provider, or why it can't be built.
 /// Building one makes no model call. `cloud` is the door the cloud lane
-/// uses in place of the OpenAgents relay, for a test.
+/// uses in place of the OpenAgents relay, for a test. A Claude lane picks
+/// each step's login from the capacity book in `book` (#12211).
 fn provided(
     state: &ProviderState,
     session: &str,
     cloud: Option<&std::sync::Arc<crate::generate::Door>>,
+    book: &std::path::Path,
 ) -> Result<Provided, String> {
     match state.provider {
         Provider::Codex => {
@@ -331,7 +333,9 @@ fn provided(
             })))
         }
         Provider::Claude => microcoder_loop::claude::ClaudeGenerator::from_env(&state.model, None)
-            .map(|generator| Provided::Claude(ClaudeLane::new(generator))),
+            .map(|generator| {
+                Provided::Claude(ClaudeLane::new(generator).with_book(book.to_path_buf()))
+            }),
         Provider::Vertex => {
             let door = match cloud {
                 Some(door) => std::sync::Arc::clone(door),
@@ -568,7 +572,7 @@ pub async fn answer(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
                     .unwrap_or_default(),
                 refusal: RefCell::new(None),
             })),
-            None => provided(state, &session, turn.cloud.as_ref()),
+            None => provided(state, &session, turn.cloud.as_ref(), &turn.book),
         };
         match built {
             Ok(lane) => lanes.push((route, lane)),
@@ -743,7 +747,7 @@ pub async fn next_action(
         .iter()
         .filter(|state| state.connection.is_connected())
         .filter_map(|state| {
-            let lane = provided(state, &session, None).ok()?;
+            let lane = provided(state, &session, None, book).ok()?;
             Some((
                 Route {
                     provider: state.provider,
@@ -817,6 +821,7 @@ fn flow_request(turn: &Turn) -> terminal::Request {
         model: None,
         binary: None,
         credential: coder_delegate::delegate::Credential::Missing,
+        claude_login: None,
         jev: turn.jev.clone(),
         artifacts: std::env::temp_dir(),
         issues: turn.issues,

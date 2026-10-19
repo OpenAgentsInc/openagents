@@ -4,15 +4,18 @@
 #
 # Claude Code runs it as hooks (.claude/settings.json):
 #   pre    PreToolUse on Agent|Workflow: refuses a new agent or workflow when
-#          the capacity book says claude is out (`openagents capacity check
-#          claude`), when a usage limit parked agents and nobody resumed, or
-#          when OA_AGENT_MAX agents are already running (no cap unless
-#          OA_AGENT_MAX is set; owner, 2026-10-12).
+#          the capacity book says every Claude login is out (`openagents
+#          capacity check claude`; one login out is not enough when the book
+#          holds others, #12211), when a usage limit parked agents and nobody
+#          resumed, or when OA_AGENT_MAX agents are already running (no cap
+#          unless OA_AGENT_MAX is set; owner, 2026-10-12).
 #   start  SubagentStart: counts a running agent.
 #   stop   SubagentStop: uncounts it.
 #   limit  StopFailure / PostToolUseFailure: when the failure is a usage
-#          limit, records it in the capacity book and parks new agents until
-#          a person runs `agent-gate.sh resume` (a limit is a stop, not a nap).
+#          limit, records it in the capacity book against this session's
+#          login (OA_CLAUDE_LOGIN, else the signed-in one) and, once every
+#          login is out, parks new agents until a person runs
+#          `agent-gate.sh resume` (a limit is a stop, not a nap).
 # By hand:
 #   status   what the gate sees now
 #   resume   clear the park after a limit (the capacity book still applies)
@@ -52,7 +55,7 @@ case "$mode" in
       deny "A Claude usage limit stopped agents here ($(cat "$DIR/parked")). New agents wait until a person runs scripts/dev/agent-gate.sh resume."
     fi
     if [ -x "$OPENAGENTS" ] && ! out=$("$OPENAGENTS" capacity check claude 2>&1); then
-      deny "The shared Claude login is out of capacity: ${out:-a recorded limit holds}. No new agents until it resets."
+      deny "Every Claude login is out of capacity: ${out:-a recorded limit holds}. No new agents until one resets."
     fi
     n=$(active_count)
     if [ "$MAX" -gt 0 ] && [ "$n" -ge "$MAX" ]; then
@@ -75,9 +78,13 @@ case "$mode" in
     text=$(printf '%s' "$payload" | jq -r '[.error, .error_message, .message, .reason, (.tool_response|tostring?)] | map(select(. != null)) | join(" ")' 2>/dev/null)
     if printf '%s' "$text" | grep -qiE "hit your (session|usage|weekly) limit|usage limit|rate_limit"; then
       reset=$(printf '%s' "$text" | grep -oiE "resets [0-9:apm]+ ?(\([^)]*\))?" | head -1)
+      login=()
+      [ -n "${OA_CLAUDE_LOGIN:-}" ] && login=(--login "$OA_CLAUDE_LOGIN")
       if [ -x "$OPENAGENTS" ]; then
-        if [ -n "$reset" ]; then "$OPENAGENTS" capacity record claude --reset "$reset" >/dev/null 2>&1
-        else "$OPENAGENTS" capacity record claude >/dev/null 2>&1; fi
+        if [ -n "$reset" ]; then "$OPENAGENTS" capacity record claude ${login[@]+"${login[@]}"} --reset "$reset" >/dev/null 2>&1
+        else "$OPENAGENTS" capacity record claude ${login[@]+"${login[@]}"} >/dev/null 2>&1; fi
+        # Another login with capacity keeps new agents going (#12211).
+        "$OPENAGENTS" capacity check claude >/dev/null 2>&1 && exit 0
       fi
       printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%MZ)" "${reset:-usage limit}" >"$DIR/parked"
       rm -f "$DIR/active/"* 2>/dev/null
@@ -92,6 +99,7 @@ case "$mode" in
     echo "running agents: $(active_count) of $MAX"
     [ -f "$DIR/parked" ] && echo "parked: $(cat "$DIR/parked") (resume: scripts/dev/agent-gate.sh resume)"
     [ -x "$OPENAGENTS" ] && "$OPENAGENTS" capacity check claude 2>&1 | sed 's/^/capacity: /'
+    [ -x "$OPENAGENTS" ] && "$OPENAGENTS" capacity logins 2>&1 | sed 's/^/logins: /'
     ;;
   *)
     echo "usage: agent-gate.sh pre|start|stop|limit|status|resume" >&2

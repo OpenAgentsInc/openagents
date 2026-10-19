@@ -150,6 +150,9 @@ pub struct ClaudeGenerator {
     /// Who reads every line the binary prints as it arrives, when someone
     /// does ([`ClaudeGenerator::watch`]).
     watcher: std::sync::Mutex<Option<Watcher>>,
+    /// The named login calls run on ([`ClaudeGenerator::use_login`]), or
+    /// `None` for the signed-in login.
+    login: std::sync::Mutex<Option<crate::logins::Chosen>>,
 }
 
 /// A reader of every JSON line a call prints, as it arrives: the
@@ -186,7 +189,32 @@ impl ClaudeGenerator {
             sent: std::sync::Mutex::new(None),
             mark: std::sync::atomic::AtomicBool::new(true),
             watcher: std::sync::Mutex::new(None),
+            login: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Runs later calls on the named login `login`, or on the signed-in
+    /// login for `None` (#12211). A process started ahead on another login
+    /// is dropped.
+    pub fn use_login(&self, login: Option<crate::logins::Chosen>) {
+        let Ok(mut slot) = self.login.lock() else {
+            return;
+        };
+        if *slot != login {
+            *slot = login;
+            if let Ok(mut warm) = self.warm.lock() {
+                *warm = None;
+            }
+        }
+    }
+
+    /// The named login later calls run on, if one.
+    #[must_use]
+    pub fn login(&self) -> Option<String> {
+        self.login
+            .lock()
+            .ok()
+            .and_then(|slot| slot.as_ref().map(|chosen| chosen.name.clone()))
     }
 
     /// Hands `watcher` every JSON line later calls print, as it arrives,
@@ -806,11 +834,20 @@ impl ClaudeGenerator {
             // An npm `claude.cmd` runs as Node and its script, never
             // through `cmd.exe`, which refuses multi-line arguments
             // (#11645).
-            let started = acp_client::process::command_async(&self.binary)
+            let mut command = acp_client::process::command_async(&self.binary);
+            command
                 .args(self.args(system))
                 .current_dir(std::env::temp_dir())
                 .env(NO_CONNECTORS.0, NO_CONNECTORS.1)
-                .env(PROMPT_CACHE_TTL.0, PROMPT_CACHE_TTL.1)
+                .env(PROMPT_CACHE_TTL.0, PROMPT_CACHE_TTL.1);
+            if let Some(login) = self.login.lock().ok().and_then(|slot| slot.clone()) {
+                // The login's token alone: an API key would take precedence.
+                command.envs(login.vars());
+                for name in crate::logins::API_KEY_VARS {
+                    command.env_remove(name);
+                }
+            }
+            let started = command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -1232,6 +1269,54 @@ mod tests {
         std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::fs::rename(&partial, &binary).unwrap();
         binary
+    }
+
+    /// #12211: a lane with named logins runs a step on the signed-in
+    /// login, and on a usage limit records it against that login and runs
+    /// the step again on the next login with capacity, with that login's
+    /// token alone.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_lane_moves_a_refused_step_to_the_next_login() {
+        use crate::capacity::{self, Provider};
+        let dir = tempfile::tempdir().unwrap();
+        let binary = stand_in(
+            dir.path(),
+            r#"cat > /dev/null
+if [ "$OA_CLAUDE_LOGIN" != "spare" ]; then
+printf '%s\n' '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":4102444800,"rateLimitType":"seven_day"}}'
+printf '%s\n' '{"type":"result","is_error":true,"result":"You have hit your weekly limit","total_cost_usd":0}'
+exit 1
+fi
+printf '{"type":"result","is_error":false,"result":"","structured_output":{"rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true,"reply":"%s %s"},"total_cost_usd":0.001}\n' "$OA_CLAUDE_LOGIN" "${#CLAUDE_CODE_OAUTH_TOKEN}"
+"#,
+        );
+        let store = dir.path().join("tasks");
+        let tokens = dir.path().join("claude-logins");
+        let token = crate::logins::Token::find("sk-ant-oat01-fixture-token-0123456789").unwrap();
+        for name in ["alt", "spare"] {
+            let file = crate::logins::save_token(&tokens, name, &token).unwrap();
+            capacity::add_login(&store, Provider::Claude, name, &file, 1).unwrap();
+        }
+        let lane =
+            crate::failover::ClaudeLane::new(ClaudeGenerator::new("haiku".into(), None, binary))
+                .with_book(store.clone());
+        let generated = lane.generate("SYS", "hello").await;
+        let action = generated.action.expect("the spare login answers");
+        assert_eq!(action.reply, format!("spare {}", token.expose().len()));
+        assert_eq!(crate::failover::Lane::refusal(&lane), None);
+        let book = capacity::Book::load(&store);
+        let now = crate::failover::unix_now();
+        assert!(book.blocking_login(Provider::Claude, None, now).is_some());
+        assert!(
+            book.blocking_login(Provider::Claude, Some("alt"), now)
+                .is_some()
+        );
+        assert_eq!(
+            book.pick(Provider::Claude, now).unwrap().name(),
+            Some("spare")
+        );
+        assert!(book.has_capacity(Provider::Claude, now));
     }
 
     /// #11593: "Text file busy" is told apart from other start failures.

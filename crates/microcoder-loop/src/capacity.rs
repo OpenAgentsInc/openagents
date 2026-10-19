@@ -301,6 +301,11 @@ pub struct Refusal {
     /// once a different login is signed in (#10105).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
+    /// The named login that was refused ([`crate::logins`], #12211), or
+    /// `None` for the provider's signed-in login. A named login's refusal
+    /// holds for that login only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub login: Option<String>,
 }
 
 impl Refusal {
@@ -320,7 +325,16 @@ impl Refusal {
             plan: None,
             window_minutes: None,
             account: None,
+            login: None,
         }
+    }
+
+    /// This refusal, observed on the named login `login` (`None` for the
+    /// signed-in login).
+    #[must_use]
+    pub fn on_login(mut self, login: Option<String>) -> Refusal {
+        self.login = login;
+        self
     }
 
     /// The refusal a delegation's error text carries after
@@ -417,7 +431,8 @@ impl Refusal {
     /// several are). Otherwise the refusal is unchanged.
     #[must_use]
     pub fn with_probed_reset(mut self, book: &crate::usage::Book) -> Refusal {
-        if self.resets_at.is_some() {
+        // A probe reads the signed-in login's windows, not a named login's.
+        if self.resets_at.is_some() || self.login.is_some() {
             return self;
         }
         let Some(reset) = book
@@ -633,12 +648,18 @@ fn duration_seconds(text: &str) -> Option<u64> {
     Some(whole + u64::from(partial))
 }
 
-/// Every recorded refusal, at most one per provider.
+/// Every recorded refusal, at most one per provider and login, and the
+/// named logins a provider can rotate through.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Book {
     pub schema: String,
     pub refusals: Vec<Refusal>,
+    /// Named logins (#12211), in the order they were added. A provider
+    /// with named logins has capacity while its signed-in login or any
+    /// named one does. Only Claude has them today.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub logins: Vec<Login>,
 }
 
 impl Default for Book {
@@ -646,7 +667,54 @@ impl Default for Book {
         Book {
             schema: SCHEMA.into(),
             refusals: Vec::new(),
+            logins: Vec::new(),
         }
+    }
+}
+
+/// A named login: its provider, its name, and where its token is kept.
+/// The book never holds the token itself ([`crate::logins`]).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Login {
+    pub provider: Provider,
+    pub name: String,
+    /// The `0600` file the token is saved in.
+    pub token_file: PathBuf,
+    /// When it was added, in Unix seconds.
+    pub added_at: u64,
+}
+
+/// Which login a new turn should run on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pick<'a> {
+    /// The provider's signed-in login.
+    SignedIn,
+    /// A named login.
+    Named(&'a Login),
+}
+
+impl Pick<'_> {
+    /// The login's name, or `None` for the signed-in login.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Pick::SignedIn => None,
+            Pick::Named(login) => Some(&login.name),
+        }
+    }
+
+    /// The named login with its token, ready to launch on; `None` for the
+    /// signed-in login or a token that can't be read.
+    #[must_use]
+    pub fn chosen(&self) -> Option<crate::logins::Chosen> {
+        let Pick::Named(login) = self else {
+            return None;
+        };
+        Some(crate::logins::Chosen {
+            name: login.name.clone(),
+            token: crate::logins::read_token(&login.token_file)?,
+        })
     }
 }
 
@@ -669,10 +737,11 @@ impl Book {
             .filter(|book| book.schema == SCHEMA)
             .unwrap_or_default();
         book.refusals.retain(|refusal| {
-            crate::account::applies(
-                refusal.account.as_deref(),
-                crate::account::current_read_only(dir, refusal.provider, identify).as_deref(),
-            )
+            refusal.login.is_some()
+                || crate::account::applies(
+                    refusal.account.as_deref(),
+                    crate::account::current_read_only(dir, refusal.provider, identify).as_deref(),
+                )
         });
         book.lifted_by(&crate::usage::Book::load_with(dir, identify))
     }
@@ -684,16 +753,61 @@ impl Book {
     /// with the engine readings (#10073).
     #[must_use]
     pub fn lifted_by(mut self, usage: &crate::usage::Book) -> Book {
-        self.refusals.retain(|refusal| !usage.lifts(refusal));
+        // A probe reads the signed-in login, so it lifts only its refusals.
+        self.refusals
+            .retain(|refusal| refusal.login.is_some() || !usage.lifts(refusal));
         self
     }
 
-    /// The refusal that keeps `provider` from work at `now`, if one holds.
+    /// The named logins of `provider`, in the order they were added.
+    pub fn logins_of(&self, provider: Provider) -> impl Iterator<Item = &Login> {
+        self.logins
+            .iter()
+            .filter(move |login| login.provider == provider)
+    }
+
+    /// The refusal that keeps one login of `provider` from work at `now`:
+    /// the signed-in login for `None`, else the named one.
+    #[must_use]
+    pub fn blocking_login(
+        &self,
+        provider: Provider,
+        login: Option<&str>,
+        now: u64,
+    ) -> Option<&Refusal> {
+        self.refusals.iter().find(|refusal| {
+            refusal.provider == provider && refusal.login.as_deref() == login && refusal.holds(now)
+        })
+    }
+
+    /// The login of `provider` a new turn should run on at `now`: the
+    /// signed-in login while it has capacity, else the first named login
+    /// that has. `None` when every login is out.
+    #[must_use]
+    pub fn pick(&self, provider: Provider, now: u64) -> Option<Pick<'_>> {
+        if self.blocking_login(provider, None, now).is_none() {
+            return Some(Pick::SignedIn);
+        }
+        self.logins_of(provider)
+            .find(|login| {
+                self.blocking_login(provider, Some(&login.name), now)
+                    .is_none()
+            })
+            .map(Pick::Named)
+    }
+
+    /// The refusal that keeps `provider` from work at `now`, if one holds:
+    /// with named logins, only when every login is out, and then the one
+    /// that resets first.
     #[must_use]
     pub fn blocking(&self, provider: Provider, now: u64) -> Option<&Refusal> {
-        self.refusals
-            .iter()
-            .find(|refusal| refusal.provider == provider && refusal.holds(now))
+        let signed_in = self.blocking_login(provider, None, now)?;
+        self.logins_of(provider)
+            .map(|login| self.blocking_login(provider, Some(&login.name), now))
+            .collect::<Option<Vec<&Refusal>>>()?
+            .into_iter()
+            .chain([signed_in])
+            .min_by_key(|refusal| refusal.until)
     }
 
     /// Whether `provider` has capacity at `now` as far as the book knows.
@@ -714,8 +828,9 @@ impl Book {
     }
 
     fn merge(&mut self, refusal: Refusal, now: u64) {
-        self.refusals
-            .retain(|kept| kept.provider != refusal.provider && kept.holds(now));
+        self.refusals.retain(|kept| {
+            (kept.provider != refusal.provider || kept.login != refusal.login) && kept.holds(now)
+        });
         self.refusals.push(refusal);
         self.refusals.sort_by_key(|refusal| refusal.provider);
     }
@@ -743,11 +858,76 @@ pub fn record_with(
     identify: crate::account::Identify,
 ) -> Result<Book, String> {
     let now = refusal.observed_at;
-    let path = dir.join(FILE);
-    let mut file = open_private(dir, &path)?;
-    if refusal.account.is_none() {
+    if refusal.account.is_none() && refusal.login.is_none() {
         refusal.account = crate::account::current(dir, refusal.provider, identify);
     }
+    update(dir, |book| {
+        book.merge(refusal, now);
+        Ok(())
+    })
+}
+
+/// Adds the named login `name` of `provider`, whose token is saved in
+/// `token_file`, to the book in `dir`, replacing an earlier login of that
+/// name and any refusal it had.
+///
+/// # Errors
+/// Reports a bad name or a failed read or write.
+pub fn add_login(
+    dir: &Path,
+    provider: Provider,
+    name: &str,
+    token_file: &Path,
+    now: u64,
+) -> Result<Book, String> {
+    crate::logins::check_name(name)?;
+    update(dir, |book| {
+        book.logins
+            .retain(|login| login.provider != provider || login.name != name);
+        book.refusals.retain(|refusal| {
+            refusal.provider != provider || refusal.login.as_deref() != Some(name)
+        });
+        book.logins.push(Login {
+            provider,
+            name: name.to_owned(),
+            token_file: token_file.to_path_buf(),
+            added_at: now,
+        });
+        Ok(())
+    })
+}
+
+/// Removes the named login `name` of `provider` from the book in `dir`,
+/// with its refusals. Returns the removed login, so its token file can go
+/// too.
+///
+/// # Errors
+/// Reports an unknown login or a failed read or write.
+pub fn remove_login(dir: &Path, provider: Provider, name: &str) -> Result<Login, String> {
+    let mut removed = None;
+    update(dir, |book| {
+        let at = book
+            .logins
+            .iter()
+            .position(|login| login.provider == provider && login.name == name)
+            .ok_or_else(|| format!("there is no {provider} login named `{name}`"))?;
+        removed = Some(book.logins.remove(at));
+        book.refusals.retain(|refusal| {
+            refusal.provider != provider || refusal.login.as_deref() != Some(name)
+        });
+        Ok(())
+    })?;
+    removed.ok_or_else(|| format!("there is no {provider} login named `{name}`"))
+}
+
+/// Reads the book in `dir` under an exclusive lock, applies `change`, and
+/// writes it back (`0600`).
+fn update(
+    dir: &Path,
+    change: impl FnOnce(&mut Book) -> Result<(), String>,
+) -> Result<Book, String> {
+    let path = dir.join(FILE);
+    let mut file = open_private(dir, &path)?;
     file.lock()
         .map_err(|_| format!("cannot lock {}", path.display()))?;
     let mut bytes = Vec::new();
@@ -757,7 +937,7 @@ pub fn record_with(
         .ok()
         .filter(|book| book.schema == SCHEMA)
         .unwrap_or_default();
-    book.merge(refusal, now);
+    change(&mut book)?;
     let bytes = serde_json::to_vec_pretty(&book).map_err(|e| e.to_string())?;
     file.set_len(0)
         .and_then(|()| file.rewind())
@@ -1104,6 +1284,109 @@ mod tests {
         )
         .unwrap();
         assert!(!Book::load_with(dir.path(), login_b).has_capacity(Provider::Codex, now + 60));
+    }
+
+    /// The owner on 2026-10-19 (#12211): the weekly Claude limit ran out
+    /// and every Claude chat stopped. With named logins, a refusal holds
+    /// only the login it was observed on; Claude is out only when every
+    /// login is, and a new turn picks the next login with capacity.
+    #[test]
+    fn named_logins_rotate_and_claude_is_out_only_when_every_login_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_792_000_000;
+        let tokens = dir.path().join("claude-logins");
+        let token = crate::logins::Token::find("sk-ant-oat01-fixture-token-0123456789").unwrap();
+        for name in ["alt", "spare"] {
+            let file = crate::logins::save_token(&tokens, name, &token).unwrap();
+            add_login(dir.path(), Provider::Claude, name, &file, now).unwrap();
+        }
+        let book = Book::load_with(dir.path(), login_a);
+        assert_eq!(book.pick(Provider::Claude, now), Some(Pick::SignedIn));
+        // The signed-in login runs out: Claude still has capacity, on alt.
+        let weekly =
+            |at: u64| Refusal::new(Provider::Claude, Kind::UsageLimit, at, Some(at + 86_400));
+        record_with(dir.path(), weekly(now), login_a).unwrap();
+        let book = Book::load_with(dir.path(), login_a);
+        assert!(book.has_capacity(Provider::Claude, now + 60));
+        let pick = book.pick(Provider::Claude, now + 60).unwrap();
+        assert_eq!(pick.name(), Some("alt"));
+        assert_eq!(pick.chosen().unwrap().token, token);
+        // alt runs out an hour later; spare is next.
+        record_with(
+            dir.path(),
+            weekly(now + 3_600).on_login(Some("alt".into())),
+            login_a,
+        )
+        .unwrap();
+        let book = Book::load_with(dir.path(), login_a);
+        assert_eq!(
+            book.pick(Provider::Claude, now + 3_660).unwrap().name(),
+            Some("spare")
+        );
+        // A named login's refusal keeps no account fingerprint and outlives
+        // a change of the signed-in account.
+        let alt = book
+            .blocking_login(Provider::Claude, Some("alt"), now + 3_660)
+            .unwrap();
+        assert_eq!(alt.account, None);
+        assert!(
+            Book::load_with(dir.path(), login_b)
+                .blocking_login(Provider::Claude, Some("alt"), now + 3_660)
+                .is_some()
+        );
+        // Every login out: blocked until the first one resets.
+        record_with(
+            dir.path(),
+            weekly(now + 7_200).on_login(Some("spare".into())),
+            login_a,
+        )
+        .unwrap();
+        let book = Book::load_with(dir.path(), login_a);
+        assert_eq!(book.pick(Provider::Claude, now + 7_260), None);
+        assert_eq!(
+            book.blocking(Provider::Claude, now + 7_260).unwrap().until,
+            now + 86_400
+        );
+        assert_eq!(
+            book.earliest_reset(&[Provider::Claude], now + 7_260),
+            Some(now + 86_400)
+        );
+        // The book names the token's file, never the token.
+        let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        assert!(!text.contains("fixture-token"));
+        assert!(text.contains("claude-logins"));
+        // Removing a login takes its refusals with it.
+        let removed = remove_login(dir.path(), Provider::Claude, "spare").unwrap();
+        assert_eq!(removed.name, "spare");
+        assert!(remove_login(dir.path(), Provider::Claude, "spare").is_err());
+        let book = Book::load_with(dir.path(), login_a);
+        assert!(
+            book.refusals
+                .iter()
+                .all(|r| r.login.as_deref() != Some("spare"))
+        );
+        assert!(add_login(dir.path(), Provider::Claude, "default", &tokens, now).is_err());
+    }
+
+    /// A book written before named logins reads the same, and one without
+    /// logins is written without the new fields.
+    #[test]
+    fn a_single_login_book_reads_and_writes_as_before() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = r#"{"schema":"openagents.coder.provider-capacity.v1","refusals":[{"provider":"claude","kind":"usage_limit","observed_at":100,"resets_at":900,"until":900}]}"#;
+        std::fs::write(dir.path().join(FILE), old).unwrap();
+        let book = Book::load_with(dir.path(), no_login);
+        assert!(!book.has_capacity(Provider::Claude, 200));
+        assert_eq!(book.pick(Provider::Claude, 200), None);
+        record_with(
+            dir.path(),
+            Refusal::new(Provider::Codex, Kind::UsageLimit, 200, Some(800)),
+            no_login,
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        assert!(!text.contains("logins") && !text.contains("\"login\""));
+        assert_eq!(Book::load_with(dir.path(), no_login).refusals.len(), 2);
     }
 
     const BODY: &str = r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1791050823,"eligible_promo":null,"limit_window_minutes":10080,"resets_in_seconds":478613}}"#;

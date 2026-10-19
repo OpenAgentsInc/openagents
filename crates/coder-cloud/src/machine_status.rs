@@ -377,6 +377,7 @@ mod tests {
                 100,
                 Some(200),
             )],
+            logins: Vec::new(),
         };
         std::fs::write(dir.path().join(FILE), serde_json::to_vec(&book).unwrap()).unwrap();
         let rows = capacity_at(dir.path(), 150, |_| None);
