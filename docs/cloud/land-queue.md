@@ -67,8 +67,9 @@ a worktree of its own (`~/.openagents/land-queue/plan`):
   that a package's sources name counts as that package's change, and its
   tests run too.
 - **Code slots.** One per eight cores, two to four (`--slots N` or
-  `OPENAGENTS_LAND_SLOTS`; `oa-dev-env-1` sets 3 in
-  `~/.openagents/dev-env.env`), each with its own worktree (`work-code-1`,
+  `OPENAGENTS_LAND_SLOTS`; `oa-dev-env-1` sets 3 in the systemd drop-in
+  `oa-land-worker.service.d/slots.conf`, since `dev-env-session.sh` rewrites
+  `~/.openagents/dev-env.env` at each start), each with its own worktree (`work-code-1`,
   `work-code-2`, ...) and its own build slot of the task store (its own
   `CARGO_TARGET_DIR`), sharing the build cache through
   `~/.cargo/config.toml`'s wrapper.
