@@ -1358,7 +1358,7 @@ impl SessionsEngine {
                     // Last resort: the journal's own cwd (openagents's draft config)
                     // — a crash can predate the debounced workspace-row write.
                     .or_else(|| {
-                        let (_, cwd) = sessions.inner.journal_harness_session(&chat_id)?;
+                        let (_, cwd, _) = sessions.inner.journal_session_scan(&chat_id)?;
                         Some(RunRequest {
                             mcp: None,
                             prompt: String::new(),
