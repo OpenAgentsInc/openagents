@@ -34,6 +34,12 @@
 !/scripts/dev/
 /scripts/dev/*
 !/scripts/dev/cargo-build-env.sh
+# The dependency skeleton and the cached build (#12177).
+!/scripts/deploy/
+/scripts/deploy/*
+!/scripts/deploy/cargo-skeleton.sh
+!/scripts/deploy/cloud-buildx.sh
+!/scripts/deploy/oa-kache.sh
 !/programs/
 !/questions/
 !/plugins/

@@ -106,7 +106,9 @@ def revision():
 # The Dockerfile copies these exported source trees. Include the shared host
 # client's dependencies as well as the server and app sync clients.
 # questions/: jev embeds its decision questions (crates/jev include_str!).
-BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "nips/openagents/schemas", "questions", "deploy/coder-sync", "apps/openagents/Cargo.toml", "support/workspace-hack"] + [
+# scripts/deploy/: the dependency skeleton and the cached build (#12177).
+BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "nips/openagents/schemas", "questions", "deploy/coder-sync", "apps/openagents/Cargo.toml", "support/workspace-hack",
+               "scripts/deploy/cargo-skeleton.sh", "scripts/deploy/cloud-buildx.sh", "scripts/deploy/oa-kache.sh"] + [
     f"crates/{name}" for name in (
         'agent-contract',
         'agent-lab',
@@ -160,11 +162,6 @@ def build():
     if published:
         print(f"Already published: {image}@{published}")
         return
-    versions = json.loads(g("artifacts", "docker", "images", "list", image, "--include-tags", "--format=json"))
-    builders = [v for v in versions if any(t == "builder" or t.startswith("builder-") for t in v.get("tags", []))]
-    cache = "rust:1.98.1-slim-trixie"
-    if builders:
-        cache = f"{image}@{max(builders, key=lambda v: v['createTime'])['version']}"
     scratch = os.environ.get("OPENAGENTS_SCRATCH") or subprocess.check_output(["openagents", "scratch"], text=True).strip()
     context = Path(tempfile.mkdtemp(prefix="coder-sync-build-", dir=scratch))
     try:
@@ -174,7 +171,7 @@ def build():
         if archive.wait():
             raise RuntimeError("Could not export the committed build.")
         print(g("builds", "submit", str(context), "--config", str(context / "deploy/coder-sync/cloudbuild.yaml"),
-                f"--service-account={BUILD_ACCOUNT}", f"--substitutions=_TAG={commit},_CACHE_IMAGE={cache}", "--async", "--format=value(id)"))
+                f"--service-account={BUILD_ACCOUNT}", f"--substitutions=_TAG={commit}", "--async", "--format=value(id)"))
     finally:
         shutil.rmtree(context)
 

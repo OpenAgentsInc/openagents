@@ -60,27 +60,26 @@ steps:
         fi
   # BuildKit, so the independent stages (the native server and the
   # WebAssembly builds) run in parallel instead of one after another
-  # (docs/deployment/2026-10-09-faster-deploys.md).
+  # (docs/deployment/2026-10-09-faster-deploys.md), with the dependency
+  # layers kept in a registry cache between builds and the image pushed by
+  # buildx (scripts/deploy/cloud-buildx.sh, #12177).
   - name: gcr.io/cloud-builders/docker
-    env:
-      - DOCKER_BUILDKIT=1
+    entrypoint: bash
     args:
-      - build
-      - --progress=plain
+      - scripts/deploy/cloud-buildx.sh
+      - crates/openagents-web/Dockerfile
+      - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+      - openagents-web
       - --build-arg
       - OPENAGENTS_COMMIT=${_COMMIT}
-      - -f
-      - crates/openagents-web/Dockerfile
-      - -t
-      - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
-      - .
-images:
-  - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
 substitutions:
   _TAG: latest
   # The full commit the context was exported from (scripts/deploy/web.sh).
   _COMMIT: unknown
 options:
   machineType: E2_HIGHCPU_32
+  # The builder's layer store holds the dependency and build layers of
+  # three Rust stages at once.
+  diskSizeGb: 200
   logging: CLOUD_LOGGING_ONLY
 timeout: 3600s

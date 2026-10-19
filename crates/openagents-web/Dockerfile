@@ -1,13 +1,40 @@
 # The openagents.com website (crates/openagents-web). Built from the
 # repository root by crates/openagents-web/cloudbuild.yaml; the context is
 # what crates/openagents-web/web.gcloudignore lets through.
-FROM rust:1.97.1-slim-trixie AS builder
+#
+# Each Rust stage first builds its exact `cargo build` commands against the
+# dependency-only skeleton (scripts/deploy/cargo-skeleton.sh) in a `*-deps`
+# stage, so the compiled dependencies are an image layer keyed by the
+# manifests and Cargo.lock alone (#12177). cloudbuild.yaml keeps those
+# layers in a registry cache between builds; a source-only change pulls
+# them and compiles only the workspace's own crates. Keep each `*-deps`
+# command identical to the build it stands in for (packages, target,
+# profile, features, and environment), or the dependencies compile twice.
+# Every Cargo command also runs under the shared remote compile cache
+# (#12176) through scripts/deploy/oa-kache.sh, so a workspace crate whose
+# inputs didn't change is downloaded rather than compiled.
+
+# The skeleton, read from the context through a bind mount so the context
+# itself never becomes a layer.
+FROM rust:1.97.1-slim-trixie AS skeleton
+RUN --mount=type=bind,target=/context \
+    sh /context/scripts/deploy/cargo-skeleton.sh /context /skeleton
+
+FROM rust:1.97.1-slim-trixie AS builder-deps
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        --no-install-recommends build-essential pkg-config \
+        --no-install-recommends build-essential pkg-config curl \
     && rm -rf /var/lib/apt/lists/*
+COPY scripts/deploy/oa-kache.sh /usr/local/bin/oa-kache
+RUN oa-kache install
 WORKDIR /build
+COPY --from=skeleton /skeleton/ ./
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run \
+    cargo build --locked --release -p openagents-web --bin openagents-web --bin lab-cad-copy \
+        -p cad-lab --bin cad-lab
+
+FROM builder-deps AS builder
 COPY . .
 # The commit the image is built from, compiled in for /att/release.json and
 # /vault/release.json (option_env!("OPENAGENTS_COMMIT")); "unknown" when the
@@ -16,34 +43,66 @@ ARG OPENAGENTS_COMMIT=unknown
 ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
 # The CAD engine (crates/cad-lab) beside it: the site runs CAD Lab's tools
 # for signed-in people in a child process (crates/openagents-web/src/cad_web.rs,
-# #11653).
-RUN cargo build --locked --release -p openagents-web --bin openagents-web --bin lab-cad-copy \
+# #11653). Every source file is touched first, so no stand-in the deps
+# stage compiled can look newer than the real crate.
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
+    && oa-kache run cargo build --locked --release -p openagents-web --bin openagents-web --bin lab-cad-copy \
         -p cad-lab --bin cad-lab \
     && strip target/release/openagents-web target/release/cad-lab target/release/lab-cad-copy
 
-# The Everglade web build (#10524) that /everglade serves (#10525): the
-# wasm32 target, wasm-bindgen-cli at the wasm-bindgen version Cargo.lock
-# pins (the CLI refuses a module built by another version), then
-# scripts/build-everglade-web.sh, which writes the JS glue and the wasm into
-# the directory it's given. The pinned pack goes under pack/, and the
-# medieval kit pack, when cloudbuild.yaml's first step fetched it from the
-# private bucket into crates/openagents-web/kit/, under kit/.
-FROM rust:1.97.1-slim-trixie AS everglade
+# The WebAssembly toolchain both browser stages share: clang with the
+# WebAssembly target (secp256k1's C needs it), `llvm-ar`, `wasm-opt`
+# (binaryen), brotli, the wasm32 target, and wasm-bindgen-cli at the version
+# Cargo.lock pins (the CLI refuses a module built by another version).
+FROM rust:1.97.1-slim-trixie AS wasm-base
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        --no-install-recommends build-essential pkg-config clang llvm binaryen \
+        --no-install-recommends build-essential pkg-config clang llvm binaryen brotli curl \
     && rm -rf /var/lib/apt/lists/*
-# secp256k1's C needs a clang with the WebAssembly target, which Debian's
-# has; `llvm` supplies `llvm-ar` beside it and `binaryen` supplies `wasm-opt`.
+COPY scripts/deploy/oa-kache.sh /usr/local/bin/oa-kache
+RUN oa-kache install
 WORKDIR /build
 COPY Cargo.lock /build/Cargo.lock
 RUN rustup target add wasm32-unknown-unknown \
     && version="$(awk '$0 == "name = \"wasm-bindgen\"" { getline; gsub(/"/, "", $3); print $3; exit }' Cargo.lock)" \
     && test -n "$version" \
     && cargo install --locked wasm-bindgen-cli --version "$version"
+# The C compiler and archiver for wasm32, named for every build in both
+# stages. They are the ones the build scripts and the cc crate pick on their
+# own; naming them keeps the dependencies' build scripts from rerunning
+# between a script that sets them and a command that doesn't.
+ENV CC_wasm32_unknown_unknown=/usr/bin/clang \
+    AR_wasm32_unknown_unknown=/usr/bin/llvm-ar
+RUN test -x "$CC_wasm32_unknown_unknown" && test -x "$AR_wasm32_unknown_unknown"
+
+# The dependencies of every browser build in the everglade stage, one
+# command each.
+FROM wasm-base AS everglade-deps
+COPY --from=skeleton /skeleton/ ./
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run sh -c '\
+    w=wasm32-unknown-unknown \
+    && cargo build --release --locked --target $w -p everglade-web \
+    && cargo build --locked --release --target $w \
+        -p coder-components-web -p coder-cloud-web -p coder-browser-web \
+        -p coder-chat-web -p oa-vault-web \
+    && cargo build --release --locked --target $w -p bunny-web \
+    && cargo build --release --locked --target $w -p icecream-web \
+    && cargo build --locked -p robot-web --target $w --profile guest \
+    && cargo build --release --locked --target $w -p snap-web \
+    && cargo build --release --locked --target $w -p att-web \
+    && cargo build --locked --release --target $w -p sand-garden \
+    && cargo build --release --locked --target $w -p layertree-web'
+
+# The Everglade web build (#10524) that /everglade serves (#10525):
+# scripts/build-everglade-web.sh writes the JS glue and the wasm into the
+# directory it's given. The pinned pack goes under pack/, and the medieval
+# kit pack, when cloudbuild.yaml's first step fetched it from the private
+# bucket into crates/openagents-web/kit/, under kit/.
+FROM everglade-deps AS everglade
 COPY . .
-RUN scripts/build-everglade-web.sh /build/everglade \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
+    && oa-kache run scripts/build-everglade-web.sh /build/everglade \
     && test -f /build/everglade/everglade_web.js \
     && test -f /build/everglade/everglade_web_bg.wasm \
     && gzip -9 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
@@ -59,7 +118,7 @@ RUN scripts/build-everglade-web.sh /build/everglade \
 # Build the shared component catalog, the Cloud privacy adapter, and the
 # granted workbench terminal (both served from /cloud/assets/ out of the
 # --cloud-build directory) directly in this isolated stage. The local build scripts use the machine's build lease.
-RUN cargo build --locked --release --target wasm32-unknown-unknown \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run cargo build --locked --release --target wasm32-unknown-unknown \
         -p coder-components-web -p coder-cloud-web -p coder-browser-web \
         -p coder-chat-web -p oa-vault-web \
     && mkdir -p /build/components /build/cloud /build/chat \
@@ -86,7 +145,7 @@ RUN cargo build --locked --release --target wasm32-unknown-unknown \
 
 # Grow Little Bunny, which /games/grow-little-bunny serves: the glue, the
 # module, the start script, and gzip copies of each.
-RUN scripts/build-bunny-web.sh /build/bunny \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-bunny-web.sh /build/bunny \
     && test -s /build/bunny/bunny_web.js \
     && test -s /build/bunny/bunny_web_bg.wasm \
     && test -s /build/bunny/start.js
@@ -94,19 +153,19 @@ RUN scripts/build-bunny-web.sh /build/bunny \
 # The Ice Cream Man, which /games/the-ice-cream-man serves the same way. The
 # site finds it at /srv/icecream without a flag (production's arguments are
 # copied from the live revision).
-RUN scripts/build-icecream-web.sh /build/icecream \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-icecream-web.sh /build/icecream \
     && test -s /build/icecream/icecream_web.js \
     && test -s /build/icecream/icecream_web_bg.wasm \
     && test -s /build/icecream/start.js
 
 # Robot Lab's Rust player for account-scoped CAD imports.
-RUN CARGO_TARGET_DIR=/build/target scripts/build-robot-web.sh /build/robot \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run env CARGO_TARGET_DIR=/build/target scripts/build-robot-web.sh /build/robot \
     && test -s /build/robot/robot_web.js \
     && test -s /build/robot/robot_web_bg.wasm
 
 # Snap Station, which /games/snap-station serves the same way, found at
 # /srv/snap without a flag.
-RUN scripts/build-snap-web.sh /build/snap \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-snap-web.sh /build/snap \
     && test -s /build/snap/snap_web.js \
     && test -s /build/snap/snap_web_bg.wasm \
     && test -s /build/snap/start.js \
@@ -114,17 +173,17 @@ RUN scripts/build-snap-web.sh /build/snap \
 
 # The sealed-inference demo, which /att serves (crates/att-web): the glue,
 # the module, the start script, the stylesheet, and gzip copies of each.
-RUN scripts/build-att-web.sh /build/att \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-att-web.sh /build/att \
     && test -s /build/att/att_web.js \
     && test -s /build/att/att_web_bg.wasm \
     && test -s /build/att/start.js \
     && test -s /build/att/att.css
 
-RUN scripts/build-sand-garden.sh /build/sand
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-sand-garden.sh /build/sand
 
 # The LayerTree demo (#11987), which /layertree serves the same way, found at
 # /srv/layertree without a flag.
-RUN scripts/build-layertree-web.sh /build/layertree \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-layertree-web.sh /build/layertree \
     && test -s /build/layertree/layertree_web.js \
     && test -s /build/layertree/layertree_web_bg.wasm \
     && test -s /build/layertree/start.js
@@ -132,25 +191,27 @@ RUN scripts/build-layertree-web.sh /build/layertree \
 # The CAD engine for the browser (crates/cad-wasm), which /cad loads
 # (#11649): its own stage, so it builds beside the others. wasm-opt
 # (binaryen) shrinks it; brotli and gzip copies ride beside each file.
-FROM rust:1.97.1-slim-trixie AS cadweb
+FROM wasm-base AS cadweb-deps
+COPY --from=skeleton /skeleton/ ./
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run \
+    cargo build --locked --profile cad-web --target wasm32-unknown-unknown -p cad-wasm
 
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        --no-install-recommends build-essential pkg-config clang llvm binaryen brotli \
-    && rm -rf /var/lib/apt/lists/*
-WORKDIR /build
-COPY Cargo.lock /build/Cargo.lock
-RUN rustup target add wasm32-unknown-unknown \
-    && version="$(awk '$0 == "name = \"wasm-bindgen\"" { getline; gsub(/"/, "", $3); print $3; exit }' Cargo.lock)" \
-    && test -n "$version" \
-    && cargo install --locked wasm-bindgen-cli --version "$version"
+FROM cadweb-deps AS cadweb
 COPY . .
-RUN scripts/build-cad-web.sh /build/cad \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
+    && oa-kache run scripts/build-cad-web.sh /build/cad \
     && test -s /build/cad/cad_wasm.js \
     && test -s /build/cad/cad_wasm_bg.wasm.br \
     && test -s /build/cad/worker.js \
     && test -s /build/cad/start.js \
     && test -s /build/cad/cad.css
+
+# Every dependency layer, and nothing else: cloudbuild.yaml builds this
+# target first and exports it to the registry cache.
+FROM scratch AS deps
+COPY --from=builder-deps /build/Cargo.lock /builder-deps.lock
+COPY --from=everglade-deps /build/Cargo.lock /everglade-deps.lock
+COPY --from=cadweb-deps /build/Cargo.lock /cadweb-deps.lock
 
 FROM debian:13-slim
 

@@ -138,7 +138,10 @@ helper.
 and also when the key file the config names is missing. A build outside the
 helper uses whatever kache's config file says.
 
-To use the remote from a Docker build (Cloud Build), in the builder stage:
+The deploy images do this through `scripts/deploy/oa-kache.sh`, which also
+runs `kache sync --push` before stopping the daemon: the daemon's drain on
+stop lasts only about 30 s, which loses most uploads of a large build. To use
+the remote from another Docker build (Cloud Build), in the builder stage:
 install kache 0.28.1 from its release tarball with the SHA-256 the setup
 script pins, write the `[cache.remote]` block to `/root/.config/kache/config.toml`,
 set `RUSTC_WRAPPER=/usr/local/bin/kache`, and end the `RUN` that builds with
@@ -160,7 +163,7 @@ workspace crates hit too.
 | `scripts/install-coder.sh` release builds | Machine's setting | Plain `cargo build --release`: uses the remote where kache's config has one. On the Mac it's local. |
 | iOS core (`apps/openagents/scripts/ios/build-core.sh`) | No: local kache | Runs Cargo with a clean environment but the same Cargo configuration. |
 | Android core (`apps/openagents/scripts/android/build-core.sh`) | No: local kache | Sources the helper. |
-| coder-sync deploy (`scripts/coder-sync/deploy.py`) and the web and stack Cloud Builds (#12177) | Ready | Release builds in Docker on Cloud Build: the case the remote helps. The Cloud Build accounts can write the bucket; the Dockerfile change belongs to #12177 (recipe above). |
+| coder-sync deploy (`scripts/coder-sync/deploy.py`) and the web and stack Cloud Builds (#12177) | Yes | `scripts/deploy/oa-kache.sh` in each Rust stage of the three Dockerfiles, with the build account's credentials from the metadata server. No-change rebuilds: web 573 s, stack 142 to 195 s, coder-sync 80 s ([numbers](../../deployment/2026-10-09-faster-deploys.md)). |
 
 ## Measurements
 

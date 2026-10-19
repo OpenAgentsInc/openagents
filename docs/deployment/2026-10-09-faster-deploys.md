@@ -227,6 +227,27 @@ next saving there is exporting only what `web.gcloudignore` lets through,
 or the persistent builder below. The `actAs` refusal still holds: the
 script retries production writes as `chris@`.
 
+**Done 2026-10-19** (#12177): the web, stack, and coder-sync images build
+with BuildKit through `scripts/deploy/cloud-buildx.sh`. Each Rust stage first
+builds its exact Cargo commands against a dependency-only skeleton
+(`scripts/deploy/cargo-skeleton.sh`), and those layers persist between Cloud
+Build machines in a registry cache (`build-cache/IMAGE:deps` in Artifact
+Registry, mutable tags, untagged layers expire after 7 days). Every Cargo
+command also runs under the shared kache cache in GCS
+(`scripts/deploy/oa-kache.sh`, #12176), so unchanged workspace crates are
+downloaded. Cloud Build time, upload and queue excluded:
+
+| Image | Before | Cold (both caches empty) | No change | One-line source change |
+| --- | ---: | ---: | ---: | ---: |
+| `openagents-web` | 858 to 1,288 s | 2,212 s | 573 s | 499 s |
+| `openagents-stack` | 379 to 551 s | 743 s | 142 to 195 s | 251 s |
+| `coder-sync` | 364 to 475 s | 354 s | 80 s | 79 s |
+
+A cold build is slower than before because kache uploads every crate it
+compiles; it happens once per lock file change. The web build's critical
+path is now the native `openagents-web` crate (about 220 s), which still
+misses kache from one build to the next.
+
 ### Next (one to two weeks)
 
 | Step | Saving | Owner decision |
