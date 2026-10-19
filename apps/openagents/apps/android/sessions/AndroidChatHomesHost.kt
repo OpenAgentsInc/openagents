@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
@@ -162,7 +163,7 @@ class AndroidChatHomesHost(
     }
 
     private fun continueOnSelected(draft: CoreContinuationDraft, stamp: Long) {
-        activeDraft?.close()
+        activeDraft?.let(::retireDraft)
         activeDraft = draft
         choices?.dispose()
         choices = null
@@ -175,7 +176,10 @@ class AndroidChatHomesHost(
                 val bytes = withContext(Dispatchers.IO) { draft.view() }
                 withContext(Dispatchers.Main.immediate) {
                     if (closed || generation != stamp || activeDraft !== draft) {
-                        draft.close()
+                        if (activeDraft === draft) {
+                            activeDraft = null
+                            retireDraft(draft)
+                        }
                         return@withContext
                     }
                     parent.removeAllViews()
@@ -193,7 +197,7 @@ class AndroidChatHomesHost(
             } catch (error: Exception) {
                 withContext(Dispatchers.Main.immediate) {
                     if (activeDraft === draft) {
-                        draft.close()
+                        retireDraft(draft)
                         activeDraft = null
                     }
                     if (!closed && generation == stamp) failure(error)
@@ -224,22 +228,34 @@ class AndroidChatHomesHost(
                         }
                     }
                 } else {
-                    continueDraftOnSelected(draft, sessions::continueOnSelected) { result ->
-                        if (!closed && generation == stamp && activeDraft === draft) {
-                            draftRenderer?.dispose()
-                            draftRenderer = null
-                            activeDraft = null
-                            dismiss()
-                            route(result)
-                        } else result.destroy()
+                    try {
+                        continueDraftOnSelected(draft, sessions::continueOnSelected) { result ->
+                            if (!closed && generation == stamp && activeDraft === draft) {
+                                draftRenderer?.dispose()
+                                draftRenderer = null
+                                retireDraft(draft)
+                                activeDraft = null
+                                dismiss()
+                                route(result)
+                            } else result.destroy()
+                        }
+                    } finally {
+                        val stillOwned = withContext(NonCancellable + Dispatchers.Main.immediate) {
+                            if (activeDraft === draft) {
+                                draftRenderer?.dispose()
+                                draftRenderer = null
+                                activeDraft = null
+                                true
+                            } else false
+                        }
+                        if (stillOwned) retireDraft(draft)
                     }
-                    draft.close()
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 withContext(Dispatchers.Main.immediate) {
-                    if (!closed && generation == stamp && activeDraft === draft) failure(error)
+                    if (!closed && generation == stamp) failure(error)
                 }
             }
         }
@@ -252,7 +268,7 @@ class AndroidChatHomesHost(
         closed = true
         generation++
         job.cancelChildren()
-        activeDraft?.close()
+        activeDraft?.let(::retireDraft)
         activeDraft = null
         draftRenderer?.dispose()
         draftRenderer = null
@@ -264,7 +280,7 @@ class AndroidChatHomesHost(
     private fun replaceMenus(): Long {
         generation++
         job.cancelChildren()
-        activeDraft?.close()
+        activeDraft?.let(::retireDraft)
         activeDraft = null
         draftRenderer?.dispose()
         draftRenderer = null
@@ -285,4 +301,9 @@ class AndroidChatHomesHost(
     }
 
     private fun ui() { check(Looper.myLooper() == Looper.getMainLooper()) }
+
+    private fun retireDraft(draft: CoreContinuationDraft) {
+        draft.shutdown()
+        draft.close()
+    }
 }

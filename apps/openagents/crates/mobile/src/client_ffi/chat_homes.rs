@@ -406,7 +406,7 @@ impl CoreContinuationDraft {
             ContinuationDraftAction::Updated
         })
     }
-    pub fn close(&self) {
+    pub fn shutdown(&self) {
         self.setup.close();
     }
     pub async fn start(
