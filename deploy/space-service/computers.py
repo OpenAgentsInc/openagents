@@ -147,7 +147,7 @@ if __name__=='__main__':
     parser.add_argument('--small-vcpus',type=int)
     parser.add_argument('--small-memory-mib',type=int)
     parser.add_argument('--disable-creates',action='store_true')
-    parser.add_argument('--capacity',type=int,default=2,choices=[2,3],help='Deployment capacity; 3 only while a stranded row holds a slot.')
+    parser.add_argument('--capacity',type=int,default=2,choices=[2,3,4],help='Deployment capacity; above 2 only for qualification runs (the worker fits three small guests).')
     parser.add_argument('--command-workspace',help='Guest directory for identified commands without the credential proxy (#12146).')
     parser.add_argument('--poll-ms',type=int,help='Service and driver poll interval in milliseconds.')
     parser.add_argument('--keep-project-iam',action='store_true',help='Redeploy without changing the existing instance-scoped Cloud SQL binding.')

@@ -3,7 +3,7 @@
 
 Every injected outage is restored in a finally block. Synthetic owners only.
 """
-import json, subprocess, sys, time, threading, importlib.util
+import os, json, subprocess, sys, time, threading, importlib.util
 from pathlib import Path
 spec = importlib.util.spec_from_file_location('q16', '/space/config/deployment-tools/q16.py'); q = importlib.util.module_from_spec(spec); spec.loader.exec_module(q)
 spec2 = importlib.util.spec_from_file_location('cases', '/space/config/deployment-tools/q16_cases.py'); c = importlib.util.module_from_spec(spec2); spec2.loader.exec_module(c)
@@ -115,21 +115,23 @@ def storage_phase(cid, who, phase):
 
 def worker_phase(z, w, phase):
     """prepare: W stopped, Z mid-turn. watch: record states after the worker reset, then recover both."""
+    # Owner B was closed by the account-deletion check; Q16_W_OWNER picks W's owner.
+    WB = os.environ.get('Q16_W_OWNER', 'a')
     ev = {'awake_computer': z, 'stopped_computer': w, 'phase': phase}
     if phase == 'prepare':
-        if state(w, 'b')['state'] != 'stopped': q.wait_state(w, 'stopped', 900, who='b')
+        if state(w, WB)['state'] != 'stopped': q.wait_state(w, 'stopped', 900, who=WB)
         if state(z, 'a')['state'] != 'stopped': q.wait_state(z, 'stopped', 900, who='a')
         q.call('POST', f'/v1/computers/{z}/wake', {}, who='a'); q.wait_state(z, 'awake', 600, who='a')
         tid, r = q.turn(z, 'echo m1 > /home/user/q16-marker-checkpointed', who='a'); ev['marker1_turn'] = q.brief(r)
         q.wait_state(z, 'stopped', 900, who='a')
         q.call('POST', f'/v1/computers/{z}/wake', {}, who='a'); q.wait_state(z, 'awake', 600, who='a')
         s, v, _ = q.call('POST', f'/v1/computers/{z}/turns', {'command': 'echo m2 > /home/user/q16-marker-uncheckpointed; sleep 55; echo survived', 'timeout_seconds': 58}, who='a')
-        ev['long_turn'] = v.get('id'); time.sleep(3); ev['z_state'] = state(z, 'a'); ev['w_state'] = state(w, 'b'); ev['ready_unix'] = time.time()
+        ev['long_turn'] = v.get('id'); time.sleep(3); ev['z_state'] = state(z, 'a'); ev['w_state'] = state(w, WB); ev['ready_unix'] = time.time()
         (ROOT / 'worker-loss-long-turn.json').write_text(json.dumps({'turn': ev['long_turn']}))
     else:
         start = time.time(); seen = {z: [], w: []}
         while time.time() - start < 1200:
-            for cid, who in ((z, 'a'), (w, 'b')):
+            for cid, who in ((z, 'a'), (w, WB)):
                 st = state(cid, who); st['t'] = round(time.time() - start, 1)
                 if not seen[cid] or (st['state'], st['last_error']) != (seen[cid][-1]['state'], seen[cid][-1]['last_error']): seen[cid].append(st)
             nodes = subprocess.run(K[:2] + ['get', 'nodes', 'oa-space-service-worker', '-o', 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'], capture_output=True, timeout=20).stdout.decode()
@@ -144,9 +146,9 @@ def worker_phase(z, w, phase):
         # Recover the checkpointed computer.
         t = time.time()
         try:
-            if state(w, 'b')['state'] == 'stopped':
-                q.call('POST', f'/v1/computers/{w}/wake', {}, who='b')
-            q.wait_state(w, 'awake', 900, who='b'); ev['w_wake_s'] = round(time.time() - t, 1); ev['w_memory'] = memory(w, 'b')
+            if state(w, WB)['state'] == 'stopped':
+                q.call('POST', f'/v1/computers/{w}/wake', {}, who=WB)
+            q.wait_state(w, 'awake', 900, who=WB); ev['w_wake_s'] = round(time.time() - t, 1); ev['w_memory'] = memory(w, WB)
         except Exception as e: ev['w_recovery_error'] = f'{type(e).__name__}: {e}'[:500]
         t = time.time()
         try:

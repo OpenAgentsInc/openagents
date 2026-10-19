@@ -1,0 +1,41 @@
+diff --git a/crates/libs/node/runtime/supervisor/src/service/execution.rs b/crates/libs/node/runtime/supervisor/src/service/execution.rs
+index cdec1cd..70d96dc 100644
+--- a/crates/libs/node/runtime/supervisor/src/service/execution.rs
++++ b/crates/libs/node/runtime/supervisor/src/service/execution.rs
+@@ -79,6 +79,14 @@ impl RuntimeSupervisorService {
+                     require_quiescence(sandbox)?;
+                     Ok(requested)
+                 }
++                // A stop of a superseded execution has nothing to stop once
++                // the sandbox is quiescent. A node reset can leave the sandbox
++                // manager's identity behind this store's; its cleanup must
++                // still finish instead of retrying forever (#12151).
++                Some(_) if allow_absent => {
++                    require_quiescence(sandbox)?;
++                    Ok(requested)
++                }
+                 _ => Err(Status::failed_precondition(
+                     "runtime execution identity is missing or superseded",
+                 )),
+diff --git a/crates/libs/node/runtime/supervisor/src/service/tests.rs b/crates/libs/node/runtime/supervisor/src/service/tests.rs
+index 97d81ff..66d7c4b 100644
+--- a/crates/libs/node/runtime/supervisor/src/service/tests.rs
++++ b/crates/libs/node/runtime/supervisor/src/service/tests.rs
+@@ -172,6 +172,17 @@ async fn execution_checks_survive_supervisor_restart_and_reject_superseded_work(
+             accepted
+         );
+     }
++    // A stop (allow_absent) of a superseded execution proceeds only when the
++    // sandbox is quiescent; this test sandbox has no cgroup, so it is (#12151).
++    assert!(service.check_execution(sandbox, &old, None, true).await.is_ok());
++    assert_eq!(
++        service
++            .check_execution(sandbox, "", None, true)
++            .await
++            .unwrap_err()
++            .code(),
++        tonic::Code::FailedPrecondition
++    );
+ }
+ 
+ #[cfg(target_os = "linux")]
