@@ -1,9 +1,8 @@
 # The Coder compositor as a Nix package, built from this repository.
 #
-# The source filter, the lockfile's git hashes, and `--ignore-rust-version`
-# are the same as `pkgs/coder-desk.nix`, for the reasons that file gives. A
-# revision bump in a manifest names a new `outputHashes` key, and
-# `importCargoLock`'s missing-hash error prints it.
+# The source filter, the vendored dependencies' `cargoHash`, and
+# `--ignore-rust-version` are the same as `pkgs/coder-desk.nix`, for the
+# reasons that file gives.
 #
 # Smithay links `libxkbcommon`, and for the hardware backend `libudev`,
 # `libinput`, `libseat`, and `libgbm`, at build time, so they are
@@ -31,19 +30,7 @@
 }:
 
 let
-  root = ../..;
-  src = lib.cleanSourceWith {
-    src = root;
-    filter = path: type:
-      let
-        relative = lib.removePrefix (toString root + "/") (toString path);
-        name = baseNameOf path;
-      in
-      (relative == "Cargo.toml" || relative == "Cargo.lock"
-        || relative == "crates" || lib.hasPrefix "crates/" relative)
-      && name != "target" && name != "result"
-      && lib.cleanSourceFilter path type;
-  };
+  src = import ./workspace-src.nix { inherit lib; };
   workspace = builtins.fromTOML (builtins.readFile (src + "/Cargo.toml"));
 
   # What the binary opens by name while it runs. The driver directory is
@@ -58,19 +45,13 @@ rustPlatform.buildRustPackage {
   version = workspace.workspace.package.version;
   inherit src;
 
-  cargoLock = {
-    lockFile = src + "/Cargo.lock";
-    outputHashes = {
-      "bitcoin-payment-instructions-0.6.0" = "sha256-kJz+7u55DiSy+/7Rpvm9aiB2ZGpds91M3QQ0CzOi9q4=";
-      "breez-sdk-common-0.1.0" = "sha256-yaeKcM45rzNgwVySoWF7emMMHMxlhFt3pplnLQJbitk=";
-      "frost-core-2.1.0" = "sha256-U8KCu1wVofNQBeN4zuIgmxN5lSKj/6YXu7J4o5oIvbQ=";
-      "ldk-node-0.7.0" = "sha256-qrPzuK+JNloEPKi1R9/qLNmXsZCHgbAjW+01qQV0nTU=";
-      "lightning-0.2.5" = "sha256-wTWWuQjp6kdtzL+ndmTgld00HY3jqzIWZFcAJOKhfhY=";
-      "lightning-0.3.0+git" = "sha256-uiZaVn2W3LyEh4TTsp7NN6pIcwJ0rWxkR7eZW6cF/9o=";
-      "matext4cgmath-0.1.0" = "sha256-oPW0krqv1MXYEpujpqS16qwmMNWgLZWcCa+VT8Ql7b8=";
-      "musig2-0.1.0" = "sha256-+ksLhW4rXHDmi6xkPHrWAUdMvkm1cM/PBuJUnTt0vQk=";
-    };
-  };
+  # `fetchCargoVendor` vendors the whole lockfile in one fixed-output
+  # fetch. `importCargoLock` can't: the lockfile takes some packages at the
+  # same name and version from two sources (crates.io and a git fork, or a
+  # path and a git checkout), and its vendor directory has one slot per
+  # name and version. After a `Cargo.lock` change, set this to
+  # `lib.fakeHash`, build, and paste the hash the error prints.
+  cargoHash = "sha256-aYn7JwSP0QmbNzpaY7iCG5jQjbY6j8ObvELbT7bytSA=";
 
   # The workspace pins Rust 1.97.1; this package builds with the `rustc` the
   # flake's `nixpkgs` carries, which can be older. The compositor uses
