@@ -1,0 +1,44 @@
+[package]
+name = "coder-router"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Coder chat routing, knowledge sources, and answer rendering."
+publish.workspace = true
+
+[dependencies]
+user-home = { path = "../user-home" }
+oa-copy = { path = "../oa-copy" }
+github-actions = { path = "../github-actions", default-features = false }
+openui-lang = { path = "../openui-lang" }
+capability = { path = "../capability" }
+jev = { path = "../jev" }
+inference = { path = "../inference" }
+jev-hosted = { path = "../jev-hosted" }
+model-access = { path = "../model-access" }
+ext-eval = { path = "../ext-eval", default-features = false }
+gym = { path = "../gym" }
+knowledge = { path = "../knowledge" }
+openagents-deck = { path = "../openagents-deck", default-features = false }
+openrouter = { path = "../openrouter" }
+openagents-chat = { path = "../openagents-chat" }
+route-contract = { path = "../route-contract" }
+futures-util = "0.3"
+indexmap = { version = "2", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+toml = "0.9"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+nostr = { version = "1.0.0", path = "../nostr" }
+plugin = { path = "../plugin" }
+coder-core = { path = "../coder-core" }
+
+[dev-dependencies]
+openagents-chat-app = { path = "../openagents-chat-app", features = ["test-support"] }
+tempfile = "3"
+
+[lints]
+workspace = true

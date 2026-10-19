@@ -7,8 +7,9 @@
       "files": ["crates/coder/src/cli_route/tree.json"],
       "sources": [
         "crates/openagents-cli/src/",
-        "crates/coder/src/cli_route/",
-        "crates/coder/src/task/cli.rs",
+        "crates/coder-core/src/command/",
+        "crates/coder-router/src/cli_route/",
+        "crates/coder-task/src/task/cli.rs",
         "crates/coder-host/src/cli.rs",
         "crates/coder-host/src/spend/cli.rs",
         "crates/coder-new/src/programmatic.rs"

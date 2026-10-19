@@ -1,0 +1,1385 @@
+//! Programs: the steps a run takes, and what bounds them.
+//!
+//! A program is a state machine of named steps with per-step bounds,
+//! defined by [NIP-PRG](../../../nips/openagents/NIP-PRG.md) as
+//! `kind:30182`. It carries no code, no commands, and no prompts, which is
+//! what makes one safe to read from a stranger: the worst a hostile program
+//! can do is describe a shape this host declines.
+//!
+//! This module reads programs from local files and lists what it found.
+//! Nothing here runs a step.
+//!
+//! # The query is recorded beside the answer
+//!
+//! A registry read records the Nostr filter it would have sent even though
+//! the answer came off disk, because the query is the part that has to keep
+//! working when the answer does not. The filter is built with the same
+//! [`nostr::domain::Filter`] a relay read will use, so a local answer and a
+//! relay answer are the same question asked twice rather than two questions
+//! that resemble each other.
+//!
+//! # Refusing beats skipping
+//!
+//! A host that does not recognize a step kind refuses the whole program.
+//! [`Registry::read`] leaves such a program out of the listing and names it
+//! among [`Registry::refused`], because a program whose unknown steps are
+//! skipped is a different program — and it is the one a host would run by
+//! accident.
+
+use std::collections::BTreeMap;
+use std::env;
+use std::path::{Path, PathBuf};
+
+use atif::{Call, Outcome};
+use nostr::domain::Filter;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
+
+use crate::capability::is_slug;
+
+/// The selection name reserved for requests that need no program.
+pub const NO_PROGRAM: &str = "none";
+
+/// The event kind a program publishes as, per NIP-PRG.
+pub const PROGRAM_KIND: u16 = 30182;
+
+/// The program body version this reads.
+pub const PROGRAM_VERSION: u32 = 1;
+
+/// The name a registry read records itself under in a trace.
+pub const REGISTRY_CALL: &str = "program_registry";
+
+/// The variable that moves the program directory.
+pub const DIR_ENV: &str = "CODER_PROGRAM_DIR";
+
+/// The fields a `decide` step must not carry.
+///
+/// A `decide` step names a question and must not carry its wording.
+/// Question text belongs to a separately digested question set, because
+/// rewording a question changes what was asked and two runs of "the same"
+/// program would stop being comparable.
+const QUESTION_TEXT: &[&str] = &["instructions", "criteria", "questions", "text", "prompt"];
+
+/// One program: named steps, each with bounds.
+///
+/// `slug` and `name` are the `d` and `name` tags the published
+/// `kind:30182` carries, and the distinct step kinds are its `step` tags.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Program {
+    pub v: u32,
+    pub slug: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub inputs: BTreeMap<String, String>,
+    #[serde(default)]
+    pub outputs: BTreeMap<String, String>,
+    pub steps: Vec<Step>,
+}
+
+/// One step. Its output is addressable by its name.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Step {
+    pub name: String,
+    pub kind: Kind,
+    /// The question identifier a `decide` step puts to a decision model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub question: Option<String>,
+    /// The source a `query` step looks its work up from, by slug. A
+    /// program names a source and never a command: a step carrying an
+    /// argv would be code, and a program carries none. A `query` step
+    /// naming no source reads the work the request carried, which
+    /// [`crate::source::REQUEST`] is the name of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// The address of the child program a `program` step runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<String>,
+    /// The guest a `module` step runs: its bytes, profile, operation,
+    /// input, and, for a `snapshot-read` guest, the workspace paths it may
+    /// read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module: Option<Value>,
+    /// Earlier steps whose output this step reads. The validator refuses a
+    /// name that is not an earlier step's, and the host refuses to run the
+    /// step while any named output is empty: static analysis cannot
+    /// predict what a model answered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
+    /// What bounds the step. Every step carries bounds, and a host refuses
+    /// a step whose bounds it cannot enforce rather than running it
+    /// unbounded.
+    #[serde(default)]
+    pub bounds: Map<String, Value>,
+    /// Anything else the step declared. Kept rather than dropped so a host
+    /// can refuse what it must and ignore what it may.
+    #[serde(flatten)]
+    pub rest: Map<String, Value>,
+}
+
+/// The `verify` clause a `delegate` step may carry: a host-owned question
+/// set judges what the delegation produced, a rejection goes back to the
+/// same executor for repair, and the drives are bounded.
+///
+/// The step names the set and the bound only. Wording, criteria, and
+/// acceptance fixtures stay with the host, so a candidate cannot reach the
+/// rubric it is judged against.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Verify {
+    /// The question set identifier.
+    pub question: String,
+    /// How many submissions the step judges before it fails typed.
+    pub drives: u64,
+    /// The gate probability a submission must reach.
+    pub refuse_below: f64,
+}
+
+/// One named branch of a `parallel` step: a step list that runs against
+/// its own `parent/branch/` namespace and merges back when it finishes.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Branch {
+    /// The branch's name, the middle of every state key it writes.
+    pub name: String,
+    /// The steps the branch runs, in order.
+    pub steps: Vec<Step>,
+}
+
+/// The key a `verify` clause lives under.
+pub const VERIFY: &str = "verify";
+/// Drives a `verify` clause gets when it names none.
+pub const VERIFY_DRIVES: u64 = 2;
+/// The gate floor a `verify` clause gets when it names none.
+pub const VERIFY_FLOOR: f64 = 0.5;
+
+impl Step {
+    /// The step's `verify` clause, when it carries one.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the clause is not one a host runs.
+    pub fn verify(&self) -> Result<Option<Verify>, String> {
+        let Some(value) = self.rest.get(VERIFY) else {
+            return Ok(None);
+        };
+        if self.kind != Kind::Delegate {
+            return Err(format!(
+                "step {:?} is a {} step and carries verify, which only a delegate step's output is judged by",
+                self.name,
+                self.kind.word()
+            ));
+        }
+        let Some(clause) = value.as_object() else {
+            return Err(format!(
+                "delegate step {:?} carries a verify that is not an object",
+                self.name
+            ));
+        };
+        let question = match clause.get("question").and_then(Value::as_str) {
+            Some(question) if !question.trim().is_empty() => question.to_string(),
+            _ => {
+                return Err(format!(
+                    "delegate step {:?} verify names no question set",
+                    self.name
+                ));
+            }
+        };
+        if let Some(field) = QUESTION_TEXT
+            .iter()
+            .find(|field| clause.contains_key(**field))
+        {
+            return Err(format!(
+                "delegate step {:?} verify carries {field}, which is a question's wording and belongs to a question set",
+                self.name
+            ));
+        }
+        let drives = match clause.get("drives") {
+            None => VERIFY_DRIVES,
+            Some(value) => match value.as_u64() {
+                Some(drives) if drives >= 1 => drives,
+                _ => {
+                    return Err(format!(
+                        "delegate step {:?} verify drives {value} is not an integer of 1 or more",
+                        self.name
+                    ));
+                }
+            },
+        };
+        let refuse_below = match clause.get("refuse_below") {
+            None => VERIFY_FLOOR,
+            Some(value) => match value.as_f64() {
+                Some(floor) if (0.0..=1.0).contains(&floor) => floor,
+                _ => {
+                    return Err(format!(
+                        "delegate step {:?} verify refuse_below {value} is not a probability",
+                        self.name
+                    ));
+                }
+            },
+        };
+        Ok(Some(Verify {
+            question,
+            drives,
+            refuse_below,
+        }))
+    }
+
+    /// The branches a `parallel` step declares under `branches`, when it
+    /// declares them.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence when the field is present and does not read as a
+    /// list of named step lists.
+    pub fn branches(&self) -> Result<Vec<Branch>, String> {
+        match self.rest.get("branches") {
+            None => Ok(Vec::new()),
+            Some(value) => serde_json::from_value(value.clone())
+                .map_err(|e| format!("branches does not read as named step lists: {e}")),
+        }
+    }
+}
+
+/// What a step does.
+///
+/// Deserializing an unrecognized kind fails, which refuses the program that
+/// carried it. The registry is open and a future NIP may define more; a
+/// host that meets one refuses rather than guessing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    /// A structured lookup. Deterministic given its inputs.
+    Query,
+    /// A deterministic admission test. Passes or refuses.
+    Check,
+    /// A typed question put to a decision model.
+    Decide,
+    /// Work handed to an executor.
+    Delegate,
+    /// Another program, by address.
+    Program,
+    /// A WebAssembly guest the step carries inline, run through the packet
+    /// ABI host under the `pure` or `snapshot-read` profile.
+    Module,
+    /// A native or adapter operation. The step names the operation. It
+    /// does not carry a command or a path.
+    Invoke,
+    /// Named branches over the same shared state. Each runs against its
+    /// own namespace and merges back key-by-key: an object merges
+    /// recursively, an array appends in declared order, and a scalar two
+    /// branches disagree on refuses as `state_conflict`. An unchanged
+    /// copy is no write.
+    Parallel,
+}
+
+impl Kind {
+    /// The kind's name, as a `step` tag spells it.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Kind::Query => "query",
+            Kind::Check => "check",
+            Kind::Decide => "decide",
+            Kind::Delegate => "delegate",
+            Kind::Program => "program",
+            Kind::Module => "module",
+            Kind::Invoke => "invoke",
+            Kind::Parallel => "parallel",
+        }
+    }
+}
+
+impl Program {
+    /// Reads a program from a local file.
+    ///
+    /// # Errors
+    ///
+    /// Returns a sentence naming why the file is not a program this host
+    /// runs: unreadable, unparseable, a `v` it does not know, an
+    /// unrecognized step kind, a repeated step name, a `decide` step with
+    /// no question or with a question's wording inlined.
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        Self::parse(&bytes).map_err(|reason| format!("{}: {reason}", path.display()))
+    }
+
+    /// Parses a program file.
+    ///
+    /// A NIP-PRG file is a `definition` plus the host `binding` that names
+    /// sources, question sets, and the bounds this host enforces. Any other
+    /// root key beside those two is refused. A file with no `definition`
+    /// is the host program document the runtime executes: `v`, `slug`, and
+    /// `steps`. Shipped programs use the NIP-PRG file. Staged and historical
+    /// host documents keep the fields the registry already runs.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first reason the file is not a program this host runs.
+    pub fn parse(bytes: &[u8]) -> Result<Self, String> {
+        let value = nostr::prg::parse_json(bytes).map_err(|error| error.to_string())?;
+        let root = value
+            .as_object()
+            .ok_or_else(|| "program file is not an object".to_string())?;
+        if root.contains_key("definition") || root.contains_key("binding") {
+            for key in root.keys() {
+                if key != "definition" && key != "binding" {
+                    return Err(format!(
+                        "unsupported field {key}: earlier program fields are not a program definition"
+                    ));
+                }
+            }
+            let definition = nostr::prg::parse_definition(
+                root.get("definition")
+                    .ok_or_else(|| "program file has no definition".to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let binding = root
+                .get("binding")
+                .and_then(Value::as_object)
+                .ok_or_else(|| "program file has no host binding".to_string())?;
+            let program = project(&definition, binding)?;
+            program.validate()?;
+            return Ok(program);
+        }
+        let program: Program = serde_json::from_value(value).map_err(|error| error.to_string())?;
+        program.validate()?;
+        Ok(program)
+    }
+
+    /// Whether this program is one this host would run.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first reason it is not.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.v != PROGRAM_VERSION {
+            return Err(format!(
+                "body version is {}, this version reads {PROGRAM_VERSION}",
+                self.v
+            ));
+        }
+        if !is_slug(&self.slug) {
+            return Err(format!("slug {:?} is not a program slug", self.slug));
+        }
+        // The selection question answers `none` when a request asks for no
+        // program, so a program under that slug could be chosen and never
+        // reached. Refusing the file is better than resolving a program
+        // nothing can select.
+        if self.slug == NO_PROGRAM {
+            return Err(format!(
+                "slug {:?} is the answer that means no program, so a program under it could never be selected",
+                self.slug
+            ));
+        }
+        if self.steps.is_empty() {
+            return Err("a program with no steps describes no work".to_string());
+        }
+        let mut seen = Vec::new();
+        for step in &self.steps {
+            if seen.contains(&step.name) {
+                return Err(format!("step name {:?} is used twice", step.name));
+            }
+            validate_step(step, &seen)?;
+            match step.kind {
+                Kind::Parallel => {
+                    let branches = step.branches()?;
+                    if branches.is_empty() {
+                        return Err(format!(
+                            "parallel step {:?} declares no branches",
+                            step.name
+                        ));
+                    }
+                    let mut names = Vec::new();
+                    for branch in &branches {
+                        if branch.name.is_empty()
+                            || branch.name.contains('$')
+                            || branch.name.contains('/')
+                            || names.contains(&branch.name)
+                        {
+                            return Err(format!(
+                                "parallel step {:?} names a branch {:?}, which is empty, repeated, or carries a character a state key cannot hold",
+                                step.name, branch.name
+                            ));
+                        }
+                        names.push(branch.name.clone());
+                        if branch.steps.is_empty() {
+                            return Err(format!(
+                                "parallel step {:?} branch {:?} declares no steps",
+                                step.name, branch.name
+                            ));
+                        }
+                        // A branch reads outer state at the fork plus its
+                        // own earlier steps — never a sibling's namespace,
+                        // and never a parallel of its own.
+                        let mut branch_seen = seen.clone();
+                        for branch_step in &branch.steps {
+                            validate_step(branch_step, &branch_seen)?;
+                            if branch_step.kind == Kind::Parallel {
+                                return Err(format!(
+                                    "parallel step {:?} branch {:?} carries a parallel step, and branches do not nest",
+                                    step.name, branch.name
+                                ));
+                            }
+                            if branch_step.kind == Kind::Program {
+                                return Err(format!(
+                                    "parallel step {:?} branch {:?} carries a program step, and a branch does not nest a child program",
+                                    step.name, branch.name
+                                ));
+                            }
+                            branch_seen.push(branch_step.name.clone());
+                        }
+                    }
+                }
+                _ if step.rest.contains_key("branches") => {
+                    return Err(format!(
+                        "step {:?} is a {} step and declares branches, which only a parallel step runs",
+                        step.name,
+                        step.kind.word()
+                    ));
+                }
+                _ => {}
+            }
+            seen.push(step.name.clone());
+        }
+        Ok(())
+    }
+
+    /// The capability a `delegate` step names to do its work, when one
+    /// does. A program that names one runs its delegation there whatever
+    /// executor the session would otherwise choose.
+    #[must_use]
+    pub fn executor(&self) -> Option<&str> {
+        self.steps
+            .iter()
+            .filter(|step| step.kind == Kind::Delegate)
+            .find_map(|step| step.rest.get("executor").and_then(Value::as_str))
+    }
+
+    /// The step names, in order.
+    #[must_use]
+    pub fn step_names(&self) -> Vec<String> {
+        self.steps.iter().map(|step| step.name.clone()).collect()
+    }
+
+    /// The distinct step kinds, as the published `step` tags list them.
+    #[must_use]
+    pub fn step_kinds(&self) -> Vec<&'static str> {
+        let mut kinds = Vec::new();
+        for step in &self.steps {
+            if !kinds.contains(&step.kind.word()) {
+                kinds.push(step.kind.word());
+            }
+        }
+        kinds
+    }
+}
+
+/// The checks one step carries, whatever list it sits in — a program's
+/// own or a `parallel` step's branch. `earlier` names every step whose
+/// output may already exist where this step runs: the list's own earlier
+/// steps plus, inside a branch, the outer steps before the fork.
+fn validate_step(step: &Step, earlier: &[String]) -> Result<(), String> {
+    // A step's name is the state key its output is addressed by, and
+    // `$`-marked keys are the host's sidecars (`<name>$verify`,
+    // `<name>$answers`): a step under one could be read as the host's
+    // record of another.
+    if step.name.starts_with('$') || step.name.contains('$') {
+        return Err(format!(
+            "step name {:?} carries '$', which marks a host-owned state key",
+            step.name
+        ));
+    }
+    if step.name.contains('/') {
+        return Err(format!(
+            "step name {:?} carries '/', which separates a state key's namespaces",
+            step.name
+        ));
+    }
+    // `meta` is inert: kept and digested with the definition, never read
+    // by the interpreter. Anything but an object is a field the author
+    // meant something by, which inert data cannot be.
+    if let Some(meta) = step.rest.get("meta") {
+        if !meta.is_object() {
+            return Err(format!(
+                "step {:?} carries a meta that is not an object",
+                step.name
+            ));
+        }
+    }
+    for required in &step.requires {
+        if !earlier.contains(required) {
+            return Err(format!(
+                "step {:?} requires {required:?}, which is not an earlier step",
+                step.name
+            ));
+        }
+    }
+    if step.kind == Kind::Decide {
+        if step.question.is_none() {
+            return Err(format!("decide step {:?} names no question", step.name));
+        }
+        if let Some(field) = QUESTION_TEXT
+            .iter()
+            .find(|field| step.rest.contains_key(**field))
+        {
+            return Err(format!(
+                "decide step {:?} carries {field}, which is a question's wording and belongs to a question set",
+                step.name
+            ));
+        }
+    }
+    if step.kind == Kind::Invoke {
+        match step.rest.get("operation").and_then(Value::as_str) {
+            Some(operation) if is_slug(operation) => {}
+            _ => {
+                return Err(format!(
+                    "invoke step {:?} names no admitted host operation",
+                    step.name
+                ));
+            }
+        }
+    }
+    match (&step.source, step.kind) {
+        (Some(source), Kind::Query) if !is_slug(source) => {
+            return Err(format!(
+                "query step {:?} names {source:?}, which is not a source slug",
+                step.name
+            ));
+        }
+        (Some(source), kind) if kind != Kind::Query => {
+            return Err(format!(
+                "step {:?} is a {} step and names the source {source:?}, which only a query step reads",
+                step.name,
+                kind.word()
+            ));
+        }
+        _ => {}
+    }
+    // A `delegate` step may name the capability that does its work, by
+    // slug: the program says which executor answers, never how to run it.
+    // No other step hands work over.
+    match (step.rest.get("executor"), step.kind) {
+        (Some(executor), Kind::Delegate) => {
+            if !executor.as_str().is_some_and(is_slug) {
+                return Err(format!(
+                    "delegate step {:?} names executor {executor}, which is not a capability slug",
+                    step.name
+                ));
+            }
+        }
+        (Some(_), kind) => {
+            return Err(format!(
+                "step {:?} is a {} step and names an executor, which only a delegate step hands work to",
+                step.name,
+                kind.word()
+            ));
+        }
+        (None, _) => {}
+    }
+    step.verify()?;
+    if step.kind == Kind::Program && step.program.is_none() {
+        return Err(format!("program step {:?} names no program", step.name));
+    }
+    if step.kind == Kind::Module && step.module.is_none() {
+        return Err(format!("module step {:?} names no module", step.name));
+    }
+    Ok(())
+}
+
+fn project(
+    definition: &nostr::prg::Definition,
+    binding: &Map<String, Value>,
+) -> Result<Program, String> {
+    let host_steps = binding.get("steps").and_then(Value::as_object);
+    let mut steps = Vec::with_capacity(definition.steps.len());
+    for step in &definition.steps {
+        let host = host_steps
+            .and_then(|steps| steps.get(&step.name))
+            .and_then(Value::as_object);
+        let kind = match step.kind.as_str() {
+            "query" => Kind::Query,
+            "check" => Kind::Check,
+            "decide" => Kind::Decide,
+            "delegate" => Kind::Delegate,
+            "program" => Kind::Program,
+            "module" => Kind::Module,
+            "invoke" => Kind::Invoke,
+            other => return Err(format!("step kind {other} is not a program step")),
+        };
+        let question = host
+            .and_then(|host| host.get("question"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let source = host
+            .and_then(|host| host.get("source"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let program = host
+            .and_then(|host| host.get("program"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let module = host.and_then(|host| host.get("module")).cloned();
+        let requires = host
+            .and_then(|host| host.get("requires"))
+            .and_then(Value::as_array)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let bounds = host
+            .and_then(|host| host.get("bounds"))
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let mut rest = Map::new();
+        if let Some(host) = host {
+            for (key, value) in host {
+                if !matches!(
+                    key.as_str(),
+                    "source" | "question" | "bounds" | "program" | "module" | "requires"
+                ) {
+                    rest.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        if kind == Kind::Query {
+            for hidden in ["command", "argv", "shell", "path"] {
+                if rest.contains_key(hidden) {
+                    return Err(format!(
+                        "query step {:?} carries {hidden}, which is not a source read",
+                        step.name
+                    ));
+                }
+            }
+        }
+        steps.push(Step {
+            name: step.name.clone(),
+            kind,
+            question,
+            source,
+            program,
+            module,
+            requires,
+            bounds,
+            rest,
+        });
+    }
+    let inputs = string_map(binding.get("inputs"))?;
+    let outputs = string_map(binding.get("outputs"))?;
+    Ok(Program {
+        v: PROGRAM_VERSION,
+        slug: definition.component.clone(),
+        name: binding
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or(definition.summary.as_str())
+            .to_string(),
+        summary: definition.summary.clone(),
+        inputs,
+        outputs,
+        steps,
+    })
+}
+
+fn string_map(value: Option<&Value>) -> Result<BTreeMap<String, String>, String> {
+    let Some(value) = value else {
+        return Ok(BTreeMap::new());
+    };
+    let object = value
+        .as_object()
+        .ok_or_else(|| "inputs are not an object".to_string())?;
+    object
+        .iter()
+        .map(|(key, value)| {
+            value
+                .as_str()
+                .map(|text| (key.clone(), text.to_string()))
+                .ok_or_else(|| format!("{key} is not a string"))
+        })
+        .collect()
+}
+
+/// One program a host would not run, and why.
+#[derive(Clone, Debug)]
+pub struct Refused {
+    pub source: String,
+    pub reason: String,
+}
+
+/// The programs a host has resolved, and the ones it refused.
+#[derive(Clone, Debug, Default)]
+pub struct Registry {
+    programs: Vec<Program>,
+    refused: Vec<Refused>,
+    /// Where the answer came from: `local file`, and one day a relay.
+    source: String,
+}
+
+impl Registry {
+    /// Reads every program in one directory, in slug order.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying error when the directory cannot be read.
+    pub fn read(dir: &Path) -> Result<Self, String> {
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let mut paths: Vec<PathBuf> = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .collect();
+        paths.sort();
+        let mut programs = Vec::new();
+        let mut refused = Vec::new();
+        for path in paths {
+            match Program::load(&path) {
+                Ok(program) => programs.push(program),
+                Err(reason) => refused.push(Refused {
+                    source: path.display().to_string(),
+                    reason,
+                }),
+            }
+        }
+        programs.sort_by(|a, b| a.slug.cmp(&b.slug));
+        Ok(Registry {
+            programs,
+            refused,
+            source: "local file".to_string(),
+        })
+    }
+
+    /// Reads each directory in `dirs` in turn. The first definition of a
+    /// slug wins, so an operator's own directory overrides the
+    /// repository's.
+    #[must_use]
+    pub fn open(dirs: &[PathBuf]) -> Self {
+        let mut merged = Registry {
+            source: "local file".to_string(),
+            ..Registry::default()
+        };
+        for dir in dirs {
+            let Ok(registry) = Registry::read(dir) else {
+                continue;
+            };
+            for program in registry.programs {
+                if merged.get(&program.slug).is_none() {
+                    merged.programs.push(program);
+                }
+            }
+            merged.refused.extend(registry.refused);
+        }
+        merged.programs.sort_by(|a, b| a.slug.cmp(&b.slug));
+        merged
+    }
+
+    /// The programs, in slug order.
+    #[must_use]
+    pub fn programs(&self) -> &[Program] {
+        &self.programs
+    }
+
+    /// One program by slug.
+    #[must_use]
+    pub fn get(&self, slug: &str) -> Option<&Program> {
+        self.programs.iter().find(|program| program.slug == slug)
+    }
+
+    /// The files this host would not run, each with its reason.
+    #[must_use]
+    pub fn refused(&self) -> &[Refused] {
+        &self.refused
+    }
+
+    /// The slugs, in listing order.
+    #[must_use]
+    pub fn slugs(&self) -> Vec<String> {
+        self.programs
+            .iter()
+            .map(|program| program.slug.clone())
+            .collect()
+    }
+
+    /// The filter a relay read would carry, for the programs this listing
+    /// holds.
+    ///
+    /// `authors` is left out here and named in the call's arguments,
+    /// because a local read has no signer to filter by and a filter
+    /// carrying a placeholder where a pubkey goes would not survive being
+    /// sent.
+    #[must_use]
+    pub fn query(&self) -> Filter {
+        let mut tags = BTreeMap::new();
+        tags.insert("d".to_string(), self.slugs());
+        Filter {
+            kinds: Some(vec![PROGRAM_KIND]),
+            tags,
+            ..Filter::default()
+        }
+    }
+
+    /// What each program's steps are, as the trace records them.
+    #[must_use]
+    pub fn listing(&self) -> Value {
+        let mut out = Map::new();
+        for program in &self.programs {
+            out.insert(
+                program.slug.clone(),
+                json!({ "steps": program.step_names() }),
+            );
+        }
+        Value::Object(out)
+    }
+
+    /// The sentence a surface shows beside the read.
+    #[must_use]
+    pub fn message(&self) -> String {
+        "Resolved the available programs.".to_string()
+    }
+
+    /// What the read answered, in one line.
+    #[must_use]
+    pub fn output(&self) -> String {
+        format!(
+            "{} programs: {}",
+            self.programs.len(),
+            self.slugs().join(", ")
+        )
+    }
+
+    /// The read as a trace records it.
+    ///
+    /// `operator` is the pubkey whose programs the host resolves, or
+    /// `None` on a machine that has not been told. The query goes in the
+    /// `extra` beside the answer.
+    #[must_use]
+    pub fn call(&self, operator: Option<&str>) -> Call {
+        let author = operator.unwrap_or("<operator>");
+        let mut extra = Map::new();
+        extra.insert("resolved_from".to_string(), json!(self.source));
+        extra.insert("nip".to_string(), json!("NIP-PRG"));
+        extra.insert(
+            "registry_query".to_string(),
+            serde_json::to_value(self.query()).unwrap_or(Value::Null),
+        );
+        extra.insert(
+            "note".to_string(),
+            json!(
+                "The Nostr query is recorded even though the answer came from disk, because the query is the part that has to keep working when the answer does not."
+            ),
+        );
+        extra.insert("programs".to_string(), self.listing());
+        if !self.refused.is_empty() {
+            extra.insert(
+                "refused".to_string(),
+                json!(
+                    self.refused
+                        .iter()
+                        .map(|refused| json!({
+                            "source": refused.source,
+                            "reason": refused.reason,
+                        }))
+                        .collect::<Vec<_>>()
+                ),
+            );
+        }
+        Call {
+            id: String::new(),
+            name: REGISTRY_CALL.to_string(),
+            arguments: json!({
+                "kinds": [PROGRAM_KIND],
+                "authors": [author],
+                "source": "local",
+            }),
+            output: self.output(),
+            outcome: Outcome::Completed,
+            milliseconds: 0,
+            purpose: Some("List candidate programs before asking which one applies.".to_string()),
+            extra,
+        }
+    }
+}
+
+/// Where a host looks for programs, in order.
+///
+/// `CODER_PROGRAM_DIR` first, then the repository's own `programs/`
+/// directory, then the operator's `~/.openagents/programs`, then the
+/// programs Coder's defaults admit (`crate::defaults`), when that
+/// directory exists.
+#[must_use]
+pub fn search(repository: Option<&Path>) -> Vec<PathBuf> {
+    search_with(repository, crate::defaults::programs_dir().as_deref())
+}
+
+/// [`search`] with the defaults' programs directory given, for a caller
+/// that holds it.
+#[must_use]
+pub fn search_with(repository: Option<&Path>, defaults: Option<&Path>) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(dir) = env::var_os(DIR_ENV).filter(|dir| !dir.is_empty()) {
+        dirs.push(PathBuf::from(dir));
+    }
+    if let Some(root) = repository {
+        dirs.push(root.join("programs"));
+    }
+    if let Some(home) = user_home::home_os().filter(|home| !home.is_empty()) {
+        dirs.push(PathBuf::from(home).join(".openagents").join("programs"));
+    }
+    if let Some(defaults) = defaults {
+        dirs.push(defaults.to_path_buf());
+    }
+    dirs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repository_programs() -> Registry {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../programs");
+        Registry::read(&dir).expect("the repository carries a programs dir")
+    }
+
+    #[test]
+    fn the_registry_lists_the_eight_programs_the_repository_carries() {
+        let registry = repository_programs();
+        assert!(registry.refused().is_empty(), "{:?}", registry.refused());
+        let mut slugs = registry.slugs();
+        slugs.sort();
+        assert_eq!(
+            slugs,
+            [
+                "answer-question",
+                "burn-down",
+                "delegate-fan-out",
+                "evidence-guests",
+                "review-changes",
+                "review-runs",
+                "run-suite",
+                "solve-issue"
+            ]
+        );
+        // The solver as a program (#11392): intake, the code brief, the
+        // Briefer, then up to three rounds of code, check, and diagnosis
+        // unrolled with `when` guards, the verdict, land, and the done
+        // judgment through the configured door.
+        let solve = registry.get("solve-issue").unwrap();
+        assert_eq!(
+            solve.step_names(),
+            [
+                "intake",
+                "plan",
+                "brief",
+                "code_0",
+                "check_0",
+                "diagnose_0",
+                "rebrief_1",
+                "code_1",
+                "check_1",
+                "diagnose_1",
+                "rebrief_2",
+                "code_2",
+                "check_2",
+                "diagnose_2",
+                "verdict",
+                "land",
+                "done"
+            ]
+        );
+        let done = solve.steps.last().unwrap();
+        assert_eq!(done.kind, Kind::Decide);
+        assert_eq!(done.requires, ["land"]);
+        assert_eq!(
+            registry.get("delegate-fan-out").unwrap().step_names(),
+            ["select", "independence", "admit", "fan_out", "accept"]
+        );
+        assert_eq!(
+            registry.get("review-changes").unwrap().step_names(),
+            ["mechanical", "review"]
+        );
+        assert_eq!(
+            registry.get("answer-question").unwrap().step_names(),
+            ["answer"]
+        );
+        assert_eq!(registry.get("run-suite").unwrap().step_names(), ["score"]);
+        let guests = registry.get("evidence-guests").unwrap();
+        assert_eq!(
+            guests.step_names(),
+            ["repo_map", "code_search", "test_report"]
+        );
+        assert!(guests.steps.iter().all(|step| step.kind == Kind::Module));
+        // `review-runs` reads the Gym through a source and hands the
+        // question to the one executor it names.
+        let review = registry.get("review-runs").unwrap();
+        assert_eq!(review.step_names(), ["runs", "answer"]);
+        assert_eq!(review.steps[0].source.as_deref(), Some("gym-runs"));
+        assert_eq!(review.executor(), Some("coder-one-ask"));
+        assert_eq!(registry.get("answer-question").unwrap().executor(), None);
+    }
+
+    #[test]
+    fn only_a_delegate_step_names_an_executor() {
+        let program = |kind: &str, executor: &str| {
+            format!(
+                r#"{{"v": 1, "slug": "p", "steps": [{{"name": "s", "kind": "{kind}", "executor": "{executor}"}}]}}"#
+            )
+        };
+        assert!(Program::parse(program("delegate", "coder-one-ask").as_bytes()).is_ok());
+        let error = Program::parse(program("query", "coder-one-ask").as_bytes()).unwrap_err();
+        assert!(error.contains("only a delegate step"), "{error}");
+        let error = Program::parse(program("delegate", "Not A Slug").as_bytes()).unwrap_err();
+        assert!(error.contains("not a capability slug"), "{error}");
+    }
+
+    #[test]
+    fn the_read_records_the_query_beside_the_answer() {
+        let registry = repository_programs();
+        let call = registry.call(None);
+
+        assert_eq!(call.name, REGISTRY_CALL);
+        assert_eq!(call.arguments["kinds"], json!([PROGRAM_KIND]));
+        assert_eq!(call.arguments["authors"], json!(["<operator>"]));
+        assert_eq!(call.arguments["source"], json!("local"));
+        assert_eq!(call.extra["resolved_from"], json!("local file"));
+        assert_eq!(call.extra["nip"], json!("NIP-PRG"));
+        assert_eq!(call.extra["registry_query"]["kinds"], json!([30182]));
+        assert_eq!(
+            call.extra["registry_query"]["#d"],
+            json!(registry.slugs()),
+            "the filter names the programs the listing holds"
+        );
+        assert_eq!(
+            call.extra["programs"]["delegate-fan-out"]["steps"],
+            json!(["select", "independence", "admit", "fan_out", "accept"])
+        );
+        assert!(call.output.starts_with("8 programs: "));
+    }
+
+    #[test]
+    fn the_query_is_the_filter_a_relay_would_answer() {
+        let registry = repository_programs();
+        let filter = registry.query();
+        filter
+            .validate()
+            .expect("the recorded query is a filter a relay accepts");
+    }
+
+    #[test]
+    fn an_unrecognized_step_kind_refuses_the_whole_program() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("exotic.json");
+        std::fs::write(
+            &path,
+            r#"{"definition":{"v":1,"requires":[],"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents/exotic","summary":"no","input":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"result":{"from":"input","pointer":""},"steps":[{"name":"two","kind":"teleport","after":[],"input":{"from":"input","pointer":""},"output":{"digest":"sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0","size":17,"media_type":"application/schema+json"},"bounds":{},"on_error":"stop"}]},"binding":{"steps":{}}}"#,
+        )
+        .unwrap();
+
+        let registry = Registry::read(dir.path()).unwrap();
+        assert!(
+            registry.programs().is_empty(),
+            "the program is refused, not partly run"
+        );
+        assert_eq!(registry.refused().len(), 1);
+        assert!(registry.refused()[0].reason.contains("teleport"));
+    }
+
+    #[test]
+    fn a_decide_step_that_inlines_its_wording_is_refused() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"inlined","steps":[
+                {"name":"ask","kind":"decide","question":"openagents.independence.v1",
+                 "instructions":"The six tasks can run in parallel.","bounds":{}}]}"#,
+        )
+        .unwrap();
+        let reason = program.validate().expect_err("wording is refused");
+        assert!(reason.contains("instructions"), "{reason}");
+    }
+
+    /// A `query` step names a source by slug. A step that named a command
+    /// would make the program code, and a source on a step that reads none
+    /// was written for a host that does something else with it.
+    #[test]
+    fn a_source_that_is_not_a_slug_or_not_on_a_query_step_is_refused() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"commanded","steps":[
+                {"name":"one","kind":"query","source":"gh issue list","bounds":{}}]}"#,
+        )
+        .unwrap();
+        let reason = program.validate().expect_err("that is not a slug");
+        assert!(reason.contains("source slug"), "{reason}");
+
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"misplaced","steps":[
+                {"name":"one","kind":"check","source":"backlog",
+                 "bounds":{"refuse_on":"cannot_enforce_intersection"}}]}"#,
+        )
+        .unwrap();
+        let reason = program.validate().expect_err("a check reads no source");
+        assert!(reason.contains("only a query step reads"), "{reason}");
+    }
+
+    #[test]
+    fn a_repeated_step_name_is_refused() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"twice","steps":[
+                {"name":"one","kind":"query","bounds":{}},
+                {"name":"one","kind":"check","bounds":{}}]}"#,
+        )
+        .unwrap();
+        assert!(
+            program.validate().is_err(),
+            "a step's output is addressed by its name"
+        );
+    }
+
+    #[test]
+    fn a_version_this_host_does_not_know_is_refused() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":7,"slug":"future","steps":[{"name":"one","kind":"query","bounds":{}}]}"#,
+        )
+        .unwrap();
+        assert!(program.validate().is_err());
+    }
+
+    #[test]
+    fn the_fan_out_program_keeps_its_bounds() {
+        let registry = repository_programs();
+        let program = registry.get("delegate-fan-out").unwrap();
+        let fan_out = program
+            .steps
+            .iter()
+            .find(|step| step.name == "fan_out")
+            .unwrap();
+        assert_eq!(fan_out.kind, Kind::Delegate);
+        assert_eq!(fan_out.bounds["concurrent_max"], json!(6));
+        assert_eq!(fan_out.bounds["isolation"], json!("worktree"));
+
+        let select = program
+            .steps
+            .iter()
+            .find(|step| step.name == "select")
+            .unwrap();
+        assert_eq!(select.kind, Kind::Query);
+        assert_eq!(
+            select.source.as_deref(),
+            Some("request"),
+            "the lookup's source is named in the program"
+        );
+        assert_eq!(select.bounds["max_results"], json!(12));
+        assert_eq!(select.bounds["on_overflow"], json!("refuse"));
+
+        let independence = program
+            .steps
+            .iter()
+            .find(|step| step.name == "independence")
+            .unwrap();
+        assert_eq!(independence.kind, Kind::Decide);
+        assert_eq!(
+            independence.question.as_deref(),
+            Some("openagents.independence.v2")
+        );
+        assert_eq!(independence.bounds["refuse_below"], json!(0.7));
+        assert_eq!(
+            program.step_kinds(),
+            ["query", "decide", "check", "delegate"]
+        );
+    }
+
+    fn delegate_with(verify: Value) -> Program {
+        serde_json::from_value(json!({
+            "v": PROGRAM_VERSION,
+            "slug": "verified-burn-down",
+            "steps": [
+                {"name": "work", "kind": "delegate", "bounds": {}, "verify": verify}
+            ]
+        }))
+        .expect("program parses")
+    }
+
+    #[test]
+    fn reserved_names_and_inert_meta() {
+        let mut program = delegate_with(json!({"question": "test.acceptance.v1"}));
+        program.steps[0]
+            .rest
+            .insert("meta".into(), json!({"owner": "ops"}));
+        program.validate().expect("object meta is inert");
+        program.steps[0].rest.insert("meta".into(), json!("note"));
+        assert!(program.validate().unwrap_err().contains("meta"));
+        program.steps[0].rest.remove("meta");
+        program.steps[0].name = "$host".into();
+        assert!(program.validate().unwrap_err().contains("host-owned"));
+        program.steps[0].name = "work$answers".into();
+        assert!(program.validate().unwrap_err().contains("host-owned"));
+    }
+
+    #[test]
+    fn verify_defaults_and_bounds() {
+        let program = delegate_with(json!({"question": "test.acceptance.v1"}));
+        program.validate().expect("defaults are valid");
+        let verify = program.steps[0].verify().unwrap().unwrap();
+        assert_eq!(verify.drives, VERIFY_DRIVES);
+        assert!((verify.refuse_below - VERIFY_FLOOR).abs() < f64::EPSILON);
+        let program = delegate_with(
+            json!({"question": "test.acceptance.v1", "drives": 3, "refuse_below": 0.8}),
+        );
+        let verify = program.steps[0].verify().unwrap().unwrap();
+        assert_eq!((verify.drives, verify.refuse_below), (3, 0.8));
+    }
+
+    #[test]
+    fn verify_refuses_bad_shapes() {
+        for (bad, why) in [
+            (json!({"drives": 2}), "names no question set"),
+            (
+                json!({"question": "test.acceptance.v1", "drives": 0}),
+                "1 or more",
+            ),
+            (
+                json!({"question": "test.acceptance.v1", "criteria": "be good"}),
+                "question's wording",
+            ),
+            (
+                json!({"question": "test.acceptance.v1", "refuse_below": 1.5}),
+                "not a probability",
+            ),
+        ] {
+            let error = delegate_with(bad).validate().unwrap_err();
+            assert!(error.contains(why), "{error}");
+        }
+        let mut program = delegate_with(json!({"question": "test.acceptance.v1"}));
+        program.steps[0].kind = Kind::Check;
+        let error = program.validate().unwrap_err();
+        assert!(error.contains("only a delegate step"), "{error}");
+    }
+
+    #[test]
+    fn requires_names_only_an_earlier_step() {
+        let mut program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"needs","steps":[
+                {"name":"first","kind":"query","bounds":{}},
+                {"name":"second","kind":"query","requires":["first"],"bounds":{}}]}"#,
+        )
+        .unwrap();
+        program.validate().expect("an earlier step may be required");
+        program.steps[0].requires = vec!["second".into()];
+        let reason = program
+            .validate()
+            .expect_err("a later step cannot be required");
+        assert!(reason.contains("not an earlier step"), "{reason}");
+    }
+
+    /// A `parallel` step declares named branches, each a nonempty step
+    /// list — and nothing else carries `branches`.
+    #[test]
+    fn a_parallel_step_declares_its_branches() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"fan","kind":"parallel","bounds":{},"branches":[
+                    {"name":"left","steps":[{"name":"peek","kind":"query","bounds":{}}]},
+                    {"name":"right","steps":[{"name":"peek","kind":"query","bounds":{}}]}]}]}"#,
+        )
+        .unwrap();
+        program
+            .validate()
+            .expect("branches of steps are a parallel");
+    }
+
+    #[test]
+    fn a_parallel_step_needs_branches() {
+        for branches in ["[]", r#"[{"name":"empty","steps":[]}]"#] {
+            let program: Program = serde_json::from_str(&format!(
+                r#"{{"v":1,"slug":"fan","steps":[
+                    {{"name":"fan","kind":"parallel","bounds":{{}},"branches":{branches}}}]}}"#,
+            ))
+            .unwrap();
+            assert!(
+                program.validate().is_err(),
+                "branches {branches} is not a parallel"
+            );
+        }
+    }
+
+    /// A branch's `requires` reaches the outer steps before the fork
+    /// and its own earlier steps — never a sibling branch's or a later
+    /// step's.
+    #[test]
+    fn a_branch_requires_reads_the_fork_and_its_own_list() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"seed","kind":"query","bounds":{}},
+                {"name":"fan","kind":"parallel","bounds":{},"branches":[
+                    {"name":"left","steps":[
+                        {"name":"peek","kind":"query","requires":["seed"],"bounds":{}}]},
+                    {"name":"right","steps":[
+                        {"name":"peek","kind":"query","requires":["peek"],"bounds":{}}]}]}]}"#,
+        )
+        .unwrap();
+        let reason = program
+            .validate()
+            .expect_err("a sibling branch's step is not earlier state");
+        assert!(reason.contains("not an earlier step"), "{reason}");
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"seed","kind":"query","bounds":{}},
+                {"name":"fan","kind":"parallel","bounds":{},"branches":[
+                    {"name":"left","steps":[
+                        {"name":"peek","kind":"query","requires":["seed"],"bounds":{}}]},
+                    {"name":"right","steps":[
+                        {"name":"peek","kind":"query","bounds":{}}]}]}]}"#,
+        )
+        .unwrap();
+        program
+            .validate()
+            .expect("an outer step before the fork is earlier state");
+    }
+
+    /// Branches do not nest: a `parallel` inside a branch is refused
+    /// rather than discovered mid-run.
+    #[test]
+    fn a_branch_does_not_nest() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"fan","kind":"parallel","bounds":{},"branches":[
+                    {"name":"left","steps":[
+                        {"name":"inner","kind":"parallel","bounds":{},"branches":[
+                            {"name":"deep","steps":[{"name":"peek","kind":"query","bounds":{}}]}]}]}]}]}"#,
+        )
+        .unwrap();
+        let reason = program
+            .validate()
+            .expect_err("a parallel inside a branch nests");
+        assert!(reason.contains("do not nest"), "{reason}");
+    }
+
+    /// `branches` is the parallel step's field: another kind carrying
+    /// it is refused rather than ignored.
+    #[test]
+    fn branches_on_a_non_parallel_step_is_refused() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"look","kind":"query","bounds":{},"branches":[
+                    {"name":"left","steps":[{"name":"peek","kind":"query","bounds":{}}]}]}]}"#,
+        )
+        .unwrap();
+        assert!(program.validate().is_err());
+    }
+
+    /// A step name is a state key: '/' separates its namespaces and a
+    /// name carrying one writes outside its own.
+    #[test]
+    fn a_step_name_cannot_carry_a_separator() {
+        let program: Program = serde_json::from_str(
+            r#"{"v":1,"slug":"fan","steps":[
+                {"name":"left/peek","kind":"query","bounds":{}}]}"#,
+        )
+        .unwrap();
+        let reason = program
+            .validate()
+            .expect_err("a separator in a name writes another namespace's keys");
+        assert!(reason.contains("'/'"), "{reason}");
+    }
+}

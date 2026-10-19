@@ -26,7 +26,7 @@ class BuildStampTests(unittest.TestCase):
                 f"{script.relative_to(ROOT)} watches the Git index")
 
     def test_coder_stamps_take_dirtiness_from_the_environment(self):
-        for name in ["coder", "coder-new"]:
+        for name in ["coder-core", "coder-new"]:
             code = (ROOT / "crates" / name / "build.rs").read_text()
             self.assertIn("CODER_BUILD_DIRTY", code)
             self.assertNotIn('"status"', code, name)

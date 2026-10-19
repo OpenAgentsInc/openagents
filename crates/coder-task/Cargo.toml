@@ -1,0 +1,67 @@
+[package]
+name = "coder-task"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Coder task store, execution, and agent lifecycle."
+publish.workspace = true
+
+[dependencies]
+standing-jobs = { path = "../standing-jobs" }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+user-home = { path = "../user-home" }
+atif = { path = "../atif" }
+background = { path = "../background" }
+capability = { path = "../capability" }
+coder-boundary = { path = "../coder-boundary" }
+coder-host = { path = "../coder-host" }
+pylon = { path = "../pylon" }
+coder-delegate = { path = "../coder-delegate" }
+coder-sdk = { path = "../coder-sdk" }
+coder-lease = { path = "../coder-lease" }
+acp-client = { path = "../acp-client" }
+jev = { path = "../jev" }
+tenancy = { path = "../tenancy" }
+jev-hosted = { path = "../jev-hosted" }
+model-access = { path = "../model-access" }
+ext-eval = { path = "../ext-eval", default-features = false }
+gym = { path = "../gym" }
+knowledge = { path = "../knowledge" }
+memory-stream = { path = "../memory-stream" }
+microcoder-loop = { path = "../microcoder-loop" }
+openagents-chat = { path = "../openagents-chat" }
+route-contract = { path = "../route-contract" }
+codex-transport = { path = "../codex-transport" }
+futures-util = "0.3"
+base64 = "0.22"
+libc = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+jiff = "0.2.37"
+sha2 = "0.10"
+world-tree = { path = "../world-tree" }
+toml = "0.9"
+secret-screen = { path = "../secret-screen" }
+supervise = { path = "../supervise" }
+tokio = { version = "1", features = ["full"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "1"
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+nostr = { version = "1.0.0", path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+openagents-connect = { path = "../openagents-connect" }
+receipts = { path = "../receipts" }
+coder-core = { path = "../coder-core" }
+
+[target.'cfg(windows)'.dependencies]
+private-fs = { path = "../private-fs" }
+
+[dev-dependencies]
+rcgen = "0.14"
+tempfile = "3"
+
+[lints]
+workspace = true

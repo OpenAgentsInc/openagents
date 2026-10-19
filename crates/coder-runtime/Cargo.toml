@@ -1,0 +1,35 @@
+[package]
+name = "coder-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Coder program runtime, conversation loop, and execution entry points."
+publish.workspace = true
+
+[dependencies]
+atif = { path = "../atif" }
+capability = { path = "../capability" }
+coder-boundary = { path = "../coder-boundary" }
+coder-delegate = { path = "../coder-delegate" }
+coder-sdk = { path = "../coder-sdk" }
+jev = { path = "../jev" }
+jev-hosted = { path = "../jev-hosted" }
+gym = { path = "../gym" }
+microcoder-loop = { path = "../microcoder-loop" }
+ignore = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["full"] }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+nostr = { version = "1.0.0", path = "../nostr" }
+plugin = { path = "../plugin" }
+receipts = { path = "../receipts" }
+coder-core = { path = "../coder-core" }
+
+[dev-dependencies]
+tempfile = "3"
+wat = "1"
+
+[lints]
+workspace = true

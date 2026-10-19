@@ -43,8 +43,8 @@ const QUESTIONS: &[(&str, &str, &str)] = &[
         "30182",
     ),
     (
-        "What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs?",
-        "crates/coder/src/shell.rs",
+        "What is the value of the ROUNDS_MAX constant in crates/coder-core/src/shell.rs?",
+        "crates/coder-core/src/shell.rs",
         "3",
     ),
 ];
@@ -312,9 +312,9 @@ async fn a_live_delegation_answers_one_read_only_question() {
         .in_repository(&repository)
         .run(
             Task::reading(
-                "What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs? \
+                "What is the value of the ROUNDS_MAX constant in crates/coder-core/src/shell.rs? \
                  Answer with a single integer and nothing else.",
-                "crates/coder/src/shell.rs",
+                "crates/coder-core/src/shell.rs",
             )
             .expecting("3"),
         )

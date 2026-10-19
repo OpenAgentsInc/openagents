@@ -32,14 +32,14 @@ provenance:
     - docs/mobile/retired-ios.md
     - crates/openagents-cli/src/settings.rs
     - crates/openagents-desktop/src/settings.rs
-    - crates/coder/src/task/local.rs
-    - crates/coder/src/task/settings.rs
+    - crates/coder-task/src/task/local.rs
+    - crates/coder-task/src/task/settings.rs
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
   - "2026-09-30: an engine named in chat now reaches the computer from the phone too (#10081); checked against INVARIANTS.md."
   - "2026-10-01: the engine that runs is told the request for it is done and works on the task itself (#10084); checked against INVARIANTS.md."
   - "2026-10-02: names the coder.providers setting, the desktop's agent order, and the login read at each start (#10140, #10105); checked against the cited settings and Coder sources."
-  - "2026-10-02: agents are opt-out (#10184): every signed-in agent is used with nothing to enable; coder.disabled turns one off and coder.providers is only an order; checked against crates/coder/src/task/settings.rs."
+  - "2026-10-02: agents are opt-out (#10184): every signed-in agent is used with nothing to enable; coder.disabled turns one off and coder.providers is only an order; checked against crates/coder-task/src/task/settings.rs."
 ---
 
 ## Answer
@@ -65,4 +65,4 @@ Coder uses every coding agent signed in on your computer (Codex, Claude Code, Gr
 - `docs/mobile/retired-ios.md`
 - `crates/openagents-cli/src/settings.rs`
 - `crates/openagents-desktop/src/settings.rs`
-- `crates/coder/src/task/local.rs`
+- `crates/coder-task/src/task/local.rs`

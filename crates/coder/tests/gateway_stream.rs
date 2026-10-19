@@ -425,6 +425,14 @@ fn a_model_id_is_written_in_one_place() {
     let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut elsewhere = Vec::new();
     let mut files = vec![source];
+    for package in ["coder-core", "coder-router", "coder-runtime", "coder-task"] {
+        files.push(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join(package)
+                .join("src"),
+        );
+    }
     while let Some(path) = files.pop() {
         if path.is_dir() {
             let listed = std::fs::read_dir(&path).expect("the source tree reads");

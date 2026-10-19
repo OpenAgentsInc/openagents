@@ -8,10 +8,11 @@
 #   1. warm-up   the command once, untimed in the table, so every dependency
 #                is built with this command's features (timed as "prep")
 #   2. noop      the same command again, nothing changed
-#   3. edit      after adding one private function to the package's root
-#                source file, which forces the package itself to recompile
+#   3. edit      after adding one private function to the selected source
+#                file, which forces its package to recompile
 # for both `cargo build -p P` and `cargo test -p P --no-run`. The edit is
-# reverted when the script exits.
+# reverted when the script exits. Times are wall-clock seconds, including
+# Cargo lock waits. Compare runs with similar machine load.
 #
 # Options:
 #   --manifest-path M  a nested workspace (apps/openagents/Cargo.toml)
@@ -38,7 +39,11 @@
 #   --cold             first build every named package together, timed as
 #                      the "(all)" row, with --timings; on an empty target
 #                      this is the cold build
+#   --with PACKAGE     include another package in each build and test command
+#                      (repeatable; requires one positional package)
 #   --out FILE         append rows as tab-separated values
+#   --edit-file FILE   edit this source file while building the named package
+#                      (requires one package; defaults to its root source file)
 #
 # A variant changes compiler flags, so give each variant its own target
 # directory unless a cold build is what you want to time. The script loads
@@ -58,7 +63,9 @@ only=
 timings=0
 cold=0
 out=
+edit_file=
 packages=()
+with_packages=()
 
 while [ $# -gt 0 ]; do
   case $1 in
@@ -72,22 +79,34 @@ while [ $# -gt 0 ]; do
     --timings) timings=1; shift ;;
     --cold) cold=1; shift ;;
     --out) out=$2; shift 2 ;;
-    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+    --with) with_packages+=("$2"); shift 2 ;;
+    --edit-file) edit_file=$2; shift 2 ;;
+    -h|--help) sed -n '2,/^set -euo pipefail/{ /^set -euo pipefail/d; p; }' "$0"; exit 0 ;;
     -*) echo "Unknown option: $1" >&2; exit 2 ;;
     *) packages+=("$1"); shift ;;
   esac
 done
 [ ${#packages[@]} -gt 0 ] || { echo 'Name at least one package.' >&2; exit 2; }
 
-if [ -z "$target" ]; then
-  scratch=$(openagents scratch 2>/dev/null || true)
-  [ -n "$scratch" ] || { echo 'Set --target-dir or CARGO_TARGET_DIR.' >&2; exit 2; }
-  target=$scratch/build-bench
+if [ ${#with_packages[@]} -gt 0 ] && [ ${#packages[@]} -ne 1 ]; then
+  echo '--with requires one positional package.' >&2; exit 2
 fi
+
+if [ -n "$edit_file" ]; then
+  [ ${#packages[@]} -eq 1 ] || { echo '--edit-file requires one package.' >&2; exit 2; }
+  [ -f "$edit_file" ] || { echo "No source file at $edit_file" >&2; exit 2; }
+fi
+
+scratch=$(openagents scratch 2>/dev/null || true)
+[ -n "$scratch" ] || { echo 'Cannot find the scratch directory. Run openagents scratch to check it.' >&2; exit 2; }
+run_dir=$(mktemp -d "$scratch/build-bench.XXXXXX")
+backup_dir=$run_dir/backups
+mkdir -p "$backup_dir"
+echo "Benchmark files: $run_dir" >&2
+echo "Times include Cargo lock waits; compare runs with similar machine load." >&2
+[ -n "$target" ] || target=$scratch/build-bench
 mkdir -p "$target"
 export CARGO_TARGET_DIR=$target
-scratch=$(openagents scratch)
-run_dir=$(mktemp -d "$scratch/build-bench.XXXXXX")
 
 cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
 export CARGO_BUILD_JOBS=${jobs:-$(( cores / 2 > 0 ? cores / 2 : 1 ))}
@@ -103,10 +122,12 @@ profile_args=()
   [ -n "$manifest" ] && cd "$(dirname "$manifest")"
   oa_build_manifest=
   . "$root/scripts/dev/cargo-build-env.sh"
-  env | grep -E '^(RUSTC|CARGO_BUILD_BUILD_DIR|CARGO_INCREMENTAL)=' > "$run_dir/env"
+  for name in RUSTC CARGO_BUILD_BUILD_DIR CARGO_INCREMENTAL KACHE_BASE_DIR KACHE_LOCAL_ONLY; do
+    declare -p "$name" 2>/dev/null || true
+  done > "$run_dir/build.env"
 )
 unset CARGO_INCREMENTAL
-set -a; . "$run_dir/env"; set +a
+set -a; . "$run_dir/build.env"; set +a
 
 if [ "$wrapper" = 0 ]; then
   export RUSTC_WRAPPER= CARGO_BUILD_RUSTC_WRAPPER= OA_SCCACHE=0
@@ -155,8 +176,6 @@ sys.exit(1)' "$1"
 }
 
 edited=()
-backup_dir=$run_dir/backups
-mkdir -p "$backup_dir"
 restore() {
   local i=0 f
   for f in "${edited[@]:-}"; do
@@ -171,12 +190,12 @@ now() { python3 -c 'import time; print(time.time())'; }
 timed() {
   local start end status=0
   start=$(now)
-  "$@" > "$run_dir/last.log" 2>&1 || status=$?
+  "$@" > "$run_dir/build.log" 2>&1 || status=$?
   end=$(now)
   python3 -c "print(f'{$end - $start:.1f}')"
   if [ $status -ne 0 ]; then
-    echo "  failed: $* (see $run_dir/last.log)" >&2
-    tail -20 "$run_dir/last.log" >&2
+    echo "  failed: $* (see $run_dir/build.log)" >&2
+    tail -20 "$run_dir/build.log" >&2
     return $status
   fi
 }
@@ -204,18 +223,28 @@ row() {
 }
 if [ "$cold" = 1 ]; then
   all=()
-  for pkg in "${packages[@]}"; do all+=(-p "$pkg"); done
+  for pkg in "${packages[@]}" "${with_packages[@]}"; do all+=(-p "$pkg"); done
   cold_time=$(timed cargo build -q "${cargo_args[@]}" "${profile_args[@]}" "${all[@]}" --timings)
   row '(all)' cold "$cold_time" - -
 fi
 for pkg in "${packages[@]}"; do
-  file=$(src_of "$pkg") || { echo "No package named $pkg" >&2; exit 2; }
+  if [ -n "$edit_file" ]; then
+    file=$edit_file
+  else
+    file=$(src_of "$pkg") || { echo "No package named $pkg" >&2; exit 2; }
+  fi
+  package_args=(-p "$pkg")
+  label=$pkg
+  for extra in "${with_packages[@]}"; do
+    package_args+=(-p "$extra")
+    label=$label+$extra
+  done
   for cmd in build test; do
     [ -n "$only" ] && [ "$only" != "$cmd" ] && continue
     if [ "$cmd" = build ]; then
-      argv=(cargo build -q "${cargo_args[@]}" "${profile_args[@]}" -p "$pkg")
+      argv=(cargo build -q "${cargo_args[@]}" "${profile_args[@]}" "${package_args[@]}")
     else
-      argv=(cargo test -q "${cargo_args[@]}" "${profile_args[@]}" -p "$pkg" --no-run)
+      argv=(cargo test -q "${cargo_args[@]}" "${profile_args[@]}" "${package_args[@]}" --no-run)
     fi
     prep_argv=("${argv[@]}")
     [ "$timings" = 1 ] && [ "$cmd" = build ] && prep_argv+=(--timings)
@@ -223,6 +252,6 @@ for pkg in "${packages[@]}"; do
     noop=$(timed "${argv[@]}")
     edit "$file"
     change=$(timed "${argv[@]}")
-    row "$pkg" "$cmd" "$prep" "$noop" "$change"
+    row "$label" "$cmd" "$prep" "$noop" "$change"
   done
 done

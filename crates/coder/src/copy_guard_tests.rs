@@ -11,7 +11,7 @@ use std::path::Path;
 const FILES: &[(&str, &[&str])] = &[
     ("cli.rs", &[]),
     // `--cursor` is the real flag that pages through a task's steps.
-    ("task/cli.rs", &["cursor"]),
+    ("../../coder-task/src/task/cli.rs", &["cursor"]),
 ];
 
 #[test]

@@ -1583,7 +1583,7 @@ mod tests {
                 screen: Screen::Wallet
             })
         );
-        // `crates/coder/src/router.rs` names exactly these screens.
+        // `crates/coder-router/src/router.rs` names exactly these screens.
         for word in [
             "account.computers",
             "account.keys",
@@ -1729,7 +1729,7 @@ mod tests {
     /// (`coder::cli_route::tree::WIRE_NAMES`).
     #[test]
     fn the_read_only_list_matches_the_worker_phone_list() {
-        let gate = include_str!("../../coder/src/cli_route/gate.rs");
+        let gate = include_str!("../../coder-router/src/cli_route/gate.rs");
         let start = gate
             .find("pub const PHONE_COMMANDS")
             .expect("the worker's phone list");
