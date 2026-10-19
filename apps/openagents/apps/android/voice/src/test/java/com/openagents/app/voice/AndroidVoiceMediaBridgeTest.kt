@@ -59,7 +59,7 @@ class AndroidVoiceMediaBridgeTest {
 
         driver.reply(2uL, VoiceMediaResult(failure = VoiceMediaFailure.PERMISSION_DENIED))
 
-        assertEquals(listOf(VoiceMediaFailure.PERMISSION_DENIED), failures)
+        assertEquals(listOf<VoiceMediaFailure?>(VoiceMediaFailure.PERMISSION_DENIED), failures)
         assertEquals(1, driver.requests.size)
     }
 

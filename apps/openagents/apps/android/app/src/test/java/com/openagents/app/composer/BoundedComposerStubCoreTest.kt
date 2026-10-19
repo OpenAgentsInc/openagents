@@ -16,6 +16,7 @@ class BoundedComposerStubCoreTest {
             enabled = true,
             busy = false,
             primaryLabel = "Send",
+            stopAction = null,
         )
         val core = BoundedComposerStubCore(frame).apply { acceptNextSubmit = false }
         val payload = ComposerAttachmentPayload("photo.jpg", "image/jpeg", byteArrayOf(1, 2, 3))
@@ -37,6 +38,7 @@ class BoundedComposerStubCoreTest {
             enabled = true,
             busy = false,
             primaryLabel = "Send",
+            stopAction = null,
         )
         val core = BoundedComposerStubCore(frame)
         val oversized = ComposerAttachmentPayload(

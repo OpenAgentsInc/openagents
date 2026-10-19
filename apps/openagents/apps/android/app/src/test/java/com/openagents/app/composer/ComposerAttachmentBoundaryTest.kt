@@ -41,6 +41,7 @@ class ComposerAttachmentBoundaryTest {
             enabled = true,
             busy = false,
             primaryLabel = "Send",
+            stopAction = null,
         )
         val core = BoundedComposerStubCore(frame)
         val fence = ComposerAttachmentCallbackFence()
@@ -135,6 +136,7 @@ class ComposerAttachmentBoundaryTest {
             enabled = true,
             busy = false,
             primaryLabel = "Send",
+            stopAction = null,
         )
         val core = BoundedComposerStubCore(frame).apply { acceptNextSubmit = false }
         val payload = ComposerAttachmentPayload("photo.jpg", "image/jpeg", byteArrayOf(1, 2, 3))
