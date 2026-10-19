@@ -38,6 +38,11 @@ pub(crate) fn extend(doc: &mut Value) {
      "CustomAgentGrant":{"type":"object","additionalProperties":false,"required":["id","scopes","over","grantedAt"],"description":"A power the account owner gave the agent over other chats. Grants belong to the account, never to the definition: a fork asks its own owner.","properties":{"id":id,"scopes":{"type":"array","items":scope},"over":over,"grantedAt":{"type":"integer","description":"Unix milliseconds."}}},
      "CustomAgentGrantCreate":{"type":"object","additionalProperties":false,"required":["request_id","scopes","over"],"description":"Scopes are words. Money, keys, secrets, deploys and closing other agents' issues can't be granted to any agent and answer 400 not_grantable.","properties":{"request_id":id,"scopes":{"type":"array","minItems":1,"items":{"type":"string"}},"over":over}},
      "CustomAgentGrantList":{"type":"object","additionalProperties":false,"required":["data"],"properties":{"data":{"type":"array","maxItems":32,"items":r("Grant")}}},
+     "CustomAgentDecisionEntry":{"type":"object","required":["kind","at"],"description":"One line of the decision log. Other fields are kept as written.","properties":{"kind":{"type":"string","minLength":1,"maxLength":32,"pattern":"^[a-z_]+$"},"at":{"type":"integer","minimum":0,"description":"Unix milliseconds."}},"additionalProperties":true},
+     "CustomAgentDecisionRecord":{"type":"object","additionalProperties":false,"required":["request_id","entry"],"description":"The same request_id appends once. An entry is at most 16 KiB of JSON.","properties":{"request_id":{"type":"string"},"entry":r("DecisionEntry")}},
+     "CustomAgentDecisionRecorded":{"type":"object","required":["recorded"],"properties":{"recorded":{"type":"boolean"}}},
+     "CustomAgentDecisionStored":{"type":"object","required":["cursor","request_id","entry"],"properties":{"cursor":{"type":"string"},"request_id":{"type":"string"},"entry":r("DecisionEntry")}},
+     "CustomAgentDecisionPage":{"type":"object","required":["data","next"],"description":"Oldest first. Pass next as after for the following page; null ends the log.","properties":{"data":{"type":"array","items":r("DecisionStored")},"next":{"type":["string","null"]}}},
      "CustomAgentGrantRevoked":{"type":"object","additionalProperties":false,"required":["revoked"],"properties":{"revoked":{"type":"boolean"}}}
     });
     doc["components"]["schemas"]
@@ -101,6 +106,20 @@ pub(crate) fn extend(doc: &mut Value) {
             None,
             "GrantRevoked",
         ),
+        (
+            "/v1/agent-definitions/{id}/decisions",
+            "get",
+            "listAgentDecisions",
+            None,
+            "DecisionPage",
+        ),
+        (
+            "/v1/agent-definitions/{id}/decisions",
+            "post",
+            "recordAgentDecision",
+            Some("DecisionRecord"),
+            "DecisionRecorded",
+        ),
     ] {
         let mut parameters = vec![];
         if path.contains("{id}") {
@@ -109,7 +128,9 @@ pub(crate) fn extend(doc: &mut Value) {
         if path.contains("{grant}") {
             parameters.push(json!({"name":"grant","in":"path","required":true,"schema":id}));
         }
-        if method == "get" && !path.ends_with("/grants") {
+        if method == "get" && path.ends_with("/decisions") {
+            parameters.push(json!({"name":"after","in":"query","schema":{"type":"string"}}));
+        } else if method == "get" && !path.ends_with("/grants") {
             if result == "Page" {
                 parameters.push(json!({"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":100,"default":100}}));
                 parameters.push(json!({"name":"after","in":"query","schema":id}));
