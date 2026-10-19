@@ -9,8 +9,12 @@
 # can't write the default logs bucket, so logs go to Cloud Logging only.
 steps:
 - name: gcr.io/cloud-builders/docker
-  args: ['build', '--network', 'cloudbuild', '-t', 'us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/nostr-relay:$_TAG', '.']
-images: ['us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/nostr-relay:$_TAG']
+  entrypoint: bash
+  args:
+    - scripts/deploy/cloud-buildx.sh
+    - Dockerfile
+    - us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/nostr-relay:$_TAG
+    - nostr-relay
 serviceAccount: projects/openagentsgemini/serviceAccounts/oa-cloud-run-source-builder@openagentsgemini.iam.gserviceaccount.com
 options:
   logging: CLOUD_LOGGING_ONLY
