@@ -58,6 +58,9 @@ case ${1:-} in
     login-codex)
         echo "Open the link below and enter the code; Codex on $NAME is then signed in."
         remote -t 'codex login --device-auth && codex login status' ;;
+    install-idle)
+        remote 'sudo -n install -m 755 /dev/stdin /usr/local/bin/oa-agent-host-idle' <"$(dirname "$0")/agent-host-idle.sh"
+        echo "Idle checker updated." ;;
     upgrade)
         remote "FORCE=${FORCE:-} bash -se" <<'EOS'
 set -eu

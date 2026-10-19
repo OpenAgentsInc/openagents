@@ -76,6 +76,16 @@ start` (about a minute until the device shows). Change the limit with
 `gcloud compute instances add-metadata oa-agent-host-1 --zone us-central1-a
 --metadata oa-agent-host-idle-minutes=N`.
 
+The idle clock starts fresh after every boot. Its busy marker is
+`/run/oa-agent-host/busy`, so time spent powered off doesn't count toward
+the idle limit. New `oa-coder-host` images include this checker.
+
+To update an existing host, run `scripts/cloud/agent-host.sh install-idle`
+while it is running. This replaces the checker used by its existing timer.
+For a host with the old checker, connect immediately after starting it and
+run `touch ~/.openagents/keep-awake` to keep it up during the update; remove
+that file afterward.
+
 List price, us-central1:
 
 | | Per hour | Per day |

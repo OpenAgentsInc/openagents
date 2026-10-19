@@ -87,6 +87,9 @@ bash "$setup" "${setup_args[@]}" 2>&1 \
     done
 [[ "${PIPESTATUS[0]}" == 0 ]]
 
+# Include the agent host checker without enabling idle stop on other hosts.
+install -m 0755 "$repo/scripts/cloud/agent-host-idle.sh" /usr/local/bin/oa-agent-host-idle
+
 # ---------------------------------------------------------------- ready unit
 # On every boot of a host made from the image: fetch origin/main into the
 # baked clone (bounded), check that sccache can reach its bucket (else turn
