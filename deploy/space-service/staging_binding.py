@@ -43,7 +43,9 @@ def registry(account, admit_space):
          'data_plane_url': 'https://oa-space-service-data-ezxz4mgdsq-uc.a.run.app', 'credential_env': 'SPACE_API_TOKEN',
          'template': 'code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149',
          'scope': '00000000-0000-4000-8000-000000011814', 'capacity': 2, 'admit_new': admit_space,
-         'rollout_accounts': [owner(account)], 'shapes': {'small': {'vcpus': 2, 'memory_mib': 1024, 'min_disk_gib': None}}}]}
+         'rollout_accounts': [owner(account)], 'shapes': {'small': {'vcpus': 2, 'memory_mib': 1024, 'min_disk_gib': None}},
+         # code-runtime's guest home, where SPACE file transfers land (#12146).
+         'command_workspace': '/home/user'}]}
 
 
 def apply(account, admit_space):

@@ -15,6 +15,7 @@ class StagingBinding(unittest.TestCase):
         digest = 'account:' + hashlib.sha256(b'openagents.web.chat.account.v1\0acct_4570d993d9897bdd').hexdigest()
         self.assertEqual(space['rollout_accounts'], [digest])
         self.assertTrue(space['admit_new'])
+        self.assertEqual(space['command_workspace'], '/home/user')
         self.assertFalse(staging_binding.registry('acct_4570d993d9897bdd', False)['deployments'][1]['admit_new'])
 
     def test_only_one_exact_account_is_accepted(self):
