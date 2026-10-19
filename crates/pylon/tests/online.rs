@@ -440,6 +440,24 @@ fn up_choices_and_old_settings() {
     .unwrap();
     assert!(settings.text.is_none());
     assert_eq!(notes, vec!["no room".to_string()]);
+
+    // With room, the text engine runs on the decision lane's device:
+    // Psionic's text backend would otherwise default to the CPU.
+    let (settings, _) =
+        online::settings_for_up(None, "box", "wss://r", &choice, "cuda", Ok(())).unwrap();
+    let specs = online::lanes(&settings);
+    let text = specs.iter().find(|l| l.kind == LaneKind::Text).unwrap();
+    assert_eq!(text.device.as_deref(), Some("cuda"));
+    let command = online::psionic_command(Path::new("psionic-openai-server"), text);
+    let args: Vec<String> = command
+        .as_std()
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        args.windows(2).any(|w| w == ["--backend", "cuda"]),
+        "{args:?}"
+    );
     let host = pylon::setup::Host {
         gpu: "apple".into(),
         memory_gb: Some(16.0),

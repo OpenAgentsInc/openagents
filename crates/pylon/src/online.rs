@@ -69,7 +69,9 @@ pub struct LaneSpec {
     pub kind: LaneKind,
     pub port: u16,
     pub model_file: PathBuf,
-    /// The decision device (`metal`, `cuda`, `cpu`); decisions only.
+    /// The device (`metal`, `cuda`, `cpu`): the decision device, and for
+    /// text the decision lane's device too, so both engines use the GPU
+    /// doctor picked (Psionic's text backend defaults to the CPU).
     pub device: Option<String>,
     /// The served model's name; text only.
     pub model: Option<String>,
@@ -110,7 +112,7 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
             kind: LaneKind::Text,
             port: lane.port,
             model_file: lane.model_file.clone(),
-            device: None,
+            device: settings.decide.as_ref().map(|d| d.device.clone()),
             model: Some(lane.model.clone()),
         });
     }
@@ -128,8 +130,15 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
         "--port",
         &lane.port.to_string(),
     ]);
-    if lane.kind == LaneKind::Decisions {
-        command.args(["--decision-device", lane.device.as_deref().unwrap_or("cpu")]);
+    match lane.kind {
+        LaneKind::Decisions => {
+            command.args(["--decision-device", lane.device.as_deref().unwrap_or("cpu")]);
+        }
+        LaneKind::Text => {
+            if let Some(device) = &lane.device {
+                command.args(["--backend", device]);
+            }
+        }
     }
     command.args(["--mesh-coordination", "disabled"]);
     command
