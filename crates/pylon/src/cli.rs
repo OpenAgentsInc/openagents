@@ -150,9 +150,30 @@ Commands:
                             drawn after the answers arrive on a reference server
                             running the same pinned model, and sign a verdict:
                             pass, fail (a strike), or inconclusive (a small miss).
+                            Items come from this checker's private seed
+                            (checker-seed, made on first use) and each round
+                            from a new buyer key, so a pylon can neither
+                            rebuild the items nor recognise the checker.
       --reference URL       The reference decision server (default
                             http://127.0.0.1:18096).
       --rounds N            Rounds to run (default 1).
+      --seed N              Public items from seed N (counting up per round),
+                            for reproducible calibration runs.
+      --own-buyer           Send from the stored buyer key (for a pylon that
+                            admits only allowlisted keys).
+  check decide --watch      Keep checking: read the relay's beacons and check
+                            every online pylon serving the reference's model
+                            when it first appears, then every --every seconds;
+                            a struck pylon again after --recheck-struck. Leaves
+                            offline and draining pylons alone. Runs until
+                            stopped.
+      --every SECS          Seconds between rounds per pylon (default 900).
+      --recheck-struck SECS Seconds before a struck pylon is checked again
+                            (default 3600).
+      --concurrency N       Rounds at once (default 4).
+      --poll SECS           Seconds between reads of the beacons (default 30).
+      --pool SLUG           Only pylons asking to join this pool.
+      --pylon NPUB          Only this pylon; repeat.
   league                    The pylon league: per class, pass rates on the
                             pinned suites, jobs, median time, and cost.
   status                    The Pylon Field: every verified pylon's state.
@@ -1047,6 +1068,9 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
         home: home(),
         wait: Duration::from_secs(args.number("--wait", 90)?.clamp(1, 600)),
     };
+    if mode == "decide" && args.flag("--watch") {
+        return check_decide_watch(json_out, args, checker, pylons).await;
+    }
     if mode == "decide" {
         let [pylon] = pylons.as_slice() else {
             return Err("check decide takes one --pylon NPUB".into());
@@ -1055,13 +1079,40 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
             .value("--reference")?
             .unwrap_or_else(|| DEFAULT_DECIDE.into());
         let rounds = args.number("--rounds", 1)?.clamp(1, 100);
+        let public = args
+            .value("--seed")?
+            .map(|v| {
+                v.parse::<u64>()
+                    .map_err(|_| "--seed takes a number".to_string())
+            })
+            .transpose()?;
+        let fresh_buyer = !args.flag("--own-buyer");
         let clef = crate::decide::Clef::new(&reference, None)?;
         clef.refresh().await?;
+        let secret = match public {
+            Some(_) => None,
+            None => Some(crate::items::checker_seed(&home())?),
+        };
         let mut results = Vec::new();
         let mut text = String::new();
-        for _ in 0..rounds {
-            let c = crate::check_decide::round(&checker, pylon, &clef, &crate::verify::CLEF_FLASH)
-                .await?;
+        for n in 0..rounds {
+            let seed = match (public, secret) {
+                (Some(seed), _) => crate::check_decide::Seed::Public(seed.wrapping_add(n)),
+                (None, Some(secret)) => crate::check_decide::Seed::Private {
+                    secret,
+                    round: crate::check_decide::next_round(&home())?,
+                },
+                (None, None) => crate::check_decide::Seed::Fresh,
+            };
+            let plan = crate::check_decide::Plan { seed, fresh_buyer };
+            let c = crate::check_decide::round_with(
+                &checker,
+                pylon,
+                &clef,
+                &crate::verify::CLEF_FLASH,
+                plan,
+            )
+            .await?;
             text.push_str(&format!(
                 "{:<18} {}  mean {:.4}  worst {:.4}  verified {}/{}  label {}{}\n",
                 c.verdict.label(),
@@ -1132,6 +1183,81 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
         &text,
     );
     Ok(())
+}
+
+/// `check decide --watch`: the continuous decision checker. Runs until
+/// interrupted, one line (or JSON document) per finished round.
+async fn check_decide_watch(
+    json_out: bool,
+    args: &mut Args,
+    checker: crate::check::Checker,
+    pylons: Vec<String>,
+) -> Result<(), String> {
+    use crate::check_decide::{Items, WatchConfig, Watcher};
+    let reference = args
+        .value("--reference")?
+        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let config = WatchConfig {
+        every: args.number("--every", 900)?.clamp(10, 7 * 86_400),
+        recheck_struck: args
+            .number("--recheck-struck", 3_600)?
+            .clamp(10, 7 * 86_400),
+        concurrency: usize::try_from(args.number("--concurrency", 4)?.clamp(1, 64)).unwrap_or(4),
+        pool: args.value("--pool")?,
+        only: (!pylons.is_empty()).then(|| pylons.into_iter().collect()),
+        fresh_buyer: !args.flag("--own-buyer"),
+        ..WatchConfig::default()
+    };
+    let poll = Duration::from_secs(args.number("--poll", 30)?.clamp(1, 3_600));
+    let items = match args.value("--seed")? {
+        Some(v) => Items::Public(v.parse().map_err(|_| "--seed takes a number".to_string())?),
+        None => Items::Private(crate::items::checker_seed(&home())?),
+    };
+    let clef = Arc::new(crate::decide::Clef::new(&reference, None)?);
+    clef.refresh().await?;
+    let npub = checker.checker.npub();
+    let mut watcher = Watcher::new(checker, clef, crate::verify::CLEF_FLASH, config, items);
+    eprintln!(
+        "pylon: checking decision pylons as {npub}, every {} s, struck pylons after {} s",
+        watcher.config.every, watcher.config.recheck_struck
+    );
+    let stop = tokio::signal::ctrl_c();
+    tokio::pin!(stop);
+    loop {
+        match watcher.pass(crate::now()).await {
+            Ok(watched) => {
+                for w in watched {
+                    let text = match &w.check {
+                        Some(c) => format!(
+                            "{:<18} {}  mean {:.4}  worst {:.4}  label {}  next {}",
+                            c.verdict.label(),
+                            c.pylon,
+                            c.round.mean,
+                            c.round.worst,
+                            c.label.as_deref().unwrap_or("not published"),
+                            w.next
+                        ),
+                        None => format!(
+                            "not checked        {}  ({})  next {}",
+                            w.pylon,
+                            w.error.as_deref().unwrap_or("no round"),
+                            w.next
+                        ),
+                    };
+                    emit(
+                        json_out,
+                        &serde_json::to_value(&w).unwrap_or_default(),
+                        &text,
+                    );
+                }
+            }
+            Err(e) => eprintln!("pylon: checker pass: {e}"),
+        }
+        tokio::select! {
+            _ = &mut stop => return Ok(()),
+            () = tokio::time::sleep(poll) => {}
+        }
+    }
 }
 
 async fn league(json_out: bool, relay: &str, checkers: BTreeSet<String>) -> Result<(), String> {

@@ -64,6 +64,70 @@ pub fn fresh_seed() -> u64 {
     secp256k1::rand::random()
 }
 
+/// The checker-private seed's file in the pylon home.
+pub const CHECKER_SEED_FILE: &str = "checker-seed";
+
+/// The checker's private seed in `home` (`checker-seed`: 32 random bytes,
+/// mode `0600`), created on first use. Mixed with a round counter by
+/// [`private_seed`], it makes a checker's items unpredictable to anyone
+/// holding only the public generator: a pylon cannot precompute or look up
+/// a round's items from a seed it could guess.
+///
+/// # Errors
+///
+/// When the file cannot be read or written, or does not hold 32 bytes.
+pub fn checker_seed(home: &std::path::Path) -> Result<[u8; 32], String> {
+    use std::io::Write as _;
+    let path = home.join(CHECKER_SEED_FILE);
+    match std::fs::read(&path) {
+        Ok(bytes) => <[u8; 32]>::try_from(bytes.as_slice())
+            .map_err(|_| format!("{} does not hold 32 bytes", path.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let secret: [u8; 32] = secp256k1::rand::random();
+            std::fs::create_dir_all(home).map_err(|e| e.to_string())?;
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            match options.open(&path) {
+                Ok(mut file) => {
+                    file.write_all(&secret).map_err(|e| e.to_string())?;
+                    Ok(secret)
+                }
+                // Another checker in this home made it first: use theirs.
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => checker_seed(home),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// The generator seed for round `round` under the checker-private
+/// `secret`: the first eight bytes of
+/// `SHA-256("openagents.pylon.checker-items.v1" || secret || round)`.
+#[must_use]
+pub fn private_seed(secret: &[u8; 32], round: u64) -> u64 {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    hash.update(b"openagents.pylon.checker-items.v1");
+    hash.update(secret);
+    hash.update(round.to_le_bytes());
+    let digest = hash.finalize();
+    let mut first = [0_u8; 8];
+    first.copy_from_slice(&digest[..8]);
+    u64::from_le_bytes(first)
+}
+
+/// The first `count` items of round `round` under the private `secret`.
+#[must_use]
+pub fn private_items(secret: &[u8; 32], round: u64, count: u32) -> Vec<Item> {
+    items(private_seed(secret, round), count)
+}
+
 /// One decision item: the `POST /v1/systemone` body without the model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
@@ -432,5 +496,37 @@ mod tests {
     #[test]
     fn fresh_seeds_differ() {
         assert_ne!(fresh_seed(), fresh_seed());
+    }
+
+    #[test]
+    fn private_rounds_differ_from_the_public_seed_and_from_each_other() {
+        let home = tempfile::tempdir().unwrap();
+        let secret = checker_seed(home.path()).unwrap();
+        // Created once, 0600, and read back the same.
+        assert_eq!(checker_seed(home.path()).unwrap(), secret);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(home.path().join(CHECKER_SEED_FILE))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        for round in 0..20 {
+            // Knowing the round counter and the public generator is not
+            // enough to rebuild a private round.
+            assert_ne!(private_items(&secret, round, 8), items(round, 8));
+            assert_ne!(private_seed(&secret, round), round);
+            assert_ne!(
+                private_seed(&secret, round),
+                private_seed(&secret, round + 1)
+            );
+        }
+        // Another checker's secret gives other items for the same round.
+        let other = [7_u8; 32];
+        assert_ne!(private_items(&secret, 3, 8), private_items(&other, 3, 8));
+        // Deterministic for one secret and round.
+        assert_eq!(private_items(&secret, 3, 8), private_items(&secret, 3, 8));
     }
 }

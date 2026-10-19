@@ -1,0 +1,32 @@
+[Unit]
+Description=OpenAgents pylon checker: keeps checking contributor decision pylons against a reference Clef server
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/deploy/pylon-checker/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The checker's keys (checker.key, buyer.key) and its private item seed
+# (checker-seed, 32 random bytes, 0600) live in this directory. The service
+# makes the seed on first use and never prints a key or the seed.
+Environment=OPENAGENTS_PYLON_HOME=%h/.openagents/pylon-checker
+# Optional overrides: PYLON_CHECKER_BIN (default ~/.local/bin/openagents),
+# PYLON_CHECKER_REFERENCE (default the loopback Clef
+# server), PYLON_CHECKER_POOL (default everglade), PYLON_CHECKER_EVERY
+# (seconds between rounds per pylon, default 900).
+EnvironmentFile=-%h/.config/openagents/pylon-checker.env
+# $$ passes a literal $ to the shell; systemd would expand ${...} itself.
+ExecStart=/bin/sh -c 'exec "$${PYLON_CHECKER_BIN:-$$HOME/.local/bin/openagents}" pylon check decide --watch \
+  --reference "$${PYLON_CHECKER_REFERENCE:-http://127.0.0.1:18096}" \
+  --pool "$${PYLON_CHECKER_POOL:-everglade}" \
+  --every "$${PYLON_CHECKER_EVERY:-900}" \
+  --json'
+Restart=on-failure
+RestartSec=30
+Nice=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

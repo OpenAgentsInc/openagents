@@ -340,8 +340,11 @@ one-hot answers strike over 99 %.
 2. **Checker rounds (built).** `pylon check decide` sends fresh seeded
    items as ordinary jobs from a buyer key, recomputes on a reference
    server, and signs a NIP-32 `check-pass`, `check-fail` (strike), or
-   `check-inconclusive`. 1.0 runs these continuously from an OpenAgents
-   checker on a schedule per pylon (new: today it is run by hand).
+   `check-inconclusive`. `check decide --watch` (**built**, #12191) runs
+   them continuously per pylon (on first sight, every 15 minutes, a struck
+   pylon again after an hour), with items from a checker-private seed and
+   a new buyer key each round; the unit to run it next to a reference Clef
+   is in `deploy/pylon-checker/` (not yet deployed).
 3. **Sampled recompute of real traffic (new).** The gateway already
    re-asks 1 in 20 answers at the next door. For pylon answers that door
    becomes a reference Clef (hosted TPU or H100) and the comparison becomes

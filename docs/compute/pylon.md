@@ -290,6 +290,32 @@ mislabelled answer), or `check-inconclusive` (a mean between 0.05 and
 `docs/research/decisionmodels/calibration.md`; `openagents pylon calibrate
 run|compare|reference` reproduces it on any machine.
 
+The items come from the checker's private seed: `checker-seed` in the
+pylon home (32 random bytes, mode `0600`, made on first use), mixed with a
+round counter kept in `checker-round`, so nobody can rebuild a round's
+items from the public generator. `--seed N` uses public items instead, for
+reproducible calibration runs. Each round also comes from a new buyer key,
+made for that round and used to sign its receipt, so a pylon cannot tell
+the checker from a customer. A pylon that admits only allowlisted keys
+therefore refuses checker rounds and is never admitted to a checked pool;
+community pylons run with `--allow-any`. `--own-buyer` sends from the
+stored buyer key to check an allowlisted pylon by hand.
+
+**Keep checking.** `openagents pylon check decide --watch --reference
+http://127.0.0.1:18096 [--pool everglade] [--every 900]` runs until
+stopped. It reads the relay's beacons every 30 seconds (`--poll`) and
+checks each online pylon serving exactly the reference's model: as soon as
+the pylon appears, then every `--every` seconds (default 900). A pylon that
+failed a round is checked again after an hour (`--recheck-struck`); a pass
+then is the `check-pass` the gateway needs to take it back. Offline and
+draining pylons are left alone and checked when they come back. At most
+four rounds run at once (`--concurrency`), and a round that could not run
+(the reference was down, say) publishes nothing and is retried at the next
+interval. `--pylon NPUB` limits it to the pylons named. Each finished round
+prints one line, or one JSON document with `--json`. To run it as a
+service next to a reference Clef server, see
+[`deploy/pylon-checker/`](../../deploy/pylon-checker/README.md).
+
 Readers trust this computer's own checker key, the keys in
 `OPENAGENTS_PYLON_CHECKERS` (comma-separated npubs), and `--checker NPUB`.
 One trusted `check-fail` in the last 24 hours keeps `ask` and `route` from
