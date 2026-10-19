@@ -79,6 +79,15 @@ internal class AndroidRootPresentation(
     private val voiceCapsuleContainer = FrameLayout(activity)
     private var settingsActions: AndroidSettingsActions? = null
     private var drawer: DrawerPresenter? = null
+    private var ownerNoteObservation: AutoCloseable? = null
+    private val ownerNote = TextView(activity)
+    private val ownerNoteOpen = Button(activity).apply { text = "Open chat" }
+    private val ownerNoteBanner = LinearLayout(activity).apply {
+        orientation = LinearLayout.HORIZONTAL
+        visibility = View.GONE
+        addView(ownerNote, LinearLayout.LayoutParams(0, -2, 1f))
+        addView(ownerNoteOpen)
+    }
     private val notice = TextView(activity)
     private val navigation = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
     private val drawerView = DrawerView(activity)
@@ -123,6 +132,7 @@ internal class AndroidRootPresentation(
         toolbar.addView(action("Chats") { panes.showNavigation() })
         toolbar.addView(notice, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(toolbar)
+        root.addView(ownerNoteBanner)
         root.addView(voiceCapsuleContainer)
         root.addView(panes.view, LinearLayout.LayoutParams(-1, 0, 1f))
         observation = application.observeAndroidHost(::refresh)
@@ -166,6 +176,7 @@ internal class AndroidRootPresentation(
     private fun mount(next: AndroidHostSnapshot) {
         ui()
         if (accountGeneration != next.generation) {
+            closeOwnerNote()
             closeRoutes()
             closeChat()
             drawer?.detach(); drawer = null
@@ -175,6 +186,22 @@ internal class AndroidRootPresentation(
         }
         snapshot = next
         application.synchronizePush(owner, next)
+        if (foreground && ownerNoteObservation == null && next.signedIn) {
+            val generation = next.generation
+            ownerNoteObservation = application.setOwnerNotificationHandler { note ->
+                if (!closed && foreground && owner.account()?.snapshot()?.generation == generation) {
+                    ownerNote.text = "${note.title}\n${note.body}"
+                    ownerNoteBanner.visibility = View.VISIBLE
+                    ownerNoteOpen.setOnClickListener {
+                        if (!closed && foreground && owner.account()?.snapshot()?.generation == generation) {
+                            ownerNoteBanner.visibility = View.GONE
+                            offerNotificationTap(note.deepLink, note.requestId)
+                        }
+                    }
+                    refresh()
+                }
+            }
+        }
         resolveNotification(next)
         walletButton.visibility = if (next.account != null && next.signedIn) View.VISIBLE else View.GONE
         voiceSettingsButton.visibility = if (next.account != null && next.client != null) View.VISIBLE else View.GONE
@@ -606,6 +633,7 @@ internal class AndroidRootPresentation(
         if (closed) return
         foreground = false
         observation.foreground(false)
+        closeOwnerNote()
         notificationOpen?.cancel(); notificationOpen = null
         closeMedia()
         microphoneRequest?.close(); microphoneRequest = null
@@ -678,10 +706,17 @@ internal class AndroidRootPresentation(
         layout?.close(); layout = null
         chatContainer.removeAllViews()
     }
+    private fun closeOwnerNote() {
+        ownerNoteObservation?.close(); ownerNoteObservation = null
+        ownerNoteBanner.visibility = View.GONE
+        ownerNote.text = ""
+        ownerNoteOpen.setOnClickListener(null)
+    }
     override fun close() {
         ui(); if (closed) return
         closed = true
         observation.close()
+        closeOwnerNote()
         scope.cancel()
         microphoneRequest?.close(); microphoneRequest = null
         closeVoiceViews()
