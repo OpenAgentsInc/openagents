@@ -1088,3 +1088,13 @@ links remain readable. Upstream fixes now require manual ports.
   current one. Android mounts both Rust Native trees, forwards identity-only
   actions, and drops polling/view handles on background or route retirement.
   Current-account checks surround picker actions. Integrated checks are unrun.
+
+- #12100: Connect F1 registration to the retained Rust account client, native
+  permission facts, and push/no-push token adapters. Rust supplies initial phone
+  notification choices; no token is registered after denied permission, including
+  refresh callbacks. Firebase automatic token initialization is disabled until
+  contextual permission-backed retrieval. Android presents checked owner notes
+  only in the background; immutable taps return to Rust for current-account,
+  request/chat verification and bounded hydration retries. Mark the exact note
+  read only after its authorized transcript paints. Tap binding and denied-token
+  fixtures are authored but unrun; Firebase/provider/device checks remain pending.

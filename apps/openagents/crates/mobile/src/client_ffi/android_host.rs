@@ -1,5 +1,8 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
 mod links;
+mod notifications;
+pub use notifications::AndroidNotificationOpen;
+use notifications::PendingTap;
 mod wallet;
 use super::*;
 pub use links::CoreAndroidLinkReview;
@@ -158,6 +161,7 @@ pub struct AndroidHostSnapshot {
     pub active_voice: Option<Arc<VoiceCall>>,
     pub can_start_voice: bool,
     pub link_review: Option<Arc<CoreAndroidLinkReview>>,
+    pub pending_notification: bool,
 }
 enum Content {
     Cloud(Arc<CoreCloudChat>),
@@ -177,6 +181,8 @@ enum Content {
     },
 }
 struct State {
+    pending_notification: Option<PendingTap>,
+    selected_notification: Option<String>,
     wallet: Option<Arc<CoreAndroidWallet>>,
     pending_link: Option<(Option<u64>, String)>,
     link_review: Option<Arc<CoreAndroidLinkReview>>,
@@ -238,6 +244,7 @@ impl State {
         }
     }
     fn begin_navigation(&mut self) -> CoreResult<NavigationStamp> {
+        self.pending_notification = None;
         self.navigation_revision = self
             .navigation_revision
             .checked_add(1)
@@ -268,6 +275,14 @@ impl CoreAndroidHost {
         };
         let snapshot = account.snapshot();
         if snapshot.generation != state.generation {
+            state.selected_notification = None;
+            if state
+                .pending_notification
+                .as_ref()
+                .is_some_and(|tap| !tap.accepts(snapshot.generation))
+            {
+                state.pending_notification = None;
+            }
             if let Some(wallet) = state.wallet.take() {
                 wallet.redact();
             }
@@ -382,6 +397,8 @@ impl CoreAndroidHost {
         }
         state.retire_content();
         state.content = content;
+        state.pending_notification = None;
+        state.selected_notification = None;
         state.anchor = None;
         state.selection = None;
         state.composer = composer;
@@ -438,6 +455,8 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                pending_notification: None,
+                selected_notification: None,
                 wallet: None,
                 pending_link: None,
                 link_review: None,
@@ -482,6 +501,8 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                pending_notification: None,
+                selected_notification: None,
                 wallet: None,
                 pending_link: None,
                 link_review: None,
@@ -564,6 +585,120 @@ impl CoreAndroidHost {
             active_voice: s.active_voice.clone(),
             can_start_voice: s.active_voice.is_none() && s.voice_target().is_some(),
             link_review: s.link_review.clone(),
+            pending_notification: s.pending_notification.is_some(),
+        })
+    }
+    /// Android uses the same initial session-notification choices as the other phone shell.
+    pub fn default_push_prefs(&self) -> PushPrefs {
+        PushPrefs {
+            done: true,
+            input: true,
+            failed: true,
+        }
+    }
+    pub fn offer_notification_tap(&self, link: String, request: String) -> CoreResult<bool> {
+        let Some(account) = &self.account else {
+            return Ok(false);
+        };
+        let generation = account.snapshot();
+        let generation = matches!(generation.state, AccountState::SignedIn { .. })
+            .then_some(generation.generation);
+        let Some(tap) = PendingTap::new(link, request, generation) else {
+            return Ok(false);
+        };
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        state.begin_navigation()?;
+        state.pending_notification = Some(tap);
+        drop(state);
+        self.events.0.on_android_host_changed();
+        Ok(true)
+    }
+    pub async fn resolve_notification_tap(&self) -> CoreResult<AndroidNotificationOpen> {
+        let (client, request, link, navigation) = {
+            let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+            self.refresh(&mut state)?;
+            let Some(client) = state.client.clone() else {
+                return Ok(AndroidNotificationOpen {
+                    retry_after_ms: None,
+                });
+            };
+            let generation = state.generation;
+            let Some(tap) = state.pending_notification.as_mut() else {
+                return Ok(AndroidNotificationOpen {
+                    retry_after_ms: None,
+                });
+            };
+            if !tap.accepts(generation) || tap.attempts >= 10 {
+                state.pending_notification = None;
+                return Ok(AndroidNotificationOpen {
+                    retry_after_ms: None,
+                });
+            }
+            tap.attempts += 1;
+            let request = tap.request.clone();
+            let link = tap.link.clone();
+            (
+                client,
+                request,
+                link,
+                NavigationStamp {
+                    generation: state.generation,
+                    content: state.content_revision,
+                    request: state.navigation_revision,
+                },
+            )
+        };
+        let note = client.owner_notification().await?;
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if !navigation.accepts(&state)
+            || !state
+                .pending_notification
+                .as_ref()
+                .is_some_and(|tap| tap.request == request && tap.link == link)
+        {
+            return Err(CoreError::Closed);
+        }
+        let Some(note) = note else {
+            return Ok(AndroidNotificationOpen {
+                retry_after_ms: Some(1000),
+            });
+        };
+        if !state
+            .pending_notification
+            .as_ref()
+            .is_some_and(|tap| tap.matches(&note))
+        {
+            state.pending_notification = None;
+            return Err(CoreError::NotFound {
+                message: "This notification is no longer available.".into(),
+            });
+        }
+        // Hydration may lag a cold wake. Only an already authorized session can open.
+        let session = match client.open_session(note.chat_id.clone()) {
+            Ok(session) => session,
+            Err(_) => {
+                return Ok(AndroidNotificationOpen {
+                    retry_after_ms: Some(1000),
+                });
+            }
+        };
+        let composer = CoreAndroidComposer::live(session.clone());
+        self.replace(
+            &mut state,
+            Content::Live {
+                id: note.chat_id,
+                client,
+                session,
+            },
+            Some(composer),
+        )?;
+        state.selected_notification = Some(request);
+        drop(state);
+        self.events.0.on_android_host_changed();
+        Ok(AndroidNotificationOpen {
+            retry_after_ms: None,
         })
     }
     pub fn voice_settings(&self) -> CoreResult<AndroidVoiceSettings> {
@@ -1153,7 +1288,11 @@ impl CoreAndroidHost {
         let indexed = {
             let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
             self.refresh(&mut state)?;
-            if state.generation != generation || state.content_revision != revision {
+            if state.generation != generation
+                || state.content_revision != revision
+                || !state.foreground
+                || state.route != AndroidHostRoute::Chat
+            {
                 return Err(CoreError::Closed);
             }
             match &state.content {
@@ -1168,6 +1307,28 @@ impl CoreAndroidHost {
                 _ => None,
             }
         };
+        let notification = {
+            let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+            self.refresh(&mut state)?;
+            if state.generation != generation || state.content_revision != revision {
+                return Err(CoreError::Closed);
+            }
+            state
+                .client
+                .clone()
+                .zip(state.selected_notification.clone())
+        };
+        if let Some((client, request)) = notification {
+            client.read_owner_notification(request.clone()).await?;
+            let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+            self.refresh(&mut state)?;
+            if state.generation == generation
+                && state.content_revision == revision
+                && state.selected_notification.as_deref() == Some(&request)
+            {
+                state.selected_notification = None;
+            }
+        }
         if let Some((history, key, activity)) = indexed {
             history.mark_indexed_seen(key, activity).await?;
         }

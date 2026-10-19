@@ -14,13 +14,13 @@ class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val callNotificationLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
-    ) { /* Denial leaves the call and in-app controls available. */ }
+    ) { rootPresentation?.refresh() /* Denial leaves the call and in-app controls available. */ }
     internal fun requestCallNotifications() {
         val preferences = getSharedPreferences("android-permissions", MODE_PRIVATE)
         if (!shouldRequestCallNotifications(android.os.Build.VERSION.SDK_INT,
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
-                preferences.getBoolean("call-notifications-requested", false))) return
-        preferences.edit().putBoolean("call-notifications-requested", true).apply()
+                preferences.getBoolean("notifications-requested", false))) return
+        preferences.edit().putBoolean("notifications-requested", true).apply()
         runCatching { callNotificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
     }
     private var microphoneResult: ((Boolean) -> Unit)? = null
@@ -103,7 +103,11 @@ class MainActivity : ComponentActivity() {
         routeAppLink(intent)
     }
     private fun routeAppLink(intent: android.content.Intent) {
-        if (intent.action == android.content.Intent.ACTION_VIEW) {
+        if (intent.action == AndroidOwnerNotifications.OPEN) {
+            val link = intent.getStringExtra(AndroidOwnerNotifications.LINK)
+            val request = intent.getStringExtra(AndroidOwnerNotifications.REQUEST)
+            if (link != null && request != null) rootPresentation?.offerNotificationTap(link, request)
+        } else if (intent.action == android.content.Intent.ACTION_VIEW) {
             intent.dataString?.let { rootPresentation?.offerAppLink(it) }
         }
     }
