@@ -703,7 +703,7 @@ impl SessionHandle {
                 reject_unused_input(text, attachments)?;
                 let (request_id, answers) = answer_input(request_id, answers);
                 drop(registry);
-                self.inner.respond_input(&request_id, answers)?;
+                self.respond_input(request_id, answers)?;
                 Ok(NativeActionResult::InputAnswered)
             }
             SessionViewIntent::RequestAttachment => {

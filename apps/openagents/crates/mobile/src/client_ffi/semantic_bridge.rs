@@ -288,7 +288,8 @@ fn view_error(error: ViewError) -> CoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_native::view::{Element, Node, Style};
+    use rust_native::style::Style;
+    use rust_native::view::{Element, Node};
 
     fn button_view(revision: u64, enabled: bool) -> Vec<u8> {
         View::new_v3(
@@ -410,7 +411,7 @@ mod tests {
     }
     #[test]
     fn pending_composer_can_mount_but_cannot_edit_or_submit() {
-        let bytes = View::new_v3(
+        let bytes = View::<SessionViewIntent>::new_v3(
             "editor",
             1,
             Node {

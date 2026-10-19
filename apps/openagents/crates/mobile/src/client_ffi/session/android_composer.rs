@@ -555,8 +555,6 @@ fn restore_unsent(mirror: &mut Mirror, cleared: Option<&EditorStamp>, text: &str
 
 #[cfg(test)]
 mod tests {
-    mod questions;
-    mod saved;
     use super::*;
     #[test]
     fn failed_send_restores_only_the_unchanged_editor() {

@@ -474,18 +474,6 @@ impl CoreAccount {
 
 #[uniffi::export]
 impl CoreAccount {
-    /// Build chooser content from a validated project invitation link.
-    pub fn project_invitation_share(
-        &self,
-        link: String,
-    ) -> CoreResult<super::ProjectInvitationShare> {
-        super::project_invitation::project_invitation_share(&link).ok_or_else(|| {
-            CoreError::InvalidArgument {
-                message: "This project invitation link isn't valid.".into(),
-            }
-        })
-    }
-
     pub fn project_sharing(
         &self,
         listener: Arc<dyn super::SharingListener>,
@@ -799,7 +787,7 @@ mod tests {
         finish_sign_out(
             std::future::pending::<()>(),
             Duration::from_millis(5),
-            move || {
+            || {
                 live_generations.retain(|generation| {
                     !client_generation_was_signed_out(*generation, &sign_out_generations)
                 });
