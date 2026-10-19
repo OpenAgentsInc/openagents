@@ -6,25 +6,54 @@
 //! Sharing is off by default and takes an explicit owner action. Pool jobs
 //! run under the lease broker at `background` priority ([`crate::lease`]),
 //! so the owner's own work comes first.
+//!
+//! Pylon 1.0's `openagents pylon up` writes the same file with a decision
+//! lane (and, when memory allows, a text lane): the supervisor then owns
+//! the Psionic engine children too, restarting a crashed one with backoff
+//! ([`crate::online`]).
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::identity::{Identity, hex_pubkey, load_owner, npub};
+use crate::lease::{Leases, Machine};
+use crate::provider::Config;
+use crate::{DEFAULT_RELAY, now};
 use nostr::pylon::Tier;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tokio::sync::oneshot;
 
-use crate::engine::Psionic;
-use crate::identity::{Identity, hex_pubkey, load_owner, npub};
-use crate::lease::{Leases, Machine};
-use crate::provider::{Config, Provider};
-use crate::{DEFAULT_RELAY, now};
+/// The settings file's schema. Version 1 files (no lanes) still load.
+pub const SCHEMA: &str = "openagents.pylon.share.v2";
 
-/// The settings file's schema.
-pub const SCHEMA: &str = "openagents.pylon.share.v1";
+/// The schema of the files written before engine lanes.
+pub const SCHEMA_V1: &str = "openagents.pylon.share.v1";
+
+/// The decision lane: a Psionic server the supervisor runs on loopback for
+/// NIP-DEC decisions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecideLane {
+    /// Its loopback port (default 18096).
+    pub port: u16,
+    /// `metal`, `cuda`, or `cpu`.
+    pub device: String,
+    /// The GGUF it loads.
+    pub model_file: PathBuf,
+}
+
+/// The text lane: a second Psionic server on another loopback port for
+/// NIP-CJ text jobs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextLane {
+    /// Its loopback port (default 18097).
+    pub port: u16,
+    /// The model name the beacon advertises.
+    pub model: String,
+    /// The GGUF it loads.
+    pub model_file: PathBuf,
+}
 
 /// What the owner chose for this computer's shared compute.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +77,17 @@ pub struct Settings {
     pub max_tokens: u32,
     pub vram_gb: u32,
     pub pool: String,
+    /// The decision lane `pylon up` turns on; `None` serves text only from
+    /// `engine` (the `host share` path).
+    #[serde(default)]
+    pub decide: Option<DecideLane>,
+    /// A text lane the supervisor runs itself; `None` uses `engine` when
+    /// there is no decision lane, and no text otherwise.
+    #[serde(default)]
+    pub text: Option<TextLane>,
+    /// Ignore this computer's lease table (a box that runs no owner work).
+    #[serde(default)]
+    pub dedicated: bool,
 }
 
 impl Settings {
@@ -69,6 +109,9 @@ impl Settings {
             max_tokens: 512,
             vram_gb: 16,
             pool: "everglade".into(),
+            decide: None,
+            text: None,
+            dedicated: false,
         }
     }
 
@@ -104,9 +147,19 @@ pub fn path(home: &Path) -> PathBuf {
 /// When the file exists and does not parse.
 pub fn load(home: &Path) -> Result<Option<Settings>, String> {
     match std::fs::read(path(home)) {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map(Some)
-            .map_err(|e| format!("{}: {e}", path(home).display())),
+        Ok(bytes) => {
+            let mut settings: Settings = serde_json::from_slice(&bytes)
+                .map_err(|e| format!("{}: {e}", path(home).display()))?;
+            if settings.schema != SCHEMA && settings.schema != SCHEMA_V1 {
+                return Err(format!(
+                    "{} is a newer settings file ({}); update openagents",
+                    path(home).display(),
+                    settings.schema
+                ));
+            }
+            settings.schema = SCHEMA.into();
+            Ok(Some(settings))
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
     }
@@ -120,9 +173,11 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
 pub fn save(home: &Path, settings: &Settings) -> Result<(), String> {
     std::fs::create_dir_all(home).map_err(|e| e.to_string())?;
     let tmp = home.join("share.json.tmp");
+    let mut settings = settings.clone();
+    settings.schema = SCHEMA.into();
     std::fs::write(
         &tmp,
-        serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?,
+        serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path(home)).map_err(|e| e.to_string())
@@ -195,13 +250,13 @@ pub fn command(words: &[String], home: &Path, host: &str) -> u8 {
     }
 }
 
-fn take_flag(words: &mut Vec<String>, name: &str) -> bool {
+pub(crate) fn take_flag(words: &mut Vec<String>, name: &str) -> bool {
     let before = words.len();
     words.retain(|w| w != name);
     words.len() != before
 }
 
-fn take_values(words: &mut Vec<String>, name: &str) -> Result<Vec<String>, String> {
+pub(crate) fn take_values(words: &mut Vec<String>, name: &str) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     while let Some(i) = words.iter().position(|w| w == name) {
         if i + 1 >= words.len() {
@@ -213,7 +268,7 @@ fn take_values(words: &mut Vec<String>, name: &str) -> Result<Vec<String>, Strin
     Ok(out)
 }
 
-fn take_number(words: &mut Vec<String>, name: &str) -> Result<Option<u32>, String> {
+pub(crate) fn take_number(words: &mut Vec<String>, name: &str) -> Result<Option<u32>, String> {
     take_values(words, name)?
         .pop()
         .map(|v| v.parse().map_err(|_| format!("{name} takes a number")))
@@ -223,6 +278,23 @@ fn take_number(words: &mut Vec<String>, name: &str) -> Result<Option<u32>, Strin
 fn turn_on(words: &[String], home: &Path, host: &str) -> Result<Settings, String> {
     let mut words = words.to_vec();
     let mut settings = load(home)?.unwrap_or_else(|| Settings::off(host));
+    apply(&mut settings, &mut words)?;
+    if let Some(extra) = words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    if settings.allow.as_ref().is_some_and(BTreeSet::is_empty) {
+        return Err("name who may send jobs with --allow NPUB, or pass --allow-any".into());
+    }
+    settings.on = true;
+    settings.changed_at = now();
+    save(home, &settings)?;
+    Ok(settings)
+}
+
+/// Take `serve`'s options (`--engine`, `--model`, `--pylon`, `--label`,
+/// `--pool`, `--relay`, `--slots`, `--rate`, `--max-tokens`, `--vram-gb`,
+/// `--allow`, `--allow-any`) out of `words` into `settings`.
+pub(crate) fn apply(settings: &mut Settings, words: &mut Vec<String>) -> Result<(), String> {
     for (flag, field) in [
         ("--engine", &mut settings.engine),
         ("--model", &mut settings.model),
@@ -230,11 +302,11 @@ fn turn_on(words: &[String], home: &Path, host: &str) -> Result<Settings, String
         ("--pool", &mut settings.pool),
         ("--relay", &mut settings.relay),
     ] {
-        if let Some(value) = take_values(&mut words, flag)?.pop() {
+        if let Some(value) = take_values(words, flag)?.pop() {
             *field = value;
         }
     }
-    if let Some(slug) = take_values(&mut words, "--pylon")?.pop() {
+    if let Some(slug) = take_values(words, "--pylon")?.pop() {
         if settings.label == settings.pylon {
             settings.label.clone_from(&slug);
         }
@@ -246,15 +318,15 @@ fn turn_on(words: &[String], home: &Path, host: &str) -> Result<Settings, String
         ("--max-tokens", &mut settings.max_tokens),
         ("--vram-gb", &mut settings.vram_gb),
     ] {
-        if let Some(value) = take_number(&mut words, flag)? {
+        if let Some(value) = take_number(words, flag)? {
             *field = value;
         }
     }
-    if take_flag(&mut words, "--allow-any") {
+    if take_flag(words, "--allow-any") {
         settings.allow = None;
     }
     let mut added = BTreeSet::new();
-    for value in take_values(&mut words, "--allow")? {
+    for value in take_values(words, "--allow")? {
         for item in value.split(',').filter(|s| !s.is_empty()) {
             added.insert(hex_pubkey(item.trim()).ok_or_else(|| format!("`{item}` is not a key"))?);
         }
@@ -265,16 +337,7 @@ fn turn_on(words: &[String], home: &Path, host: &str) -> Result<Settings, String
             .get_or_insert_with(BTreeSet::new)
             .extend(added);
     }
-    if let Some(extra) = words.first() {
-        return Err(format!("unexpected argument `{extra}`"));
-    }
-    if settings.allow.as_ref().is_some_and(BTreeSet::is_empty) {
-        return Err("name who may send jobs with --allow NPUB, or pass --allow-any".into());
-    }
-    settings.on = true;
-    settings.changed_at = now();
-    save(home, &settings)?;
-    Ok(settings)
+    Ok(())
 }
 
 fn describe(home: &Path, settings: &Settings) -> Result<(Value, String), String> {
@@ -295,6 +358,8 @@ fn describe(home: &Path, settings: &Settings) -> Result<(Value, String), String>
         "slots": settings.slots,
         "pool": settings.pool,
         "allow": allow,
+        "decide": settings.decide,
+        "text": settings.text,
         "settings": path(home),
     });
     let text = format!(
@@ -317,8 +382,10 @@ fn describe(home: &Path, settings: &Settings) -> Result<(Value, String), String>
 
 /// Serve the pool while `home`'s settings say sharing is on, on `machine`,
 /// until `stop` resolves. Looks at the settings every `every`; a change
-/// restarts the provider under the new settings. Logs one line per
-/// change through `log`.
+/// restarts the pylon under the new settings. With a decision or text lane
+/// it also runs the Psionic engines and restarts a crashed one with
+/// backoff ([`crate::online::supervise`]). Logs one line per change
+/// through `log`.
 pub async fn supervise(
     home: PathBuf,
     machine: Arc<dyn Machine>,
@@ -326,72 +393,14 @@ pub async fn supervise(
     log: impl Fn(String) + Send + Sync + 'static,
     stop: impl std::future::Future<Output = ()>,
 ) {
-    let mut running: Option<(Settings, oneshot::Sender<()>, tokio::task::JoinHandle<()>)> = None;
-    tokio::pin!(stop);
-    loop {
-        let wanted = match load(&home) {
-            Ok(settings) => settings.filter(|s| s.on),
-            Err(e) => {
-                log(format!("shared compute settings: {e}"));
-                None
-            }
-        };
-        let same = match (&running, &wanted) {
-            (Some((held, _, task)), Some(want)) => held == want && !task.is_finished(),
-            (None, None) => true,
-            _ => false,
-        };
-        if !same {
-            if let Some((_, halt, task)) = running.take() {
-                let _ = halt.send(());
-                let _ = task.await;
-                log("shared compute off".into());
-            }
-            if let Some(settings) = wanted {
-                match start(&home, &settings, Arc::clone(&machine)) {
-                    Ok((halt, task, npub)) => {
-                        log(format!(
-                            "shared compute on: pylon {} ({npub}) on {}",
-                            settings.pylon, settings.relay
-                        ));
-                        running = Some((settings, halt, task));
-                    }
-                    Err(e) => log(format!("shared compute could not start: {e}")),
-                }
-            }
-        }
-        tokio::select! {
-            () = &mut stop => break,
-            () = tokio::time::sleep(every) => {}
-        }
-    }
-    if let Some((_, halt, task)) = running {
-        let _ = halt.send(());
-        let _ = task.await;
-    }
-}
-
-type Started = (oneshot::Sender<()>, tokio::task::JoinHandle<()>, String);
-
-fn start(home: &Path, settings: &Settings, machine: Arc<dyn Machine>) -> Result<Started, String> {
-    let mut config = settings.config(home);
-    config.owner = load_owner(home)?;
-    let engine = Arc::new(Psionic::new(&settings.engine, &settings.model)?);
-    let identity = Identity::load_or_create(&home.join("provider.key"))?;
-    let npub = identity.npub();
-    let provider = Provider::on(config, identity, engine, machine)?;
-    let (halt, halted) = oneshot::channel::<()>();
-    let task = tokio::spawn(async move {
-        if let Err(e) = provider
-            .run(async {
-                let _ = halted.await;
-            })
-            .await
-        {
-            eprintln!("pylon: {e}");
-        }
-    });
-    Ok((halt, task, npub))
+    crate::online::supervise(
+        home,
+        machine,
+        crate::online::Options::host(every),
+        Arc::new(log),
+        stop,
+    )
+    .await;
 }
 
 /// The lease broker as the host's machine, or `None` with the reason when

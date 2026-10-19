@@ -30,6 +30,34 @@ NIP-44 encrypted to the pylon. Jobs are free unless the pylon names a price;
 a priced job is bought first under NIP-X402 from this computer's wallet.
 
 Commands:
+  up                        Make this computer a pylon and keep it one: read it
+                            (doctor), download the decision model if it is
+                            missing, then run Psionic's decision engine (and a
+                            text engine when memory allows), self-check it, and
+                            serve. The host service keeps it running, restarts
+                            a crashed engine, and brings it back after a
+                            restart; without the host service it runs here.
+                            Admits any key unless --allow names some (rate
+                            limits apply). Takes serve's options.
+      --yes                 Download the model without asking.
+      --foreground          Run it in this terminal, not the host service.
+      --text off            Serve decisions only.
+      --text-model FILE     The text engine's GGUF (default
+                            ~/.openagents/models/Qwen3.5-0.8B-Q8_0.gguf).
+      --device NAME         metal, cuda, or cpu (default: what doctor picks).
+      --port N              The decision engine's loopback port (default 18096).
+      --dedicated           Ignore this computer's lease table.
+  down                      Stop serving: tell the relay this pylon is offline,
+                            let jobs it took finish (at most 90 s), stop the
+                            engines, and keep it off until `up`.
+  status                    This pylon: serving, paused and why, or off; jobs
+                            today, the model, its engines, the last self-check,
+                            and checkers' verdicts about it.
+      --field               Every verified pylon on the relay instead.
+      --pool SLUG           With --field: only pylons asking to join this pool.
+  id                        This pylon's key, name, owner link, relays, and
+                            beacon address, with this computer's buyer,
+                            aggregator, and checker keys (`whoami` too).
   doctor                    Read this computer (memory, GPU, disk, the pinned
                             decision model and its digest, the Psionic server,
                             outbound reach to the relay, the last self-check)
@@ -187,8 +215,6 @@ Commands:
       --pylon NPUB          Only this pylon; repeat.
   league                    The pylon league: per class, pass rates on the
                             pinned suites, jobs, median time, and cost.
-  status                    The Pylon Field: every verified pylon's state.
-      --pool SLUG           Only pylons asking to join this pool.
   pool                      Compute a pool aggregate over the last window.
       --pool SLUG           The pool (default everglade).
       --minutes N           Window length, 1 to 60 (default 60).
@@ -308,14 +334,22 @@ fn dispatch(
             checkers.insert(hex_pubkey(&value).ok_or_else(|| format!("`{value}` is not a key"))?);
         }
         let plain: Result<(), String> = match command.as_str() {
-            "whoami" => whoami(json_out),
+            "id" | "whoami" => crate::online::id(json_out, &args.words),
+            "up" => crate::online::up(json_out, &args.words, &relay).await,
+            "down" => crate::online::down(json_out, &args.words).await,
             "link" => link(json_out, &mut args),
             "route" => crate::route::command(&args.words, &home()).map(|(value, text)| {
                 emit(json_out, &value, &text);
             }),
             "serve" => serve(json_out, &mut args, &relay, wallet).await,
             "ask" => ask(json_out, &mut args, &relay, checkers, wallet).await,
-            "status" => status(json_out, &mut args, &relay).await,
+            "status" => {
+                if args.flag("--field") || args.words.iter().any(|w| w == "--pool") {
+                    status(json_out, &mut args, &relay).await
+                } else {
+                    crate::online::status(json_out, &args.words, &relay).await
+                }
+            }
             "pool" => pool(json_out, &mut args, &relay, checkers).await,
             "check" => check(json_out, &mut args, &relay).await,
             "league" => league(json_out, &relay, checkers).await,
@@ -357,30 +391,6 @@ fn meta(json_out: bool, command: &str, args: &Args, relay: &str) -> Result<(), S
 
 fn key(name: &str) -> Result<Identity, String> {
     Identity::load_or_create(&home().join(format!("{name}.key")))
-}
-
-fn whoami(json_out: bool) -> Result<(), String> {
-    let (provider, buyer, aggregator) = (key("provider")?, key("buyer")?, key("aggregator")?);
-    let checker = key("checker")?;
-    emit(
-        json_out,
-        &json!({
-            "home": home(),
-            "provider": provider.npub(),
-            "buyer": buyer.npub(),
-            "aggregator": aggregator.npub(),
-            "checker": checker.npub(),
-        }),
-        &format!(
-            "pylon (provider): {}\nbuyer:            {}\naggregator:       {}\nchecker:          {}\nkeys in {}",
-            provider.npub(),
-            buyer.npub(),
-            aggregator.npub(),
-            checker.npub(),
-            home().display()
-        ),
-    );
-    Ok(())
 }
 
 /// This computer's name as a beacon slug.
@@ -1684,16 +1694,15 @@ async fn start(
             "pylon: starting Psionic on {device} at {url} (log {})",
             log.display()
         );
-        let spawned = crate::harden::scrub_async(&mut tokio::process::Command::new(&server))
-            .arg("-m")
-            .arg(&model)
-            .args(["--host", "127.0.0.1", "--port", &port.to_string()])
-            .args([
-                "--decision-device",
-                &device,
-                "--mesh-coordination",
-                "disabled",
-            ])
+        let lane = crate::online::LaneSpec {
+            kind: crate::online::LaneKind::Decisions,
+            port,
+            model_file: model,
+            device: Some(device),
+            model: None,
+        };
+        let mut command = crate::online::psionic_command(&server, &lane);
+        let spawned = crate::harden::scrub_async(&mut command)
             .stdout(out)
             .stderr(err)
             .kill_on_drop(true)

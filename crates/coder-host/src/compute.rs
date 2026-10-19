@@ -1,9 +1,13 @@
-//! Shared compute: the host is the pylon. `openagents host share on|off|status`
-//! records the owner's choice (`pylon::share`), and `serve` runs the
-//! supervisor that starts the pylon while sharing is on. Pool jobs take a
-//! `pylon` lease at `background` priority, so the owner's work comes first.
-//! Only this user's own host shares; a host under another root, as a test
-//! runs it, never does.
+//! Shared compute: the host is the pylon. `openagents pylon up|down` and
+//! `openagents host share on|off|status` record the owner's choice
+//! (`pylon::share`), and `serve` runs the supervisor that keeps the pylon
+//! running while it is on: the Psionic engine children `up` asked for
+//! (restarted with backoff when one crashes), the self-check, and the
+//! provider (`pylon::online::supervise`). Because the host service starts
+//! at login, the pylon comes back after a reboot. Pool jobs take a `pylon`
+//! lease at `background` priority, so the owner's work comes first. Only
+//! this user's own host shares; a host under another root, as a test runs
+//! it, never does.
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -51,12 +55,17 @@ pub(crate) fn start() {
     *running = Some((halt, task));
 }
 
-/// Stop the supervisor, which publishes an offline beacon when the pylon
-/// was serving.
+/// How long the host waits, when it stops, for the pylon's jobs to finish,
+/// its offline beacon, and its engines to stop. The engines are killed
+/// with the host after that.
+const STOP_WAIT: Duration = Duration::from_secs(30);
+
+/// Stop the supervisor, which lets admitted jobs finish, publishes an
+/// offline beacon when the pylon was serving, and stops its engines.
 pub(crate) async fn stop() {
     let held = RUNNING.lock().ok().and_then(|mut running| running.take());
     if let Some((halt, task)) = held {
         let _ = halt.send(());
-        let _ = tokio::time::timeout(Duration::from_secs(15), task).await;
+        let _ = tokio::time::timeout(STOP_WAIT, task).await;
     }
 }

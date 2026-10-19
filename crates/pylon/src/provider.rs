@@ -121,8 +121,20 @@ struct State {
     draining: bool,
     /// The owner's work needs the machine, as last checked.
     yielding: bool,
+    /// Held back by its supervisor, such as while an engine is restarting.
+    held: bool,
     counters: Counters,
 }
+
+impl State {
+    /// Whether the pylon takes no new job right now.
+    fn unavailable(&self) -> bool {
+        self.draining || !self.healthy || self.yielding || self.held
+    }
+}
+
+/// How long a stopping pylon lets admitted jobs finish.
+pub const DRAIN: Duration = Duration::from_secs(90);
 
 /// A running pylon.
 pub struct Provider {
@@ -267,6 +279,7 @@ impl Provider {
                 healthy: true,
                 draining: false,
                 yielding: false,
+                held: false,
                 counters: Counters::default(),
             }),
             config,
@@ -315,6 +328,24 @@ impl Provider {
         self.identity.pubkey()
     }
 
+    /// Hold the pylon back (its beacon says `draining` and it takes no new
+    /// job) or let it serve again: its supervisor holds it while an engine
+    /// is down.
+    pub async fn hold(&self, held: bool) {
+        let mut state = self.state.lock().await;
+        if state.held != held {
+            state.held = held;
+            drop(state);
+            self.changed.notify_one();
+        }
+    }
+
+    /// Jobs running now.
+    pub async fn busy(&self) -> u32 {
+        let state = self.state.lock().await;
+        self.config.slots.saturating_sub(state.free)
+    }
+
     /// What the provider has done so far.
     pub async fn counters(&self) -> Counters {
         self.state.lock().await.counters
@@ -323,7 +354,7 @@ impl Provider {
     /// The beacon as of now.
     pub async fn beacon(&self, status: Option<Status>) -> Beacon {
         let state = self.state.lock().await;
-        let status = status.unwrap_or(if state.draining || !state.healthy || state.yielding {
+        let status = status.unwrap_or(if state.unavailable() {
             Status::Draining
         } else {
             Status::Online
@@ -402,7 +433,8 @@ impl Provider {
         text && decisions
     }
 
-    /// Serve until `stop` resolves, then publish an offline beacon.
+    /// Serve until `stop` resolves, let admitted jobs finish (at most
+    /// [`DRAIN`]) while taking no new one, then publish an offline beacon.
     ///
     /// # Errors
     ///
@@ -412,6 +444,20 @@ impl Provider {
         let sessions = tokio::spawn(Arc::clone(&self).session_loop());
         stop.await;
         self.state.lock().await.draining = true;
+        self.changed.notify_one();
+        let started = Instant::now();
+        let mut waited = false;
+        while self.busy().await > 0 && started.elapsed() < DRAIN {
+            waited = true;
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        // The last answers go out before the connection closes.
+        while waited
+            && self.outbound.capacity() < self.outbound.max_capacity()
+            && started.elapsed() < DRAIN + Duration::from_secs(5)
+        {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
         beacons.abort();
         sessions.abort();
         let event = owned_beacon_event(
@@ -1052,7 +1098,7 @@ impl Provider {
             return Err(refusal);
         }
         bucket.tokens -= 1.0;
-        if state.draining || !state.healthy || state.yielding || state.free == 0 {
+        if state.unavailable() || state.free == 0 {
             let mut refusal = Refusal::new("rate_limited", "no free slot");
             refusal.retry_after_ms = Some(2_000);
             return Err(refusal);
