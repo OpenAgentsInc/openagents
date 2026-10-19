@@ -5,4 +5,14 @@
     <color name="oa_secondary">#5D5D5D</color>
     <color name="oa_accent">#181818</color>
     <color name="oa_hairline">#1A0D0D0D</color>
+    <!-- Search pill, grouped rows, and other filled controls. -->
+    <color name="oa_fill">#F0F0F0</color>
+    <!-- Round chrome buttons and the composer card. -->
+    <color name="oa_chrome">#FFFFFF</color>
+    <color name="oa_chrome_border">#140D0D0D</color>
+    <color name="oa_on_accent">#FFFFFF</color>
+    <color name="oa_send_idle">#E3E3E3</color>
+    <color name="oa_success">#1E7F34</color>
+    <color name="oa_warning">#B5530E</color>
+    <color name="oa_danger">#C4312B</color>
 </resources>

@@ -5,4 +5,12 @@
     <color name="oa_secondary">#818181</color>
     <color name="oa_accent">#EDEDED</color>
     <color name="oa_hairline">#2C2C2C</color>
+    <color name="oa_fill">#1C1C1C</color>
+    <color name="oa_chrome">#161616</color>
+    <color name="oa_chrome_border">#2C2C2C</color>
+    <color name="oa_on_accent">#0A0A0A</color>
+    <color name="oa_send_idle">#2E2E2E</color>
+    <color name="oa_success">#4CC26A</color>
+    <color name="oa_warning">#F2994A</color>
+    <color name="oa_danger">#FF6961</color>
 </resources>
