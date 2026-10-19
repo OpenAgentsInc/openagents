@@ -1,6 +1,7 @@
 # Pylon 1.0: specification
 
-Status: spec, 2026-10-19. Nothing here is built unless a row says **built**.
+Status: spec, 2026-10-19; decisions recorded the same day; build under way.
+Nothing here is built unless a row says **built**.
 The current operator guide is [pylon.md](pylon.md), and the protocol is
 [NIP-PYLON](../../nips/openagents/NIP-PYLON.md). This document says what
 "Pylon 1.0" means, what ships in it, and what has to be true before we call
@@ -36,7 +37,7 @@ our own version of what Decision Models and REAX built.
 - [Acceptance: when it is 1.0](#acceptance-when-it-is-10)
 - [Build order](#build-order)
 - [Non-goals](#non-goals)
-- [Open questions for the owner](#open-questions-for-the-owner)
+- [Decisions (2026-10-19)](#decisions-2026-10-19)
 - [Appendix A: the decision-models research, item by item](#appendix-a-the-decision-models-research-item-by-item)
 - [Appendix B: every Pylon so far](#appendix-b-every-pylon-so-far)
 
@@ -82,8 +83,9 @@ The name has meant seven different products since 2024 (full list in
 2. **Dial out only.** Outbound to the relay and, once, to Hugging Face for
    the pinned weights. No inbound port, ever.
 3. **The owner's work comes first.** Every job takes a background lease;
-   the pylon drains while the owner needs the machine. Laptops serve only
-   on mains power and below a temperature line.
+   the pylon drains while the owner needs the machine. A user may also
+   choose to pause on battery or when the machine is hot; neither is on by
+   default.
 4. **Deterministic or nothing.** A pylon serves only the pinned artifact on
    a runtime whose answers match the reference within calibrated limits.
 5. **Verified work is the only paid work.** Per verified job, never per
@@ -173,8 +175,8 @@ taking no new ones, while any of these holds:
 | Condition | Source |
 | --- | --- |
 | The owner holds a `quiet` or `owner` lease | **Built** (`coder-lease`) |
-| A laptop is on battery | New: `pmset -g batt` on macOS, `/sys/class/power_supply` on Linux |
-| The machine is hot | New: macOS thermal pressure above `nominal`; NVIDIA `temperature.gpu` above the card's slowdown threshold less 5 °C |
+| On battery, when the user turned on `--pause-on-battery` (off by default) | New: `pmset -g batt` on macOS, `/sys/class/power_supply` on Linux |
+| Hot, when the user turned on `--pause-when-hot` (off by default) | New: macOS thermal pressure above `nominal`; NVIDIA `temperature.gpu` above the card's slowdown threshold less 5 °C |
 | The engine stops answering | **Built** |
 | The latest self-check for this model failed, or three strikes in 24 h | Partly built (self-check); strikes new |
 
@@ -381,7 +383,7 @@ first. Built on test networks.
 
 | Work | Price | Status |
 | --- | --- | --- |
-| Decisions via `/v1/systemone` and `/v1/decisions` | Sats per million input tokens on the rate card; output free | **New, owner decision** (decisions are free today and the invariant says a priced pylon refuses decisions) |
+| Decisions via `/v1/systemone` and `/v1/decisions` | 19,000 micros ($0.019) per million input tokens, output free, charged in sats | New (decisions are free today and the invariant says a priced pylon refuses decisions) |
 | Text inference via the gateway (`inference.pylons`) | The pylon's own price per million tokens plus the OpenAgents margin | Built on test networks; registration is by hand today |
 | Direct NIP-X402 jobs | The pylon's posted price | Built on testnet |
 
@@ -417,8 +419,8 @@ owner never count (built).
 **Later, not 1.0.** A `verified_optimization` reward
 (`crates/pay-ledger/src/markets/contribution.rs`) for a Gym-confirmed
 speed-up of the Psionic Clef path: our answer to REAX's planned
-"competition mining", paid from our share, never minted. An optional
-first-sats launch bonus from our share, if the owner wants one.
+"competition mining", paid from our share, never minted. The first-sats launch bonus
+([Decisions](#decisions-2026-10-19), 5) is in 1.0.
 
 ## Commands
 
@@ -436,6 +438,7 @@ syntax.
 | `verify` | Pass/fail checklist: engine healthy, beacon visible on the relay from outside, owner link verifies, last checker verdicts, clock skew, nothing listening beyond loopback | New |
 | `logs [--lines N]` | Redacted, capped, untrusted-marked | New |
 | `earnings` | Statement for this pylon's party | New over a built route |
+| `settings [--pause-on-battery on\|off] [--pause-when-hot on\|off]` | The user's own pause choices, off by default | New |
 | `payout set ADDRESS` | Set the payout destination | New over a built route |
 | `link`, `route`, `ask`, `check …`, `league`, `pool …`, `calibrate …` | As today | **Built** |
 | `mcp [--control]` | MCP server | New |
@@ -568,13 +571,13 @@ machines, in one run:
    fresh machine from nothing to serving and back to offline using only the
    tools, and stops at `needs_owner` for the payout destination.
 8. **Owner first.** Starting owner work drains the pylon within one job;
-   unplugging a laptop pauses it.
-9. **Paid (after the owner's price decision).** A first real sats payout
+   with `--pause-on-battery on`, unplugging a laptop pauses it.
+9. **Paid.** A first real sats payout
    for verified decisions to a Lightning address, under `grant.json`
    ceilings. The owner's steps are in `NEEDS_OWNER.md`.
 
-Item 9 is the only one that waits on an owner decision; 1.0 can be
-declared free-only first and paid when item 9 passes, saying so.
+1.0 is declared when items 1–8 pass; paid decisions turn on when item 9
+passes ([Decisions](#decisions-2026-10-19), 8).
 
 ## Build order
 
@@ -609,30 +612,43 @@ Each row is one issue in the openagents tracker.
 - Serving Jev. Jev's weights are closed; it stays a backup door, never a
   contributor model.
 
-## Open questions for the owner
+## Decisions (2026-10-19)
 
-From the [decision-models research](../research/decisionmodels/README.md#open-questions-for-the-owner),
-still open, plus two new ones. Our recommendation is first in each.
+The owner delegated every open question except the laptop rule, and set
+that one: no plugged-in-only rule. These supersede the open questions in
+the [decision-models research](../research/decisionmodels/README.md#open-questions-for-the-owner)
+and anything above that says otherwise.
 
-1. **Decision price and share.** Recommend: price s1-fast-class decisions
-   at or below Decision Models' $0.019 per million input tokens, keep
-   8,500 bps, and check that the provider's share stays below Cloudflare's
-   $0.038 Clef price.
-2. **Our traffic on contributor pylons.** Recommend: our own non-personal
-   decisions (router, Coder judges) run on checked contributor pylons by
-   default; customer keys opt in.
-3. **Laptops.** Recommend: plugged in only.
-4. **Payee records.** At what yearly amount do we ask a contributor for
-   payee details?
-5. **Launch bonus.** Fund a first-sats bonus from our share?
-6. **Third-party open models.** Recommend: Clef only for 1.0; open
-   Jev-compatible models later, after licence review per model.
-7. **Public positioning.** Name Decision Models and REAX ("no token, no
-   registration fee, works on a Mac"), or just ship?
-8. **New: free-first 1.0.** Recommend: declare 1.0 free-only when
-   acceptance 1–8 pass, and paid when 9 passes.
-9. **New: the 16 GB Mac floor.** Recommend: allow it once a 16 GB Mac
-   passes self-check, accepting about 15 % lower throughput.
+1. **Decision price and share.** Decisions on the pylon lane cost 19,000
+   micros ($0.019) per million input tokens on the rate card, output free,
+   charged in sats like every row. The provider keeps 8,500 bps
+   ($0.01615 per million), below Cloudflare's $0.038 Clef price, so
+   relaying to it loses money.
+2. **Our traffic on contributor pylons.** Our own non-personal decisions
+   (the chat router, Coder judges, file relevance) go to checked
+   contributor pylons by default, before hosted Clef. Customer keys opt in
+   per key (`community` lane); without the opt-in their decisions never
+   reach a contributor pylon.
+3. **Laptops.** No rule is imposed. Battery and heat pauses are settings
+   the user may turn on (`openagents pylon settings --pause-on-battery
+   on`, `--pause-when-hot on`); both are off by default. The pause table
+   in [Online](#1-online) reads accordingly.
+4. **Payee records.** A party whose paid total in a calendar year reaches
+   the equivalent of $2,000 is flagged in its earnings statement and in
+   the operator report; payouts continue. Collecting payee details is a
+   separate, later flow.
+5. **Launch bonus.** Yes: 1,000 sats, once, to each of the first 100
+   owner-linked parties when their first verified paid decision settles,
+   paid from our share, never minted, under the same `grant.json` ceilings.
+6. **Third-party open models.** Clef only for 1.0.
+7. **Public positioning.** Ship on our own merits ("no token, no
+   registration fee, works on a Mac") without naming other companies.
+8. **Free-first 1.0.** 1.0 is declared when acceptance 1–8 pass; paid
+   decisions turn on when 9 passes.
+9. **Hardware floors.** `doctor` admits Apple Silicon from 16 GB (packed
+   weights) and NVIDIA from 8 GB when Clef-Flash fits with 1 GiB headroom.
+   Correctness is enforced per machine by the self-check, so a lower floor
+   cannot serve wrong answers.
 
 ## Appendix A: the decision-models research, item by item
 
