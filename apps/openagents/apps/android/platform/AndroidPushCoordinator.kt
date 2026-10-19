@@ -25,6 +25,39 @@ internal enum class AndroidPushWake(private val wireValue: String) {
     }
 }
 
+internal fun <T : Any> currentPushClient(expected: T, current: T?): T? =
+    expected.takeIf { current === expected }
+
+internal inline fun <T : Any> deliverToCurrentPushClient(
+    expected: T,
+    current: T?,
+    action: (T) -> Unit,
+): Boolean {
+    val client = currentPushClient(expected, current) ?: return false
+    action(client)
+    return true
+}
+
+internal inline fun <T : Any> registerPushTokenForCurrentClient(
+    token: String,
+    expected: T,
+    current: T?,
+    canRegister: Boolean,
+    prefs: () -> uniffi.openagents_core.PushPrefs,
+    register: (T, String, uniffi.openagents_core.PushPrefs) -> Unit,
+): Boolean {
+    if (token.isBlank() || !canRegister) return false
+    val client = currentPushClient(expected, current) ?: return false
+    register(client, token, prefs())
+    return true
+}
+
+internal fun AndroidPushWake.toRustKind(): PushWakeKind =
+    when (this) {
+        AndroidPushWake.RECONNECT -> PushWakeKind.RECONNECT
+        AndroidPushWake.ATTENTION -> PushWakeKind.ATTENTION
+    }
+
 /** Routes the gateway's data-only wake message to the signed-in Rust client. */
 class AndroidPushCoordinator(
     private val provider: AndroidPushClientProvider,
@@ -37,9 +70,10 @@ class AndroidPushCoordinator(
         withCurrentClient { client ->
             scope.launch(Dispatchers.IO) {
                 try {
-                    val note = client.handlePushWake(wake.toRustKind()) ?: return@launch
+                    val current = currentPushClient(client, provider.currentClient()) ?: return@launch
+                    val note = current.handlePushWake(wake.toRustKind()) ?: return@launch
                     mainHandler.post {
-                        if (provider.currentClient() === client) {
+                        deliverToCurrentPushClient(client, provider.currentClient()) {
                             provider.dispatchOwnerNotification(note)
                         }
                     }
@@ -53,13 +87,19 @@ class AndroidPushCoordinator(
     fun registerToken(token: String) {
         if (token.isBlank() || !provider.canRegisterPush()) return
         withCurrentClient { client ->
-            if (!provider.canRegisterPush() || provider.currentClient() !== client) return@withCurrentClient
-            val prefs = provider.currentPushPrefs()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    client.registerPushTarget(token, "production", prefs)
-                } catch (error: Exception) {
-                    Log.w(TAG, "Could not register the push token", error)
+            registerPushTokenForCurrentClient(
+                token = token,
+                expected = client,
+                current = provider.currentClient(),
+                canRegister = provider.canRegisterPush(),
+                prefs = provider::currentPushPrefs,
+            ) { current, currentToken, prefs ->
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        current.registerPushTarget(currentToken, "production", prefs)
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Could not register the push token", error)
+                    }
                 }
             }
         }
@@ -76,12 +116,6 @@ class AndroidPushCoordinator(
             Log.w(TAG, "Could not unregister the push target", error)
         }
     }
-
-    private fun AndroidPushWake.toRustKind(): PushWakeKind =
-        when (this) {
-            AndroidPushWake.RECONNECT -> PushWakeKind.RECONNECT
-            AndroidPushWake.ATTENTION -> PushWakeKind.ATTENTION
-        }
 
     private fun withCurrentClient(action: (uniffi.openagents_core.CoreClient) -> Unit) {
         fun retry(attemptsLeft: Int) {
