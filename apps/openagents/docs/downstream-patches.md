@@ -2,6 +2,10 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12077: make the Coder UI Rust Native syntax feature optional
+  while preserving its default, so the Android app can keep its existing
+  Tree-sitter version. Resolve the app lockfile without changing existing pins.
+
 - [OpenAgents #12127](https://github.com/OpenAgentsInc/openagents/issues/12127):
   The desktop transcript rail caches prompt ticks between changes, limits
   long prompt previews before attachment parsing, and builds reply previews
