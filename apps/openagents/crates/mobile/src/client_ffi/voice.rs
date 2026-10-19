@@ -541,6 +541,34 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn fresh_media_after_cancel_has_independent_callbacks() {
+        for _ in 0..3 {
+            let listener = Arc::new(Listener(Mutex::new(vec![])));
+            let media = media(listener.clone());
+            let clone = media.clone();
+            let pending = tokio::spawn(async move { clone.prepare().await });
+            while listener.0.lock().unwrap().is_empty() {
+                tokio::task::yield_now().await;
+            }
+            pending.abort();
+            let _ = pending.await;
+            assert!(media.pending.lock().unwrap().is_empty());
+            // Reconnect operations on the same bridge use new request IDs.
+            let clone = media.clone();
+            let next = tokio::spawn(async move { clone.prepare().await });
+            while listener.0.lock().unwrap().len() < 2 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(*listener.0.lock().unwrap(), vec![1, 2]);
+            media.close();
+            media.close();
+            assert!(next.await.unwrap().is_err());
+            assert!(media.prepare().await.is_err());
+            assert!(media.pending.lock().unwrap().is_empty());
+        }
+    }
+
     struct States(Mutex<Vec<VoiceCallState>>);
     impl VoiceSessionListener for States {
         fn on_voice_state(&self, state: VoiceCallState) {

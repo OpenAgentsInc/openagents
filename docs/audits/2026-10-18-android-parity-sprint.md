@@ -288,3 +288,42 @@ Play Console, privacy/Data safety/content rating, physical devices, and any
 funded wallet or real-call checks are listed in
 [NEEDS_OWNER.md](../../NEEDS_OWNER.md). A0 is authorized separately; these
 remaining decisions do not authorize publication.
+
+### F2 Android media source (#12094)
+
+The Android platform bridge is in
+`apps/openagents/apps/android/platform/AndroidVoiceMedia.kt`. Use one bridge
+per Rust call, bind the returned call before delivering callbacks, and close it
+on Activity destruction or sign-out. Rust still owns signaling and call state.
+The shell supplies the cancellable microphone permission launcher, proximity
+events, and speaker selection. Require API 31 or newer and declare
+`RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `ACCESS_NETWORK_STATE`, and
+`INTERNET`; request `BLUETOOTH_CONNECT` before Bluetooth routing on Android 12+.
+Permission dismissal must return false. Do not keep a bridge across fresh calls.
+
+Pin `io.github.webrtc-sdk:android:150.7871.01` from Maven Central, not the
+abandoned `org.webrtc:google-webrtc` artifact. The
+[webrtc-sdk Android build](https://github.com/webrtc-sdk/android) tracks
+[WebRTC upstream](https://webrtc.googlesource.com/src/). Its release and Maven
+metadata identify the build; retain the AAR's license and third-party notices
+in the app distribution. WebRTC uses BSD-3-Clause with additional third-party
+licenses. Review upstream security fixes and webrtc-sdk release changes before
+updating the exact version; recheck the AAR notices, ABI coverage, SDP exchange,
+audio focus, and routing on devices after each update.
+
+The bridge starts muted, waits for ICE gathering before returning the offer,
+applies the Rust-provided answer, and releases native audio on close. Audio
+focus loss ends the call rather than silently resuming recording. Communication
+devices prefer an external headset; proximity selects the earpiece over speaker.
+Network availability requests ICE restart; Rust must supply any subsequent
+offer/answer exchange. Audio levels currently return zero.
+
+This checkout has no Android Gradle app entry point. These platform sources are
+not a runnable Android integration, and Kotlin compilation, permission launcher
+wiring, Bluetooth permission denial, proximity sensor registration, network
+reconnection, and process/lifecycle behavior still need Android checks. The
+isolated Rust fake-media tests cover cancellation, fresh bridges, repeated close,
+denial, and late replies; they do not establish device behavior. Real calls,
+headset/Bluetooth switching, interruptions, process death, deployment, and store
+checks were not performed. Run them only with separately authorized devices
+and a dedicated test account, never the owner's account.
