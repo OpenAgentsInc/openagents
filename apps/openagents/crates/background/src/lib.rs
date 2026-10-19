@@ -22,11 +22,13 @@
 
 pub mod cli;
 mod decide;
+mod fresh;
 mod manager;
 pub mod preflight;
 mod service;
 
 pub use decide::{Action, EngineMode, Observed, decide, engine_mode, is_source_build};
+pub use fresh::{Freshness, Replace, freshness, replace};
 pub use manager::{ServiceManager, SystemManager};
 pub use service::{FileState, Host, Platform, ServiceSpec, captured_env, folder_id};
 

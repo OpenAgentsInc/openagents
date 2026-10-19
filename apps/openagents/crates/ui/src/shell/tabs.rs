@@ -255,6 +255,10 @@ impl Shell {
             }
         }
         self.nav.push(NavEntry::Chat(String::new()));
+        // A saved chat continued earlier doesn't follow a new chat. The
+        // continue flows install theirs after this, deferred.
+        self.composer
+            .update(cx, |composer, _| composer.continuations.clear_new_chat());
         let target = {
             let state = self.state.read(cx);
             project

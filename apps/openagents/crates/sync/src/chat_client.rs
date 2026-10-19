@@ -450,6 +450,19 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// Import a checkpoint on a blocking thread. A long chat's checkpoint takes
+/// seconds to import; on an async worker that stalled the engine's RPC and
+/// let its sockets miss their leases (#12179).
+async fn apply_checkpoint_blocking(
+    sink: Arc<dyn ChatDocSink>,
+    bytes: Vec<u8>,
+    cursor: u64,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || sink.apply_checkpoint(&bytes, cursor))
+        .await
+        .unwrap_or_else(|err| Err(format!("checkpoint import stopped: {err}")))
+}
+
 // ── the client ──────────────────────────────────────────────────────────────
 
 /// A live chat2-room membership for one chat doc.
@@ -1201,7 +1214,9 @@ impl Actor {
                     }
                 }
             };
-            if let Err(err) = self.sink.apply_checkpoint(&bytes, state.checkpoint_seq) {
+            if let Err(err) =
+                apply_checkpoint_blocking(self.sink.clone(), bytes, state.checkpoint_seq).await
+            {
                 tracing::warn!(error = %err, "chat2: checkpoint import failed");
                 return SessionEnd::Reconnect;
             }
@@ -1590,7 +1605,14 @@ impl Actor {
                             tokio::time::timeout(CHECKPOINT_FETCH_DEADLINE, fetcher.fetch()).await;
                         match fetched {
                             Ok(Ok(bytes)) => {
-                                if sink.apply_checkpoint(&bytes, state.checkpoint_seq).is_err() {
+                                if apply_checkpoint_blocking(
+                                    sink.clone(),
+                                    bytes,
+                                    state.checkpoint_seq,
+                                )
+                                .await
+                                .is_err()
+                                {
                                     busy.store(false, Relaxed);
                                     return;
                                 }

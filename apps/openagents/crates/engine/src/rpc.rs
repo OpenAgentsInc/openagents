@@ -733,6 +733,7 @@ impl EngineRpc {
             workspace_scope,
             cursor_sdk_version: Some(openagents_harness::CursorHarness::sdk_version().into()),
             capabilities: openagents_proto::capabilities::current(),
+            build: openagents_proto::EngineBuild::current(),
         };
         let github = GitHubCli::new().with_store(repos.data_dir());
         let work = coder_cloud::work::Service::local(&repos.data_dir().join("cloud-work"));

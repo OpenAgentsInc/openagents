@@ -11045,6 +11045,7 @@ name = "openagents-background"
 version = "0.2.113"
 dependencies = [
  "openagents-brand",
+ "openagents-proto",
  "tempfile",
 ]
 

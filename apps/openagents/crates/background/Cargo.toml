@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 openagents-brand.workspace = true
+openagents-proto.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

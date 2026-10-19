@@ -385,7 +385,7 @@ fn main() -> anyhow::Result<()> {
                                     let client = { let _entered = runtime.enter(); openagents_rpc::memory_client(core.rpc_service()) };
                                     let info = openagents_proto::EngineInfo {
                                         device_id: core.device_id.clone(), workspace_scope: core.workspace_scope(),
-                                        cursor_sdk_version: None, capabilities: openagents_proto::capabilities::current(),
+                                        cursor_sdk_version: None, capabilities: openagents_proto::capabilities::current(), build: None,
                                     };
                                     state.update(cx, |s, cx| s.fixture_account_engine(state::EngineHandle::fixture_memory(client, info), cx));
                                     let folder = output.join("chosen-project");

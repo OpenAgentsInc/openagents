@@ -189,42 +189,10 @@ impl Drafts {
             revision: a.target.summary.revision,
         })
     }
-    pub fn banner(&self, key: &str, cx: &mut Context<Composer>) -> Option<AnyElement> {
-        let attempt = self.0.get(key).filter(|a| a.target.is_current())?;
-        let target = &attempt.target;
-        let hover = Theme::of(cx).glass_hover();
-        Some(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .px(px(12.))
-                .py(px(4.))
-                .text_size(px(12.))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .child(SharedString::from(format!("From {}", target.summary.title))),
-                )
-                .when(key.is_empty(), |line| {
-                    line.child(
-                        div()
-                            .id("cancel-saved-continuation")
-                            .cursor_pointer()
-                            .px(px(6.))
-                            .rounded(px(4.))
-                            .hover(move |s| s.bg(hover))
-                            .child("Cancel")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.continuations.0.remove(&this.current_key);
-                                cx.notify();
-                            })),
-                    )
-                })
-                .into_any_element(),
-        )
+    /// Forget a saved chat waiting on the new-chat canvas: a fresh new chat
+    /// starts clean (#12179).
+    pub fn clear_new_chat(&mut self) {
+        self.0.remove("");
     }
 }
 /// What a Runs on control shows: the chat's current home, the shared choice

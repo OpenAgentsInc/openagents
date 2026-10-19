@@ -817,6 +817,8 @@ impl Shell {
             .map(|device| device.id.clone())
             .chain(std::iter::once(engine.engine_info().device_id.clone()))
             .filter(|id| state.device_supports(id, openagents_proto::capabilities::HARNESS_UPDATES_V1))
+            // A stale copy of a computer can't update and isn't the computer.
+            .filter(|id| !state.superseded_device(id, Utc::now()))
             .map(|id| {
                 let online = state.device_online(&id, Utc::now());
                 (id, online)

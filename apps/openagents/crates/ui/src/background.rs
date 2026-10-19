@@ -36,18 +36,13 @@ pub(crate) async fn ensure_engine(config: &EngineBootConfig) -> bool {
             tracing::info!(reason, "engine runs in the app");
             return false;
         }
-        let mut spec = match openagents_background::cli::spec_from_env(&data_dir, port) {
+        let spec = match background_spec(&data_dir, port) {
             Ok(spec) => spec,
             Err(error) => {
                 tracing::warn!(%error, "no background engine");
                 return false;
             }
         };
-        spec.env.retain(|(key, _)| {
-            key != "OPENAGENTS_DEVICE_ORIGIN" && key != "OPENAGENTS_CLOUD_HOST_COMPUTER_ID"
-        });
-        spec.env
-            .push(("OPENAGENTS_DEVICE_ORIGIN".into(), "personal".into()));
         let outcome = openagents_background::ensure(Ensure {
             spec: &spec,
             mode,
@@ -61,6 +56,81 @@ pub(crate) async fn ensure_engine(config: &EngineBootConfig) -> bool {
     })
     .await
     .unwrap_or(false)
+}
+
+/// Whether the background engine that answered runs another build than this
+/// app, so the app should replace it (#12179). Only an engine this app would
+/// run in the background qualifies.
+pub(crate) fn engine_is_stale(engine: &openagents_proto::EngineInfo) -> bool {
+    if cfg!(test) {
+        return false;
+    }
+    openagents_background::freshness(
+        openagents_proto::EngineBuild::current().as_ref(),
+        engine.build.as_ref(),
+    ) == openagents_background::Freshness::Stale
+}
+
+/// Restart this data folder's background engine on this app's program.
+/// True when the new engine answers on the IPC port. An engine this app
+/// didn't install as its service is left alone.
+pub(crate) async fn replace_engine(config: &EngineBootConfig) -> bool {
+    if cfg!(test) {
+        return false;
+    }
+    let data_dir = config.data_dir.clone();
+    let port = config.ipc_port;
+    tokio::task::spawn_blocking(move || {
+        let (mode, _) = openagents_background::cli::mode_from_env(&data_dir);
+        if mode == EngineMode::Embedded {
+            return false;
+        }
+        let spec = match background_spec(&data_dir, port) {
+            Ok(spec) => spec,
+            Err(error) => {
+                tracing::warn!(%error, "can't replace the background engine");
+                return false;
+            }
+        };
+        let outcome = openagents_background::replace(openagents_background::Replace {
+            spec: &spec,
+            manager: &SystemManager,
+            listening: &|| openagents_background::port_listening(port),
+            locked: &|| openagents_engine::InstanceLock::holder(&data_dir).is_some(),
+            wait: START_WAIT,
+        });
+        tracing::info!(?outcome, service = %spec.file_path().display(), "replaced the background engine");
+        outcome.attach()
+    })
+    .await
+    .unwrap_or(false)
+}
+
+/// This app's service for `data_dir`, as [`ensure_engine`] installs it.
+fn background_spec(
+    data_dir: &Path,
+    port: u16,
+) -> Result<openagents_background::ServiceSpec, String> {
+    let mut spec = openagents_background::cli::spec_from_env(data_dir, port)?;
+    spec.env.retain(|(key, _)| {
+        key != "OPENAGENTS_DEVICE_ORIGIN" && key != "OPENAGENTS_CLOUD_HOST_COMPUTER_ID"
+    });
+    spec.env
+        .push(("OPENAGENTS_DEVICE_ORIGIN".into(), "personal".into()));
+    Ok(spec)
+}
+
+/// Whether an agent on this computer is in the middle of a turn. Waiting
+/// for an answer doesn't count: that can last for days.
+pub(crate) fn turn_running_here(
+    sessions: &[Session],
+    local: Option<&str>,
+    now: DateTime<Utc>,
+) -> bool {
+    sessions
+        .iter()
+        .filter(|session| local.is_none_or(|device| session.device_id == device))
+        .any(|session| crate::state::effective_indicator(Some(session), now) == Indicator::Working)
 }
 
 /// Agents running on this computer: sessions of the local device that are
@@ -515,5 +585,17 @@ mod tests {
         assert_eq!(running_label(0), "No agents running");
         assert_eq!(running_label(1), "1 agent running");
         assert_eq!(running_label(3), "3 agents running");
+    }
+
+    #[test]
+    fn an_engine_replacement_waits_only_for_turns_in_progress_here() {
+        let now = Utc::now();
+        let mut sessions = vec![
+            session("a", "here", SessionStatus::Idle, now),
+            session("b", "phone", SessionStatus::Working, now),
+        ];
+        assert!(!turn_running_here(&sessions, Some("here"), now));
+        sessions.push(session("c", "here", SessionStatus::Working, now));
+        assert!(turn_running_here(&sessions, Some("here"), now));
     }
 }

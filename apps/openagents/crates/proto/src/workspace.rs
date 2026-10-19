@@ -64,6 +64,57 @@ pub struct EngineInfo {
     /// Supported protocol/document features. Missing on older engines.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<String>,
+    /// The program the engine runs. Missing on older engines (#12179).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<EngineBuild>,
+}
+
+/// Which program file an engine or app runs, as it was when the process
+/// started. Two processes run the same build when these match; an app that
+/// finds its background engine on another build replaces it (#12179).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineBuild {
+    /// The package version.
+    pub version: String,
+    /// The program's path.
+    pub exe: String,
+    /// The program file's size in bytes.
+    pub size: u64,
+    /// The program file's modification time, in milliseconds since the Unix
+    /// epoch.
+    pub modified_ms: u64,
+}
+
+impl EngineBuild {
+    /// The build of the program file at `exe`, or `None` when it can't be read.
+    pub fn of_file(version: &str, exe: &std::path::Path) -> Option<Self> {
+        let metadata = std::fs::metadata(exe).ok()?;
+        let modified_ms = metadata
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_millis() as u64;
+        Some(Self {
+            version: version.to_string(),
+            exe: exe.to_string_lossy().into_owned(),
+            size: metadata.len(),
+            modified_ms,
+        })
+    }
+
+    /// This process's build, read once: a program file replaced while the
+    /// process runs doesn't change what it reports.
+    pub fn current() -> Option<Self> {
+        static CURRENT: std::sync::OnceLock<Option<EngineBuild>> = std::sync::OnceLock::new();
+        CURRENT
+            .get_or_init(|| {
+                let exe = std::env::current_exe().ok()?;
+                Self::of_file(env!("CARGO_PKG_VERSION"), &exe)
+            })
+            .clone()
+    }
 }
 
 impl EngineInfo {
@@ -98,6 +149,7 @@ mod tests {
             workspace_scope: WorkspaceScope::Local,
             cursor_sdk_version: Some("1.0.31".into()),
             capabilities: capabilities::current(),
+            build: None,
         };
         assert_eq!(
             serde_json::to_value(&info).unwrap(),

@@ -90,6 +90,10 @@ impl Drop for WatchPreparation {
 // Engine handle
 // ---------------------------------------------------------------------------
 
+/// How long a stale background engine waits for agents here to finish their
+/// turns before it is replaced anyway (#12179).
+const REPLACE_WAIT: std::time::Duration = std::time::Duration::from_secs(20 * 60);
+
 /// Everything needed to reach (or start) an engine.
 #[derive(Debug, Clone)]
 pub struct EngineBootConfig {
@@ -538,6 +542,7 @@ impl EngineHandle {
                 workspace_scope: WorkspaceScope::Local,
                 cursor_sdk_version: None,
                 capabilities: Vec::new(),
+                build: None,
             },
             deferred_state: None,
         }
@@ -603,6 +608,7 @@ async fn query_engine_info(client: &RpcClient) -> Result<EngineInfo, RpcError> {
                 workspace_scope: WorkspaceScope::Synced,
                 cursor_sdk_version: None,
                 capabilities: Vec::new(),
+                build: None,
             })
         }
         Err(err) => Err(err),
@@ -821,6 +827,10 @@ pub struct AppState {
     /// (a chat implies ITS project/device) and put back on return, so the
     /// canvas always reopens where the user left it.
     pub(crate) canvas_target: Option<CanvasTarget>,
+    /// The new-chat target came from the saved defaults, not a pick made
+    /// since launch. It moves to this computer once the projects load
+    /// (#12179).
+    target_from_defaults: bool,
     pub selected_chat: Option<String>,
     /// Boot auto-select happened (or a manual selection superseded it).
     pub auto_selected: bool,
@@ -829,6 +839,8 @@ pub struct AppState {
     /// judge by the empty pre-sync lists.
     pub chats_synced: bool,
     pub spaces_synced: bool,
+    /// The first sessions watch frame has landed.
+    sessions_synced: bool,
     pending_deep_link: Option<crate::links::ConversationDeepLink>,
     deep_link_notice: Option<String>,
     /// Joined transcript of the selected chat (continuations folded engine-side).
@@ -965,6 +977,7 @@ impl AppState {
             no_project: false,
             selected_device: None,
             canvas_target: None,
+            target_from_defaults: false,
             selected_chat: None,
             transcript: Vec::new(),
             queue: Vec::new(),
@@ -997,6 +1010,7 @@ impl AppState {
             auto_selected: false,
             chats_synced: false,
             spaces_synced: false,
+            sessions_synced: false,
             pending_deep_link: None,
             deep_link_notice: None,
         }
@@ -1214,11 +1228,17 @@ impl AppState {
         changed
     }
 
+    /// Whether the first sessions frame has landed.
+    pub fn sessions_loaded(&self) -> bool {
+        self.sessions_synced
+    }
+
     pub fn apply_sessions(&mut self, sessions: Vec<Session>) -> bool {
         self.apply_sessions_at(sessions, Utc::now())
     }
 
     fn apply_sessions_at(&mut self, sessions: Vec<Session>, now: DateTime<Utc>) -> bool {
+        self.sessions_synced = true;
         let presence = session_presence_at(&sessions, now);
         let presentation: Vec<_> = sessions
             .iter()
@@ -1250,7 +1270,50 @@ impl AppState {
             self.spaces_synced = true;
         }
         self.heal_space_selection();
+        self.prefer_this_computer();
         changed || self.selected_space != previous_selection
+    }
+
+    /// A new chat on a computer starts on that computer's own engine
+    /// (#12179). A target remembered from an earlier launch can name another
+    /// device, or an older engine that shares this computer's name; move it
+    /// here, keeping the same project when it has a checkout here. A pick
+    /// made since launch is left alone.
+    fn prefer_this_computer(&mut self) {
+        if !self.target_from_defaults || self.selected_chat.is_some() {
+            return;
+        }
+        let Some(local) = self.local_device_id.clone() else {
+            return;
+        };
+        self.target_from_defaults = false;
+        if self.effective_device_id().as_deref() == Some(local.as_str()) {
+            return;
+        }
+        let here = self
+            .selected_space_row()
+            .and_then(|space| {
+                self.project_members(space)
+                    .into_iter()
+                    .find(|member| member.device_id == local)
+            })
+            .or_else(|| {
+                self.spaces_sorted()
+                    .into_iter()
+                    .find(|space| space.device_id == local)
+            })
+            .map(|space| space.id.clone());
+        self.selected_device = None;
+        match here {
+            Some(space) => {
+                self.selected_space = Some(space);
+                self.no_project = false;
+            }
+            None => {
+                self.selected_space = None;
+                self.no_project = true;
+            }
+        }
     }
 
     fn heal_space_selection(&mut self) {
@@ -1944,14 +2007,19 @@ impl AppState {
         }
         if self.selected_device.is_none() {
             self.selected_device = defaults.device.clone();
+            self.target_from_defaults |= self.selected_device.is_some();
         }
         if self.selected_space.is_none() {
+            self.target_from_defaults |= defaults.project.is_some() || defaults.no_project;
             self.no_project = defaults.no_project;
             self.selected_space = if defaults.no_project {
                 None
             } else {
                 defaults.project.clone()
             };
+        }
+        if self.spaces_synced {
+            self.prefer_this_computer();
         }
     }
 
@@ -2024,6 +2092,7 @@ impl AppState {
             self.selected_space = first;
         }
         self.selected_device = Some(device_id);
+        self.target_from_defaults = false;
         cx.notify();
     }
 
@@ -2103,6 +2172,25 @@ impl AppState {
             Some(d) => crate::settings::devices::device_online(d.last_seen_at, now),
             None => true,
         }
+    }
+
+    /// An offline device that another device with the same name stands in
+    /// for: an older engine for the same computer, left behind when its app
+    /// moved to a new data folder or build (#12179). Pickers and the update
+    /// notice leave it out; its chats stay where they are.
+    pub fn superseded_device(&self, device_id: &str, now: DateTime<Utc>) -> bool {
+        if self.local_device_id.as_deref() == Some(device_id) || self.device_online(device_id, now)
+        {
+            return false;
+        }
+        let Some(name) = self.device_name(device_id) else {
+            return false;
+        };
+        self.devices.iter().any(|other| {
+            other.id != device_id
+                && other.name.eq_ignore_ascii_case(name)
+                && self.device_online(&other.id, now)
+        })
     }
 
     /// The "@ device" tag for a space — shared by the space pickers' rows,
@@ -2431,6 +2519,7 @@ impl AppState {
         self.auto_selected = false;
         self.chats_synced = false;
         self.spaces_synced = false;
+        self.sessions_synced = false;
         self.transcript.clear();
         self.transcript_baselines.clear();
         self.transcript_cache.clear();
@@ -2485,6 +2574,7 @@ impl AppState {
             s.data_dir = Some(data_dir);
             cx.notify();
         });
+        let replace_config = config.clone();
         let boot = Tokio::spawn(cx, EngineHandle::bootstrap(config));
         cx.spawn(async move |cx| {
             let outcome = match boot.await {
@@ -2496,13 +2586,71 @@ impl AppState {
             // closure's value directly (no Result) — AsyncApp implements
             // AppContext like App does.
             state.update(cx, |s, cx| match outcome {
-                Ok(handle) => s.attach_engine(handle, cx),
+                Ok(handle) => {
+                    // #12179: the background engine runs another build.
+                    let stale = matches!(handle.mode(), EngineMode::Remote { .. })
+                        && crate::background::engine_is_stale(handle.engine_info());
+                    s.attach_engine(handle, cx);
+                    if stale {
+                        s.replace_engine_when_quiet(replace_config, cx);
+                    }
+                }
                 Err(message) => {
                     tracing::error!(%message, "engine bootstrap failed");
                     s.connection = ConnectionStatus::Failed(message);
                     cx.notify();
                 }
             });
+        })
+        .detach();
+    }
+
+    /// Restart the background engine on this app's build once no agent here
+    /// is in the middle of a turn, then attach to the new engine (#12179).
+    /// Agents under keepers keep running through the restart either way, so
+    /// a computer that never goes quiet is updated after [`REPLACE_WAIT`].
+    fn replace_engine_when_quiet(&mut self, config: EngineBootConfig, cx: &mut Context<Self>) {
+        static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        tracing::info!("the background engine runs another build; replacing it when quiet");
+        cx.spawn(async move |this, cx| {
+            let started = std::time::Instant::now();
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(3))
+                    .await;
+                let Some(busy) = this
+                    .read_with(cx, |state, _| {
+                        !state.sessions_loaded()
+                            || crate::background::turn_running_here(
+                                &state.sessions,
+                                state.local_device_id.as_deref(),
+                                clock_now(),
+                            )
+                    })
+                    .ok()
+                else {
+                    return;
+                };
+                if !busy || started.elapsed() >= REPLACE_WAIT {
+                    break;
+                }
+            }
+            let replacing = config.clone();
+            let replaced = Tokio::spawn(cx, async move {
+                crate::background::replace_engine(&replacing).await
+            })
+            .await
+            .unwrap_or(false);
+            if !replaced {
+                return;
+            }
+            let Some(state) = this.upgrade() else {
+                return;
+            };
+            cx.update(|cx| AppState::bootstrap(state, config, cx));
         })
         .detach();
     }
@@ -2852,6 +3000,7 @@ impl AppState {
     /// `Some` clears a "Don't work in a project" opt-out and re-aims the
     /// device pick at the project's host; `None` IS that opt-out.
     pub fn select_space(&mut self, space_id: Option<String>, cx: &mut Context<Self>) {
+        self.target_from_defaults = false;
         match &space_id {
             Some(id) => {
                 self.no_project = false;
@@ -3668,6 +3817,7 @@ mod tests {
                     workspace_scope: WorkspaceScope::Local,
                     cursor_sdk_version: None,
                     capabilities: openagents_proto::capabilities::current(),
+                    build: None,
                 },
                 state: state_rx,
             }),
@@ -4808,6 +4958,75 @@ mod tests {
             state.terminal_target_device("chat-1").as_deref(),
             Some("remote")
         );
+    }
+
+    #[test]
+    fn a_remembered_target_on_another_device_moves_to_this_computer() {
+        let defaults = crate::settings::composer::ComposerDefaults {
+            // An older engine that shares this computer's name.
+            device: Some("old-engine".into()),
+            project: Some("repo-old".into()),
+            ..Default::default()
+        };
+        let repo = |id: &str, device: &str, created: i64| Space {
+            repository_id: Some("openagents".into()),
+            ..space(id, device, "/home/u/repo", created)
+        };
+        let mut state = AppState::new();
+        state.local_device_id = Some("this".into());
+        state.restore_composer_target(&defaults);
+        state.apply_spaces(vec![
+            repo("repo-old", "old-engine", 1),
+            space("notes", "this", "/home/u/notes", 0),
+            repo("repo-here", "this", 2),
+        ]);
+        assert_eq!(state.effective_device_id().as_deref(), Some("this"));
+        assert_eq!(state.selected_space.as_deref(), Some("repo-here"));
+
+        // A pick made since launch stays.
+        state.selected_space = Some("repo-old".into());
+        state.apply_spaces(vec![
+            repo("repo-old", "old-engine", 1),
+            repo("repo-here", "this", 2),
+        ]);
+        assert_eq!(state.effective_device_id().as_deref(), Some("old-engine"));
+    }
+
+    #[test]
+    fn a_remembered_target_with_no_project_here_runs_here_without_one() {
+        let defaults = crate::settings::composer::ComposerDefaults {
+            device: Some("laptop".into()),
+            project: Some("laptop-repo".into()),
+            ..Default::default()
+        };
+        let mut state = AppState::new();
+        state.local_device_id = Some("this".into());
+        state.apply_spaces(vec![space("laptop-repo", "laptop", "/r", 1)]);
+        // Projects already loaded when the composer restores its defaults.
+        state.restore_composer_target(&defaults);
+        assert_eq!(state.effective_device_id().as_deref(), Some("this"));
+        assert!(state.no_project);
+    }
+
+    #[test]
+    fn an_offline_device_sharing_an_online_ones_name_is_superseded() {
+        let now = Utc::now();
+        let mut state = AppState::new();
+        state.local_device_id = Some("this".into());
+        let mut this = device("this", "coderos-4080");
+        this.last_seen_at = Some(now);
+        let old = device("old", "coderos-4080");
+        let laptop = device("laptop", "laptop");
+        let mut twin_online = device("twin", "CODEROS-4080");
+        state.devices = vec![this, old, laptop];
+        assert!(state.superseded_device("old", now));
+        assert!(!state.superseded_device("this", now));
+        // Offline, but nothing stands in for it.
+        assert!(!state.superseded_device("laptop", now));
+        // Two online copies stay visible.
+        twin_online.last_seen_at = Some(now);
+        state.devices.push(twin_online);
+        assert!(!state.superseded_device("twin", now));
     }
 
     #[test]

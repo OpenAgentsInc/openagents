@@ -589,6 +589,27 @@ struct DeviceRow {
     detail: Option<String>,
 }
 
+/// Tell apart device rows that share a name (#12179): this computer says so,
+/// and another device shows the start of its ID. A row that already shows a
+/// checkout path keeps it.
+fn name_duplicates(rows: &mut [DeviceRow], local: Option<&str>) {
+    let names: Vec<String> = rows.iter().map(|row| row.name.to_lowercase()).collect();
+    for (index, row) in rows.iter_mut().enumerate() {
+        let shared = names
+            .iter()
+            .enumerate()
+            .any(|(other, name)| other != index && *name == names[index]);
+        if !shared || row.detail.is_some() {
+            continue;
+        }
+        row.detail = Some(if local == Some(row.device_id.as_str()) {
+            "This computer".to_string()
+        } else {
+            format!("ID {}", row.device_id.chars().take(8).collect::<String>())
+        });
+    }
+}
+
 /// What names the selected model, shared by the composer chip and the
 /// compact panel so the two never disagree about it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2702,9 +2723,14 @@ impl Pickers {
                 .unwrap_or("Unknown device")
                 .to_string()
         };
+        let now = chrono::Utc::now();
         if let Some(space) = state.selected_space_row() {
-            let members = state.project_members(space);
-            return members
+            let members: Vec<_> = state
+                .project_members(space)
+                .into_iter()
+                .filter(|member| !state.superseded_device(&member.device_id, now))
+                .collect();
+            let mut rows: Vec<DeviceRow> = members
                 .iter()
                 .map(|member| {
                     let shared = members
@@ -2720,8 +2746,14 @@ impl Pickers {
                     }
                 })
                 .collect();
+            name_duplicates(&mut rows, local.as_deref());
+            return rows;
         }
-        let mut devices: Vec<&openagents_proto::Device> = state.devices.iter().collect();
+        let mut devices: Vec<&openagents_proto::Device> = state
+            .devices
+            .iter()
+            .filter(|device| !state.superseded_device(&device.id, now))
+            .collect();
         devices.sort_by_key(|d| {
             (
                 local.as_deref() != Some(d.id.as_str()),
@@ -2729,7 +2761,7 @@ impl Pickers {
                 d.id.clone(),
             )
         });
-        devices
+        let mut rows: Vec<DeviceRow> = devices
             .into_iter()
             .map(|device| DeviceRow {
                 device_id: device.id.clone(),
@@ -2737,7 +2769,9 @@ impl Pickers {
                 space: None,
                 detail: None,
             })
-            .collect()
+            .collect();
+        name_duplicates(&mut rows, local.as_deref());
+        rows
     }
 
     /// [`Self::device_rows`] filtered by the search box (same ranked
@@ -9766,5 +9800,32 @@ impl Pickers {
         ])).unwrap()));
         self.catalog_rev += 1;
         cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod duplicate_name_tests {
+    use super::{DeviceRow, name_duplicates};
+
+    fn row(id: &str, name: &str) -> DeviceRow {
+        DeviceRow {
+            device_id: id.into(),
+            name: name.into(),
+            space: None,
+            detail: None,
+        }
+    }
+
+    #[test]
+    fn rows_sharing_a_name_say_which_is_this_computer() {
+        let mut rows = vec![
+            row("431832a3-0419", "coderos-4080"),
+            row("c0a120a9-b63b", "coderos-4080"),
+            row("mac", "MacBook"),
+        ];
+        name_duplicates(&mut rows, Some("431832a3-0419"));
+        assert_eq!(rows[0].detail.as_deref(), Some("This computer"));
+        assert_eq!(rows[1].detail.as_deref(), Some("ID c0a120a9"));
+        assert_eq!(rows[2].detail, None);
     }
 }

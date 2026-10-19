@@ -10,6 +10,9 @@ pub trait ServiceManager {
     /// Start `spec`'s service. `reload` is true when its file was just
     /// written, so the service manager must read it again.
     fn start(&self, spec: &ServiceSpec, reload: bool) -> Result<(), String>;
+
+    /// Stop `spec`'s service. Agents under keepers keep running.
+    fn stop(&self, spec: &ServiceSpec) -> Result<(), String>;
 }
 
 /// `launchctl` on macOS, `systemctl --user` on Linux.
@@ -49,6 +52,10 @@ impl ServiceManager for SystemManager {
                 run("systemctl", &["--user", "start", &unit])
             }
         }
+    }
+
+    fn stop(&self, spec: &ServiceSpec) -> Result<(), String> {
+        stop(spec)
     }
 }
 

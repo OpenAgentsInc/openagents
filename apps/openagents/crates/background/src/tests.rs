@@ -33,6 +33,7 @@ fn spec(root: &Path, platform: Platform) -> ServiceSpec {
 struct Recorder {
     calls: RefCell<Vec<bool>>,
     started: Cell<bool>,
+    stops: Cell<u32>,
     fail: Option<String>,
 }
 
@@ -45,6 +46,115 @@ impl ServiceManager for Recorder {
         self.started.set(true);
         Ok(())
     }
+
+    fn stop(&self, _spec: &ServiceSpec) -> Result<(), String> {
+        self.stops.set(self.stops.get() + 1);
+        self.started.set(false);
+        Ok(())
+    }
+}
+
+fn build(exe: &str, modified_ms: u64) -> openagents_proto::EngineBuild {
+    openagents_proto::EngineBuild {
+        version: "1.0.0".into(),
+        exe: exe.into(),
+        size: 100,
+        modified_ms,
+    }
+}
+
+#[test]
+fn freshness_replaces_older_or_silent_engines_and_never_downgrades() {
+    let app = build("/run/openagents-new", 2_000);
+    assert_eq!(freshness(Some(&app), Some(&app)), Freshness::Current);
+    // An engine from before #12179 doesn't report its build.
+    assert_eq!(freshness(Some(&app), None), Freshness::Stale);
+    // The same path rebuilt in place, or an older copy elsewhere.
+    assert_eq!(
+        freshness(Some(&app), Some(&build("/run/openagents-new", 1_000))),
+        Freshness::Stale
+    );
+    assert_eq!(
+        freshness(Some(&app), Some(&build("/run/openagents-old", 1_000))),
+        Freshness::Stale
+    );
+    // An older app finds a newer engine: keep it.
+    assert_eq!(
+        freshness(Some(&app), Some(&build("/run/openagents-newer", 3_000))),
+        Freshness::Newer
+    );
+    // An app that can't read its own build leaves the engine alone.
+    assert_eq!(freshness(None, None), Freshness::Current);
+}
+
+#[test]
+fn replace_restarts_a_mismatched_engine_on_the_apps_program() {
+    let root = tempfile::tempdir().unwrap();
+    for platform in [Platform::MacOs, Platform::Linux] {
+        let new = spec(root.path(), platform);
+        // The installed service runs an older program and is answering.
+        let mut old = new.clone();
+        old.exe = PathBuf::from("/old/openagents");
+        old.write().unwrap();
+        assert_eq!(new.file_state(), FileState::Different);
+        let manager = Recorder::default();
+        manager.started.set(true);
+
+        let outcome = replace(Replace {
+            spec: &new,
+            manager: &manager,
+            listening: &|| manager.started.get(),
+            locked: &|| false,
+            wait: Duration::from_millis(200),
+        });
+        assert_eq!(
+            outcome,
+            Outcome::Running {
+                started: true,
+                installed: true
+            }
+        );
+        assert_eq!(manager.stops.get(), 1);
+        assert_eq!(*manager.calls.borrow(), vec![true]);
+        assert_eq!(new.file_state(), FileState::Current);
+        std::fs::remove_file(new.file_path()).unwrap();
+    }
+}
+
+#[test]
+fn replace_leaves_engines_it_did_not_install_and_ones_that_wont_stop() {
+    let root = tempfile::tempdir().unwrap();
+    let spec = spec(root.path(), Platform::Linux);
+    let manager = Recorder::default();
+    manager.started.set(true);
+    // No service file: something else runs this engine.
+    let outcome = replace(Replace {
+        spec: &spec,
+        manager: &manager,
+        listening: &|| true,
+        locked: &|| true,
+        wait: Duration::from_millis(50),
+    });
+    assert!(matches!(outcome, Outcome::Failed(_)));
+    assert_eq!(manager.stops.get(), 0);
+    assert!(!spec.file_path().exists());
+
+    // Installed, but the old engine keeps the data folder: don't start a
+    // second one beside it.
+    let mut old = spec.clone();
+    old.exe = PathBuf::from("/old/openagents");
+    old.write().unwrap();
+    let outcome = replace(Replace {
+        spec: &spec,
+        manager: &manager,
+        listening: &|| false,
+        locked: &|| true,
+        wait: Duration::from_millis(50),
+    });
+    assert!(matches!(outcome, Outcome::Failed(_)));
+    assert_eq!(manager.stops.get(), 1);
+    assert!(manager.calls.borrow().is_empty());
+    assert_eq!(spec.file_state(), FileState::Different);
 }
 
 #[test]

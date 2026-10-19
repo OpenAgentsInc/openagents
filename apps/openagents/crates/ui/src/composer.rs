@@ -11757,7 +11757,9 @@ impl Render for Composer {
                 cx,
             ));
         }
-        container.children(self.continuations.banner(&self.current_key, cx))
+        // The "From <chat>" / Cancel row under the input is gone (#12179):
+        // it read as noise. A saved chat continued here still binds on send.
+        container
     }
 }
 
