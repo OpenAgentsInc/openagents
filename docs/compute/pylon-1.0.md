@@ -394,10 +394,29 @@ $0.019 per million input tokens; Cloudflare's Clef $0.038; Jev about twice
 s1-fast. Relaying to our own API already loses money, because the share is
 below our price.
 
+**The Spark wallet is the default for every Pylon payment** (owner,
+2026-10-19). It is the person's OpenAgents wallet (`openagents wallet`,
+`openagents_spark::computer`), the same wallet as the phone, so earnings
+land in the one balance they already have and every Pylon payment shows in
+`openagents wallet history`:
+
+| Payment | Default | Alternative | Status |
+| --- | --- | --- | --- |
+| Earnings sweeps (brokered jobs, paid decisions) | This computer's Spark address, set by `payout set` with no address or offered by `up` | A Lightning address (`payout set ADDRESS`) | Sweeps to Spark **built** (`pay_spark`); the default is new |
+| Selling a priced job directly (`serve --price-msat`) | Invoices from the Spark wallet, settlement looked up in it | This computer's LDK node (`--receive-with node`) | New (today the node only) |
+| Buying a paid job (`ask --max-msat`) | The Spark wallet (`x402::computer_payer`) | The node (`--pay-with node`) | **Built** |
+
+The Spark wallet takes Bitcoin mainnet payments only, so test-network
+sales use the node; mainnet stays behind the owner's `grant.json` either
+way. `crates/pylon` keeps no wallet dependency: the CLI supplies the wallet
+through the `pylon::paid::Wallet` seam, and the standalone `pylon` binary
+still refuses paid work.
+
 **Paying out.**
 
-- `openagents pylon payout set ADDRESS` sets the party's destination
-  (a Lightning address, or a Spark address) through the existing
+- `openagents pylon payout set [ADDRESS]` sets the party's destination
+  (this computer's Spark address when no address is given, or a Lightning
+  address or another Spark address) through the existing
   `/v1/earnings/{party}/destination` route, signed by the party's key (new
   command over a built route). Changing it later is an owner-only action
   and is never served over MCP.
@@ -408,7 +427,8 @@ below our price.
 - Bitcoin rails only: Lightning, and later Taproot Assets stablecoins over
   Lightning. No tokens, no EVM chains.
 - `openagents pylon earnings` shows earned, held for checking, paid,
-  forfeited, and the destination. Copy says "earned so far", never a
+  forfeited, the destination, and the wallet balance when the destination
+  is this computer's Spark wallet. Copy says "earned so far", never a
   projection, and says plainly that earnings follow demand and can be zero.
 
 **Sybil and wash trading.** Pay is per verified decision, so ten keys on
@@ -439,7 +459,7 @@ syntax.
 | `logs [--lines N]` | Redacted, capped, untrusted-marked | New |
 | `earnings` | Statement for this pylon's party | New over a built route |
 | `settings [--pause-on-battery on\|off] [--pause-when-hot on\|off]` | The user's own pause choices, off by default | New |
-| `payout set ADDRESS` | Set the payout destination | New over a built route |
+| `payout set [ADDRESS]` | Set the payout destination; this computer's Spark wallet when no address is given | New over a built route |
 | `link`, `route`, `ask`, `check …`, `league`, `pool …`, `calibrate …` | As today | **Built** |
 | `mcp [--control]` | MCP server | New |
 | `spec`, `agent-rules`, `net-policy` | Print the agent contract, the safety rules, and every network destination the pylon may contact | New |
@@ -520,8 +540,9 @@ signed CLI; there is no separate download to trust.
 
 - **Earn switch in OpenAgents Desktop.** A thin view over `up`, `down`,
   `status`, `earnings`, and `payout set`: one switch, the machine's state
-  in plain words, today's verified decisions, sats earned and paid. It adds
-  no logic of its own. (Desktop is in development mode; this ships with the
+  in plain words, today's verified decisions, sats earned and paid into
+  the person's OpenAgents wallet (Spark) with its balance. It adds no logic
+  of its own. (Desktop is in development mode; this ships with the
   next desktop release the owner asks for.)
 - **Verse.** The Pylon Field reads live beacons (`RelaySource`) instead of
   `Sim`; the gold coin-light flares on paid, verified receipts from trusted
@@ -594,7 +615,7 @@ Each row is one issue in the openagents tracker.
 | 7 | Continuous checker, decision canaries, sampled recompute at the gateway, held shares, three-strike rule | `check_decide.rs`, `decision_dispatch.rs`, `broker.rs` | Acceptance 6 |
 | 8 | Checked-pool admission replaces `DECISION_PYLONS` | NIP-PYLON pools | Acceptance 5 |
 | 9 | 16 GB Mac and 8 GB NVIDIA floors | `setup.rs` `fit()` | Acceptance 2 |
-| 10 | `earnings`, `payout set` | `gateway/src/earnings.rs` | A pylon's statement prints |
+| 10 | `earnings`, `payout set`, Spark as the default wallet for payouts, direct sales, and buying | `gateway/src/earnings.rs`, `openagents_spark::computer`, `pylon_wallet.rs` | A pylon's statement prints; a priced job settles into the Spark wallet |
 | 11 | Paid decisions: rate-card entry, `pylon_job` share for decision receipts, invariant change, mainnet cohort | `crates/inference` rate card, `pay-ledger`, payout worker | Acceptance 9 (owner step) |
 | 12 | Desktop Earn switch; Verse `RelaySource` | `openagents-desktop`, `verse-zone-everglade` | A new Mac user earns with no terminal |
 | Later | Clef 27B tier; router lane; `verified_optimization` rewards; contributor sealed lane | research docs | Each its own issue |
