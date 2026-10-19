@@ -192,17 +192,18 @@ mod tests {
 
     #[test]
     fn malformed_effort_and_model_options_are_refused() {
-        let mut duplicate_effort = model("fixture", &["low", "low"]);
+        let mut duplicate_effort = model("fixture");
+        duplicate_effort.reasoning_levels = vec!["low".into(), "low".into()];
         assert!(models(vec![duplicate_effort.clone()]).is_err());
 
         duplicate_effort.reasoning_levels = vec!["".into()];
         assert!(models(vec![duplicate_effort.clone()]).is_err());
 
         duplicate_effort.reasoning_levels.clear();
-        duplicate_effort.options.push(ModelOption {
+        duplicate_effort.options.push(crate::catalog::ModelOption {
             id: "mode".into(),
             label: "Mode".into(),
-            choices: vec![ModelOptionChoice {
+            choices: vec![crate::catalog::ModelOptionChoice {
                 id: "safe".into(),
                 label: "Safe".into(),
             }],
