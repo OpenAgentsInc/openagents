@@ -2,7 +2,9 @@ use rust_native::view::{Activation, FieldChange, ValidatedView, View, ViewError}
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-use super::session::{BusyPolicy, SendOutcome, UserInputAnswer};
+use openagents_proto::UserInputAnswer;
+
+use super::session::{BusyPolicy, SendOutcome};
 use super::types::{CoreError, CoreResult};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -268,7 +270,8 @@ fn view_error(error: ViewError) -> CoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_native::view::{Element, Node, Style};
+    use rust_native::style::Style;
+    use rust_native::view::{Element, Node};
 
     fn button_view(revision: u64, enabled: bool) -> Vec<u8> {
         View::new_v3(
