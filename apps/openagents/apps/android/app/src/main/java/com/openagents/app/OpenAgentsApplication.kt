@@ -26,8 +26,7 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     @Volatile
     private var signedInPushPrefs = PushPrefs(done = false, input = false, failed = false)
 
-    @Volatile
-    private var ownerNotificationHandler: ((OwnerNoteView) -> Unit)? = null
+    private val ownerNotificationHandler = ForegroundCallback<OwnerNoteView>()
     private lateinit var secretStorage: AndroidEncryptedFileStore
     private val recoveryWorker by lazy {
         java.util.concurrent.ThreadPoolExecutor(1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
@@ -162,11 +161,11 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     }
 
     override fun dispatchOwnerNotification(note: OwnerNoteView) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            deliverOwnerNotification(note)
-        } else {
-            mainHandler.post { deliverOwnerNotification(note) }
-        }
+        // The push owner has already checked this client. Keep that identity across the UI queue.
+        val source = signedInClient ?: return
+        val deliver = { if (signedInClient === source) deliverOwnerNotification(note) }
+        if (Looper.myLooper() == Looper.getMainLooper()) deliver()
+        else mainHandler.post { deliver() }
     }
 
     /** Installs the signed-in Rust client and its notification preferences. */
@@ -176,7 +175,7 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
             signedInPushPrefs = prefs.copy()
             signedInClient = client
         }
-        ownerNotificationHandler = null
+        ownerNotificationHandler.clear()
         clearPendingOwnerNotesOnMain()
     }
 
@@ -193,33 +192,25 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
         if (cleared) {
             pushGeneration = null; pushPermission = null
             AndroidOwnerNotifications.clear(this)
-            ownerNotificationHandler = null
+            ownerNotificationHandler.clear()
             clearPendingOwnerNotesOnMain()
         }
     }
 
-    /** Sets the app's foreground and notification-tap router. */
-    fun setOwnerNotificationHandler(handler: ((OwnerNoteView) -> Unit)?) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            installOwnerNotificationHandler(handler)
-        } else {
-            mainHandler.post { installOwnerNotificationHandler(handler) }
-        }
-    }
-
-    private fun installOwnerNotificationHandler(handler: ((OwnerNoteView) -> Unit)?) {
-        ownerNotificationHandler = handler
-        if (handler == null) return
-
-        while (pendingOwnerNotes.isNotEmpty()) {
-            handler(pendingOwnerNotes.removeFirst())
-        }
+    /** Installs a visible root's notice mount without transferring navigation authority. */
+    fun setOwnerNotificationHandler(handler: (OwnerNoteView) -> Unit): AutoCloseable {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val registration = ownerNotificationHandler.install(handler)
+        while (pendingOwnerNotes.isNotEmpty()) handler(pendingOwnerNotes.removeFirst())
+        return registration
     }
 
     private fun deliverOwnerNotification(note: OwnerNoteView) {
         if (presentationForeground) {
-            ownerNotificationHandler?.invoke(note)
-            return // Rust's chat state still carries attention; foreground never opens a chat automatically.
+            if (ownerNotificationHandler.deliver(note)) return
+            if (pendingOwnerNotes.size == MAX_PENDING_OWNER_NOTES) pendingOwnerNotes.removeFirst()
+            pendingOwnerNotes.addLast(note)
+            return
         }
         if (AndroidOwnerNotifications.show(this, note)) return
         if (pendingOwnerNotes.size == MAX_PENDING_OWNER_NOTES) pendingOwnerNotes.removeFirst()

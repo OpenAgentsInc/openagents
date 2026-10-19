@@ -1118,3 +1118,9 @@ links remain readable. Upstream fixes now require manual ports.
   auxiliary-card acknowledgments without changing the legacy combined-view path.
   Complete fallible cloud draft writes before starting sends. Retargeting,
   admission, retry, and editor fixtures are authored but unrun.
+
+- #12100: Install a visible root's foreground owner-note mount and explicit
+  Open chat action; taps still use Rust's current-account request verification.
+  Preserve bounded notes while a foreground mount is absent, fence queued
+  delivery to the captured account client, and prevent retired Activity cleanup
+  from removing a replacement callback. Lifecycle fixtures are authored, unrun.
