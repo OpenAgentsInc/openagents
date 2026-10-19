@@ -118,6 +118,10 @@ impl WorkspaceDoc {
             "capabilities",
             crate::schema::loro_value_from_json(&serde_json::json!(&device.capabilities)),
         )?;
+        row.insert(
+            "origin",
+            crate::schema::loro_value_from_json(&serde_json::json!(&device.origin)),
+        )?;
         self.doc.commit();
         Ok(())
     }
