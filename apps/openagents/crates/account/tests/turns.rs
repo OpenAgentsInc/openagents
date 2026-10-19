@@ -212,3 +212,64 @@ async fn expected_chat_preserves_uncertain_send_retry_identity() {
     assert_eq!(f.server.ids.lock().unwrap().len(), 1);
     assert_eq!(f.turns.snapshot().accepted, 1);
 }
+
+fn retarget(f: &Fixture, id: &str) {
+    let mut target = f.reader.target().unwrap();
+    let chat = target
+        .lease
+        .client()
+        .chat(target.lease.session(), id)
+        .unwrap();
+    target.chat = chat.clone();
+    target.summary.chat = chat;
+    f.reader.open_latest(target).unwrap();
+}
+
+#[tokio::test]
+async fn retired_editor_cannot_retry_the_new_readers_request() {
+    let f = fixture().await;
+    let other = "d75ef8a1-16ca-49b6-83be-000000000094";
+    retarget(&f, other);
+    f.server.lost.store(true, Ordering::SeqCst);
+    f.turns.submit_for(other.into(), "New editor".into()).await;
+    assert!(f.turns.snapshot().retry);
+
+    f.turns.retry_for(CHAT.into()).await;
+
+    assert_eq!(f.server.attempts.load(Ordering::SeqCst), 1);
+    assert!(f.turns.snapshot().retry);
+    assert!(!f.turns.snapshot().busy);
+    assert_eq!(f.turns.snapshot().accepted, 0);
+}
+
+#[tokio::test]
+async fn retired_editor_cannot_stop_the_new_readers_request() {
+    let f = fixture().await;
+    let other = "d75ef8a1-16ca-49b6-83be-000000000094";
+    retarget(&f, other);
+    let pending = f.turns.submit_for(other.into(), "New editor".into());
+    assert!(f.turns.snapshot().busy);
+
+    f.turns.stop_for(CHAT.into()).await;
+
+    assert!(!f.turns.snapshot().stopping);
+    assert!(f.turns.snapshot().busy);
+    assert_eq!(f.server.attempts.load(Ordering::SeqCst), 0);
+    f.turns.clear();
+    drop(pending);
+}
+
+#[tokio::test]
+async fn busy_send_does_not_report_another_editors_admission() {
+    let f = fixture().await;
+    let pending = f.turns.try_submit_for(CHAT.into(), "First".into()).unwrap();
+    assert!(
+        f.turns
+            .try_submit_for(CHAT.into(), "Second".into())
+            .is_none()
+    );
+    assert_eq!(f.server.attempts.load(Ordering::SeqCst), 0);
+    pending.await;
+    assert_eq!(f.server.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(f.turns.snapshot().accepted, 1);
+}

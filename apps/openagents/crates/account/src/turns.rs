@@ -150,11 +150,25 @@ impl Turns {
     fn current(&self, job: &Job) -> bool {
         self.valid(&self.state.lock().unwrap(), job)
     }
+    fn expected_target(&self, expected: Option<&str>, target: &ExistingChat) -> bool {
+        expected.is_none_or(|id| {
+            target.chat.id() == id
+                && self
+                    .reader
+                    .target()
+                    .is_some_and(|current| current.chat == target.chat)
+        })
+    }
     pub fn submit(
         self: &Arc<Self>,
         text: String,
     ) -> impl std::future::Future<Output = ()> + Send + 'static {
-        self.submit_to(None, text)
+        let completion = self.submit_to(None, text);
+        async move {
+            if let Some(completion) = completion {
+                completion.await;
+            }
+        }
     }
     /// Send only if the reader still selects the chat that owns this editor.
     pub fn submit_for(
@@ -162,21 +176,31 @@ impl Turns {
         expected_chat: String,
         text: String,
     ) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let completion = self.try_submit_for(expected_chat, text);
+        async move {
+            if let Some(completion) = completion {
+                completion.await;
+            }
+        }
+    }
+    /// Return a completion only when this exact editor's send was admitted.
+    pub fn try_submit_for(
+        self: &Arc<Self>,
+        expected_chat: String,
+        text: String,
+    ) -> Option<impl std::future::Future<Output = ()> + Send + 'static> {
         self.submit_to(Some(expected_chat), text)
     }
     fn submit_to(
         self: &Arc<Self>,
         expected_chat: Option<String>,
         text: String,
-    ) -> impl std::future::Future<Output = ()> + Send + 'static {
+    ) -> Option<impl std::future::Future<Output = ()> + Send + 'static> {
         let job = self.target().and_then(|target| {
-            if expected_chat
-                .as_ref()
-                .is_some_and(|expected| target.chat.id() != expected.as_str())
-            {
+            let mut s = self.state.lock().unwrap();
+            if !self.expected_target(expected_chat.as_deref(), &target) {
                 return None;
             }
-            let mut s = self.state.lock().unwrap();
             if s.paused || s.snapshot.busy || s.snapshot.retry {
                 return None;
             }
@@ -209,16 +233,30 @@ impl Turns {
                 message: Some(message),
             })
         });
+        let job = job?;
         let this = self.clone();
-        async move {
-            if let Some(job) = job {
-                this.run(job, true).await;
-            }
-        }
+        Some(async move {
+            this.run(job, true).await;
+        })
     }
     pub fn retry(self: &Arc<Self>) -> impl std::future::Future<Output = ()> + Send + 'static {
+        self.retry_for_target(None)
+    }
+    pub fn retry_for(
+        self: &Arc<Self>,
+        expected_chat: String,
+    ) -> impl std::future::Future<Output = ()> + Send + 'static {
+        self.retry_for_target(Some(expected_chat))
+    }
+    fn retry_for_target(
+        self: &Arc<Self>,
+        expected_chat: Option<String>,
+    ) -> impl std::future::Future<Output = ()> + Send + 'static {
         let job = self.target().and_then(|target| {
             let mut s = self.state.lock().unwrap();
+            if !self.expected_target(expected_chat.as_deref(), &target) {
+                return None;
+            }
             if s.paused || !s.snapshot.retry {
                 return None;
             }
@@ -395,8 +433,23 @@ impl Turns {
         self.publish(&s);
     }
     pub fn stop(self: &Arc<Self>) -> impl std::future::Future<Output = ()> + Send + 'static {
+        self.stop_for_target(None)
+    }
+    pub fn stop_for(
+        self: &Arc<Self>,
+        expected_chat: String,
+    ) -> impl std::future::Future<Output = ()> + Send + 'static {
+        self.stop_for_target(Some(expected_chat))
+    }
+    fn stop_for_target(
+        self: &Arc<Self>,
+        expected_chat: Option<String>,
+    ) -> impl std::future::Future<Output = ()> + Send + 'static {
         let job = self.target().and_then(|target| {
             let mut s = self.state.lock().unwrap();
+            if !self.expected_target(expected_chat.as_deref(), &target) {
+                return None;
+            }
             if s.snapshot.stopping {
                 return None;
             }
