@@ -376,7 +376,7 @@ lines it points to. The graph lives on the `code-graph` branch and under
 
 ## Skills
 
-Four skills are vendored under `.agents/skills/`. Read and apply them:
+Five skills are vendored under `.agents/skills/`. Read and apply them:
 
 - `.agents/skills/google-developer-style/SKILL.md` — every piece of prose in
   this repository follows the Google Developer Documentation Style Guide:
@@ -395,6 +395,9 @@ Four skills are vendored under `.agents/skills/`. Read and apply them:
   keys, `POST /v1/systemone`, the three question types, typed refusals,
   `Retry-After`, and idempotent retries. Read it before you write client
   code against a door or change what `oak` sends.
+- `.agents/skills/better/SKILL.md` — pushes the current task, or a prompt
+  the owner gives, to a deeper version of itself. Use it only when the owner
+  types `/better` or `$better`.
 
 [`docs/glossary.md`](docs/glossary.md) defines the terms this repository
 uses, and marks which are implemented and which are only specified.
