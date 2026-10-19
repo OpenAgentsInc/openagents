@@ -26,6 +26,28 @@ def kube(*args):
     return json.loads(result.stdout)
 
 
+# Computers-layer states the native measurements can't see (#12147): a computer
+# held in `turn` by a command outcome nobody could confirm, a computer in
+# `unknown`, and a lifecycle request still `requested` with no provider answer.
+COMPUTERS_SQL="""SELECT json_build_object(
+ 'computers_stranded',(SELECT count(*) FROM computers.computers c WHERE c.phase='turn' AND c.desired<>'deleted'
+   AND EXISTS (SELECT 1 FROM computers.turns t WHERE t.computer=c.id AND t.error LIKE 'We couldn''t confirm%')),
+ 'oldest_stranded_turn_seconds',(SELECT COALESCE(max(extract(epoch FROM now()-t.finished_at)),0) FROM computers.computers c
+   JOIN computers.turns t ON t.computer=c.id WHERE c.phase='turn' AND c.desired<>'deleted' AND t.error LIKE 'We couldn''t confirm%'),
+ 'computers_unknown',(SELECT count(*) FROM computers.computers WHERE phase='unknown' AND desired<>'deleted'),
+ 'oldest_requested_lifecycle_seconds',(SELECT COALESCE(max(extract(epoch FROM now()-o.created_at)),0) FROM computers.lifecycle_operations o
+   WHERE o.disposition='requested' AND EXISTS (SELECT 1 FROM computers.computers c WHERE c.phase<>'deleted' AND strpos(c.record::text,o.resource)>0)));"""
+
+
+def computers_measurements():
+    value=credential();saved=secret('computers-database',identity())
+    environment={**os.environ,'PGHOST':value['private_ip'],'PGDATABASE':'space_computers','PGUSER':'space_computers',
+        'PGPASSWORD':saved['password'],'PGSSLMODE':'verify-ca','PGSSLROOTCERT':'/space/config/postgres-ca.crt',
+        'PGCONNECT_TIMEOUT':'5','PSQL_HISTORY':'/dev/null'}
+    result=subprocess.run(['psql','-X','-A','-t','-w','--set=ON_ERROR_STOP=1','-c',COMPUTERS_SQL],env=environment,capture_output=True,check=True,timeout=15)
+    return {name:float(number) for name,number in json.loads(result.stdout).items()}
+
+
 def collect():
     measurements={};errors=[]
     try:
@@ -56,6 +78,9 @@ def collect():
         result=subprocess.run(['psql','-X','-A','-t','-w','--set=ON_ERROR_STOP=1','-c',sql],env=environment,capture_output=True,check=True,timeout=15)
         measurements.update(json.loads(result.stdout))
     except (OSError,ValueError,KeyError,subprocess.SubprocessError): errors.append('database')
+    try:
+        measurements.update(computers_measurements())
+    except (OSError,ValueError,KeyError,subprocess.SubprocessError): errors.append('computers')
     try:
         value=secret('object-credentials',identity())
         client=protocol()
