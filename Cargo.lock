@@ -12995,6 +12995,7 @@ dependencies = [
  "url",
  "user-home",
  "verse",
+ "verse-engine",
  "verse-lagrange2",
  "video-lab",
  "workbench",

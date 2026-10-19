@@ -162,6 +162,7 @@ fn site_sources_have_no_machine_talk() {
         "components-start.js",
         "flow.js",
         "everglade.js",
+        "lander3.js",
     ] {
         let text = std::fs::read_to_string(root.join("static").join(script)).expect("the script");
         for (index, line) in text.lines().enumerate() {

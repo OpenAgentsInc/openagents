@@ -1,0 +1,13 @@
+/* /lander3 (#12180): the overhead Grid's controls, over the canvas's top
+   left corner. The canvas and the status line use legacy-demo.css's
+   .glade rules. */
+.lander3-panel{position:absolute;top:0;left:0;margin:calc(.75rem + env(safe-area-inset-top)) .75rem;padding:.5rem .75rem;max-width:calc(100vw - 1.5rem);box-sizing:border-box;background:var(--noir-surface);color:var(--noir-content)}
+.lander3-title{margin:0;font-weight:600}
+.lander3-hint{margin:.25rem 0 0}
+.lander3-buttons{display:flex;flex-wrap:wrap;gap:.375rem;margin-top:.5rem}
+.lander3-buttons button{font:inherit;padding:.25rem .625rem;color:var(--noir-content);background:var(--noir-canvas);border:1px solid var(--noir-content);border-radius:0;cursor:pointer}
+.lander3-buttons button:hover{background:var(--noir-control-hover)}
+.lander3-buttons button:focus-visible{outline:1px solid var(--noir-accent);outline-offset:2px}
+.lander3-buttons button:disabled{opacity:.5;cursor:default}
+#lander3-canvas{cursor:grab}
+#lander3-canvas.dragging{cursor:grabbing}

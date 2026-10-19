@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 79] = [
+const OWNED_EXACT: [&str; 80] = [
     "/",
     crate::analytics::BEACON,
     crate::analytics::SCRIPT,
@@ -69,6 +69,7 @@ const OWNED_EXACT: [&str; 79] = [
     "/studios/blue-rush",
     "/druid",
     "/grid",
+    "/lander3",
     "/games/grow-little-bunny",
     "/games/the-ice-cream-man",
     "/games/snap-station",
@@ -130,7 +131,7 @@ const OWNED_EXACT: [&str; 79] = [
 /// `/coder/memory`), so a shipped app still calling them is served here
 /// and its `Bearer sess_...` never reaches the upstream. Current apps ask
 /// the `/v1` paths first (#11158).
-const OWNED_PREFIXES: [&str; 40] = [
+const OWNED_PREFIXES: [&str; 41] = [
     "/landing/",
     "/auth/",
     // Link preview pictures (crate::link_preview).
@@ -150,6 +151,8 @@ const OWNED_PREFIXES: [&str; 40] = [
     "/demo/",
     "/app/",
     "/everglade/",
+    // The overhead Grid in three.js (crate::pages::lander3).
+    "/lander3/",
     "/games/grow-little-bunny/",
     "/games/the-ice-cream-man/",
     "/games/snap-station/",

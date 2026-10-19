@@ -1481,6 +1481,41 @@ async fn the_grid_page_serves_the_same_build_and_admits_the_relay() {
     assert!(html.contains("Everglade is unavailable on this server"));
 }
 
+/// `/lander3` (#12180): the overhead Grid in three.js, from this site only:
+/// the page, its scene from the verse crate, the pack's textures, and the
+/// vendored three.js.
+#[tokio::test]
+async fn the_lander3_page_serves_the_grid_and_three_from_this_site() {
+    let root = tempfile::tempdir().unwrap();
+    let config = config(root.path().join("tasks"));
+    let (status, headers, html) = get_with(router(config.clone()), "/lander3", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<title>The Grid from above"), "{html}");
+    assert!(html.contains("<script type=\"module\" src=\"/lander3/lander3.js\"></script>"));
+    assert_eq!(
+        headers[header::CONTENT_SECURITY_POLICY],
+        pages::LANDER3_POLICY
+    );
+    let (status, _, scene) = get_with(router(config.clone()), "/lander3/scene.json", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    let scene: serde_json::Value = serde_json::from_str(&scene).unwrap();
+    assert!(scene["models"]["grid/gym"].is_object());
+    for path in [
+        "/lander3/three/three.module.min.js",
+        "/lander3/three/three.core.min.js",
+        "/lander3/lander3.js",
+        "/lander3/lander3.css",
+        "/lander3/texture/everglade-portal.png",
+    ] {
+        let (status, _, _) = get_with(router(config.clone()), path, LOCAL).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+    }
+    for path in ["/lander3/three/three.js", "/lander3/texture/../pack.json"] {
+        let (status, _, _) = get_with(router(config.clone()), path, LOCAL).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    }
+}
+
 /// Without the build directory, or without the glue in it, the page says
 /// Everglade is unavailable, runs no script, keeps the site's policy, and
 /// serves no build file.

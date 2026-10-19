@@ -13,3 +13,27 @@ evaluated expressions, returned scripts, and persistent history snapshots.
 The adjacent license files retain each project's BSD Zero Clause terms. See
 [HTMX configuration](https://htmx.org/docs/#configuration) and the
 [SSE extension](https://htmx.org/extensions/sse/).
+
+## three.js
+
+`/lander3` draws the Grid with three.js 0.184.0 (the version `three-effect`
+pins), served from this origin at `/lander3/three/`. The module imports the
+core beside it as `./three.core.min.js`. `three-0.184.0/LICENSE` keeps its
+MIT terms.
+
+| File | Source | SHA-256 |
+| --- | --- | --- |
+| `three-0.184.0/three.module.min.js` | [three 0.184.0 on npm](https://registry.npmjs.org/three/-/three-0.184.0.tgz), `build/` | `36a60b0120335f89a80a0dab70292292b0ec414b3d05e83cd09a3ea428c6712a` |
+| `three-0.184.0/three.core.min.js` | [three 0.184.0 on npm](https://registry.npmjs.org/three/-/three-0.184.0.tgz), `build/` | `6486aa0d719cfa87ec88dc47223b59b1fb8417a1a407fc0e52467c943e2f8cc9` |
+
+## three.js
+
+`/lander3` draws the Grid with three.js 0.184.0 (the version `three-effect`
+pins), served from this origin at `/lander3/three/`. The module imports the
+core beside it as `./three.core.min.js`. `three-0.184.0/LICENSE` keeps its
+MIT terms.
+
+| File | Source | SHA-256 |
+| --- | --- | --- |
+| `three-0.184.0/three.module.min.js` | [three 0.184.0 on npm](https://registry.npmjs.org/three/-/three-0.184.0.tgz), `build/` | `36a60b0120335f89a80a0dab70292292b0ec414b3d05e83cd09a3ea428c6712a` |
+| `three-0.184.0/three.core.min.js` | [three 0.184.0 on npm](https://registry.npmjs.org/three/-/three-0.184.0.tgz), `build/` | `6486aa0d719cfa87ec88dc47223b59b1fb8417a1a407fc0e52467c943e2f8cc9` |

@@ -19,6 +19,7 @@ mod everglade;
 pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
+mod lander3;
 mod landing;
 mod layertree;
 pub(crate) mod live;
@@ -56,6 +57,8 @@ pub(crate) use download::{
 };
 #[cfg(test)]
 pub(crate) use everglade::GRID_POLICY;
+#[cfg(test)]
+pub(crate) use lander3::LANDER3_POLICY;
 pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
 #[cfg(test)]
 pub(crate) use icecream::{
@@ -88,6 +91,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(efficiency::routes())
         .merge(affiliates::routes())
         .merge(everglade::routes())
+        .merge(lander3::routes())
         .merge(bunny::routes())
         .merge(icecream::routes())
         .merge(snap::routes())
