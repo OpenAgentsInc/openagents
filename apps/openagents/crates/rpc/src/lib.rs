@@ -198,6 +198,11 @@ pub mod methods {
     pub const GRANT_AGENT: &str = "GrantAgent";
     /// `RevokeGrant` in, `WakesStatus` out.
     pub const REVOKE_AGENT_GRANT: &str = "RevokeAgentGrant";
+    /// Machine grants on a chat's own host (#12163):
+    /// `coder_lease::machine::delegate::GrantRequest` in, the grant out.
+    pub const GRANT_MACHINE: &str = "GrantMachine";
+    /// `coder_lease::machine::delegate::RevokeRequest` in, `{revoked}` out.
+    pub const REVOKE_MACHINE: &str = "RevokeMachine";
     /// `RecordDecision` from an agent's own chat.
     pub const RECORD_AGENT_DECISION: &str = "RecordAgentDecision";
     /// The device's browse roots: home plus mounted drives/volumes.

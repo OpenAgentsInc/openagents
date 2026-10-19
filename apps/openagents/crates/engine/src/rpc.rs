@@ -1568,6 +1568,9 @@ fn forwardable(method: &str) -> bool {
             | methods::SET_AGENT_WAKES
             | methods::GRANT_AGENT
             | methods::REVOKE_AGENT_GRANT
+            // Machine grants live in the lease root of the chat's host.
+            | methods::GRANT_MACHINE
+            | methods::REVOKE_MACHINE
             | methods::GET_VOICE_AGENT
             | methods::LIST_DRIVES
             | methods::SEARCH_HOME_FOLDERS
@@ -3284,6 +3287,22 @@ impl RpcService for EngineRpc {
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&status)
             }
+            methods::GRANT_MACHINE => {
+                use coder_lease::machine::{self, delegate};
+                let request: delegate::GrantRequest = parse_params(params)?;
+                let granted = machine::here()
+                    .and_then(|(root, _)| delegate::serve_grant(&root, &request))
+                    .map_err(RpcError::Failed)?;
+                RpcReply::value(&serde_json::json!({ "granted": granted }))
+            }
+            methods::REVOKE_MACHINE => {
+                use coder_lease::machine::{self, delegate};
+                let request: delegate::RevokeRequest = parse_params(params)?;
+                let revoked = machine::here()
+                    .and_then(|(root, _)| delegate::serve_revoke(&root, &request))
+                    .map_err(RpcError::Failed)?;
+                RpcReply::value(&serde_json::json!({ "revoked": revoked }))
+            }
             methods::RECORD_AGENT_DECISION => {
                 let record: openagents_proto::agent_wakes::RecordDecision = parse_params(params)?;
                 self.doc_host
@@ -4439,6 +4458,7 @@ mod tests {
         assert!(!forwardable(methods::ENGINE_INFO));
         assert!(!forwardable(methods::ENGINE_READY));
         assert!(forwardable(methods::QUEUE_COMMAND));
+        assert!(forwardable(methods::GRANT_MACHINE) && forwardable(methods::REVOKE_MACHINE));
         assert!(forwardable(methods::SEARCH_FILES));
         assert!(forwardable(methods::SEARCH_GIT_HISTORY));
         assert!(forwardable(methods::FETCH_ALL));

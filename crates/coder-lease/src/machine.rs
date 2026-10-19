@@ -32,9 +32,19 @@
 //!   a chat without that chat's proof is refused and logged. The owner at an
 //!   interactive terminal acts as the owner.
 //!
+//! - The owner may grant one coordinator [`Scope::Delegate`] (#12163). That
+//!   agent then grants and revokes the [`Scope::DELEGABLE`] scopes to other
+//!   chats on any of the owner's computers ([`delegate`]); a subgrant reaches
+//!   the chat's own host through the device channel. Delegation never goes
+//!   further: `delegate` itself isn't delegable, and money, keys and secrets
+//!   are never machine scopes. Every subgrant and its end is logged with the
+//!   delegating agent, the target chat, the scopes and the reason, and the
+//!   owner's revoke of the coordinator ends everything it issued.
+//!
 //! On one Unix account this stops accidents and borrowed IDs, not a process
 //! set on forging a grant, like the screen grant ([`crate::Grant`]).
 
+pub mod delegate;
 pub mod proof;
 
 use std::path::{Path, PathBuf};
@@ -67,10 +77,28 @@ pub enum Scope {
     /// Upgrade the host app from `main` (#12056).
     #[serde(rename = "host.upgrade")]
     HostUpgrade,
+    /// Grant and revoke the [`Scope::DELEGABLE`] scopes to other chats on
+    /// the owner's computers (#12163). Only the owner grants it.
+    #[serde(rename = "delegate")]
+    Delegate,
 }
 
 impl Scope {
-    pub const ALL: [Scope; 3] = [Scope::BuildPrune, Scope::ProcessStop, Scope::HostUpgrade];
+    pub const ALL: [Scope; 4] = [
+        Scope::BuildPrune,
+        Scope::ProcessStop,
+        Scope::HostUpgrade,
+        Scope::Delegate,
+    ];
+    /// What a `delegate` holder may grant: the machine actions, never
+    /// `delegate` itself. Money, keys and secrets are never machine scopes.
+    pub const DELEGABLE: [Scope; 3] = [Scope::BuildPrune, Scope::ProcessStop, Scope::HostUpgrade];
+
+    /// Whether a `delegate` holder may grant it.
+    #[must_use]
+    pub fn delegable(self) -> bool {
+        Scope::DELEGABLE.contains(&self)
+    }
 
     /// The scope's wire name, such as `build.prune`.
     #[must_use]
@@ -79,6 +107,7 @@ impl Scope {
             Scope::BuildPrune => "build.prune",
             Scope::ProcessStop => "process.stop",
             Scope::HostUpgrade => "host.upgrade",
+            Scope::Delegate => "delegate",
         }
     }
 
@@ -90,6 +119,7 @@ impl Scope {
             "build.prune" | "prune" => Some(Scope::BuildPrune),
             "process.stop" | "stop" => Some(Scope::ProcessStop),
             "host.upgrade" | "upgrade" => Some(Scope::HostUpgrade),
+            "delegate" => Some(Scope::Delegate),
             _ => None,
         }
     }
@@ -113,6 +143,12 @@ pub struct MachineGrant {
     /// Unix milliseconds; never ends when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at_ms: Option<u64>,
+    /// The `delegate` holder that issued it (#12163); the owner when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issued_by: Option<String>,
+    /// The reason the delegating agent gave.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 impl MachineGrant {
@@ -173,7 +209,7 @@ impl Grants {
             .collect()
     }
 
-    fn save(&self, root: &Path) -> std::io::Result<()> {
+    pub(crate) fn save(&self, root: &Path) -> std::io::Result<()> {
         let path = root.join(GRANTS_FILE);
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
@@ -217,8 +253,13 @@ pub fn grant(
         expires_at_ms: duration.map(|duration| {
             now.saturating_add(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
         }),
+        issued_by: None,
+        reason: None,
     };
-    grants.grants.retain(|grant| grant.agent != agent);
+    // A coordinator's subgrants to the same agent stay; they end with it.
+    grants
+        .grants
+        .retain(|grant| grant.agent != agent || grant.issued_by.is_some());
     grants.grants.push(granted.clone());
     grants
         .save(root)
@@ -226,21 +267,29 @@ pub fn grant(
     Ok(granted)
 }
 
-/// Ends `agent`'s machine grant in the lease root `root`; whether it had
-/// one.
+/// Ends every machine grant `agent` holds in the lease root `root`, and
+/// every grant it issued as a `delegate` holder (#12163); whether there
+/// was any. Each subgrant ended this way is logged.
 ///
 /// # Errors
 /// The file can't be read or written.
 pub fn revoke(root: &Path, agent: &str) -> Result<bool, String> {
+    let agent = agent.trim();
     let mut grants = Grants::load(root)?;
-    let before = grants.grants.len();
-    grants.grants.retain(|grant| grant.agent != agent.trim());
-    if grants.grants.len() == before {
+    let (ended, kept): (Vec<MachineGrant>, Vec<MachineGrant>) =
+        grants.grants.into_iter().partition(|grant| {
+            grant.agent == agent || grant.issued_by.as_deref() == Some(agent)
+        });
+    grants.grants = kept;
+    if ended.is_empty() {
         return Ok(false);
     }
     grants
         .save(root)
         .map_err(|error| format!("the machine grants can't be written: {error}"))?;
+    for grant in ended.iter().filter(|grant| grant.agent != agent) {
+        delegate::log_end(root, grant, &format!("the owner revoked {agent}"));
+    }
     Ok(true)
 }
 
@@ -318,6 +367,9 @@ pub struct Entry {
     pub command: Option<String>,
     /// Why it was refused or failed, or what it did.
     pub detail: String,
+    /// The chat a `delegate` holder granted to or revoked (#12163).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 impl Entry {
@@ -341,6 +393,7 @@ impl Entry {
             pid: None,
             command: None,
             detail: String::new(),
+            target: None,
         }
     }
 
@@ -356,7 +409,10 @@ impl Entry {
                 Some(command) => format!("pid {pid} ({command})"),
                 None => format!("pid {pid}"),
             },
-            (None, None) => String::new(),
+            (None, None) => self
+                .target
+                .as_ref()
+                .map_or_else(String::new, |target| format!("to {target}")),
         };
         let outcome = match self.outcome {
             Outcome::Done => "done",

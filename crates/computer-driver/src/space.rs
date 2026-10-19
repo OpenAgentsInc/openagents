@@ -835,7 +835,8 @@ impl Driver for SpaceDriver {
         caps.memory_suspend = true;
         caps.command_sessions = self.identified_commands;
         // put_file and get_file are implemented for every SPACE computer (#12146).
-        caps.workspace_file_bytes = Some(MAX_FILE);
+        // Advertise the public transfer limit, which the web and SDK enforce.
+        caps.workspace_file_bytes = Some(MAX_FILE.min(computer_files::MAX_BYTES));
         let artifact = crate::Artifact {
             kind: crate::ArtifactKind::SpaceTemplate,
             reference: self.template.clone(),
@@ -1179,7 +1180,7 @@ mod tests {
         )
         .unwrap();
         let caps = driver.capabilities();
-        assert_eq!(caps.workspace_file_bytes, Some(MAX_FILE));
+        assert_eq!(caps.workspace_file_bytes, Some(computer_files::MAX_BYTES));
         assert!(
             !caps.command_sessions,
             "commands stay off without a workspace"

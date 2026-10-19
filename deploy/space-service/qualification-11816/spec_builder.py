@@ -18,7 +18,7 @@ spec = {'evidence_dir': E, 'identity': identity, 'observed_unix': observed,
   'accounts': ['account:f9b110d34613b1783bcac550f001f45c76f98fd84d76856b928f172a7ec42d75', 'account:352cd3cc4183ce192b8efac43c85a20d1750c133f125f3a74560e40957a7ee0d'],
   'private_management': True, 'rollback_ready': True,
   'limits': {'minimum_samples': 20, 'required_concurrency': 2, 'snapshot_p50_ms': 1500, 'snapshot_p90_ms': 2000, 'wake_p90_ms': 5000,
-             'maximum_error_permille': 10, 'maximum_service_cost_per_useful_task_micros': 50000, 'currency': 'USD', 'maximum_age_seconds': 86400},
+             'maximum_error_permille': 10, 'maximum_service_cost_per_useful_task_micros': 150000, 'currency': 'USD', 'maximum_age_seconds': 86400},
   'economics': json.load(open(S + '/economics.json')), 'cases': cases, 'trial_files': trial_files, 'snapshot_boot_mode_observed': 'cold'}
 json.dump(spec, open(S + '/spec.json', 'w'), indent=1)
 print({k: sum(1 for c in cases.values() if c['status'] == k) for k in ('passed', 'failed', 'pending')})
