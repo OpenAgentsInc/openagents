@@ -1,0 +1,28 @@
+{
+ "after": {
+  "complete": true,
+  "completed_at": "2026-10-18T23:56:13Z",
+  "held": 0,
+  "released": 39,
+  "resolutions": 9
+ },
+ "before": {
+  "held_storage_allowances": 39,
+  "pending_computers": 1
+ },
+ "computers_deleted_by": "22:45:57Z, including a computer stranded in turn by #12141",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "fenced": "a later create for the closed owner returned 429",
+ "owner": "account:352cd3cc4183ce192b8efac43c85a20d1750c133f125f3a74560e40957a7ee0d",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "request": "2026-10-18T22:45:13Z, the same statement and advisory lock as oa-computers-usage account-cleanup (computers.account_cleanup insert under pg_advisory_xact_lock(11815))",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "storage_resolution": {
+  "inventory_receipt_sha256": "f2b434a195a84d828e45f76ad994c5e4af4467454ee2b6aba3bc8c9339646d4b",
+  "method": "operator Cloud Run job oa-space-cleanup-11816 (qualification-11816/storage_cleanup_job.py) running oa-computers-usage storage-cleanup for 9 computers, then account-cleanup-status; job deleted afterwards",
+  "proof_inputs": "per-computer resources and namespaced create operations from the Computers record; zero live native sandboxes, zero active snapshot objects, zero unfinished uploads"
+ }
+}

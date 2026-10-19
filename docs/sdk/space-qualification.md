@@ -11,32 +11,38 @@ Lane 0 ran the live qualification on the private candidate
 (`space-private-11814`, private Computers revision with 100 ms polling) with two
 synthetic test owners and no owner account. The
 [packet](space-qualification-packet.json) pins the running identity, private
-management, and the exercised rollback; `--test-accounts` now passes. The
+management, and the exercised rollback; `--test-accounts` passes. The
 named-group assessment does not pass. Receipts and scrubbed evidence are in
 [`evidence/space-qualification-2026-10-18/`](evidence/space-qualification-2026-10-18/).
 
 | Result | Cases |
 | --- | --- |
-| Passed | `account_isolation`, `actual_boot_and_shape`, `memory_and_workspace`, `attach_interruption`, `api_restart`, `reconciler_restart`, `lost_create_reply`, `delayed_lifecycle`, `worker_loss_and_single_writer`, `checkpoint_recovery`, `database_restore`, `storage_outage`, `egress_bypass`, `capacity_exhaustion`, `concurrent_wake`, `quotas_and_accounting`, `disabled_placement`, `unsupported_controls` |
-| Failed | `public_sdk` ([#12146](https://github.com/OpenAgentsInc/openagents/issues/12146)), `cancellation_and_children` and `upgrade_and_rollback` ([#12141](https://github.com/OpenAgentsInc/openagents/issues/12141)), `lost_command_reply` and `duplicate_delivery` ([#12142](https://github.com/OpenAgentsInc/openagents/issues/12142)), `provider_outage` ([#12143](https://github.com/OpenAgentsInc/openagents/issues/12143)), `monitoring` ([#12147](https://github.com/OpenAgentsInc/openagents/issues/12147)) |
-| Pending | `web_task_and_followup`, `stage_timings`, and `legacy_boat` (no staging SPACE binding or test credential, #12146); `credential_revocation` (credential adapter not deployed); `retention`, `account_deletion`, `orphan_cleanup`, and `fixture_cleanup` (cleanup was still in progress) |
+| Passed (20) | `account_isolation`, `actual_boot_and_shape`, `memory_and_workspace`, `attach_interruption`, `api_restart`, `reconciler_restart`, `lost_create_reply`, `delayed_lifecycle`, `worker_loss_and_single_writer`, `checkpoint_recovery`, `database_restore`, `storage_outage`, `egress_bypass`, `capacity_exhaustion`, `concurrent_wake`, `quotas_and_accounting`, `retention`, `account_deletion`, `disabled_placement`, `unsupported_controls` |
+| Failed (8) | `public_sdk` ([#12146](https://github.com/OpenAgentsInc/openagents/issues/12146)); `cancellation_and_children` and `upgrade_and_rollback` ([#12141](https://github.com/OpenAgentsInc/openagents/issues/12141)); `lost_command_reply` and `duplicate_delivery` ([#12142](https://github.com/OpenAgentsInc/openagents/issues/12142)); `provider_outage` ([#12143](https://github.com/OpenAgentsInc/openagents/issues/12143), fixed in source, not yet deployed here); `orphan_cleanup` and `fixture_cleanup` ([#12151](https://github.com/OpenAgentsInc/openagents/issues/12151)) |
+| Pending (5) | `web_task_and_followup`, `stage_timings`, and `legacy_boat` (no staging SPACE binding or test credential, #12146); `credential_revocation` (credential adapter not deployed); `monitoring` (the #12147 measurements and policies are live; the owner picks the notification channel) |
 | Not required | `cross_host_memory_restore` (not advertised; one worker) |
 
-Measured create-to-verified-output on the private path (nearest rank, warm
+The packet's trials were rerun after the [#12144](https://github.com/OpenAgentsInc/openagents/issues/12144)
+fix. Each net gateway resolved two local role accounts through OS Login and the
+metadata server, which its sandbox network can't reach; locked local `dev` and
+`deploy` accounts on the worker cut native boot-to-ready from about 10.6 s to
+2.9 s. Create-to-verified-output on the private path (nearest rank, warm
 template cache, concurrency 1 and 2):
 
 | Kind | Attempts | Failures | p50 | p90 |
 | --- | --- | --- | --- | --- |
-| Cold create | 26 | 3 (uncertain turn, #12141) | 11,637 ms | 11,852 ms |
-| Snapshot create | 9 | 9 (every boot was cold, #12145) | none | none |
-| Wake | 28 | 0 | 12,732 ms | 42,739 ms |
+| Cold create | 26 | 2 (uncertain turn, #12141) | 4,486 ms | 9,941 ms |
+| Snapshot create | 9 | 9 (every boot was cold; #12145 fix not yet deployed) | none | none |
+| Wake | 28 | 1 (uncertain turn) | 3,926 ms | 33,612 ms |
 
-About 10 s of each create and wake is a native network-policy retry
-([#12144](https://github.com/OpenAgentsInc/openagents/issues/12144)); the guest
-boots in under 1 s. No sample has a cold template cache. Service cost stays
-unknown: no billing export is available to the operator, and SPACE meter events
-report unknown usage, which the service keeps held. Boat stays the public
-default, pricing stays off, and no customer account is admitted.
+Before the fix the same arms measured 11,637 ms and 12,732 ms p50; those
+series stay in `raw/trials`. About one wake in five still waits for a later
+Computers revisit (8 to 33 s). No sample has a cold template cache. Service cost
+stays unknown: no billing export is available to the operator, and SPACE meter
+events report unknown usage, which the service keeps held. The list-price run
+rate of the private deployment is about USD 0.81 an hour (about USD 5 for this
+window). Boat stays the public default, pricing stays off, and no customer
+account is admitted.
 
 ## Check a qualification packet
 

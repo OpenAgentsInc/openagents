@@ -10,7 +10,7 @@ def put(name, value):
     value = {'schema': 'openagents.computers.space-case-evidence.v1', 'qualification': 11816, 'deployment': 'space-private-11814 (private candidate oa-space-service-computers)',
              'owners': 'synthetic account digests only; no owner account or host', 'contains_credentials': False, **value}
     (raw / 'cases' / f'{name}.json').write_text(json.dumps(value, indent=1, sort_keys=True) + '\n')
-for f in ['trials-cold-warm-c1.jsonl', 'trials-cold-warm-c2.jsonl', 'trials-snap-warm-c1.jsonl', 'trials-wake-warm-c1.jsonl', 'trials-wake-warm-c2.jsonl',
+for f in ['trials-fix-cold-warm-c1.jsonl', 'trials-fix-cold-warm-c2.jsonl', 'trials-fix-wake-warm-c1.jsonl', 'trials-fix-wake-warm-c2.jsonl', 'trials-cold-warm-c1.jsonl', 'trials-cold-warm-c2.jsonl', 'trials-snap-warm-c1.jsonl', 'trials-wake-warm-c1.jsonl', 'trials-wake-warm-c2.jsonl',
           'trials-pilot2.jsonl', 'pre-tuning-trials-pilot.jsonl', 'pre-tuning-trials-cold-warm-c1.jsonl']:
     shutil.copy(C / f, raw / 'trials' / f)
 shutil.copy(S / 'raw' / 'worker-guest-observations-pre-reset.json', raw / 'worker-guest-observations.json')
@@ -99,8 +99,12 @@ put('upgrade_and_rollback', {'status': 'failed', 'issue': 12141, 'attempts': {'1
 put('legacy_boat', {'status': 'pending', 'reason': 'The private candidate registry has no Boat deployment, and no staging registry mixes Boat and SPACE (#12146). Production and staging still default to Boat (our-cloud).'})
 put('unsupported_controls', {'status': 'passed', 'advertised': {'profiles': ['core', 'suspend'], 'fork': False, 'terminal': False, 'preview': False, 'command_sessions': False, 'workspace_file_bytes': None},
     'refusals': {'fork': 404, 'snapshots': 404, 'terminal': 404, 'preview': 404, 'commands': 422, 'files': 501}, 'private_ingress': 'see raw/private-management.json'})
-put('monitoring', {'status': 'failed', 'issue': 12147, 'collector': 'oa-space-monitor.timer active; 11 measurements every minute; collector_errors 0',
+put('monitoring', {'status': 'pending', 'issue': 12147, 'reason': 'The #12147 measurements and policies are live; alerts still reach nobody until the owner picks a notification channel (NEEDS_OWNER.md).',
+    'after_fix': {'measurements': 15, 'policies': 12, 'new': ['computers_stranded', 'oldest_stranded_turn_seconds', 'computers_unknown', 'oldest_requested_lifecycle_seconds'], 'commit': '1668c41a3c'},
+    'before_fix': 'failed', 'collector': 'oa-space-monitor.timer active; 11 measurements every minute; collector_errors 0',
     'policies': (S / 'raw' / 'alert-policies.txt').read_text().splitlines(),
     'finding': 'No policy has a notification channel; outages under 120 s never open an incident; Computers-layer stuck states (unknown for 15+ minutes, stranded turns) are not measured.'})
+EXTRA = json.loads((S / 'extra-cases.json').read_text())
+for name, value in EXTRA.items(): put(name, value)
 (raw / 'uncertain-turns.json').write_text(json.dumps([{k: t[k] for k in ('id', 'computer', 'state', 'exit_code', 'error', 'created_at', 'started_at', 'finished_at')} | {'stdout_bytes': len(t['stdout'] or '')} for t in uncertain], indent=1) + '\n')
 print('assembled', len(list((raw / 'cases').glob('*.json'))))

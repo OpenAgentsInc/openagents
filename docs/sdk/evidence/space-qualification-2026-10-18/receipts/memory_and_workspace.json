@@ -15,10 +15,10 @@
     "vcpus": 2,
     "web_commit": "b4442103d26e9723e90cb63f3002c8a10f462b03"
   },
-  "observed_unix": 1792365565,
+  "observed_unix": 1792370625,
   "schema": "openagents.computers.space-case-receipt.v1",
   "source": {
     "path": "evidence/space-qualification-2026-10-18/raw/cases/memory_and_workspace.json",
-    "sha256": "355b13199903be3dcc3021853c7859f9ca7f6b90881db1cd48a455fde5e8448f"
+    "sha256": "3d3bcfe0750e3911e29fa1d958a754e82608505a053d2bdcd71228593bdeaf25"
   }
 }

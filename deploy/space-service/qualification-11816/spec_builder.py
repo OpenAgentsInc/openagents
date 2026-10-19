@@ -11,7 +11,8 @@ for case in ['public_sdk','web_task_and_followup','account_isolation','actual_bo
     st = statuses.get(case, 'pending')
     if st == 'not_required': st = 'pending'
     cases[case] = {'status': st, 'source': f'{E}/raw/cases/{case}.json' if case in statuses and st in ('passed', 'failed') else None}
-trial_files = [f'{E}/raw/trials/{n}' for n in ['trials-cold-warm-c1.jsonl','trials-cold-warm-c2.jsonl','trials-snap-warm-c1.jsonl','trials-wake-warm-c1.jsonl','trials-wake-warm-c2.jsonl']]
+# Packet trials are the post-#12144 series; the earlier series stay in raw/trials as diagnostics.
+trial_files = [f'{E}/raw/trials/{n}' for n in ['trials-fix-cold-warm-c1.jsonl','trials-fix-cold-warm-c2.jsonl','trials-snap-warm-c1.jsonl','trials-fix-wake-warm-c1.jsonl','trials-fix-wake-warm-c2.jsonl']]
 spec = {'evidence_dir': E, 'identity': identity, 'observed_unix': observed,
   'advertised': {'fork': False, 'terminal': False, 'preview': False, 'cross_host_memory_restore': False},
   'accounts': ['account:f9b110d34613b1783bcac550f001f45c76f98fd84d76856b928f172a7ec42d75', 'account:352cd3cc4183ce192b8efac43c85a20d1750c133f125f3a74560e40957a7ee0d'],

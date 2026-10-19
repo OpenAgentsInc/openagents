@@ -48,6 +48,30 @@
    "turn": "trn_17dd711faff1b3ad5535",
    "workspace_sha256": "1054cbc79f8edea97353d12664fda9166141f0226cbc68a875a27c336f5f0d93"
   },
+  "canary-cmp_8f206208e5dbc64c13f7.json": {
+   "boot_id": "1e38b7d3-cf2f-457d-8247-6ca7f25a88e4",
+   "canary_sha256": "3a09c9f03d034c0cdd96b3d67ec8eb665b7d65c48f98342c97e74480e581b77f",
+   "pid": "293",
+   "start_ticks": "498",
+   "turn": "trn_84e260323cbf90ab8e07",
+   "workspace_sha256": "30496b1bfa7922750228cbf9a37c7c7a54f1c9cc952e93b16c84240d3f5e564c"
+  },
+  "canary-cmp_99c5ab16d7da2262b59a.json": {
+   "boot_id": "0d7c731e-0574-4eae-877a-31aa6d99780b",
+   "canary_sha256": "92b5efb7d143e35b54aa0571baebb9107bac3be1a6b819f67f7b9bcb0ead3c9a",
+   "pid": "293",
+   "start_ticks": "315",
+   "turn": "trn_c152d68976a614d4f76e",
+   "workspace_sha256": "2ea3e6e1c1b47d06f8629fa6cdbc1dde80a597d9f62446f20b9c3c02a9de59f9"
+  },
+  "canary-cmp_cbc134bc5d8581f6333a.json": {
+   "boot_id": "c904851a-4b45-44da-bd00-293b8dd30f17",
+   "canary_sha256": "1afbfb14bf2c11efc9f9330999e26b1a6f6db1a95751e22f7bcf76fe0ae4aeee",
+   "pid": "294",
+   "start_ticks": "401",
+   "turn": "trn_e64eed9bc05c2f5c8acc",
+   "workspace_sha256": "858070024cd3898f411151ffa0306a0e3b16ff12a097ff5fe46b83a3e1d05151"
+  },
   "canary-cmp_f5abd0d6178073c2ceaa.json": {
    "boot_id": "e7b1a193-db44-413c-87bc-b2a48bd67203",
    "canary_sha256": "980d89b02e262cf4110683c573fd33aabaa96f912c865b5797708d79c1fc6753",

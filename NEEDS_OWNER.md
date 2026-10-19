@@ -4,8 +4,8 @@ The live run on the private SPACE deployment passed the dedicated-test stage
 but not named-group admission; see `docs/sdk/space-qualification.md`. These
 steps need you:
 
-1. Pick a notification channel for the nine "SPACE private" alert policies
-   in Cloud Monitoring. None has one, so alerts reach nobody (#12147).
+1. Pick a notification channel for the twelve "SPACE private" alert policies
+   in Cloud Monitoring and run `deploy/space-service/monitoring.py --keep-project-iam --notification-channel projects/openagentsgemini/notificationChannels/ID`. None has one, so alerts reach nobody (#12147).
 2. Put the staging dedicated test account's credential (`acct_dc7a799879686fc5`)
    in `~/work/.secrets`, and approve binding only that account to SPACE on
    staging Computers, with Boat kept as default and pricing off (#12146). The

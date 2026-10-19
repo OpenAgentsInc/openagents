@@ -228,6 +228,8 @@ def wait_state(cid, want, seconds, who='a', poll=0.25):
         if s == 200 and state == want: return v
         if s == 200 and state in ('failed',) and want != 'failed': raise RuntimeError(f'{cid} failed: {json.dumps(brief(v))[:600]}')
         if s == 404 and want == 'deleted': return {'state': 'deleted', 'http_status': 404}
+        if s == 200 and want != 'deleted' and "couldn't confirm" in str((v or {}).get('last_error') or ''):
+            raise RuntimeError(f'{cid} is stranded by an uncertain turn (#12141)')
         if time.monotonic() > deadline: raise TimeoutError(f'{cid} did not reach {want}; last {s} {json.dumps(brief(v))[:400]}')
         time.sleep(poll)
 
@@ -253,7 +255,7 @@ def main():
     ns = sub.add_parser('natives'); ns.add_argument('cid')
     tr = sub.add_parser('trials'); tr.add_argument('kind', choices=['cold','snapshot','wake']); tr.add_argument('label'); tr.add_argument('--count', type=int, default=1)
     tr.add_argument('--concurrency', type=int, default=1); tr.add_argument('--cache', default='warm'); tr.add_argument('--size', default='small')
-    tr.add_argument('--computers', help='comma-separated computers for wake trials'); tr.add_argument('--start', type=int, default=0)
+    tr.add_argument('--computers', help='comma-separated computers for wake trials'); tr.add_argument('--start', type=int, default=0); tr.add_argument('--owners', default='a,b')
     sd = sub.add_parser('seed'); sd.add_argument('cid'); sd.add_argument('--who', default='a')
     q = sub.add_parser('sql'); q.add_argument('query'); q.add_argument('--db', default='space_computers')
     t = sub.add_parser('turn'); t.add_argument('cid'); t.add_argument('command'); t.add_argument('--who', default='a')
@@ -264,7 +266,7 @@ def main():
     if args.cmd == 'seed':
         v = seed_memory(args.cid, args.who); (ROOT / f'canary-{args.cid}.json').write_text(json.dumps(v)); print(json.dumps(v)); return
     if args.cmd == 'trials':
-        whos = ['a', 'b']
+        whos = args.owners.split(',')
         for i in range(args.start, args.start + args.count):
             if args.kind == 'wake':
                 cids = args.computers.split(',')[:args.concurrency]

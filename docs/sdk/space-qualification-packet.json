@@ -13,7 +13,7 @@
     "vcpus": 2,
     "memory_mib": 1024
   },
-  "observed_unix": 1792365565,
+  "observed_unix": 1792370625,
   "advertised": {
     "fork": false,
     "terminal": false,
@@ -44,7 +44,7 @@
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/public_sdk.json",
-        "sha256": "d9efa8a480a6740eb75ff01cdf656ca2e381baedbff15fabc2e83def647ed71a"
+        "sha256": "63972fd7966453c8c678d9684a5c028b9613c13d1b8733d13b2789dabbbbd52b"
       }
     },
     "web_task_and_followup": {
@@ -55,14 +55,14 @@
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/account_isolation.json",
-        "sha256": "69be14226ab8217b9c5ffd1e7110742f950251ec44ee354db62c9d7707d870cc"
+        "sha256": "47360134ae5553f1807371ec85bc44b044e82f708857b73392bef81b1bf731c6"
       }
     },
     "actual_boot_and_shape": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/actual_boot_and_shape.json",
-        "sha256": "dbfb5151235cab00fbf5e76bfa6748e86b528cc476f8eb9c755bd2158697df3b"
+        "sha256": "9967136916c0e687635b68f6eb4693697a9cbe98a3fdb7c305f0ec7c5614dedf"
       }
     },
     "stage_timings": {
@@ -73,70 +73,70 @@
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/memory_and_workspace.json",
-        "sha256": "0c8c4090cfeac1aa7f814e1d95dd38ba2f7951bef2af72b988004b4590afac1d"
+        "sha256": "5209fa2561caaf54f530e8fcdb0bd5748aba2596823501a522470c04fa41f6b2"
       }
     },
     "cancellation_and_children": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/cancellation_and_children.json",
-        "sha256": "e7149024cdbb79ed7524fc525ff698125e437b9c87dcabeadde91b9415d23b1d"
+        "sha256": "6a8479137fbc0c9a3b6552c716a0092cfd25dd09750f6f642fd79e2836519848"
       }
     },
     "api_restart": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/api_restart.json",
-        "sha256": "6379309936d716287900ce5a120268dff8961a421e3a01f6dd792c393d19941f"
+        "sha256": "b6b11a4e1be6e556a4a302ad333398e7aeb6b618763e7dc5ba2adbf284a04603"
       }
     },
     "reconciler_restart": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/reconciler_restart.json",
-        "sha256": "6ed8767e54a9665d5902ef1c827ffe02bc6c6c5179633be861960beae2075db4"
+        "sha256": "a989bff3ddc4ff27f9a08dea0439324d1ff528f643a3e0faa909ec573bd016b4"
       }
     },
     "lost_create_reply": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/lost_create_reply.json",
-        "sha256": "c0ea508cde3b29796e9389fcf45427199945b5bc0ded43f7e241e9be3cc9d60c"
+        "sha256": "48087822caf2906cdf91494d4c37a05e935077845bfab23c2f4e4a60702acd7b"
       }
     },
     "lost_command_reply": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/lost_command_reply.json",
-        "sha256": "3e2e67b0d8c5b5bd88664604d77406984496b8d28dc39781d96f767108fb76b9"
+        "sha256": "a9e580164fd31b469b1c1beb70bb00498fc0b89c7e673952eeec5059f0abc05f"
       }
     },
     "attach_interruption": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/attach_interruption.json",
-        "sha256": "8637e349e8c2ffb49d219b3e51cf58f915e4c3e87df62a0b87ce3823c61260c1"
+        "sha256": "8138c9cee81fdd0d700c199a2e834a5fc0ad743f149aae0f4078020ecfc0a48c"
       }
     },
     "duplicate_delivery": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/duplicate_delivery.json",
-        "sha256": "53aaa079e03d3b3cf1307f0ee5ce2392b14413506344a19f3e48c6df3aa35fa8"
+        "sha256": "ed33b1f384e901bfb0eed0522de5d719468947f5d77d3485fa946b788b9ecdd2"
       }
     },
     "delayed_lifecycle": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/delayed_lifecycle.json",
-        "sha256": "57425a62f3235870f7a76b41a69049e659c4426d05145512fa8a01902a6849c4"
+        "sha256": "7d83bf9aa0cc18253305a3d015b2555a119289918eadf73db06a54be172b4459"
       }
     },
     "worker_loss_and_single_writer": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/worker_loss_and_single_writer.json",
-        "sha256": "54dc542d0b1c04495d3dabd580e10be2d75c5b88c8bd615b47ec9c02e9cb44b1"
+        "sha256": "59ec4a7c756223061adeef7d2479f42b5f1c74693ebce22141b5875c34459784"
       }
     },
     "cross_host_memory_restore": {
@@ -147,28 +147,28 @@
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/checkpoint_recovery.json",
-        "sha256": "5bc66013d86f6470fb52e1a99db660fab2aa9e158ae26befa1fe0a7b87444534"
+        "sha256": "30cc51973bab5e94c68906c2e55a982ad992db51cea679430518a4b6234ef718"
       }
     },
     "database_restore": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/database_restore.json",
-        "sha256": "8cf43fb1c03b5d5ae84b4e0cb310b86b532c271c9586d002bedee202227d8cf8"
+        "sha256": "327f34ad5586cfaa3d5defbd5fd5b874c97a19955f3e641531cbb852c0b4454e"
       }
     },
     "storage_outage": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/storage_outage.json",
-        "sha256": "36190693b48e6d2d61848f5fcc914e428ab04c1e5a7bed6e363df90126a28192"
+        "sha256": "ec5b72516498e3866bc395f6a77a55160fc7601b24c375180c9d0ff651618af3"
       }
     },
     "provider_outage": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/provider_outage.json",
-        "sha256": "28ab878473fd15735b985ea554a840426458ce8d9add1df0b6f84628fef492de"
+        "sha256": "99d7f581b755774c6dfff0fafb0c3db8b7a72502b12026bb8b49f3923b048903"
       }
     },
     "credential_revocation": {
@@ -179,54 +179,63 @@
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/egress_bypass.json",
-        "sha256": "fdf700827c408a53f90af405518d2e8539d6bf3d9a14543829ad4ddfcbc1d981"
+        "sha256": "81c32cb1f914b9e8a27b37c22f684c6de04f51b2a041a0a768ce23fb570404a0"
       }
     },
     "capacity_exhaustion": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/capacity_exhaustion.json",
-        "sha256": "e294a2ba21984dbc25a3df14338f9c1612e74171edb59acaf367cc97f969dd44"
+        "sha256": "154b26b014f973c55e98b88c1c52480c7c3a7d345cb1e6e9f0941fe5adb3fa29"
       }
     },
     "concurrent_wake": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/concurrent_wake.json",
-        "sha256": "81ff2341bf56c36f4bddb4e705af7aacdd1d9a15c2d165340118dbaacb06e950"
+        "sha256": "ded7e146ddafe540a2eed056f2b576b4be9a7fabd3bf07a82ab8e1706d1a9b18"
       }
     },
     "quotas_and_accounting": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/quotas_and_accounting.json",
-        "sha256": "9266c2646dd99937c4c6b0b36975aa9f67d6b199e3bffeced75a41e19daa1267"
+        "sha256": "f4c027079724b6ba745b05fe09691cfb62b20ea972a89e080ec3f65c9e8bd936"
       }
     },
     "retention": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/retention.json",
+        "sha256": "bdab3cce70d4d88549a8d14fbe7a2932ae2f6dc839668ddeb711d5d5fc8dcaf5"
+      }
     },
     "account_deletion": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/account_deletion.json",
+        "sha256": "2a4c48abd109261603d749efc8ebf19e9530613ca70a48054e1f852142a87be4"
+      }
     },
     "orphan_cleanup": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/orphan_cleanup.json",
+        "sha256": "06370e51b93bddbff23e1bec47b56127db44820964fde77dd29110ebd1650f5e"
+      }
     },
     "upgrade_and_rollback": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/upgrade_and_rollback.json",
-        "sha256": "697be5410e1c166eb4447b94d25b32b201e3dd122b48ccb8125494d07b7f6b8e"
+        "sha256": "8d41074aafd67b5fc06505c9704e5e60694bf57079d4b817a2059901f89a6246"
       }
     },
     "disabled_placement": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/disabled_placement.json",
-        "sha256": "d39891c77c67b5b239936eb8cfc6c285c90fbc903ce3c7d76a0c4e52d25490bf"
+        "sha256": "a0bba8e18114fedfe33fbedbcb6bf4c044c0e2e89189d50ae9a67fbf1fc1d7e9"
       }
     },
     "legacy_boat": {
@@ -237,19 +246,19 @@
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/unsupported_controls.json",
-        "sha256": "286551495f39fbbbdd4600eb015e4c23c56e4d5163b736613e4db93760891f60"
+        "sha256": "c70f058f6c89b480560151d68bd19b891cdd42858a0bd5d958ed90c624a4a0c4"
       }
     },
     "monitoring": {
-      "status": "failed",
-      "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/monitoring.json",
-        "sha256": "c122eae720dc33b02d3a386ea4aeaa980271c61cde9607c8fd3bd34df1dcee32"
-      }
-    },
-    "fixture_cleanup": {
       "status": "pending",
       "artifact": null
+    },
+    "fixture_cleanup": {
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/fixture_cleanup.json",
+        "sha256": "45a667ea8a101b1da71afa8d5e118503a5a2d9404cf99492d52a1da512a958d5"
+      }
     }
   },
   "trials": [
@@ -259,28 +268,58 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 301,
+        "create_ms": 309,
         "reconcile_ms": null,
-        "readiness_ms": 11143,
+        "readiness_ms": 3731,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11886
+        "first_useful_ms": 4486
       }
     },
     {
       "kind": "cold",
       "cache": "warm",
       "concurrency": 1,
-      "succeeded": false,
+      "succeeded": true,
       "timings": {
-        "create_ms": 163,
+        "create_ms": 184,
         "reconcile_ms": null,
-        "readiness_ms": 11156,
+        "readiness_ms": 3612,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11638
+        "first_useful_ms": 4389
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 172,
+        "reconcile_ms": null,
+        "readiness_ms": 3674,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4492
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 182,
+        "reconcile_ms": null,
+        "readiness_ms": 3525,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4282
       }
     },
     {
@@ -291,11 +330,11 @@
       "timings": {
         "create_ms": 170,
         "reconcile_ms": null,
-        "readiness_ms": 10919,
+        "readiness_ms": 3804,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11399
+        "first_useful_ms": 4304
       }
     },
     {
@@ -304,13 +343,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 156,
+        "create_ms": 207,
         "reconcile_ms": null,
-        "readiness_ms": 11070,
+        "readiness_ms": 3711,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11813
+        "first_useful_ms": 4247
       }
     },
     {
@@ -319,13 +358,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 185,
+        "create_ms": 173,
         "reconcile_ms": null,
-        "readiness_ms": 11118,
+        "readiness_ms": 3819,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11852
+        "first_useful_ms": 4652
       }
     },
     {
@@ -334,133 +373,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 156,
+        "create_ms": 182,
         "reconcile_ms": null,
-        "readiness_ms": 10908,
+        "readiness_ms": 9124,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11391
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 172,
-        "reconcile_ms": null,
-        "readiness_ms": 11031,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11512
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 162,
-        "reconcile_ms": null,
-        "readiness_ms": 11050,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11795
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 176,
-        "reconcile_ms": null,
-        "readiness_ms": 11031,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11768
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 161,
-        "reconcile_ms": null,
-        "readiness_ms": 11005,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11495
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 159,
-        "reconcile_ms": null,
-        "readiness_ms": 11013,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11493
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 162,
-        "reconcile_ms": null,
-        "readiness_ms": 10893,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11382
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 154,
-        "reconcile_ms": null,
-        "readiness_ms": 10969,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11697
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 151,
-        "reconcile_ms": null,
-        "readiness_ms": 11019,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11777
+        "first_useful_ms": 9941
       }
     },
     {
@@ -471,11 +390,11 @@
       "timings": {
         "create_ms": 165,
         "reconcile_ms": null,
-        "readiness_ms": 10990,
+        "readiness_ms": 3684,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11478
+        "first_useful_ms": 4190
       }
     },
     {
@@ -484,13 +403,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 167,
+        "create_ms": 171,
         "reconcile_ms": null,
-        "readiness_ms": 10914,
+        "readiness_ms": 3533,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11383
+        "first_useful_ms": 4036
       }
     },
     {
@@ -499,13 +418,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 174,
+        "create_ms": 168,
         "reconcile_ms": null,
-        "readiness_ms": 11041,
+        "readiness_ms": 3616,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11537
+        "first_useful_ms": 4099
       }
     },
     {
@@ -514,13 +433,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 169,
+        "create_ms": 165,
         "reconcile_ms": null,
-        "readiness_ms": 10960,
+        "readiness_ms": 3675,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11443
+        "first_useful_ms": 4611
       }
     },
     {
@@ -529,13 +448,28 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 202,
+        "create_ms": 156,
         "reconcile_ms": null,
-        "readiness_ms": 11046,
+        "readiness_ms": 3620,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11550
+        "first_useful_ms": 4363
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 173,
+        "reconcile_ms": null,
+        "readiness_ms": 3636,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4129
       }
     },
     {
@@ -544,13 +478,88 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 157,
+        "create_ms": 161,
         "reconcile_ms": null,
-        "readiness_ms": 10987,
+        "readiness_ms": 3654,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11720
+        "first_useful_ms": 4222
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 220,
+        "reconcile_ms": null,
+        "readiness_ms": 3891,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4638
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 199,
+        "reconcile_ms": null,
+        "readiness_ms": 3671,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4164
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 165,
+        "reconcile_ms": null,
+        "readiness_ms": 3629,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4295
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 161,
+        "reconcile_ms": null,
+        "readiness_ms": 3776,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4561
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 181,
+        "reconcile_ms": null,
+        "readiness_ms": 9194,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 9698
       }
     },
     {
@@ -559,13 +568,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 411,
+        "create_ms": 444,
         "reconcile_ms": null,
-        "readiness_ms": 11256,
+        "readiness_ms": 5338,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11758
+        "first_useful_ms": 6186
       }
     },
     {
@@ -574,13 +583,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 341,
+        "create_ms": 350,
         "reconcile_ms": null,
-        "readiness_ms": 11166,
+        "readiness_ms": 5428,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11962
+        "first_useful_ms": 5983
       }
     },
     {
@@ -589,13 +598,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 276,
+        "create_ms": 279,
         "reconcile_ms": null,
-        "readiness_ms": 11062,
+        "readiness_ms": 4954,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11827
+        "first_useful_ms": 35665
       }
     },
     {
@@ -604,13 +613,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 205,
+        "create_ms": 186,
         "reconcile_ms": null,
-        "readiness_ms": 11119,
+        "readiness_ms": 4859,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11704
+        "first_useful_ms": 5629
       }
     },
     {
@@ -619,13 +628,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 190,
+        "create_ms": 209,
         "reconcile_ms": null,
-        "readiness_ms": 11030,
+        "readiness_ms": 10475,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11540
+        "first_useful_ms": 11017
       }
     },
     {
@@ -634,13 +643,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 261,
+        "create_ms": 286,
         "reconcile_ms": null,
-        "readiness_ms": 11119,
+        "readiness_ms": 5434,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11637
+        "first_useful_ms": 6241
       }
     },
     {
@@ -784,13 +793,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 158,
+        "create_ms": 200,
         "reconcile_ms": null,
-        "readiness_ms": 11793,
+        "readiness_ms": 2662,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12546
+        "first_useful_ms": 3429
       }
     },
     {
@@ -799,13 +808,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 165,
+        "create_ms": 200,
         "reconcile_ms": null,
-        "readiness_ms": 11833,
+        "readiness_ms": 32933,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12336
+        "first_useful_ms": 33685
       }
     },
     {
@@ -814,13 +823,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 153,
+        "create_ms": 173,
         "reconcile_ms": null,
-        "readiness_ms": 17259,
+        "readiness_ms": 2520,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 18012
+        "first_useful_ms": 3289
       }
     },
     {
@@ -829,43 +838,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 146,
+        "create_ms": 174,
         "reconcile_ms": null,
-        "readiness_ms": 11903,
+        "readiness_ms": 2547,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12656
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 158,
-        "reconcile_ms": null,
-        "readiness_ms": 11871,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 12644
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 142,
-        "reconcile_ms": null,
-        "readiness_ms": 17343,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 18074
+        "first_useful_ms": 3335
       }
     },
     {
@@ -876,11 +855,11 @@
       "timings": {
         "create_ms": 177,
         "reconcile_ms": null,
-        "readiness_ms": 11967,
+        "readiness_ms": 8370,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12697
+        "first_useful_ms": 9272
       }
     },
     {
@@ -889,43 +868,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 163,
+        "create_ms": 162,
         "reconcile_ms": null,
-        "readiness_ms": 41997,
+        "readiness_ms": 8335,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 42739
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 161,
-        "reconcile_ms": null,
-        "readiness_ms": 41968,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 42701
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 153,
-        "reconcile_ms": null,
-        "readiness_ms": 11802,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 12528
+        "first_useful_ms": 9075
       }
     },
     {
@@ -936,11 +885,26 @@
       "timings": {
         "create_ms": 167,
         "reconcile_ms": null,
-        "readiness_ms": 17353,
+        "readiness_ms": 4621,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 18110
+        "first_useful_ms": 5373
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": false,
+      "timings": {
+        "create_ms": 149,
+        "reconcile_ms": null,
+        "readiness_ms": 2792,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 3539
       }
     },
     {
@@ -949,13 +913,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 161,
+        "create_ms": 173,
         "reconcile_ms": null,
-        "readiness_ms": 17537,
+        "readiness_ms": 2601,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 18259
+        "first_useful_ms": 3137
       }
     },
     {
@@ -964,13 +928,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 157,
+        "create_ms": 187,
         "reconcile_ms": null,
-        "readiness_ms": 12071,
+        "readiness_ms": 2615,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12839
+        "first_useful_ms": 3445
       }
     },
     {
@@ -979,13 +943,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 151,
+        "create_ms": 187,
         "reconcile_ms": null,
-        "readiness_ms": 11977,
+        "readiness_ms": 2710,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12703
+        "first_useful_ms": 3480
       }
     },
     {
@@ -994,13 +958,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 182,
+        "create_ms": 173,
         "reconcile_ms": null,
-        "readiness_ms": 11816,
+        "readiness_ms": 32998,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12566
+        "first_useful_ms": 33780
       }
     },
     {
@@ -1009,13 +973,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 155,
+        "create_ms": 152,
         "reconcile_ms": null,
-        "readiness_ms": 12029,
+        "readiness_ms": 2717,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12515
+        "first_useful_ms": 3485
       }
     },
     {
@@ -1024,13 +988,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 157,
+        "create_ms": 172,
         "reconcile_ms": null,
-        "readiness_ms": 12045,
+        "readiness_ms": 2738,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12798
+        "first_useful_ms": 3479
       }
     },
     {
@@ -1039,13 +1003,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 160,
+        "create_ms": 152,
         "reconcile_ms": null,
-        "readiness_ms": 12039,
+        "readiness_ms": 2725,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12822
+        "first_useful_ms": 3547
       }
     },
     {
@@ -1054,13 +1018,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 191,
+        "create_ms": 190,
         "reconcile_ms": null,
-        "readiness_ms": 42180,
+        "readiness_ms": 2767,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 42930
+        "first_useful_ms": 3637
       }
     },
     {
@@ -1069,13 +1033,58 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 161,
+        "create_ms": 216,
         "reconcile_ms": null,
-        "readiness_ms": 28019,
+        "readiness_ms": 3579,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 28769
+        "first_useful_ms": 4475
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 187,
+        "reconcile_ms": null,
+        "readiness_ms": 33017,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 33612
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 184,
+        "reconcile_ms": null,
+        "readiness_ms": 3162,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 3948
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 178,
+        "reconcile_ms": null,
+        "readiness_ms": 2942,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 3681
       }
     },
     {
@@ -1084,13 +1093,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 153,
+        "create_ms": 166,
         "reconcile_ms": null,
-        "readiness_ms": 11897,
+        "readiness_ms": 3186,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12666
+        "first_useful_ms": 3926
       }
     },
     {
@@ -1099,13 +1108,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 168,
+        "create_ms": 193,
         "reconcile_ms": null,
-        "readiness_ms": 12026,
+        "readiness_ms": 2352,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12806
+        "first_useful_ms": 2897
       }
     },
     {
@@ -1114,13 +1123,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 159,
+        "create_ms": 187,
         "reconcile_ms": null,
-        "readiness_ms": 11828,
+        "readiness_ms": 3272,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12596
+        "first_useful_ms": 4051
       }
     },
     {
@@ -1129,13 +1138,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 151,
+        "create_ms": 176,
         "reconcile_ms": null,
-        "readiness_ms": 11999,
+        "readiness_ms": 32497,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12784
+        "first_useful_ms": 33031
       }
     },
     {
@@ -1144,13 +1153,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 201,
+        "create_ms": 235,
         "reconcile_ms": null,
-        "readiness_ms": 42012,
+        "readiness_ms": 3274,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 42817
+        "first_useful_ms": 4051
       }
     },
     {
@@ -1159,13 +1168,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 158,
+        "create_ms": 164,
         "reconcile_ms": null,
-        "readiness_ms": 11873,
+        "readiness_ms": 32639,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12613
+        "first_useful_ms": 33414
       }
     },
     {
@@ -1174,13 +1183,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 157,
+        "create_ms": 169,
         "reconcile_ms": null,
-        "readiness_ms": 11949,
+        "readiness_ms": 3148,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12732
+        "first_useful_ms": 3961
       }
     },
     {
@@ -1189,21 +1198,21 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 155,
+        "create_ms": 179,
         "reconcile_ms": null,
-        "readiness_ms": 11806,
+        "readiness_ms": 2739,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 12541
+        "first_useful_ms": 3485
       }
     }
   ],
   "economics": {
-    "duration_ms": 14005000,
+    "duration_ms": 19065000,
     "worker_vcpus": 8,
     "guest_vcpu_ms": null,
-    "command_wall_ms": 139906,
+    "command_wall_ms": 232319,
     "task_attempts": 63,
     "useful_tasks": 51,
     "provider_cost_micros": null,

@@ -1,0 +1,35 @@
+{
+ "active_snapshot_groups_at_final": 36,
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "final_object_inventory": {
+  "openagentsgemini-oa-space-service-snapshots": {
+   "active_bytes": 5711027451,
+   "active_objects": 192,
+   "latest_soft_delete_expiry": "2026-10-26T00:40:32.881000+00:00",
+   "soft_deleted_bytes": 12465725150,
+   "soft_deleted_objects": 378
+  },
+  "openagentsgemini-oa-space-service-templates": {
+   "active_bytes": 1182053577,
+   "active_objects": 6,
+   "latest_soft_delete_expiry": "2026-10-23T22:27:00.654000+00:00",
+   "soft_deleted_bytes": 14680128,
+   "soft_deleted_objects": 3
+  }
+ },
+ "finding": "After the worker hard reset, deleted computer cmp_0a3f361e82af6e8e39db left native sandbox 01a150ed-9983-7703-81f0-9ea2e1818152 in cleanup_failed with 3.6 GB of node files. Startup recovery wants to return it to suspended and defers deletion until a suspend publication that can never happen; the admin force-delete (op_01a15179-2dd7-7542-8996-805fcce41365) loops on the same deferral.",
+ "issue": 12151,
+ "owned_resources": {
+  "recovery_database_copy": "deleted",
+  "temporary_vms": 0,
+  "unattached_owned_disks": [],
+  "unconfirmed_ownership": []
+ },
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "soft_deletion": "Soft-deleted generations stay recoverable for 7 days and are not counted as orphans.",
+ "status": "failed",
+ "swept_correctly": "Snapshot objects of every other deleted computer were removed by the native snapshot sweeper about 1 hour after deletion (including the cleanup_failed sandbox prefix and the account-deleted computer). 192 active objects at 00:42 UTC belong to computers deleted in the previous hour and are inside that grace period."
+}

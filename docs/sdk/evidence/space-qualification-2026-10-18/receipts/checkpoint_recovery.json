@@ -15,7 +15,7 @@
     "vcpus": 2,
     "web_commit": "b4442103d26e9723e90cb63f3002c8a10f462b03"
   },
-  "observed_unix": 1792365565,
+  "observed_unix": 1792370625,
   "schema": "openagents.computers.space-case-receipt.v1",
   "source": {
     "path": "evidence/space-qualification-2026-10-18/raw/cases/checkpoint_recovery.json",

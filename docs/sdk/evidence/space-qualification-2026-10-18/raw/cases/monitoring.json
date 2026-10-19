@@ -1,4 +1,16 @@
 {
+ "after_fix": {
+  "commit": "1668c41a3c",
+  "measurements": 15,
+  "new": [
+   "computers_stranded",
+   "oldest_stranded_turn_seconds",
+   "computers_unknown",
+   "oldest_requested_lifecycle_seconds"
+  ],
+  "policies": 12
+ },
+ "before_fix": "failed",
  "collector": "oa-space-monitor.timer active; 11 measurements every minute; collector_errors 0",
  "contains_credentials": false,
  "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
@@ -17,6 +29,7 @@
   "collector_errors channels= 0 cmp= COMPARISON_GT thr= None dur= 120s"
  ],
  "qualification": 11816,
+ "reason": "The #12147 measurements and policies are live; alerts still reach nobody until the owner picks a notification channel (NEEDS_OWNER.md).",
  "schema": "openagents.computers.space-case-evidence.v1",
- "status": "failed"
+ "status": "pending"
 }
