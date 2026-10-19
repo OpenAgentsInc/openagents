@@ -50,6 +50,9 @@ internal class AndroidRootPresentation(
     private var chat: AndroidChatPresentation? = null
     private var canvas: TranscriptCanvas? = null
     private var transcriptSurfaces: AndroidTranscriptSurfaces? = null
+    private var labActions: AndroidLabActionsMount? = null
+    private var labActionsInstance: String? = null
+    private val labActionsContainer = FrameLayout(activity)
     private var layout: TranscriptView? = null
     private var relay: TranscriptFrameRelay? = null
     private var notificationOpen: Job? = null
@@ -134,6 +137,7 @@ internal class AndroidRootPresentation(
         toolbar.addView(notice, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(toolbar)
         root.addView(ownerNoteBanner)
+        root.addView(labActionsContainer)
         root.addView(voiceCapsuleContainer)
         root.addView(panes.view, LinearLayout.LayoutParams(-1, 0, 1f))
         observation = application.observeAndroidHost(::refresh)
@@ -324,6 +328,7 @@ internal class AndroidRootPresentation(
                 if (settings == null) mountSettings(next)
             }
         }
+        mountLabActions(next)
         val message = composerFrame?.error ?: next.notice
         notice.text = message.orEmpty()
         notice.visibility = if (message == null) View.GONE else View.VISIBLE
@@ -651,6 +656,7 @@ internal class AndroidRootPresentation(
         observation.foreground(false)
         closeOwnerNote()
         transcriptSurfaces?.retire()
+        closeLabActions()
         notificationOpen?.cancel(); notificationOpen = null
         closeMedia()
         microphoneRequest?.close(); microphoneRequest = null
@@ -704,6 +710,7 @@ internal class AndroidRootPresentation(
         routeContainer.removeAllViews()
     }
     private fun closeChat() {
+        closeLabActions()
         transcriptSurfaces?.close(); transcriptSurfaces = null
         closeMedia()
         val current = mountedIdentity
@@ -724,6 +731,29 @@ internal class AndroidRootPresentation(
         chat = null; canvas = null; composer = null; mountedIdentity = null
         layout?.close(); layout = null
         chatContainer.removeAllViews()
+    }
+    private fun mountLabActions(next: AndroidHostSnapshot) {
+        val core = next.labActions
+        if (!foreground || next.route != AndroidHostRoute.CHAT || core == null) {
+            closeLabActions(); return
+        }
+        var frame = core.frame()
+        if (frame.closed) { closeLabActions(); return }
+        if (frame.needsPlaybackPosition) {
+            core.playbackPosition(transcriptSurfaces?.playbackSeconds(frame.card))
+            frame = core.frame()
+        }
+        if (labActionsInstance != frame.instance) {
+            closeLabActions()
+            labActions = AndroidLabActionsMount(activity, labActionsContainer, core,
+                application.presentationWork, ::showFailure)
+            labActionsInstance = frame.instance
+        }
+        labActions?.render()
+    }
+    private fun closeLabActions() {
+        labActions?.close(); labActions = null
+        labActionsInstance = null
     }
     private fun closeOwnerNote() {
         ownerNoteObservation?.close(); ownerNoteObservation = null

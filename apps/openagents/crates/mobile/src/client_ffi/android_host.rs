@@ -171,6 +171,7 @@ pub struct AndroidHostSnapshot {
     pub recovery: Option<Arc<CoreAndroidRecovery>>,
     pub selection: Option<AndroidHostSelection>,
     pub active_voice: Option<Arc<VoiceCall>>,
+    pub lab_actions: Option<Arc<CoreLabActions>>,
     pub can_start_voice: bool,
     pub link_review: Option<Arc<CoreAndroidLinkReview>>,
     pub pending_notification: bool,
@@ -212,6 +213,7 @@ struct State {
     client: Option<Arc<CoreClient>>,
     history: Option<Arc<CoreSavedHistory>>,
     content: Content,
+    lab_actions: Option<Arc<CoreLabActions>>,
     composer: Option<Arc<CoreAndroidComposer>>,
 }
 struct NavigationStamp {
@@ -248,6 +250,9 @@ impl State {
         }
     }
     fn retire_content(&self) {
+        if let Some(form) = &self.lab_actions {
+            form.dismiss();
+        }
         if let Content::Live { session, .. } = &self.content {
             session.set_view_attached(false);
         }
@@ -287,6 +292,9 @@ impl CoreAndroidHost {
         };
         let snapshot = account.snapshot();
         if snapshot.generation != state.generation {
+            if let Some(form) = state.lab_actions.take() {
+                form.dismiss();
+            }
             state.selected_notification = None;
             if state
                 .pending_notification
@@ -392,7 +400,7 @@ impl CoreAndroidHost {
             .ok_or(CoreError::Closed)?;
         if let Some(composer) = &composer {
             composer.bind_listener(self.events.0.clone());
-            if matches!(&content, Content::Cloud(_)) {
+            if matches!(&content, Content::Cloud(_) | Content::Saved { .. }) {
                 if let Some(client) = &state.client {
                     composer.bind_drafts(client.composer_drafts.clone())?;
                 }
@@ -468,6 +476,7 @@ impl CoreAndroidHost {
             events,
             state: Mutex::new(State {
                 pending_notification: None,
+                lab_actions: None,
                 selected_notification: None,
                 wallet: None,
                 pending_link: None,
@@ -514,6 +523,7 @@ impl CoreAndroidHost {
             events,
             state: Mutex::new(State {
                 pending_notification: None,
+                lab_actions: None,
                 selected_notification: None,
                 wallet: None,
                 pending_link: None,
@@ -553,6 +563,11 @@ impl CoreAndroidHost {
     pub fn snapshot(&self) -> CoreResult<AndroidHostSnapshot> {
         let mut s = self.state.lock().map_err(|_| CoreError::Closed)?;
         self.refresh(&mut s)?;
+        if s.lab_actions.as_ref().is_some_and(|form| form.retired()) {
+            if let Some(form) = s.lab_actions.take() {
+                form.dismiss();
+            }
+        }
         let account = self.account.as_ref().map(|a| a.snapshot());
         let signed_in = account
             .as_ref()
@@ -595,6 +610,7 @@ impl CoreAndroidHost {
             recovery: self.recovery.clone(),
             selection: s.selection.clone(),
             active_voice: s.active_voice.clone(),
+            lab_actions: s.lab_actions.clone(),
             can_start_voice: s.active_voice.is_none() && s.voice_target().is_some(),
             link_review: s.link_review.clone(),
             pending_notification: s.pending_notification.is_some(),
@@ -943,7 +959,7 @@ impl CoreAndroidHost {
             .into_iter()
             .find(|item| item.id == widget)
             .ok_or(CoreError::Closed)?;
-        Ok(match widget.kind {
+        let effect = match widget.kind {
             WidgetKind::CopyCode => match widget.payload {
                 Some(text) if text.len() <= 64 * 1024 => AndroidTranscriptEffect::Copy { text },
                 _ => AndroidTranscriptEffect::Unavailable,
@@ -959,6 +975,21 @@ impl CoreAndroidHost {
                     kind,
                 }
             }
+            kind @ (WidgetKind::LabNote { .. } | WidgetKind::LabVersions { .. }) => {
+                let (card, kind) = match kind {
+                    WidgetKind::LabNote { card } => (card, super::labs::actions::Kind::Note),
+                    WidgetKind::LabVersions { card } => {
+                        (card, super::labs::actions::Kind::Versions)
+                    }
+                    _ => unreachable!(),
+                };
+                let history = state.history.clone().ok_or(CoreError::Closed)?;
+                let form = CoreLabActions::new(history, card, kind, self.events.0.clone())?;
+                if let Some(previous) = state.lab_actions.replace(form) {
+                    previous.dismiss();
+                }
+                AndroidTranscriptEffect::Handled
+            }
             WidgetKind::LabOpen { card } => match state
                 .history
                 .as_ref()
@@ -972,7 +1003,10 @@ impl CoreAndroidHost {
                 AndroidTranscriptEffect::Handled
             }
             _ => AndroidTranscriptEffect::Unavailable,
-        })
+        };
+        drop(state);
+        self.events.0.on_android_host_changed();
+        Ok(effect)
     }
     /// Read an image from this exact frame's live or saved content source.
     pub async fn transcript_image(

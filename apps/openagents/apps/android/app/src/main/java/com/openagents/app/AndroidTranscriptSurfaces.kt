@@ -29,7 +29,8 @@ internal class AndroidTranscriptSurfaces(
         addView(canvas, FrameLayout.LayoutParams(-1, -1))
     }
     private data class Key(val row: ULong, val version: ULong, val widget: UInt)
-    private class Mount(val view: View, val close: () -> Unit) {
+    private class Mount(val view: View, val close: () -> Unit,
+        val card: String? = null, val playbackSeconds: () -> Double? = { null }) {
         var bounds: Rect? = null
         var clip: Rect? = null
     }
@@ -138,7 +139,7 @@ internal class AndroidTranscriptSurfaces(
                     mounted.show(core) { effect -> when (effect) {
                         is LabCardEffect.OpenPage -> openPage(effect.url)
                     } }
-                    Mount(container, mounted::close)
+                    Mount(container, mounted::close, card.card, renderer::playbackSeconds)
                 } catch (error: Throwable) {
                     try { bridge?.close() } finally { if (!transferred) try { core.dispose() } finally { core.destroy() } }
                     throw error
@@ -147,6 +148,8 @@ internal class AndroidTranscriptSurfaces(
         }
         else -> null
     }
+    fun playbackSeconds(card: String): Double? = mounts.values
+        .firstOrNull { it.card == card }?.playbackSeconds?.invoke()
     private fun remove(key: Key) {
         val mounted = mounts.remove(key) ?: return
         try { mounted.close() } finally { view.removeView(mounted.view) }

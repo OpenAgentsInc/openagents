@@ -39,12 +39,19 @@ class AndroidLabMediaRenderer(
     private val dark: Boolean,
     private val reduceMotion: Boolean,
 ) : LabSurfaceRenderer {
+    private val mounted = java.util.IdentityHashMap<MediaMount, Boolean>()
+    /** A native playback fact for this exact registered card surface. */
+    fun playbackSeconds(): Double? {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        return mounted.keys.firstNotNullOfOrNull { it.playbackSeconds() }
+    }
     init { require(heightPoints in 1u..8192u) }
     override fun open(surface: LabSurfaceRegistration): OwnedLabSurface {
         check(Looper.myLooper() == Looper.getMainLooper())
-        val mounted = MediaMount(surface)
-        try { mounted.start(); return mounted } catch (error: Throwable) {
-            try { mounted.close() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+        val surfaceMount = MediaMount(surface)
+        mounted[surfaceMount] = true
+        try { surfaceMount.start(); return surfaceMount } catch (error: Throwable) {
+            try { surfaceMount.close() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
             throw error
         }
     }
@@ -180,9 +187,13 @@ class AndroidLabMediaRenderer(
                 }
             }
         }
+        fun playbackSeconds(): Double? = if (live) video?.let { player ->
+            runCatching { player.currentPosition.coerceAtLeast(0).toDouble() / 1_000.0 }.getOrNull()
+        } else null
         override fun close() {
             if (!live) return
             live = false
+            mounted.remove(this)
             job?.cancel()
             job = null
             try {
