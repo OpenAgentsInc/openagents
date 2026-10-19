@@ -655,3 +655,4 @@ Already in `NEEDS_OWNER.md`, and they don't block closing: the CAD history copy 
 - No test resource is left on the owner's account, and every machine created for a check is deleted or labeled for the reaper.
 - [ ] #12143: rerun the 60 s native API outage cases (wake, stop, delete) against the private SPACE deployment; the driver now resends an uncertain request under its saved key.
 - [ ] #12161: after the next pool deploy, start two runs on one pool host within the same second and confirm both pass the checkout fetch.
+- [ ] #12097: on an Android device, run a voice call, minimize to the ongoing-call notification (mute and end actions), reopen, and check the microphone foreground service under background restrictions; regenerate UniFFI bindings and compile the Kotlin shell. Main-shell mount and listener wiring is still open.

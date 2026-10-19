@@ -30,6 +30,17 @@ class AndroidVoiceCallForegroundService : Service() {
     private var call: VoiceCall? = null
     private var state: VoiceCallState? = null
 
+    override fun onDestroy() {
+        call = null
+        state = null
+        super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        call?.stop()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -42,14 +53,26 @@ class AndroidVoiceCallForegroundService : Service() {
         }
         if (intent?.action == ACTION_MUTE || intent?.action == ACTION_END) return START_NOT_STICKY
         ensureChannel()
-        startForeground(NOTIFICATION_ID, notification(state))
+        startCallForeground(notification(state))
         return START_NOT_STICKY
     }
 
     /** Called by the bound host on the main thread after Rust creates the call. */
     fun attach(call: VoiceCall) {
         this.call = call
-        if (state == null) startForeground(NOTIFICATION_ID, notification(null))
+        if (state == null) startCallForeground(notification(null))
+    }
+
+    private fun startCallForeground(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     /** The listener forwards Rust snapshots here; no notification state is persisted. */
