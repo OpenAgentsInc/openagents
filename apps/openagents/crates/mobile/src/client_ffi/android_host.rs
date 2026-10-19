@@ -1,5 +1,6 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
 mod links;
+mod wallet;
 use super::*;
 pub use links::CoreAndroidLinkReview;
 use openagents_account::openagents::Deployment;
@@ -8,6 +9,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
+pub use wallet::{AndroidWalletFrame, CoreAndroidWallet};
 
 #[uniffi::export(with_foreign)]
 pub trait AndroidHostListener: Send + Sync {
@@ -29,6 +31,21 @@ impl ClientListener for Events {
         self.0.on_android_host_changed();
     }
 }
+impl VoiceAgentListener for Events {
+    fn on_voice_agent_changed(&self) {
+        self.0.on_android_host_changed();
+    }
+}
+impl VoiceUsageListener for Events {
+    fn on_voice_usage_changed(&self) {
+        self.0.on_android_host_changed();
+    }
+}
+impl crate::wallet::WalletListener for Events {
+    fn on_wallet_changed(&self) {
+        self.0.on_android_host_changed();
+    }
+}
 impl SavedHistoryListener for Events {
     fn on_saved_history_changed(&self) {
         self.0.on_android_host_changed();
@@ -42,6 +59,8 @@ pub enum AndroidHostSurface {
     Wallet,
     VoiceCapsule,
     VoiceScreen,
+    VoiceAgent,
+    VoiceUsage,
     LinkReview,
     Composer,
 }
@@ -54,6 +73,8 @@ impl AndroidHostSurface {
             Self::Wallet => "android:wallet",
             Self::VoiceCapsule => "android:voice-capsule",
             Self::VoiceScreen => "android:voice-screen",
+            Self::VoiceAgent => "android:voice-agent",
+            Self::VoiceUsage => "android:voice-usage",
             Self::LinkReview => "android:link-review",
             Self::Composer => "android:composer",
         }
@@ -67,6 +88,8 @@ pub enum AndroidHostRoute {
     Recovery,
     Voice,
     LinkReview,
+    Wallet,
+    VoiceSettings,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -89,8 +112,21 @@ pub enum AndroidHostContent {
 #[derive(Clone, uniffi::Enum)]
 pub enum AndroidTranscriptEffect {
     Handled,
-    Copy { text: String },
+    Copy {
+        text: String,
+    },
+    Media {
+        row: u64,
+        widget: u32,
+        kind: crate::layout::display::WidgetKind,
+    },
     Unavailable,
+}
+#[derive(uniffi::Record)]
+pub struct AndroidVoiceSettings {
+    pub generation: u64,
+    pub picker: Arc<CoreVoiceAgent>,
+    pub usage: Arc<CoreVoiceUsage>,
 }
 #[derive(Clone, uniffi::Record)]
 pub struct AndroidHostTextPoint {
@@ -141,6 +177,7 @@ enum Content {
     },
 }
 struct State {
+    wallet: Option<Arc<CoreAndroidWallet>>,
     pending_link: Option<(Option<u64>, String)>,
     link_review: Option<Arc<CoreAndroidLinkReview>>,
     voice_notice: Option<String>,
@@ -215,6 +252,8 @@ impl State {
 #[derive(uniffi::Object)]
 pub struct CoreAndroidHost {
     account: Option<Arc<CoreAccount>>,
+    current_storage: Option<Arc<dyn AndroidSecretStorage>>,
+    wallet_core: Mutex<Option<Arc<crate::wallet::CoreWallet>>>,
     recovery: Option<Arc<CoreAndroidRecovery>>,
     config: CoreConfig,
     events: Arc<Events>,
@@ -229,6 +268,9 @@ impl CoreAndroidHost {
         };
         let snapshot = account.snapshot();
         if snapshot.generation != state.generation {
+            if let Some(wallet) = state.wallet.take() {
+                wallet.redact();
+            }
             if let Some(review) = state.link_review.take() {
                 review.retire();
             }
@@ -335,6 +377,9 @@ impl CoreAndroidHost {
         if let Some(review) = state.link_review.take() {
             review.retire();
         }
+        if let Some(wallet) = &state.wallet {
+            wallet.redact();
+        }
         state.retire_content();
         state.content = content;
         state.anchor = None;
@@ -364,7 +409,7 @@ impl CoreAndroidHost {
             deployment.api_base().to_string(),
             deployment.website().to_string(),
             events.clone(),
-            storage,
+            storage.clone(),
         )?;
         let generation = account.snapshot().generation;
         let sessions = CoreAndroidSessions::new(account.clone(), events.clone());
@@ -380,6 +425,8 @@ impl CoreAndroidHost {
         composer.bind_listener(events.0.clone());
         Ok(Arc::new(Self {
             account: Some(account),
+            current_storage: Some(storage),
+            wallet_core: Mutex::new(None),
             recovery: Some(recovery),
             config: CoreConfig {
                 edge_url: production_edge_url(),
@@ -391,6 +438,7 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                wallet: None,
                 pending_link: None,
                 link_review: None,
                 voice_notice: None,
@@ -421,6 +469,8 @@ impl CoreAndroidHost {
         composer.bind_listener(events.0.clone());
         Arc::new(Self {
             account: None,
+            current_storage: None,
+            wallet_core: Mutex::new(None),
             recovery: None,
             config: CoreConfig {
                 edge_url: String::new(),
@@ -432,6 +482,7 @@ impl CoreAndroidHost {
             },
             events,
             state: Mutex::new(State {
+                wallet: None,
                 pending_link: None,
                 link_review: None,
                 voice_notice: None,
@@ -514,6 +565,100 @@ impl CoreAndroidHost {
             can_start_voice: s.active_voice.is_none() && s.voice_target().is_some(),
             link_review: s.link_review.clone(),
         })
+    }
+    pub fn voice_settings(&self) -> CoreResult<AndroidVoiceSettings> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let account = self.account.as_ref().ok_or(CoreError::Closed)?;
+        let client = state.client.as_ref().ok_or(CoreError::Closed)?;
+        let picker = account.voice_agent(self.events.clone());
+        let usage = client.voice_usage(self.events.clone());
+        usage.track(selected_voice_host(&state), state.active_voice.clone());
+        Ok(AndroidVoiceSettings {
+            generation: state.generation,
+            picker,
+            usage,
+        })
+    }
+    pub fn sync_voice_usage(&self, generation: u64, usage: Arc<CoreVoiceUsage>) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation {
+            return Err(CoreError::Closed);
+        }
+        usage.track(selected_voice_host(&state), state.active_voice.clone());
+        Ok(())
+    }
+    pub async fn activate_voice_agent(
+        &self,
+        generation: u64,
+        picker: Arc<CoreVoiceAgent>,
+        instance: String,
+        revision: u64,
+        key: String,
+    ) -> CoreResult<()> {
+        {
+            let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+            self.refresh(&mut state)?;
+            if state.generation != generation {
+                return Err(CoreError::Closed);
+            }
+        }
+        picker.activate(instance, revision, key).await?;
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation {
+            return Err(CoreError::Closed);
+        }
+        Ok(())
+    }
+    pub fn activate_voice_usage(
+        &self,
+        generation: u64,
+        usage: Arc<CoreVoiceUsage>,
+        instance: String,
+        revision: u64,
+        key: String,
+    ) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation {
+            return Err(CoreError::Closed);
+        }
+        usage.activate_view(instance, revision, key)
+    }
+    /// The underlying device wallet is shared across native mounts; account wrappers are fenced.
+    pub fn wallet(
+        &self,
+        retired: Arc<dyn AndroidRetiredWalletSeed>,
+    ) -> CoreResult<Arc<CoreAndroidWallet>> {
+        let account = self.account.clone().ok_or(CoreError::Closed)?;
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if !matches!(account.snapshot().state, AccountState::SignedIn { .. }) {
+            return Err(CoreError::Closed);
+        }
+        if let Some(wallet) = &state.wallet {
+            return Ok(wallet.clone());
+        }
+        let storage = self.current_storage.clone().ok_or(CoreError::Closed)?;
+        let mut shared = self.wallet_core.lock().map_err(|_| CoreError::Closed)?;
+        let core = shared
+            .get_or_insert_with(|| {
+                crate::wallet::CoreWallet::android(
+                    std::path::Path::new(&self.config.data_dir)
+                        .join("spark")
+                        .to_string_lossy()
+                        .into_owned(),
+                    storage,
+                    retired,
+                    self.events.clone(),
+                )
+            })
+            .clone();
+        let wallet = CoreAndroidWallet::new(account, core);
+        state.wallet = Some(wallet.clone());
+        Ok(wallet)
     }
     /// One bounded pending link can survive initial sign-in, without moving codes into Kotlin state.
     pub fn offer_app_link(&self, raw: String) -> CoreResult<bool> {
@@ -651,6 +796,13 @@ impl CoreAndroidHost {
             WidgetKind::Disclosure { .. } | WidgetKind::Chevron { .. } => {
                 view.toggle(row);
                 AndroidTranscriptEffect::Handled
+            }
+            kind @ (WidgetKind::Image { .. } | WidgetKind::LabMedia { .. }) => {
+                AndroidTranscriptEffect::Media {
+                    row,
+                    widget: widget.id,
+                    kind,
+                }
             }
             WidgetKind::ToolToggle { detail, open } => {
                 view.toggle_detail(row, detail, open);
@@ -883,6 +1035,22 @@ impl CoreAndroidHost {
                 review.retire();
             }
         }
+        if route != AndroidHostRoute::Wallet {
+            if let Some(wallet) = &s.wallet {
+                wallet.redact();
+            }
+        }
+        if route == AndroidHostRoute::Wallet
+            && !matches!(
+                self.account.as_ref().map(|a| a.snapshot().state),
+                Some(AccountState::SignedIn { .. })
+            )
+        {
+            return Err(CoreError::Closed);
+        }
+        if route == AndroidHostRoute::VoiceSettings && s.client.is_none() {
+            return Err(CoreError::Closed);
+        }
         s.route = route;
         s.apply_visibility();
         drop(s);
@@ -1016,6 +1184,13 @@ impl CoreAndroidHost {
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())
+    }
+}
+
+fn selected_voice_host(state: &State) -> Option<String> {
+    match &state.content {
+        Content::Live { client, id, .. } => client.session_row(id.clone()).map(|row| row.device_id),
+        _ => None,
     }
 }
 

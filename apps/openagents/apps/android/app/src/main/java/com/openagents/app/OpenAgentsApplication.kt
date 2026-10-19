@@ -34,12 +34,18 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
             java.util.concurrent.ThreadPoolExecutor.AbortPolicy())
     }
     fun recoveryWork(work: () -> Unit) { recoveryWorker.execute { work() } }
-    private var activeVoice: AndroidActiveVoice? = null
+    private val voiceResources = GenerationOwnedResource<AndroidActiveVoice>()
+    private val activeVoice: AndroidActiveVoice? get() = voiceResources.value
     private var realHost: uniffi.openagents_core.CoreAndroidHost? = null
     private var demoHost: uniffi.openagents_core.CoreAndroidHost? = null
     private var hostObserver: (() -> Unit)? = null
     private val hostListener = object : uniffi.openagents_core.AndroidHostListener {
-        override fun onAndroidHostChanged() { mainHandler.post { hostObserver?.invoke() } }
+        override fun onAndroidHostChanged() { mainHandler.post {
+            // Account retirement must stop microphone/service resources even with no Activity mounted.
+            val generation = realHost?.account()?.snapshot()?.generation
+            if (generation != null) voiceResources.retireFor(generation)
+            hostObserver?.invoke()
+        } }
     }
     val transcriptFonts by lazy {
         com.openagents.app.transcript.TranscriptFonts(assets,
@@ -71,8 +77,8 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
         check(Looper.myLooper() == Looper.getMainLooper())
         check(activeVoice == null)
         val resources = AndroidActiveVoice(this, owner, snapshot.generation,
-            { hostObserver?.invoke() }, { ended -> if (activeVoice === ended) activeVoice = null })
-        activeVoice = resources
+            { hostObserver?.invoke() }, { ended -> voiceResources.remove(ended) })
+        voiceResources.install(snapshot.generation, resources)
         resources.start(snapshot.contentRevision)
     }
 

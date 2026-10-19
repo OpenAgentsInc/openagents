@@ -92,14 +92,14 @@ class SecretScreen(private val window: Window, private val parent: ViewGroup) : 
 interface SecretClipboard : AutoCloseable { fun copy(text: String, clearAfterMs: Long) }
 
 /** The clipboard owns the text after copy. This object keeps only a nonsecret ownership marker. */
-class RecoveryClipboard(private val clipboard: ClipboardManager, private val handler: Handler = Handler(Looper.getMainLooper())) : SecretClipboard {
+class RecoveryClipboard(private val clipboard: ClipboardManager, private val handler: Handler = Handler(Looper.getMainLooper()), private val label: String = "Recovery words") : SecretClipboard {
     private var marker: String? = null
     private var expiry: Runnable? = null
     override fun copy(text: String, clearAfterMs: Long) {
         require(clearAfterMs in 1..60_000)
         close()
         val token = UUID.randomUUID().toString()
-        val clip = ClipData.newPlainText("Recovery words", text)
+        val clip = ClipData.newPlainText(label, text)
         clip.description.extras = PersistableBundle().apply {
             putBoolean("android.content.extra.IS_SENSITIVE", true)
             putString(OWNER, token)

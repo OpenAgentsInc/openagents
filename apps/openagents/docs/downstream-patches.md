@@ -1061,3 +1061,34 @@ links remain readable. Upstream fixes now require manual ports.
   retires old review actions on account/navigation changes, and fences late
   results. Android mounts the review and forwards identity-only events. New
   confirmation/replacement fixtures, bindings, and integrated checks are unrun.
+
+- #12100: Retire call resources from the Application's account-generation
+  listener even with no visible Activity. Clear the native resource holder before
+  teardown so a late terminal callback cannot remove a replacement. Ask once
+  contextually for API 33+ notification permission after foreground call start;
+  denial preserves the call, required FGS notification posting, and in-app
+  controls. Native generation/denial fixtures are authored but unrun.
+
+- #12100: Retain the existing Android `CoreWallet` across native mounts and use
+  an account-fenced Rust Native backup view. The current/retired seed migration
+  adapter is unchanged. Reuse Android credential, secure-window, clipboard, and
+  lifecycle mounting through `RecoveryHost`; Rust owns one-use authentication,
+  word expiry, copy/save actions, and late-account rejection. New synthetic
+  denial, expiry, account-switch, current-view copy and redaction fixtures are
+  authored but unrun. No wallet, money, device credential, or owner data was
+  accessed during source preparation.
+
+- #12100: Mount C2's disposable image viewer only after Rust resolves the current
+  frame's image widget and the existing saved-history reader returns bounded
+  bytes. Reject late loads after a frame/account/route change; close the viewer
+  and pending load on background, route exit, source replacement, and Activity
+  teardown. C2's per-run reveal offsets and row-age publisher are preserved.
+  Integrated Rust, binding, Kotlin, and lifecycle checks remain unrun.
+
+- #12100: Make the existing Rust voice-agent picker and execution-host usage
+  views reachable through Voice settings. Rust supplies the selected host and
+  active call to usage tracking; an active call takes precedence. Preference
+  edits use the shared picker and affect future calls without relabeling the
+  current one. Android mounts both Rust Native trees, forwards identity-only
+  actions, and drops polling/view handles on background or route retirement.
+  Current-account checks surround picker actions. Integrated checks are unrun.
