@@ -1,6 +1,7 @@
 //! Desktop-local Parakeet v3. No engine, document, RPC or audio persistence.
 use anyhow::{Context, Result, bail};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+#[cfg(not(windows))]
 use parakeet_rs::{ParakeetTDT, Transcriber};
 use sha2::{Digest, Sha256};
 use std::{
@@ -80,7 +81,12 @@ async fn cancelled(cancel: &AtomicBool) {
     }
 }
 
+// Windows builds leave out the ONNX Runtime the model needs: its prebuilt
+// library requires a newer MSVC than the release toolchain has.
+#[cfg(not(windows))]
 pub struct Recognizer(ParakeetTDT);
+#[cfg(windows)]
+pub struct Recognizer(());
 impl Recognizer {
     pub fn load(dir: &Path) -> Result<Self> {
         // Verify before handing bytes to the native runtime, including after restart.
@@ -92,6 +98,9 @@ impl Recognizer {
                 bail!("Model is damaged. Remove it in Settings and download again.")
             }
         }
+        #[cfg(windows)]
+        bail!("Voice typing isn't available on Windows yet.");
+        #[cfg(not(windows))]
         Ok(Self(ParakeetTDT::from_pretrained(dir, None).map_err(
             |_| anyhow::anyhow!("Could not load Parakeet v3"),
         )?))
@@ -107,6 +116,12 @@ impl Recognizer {
             return Ok(String::new());
         }
         let samples = resample::for_model(samples, rate)?;
+        #[cfg(windows)]
+        {
+            let _ = samples;
+            bail!("Voice typing isn't available on Windows yet.")
+        }
+        #[cfg(not(windows))]
         self.0
             .transcribe_samples(samples, resample::MODEL_RATE, 1, None)
             .map(|r| r.text)

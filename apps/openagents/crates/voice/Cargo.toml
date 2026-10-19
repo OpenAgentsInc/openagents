@@ -7,7 +7,6 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-parakeet-rs = "=0.3.8"
 cpal = "=0.17.3"
 rubato = "=0.16.2"
 reqwest.workspace = true
@@ -15,6 +14,10 @@ tokio.workspace = true
 sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+# Windows leaves local dictation out; see `Recognizer`.
+[target.'cfg(not(windows))'.dependencies]
+parakeet-rs = "=0.3.8"
 
 [dev-dependencies]
 hound = "3.5"
