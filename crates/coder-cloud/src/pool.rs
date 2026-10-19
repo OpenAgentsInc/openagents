@@ -749,8 +749,8 @@ pub fn ssh_output(project: &str, host: &Host, remote: &str) -> Result<String, St
 
 /// The host agent: each pool VM's startup script, run as root on every
 /// boot. It installs a one-minute timer that keeps `~/.oa-pool/busy` fresh
-/// while a run is alive and deletes the VM after `oa-pool-idle-minutes`
-/// without one, through the role on this instance alone. When the delete is
+/// while a run or an ssh session is alive and deletes the VM after
+/// `oa-pool-idle-minutes` without one, through the role on this instance alone. When the delete is
 /// refused, it powers the VM off (a stopped VM bills only its disk;
 /// `openagents cloud down` deletes it).
 pub const HOST_AGENT: &str = r#"#!/bin/bash
@@ -771,6 +771,9 @@ for p in "$d"/runs/*/pid; do
   [ -f "$p" ] || continue
   if kill -0 "$(cat "$p" 2>/dev/null)" 2>/dev/null; then touch "$d/busy"; exit 0; fi
 done
+# An open ssh session is work too: a coordinator building or testing over
+# ssh starts no pool run.
+if pgrep -f '^sshd(-session)?: [^ ]+@' >/dev/null; then touch "$d/busy"; exit 0; fi
 idle=$(md instance/attributes/oa-pool-idle-minutes || echo 10)
 case "$idle" in ''|*[!0-9]*) idle=10 ;; esac
 age=$(( $(date +%s) - $(stat -c %Y "$d/busy" 2>/dev/null || date +%s) ))
@@ -1595,6 +1598,7 @@ mod tests {
             }
         }
         assert!(HOST_AGENT.contains("oa-pool-idle-minutes"));
+        assert!(HOST_AGENT.contains("pgrep -f '^sshd(-session)?: "));
         assert!(HOST_AGENT.contains("bubblewrap") && HOST_AGENT.contains("agent-ready"));
         assert!(HOST_AGENT.contains("compute.googleapis.com"));
         assert!(HOST_AGENT.contains("/etc/openagents/pool-host"));
