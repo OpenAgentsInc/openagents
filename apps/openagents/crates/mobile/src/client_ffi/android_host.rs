@@ -1,4 +1,5 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
+mod images;
 mod links;
 mod notifications;
 pub use notifications::AndroidNotificationOpen;
@@ -123,6 +124,9 @@ pub enum AndroidHostContent {
 #[derive(Clone, uniffi::Enum)]
 pub enum AndroidTranscriptEffect {
     Handled,
+    OpenPage {
+        url: String,
+    },
     Copy {
         text: String,
     },
@@ -955,12 +959,76 @@ impl CoreAndroidHost {
                     kind,
                 }
             }
+            WidgetKind::LabOpen { card } => match state
+                .history
+                .as_ref()
+                .and_then(|history| history.lab_page(card))
+            {
+                Some(url) if browser_link(&url) => AndroidTranscriptEffect::OpenPage { url },
+                _ => AndroidTranscriptEffect::Unavailable,
+            },
             WidgetKind::ToolToggle { detail, open } => {
                 view.toggle_detail(row, detail, open);
                 AndroidTranscriptEffect::Handled
             }
             _ => AndroidTranscriptEffect::Unavailable,
         })
+    }
+    /// Read an image from this exact frame's live or saved content source.
+    pub async fn transcript_image(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        row: u64,
+        widget: u32,
+    ) -> CoreResult<Option<Vec<u8>>> {
+        images::load(
+            self,
+            view,
+            generation,
+            content_revision,
+            frame_revision,
+            row,
+            widget,
+        )
+        .await
+    }
+    /// Borrow only the visual named by a widget in the current account's frame.
+    pub fn transcript_visual(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        row: u64,
+        widget: u32,
+    ) -> CoreResult<Option<Arc<crate::visual::VisualSession>>> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let frame = view.frame();
+        if state.generation != generation
+            || state.content_revision != content_revision
+            || !state.foreground
+            || state.route != AndroidHostRoute::Chat
+            || frame.revision() != frame_revision
+        {
+            return Err(CoreError::Closed);
+        }
+        let display = frame
+            .index_of(row)
+            .and_then(|i| frame.display(i))
+            .ok_or(CoreError::Closed)?;
+        match display
+            .widgets
+            .into_iter()
+            .find(|item| item.id == widget)
+            .map(|w| w.kind)
+        {
+            Some(crate::layout::display::WidgetKind::Visual { id }) => Ok(view.visual(id)),
+            _ => Err(CoreError::Closed),
+        }
     }
     /// Only a link in the current visible Rust rows may reach the platform browser.
     pub fn transcript_link(
@@ -1129,6 +1197,9 @@ impl CoreAndroidHost {
                 }
             }
             Content::Live { id, client, .. } => {
+                if let Some(row) = client.session_row(id.clone()) {
+                    view.set_visual_source(client.clone(), row.device_id, 1.0);
+                }
                 if view.attach(client.clone(), id.clone()) {
                     Ok(())
                 } else {
