@@ -56,6 +56,7 @@ def native(method, path, body=None, admin=False, timeout=30):
     else:
         conn = http.client.HTTPSConnection(NATIVE, timeout=timeout); h = {'X-API-Key': f['api_key'], 'Authorization': 'Bearer ' + f['api_key']}
     h['Content-Type'] = 'application/json'
+    if method != 'GET': h['Idempotency-Key'] = 'q16-' + secrets.token_hex(12)
     try:
         conn.request(method, path, body=json.dumps(body).encode() if body is not None else None, headers=h)
         r = conn.getresponse(); raw = r.read(4 * 1048576)

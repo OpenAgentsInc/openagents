@@ -52,6 +52,8 @@ pub struct SpaceDriver {
     lifecycle_journal: Option<std::sync::Arc<dyn LifecycleJournal>>,
     network_profile: Option<computer_credentials::policy::Profile>,
     identified_commands: bool,
+    /// Guest directory identified commands run in; files use the guest home.
+    command_workspace: String,
     /// Command session each computer is running, so a stop can cancel it.
     active: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>,
 }
@@ -155,6 +157,7 @@ impl SpaceDriver {
             lifecycle_journal: None,
             network_profile: None,
             identified_commands: false,
+            command_workspace: commands::PROXY_WORKSPACE.into(),
             active: Default::default(),
         })
     }
@@ -185,6 +188,26 @@ impl SpaceDriver {
         {
             return Err("Choose a supported inspected network profile.".into());
         }
+        self.identified_commands = true;
+        Ok(self)
+    }
+
+    /// Identified commands without the credential proxy (#12146). They run in
+    /// `workspace`, an absolute guest directory the template provides, and
+    /// refuse credential names exactly as proxy deployments do.
+    pub fn with_command_sessions(mut self, workspace: &str) -> std::result::Result<Self, String> {
+        if !workspace.starts_with('/')
+            || workspace.len() > 256
+            || workspace.chars().any(char::is_control)
+            || workspace.contains('\'')
+            || workspace
+                .split('/')
+                .skip(1)
+                .any(|p| p.is_empty() || p == "." || p == "..")
+        {
+            return Err("Choose an absolute guest workspace directory.".into());
+        }
+        self.command_workspace = workspace.into();
         self.identified_commands = true;
         Ok(self)
     }
@@ -615,24 +638,24 @@ impl SpaceDriver {
             .unwrap()
             .insert(computer.to_owned(), id.to_owned());
         let lost = std::cell::Cell::new(false);
+        // Kept outside the stream so a lost exit frame still returns the output read.
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
         let streamed: Result<ExecOutput> = async {
-            let mut stdout = Vec::new();
-            let mut stderr = Vec::new();
             let mut sent = false;
             while let Some(message) = socket.next().await {
-                let message =
-                    match message {
-                        Ok(m) => m,
-                        Err(_) => {
-                            lost.set(true);
-                            return Err(Error::unknown("the command stream was interrupted"));
-                        }
-                    };
+                let message = match message {
+                    Ok(m) => m,
+                    Err(_) => {
+                        lost.set(true);
+                        return Err(Error::unknown("the command stream was interrupted"));
+                    }
+                };
                 let Message::Text(text) = message else {
                     continue;
                 };
-                let frame: Value =
-                    serde_json::from_str(&text).map_err(|_| Error::unknown("invalid command frame"))?;
+                let frame: Value = serde_json::from_str(&text)
+                    .map_err(|_| Error::unknown("invalid command frame"))?;
                 match field(&frame, "type")? {
                     "process_started" if has_secrets && !sent => {
                         let mut input = zeroize::Zeroizing::new(String::new());
@@ -790,6 +813,8 @@ impl Driver for SpaceDriver {
         );
         caps.memory_suspend = true;
         caps.command_sessions = self.identified_commands;
+        // put_file and get_file are implemented for every SPACE computer (#12146).
+        caps.workspace_file_bytes = Some(MAX_FILE);
         let artifact = crate::Artifact {
             kind: crate::ArtifactKind::SpaceTemplate,
             reference: self.template.clone(),
@@ -1091,6 +1116,39 @@ mod recovery_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn files_are_advertised_and_command_sessions_need_an_explicit_workspace() {
+        let driver = SpaceDriver::new(
+            "http://127.0.0.1:9",
+            "http://127.0.0.1:9",
+            Secret::new("test"),
+            "seed:latest",
+        )
+        .unwrap();
+        let caps = driver.capabilities();
+        assert_eq!(caps.workspace_file_bytes, Some(MAX_FILE));
+        assert!(
+            !caps.command_sessions,
+            "commands stay off without a workspace"
+        );
+        for bad in [
+            "workspace",
+            "/home/../etc",
+            "/home//user",
+            "/home/'user",
+            "/",
+            "/home/user/",
+        ] {
+            assert!(
+                driver.clone().with_command_sessions(bad).is_err(),
+                "{bad} must be refused"
+            );
+        }
+        let driver = driver.with_command_sessions("/home/user").unwrap();
+        assert!(driver.capabilities().command_sessions);
+        assert_eq!(driver.command_workspace, "/home/user");
+    }
 
     fn create_server(
         responses: Vec<(&'static str, u16, Value)>,
