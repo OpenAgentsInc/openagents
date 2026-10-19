@@ -1650,6 +1650,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_start_host_voice(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_start_with_credential(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_sync_voice_usage(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_image(
@@ -2650,6 +2652,8 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_start_host_voice(`ptr`: Long,`generation`: Long,`contentRevision`: Long,`media`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_start_with_credential(`ptr`: Long,`credential`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_sync_voice_usage(`ptr`: Long,`generation`: Long,`usage`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_image(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,`frameRevision`: Long,`row`: Long,`widget`: Int,
@@ -4210,6 +4214,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_start_host_voice() and 0xFFFF) != 64672) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_start_with_credential() and 0xFFFF) != 43145) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_sync_voice_usage() and 0xFFFF) != 5557) {
@@ -12075,6 +12082,14 @@ public interface CoreAndroidHostInterface {
      */
     fun `startHostVoice`(`generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `media`: VoiceMediaListener, `listener`: VoiceSessionListener): VoiceCall
 
+    /**
+     * Called by the Application once instead of `start`: sign in with an
+     * explicit credential (a debug build's dedicated test account) and never
+     * create or sign in with this install's own key, as the iOS account
+     * fixture does. Later `start` calls and the recovery screen start nothing.
+     */
+    fun `startWithCredential`(`credential`: kotlin.String)
+
     fun `syncVoiceUsage`(`generation`: kotlin.ULong, `usage`: CoreVoiceUsage)
 
     /**
@@ -12690,6 +12705,25 @@ open class CoreAndroidHost: Disposable, AutoCloseable, CoreAndroidHostInterface
     }
     )
     }
+
+
+
+    /**
+     * Called by the Application once instead of `start`: sign in with an
+     * explicit credential (a debug build's dedicated test account) and never
+     * create or sign in with this install's own key, as the iOS account
+     * fixture does. Later `start` calls and the recovery screen start nothing.
+     */override fun `startWithCredential`(`credential`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_start_with_credential(
+        it,
+
+        FfiConverterString.lower(`credential`),_status)
+}
+    }
+
 
 
 

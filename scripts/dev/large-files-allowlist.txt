@@ -9,6 +9,8 @@
 assets/*
 # Renamed desktop bundle icon, already shipped in the imported app.
 apps/openagents/dist/openagents.png
+# The generated UniFFI Kotlin binding the Android app compiles (scripts/android/build-core.sh).
+apps/openagents/apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt
 bins/*
 *.ttf
 *.otf

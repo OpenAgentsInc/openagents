@@ -153,7 +153,8 @@ internal class AndroidRootPresentation(
         root.addView(voiceCapsuleContainer)
         root.addView(panes.view, LinearLayout.LayoutParams(-1, 0, 1f))
         observation = application.observeAndroidHost(::refresh)
-        ViewCompat.setOnApplyWindowInsetsListener(panes.view) { view, insets ->
+        // The whole root, toolbar included, sits inside the system bars and above the keyboard.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
             imeBottom = keyboard.bottom

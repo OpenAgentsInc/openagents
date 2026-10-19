@@ -76,7 +76,13 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
             uniffi.openagents_core.CoreAndroidHost.production(
                 java.io.File(filesDir, "core").absolutePath, device, android.os.Build.MODEL,
                 BuildConfig.VERSION_NAME, encryptedFileStore(), hostListener,
-            ).also { realHost = it; it.start() }
+            ).also { host ->
+                realHost = host
+                // Debug builds only: a live check signs in with a dedicated test-account
+                // credential instead of this install's own key, as the iOS account fixture does.
+                val credential = DebugCredential.take(filesDir)
+                if (credential != null) host.startWithCredential(credential) else host.start()
+            }
         }
     }
 

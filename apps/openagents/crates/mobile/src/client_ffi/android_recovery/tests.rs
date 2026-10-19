@@ -345,3 +345,14 @@ fn account_change_during_secret_read_discards_the_result_before_rendering() {
     assert!(f.state.lock().unwrap().words.is_empty());
     assert!(!String::from_utf8(frame.json).unwrap().contains("abandon"));
 }
+
+#[test]
+fn a_credential_sign_in_never_starts_the_install_key() {
+    let b = Fake::new();
+    *b.loaded.lock().unwrap() = None;
+    let f = b.flow();
+    f.skip_identity_start();
+    f.start("fixture".into()).unwrap();
+    f.start("fixture".into()).unwrap();
+    assert_eq!(b.start_calls.load(Ordering::SeqCst), 0);
+}

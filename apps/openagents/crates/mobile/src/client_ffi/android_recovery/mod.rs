@@ -230,6 +230,11 @@ fn field(
     )
 }
 impl CoreAndroidRecovery {
+    /// Mark the once-only start as done without creating this install's key
+    /// identity, for a host that signs in with an explicit credential.
+    pub(crate) fn skip_identity_start(&self) {
+        self.state.lock().unwrap().started = true;
+    }
     fn valid(&self, s: &mut State) -> Result<(), CoreError> {
         if s.closed {
             return Err(CoreError::Closed);

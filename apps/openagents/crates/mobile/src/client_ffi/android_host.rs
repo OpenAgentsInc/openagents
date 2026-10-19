@@ -567,6 +567,20 @@ impl CoreAndroidHost {
             }
         }
     }
+    /// Called by the Application once instead of `start`: sign in with an
+    /// explicit credential (a debug build's dedicated test account) and never
+    /// create or sign in with this install's own key, as the iOS account
+    /// fixture does. Later `start` calls and the recovery screen start nothing.
+    pub fn start_with_credential(&self, credential: String) {
+        if !self.started.swap(true, Ordering::AcqRel) {
+            if let Some(recovery) = &self.recovery {
+                recovery.skip_identity_start();
+            }
+            if let Some(account) = &self.account {
+                account.sign_in_with_credential(credential);
+            }
+        }
+    }
     pub fn snapshot(&self) -> CoreResult<AndroidHostSnapshot> {
         let mut s = self.state.lock().map_err(|_| CoreError::Closed)?;
         self.refresh(&mut s)?;
