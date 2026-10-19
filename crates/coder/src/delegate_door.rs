@@ -1811,10 +1811,18 @@ mod tests {
     /// A stand-in Claude Code that tries to write `marker` in its working
     /// directory and answers with what happened and the session it was
     /// started or resumed under, `s-1` when it was named none.
+    // Like Claude Code with `--include-partial-messages`, it streams its
+    // reply as `stream_event` deltas: the shared harness takes the main
+    // agent's text from those, not from the whole assistant message. It
+    // reads the session from `--resume=ID` as the harness passes it.
     const WRITER: &str = r#"#!/bin/sh
 id=s-1
 while [ $# -gt 0 ]; do
-  case "$1" in --session-id|--resume) id=$2; shift ;; esac
+  case "$1" in
+    --session-id|--resume) id=$2; shift ;;
+    --session-id=*) id=${1#--session-id=} ;;
+    --resume=*) id=${1#--resume=} ;;
+  esac
   shift
 done
 cat > /dev/null
@@ -1822,6 +1830,8 @@ printf x > marker 2>/dev/null && wrote=wrote || wrote=refused
 echo "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"$id\",\"model\":\"stand-in\"}"
 echo "{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"Bash\",\"input\":{\"command\":\"printf x > marker\"}}],\"usage\":{\"input_tokens\":5}}}"
 echo "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":\"$wrote\",\"is_error\":false}]}}"
+echo "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"the write was $wrote in $id\"}}}"
+echo "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_stop\",\"index\":0}}"
 echo "{\"type\":\"assistant\",\"message\":{\"id\":\"m2\",\"content\":[{\"type\":\"text\",\"text\":\"the write was $wrote in $id\"}],\"usage\":{\"input_tokens\":5}}}"
 echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turns\":1,\"result\":\"the write was $wrote in $id\",\"session_id\":\"$id\",\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":10,\"output_tokens\":3}}"
 "#;

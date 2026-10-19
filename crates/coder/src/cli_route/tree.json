@@ -7585,7 +7585,7 @@
                 ]
               }
             ],
-            "summary": "Claim issue N for this agent session: hold it on this computer, then a claim comment naming the session, you as assignee, and \"In progress\" on each project it is on. Refused while another live session holds it or a fresh claim comment names another session; --force takes it anyway. Each chat holds one issue, or a batch of up to three issues named together with --batch N,M[,P].",
+            "summary": "Claim issue N for this agent session: hold it on this computer, then a claim comment naming the session, you as assignee, and \"In progress\" on each project it is on. Refused while another live session holds it or a fresh claim comment names another session; --force takes it anyway. Each chat holds one issue, or a batch of up to 16 issues named together with --batch N,M,....",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
