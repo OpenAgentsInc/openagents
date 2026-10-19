@@ -36,11 +36,17 @@ pending device checks; no physical security pass is claimed here.
 
 ## Integration blockers and pending checks
 
-The source slice is independent of the open A3/D3/D5 blockers. It is not wired into
-an Activity and has not been compiled or run. Regenerate the UniFFI binding to add
-`CoreAndroidRecovery` and its records, include `onboarding` and its test directory
-in B1's source sets, and route the Rust `open_chat` effect through D3's existing
-shared default-chat owner. Do not add a Kotlin identity or session path.
+`AndroidRootPresentation` mounts `RecoveryHost` for the recovery route. The app's
+main source set includes `onboarding`, its instrumentation source set includes
+`onboarding/tests`, and `MainActivity` owns the device-credential result callback.
+That callback accepts only `RESULT_OK`; the root forwards background, foreground,
+and route dismissal to the recovery host. Rust `open_chat` uses D3's existing
+default-chat owner. Do not add a Kotlin identity or session path.
+
+The generated UniFFI binding still needs the centrally scheduled Android ABI pass
+to expose `CoreAndroidRecovery` and its records. Do not edit the generated Kotlin
+file by hand. Kotlin compilation and the focused recovery instrumentation tests
+have not run yet.
 
 `CoreAccount::restore_words_if_current` takes the authenticated generation and public
 key. The shared controller holds its account-switch lock across existing identity
