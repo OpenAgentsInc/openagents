@@ -17,6 +17,17 @@ Keep fork-specific changes here so upstream updates can review each integration.
   roots, exact Geist assets, and existing instrumentation-test wiring without
   changing generated bindings or scanner/configuration fixes.
 
+- OpenAgents #12090: add account-scoped Rust composer drafts, a Rust Native
+  session intent/editor bridge, and a feature-local Android composer over the
+  existing session send and attachment contracts. Android now has bounded
+  photo, document, paste, and private CameraX capture intake with image
+  conversion and local pending-file removal. The feature-local mention adapter
+  searches files and encodes selected paths through the existing Rust APIs;
+  UTF-16 query cases cover Unicode, whitespace, and email boundaries. Rust
+  Native remains responsible for shared cards. This is a source-only
+  checkpoint; its Rust and Android checks remain unrun pending a coordinator
+  build slot.
+
 - OpenAgents #12086: Android can supply Standard Play Integrity through a
   UniFFI callback on the existing key sign-in controller. Rust binds its
   digest to the challenge and identity, sends the token through the SDK,

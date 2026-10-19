@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.android.composer-mentions.v1",
+  "queries": [
+    { "text": "@read", "cursor_utf16": 5, "start_utf16": 0, "end_utf16": 5, "query": "read" },
+    { "text": "See @猫咪", "cursor_utf16": 7, "start_utf16": 4, "end_utf16": 7, "query": "猫咪" },
+    { "text": "me@example.com", "cursor_utf16": 5, "no_match": true },
+    { "text": "open @two words", "cursor_utf16": 9, "start_utf16": 5, "end_utf16": 9, "query": "two" }
+  ],
+  "selection": {
+    "query": "read",
+    "file_path": "docs/readme.md",
+    "is_directory": false,
+    "canonical_link": "[readme.md](openagents-file:docs/readme.md)",
+    "expected_text": "[readme.md](openagents-file:docs/readme.md)"
+  }
+}

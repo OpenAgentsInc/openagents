@@ -1,4 +1,5 @@
 //! The same account controller used by the desktop, exposed to native controls.
+use super::composer_drafts::ComposerDraftStore;
 use super::{
     AndroidIdentityVault, AndroidPairings, AndroidPasswords, AndroidSecretStorage,
     AndroidWalletSeed,
@@ -74,7 +75,7 @@ fn close_clients(clients: &Clients, keep: Option<u64>) {
         if keep == Some(*generation) {
             true
         } else {
-            client.client.shutdown();
+            client.shutdown();
             false
         }
     });
@@ -626,8 +627,9 @@ impl CoreAccount {
             .to_string_lossy()
             .into_owned();
         let chosen_cache = PathBuf::from(&config.data_dir);
+        let account_id = lease.session().account().id.clone();
         let credentials = openagents_client::Credentials::OpenAgents {
-            account_id: lease.session().account().id.clone(),
+            account_id: account_id.clone(),
             bearer: lease.session().bearer_token().into(),
             expires_at: lease.session().expires_at(),
         };
@@ -637,10 +639,13 @@ impl CoreAccount {
             Arc::new(ListenerBridge(listener)),
         )?;
         client.set_pairing_store(self.pairings.clone().unwrap_or_else(pairing_store));
-        let core = Arc::new(CoreClient { client });
+        let core = Arc::new(CoreClient {
+            client,
+            composer_drafts: Arc::new(ComposerDraftStore::new(chosen_cache.clone(), &account_id)),
+        });
         let mut clients = self.clients.lock().unwrap();
         if !self.controller.accepts(&lease) {
-            core.client.shutdown();
+            core.shutdown();
             return Err(auth_error());
         }
         *cache = Some(chosen_cache);

@@ -1,0 +1,140 @@
+{
+  "schema": "openagents.android.composer-fixture.v1",
+  "instance": "composer-preview",
+  "revision": 7,
+  "composer_node": "composer-input",
+  "input_token": "draft-3",
+  "editing_lifetime": "1",
+  "editor_revision": 10,
+  "max_bytes": 65536,
+  "draft": "Can you compare these?\n",
+  "placeholder": "Message Foreman",
+  "enabled": true,
+  "busy": false,
+  "primary_label": "Send",
+  "send_on_enter": false,
+  "send_choices": [
+    {
+      "token": "send-now",
+      "label": "Send now"
+    },
+    {
+      "token": "queue-next",
+      "label": "Queue for later"
+    },
+    {
+      "token": "steer-turn",
+      "label": "Add direction"
+    }
+  ],
+  "context_chips": [
+    {
+      "key": "project-chip",
+      "label": "Project: demo"
+    },
+    {
+      "key": "model-chip",
+      "label": "Codex · Code"
+    }
+  ],
+  "attachments": [
+    {
+      "key": "diagram-preview",
+      "label": "diagram.png · 240 KB",
+      "remove_action": {
+        "node": "remove-diagram",
+        "label": "Remove diagram"
+      }
+    }
+  ],
+  "attachment_actions": [
+    {
+      "node": "attach-photo",
+      "label": "Photo library"
+    },
+    {
+      "node": "attach-camera",
+      "label": "Take photo"
+    },
+    {
+      "node": "attach-file",
+      "label": "Choose file"
+    }
+  ],
+  "mention_suggestions": [
+    {
+      "node": "mention-foreman",
+      "label": "@Foreman"
+    },
+    {
+      "node": "mention-codex",
+      "label": "@Codex"
+    }
+  ],
+  "shared_cards": {
+    "schema": "rust-native.view.v3",
+    "instance": "composer-cards",
+    "revision": 1,
+    "root": {
+      "key": "question-sheet",
+      "element": {
+        "kind": "stack",
+        "props": {
+          "axis": "vertical",
+          "children": [
+            {
+              "key": "question-title",
+              "element": {
+                "kind": "text",
+                "props": {
+                  "value": "Which files should I compare?",
+                  "role": "heading"
+                }
+              },
+              "style": {}
+            },
+            {
+              "key": "question-first",
+              "element": {
+                "kind": "choice",
+                "props": {
+                  "label": "diagram.png",
+                  "selected": true,
+                  "enabled": true,
+                  "intent": "answer-first"
+                }
+              },
+              "style": {}
+            },
+            {
+              "key": "question-second",
+              "element": {
+                "kind": "choice",
+                "props": {
+                  "label": "notes.txt",
+                  "selected": false,
+                  "enabled": true,
+                  "intent": "answer-second"
+                }
+              },
+              "style": {}
+            },
+            {
+              "key": "question-approve",
+              "element": {
+                "kind": "button",
+                "props": {
+                  "label": "Continue",
+                  "enabled": true,
+                  "intent": "continue"
+                }
+              },
+              "style": {}
+            }
+          ]
+        }
+      },
+      "style": {}
+    }
+  }
+}
