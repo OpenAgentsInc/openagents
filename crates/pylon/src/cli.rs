@@ -47,6 +47,8 @@ Commands:
       --device NAME         metal, cuda, or cpu (default: what doctor picks).
       --port N              The decision engine's loopback port (default 18096).
       --dedicated           Ignore this computer's lease table.
+      --allow-slow          Serve decisions on the CPU anyway (refused by
+                            default: seconds a decision).
   down                      Stop serving: tell the relay this pylon is offline,
                             let jobs it took finish (at most 90 s), stop the
                             engines, and keep it off until `up`.

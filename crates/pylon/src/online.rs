@@ -904,6 +904,8 @@ pub struct Up {
     pub device: Option<String>,
     pub port: Option<u16>,
     pub dedicated: bool,
+    /// `--allow-slow`: serve decisions on the CPU anyway.
+    pub allow_slow: bool,
     /// `serve`'s options, applied to the settings.
     pub serve: Vec<String>,
 }
@@ -919,6 +921,7 @@ impl Up {
         let yes = share::take_flag(&mut words, "--yes");
         let foreground = share::take_flag(&mut words, "--foreground");
         let dedicated = share::take_flag(&mut words, "--dedicated");
+        let allow_slow = share::take_flag(&mut words, "--allow-slow");
         let text = match share::take_values(&mut words, "--text")?.pop().as_deref() {
             None | Some("on") => true,
             Some("off") => false,
@@ -946,6 +949,7 @@ impl Up {
             device,
             port,
             dedicated,
+            allow_slow,
             serve: words,
         })
     }
@@ -1126,7 +1130,19 @@ pub async fn up(json_out: bool, words: &[String], relay: &str) -> Result<(), Str
                 .and_then(|s| s.decide.map(|d| d.port))
         })
         .unwrap_or(crate::setup::DECIDE_PORT);
-    let report = crate::setup::doctor(relay, &format!("http://127.0.0.1:{port}"), false).await;
+    let mut report = crate::setup::doctor(relay, &format!("http://127.0.0.1:{port}"), false).await;
+    if up.allow_slow {
+        report = report.allowing_slow();
+    }
+    if up.device.as_deref() == Some("cpu") && report.fit.useful {
+        // A GPU machine asked to decide on the CPU: slow, so the same rule.
+        let cpu = crate::setup::Fit {
+            device: "cpu".into(),
+            useful: false,
+            note: "--device cpu decides on the CPU".into(),
+        };
+        crate::setup::may_serve_on(&cpu, up.allow_slow)?;
+    }
     // `up` fetches the model and runs the self-check itself.
     let blocks: Vec<&crate::setup::Block> = report
         .blocks

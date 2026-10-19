@@ -418,6 +418,8 @@ fn up_choices_and_old_settings() {
     assert_eq!(settings.allow.as_ref().unwrap().len(), 1);
     assert_eq!(settings.pylon, "box");
     assert!(Up::parse(&["--device".into(), "rocm".into()]).is_err());
+    let slow = Up::parse(&["--allow-slow".into()]).unwrap();
+    assert!(slow.allow_slow && slow.serve.is_empty());
     assert!(Up::parse(&["--text".into(), "maybe".into()]).is_err());
 
     // No room for text: decisions only, with the reason.
