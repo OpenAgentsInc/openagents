@@ -426,17 +426,12 @@ impl AppAccount {
                 .child(
                     popover::menu_row(&theme, false, "openagents-agent-lab")
                         .id("openagents-agent-lab")
-                        .on_click(cx.listener(|this, _, _, cx| {
+                        .on_click(cx.listener(|this, _, window, cx| {
                             this.close_menu(cx);
-                            cx.open_url("https://openagents.com/labs/agent");
+                            window.dispatch_action(Box::new(crate::shell::OpenAgentLab), cx);
                         }))
                         .child(icon(icons::BOT).size(px(16.)).text_color(theme.text_muted))
-                        .child(div().flex_1().child("Agent Lab"))
-                        .child(
-                            icon(icons::ARROW_UP_RIGHT)
-                                .size(px(12.))
-                                .text_color(theme.text_muted),
-                        ),
+                        .child(div().flex_1().child("Agent Lab")),
                 )
                 .child(
                     popover::menu_row(&theme, false, "openagents-sign-out")

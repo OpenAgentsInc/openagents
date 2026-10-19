@@ -1599,8 +1599,6 @@ fn enter_outcome(has_completion: bool, fallback: EnterOutcome) -> EnterOutcome {
 fn input_bindings(context: &'static str) -> Vec<KeyBinding> {
     let ctx = Some(context);
     let mut bindings = vec![
-        KeyBinding::new("tab", MentionTab, ctx),
-        KeyBinding::new("shift-tab", OutdentList, ctx),
         KeyBinding::new("shift-enter", Newline, ctx),
         KeyBinding::new("backspace", Backspace, ctx),
         KeyBinding::new("shift-backspace", Backspace, ctx),
@@ -1677,11 +1675,21 @@ fn input_bindings(context: &'static str) -> Vec<KeyBinding> {
         bindings.push(KeyBinding::new(&format!("{prefix}-x"), Cut, ctx));
         bindings.push(KeyBinding::new(&format!("{prefix}-v"), Paste, ctx));
     }
+    if !matches!(context, "AgentLabInput" | "AgentLabSingleLine") {
+        bindings.push(KeyBinding::new("tab", MentionTab, ctx));
+        bindings.push(KeyBinding::new("shift-tab", OutdentList, ctx));
+    }
     bindings
 }
 
 /// Bind the composer keymap. Call once at app boot.
 pub fn init(cx: &mut App, send_behavior: ComposerSendBehavior) {
+    let mut fields = input_bindings("AgentLabInput");
+    fields.push(KeyBinding::new("enter", Newline, Some("AgentLabInput")));
+    cx.bind_keys(fields);
+    let mut fields = input_bindings("AgentLabSingleLine");
+    fields.push(KeyBinding::new("enter", Submit, Some("AgentLabSingleLine")));
+    cx.bind_keys(fields);
     let mut generic_bindings = input_bindings(GENERIC_COMPOSER_CONTEXT);
     generic_bindings.push(KeyBinding::new(
         "enter",
@@ -16237,7 +16245,7 @@ fn render_agent_chip(name: String, theme: &Theme, max_width: f32) -> gpui::State
     div()
         .id("composer-agent-chip")
         .debug_selector(|| "composer-agent-chip".into())
-        .role(gpui::Role::Link)
+        .role(gpui::Role::Button)
         .aria_label(format!("Open {name} in Agent Lab"))
         .flex_none()
         .min_w_0()
@@ -16254,7 +16262,9 @@ fn render_agent_chip(name: String, theme: &Theme, max_width: f32) -> gpui::State
         .text_color(theme.text.opacity(0.9))
         .hover(|s| s.bg(theme.element_hover))
         .cursor_pointer()
-        .on_click(|_, _, cx| cx.open_url(openagents_proto::saved_agent::AGENT_LAB_URL))
+        .on_click(|_, window, cx| {
+            window.dispatch_action(Box::new(crate::shell::OpenAgentLab), cx);
+        })
         .child(
             crate::icons::icon(crate::icons::OPENAGENTS_LOGO)
                 .size(px(16.0))

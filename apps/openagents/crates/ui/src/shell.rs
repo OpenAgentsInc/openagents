@@ -131,6 +131,7 @@ actions!(
         OpenModelPicker,
         NewSession,
         OpenSettings,
+        OpenAgentLab,
         ConnectPhone,
         NextSession,
         PrevSession,
@@ -1987,6 +1988,7 @@ enum PendingExit {
 
 pub struct Shell {
     saved_reader: Option<Entity<crate::openagents_reader::SavedReader>>,
+    agent_lab: Option<gpui::WindowHandle<crate::agent_lab::AgentLab>>,
     _saved_reader_events: Option<Subscription>,
     saved_history: Option<Entity<crate::openagents_history::HistoryPanel>>,
     _saved_history_events: Option<Subscription>,
@@ -2583,6 +2585,7 @@ impl Shell {
         };
         Self {
             saved_reader,
+            agent_lab: None,
             _saved_reader_events: saved_reader_events,
             saved_history,
             _saved_history_events: saved_history_events,
@@ -8992,6 +8995,59 @@ impl Shell {
         self.saved_reader.clone()
     }
 
+    fn open_agent_lab(&mut self, cx: &mut Context<Self>) {
+        if let Some(handle) = self.agent_lab {
+            if handle
+                .update(cx, |_, window, _| window.activate_window())
+                .is_ok()
+            {
+                return;
+            }
+        }
+        let Some(controller) = crate::openagents_account::AppAccount::global(cx)
+            .and_then(|a| a.read(cx).controller.clone())
+        else {
+            self.show_notice(
+                crate::toast::ToastKind::Error,
+                "Couldn't open Agent Lab. Try again.",
+                cx,
+            );
+            return;
+        };
+        let root = self.data_dir.join("agent-lab");
+        let state = self.state.clone();
+        let bounds = gpui::Bounds::centered(None, gpui::size(px(1080.), px(800.)), cx);
+        let result = cx.open_window(
+            gpui::WindowOptions {
+                window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+                window_min_size: Some(gpui::size(px(760.), px(560.))),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: Some("Agent Lab".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                let lab = cx.new(|cx| crate::agent_lab::AgentLab::new(controller, root, cx));
+                cx.subscribe(&lab, move |_, event: &crate::agent_lab::Event, cx| {
+                    let crate::agent_lab::Event::Session(id) = event;
+                    crate::open_notification_target(id.clone(), &state, cx);
+                })
+                .detach();
+                window.focus(&lab.focus_handle(cx), cx);
+                lab
+            },
+        );
+        match result {
+            Ok(handle) => self.agent_lab = Some(handle),
+            Err(_) => self.show_notice(
+                crate::toast::ToastKind::Error,
+                "Couldn't open Agent Lab. Try again.",
+                cx,
+            ),
+        }
+    }
+
     /// Open saved account history without changing the local workspace selection.
     pub fn open_saved_chat(
         &mut self,
@@ -13594,6 +13650,7 @@ impl Render for Shell {
             // Native Settings menu item and the platform convention (Cmd+, on
             // macOS, Ctrl+, elsewhere) toggle the modal from any section.
             .on_action(cx.listener(|this, _: &OpenSettings, _, cx| this.toggle_settings(cx)))
+            .on_action(cx.listener(|this, _: &OpenAgentLab, _, cx| this.open_agent_lab(cx)))
             .on_action(cx.listener(|this, _: &ConnectPhone, _, cx| this.open_connect_phone(cx)))
             .on_action(cx.listener(|this, _: &NextSession, window, cx| {
                 this.cycle_navigation(true, window, cx)

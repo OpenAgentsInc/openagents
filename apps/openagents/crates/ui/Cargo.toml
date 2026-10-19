@@ -23,6 +23,10 @@ fork-chat-fixture = ["gpui_platform/test-support"]
 resource-profile = ["gpui/bench", "gpui_platform/test-support"]
 
 [[example]]
+name = "agent-lab-fixture"
+required-features = ["account-fixture"]
+
+[[example]]
 name = "account-fixture"
 required-features = ["account-fixture"]
 

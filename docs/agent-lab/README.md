@@ -272,9 +272,11 @@ loads an agent that reasons over every open issue and active agent.
 coordinating agent can run, with deterministic checks against deadlines.
 
 Open **Agent Lab** from the mobile agent picker, or visit
-[/labs/agent](https://openagents.com/labs/agent) from a browser or the desktop
-account panel. Save an experiment, choose a connected computer and project,
-then select **Run tests**. Reopen saved versions and run reports from the same
+[/labs/agent](https://openagents.com/labs/agent) from a browser. On the desktop,
+choose **Agent Lab** from the account menu or a saved agent's chip to open the
+native workbench. Its **Agent**, **Tests**, and **Results** tabs use the same
+saved experiments and account controller as the phone. Save an experiment,
+choose a connected computer and project, then select **Run tests**. Reopen saved versions and run reports from the same
 account on either surface. **Use agent** explicitly creates or updates a saved
 agent. It includes extra guidance and reference notes in the instructions;
 a live Lab reference must be removed before promotion because the current

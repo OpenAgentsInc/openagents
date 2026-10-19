@@ -1204,3 +1204,9 @@ links remain readable. Upstream fixes now require manual ports.
 - [OpenAgents #12185](https://github.com/OpenAgentsInc/openagents/issues/12185):
   unify native dependency features with this workspace's own cargo-hakari crate;
   shared domain crates use the app's version through a workspace-local patch.
+
+- Desktop Agent Lab: the account menu and saved-agent chip open a native
+  workbench window with Agent, Tests, and Results tabs. It mounts the shared
+  Rust Native controls over the existing account controller, preserves edits
+  during refreshes, retries saved requests, and opens trial conversations in
+  the main window.
