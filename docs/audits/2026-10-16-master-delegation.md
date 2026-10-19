@@ -659,6 +659,7 @@ Already in `NEEDS_OWNER.md`, and they don't block closing: the CAD history copy 
 - No test resource is left on the owner's account, and every machine created for a check is deleted or labeled for the reaper.
 - [ ] #12143: rerun the 60 s native API outage cases (wake, stop, delete) against the private SPACE deployment; the driver now resends an uncertain request under its saved key.
 - [ ] #12161: after the next pool deploy, start two runs on one pool host within the same second and confirm both pass the checkout fetch.
+- [ ] #12162: once two or more non-overlapping code entries are queued, confirm `openagents land status` on `oa-dev-env-1` shows them landing in separate code slots at the same time (fast lane + 3 code slots since 2026-10-19 01:19 UTC).
 
 - #12090 (D2): Android composer needs Kotlin compile/JVM tests, binding regeneration, and device checks for CJK IME, keyboard insets, rotation, hardware keyboard, camera and picker denial.
 - [ ] #12097: on an Android device, run a voice call, minimize to the ongoing-call notification (mute and end actions), reopen, and check the microphone foreground service under background restrictions; regenerate UniFFI bindings and compile the Kotlin shell. Main-shell mount and listener wiring is still open.
