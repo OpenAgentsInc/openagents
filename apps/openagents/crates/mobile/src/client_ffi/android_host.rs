@@ -31,6 +31,16 @@ impl ClientListener for Events {
         self.0.on_android_host_changed();
     }
 }
+impl VoiceAgentListener for Events {
+    fn on_voice_agent_changed(&self) {
+        self.0.on_android_host_changed();
+    }
+}
+impl VoiceUsageListener for Events {
+    fn on_voice_usage_changed(&self) {
+        self.0.on_android_host_changed();
+    }
+}
 impl crate::wallet::WalletListener for Events {
     fn on_wallet_changed(&self) {
         self.0.on_android_host_changed();
@@ -49,6 +59,8 @@ pub enum AndroidHostSurface {
     Wallet,
     VoiceCapsule,
     VoiceScreen,
+    VoiceAgent,
+    VoiceUsage,
     LinkReview,
     Composer,
 }
@@ -61,6 +73,8 @@ impl AndroidHostSurface {
             Self::Wallet => "android:wallet",
             Self::VoiceCapsule => "android:voice-capsule",
             Self::VoiceScreen => "android:voice-screen",
+            Self::VoiceAgent => "android:voice-agent",
+            Self::VoiceUsage => "android:voice-usage",
             Self::LinkReview => "android:link-review",
             Self::Composer => "android:composer",
         }
@@ -75,6 +89,7 @@ pub enum AndroidHostRoute {
     Voice,
     LinkReview,
     Wallet,
+    VoiceSettings,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -106,6 +121,12 @@ pub enum AndroidTranscriptEffect {
         kind: crate::layout::display::WidgetKind,
     },
     Unavailable,
+}
+#[derive(uniffi::Record)]
+pub struct AndroidVoiceSettings {
+    pub generation: u64,
+    pub picker: Arc<CoreVoiceAgent>,
+    pub usage: Arc<CoreVoiceUsage>,
 }
 #[derive(Clone, uniffi::Record)]
 pub struct AndroidHostTextPoint {
@@ -545,6 +566,67 @@ impl CoreAndroidHost {
             link_review: s.link_review.clone(),
         })
     }
+    pub fn voice_settings(&self) -> CoreResult<AndroidVoiceSettings> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let account = self.account.as_ref().ok_or(CoreError::Closed)?;
+        let client = state.client.as_ref().ok_or(CoreError::Closed)?;
+        let picker = account.voice_agent(self.events.clone());
+        let usage = client.voice_usage(self.events.clone());
+        usage.track(selected_voice_host(&state), state.active_voice.clone());
+        Ok(AndroidVoiceSettings {
+            generation: state.generation,
+            picker,
+            usage,
+        })
+    }
+    pub fn sync_voice_usage(&self, generation: u64, usage: Arc<CoreVoiceUsage>) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation {
+            return Err(CoreError::Closed);
+        }
+        usage.track(selected_voice_host(&state), state.active_voice.clone());
+        Ok(())
+    }
+    pub async fn activate_voice_agent(
+        &self,
+        generation: u64,
+        picker: Arc<CoreVoiceAgent>,
+        instance: String,
+        revision: u64,
+        key: String,
+    ) -> CoreResult<()> {
+        {
+            let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+            self.refresh(&mut state)?;
+            if state.generation != generation {
+                return Err(CoreError::Closed);
+            }
+        }
+        picker.activate(instance, revision, key).await?;
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation {
+            return Err(CoreError::Closed);
+        }
+        Ok(())
+    }
+    pub fn activate_voice_usage(
+        &self,
+        generation: u64,
+        usage: Arc<CoreVoiceUsage>,
+        instance: String,
+        revision: u64,
+        key: String,
+    ) -> CoreResult<()> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        if state.generation != generation {
+            return Err(CoreError::Closed);
+        }
+        usage.activate_view(instance, revision, key)
+    }
     /// The underlying device wallet is shared across native mounts; account wrappers are fenced.
     pub fn wallet(
         &self,
@@ -966,6 +1048,9 @@ impl CoreAndroidHost {
         {
             return Err(CoreError::Closed);
         }
+        if route == AndroidHostRoute::VoiceSettings && s.client.is_none() {
+            return Err(CoreError::Closed);
+        }
         s.route = route;
         s.apply_visibility();
         drop(s);
@@ -1099,6 +1184,13 @@ impl CoreAndroidHost {
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())
+    }
+}
+
+fn selected_voice_host(state: &State) -> Option<String> {
+    match &state.content {
+        Content::Live { client, id, .. } => client.session_row(id.clone()).map(|row| row.device_id),
+        _ => None,
     }
 }
 

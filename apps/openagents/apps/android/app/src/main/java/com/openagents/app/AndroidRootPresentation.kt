@@ -63,6 +63,8 @@ internal class AndroidRootPresentation(
     private var settings: SettingsHost? = null
     private var recovery: RecoveryHost? = null
     private var wallet: RecoveryHost? = null
+    private var voiceSettings: AndroidVoiceSettingsMount? = null
+    private lateinit var voiceSettingsButton: Button
     private lateinit var walletButton: Button
     private var linkReview: AndroidLinkReviewMount? = null
     private var microphoneRequest: AutoCloseable? = null
@@ -99,6 +101,8 @@ internal class AndroidRootPresentation(
         buttons.addView(walletButton)
         voiceButton = action("Call") { requestVoice() }
         buttons.addView(voiceButton)
+        voiceSettingsButton = action("Voice") { owner.navigate(AndroidHostRoute.VOICE_SETTINGS); panes.showSession() }
+        buttons.addView(voiceSettingsButton)
         navigation.addView(buttons)
         navigation.addView(drawerView, LinearLayout.LayoutParams(-1, 0, 1f))
         content.addView(chatContainer, FrameLayout.LayoutParams(-1, -1))
@@ -169,6 +173,7 @@ internal class AndroidRootPresentation(
         }
         snapshot = next
         walletButton.visibility = if (next.account != null && next.signedIn) View.VISIBLE else View.GONE
+        voiceSettingsButton.visibility = if (next.account != null && next.client != null) View.VISIBLE else View.GONE
         mountVoice(next)
         if (contentRevision != next.contentRevision) {
             closeChat()
@@ -179,6 +184,7 @@ internal class AndroidRootPresentation(
             owner.refreshTranscript(requireNotNull(layout), next.generation, next.contentRevision)
         }
         if (next.route != AndroidHostRoute.CHAT) closeMedia()
+        if (next.route != AndroidHostRoute.VOICE_SETTINGS) { voiceSettings?.close(); voiceSettings = null }
         if (next.route != AndroidHostRoute.WALLET) { wallet?.close(); wallet = null }
         if (next.route != AndroidHostRoute.LINK_REVIEW) { linkReview?.close(); linkReview = null }
         val composerFrame = next.composer?.frame()
@@ -214,6 +220,19 @@ internal class AndroidRootPresentation(
                         { semantics(AndroidHostSurface.RECOVERY) },
                     ).also { it.start(android.os.Build.MODEL) }
                 }
+            }
+            AndroidHostRoute.VOICE_SETTINGS -> {
+                recovery?.close(); recovery = null
+                sessions?.close(); sessions = null
+                settings?.close(); settings = null
+                settingsActions?.close(); settingsActions = null
+                chatContainer.visibility = View.GONE; routeContainer.visibility = View.VISIBLE
+                if (voiceSettings == null) {
+                    routeContainer.removeAllViews()
+                    voiceSettings = AndroidVoiceSettingsMount(activity, routeContainer, owner, owner.voiceSettings(),
+                        application.presentationWork, semantics(AndroidHostSurface.VOICE_AGENT),
+                        semantics(AndroidHostSurface.VOICE_USAGE), ::showFailure)
+                } else voiceSettings?.render()
             }
             AndroidHostRoute.WALLET -> {
                 recovery?.close(); recovery = null
@@ -553,6 +572,7 @@ internal class AndroidRootPresentation(
         microphoneRequest?.close(); microphoneRequest = null
         snapshot?.linkReview?.let { runCatching { owner.dismissLinkReview(it) } }
         linkReview?.close(); linkReview = null
+        voiceSettings?.close(); voiceSettings = null
         wallet?.background()
         recovery?.background()
         settings?.close(); settings = null
@@ -586,6 +606,7 @@ internal class AndroidRootPresentation(
     }
     private fun showFailure() { notice.text = "Couldn't open this screen. Try again."; notice.visibility = View.VISIBLE }
     private fun closeRoutes() {
+        voiceSettings?.close(); voiceSettings = null
         wallet?.close(); wallet = null
         linkReview?.close(); linkReview = null
         recovery?.close(); recovery = null

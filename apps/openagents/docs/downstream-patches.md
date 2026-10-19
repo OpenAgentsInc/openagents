@@ -1080,3 +1080,11 @@ links remain readable. Upstream fixes now require manual ports.
   and pending load on background, route exit, source replacement, and Activity
   teardown. C2's per-run reveal offsets and row-age publisher are preserved.
   Integrated Rust, binding, Kotlin, and lifecycle checks remain unrun.
+
+- #12100: Make the existing Rust voice-agent picker and execution-host usage
+  views reachable through Voice settings. Rust supplies the selected host and
+  active call to usage tracking; an active call takes precedence. Preference
+  edits use the shared picker and affect future calls without relabeling the
+  current one. Android mounts both Rust Native trees, forwards identity-only
+  actions, and drops polling/view handles on background or route retirement.
+  Current-account checks surround picker actions. Integrated checks are unrun.
