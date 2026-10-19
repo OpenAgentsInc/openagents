@@ -409,7 +409,12 @@ pub fn overlap(a: &Plan, b: &Plan) -> bool {
     if a.wide || b.wide {
         return true;
     }
-    if a.files.iter().any(|file| b.files.contains(file)) {
+    // Two narrowed lockfile changes share `Cargo.lock` but overlap only
+    // through the packages each one's locked versions reach (#12162).
+    if a.files
+        .iter()
+        .any(|file| file != LOCKFILE && b.files.contains(file))
+    {
         return true;
     }
     a.packages.iter().any(|p| b.closure.contains(p))
@@ -575,6 +580,11 @@ pub fn classify(files: &[String], facts: &Facts<'_>) -> Plan {
             }
             first(&mut code_because, || format!("`{path}` is in `{package}`"));
             // Its package's checks already cover what reads it.
+            continue;
+        }
+        if path == LOCKFILE {
+            // Sources that say `Cargo.lock` read the lockfile, not this
+            // change to it; [`narrow_lockfile`] finds what it reaches.
             continue;
         }
         let mut named = false;
@@ -790,6 +800,161 @@ pub fn plan(worktree: &Path, base: &str) -> Plan {
     if plan.lane == Lane::Code && graph.is_none() && plan.packages.is_empty() {
         // Named-by-literal documents with an unreadable graph stay code.
         plan.wide = true;
+    }
+    if files.iter().any(|f| f == LOCKFILE) {
+        let show = |rev: &str| {
+            std::process::Command::new("git")
+                .args(["show", &format!("{rev}:{LOCKFILE}")])
+                .current_dir(worktree)
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        };
+        // A lockfile the base lacks is all new; one HEAD deletes stays wide.
+        let members =
+            show("HEAD").and_then(|after| lock_members(&show(base).unwrap_or_default(), &after));
+        plan = narrow_lockfile(plan, members, graph.as_ref());
+    }
+    plan
+}
+
+/// The workspace lockfile.
+pub const LOCKFILE: &str = "Cargo.lock";
+
+/// The local packages (no `source`: workspace members and path
+/// dependencies) whose resolution differs between two `Cargo.lock` texts
+/// (#12162): every package entry added, removed or with changed
+/// dependencies, and every local package that reaches one of them in
+/// either lockfile. A new member whose dependencies were already locked
+/// reaches only itself. `None` when either text does not parse.
+#[must_use]
+pub fn lock_members(before: &str, after: &str) -> Option<Vec<String>> {
+    use std::collections::{BTreeMap, HashMap};
+    #[derive(Deserialize)]
+    struct Lock {
+        #[serde(default)]
+        package: Vec<Locked>,
+    }
+    #[derive(Deserialize)]
+    struct Locked {
+        name: String,
+        version: String,
+        source: Option<String>,
+        #[serde(default)]
+        dependencies: Vec<String>,
+    }
+    // `name version` → (local, sorted dependency keys).
+    type Entries = BTreeMap<String, (bool, Vec<String>)>;
+    let read = |text: &str| -> Option<Entries> {
+        if text.trim().is_empty() {
+            return Some(Entries::new());
+        }
+        let lock: Lock = toml::from_str(text).ok()?;
+        let mut by_name: HashMap<&str, Vec<&str>> = HashMap::new();
+        for p in &lock.package {
+            by_name.entry(&p.name).or_default().push(&p.version);
+        }
+        let mut entries = Entries::new();
+        for p in &lock.package {
+            let mut deps = Vec::new();
+            for dependency in &p.dependencies {
+                let mut parts = dependency.split(' ');
+                let name = parts.next()?;
+                let version = match parts.next() {
+                    Some(version) => version,
+                    None => match by_name.get(name).map(Vec::as_slice) {
+                        Some([only]) => only,
+                        _ => return None,
+                    },
+                };
+                deps.push(format!("{name} {version}"));
+            }
+            deps.sort();
+            let key = format!("{} {}", p.name, p.version);
+            let entry = entries.entry(key).or_insert((false, Vec::new()));
+            entry.0 |= p.source.is_none();
+            entry.1.extend(deps);
+        }
+        Some(entries)
+    };
+    let before = read(before)?;
+    let after = read(after)?;
+    let mut changed: Vec<&str> = Vec::new();
+    for key in before.keys().chain(after.keys()) {
+        let same = before
+            .get(key)
+            .zip(after.get(key))
+            .is_some_and(|(a, b)| a == b);
+        if !same && !changed.contains(&key.as_str()) {
+            changed.push(key);
+        }
+    }
+    let mut up: HashMap<&str, Vec<&str>> = HashMap::new();
+    for entries in [&before, &after] {
+        for (key, (_, deps)) in entries {
+            for dep in deps {
+                up.entry(dep).or_default().push(key);
+            }
+        }
+    }
+    let mut seen: BTreeSet<&str> = changed.iter().copied().collect();
+    let mut next = changed;
+    while let Some(at) = next.pop() {
+        for &by in up.get(at).into_iter().flatten() {
+            if seen.insert(by) {
+                next.push(by);
+            }
+        }
+    }
+    let local =
+        |key: &str| before.get(key).is_some_and(|e| e.0) || after.get(key).is_some_and(|e| e.0);
+    let names: BTreeSet<String> = seen
+        .into_iter()
+        .filter(|key| local(key))
+        .filter_map(|key| key.split(' ').next().map(str::to_owned))
+        .collect();
+    Some(names.into_iter().collect())
+}
+
+/// `plan` with its `Cargo.lock` change counted as a change to `members`
+/// ([`lock_members`]) instead of to every package (#12162). It stays
+/// wide when the members are unknown, the graph is unreadable, or another
+/// workspace-wide file changed.
+#[must_use]
+pub fn narrow_lockfile(
+    mut plan: Plan,
+    members: Option<Vec<String>>,
+    graph: Option<&Graph>,
+) -> Plan {
+    let other_wide = plan
+        .files
+        .iter()
+        .any(|f| f != LOCKFILE && workspace_wide(f));
+    let (Some(members), Some(graph)) = (members, graph) else {
+        return plan;
+    };
+    if other_wide || plan.lane != Lane::Code {
+        return plan;
+    }
+    for member in members {
+        if !plan.packages.contains(&member) {
+            plan.packages.push(member);
+        }
+    }
+    plan.closure = closure(&plan.packages, graph);
+    plan.wide = false;
+    if plan.why.contains(LOCKFILE) {
+        plan.why = if plan.packages.is_empty() {
+            format!("`{LOCKFILE}` changes no package's locked versions")
+        } else {
+            format!(
+                "`{LOCKFILE}` changes what {} lock",
+                plan.packages.join(", ")
+            )
+        };
     }
     plan
 }

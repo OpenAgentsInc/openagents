@@ -42,8 +42,9 @@ pub(crate) const USAGE: &str = "usage: openagents land COMMAND [--queue URL]
   work [--once] [--every SECONDS] [--slots N] [--repair COMMAND|none]
               Run the integrator in this checkout. Documents-only entries
               land in the fast lane (no build); code entries check side by
-              side, N at once (default 2, OPENAGENTS_LAND_SLOTS), when their
-              packages do not overlap, else in submission order. Pushes are
+              side, N at once (default 2 to 4 by cores,
+              OPENAGENTS_LAND_SLOTS), when their packages do not overlap,
+              else in submission order. Pushes are
               one at a time. Polls every 5 s. --repair names the one
               conflict-repair turn's command (claude by default); none
               bounces every conflict. While ~/.openagents/land-queue/drain
@@ -578,20 +579,41 @@ fn cargo_ready() -> Option<String> {
 }
 
 /// How many code entries the worker checks at once: `--slots`, else
-/// `OPENAGENTS_LAND_SLOTS`, else 2. Each check is a full `cargo test` of
-/// its packages using every core; the host broker counts two build leases,
-/// so a third slot would only wait.
+/// `OPENAGENTS_LAND_SLOTS`, else [`default_slots`] for this host's cores.
+/// Each slot has its own worktree and build slot (its own target
+/// directory).
 fn slots(args: &Args) -> Result<usize, String> {
     let named = match args.option("slots") {
         Some(text) => Some(text.to_owned()),
         None => std::env::var("OPENAGENTS_LAND_SLOTS").ok(),
     };
     match named {
-        None => Ok(2),
+        None => Ok(default_slots(
+            std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get),
+        )),
         Some(text) => match text.trim().parse::<usize>() {
             Ok(n) if (1..=8).contains(&n) => Ok(n),
             _ => Err(format!("--slots {text} is not a number from 1 to 8")),
         },
+    }
+}
+
+/// Code slots for a host with `cores`: one per eight cores, two to four
+/// (#12162). Checks test default features now, so a slot no longer needs
+/// the whole machine.
+fn default_slots(cores: usize) -> usize {
+    (cores / 8).clamp(2, 4)
+}
+
+#[cfg(test)]
+mod slot_tests {
+    #[test]
+    fn hosts_with_more_cores_get_more_code_slots() {
+        assert_eq!(super::default_slots(4), 2);
+        assert_eq!(super::default_slots(22), 2);
+        assert_eq!(super::default_slots(24), 3);
+        assert_eq!(super::default_slots(32), 4);
+        assert_eq!(super::default_slots(96), 4);
     }
 }
 

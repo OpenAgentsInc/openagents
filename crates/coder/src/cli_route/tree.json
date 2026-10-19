@@ -26716,7 +26716,7 @@
                 ]
               }
             ],
-            "summary": "Run the integrator in this checkout. Documents-only entries land in the fast lane (no build); code entries check side by side, N at once (default 2, OPENAGENTS_LAND_SLOTS), when their packages do not overlap, else in submission order. Pushes are one at a time. Polls every 5 s. --repair names the one conflict-repair turn's command (claude by default); none bounces every conflict. While ~/.openagents/land-queue/drain exists it takes nothing new and finishes what runs. It refuses to start without cargo on PATH.",
+            "summary": "Run the integrator in this checkout. Documents-only entries land in the fast lane (no build); code entries check side by side, N at once (default 2 to 4 by cores, OPENAGENTS_LAND_SLOTS), when their packages do not overlap, else in submission order. Pushes are one at a time. Polls every 5 s. --repair names the one conflict-repair turn's command (claude by default); none bounces every conflict. While ~/.openagents/land-queue/drain exists it takes nothing new and finishes what runs. It refuses to start without cargo on PATH.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
