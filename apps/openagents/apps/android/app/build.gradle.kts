@@ -113,6 +113,7 @@ dependencies {
     implementation("io.github.webrtc-sdk:android:150.7871.01")
     if (pushEnabled) implementation("com.google.firebase:firebase-messaging:24.1.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     testImplementation(kotlin("test"))
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestCompileOnly(

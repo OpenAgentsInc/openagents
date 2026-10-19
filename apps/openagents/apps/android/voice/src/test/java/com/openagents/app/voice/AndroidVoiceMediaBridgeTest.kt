@@ -196,7 +196,7 @@ class AndroidVoiceMediaBridgeTest {
 
         driver.emit(VoiceMediaPlatformEvent.NetworkChanged(VoiceNetworkState.AVAILABLE))
         bridge.`onRequest`(request(21u))
-        driver.reply(23uL, VoiceMediaResult(sdp = "fixture-answer"))
+        driver.reply(21uL, VoiceMediaResult(sdp = "fixture-answer"))
 
         assertTrue(callbackFailures.isEmpty(), "callback could not reenter the bridge: $callbackFailures")
         assertEquals(listOf(22uL, 24uL, 21uL, 23uL), driver.requests.map { it.requestId })
