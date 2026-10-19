@@ -279,9 +279,11 @@ class AndroidComposerPresentation(
         root.addView(inputRow, matchWrap())
         input.addTextChangedListener(textWatcher)
         ViewCompat.setOnReceiveContentListener(input, arrayOf("image/*"), OnReceiveContentListener { _, payload ->
-            val (images, remaining) = payload.partition { item ->
+            val partitioned = payload.partition { item ->
                 item.uri != null && payload.clip.description.hasMimeType("image/*")
             }
+            val images = partitioned.first
+            val remaining = partitioned.second
             images?.clip?.let { clip ->
                 for (index in 0 until clip.itemCount) {
                     clip.getItemAt(index).uri?.let { pastedImageListener?.invoke(it) }

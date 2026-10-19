@@ -38,11 +38,13 @@ class AndroidWalletSurface(
     private val adapter = SemanticViewAdapter(
         context,
         activate = { instance, revision, key ->
-            onEffect(wallet.activate(instance, revision, key))
+            require(revision >= 0)
+            onEffect(wallet.activate(instance, revision.toULong(), key))
             render()
         },
         changeField = { instance, revision, key, value ->
-            wallet.changeField(instance, revision, key, value)
+            require(revision >= 0)
+            wallet.changeField(instance, revision.toULong(), key, value)
             render()
         },
         // Wallet snapshots are validated directly by CoreWallet; they have no
