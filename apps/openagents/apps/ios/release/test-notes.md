@@ -1,4 +1,23 @@
-# OpenAgents 1.0.0 (1015)
+# OpenAgents 1.0.0 (1016)
+
+The same account now stays in step across your phones and computers, and
+the OpenAgents app for Android ships beside this build.
+
+- A chat that changed on another device opens with all of its messages,
+  instead of an empty chat and "Reload chat".
+- Your chat list updates by itself while the app is open: chats started on
+  another phone, the website, or a computer appear within seconds, with
+  current message counts.
+- A computer's chat remembers which computer it runs on.
+- Phone sync backs off when the service is busy instead of retrying hard.
+- A saved agent shows its decision log and autonomy card.
+
+Check that a chat you continue on another device (or the website) shows the
+new messages when you open it here, that a new chat started elsewhere joins
+the list without pulling to refresh, and that sending from this phone shows
+up on the other device. Check light and dark appearance.
+
+OpenAgents 1.0.0 (1015)
 
 An installation that was signed in before 1014 stays on its account when the
 server can't add the new key yet, instead of coming up signed out.
