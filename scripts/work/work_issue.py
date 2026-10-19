@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Work one GitHub issue with the briefed agent (#11211, #11258).
 
-    work_issue.py --repo OWNER/NAME --issue N [--land queue|pr|none]
+    work_issue.py --repo OWNER/NAME --issue N [--land direct|queue|pr|push|none]
                   [--engine briefed|briefed:codex|briefed:opencode|briefed:gemini|bare]
                   [--out DIR] [--checkout PATH]
 
@@ -40,7 +40,10 @@ issue", agent fleet runs, and `openagents chat work` (the default engine):
    bare Claude Code (`claude -p`, "Complete this issue.") in a fresh
    worktree, judged the same way. The result records why, and each
    attempt's engine, briefing digest, cost and outcome.
-6. **Landing**: on a pass, commit; `queue` hands the branch to the landing
+6. **Landing**: on a pass, commit; `direct` rebases onto `origin/main`,
+   replays the checks, and pushes to `main`, falling back to the queue on a
+   conflict, a failing check, or rewritten files (#12165); `queue` hands the
+   branch to the landing
    queue (`openagents land submit`, docs/cloud/land-queue.md), `pr` pushes a
    branch and opens a pull request, `none` keeps the commit local.
 
@@ -539,10 +542,79 @@ def commit(root: Path, issue: dict, engine: str, base: str) -> str:
     return sh(["git", "-C", str(root), "rev-parse", "HEAD"]).stdout.strip()
 
 
+DIRECT_TRIES = 3
+
+
+def git_ok(root: Path, *args: str, timeout: int = 600) -> subprocess.CompletedProcess:
+    return sh(["git", "-C", str(root), *args], check=False, timeout=timeout)
+
+
+def comment(repo: str, number: int, body: str) -> None:
+    """An issue comment through `gh`, unless the orchestrator owns comments
+    (`OA_WORK_HOST_COMMENTS=1`: an Archil sandbox can't reach GitHub's API)."""
+    if os.environ.get("OA_WORK_HOST_COMMENTS") == "1":
+        return
+    sh(["gh", "issue", "comment", str(number), "--repo", repo, "--body", body], check=False, timeout=120)
+
+
+def land_direct(run: Run, root: Path, repo: str, issue: dict, run_id: str, engine: str) -> dict:
+    """The owner's rule (#12165): a change whose checks pass goes straight to
+    `main`. Rebase onto `origin/main`, replay the touched checks on the
+    rebased change, and push. A conflict, a failing check, or a file the
+    checks rewrote (formatting, generated files) sends it to the landing
+    queue instead, whose integrator can repair it, and the reason is kept."""
+    number = issue["number"]
+    for _ in range(DIRECT_TRIES):
+        git_ok(root, "fetch", "-q", "origin", "main")
+        if git_ok(root, "rebase", "-q", "origin/main").returncode != 0:
+            git_ok(root, "rebase", "--abort")
+            return land_fallback(run, root, repo, issue, run_id, engine, "the change conflicts with main")
+        base = sh(["git", "-C", str(root), "rev-parse", "origin/main"]).stdout.strip()
+        run.say("land", f"rebased onto main {base[:10]}; checking it again")
+        checks = replay_checks(run, root, base)
+        if not checks_pass(checks):
+            failed = ", ".join(f"`{c['name']}`" for c in checks if c["ok"] is False)
+            return land_fallback(run, root, repo, issue, run_id, engine,
+                                 f"a check fails after the rebase: {failed}", checks)
+        if sh(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"]).stdout.strip():
+            git_ok(root, "reset", "-q", "--hard")
+            git_ok(root, "clean", "-qfd")
+            return land_fallback(run, root, repo, issue, run_id, engine,
+                                 "the checks rewrote files after the rebase (formatting or generated files)",
+                                 checks)
+        if git_ok(root, "push", "-q", "origin", "HEAD:refs/heads/main").returncode == 0:
+            commit_sha = sh(["git", "-C", str(root), "rev-parse", "HEAD"]).stdout.strip()
+            run.say("land", f"pushed {commit_sha[:10]} to main", commit=commit_sha)
+            lines = [f"Landed on main in {commit_sha} by the {engine_words(engine)} "
+                     f"(`openagents work`, run `{run_id}`), directly: its checks passed again "
+                     f"after a rebase onto {base[:10]}.", ""]
+            lines += [f"- {'pass' if c['ok'] else 'no checker here'}: `{c['name']}`" for c in checks]
+            comment(repo, number, "\n".join(lines))
+            return {"how": "direct", "commit": commit_sha, "base": base, "checks": checks}
+        run.say("land", "main moved while the checks ran; rebasing again")
+    return land_fallback(run, root, repo, issue, run_id, engine,
+                         f"main moved during each of {DIRECT_TRIES} rebases")
+
+
+def land_fallback(run: Run, root: Path, repo: str, issue: dict, run_id: str, engine: str, why: str,
+                  checks: list[dict] | None = None) -> dict:
+    """The landing queue for a change that couldn't land directly, saying
+    why. In an Archil sandbox (`OA_WORK_FALLBACK=push`) the branch is pushed
+    and the orchestrator submits it."""
+    run.say("land", f"landing through the queue instead: {why}")
+    how = "push" if os.environ.get("OA_WORK_FALLBACK") == "push" else "queue"
+    landed = land(run, root, repo, issue, how, run_id, engine, checks or [])
+    landed["fallback"] = why
+    comment(repo, issue["number"], f"Landing through the queue instead of directly: {why}.")
+    return landed
+
+
 def land(run: Run, root: Path, repo: str, issue: dict, how: str, run_id: str, engine: str,
          checks: list[dict]) -> dict:
     if how == "none":
         return {"how": "none"}
+    if how == "direct":
+        return land_direct(run, root, repo, issue, run_id, engine)
     if how == "push":
         # The orchestrator lands it (`chat work --on archil`, #12136): the
         # sandbox reaches github.com but not the landing queue.
@@ -689,7 +761,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--repo", required=True)
     ap.add_argument("--issue", type=int, required=True)
-    ap.add_argument("--land", choices=["queue", "pr", "push", "none"], default="pr")
+    ap.add_argument("--land", choices=["direct", "queue", "pr", "push", "none"], default="pr")
     ap.add_argument("--issue-json", help="the issue as `gh issue view --json number,title,body,state,url` "
                     "printed it, for a run that cannot reach GitHub's API")
     ap.add_argument("--engine", choices=["briefed", "briefed:codex", "briefed:opencode", "briefed:gemini", "bare"],

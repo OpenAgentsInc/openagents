@@ -25,7 +25,7 @@ pub fn tool() -> ToolDef {
             "issues":{"type":"array","items":{"type":"integer","minimum":1},"maxItems":32},
             "ids":{"type":"array","items":{"type":"string"},"maxItems":32},
             "after":{"type":"integer","minimum":0,"default":0},
-            "land":{"type":"string","enum":["queue","pr","none"],"default":"queue"},
+            "land":{"type":"string","enum":["direct","queue","pr","none"],"default":"direct"},
             "engine":{"type":"string"},"on":{"type":"string","enum":["gce"],"default":"gce"},
             "agent":{"type":"string","description":"Saved agent ID; defaults to this chat's agent. It must match when called from a saved agent chat."},
             "hosts":{"type":"integer","minimum":1,"maximum":32,"default":1}
@@ -310,7 +310,7 @@ mod connection_tests {
             assert_eq!(*method, api::START);
             assert_eq!(params["request"]["agent"], "agt_reviewer");
             assert_eq!(params["request"]["on"], "gce");
-            assert_eq!(params["request"]["land"], "queue");
+            assert_eq!(params["request"]["land"], "direct");
         }
     }
     #[tokio::test]

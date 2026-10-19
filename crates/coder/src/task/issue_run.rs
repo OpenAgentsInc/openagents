@@ -291,16 +291,18 @@ pub enum Land {
 }
 
 impl Land {
-    /// Reads `main`, `pr` (`pull_request`), or `queue`.
+    /// Reads `direct` (or `main`), `pr` (`pull_request`), or `queue`.
     ///
     /// # Errors
     /// Any other word.
     pub fn parse(word: &str) -> Result<Self, String> {
         match word.trim() {
-            "main" => Ok(Land::Main),
+            "direct" | "main" => Ok(Land::Main),
             "pr" | "pull_request" | "pull-request" => Ok(Land::PullRequest),
             "queue" => Ok(Land::Queue),
-            other => Err(format!("--land is `main`, `pr`, or `queue`, not `{other}`")),
+            other => Err(format!(
+                "--land is `direct` (or `main`), `pr`, or `queue`, not `{other}`"
+            )),
         }
     }
 }

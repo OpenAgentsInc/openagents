@@ -25,11 +25,14 @@ pub const POOL_UP: &str = "pool.up";
 /// Stop the connected host pool.
 pub const POOL_DOWN: &str = "pool.down";
 
-/// Where a verified change goes. Direct pushes to main are not an option.
+/// Where a verified change goes. `Direct` (the default, #12165) rebases
+/// onto main, replays the touched checks, and pushes to main; a conflict, a
+/// failing check, or rewritten files send it to the landing queue instead.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LandMode {
     #[default]
+    Direct,
     Queue,
     Pr,
     None,

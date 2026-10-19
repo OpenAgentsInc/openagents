@@ -348,12 +348,15 @@ oa_agent() {
 /// One issue's run, as the run user: read and delete the credentials,
 /// sign the engines in, move the checkout to `origin/main`, rebuild the
 /// briefed agent when main moved, and run the driver with the issue the
-/// orchestrator read. The driver pushes the change to `branch`; the
-/// orchestrator lands it.
+/// orchestrator read. With `direct` (#12165) the driver rebases, checks
+/// again and pushes to main itself, and otherwise (or on its fallback)
+/// pushes the change to `branch` for the orchestrator to land. The
+/// orchestrator posts every issue comment.
 pub fn run_script(
     repository: &str,
     issue: u64,
     engine: &str,
+    direct: bool,
     branch: &str,
     run_id: &str,
 ) -> String {
@@ -381,12 +384,14 @@ unset OA_CODEX_AUTH
 cd "$HOME/openagents" && git fetch -q origin main && git checkout -q --detach origin/main \
   || {{ echo "archil: git fetch failed" >&2; exit 2; }}
 oa_agent || exit 3
-export OA_BRIEFED_AGENT=$d/bin/briefed-agent OA_WORK_PUSH_BRANCH={branch}
+export OA_BRIEFED_AGENT=$d/bin/briefed-agent OA_WORK_PUSH_BRANCH={branch} \
+  OA_WORK_FALLBACK=push OA_WORK_HOST_COMMENTS=1
 exec python3 "$d/engine/scripts/work/work_issue.py" --repo {repository} --issue {issue} \
-  --engine {engine} --land push --checkout "$HOME/openagents" --issue-json "$d/issue.json" \
+  --engine {engine} --land {land} --checkout "$HOME/openagents" --issue-json "$d/issue.json" \
   --out "$d/out" --run-id {run_id}
 "#,
         branch = quote(branch),
+        land = if direct { "direct" } else { "push" },
         repository = quote(repository),
         engine = quote(engine),
         run_id = quote(run_id),
@@ -572,10 +577,13 @@ mod tests {
 
     #[test]
     fn the_run_script_reads_and_deletes_credentials_before_anything_else() {
-        let script = run_script("o/r", 7, "briefed:codex", "land/archil-7-x", "run1");
+        let script = run_script("o/r", 7, "briefed:codex", false, "land/archil-7-x", "run1");
         let deleted = script.find(r#"rm -f "$d/env""#).unwrap();
         assert!(deleted < script.find("credential.helper").unwrap());
         assert!(script.contains("--land push"));
+        assert!(script.contains("OA_WORK_FALLBACK=push OA_WORK_HOST_COMMENTS=1"));
+        let direct = run_script("o/r", 7, "briefed", true, "land/archil-7-x", "run1");
+        assert!(direct.contains("--land direct"));
         assert!(script.contains("--issue-json \"$d/issue.json\""));
         assert!(script.contains("OA_WORK_PUSH_BRANCH='land/archil-7-x'"));
         assert!(script.contains("--engine 'briefed:codex'"));
