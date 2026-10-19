@@ -41,6 +41,7 @@ trap 'failed $LINENO' ERR
 rev="$(md oa-rev)"
 repo_url="$(md oa-repo-url)"
 bucket="$(md oa-sccache-bucket)"
+kache_bucket="$(md oa-kache-bucket)"
 repo_url="${repo_url:-https://github.com/OpenAgentsInc/openagents.git}"
 [[ -n "$rev" ]] || { serial "OA_CODER_HOST_BAKE_FAILED no oa-rev metadata"; exit 1; }
 
@@ -69,6 +70,7 @@ serial "OA_CODER_HOST_BAKE phase=clone t=$(( $(date -u +%s) - started ))"
 
 setup_args=(--user coder --repo-dir "$repo" --rev "$rev" --warm)
 [[ -n "$bucket" ]] && setup_args+=(--sccache-bucket "$bucket")
+[[ -n "$kache_bucket" ]] && setup_args+=(--kache-bucket "$kache_bucket")
 # Progress lines go to the serial console as they happen.
 # The setup script comes from the clone at that revision, unless the
 # orchestrator passed a local copy (--local-setup, for testing a change

@@ -12,7 +12,10 @@
 #   - build tools (build-essential, pkg-config, clang, cmake, protobuf),
 #     git, gh, ripgrep, jq, bubblewrap (the Coder run boundary on Linux)
 #   - rustup and the toolchain pinned in rust-toolchain.toml (1.97.1)
-#   - sccache, wired in through a constant rustc wrapper
+#   - sccache, wired in through a constant rustc wrapper; with
+#     --kache-bucket, kache in front of it, reading and writing the shared
+#     remote compile cache every builder uses (#12176,
+#     docs/coder/runtime/remote-build-cache.md)
 #   - Node.js (LTS) and the engine CLIs: Codex (`codex`), Claude Code
 #     (`claude`), Grok Build (`grok`). None is logged in. No credential of
 #     any kind is written by this script; logins come later, per host.
@@ -29,7 +32,7 @@
 # Usage (as root, or as a user with passwordless sudo):
 #   scripts/cloud/coder-host-setup.sh [--user NAME] [--repo-dir DIR]
 #       [--repo-url URL] [--rev REV] [--warm] [--no-release-binary]
-#       [--sccache-bucket BUCKET] [--no-engines] [--no-prune]
+#       [--sccache-bucket BUCKET] [--kache-bucket BUCKET] [--no-engines] [--no-prune]
 #       [--keep-binaries "NAME ..."]
 #
 # --keep-binaries keeps those binaries in the warm slot's debug/ when the
@@ -48,6 +51,7 @@ rev="origin/main"
 warm="false"
 release_binary="true"
 sccache_bucket=""
+kache_bucket=""
 engines="true"
 prune="true"
 keep_binaries=""
@@ -73,6 +77,7 @@ while [[ $# -gt 0 ]]; do
     --warm) warm="true"; shift ;;
     --no-release-binary) release_binary="false"; shift ;;
     --sccache-bucket) sccache_bucket="${2:?}"; shift 2 ;;
+    --kache-bucket) kache_bucket="${2:?}"; shift 2 ;;
     --no-engines) engines="false"; shift ;;
     --no-prune) prune="false"; shift ;;
     --keep-binaries) keep_binaries="${2:?}"; shift 2 ;;
@@ -183,13 +188,27 @@ if [[ ! -x /usr/local/bin/sccache ]] || ! /usr/local/bin/sccache --version | gre
   rm -rf "$tmp"
   log sccache end
 fi
-# The wrapper Cargo always runs. It is one constant path, so turning sccache
-# on or off never changes a fingerprint. It bypasses sccache when the boot
-# check (or an operator) left /run/oa-coder-host/no-sccache, or when
+# kache, the shared remote compile cache (#12176). The VM's own service
+# account reads and writes the bucket; no key file is involved, and kache
+# compiles locally on any remote error.
+if [[ -n "$kache_bucket" ]]; then
+  log kache begin
+  as_root sh "$repo_dir/scripts/dev/remote-build-cache.sh" install-kache --dir /usr/local/bin
+  as_user env OA_BUILD_CACHE_GCE=1 OA_BUILD_CACHE_BUCKET="$kache_bucket" \
+    sh "$repo_dir/scripts/dev/remote-build-cache.sh" enable --local-max-size 20GiB >/dev/null
+  log kache end
+fi
+# The wrapper Cargo always runs. It is one constant path, so turning a cache
+# on or off never changes a fingerprint. It runs kache when this setup
+# configured it (OA_KACHE=0 skips it), else sccache, which it bypasses when
+# the boot check (or an operator) left /run/oa-coder-host/no-sccache, or when
 # OA_SCCACHE=0. Bash preserves Cargo's CARGO_BIN_EXE_* environment variables
 # when a binary name contains a hyphen; dash drops those variables.
 as_root tee /usr/local/bin/oa-rustc-wrapper >/dev/null <<'WRAPPER'
 #!/usr/bin/env bash
+if [ "${OA_KACHE:-1}" != 0 ] && [ -x /usr/local/bin/kache ] && grep -qs '^bucket = ' "$HOME/.config/kache/config.toml"; then
+  exec /usr/local/bin/kache "$@"
+fi
 if [ "${OA_SCCACHE:-1}" != 0 ] && [ ! -e /run/oa-coder-host/no-sccache ] && [ -x /usr/local/bin/sccache ]; then
   exec /usr/local/bin/sccache "$@"
 fi
@@ -326,6 +345,9 @@ if [[ "$warm" == "true" ]]; then
     log release end
   fi
   as_user rm -f "$lease_bin"
+  # kache's daemon finishes its queued uploads before it exits, so the
+  # bucket has every crate the warm build compiled before the image is cut.
+  [[ -x /usr/local/bin/kache ]] && { as_user /usr/local/bin/kache daemon stop >/dev/null 2>&1 || true; }
   as_user sccache --show-stats >/dev/null 2>&1 || true
   as_user sccache --stop-server >/dev/null 2>&1 || true
 fi

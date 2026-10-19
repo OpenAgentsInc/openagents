@@ -70,3 +70,6 @@ start level; a dry run lists the store with its estimated reclaim.
 What the store can't free, target directories hold. `kache targets` lists
 each one with what deleting it frees, and the disk cleanup monitor removes
 stale ones.
+
+Builders also share one remote store in Cloud Storage; see
+[the shared remote compile cache](../coder/runtime/remote-build-cache.md).

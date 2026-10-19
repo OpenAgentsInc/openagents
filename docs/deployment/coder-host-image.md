@@ -21,6 +21,7 @@ script.
 | A warm Cargo target for `openagents-cli`, `microcoder` and `coder`: each package's build and its test targets, one package per invocation | `/home/coder/.openagents/targets/openagents-cc2c5b3cc6c4-slot-0`, the first slot the Coder task runner leases for this clone (`crates/coder/src/task/targets.rs`) |
 | The release `openagents` binary of that commit | `/usr/local/bin/openagents` |
 | sccache 0.18.0 behind a constant wrapper | `/usr/local/bin/oa-rustc-wrapper`, set in `/home/coder/.cargo/config.toml`; cache `gs://openagentsgemini-autopilot-rust-sccache/oa-coder-host/` |
+| Optional: kache 0.28.1 ahead of sccache in that wrapper | Only when the bake runs with `OA_KACHE_BUCKET=openagentsgemini-rust-build-cache`: `/usr/local/bin/kache` and the shared remote compile cache ([remote-build-cache.md](../coder/runtime/remote-build-cache.md)); `OA_KACHE=0` falls back to sccache |
 | Node 24 LTS | `/opt/node`, linked into `/usr/local/bin` |
 | Codex (`codex`), Claude Code (`claude`) | npm globals in `/usr/local/bin` |
 | Grok Build (`grok`) | `/home/coder/.grok/bin` |

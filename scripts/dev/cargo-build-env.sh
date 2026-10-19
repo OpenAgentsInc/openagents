@@ -34,6 +34,27 @@ fi
 CARGO_BUILD_BUILD_DIR=$CARGO_TARGET_DIR/worktrees/${oa_build_hash%"${oa_build_hash#??}"}/${oa_build_hash#??}
 CARGO_INCREMENTAL=0
 export CARGO_BUILD_BUILD_DIR CARGO_INCREMENTAL
+# The build directory's per-checkout hash would otherwise enter every key
+# that names a build-script output (OUT_DIR, -L), so map it to one fixed root.
+KACHE_BASE_DIR=$CARGO_BUILD_BUILD_DIR
+export KACHE_BASE_DIR
+# The shared remote compile cache (#12176) is set in kache's own config file
+# (scripts/dev/remote-build-cache.sh). Builds through this helper stay local
+# unless OA_BUILD_CACHE=remote: measured, the remote made debug builds slower
+# and release builds faster (docs/coder/runtime/remote-build-cache.md). A
+# missing key file also keeps a build local, and kache compiles locally on
+# any remote error.
+oa_build_kache=${KACHE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/kache/config.toml}
+if [ "${OA_BUILD_CACHE:-local}" != remote ]; then
+  KACHE_LOCAL_ONLY=1
+  export KACHE_LOCAL_ONLY
+elif [ -r "$oa_build_kache" ]; then
+  oa_build_key=$(sed -n 's/^# credentials: key //p' "$oa_build_kache" | tail -n 1)
+  if [ -n "$oa_build_key" ] && [ ! -r "$oa_build_key" ]; then
+    KACHE_LOCAL_ONLY=1
+    export KACHE_LOCAL_ONLY
+  fi
+fi
 mkdir -p "$CARGO_BUILD_BUILD_DIR" || return 1
 case $(uname -s) in
   Darwin) touch "$CARGO_TARGET_DIR/.metadata_never_index" || return 1 ;;
@@ -42,4 +63,4 @@ printf '%s\n%s\n' "$RUSTC" "$oa_build_version" > "$CARGO_BUILD_BUILD_DIR/.compil
 mv -f "$CARGO_BUILD_BUILD_DIR/.compiler.$$.new" "$CARGO_BUILD_BUILD_DIR/.openagents-compiler" || return 1
 printf '%s\n' "$oa_build_manifest" > "$CARGO_BUILD_BUILD_DIR/.workspace.$$.new" || return 1
 mv -f "$CARGO_BUILD_BUILD_DIR/.workspace.$$.new" "$CARGO_BUILD_BUILD_DIR/.openagents-workspace" || return 1
-unset oa_build_manifest oa_build_parent oa_build_hash oa_build_rustc oa_build_rustup oa_build_version
+unset oa_build_manifest oa_build_parent oa_build_hash oa_build_rustc oa_build_rustup oa_build_version oa_build_kache oa_build_key

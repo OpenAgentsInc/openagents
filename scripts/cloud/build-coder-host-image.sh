@@ -41,6 +41,10 @@ SMOKE_MACHINE="${OA_SMOKE_MACHINE:-e2-standard-4}"
 DISK_GB="${OA_DISK_GB:-200}"
 HOST_SA="oa-coder-host@${PROJECT}.iam.gserviceaccount.com"
 SCCACHE_BUCKET="${OA_SCCACHE_BUCKET:-openagentsgemini-autopilot-rust-sccache}"
+# The shared remote compile cache (#12176), opt-in: measured, it made the
+# debug builds these hosts run slower (docs/coder/runtime/remote-build-cache.md).
+# OA_KACHE_BUCKET=openagentsgemini-rust-build-cache turns it on.
+KACHE_BUCKET="${OA_KACHE_BUCKET:-}"
 REPO_URL="https://github.com/OpenAgentsInc/openagents.git"
 BAKE_TIMEOUT_S="${OA_BAKE_TIMEOUT_S:-7200}"
 SMOKE_TIMEOUT_S=600
@@ -80,6 +84,7 @@ oa-coder-host bake (dry run)
   builder:   $builder ($BUILDER_MACHINE spot, ${DISK_GB} GB pd-balanced, sa $HOST_SA)
   smoke:     $smoke ($SMOKE_MACHINE spot)
   sccache:   gs://$SCCACHE_BUCKET
+  kache:     ${KACHE_BUCKET:+gs://}${KACHE_BUCKET:-off}
 PLAN
   exit 0
 fi
@@ -179,7 +184,7 @@ create_builder() {
     --service-account "$HOST_SA" --scopes cloud-platform \
     --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring \
     --labels "openagents-managed=coder-host-builder" \
-    --metadata "oa-rev=$rev,oa-repo-url=$REPO_URL,oa-sccache-bucket=$SCCACHE_BUCKET,serial-port-enable=TRUE,block-project-ssh-keys=TRUE" \
+    --metadata "oa-rev=$rev,oa-repo-url=$REPO_URL,oa-sccache-bucket=$SCCACHE_BUCKET,oa-kache-bucket=$KACHE_BUCKET,serial-port-enable=TRUE,block-project-ssh-keys=TRUE" \
     --metadata-from-file "$files"
 }
 
