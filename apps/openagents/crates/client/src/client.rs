@@ -1,5 +1,7 @@
 //! [`Client`] — the account-scoped root object.
 
+mod live_catalog;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};

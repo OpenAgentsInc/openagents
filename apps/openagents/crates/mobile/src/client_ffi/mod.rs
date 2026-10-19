@@ -11,6 +11,8 @@
 //! through [`CoreClient::session_handle`] → [`openagents_client::SessionHandle`]
 //! (`snapshot()` / `subscribe()`), never over FFI.
 
+mod android_sessions;
+pub use android_sessions::*;
 mod account;
 mod android_storage;
 pub use android_storage::{
@@ -49,6 +51,8 @@ pub use account::*;
 pub use custom_agents::*;
 mod sharing;
 pub use sharing::*;
+mod settings;
+pub use settings::*;
 mod saved;
 pub use saved::*;
 mod drawer;
