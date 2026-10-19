@@ -612,6 +612,20 @@ impl CoreAndroidHost {
             }
         }
     }
+    /// Called by the Application once instead of `start` on later launches of
+    /// a debug build that signed in with `start_with_credential`: restore that
+    /// saved sign-in without creating, signing in with, or linking this
+    /// install's own key.
+    pub fn resume_without_identity(&self) {
+        if !self.started.swap(true, Ordering::AcqRel) {
+            if let Some(recovery) = &self.recovery {
+                recovery.skip_identity_start();
+            }
+            if let Some(account) = &self.account {
+                account.restore();
+            }
+        }
+    }
     pub fn snapshot(&self) -> CoreResult<AndroidHostSnapshot> {
         let mut s = self.state.lock().map_err(|_| CoreError::Closed)?;
         self.refresh(&mut s)?;
@@ -1604,6 +1618,24 @@ mod tests {
     struct QuietSettings;
     impl SettingsListener for QuietSettings {
         fn on_settings_changed(&self) {}
+    }
+    #[test]
+    fn a_resumed_credential_sign_in_never_makes_the_install_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = CoreAndroidHost::production(
+            dir.path().display().to_string(),
+            "android-test".into(),
+            "Test phone".into(),
+            "1.0.0".into(),
+            Arc::new(Secrets),
+            Arc::new(Listener),
+        )
+        .unwrap();
+        host.resume_without_identity();
+        // A later start, as after Activity recreation, starts nothing either.
+        host.start();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(host.account().unwrap().identity().is_none());
     }
     #[test]
     fn a_reopened_screen_gets_a_surface_that_accepts_its_new_view() {

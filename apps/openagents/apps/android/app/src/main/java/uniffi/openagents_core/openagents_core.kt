@@ -1622,6 +1622,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_resolve_notification_tap(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_resume_without_identity(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_save_text_selection(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_save_transcript_anchor(
@@ -2628,6 +2630,8 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_resolve_notification_tap(`ptr`: Long,
     ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_resume_without_identity(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_save_text_selection(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,`frameRevision`: Long,`selection`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_save_transcript_anchor(`ptr`: Long,`generation`: Long,`contentRevision`: Long,`anchor`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -4176,6 +4180,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_resolve_notification_tap() and 0xFFFF) != 40515) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_resume_without_identity() and 0xFFFF) != 40098) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_save_text_selection() and 0xFFFF) != 20085) {
@@ -12052,6 +12059,14 @@ public interface CoreAndroidHostInterface {
 
     suspend fun `resolveNotificationTap`(): AndroidNotificationOpen
 
+    /**
+     * Called by the Application once instead of `start` on later launches of
+     * a debug build that signed in with `start_with_credential`: restore that
+     * saved sign-in without creating, signing in with, or linking this
+     * install's own key.
+     */
+    fun `resumeWithoutIdentity`()
+
     fun `saveTextSelection`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `selection`: AndroidHostSelection?)
 
     fun `saveTranscriptAnchor`(`generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `anchor`: AndroidTranscriptAnchor)
@@ -12492,6 +12507,24 @@ open class CoreAndroidHost: Disposable, AutoCloseable, CoreAndroidHostInterface
         CoreException.ErrorHandler,
     )
     }
+
+
+    /**
+     * Called by the Application once instead of `start` on later launches of
+     * a debug build that signed in with `start_with_credential`: restore that
+     * saved sign-in without creating, signing in with, or linking this
+     * install's own key.
+     */override fun `resumeWithoutIdentity`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_resume_without_identity(
+        it,
+        _status)
+}
+    }
+
+
 
 
     @Throws(CoreException::class)override fun `saveTextSelection`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong, `frameRevision`: kotlin.ULong, `selection`: AndroidHostSelection?)

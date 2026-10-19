@@ -84,7 +84,11 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
                 // Debug builds only: a live check signs in with a dedicated test-account
                 // credential instead of this install's own key, as the iOS account fixture does.
                 val credential = DebugCredential.take(filesDir)
-                if (credential != null) host.startWithCredential(credential) else host.start()
+                when {
+                    credential != null -> host.startWithCredential(credential)
+                    DebugCredential.credentialMode(filesDir) -> host.resumeWithoutIdentity()
+                    else -> host.start()
+                }
             }
         }
     }
