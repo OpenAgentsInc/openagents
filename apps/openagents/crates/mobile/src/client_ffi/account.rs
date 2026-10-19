@@ -513,12 +513,13 @@ impl CoreAccount {
 
     /// Read the same account history as the desktop without starting an engine.
     pub fn saved_history(
-        &self,
+        self: &Arc<Self>,
         listener: Arc<dyn super::SavedHistoryListener>,
     ) -> CoreResult<Arc<super::CoreSavedHistory>> {
         let lease = self.controller.lease().ok_or_else(auth_error)?;
         Ok(super::CoreSavedHistory::new(
             lease,
+            self.clone(),
             self.controller.watch(),
             listener,
         ))
