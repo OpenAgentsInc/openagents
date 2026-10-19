@@ -275,6 +275,7 @@ async fn statement_body(
             "Each obligation retains its original accepted attribution and bilateral terms. Unknown costs, refunds, and payouts stay held. Sub-satoshi remainders remain liabilities. Author fees and bonuses stay unchanged."
         );
     }
+    body["payee_details_needed"] = body["statement"]["payee_details_needed"].clone();
     for payout in body["statement"]["payouts"].as_array_mut().unwrap() {
         let id = payout["id"].as_str().unwrap().to_owned();
         payout["reconciliation"] = json!(format!("/v1/earnings/{party}/payouts/{id}"));

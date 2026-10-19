@@ -444,3 +444,267 @@ fn a_plugin_author_fee_comes_first_in_a_pylon_job_split() {
     stray.plugin_id = Some("weather".into());
     assert!(ledger.record_settlement(stray).is_err());
 }
+
+fn reserve_decision(
+    ledger: &mut Ledger,
+    n: u32,
+    party: &str,
+    linked: bool,
+    msat: i64,
+) -> pay_ledger::pylon::Decision {
+    let account = format!("account-{n}");
+    let hold = format!("decision-{n}");
+    let hash = pay_ledger::digest(&account);
+    ledger.create_compute_account(&account, AT).unwrap();
+    ledger
+        .open_top_up(&TopUp {
+            id: account.clone(),
+            account: account.clone(),
+            amount_msat: msat,
+            payment_hash: hash.clone(),
+            invoice: "test-only".into(),
+            created_at: AT,
+            expires_at: AT + 900,
+        })
+        .unwrap();
+    ledger
+        .observe_top_up(
+            &hash,
+            &TopUpReceipt::Paid {
+                received_msat: msat,
+                at: AT,
+            },
+        )
+        .unwrap();
+    ledger
+        .reserve(&HoldRequest {
+            id: hold.clone(),
+            account,
+            quote: "q".into(),
+            execution: hold.clone(),
+            terms: "t".into(),
+            amount_msat: msat,
+            at: AT,
+        })
+        .unwrap();
+    let terms = pay_ledger::pylon::Decision {
+        pylon: id(n),
+        party: party.into(),
+        receipt: id(n + 10000),
+        owner_linked: linked,
+        house_expense: false,
+        expense_ceilings_msat: None,
+        sampling_window_secs: 600,
+    };
+    terms
+}
+
+fn paid_decision(
+    ledger: &mut Ledger,
+    n: u32,
+    party: &str,
+    linked: bool,
+    msat: i64,
+) -> pay_ledger::pylon::Decision {
+    let terms = reserve_decision(ledger, n, party, linked, msat);
+    let hold = format!("decision-{n}");
+    ledger
+        .settle_decision_hold(&hold, msat, AT, &terms)
+        .unwrap();
+    // Exact retries never create another share or reset its window.
+    ledger
+        .settle_decision_hold(&hold, msat, AT, &terms)
+        .unwrap();
+    terms
+}
+
+#[test]
+fn paid_decision_shares_wait_for_sampling_then_sweep() {
+    let mut ledger = provider_ledger();
+    paid_decision(&mut ledger, 1, PROVIDER, false, 2_000_000);
+    assert_eq!(
+        ledger.pylon_job(&id(10001)).unwrap().unwrap().provider_msat,
+        1_700_000
+    );
+    assert!(ledger.available_shares(PROVIDER).unwrap().is_empty());
+    // Even a caller attempting a direct reservation cannot take held shares.
+    let record = ledger.settlement("debit:decision-1").unwrap().unwrap();
+    let shares: Vec<_> = record
+        .shares
+        .into_iter()
+        .filter(|s| s.party == PROVIDER)
+        .collect();
+    assert!(
+        ledger
+            .reserve_payout("early", PROVIDER, &shares, AT)
+            .is_err()
+    );
+    let wallet = Wallet::default();
+    let mut resolve = |l: &mut Ledger, party: &str, _| l.payee(party);
+    let mut next = || "paid-decision".to_string();
+    tick(
+        &mut ledger,
+        &wallet,
+        &Policy::pylon_sweeps(),
+        AT + 599,
+        &mut resolve,
+        &mut next,
+    )
+    .unwrap();
+    assert!(wallet.0.lock().unwrap().is_empty());
+    tick(
+        &mut ledger,
+        &wallet,
+        &Policy::pylon_sweeps(),
+        AT + 600,
+        &mut resolve,
+        &mut next,
+    )
+    .unwrap();
+    assert_eq!(wallet.0.lock().unwrap()[0].1, 1_700_000);
+}
+
+#[test]
+fn paid_decision_strike_forfeits_held_shares_without_a_loss() {
+    let mut ledger = provider_ledger();
+    let terms = paid_decision(&mut ledger, 1, PROVIDER, true, 2_000_000);
+    paid_decision(&mut ledger, 2, PROVIDER, false, 2_000_000);
+    let adjustments = ledger.forfeit_unpaid(&terms.pylon, AT).unwrap();
+    assert_eq!(adjustments.len(), 1);
+    assert_eq!(adjustments[0].reduced_msat, 1_700_000);
+    assert_eq!(adjustments[0].loss_msat, 0);
+    assert_eq!(
+        ledger.forfeit_unpaid(&terms.pylon, AT).unwrap(),
+        adjustments
+    );
+    ledger.release_decisions(AT + 600).unwrap();
+    assert_eq!(ledger.accrued(PROVIDER).unwrap(), 1_700_000);
+    assert!(
+        ledger
+            .settlement("debit:decision-1")
+            .unwrap()
+            .unwrap()
+            .bonuses
+            .is_empty()
+    );
+}
+
+#[test]
+fn paid_decision_launch_bonus_is_funded_once_per_owner_and_capped_at_one_hundred() {
+    let mut ledger = provider_ledger();
+    for n in 1..=101 {
+        paid_decision(&mut ledger, n, &format!("owner-{n}"), true, 10_000_000);
+    }
+    paid_decision(&mut ledger, 102, "owner-1", true, 10_000_000);
+    paid_decision(&mut ledger, 103, "unlinked", false, 10_000_000);
+    ledger.release_decisions(AT + 600).unwrap();
+    ledger.release_decisions(AT + 601).unwrap();
+    let mut bonuses = 0;
+    for n in 1..=103 {
+        let row = ledger
+            .settlement(&format!("debit:decision-{n}"))
+            .unwrap()
+            .unwrap();
+        for bonus in row.bonuses {
+            assert_eq!(bonus.amount_msat, 1_000_000);
+            bonuses += 1;
+        }
+    }
+    assert_eq!(bonuses, 100);
+    assert_eq!(ledger.accrued("owner-1").unwrap(), 18_000_000);
+    assert_eq!(ledger.accrued("unlinked").unwrap(), 8_500_000);
+    assert_eq!(ledger.accrued(OPENAGENTS).unwrap(), 54_500_000);
+}
+
+#[test]
+fn paid_decision_unfunded_bonus_waits_for_real_revenue() {
+    let mut ledger = provider_ledger();
+    paid_decision(&mut ledger, 1, "owner", true, 10_000);
+    ledger.release_decisions(AT + 600).unwrap();
+    assert_eq!(ledger.accrued("owner").unwrap(), 8_500);
+    let mut funding = job("funding", &id(9000), 10_000_000);
+    funding.split = Split::OpenAgents;
+    ledger.record_settlement(funding).unwrap();
+    ledger.release_decisions(AT + 601).unwrap();
+    assert_eq!(ledger.accrued("owner").unwrap(), 1_008_500);
+    ledger.release_decisions(AT + 602).unwrap();
+    assert_eq!(ledger.accrued("owner").unwrap(), 1_008_500);
+}
+
+#[test]
+fn paid_decision_payee_flag_tracks_paid_value_per_year_and_payouts_continue() {
+    let mut ledger = provider_ledger();
+    ledger.set_payee_usd_per_btc(200_000).unwrap();
+    paid_decision(&mut ledger, 1, PROVIDER, false, 1_000_000_000);
+    ledger.release_decisions(AT + 600).unwrap();
+    let shares = ledger.available_shares(PROVIDER).unwrap();
+    ledger
+        .reserve_payout("annual", PROVIDER, &shares, AT + 600)
+        .unwrap();
+    // 850 million msat at $200k/BTC is $1,700: not yet flagged.
+    ledger
+        .set_payout_state("annual", PayoutState::Sent, Some("wallet-1"), AT + 600)
+        .unwrap();
+    assert!(ledger.payee_details_report(2026).unwrap().is_empty());
+    paid_decision(&mut ledger, 2, PROVIDER, false, 200_000_000);
+    ledger.release_decisions(AT + 600).unwrap();
+    let shares = ledger.available_shares(PROVIDER).unwrap();
+    ledger
+        .reserve_payout("threshold", PROVIDER, &shares, AT + 600)
+        .unwrap();
+    ledger
+        .set_payout_state("threshold", PayoutState::Sent, Some("wallet-2"), AT + 600)
+        .unwrap();
+    assert_eq!(
+        ledger.paid_year_usd_micros(PROVIDER, 2026).unwrap(),
+        2_040_000_000
+    );
+    assert_eq!(ledger.payee_details_report(2026).unwrap(), [PROVIDER]);
+    assert!(ledger.payee_details_report(2027).unwrap().is_empty());
+    // Changing today's rate never revalues earlier payments.
+    ledger.set_payee_usd_per_btc(400_000).unwrap();
+    assert_eq!(
+        ledger.paid_year_usd_micros(PROVIDER, 2026).unwrap(),
+        2_040_000_000
+    );
+}
+
+#[test]
+fn paid_decision_house_expenses_obey_the_grant_atomically() {
+    let mut ledger = provider_ledger();
+    // Customer revenue must not consume the house expense ceiling.
+    paid_decision(&mut ledger, 0, PROVIDER, false, 1_000_000);
+    let mut first = reserve_decision(&mut ledger, 1, PROVIDER, false, 10_000);
+    first.house_expense = true;
+    first.expense_ceilings_msat = Some((10_000, 15_000));
+    ledger
+        .settle_decision_hold("decision-1", 10_000, AT, &first)
+        .unwrap();
+    ledger
+        .settle_decision_hold("decision-1", 10_000, AT, &first)
+        .unwrap();
+    let mut second = reserve_decision(&mut ledger, 2, PROVIDER, false, 10_000);
+    second.house_expense = true;
+    second.expense_ceilings_msat = Some((10_000, 15_000));
+    assert!(
+        ledger
+            .settle_decision_hold("decision-2", 10_000, AT, &second)
+            .is_err()
+    );
+    assert!(ledger.pylon_job(&second.receipt).unwrap().is_none());
+    assert_eq!(
+        ledger.hold("decision-2").unwrap().unwrap().state,
+        pay_ledger::compute::HoldState::Held
+    );
+    assert!(
+        ledger
+            .settle_decision_hold("decision-2", 0, AT, &second)
+            .is_err()
+    );
+    second.expense_ceilings_msat = Some((5_000, 30_000));
+    assert!(
+        ledger
+            .settle_decision_hold("decision-2", 10_000, AT, &second)
+            .is_err()
+    );
+}

@@ -464,3 +464,214 @@ mod tests {
         assert!(By::parse("color").is_err());
     }
 }
+
+/// The authenticated payer of a contributor decision. The gateway resolves the
+/// account; a request body or a pylon answer must never select it.
+pub enum DecisionPayer<'a> {
+    Customer { account: &'a str, community: bool },
+    House { account: &'a str },
+}
+
+/// Settle only a contributor answer the gateway used. `input_tokens` comes from
+/// the gateway's tokenizer, not the response's usage object. Operator answers
+/// deliberately leave the existing free path unchanged.
+#[allow(clippy::too_many_arguments)]
+pub fn settle_paid_decision(
+    broker: &mut pylon::broker::Broker,
+    receipt: &nostr::domain::Event,
+    owner: Option<&str>,
+    operator: bool,
+    payer: DecisionPayer<'_>,
+    hold: &str,
+    input_tokens: u64,
+    usd_per_btc: u64,
+    at: i64,
+    sampling_window_secs: Option<i64>,
+    grant: Option<pylon::paid::Grant>,
+) -> Result<Option<pay_ledger::Recorded>, String> {
+    if operator {
+        return Ok(None);
+    }
+    let (account, internal) = match payer {
+        DecisionPayer::Customer {
+            account,
+            community: true,
+        } => (account, false),
+        DecisionPayer::Customer {
+            community: false, ..
+        } => return Err("Enable community decisions before paying a contributor.".into()),
+        DecisionPayer::House { account } => (account, true),
+    };
+    let reservation = broker
+        .ledger()
+        .hold(hold)
+        .map_err(|e| e.to_string())?
+        .ok_or("Reserve the decision's payment before asking a contributor.")?;
+    if reservation.request.account != account {
+        return Err("The payment belongs to another account.".into());
+    }
+    let charge = decision_price_msat(input_tokens, usd_per_btc)?;
+    broker
+        .settle_decision(
+            receipt,
+            owner,
+            hold,
+            charge,
+            at,
+            sampling_window_secs.unwrap_or(pay_ledger::pylon::SAMPLING_WINDOW_SECS),
+            internal,
+            grant,
+            usd_per_btc,
+        )
+        .map(Some)
+}
+
+/// Convert the fixed input-token price to millisatoshis, rounding once at the
+/// request boundary. Output is free; no provider-supplied count is accepted.
+pub fn decision_price_msat(input_tokens: u64, usd_per_btc: u64) -> Result<i64, String> {
+    if usd_per_btc == 0 {
+        return Err("Set a bitcoin price before charging decisions.".into());
+    }
+    let denominator = u128::from(usd_per_btc) * 10;
+    let numerator = u128::from(input_tokens) * u128::from(inference::rates::DECISION_INPUT_MICROS);
+    i64::try_from(numerator.div_ceil(denominator))
+        .map_err(|_| "The decision price is too large.".into())
+}
+
+#[cfg(test)]
+mod paid_decision_tests {
+    use super::*;
+    #[test]
+    fn paid_decision_price_uses_gateway_input_only() {
+        assert_eq!(decision_price_msat(1_000_000, 100_000).unwrap(), 19_000);
+        assert_eq!(decision_price_msat(1, 100_000).unwrap(), 1);
+        assert!(decision_price_msat(1, 0).is_err());
+        assert!(decision_price_msat(u64::MAX, 1).is_err());
+    }
+}
+
+#[cfg(test)]
+mod settlement_tests {
+    use super::*;
+    use pay_ledger::Ledger;
+    use pay_ledger::compute::{HoldRequest, Receipt as TopUpReceipt, TopUp};
+    use pylon::broker::Broker;
+    use pylon::identity::Identity;
+    use pylon::paid::Network;
+    use std::sync::Arc;
+
+    #[test]
+    fn paid_decision_gateway_settles_counted_price_and_refuses_mainnet_without_grant() {
+        let home = tempfile::tempdir().unwrap();
+        let buyer = Identity::generate();
+        let provider = Identity::generate();
+        let at = 1_792_022_400;
+        let receipt = nostr::pylon::Receipt {
+            v: nostr::pylon::RECEIPT_V.into(),
+            requires: vec![],
+            meta: None,
+            buyer: buyer.pubkey().into(),
+            provider: provider.pubkey().into(),
+            pylon: "pylon-decision".into(),
+            lane: nostr::pylon::Lane::CjDecision,
+            capability: pylon::decide::capability(provider.pubkey()),
+            request: "01".repeat(32),
+            request_digest: "02".repeat(32),
+            result_digest: Some("03".repeat(32)),
+            started_at: at as u64,
+            finished_at: at as u64,
+            units: nostr::pylon::Units {
+                kind: nostr::pylon::UnitKind::Jobs,
+                count: 1,
+            },
+            outcome: nostr::pylon::Outcome::Accepted,
+            payment: None,
+        };
+        let event = nostr::pylon::receipt_event(buyer.signer(), &receipt, at as u64).unwrap();
+        for network in [Network::Testnet, Network::Bitcoin] {
+            let mut ledger = Ledger::in_memory().unwrap();
+            ledger.create_compute_account("customer", at).unwrap();
+            let hash = pay_ledger::digest("test-payment");
+            ledger
+                .open_top_up(&TopUp {
+                    id: "top".into(),
+                    account: "customer".into(),
+                    amount_msat: 19_000,
+                    payment_hash: hash.clone(),
+                    invoice: "test-only".into(),
+                    created_at: at,
+                    expires_at: at + 900,
+                })
+                .unwrap();
+            ledger
+                .observe_top_up(
+                    &hash,
+                    &TopUpReceipt::Paid {
+                        received_msat: 19_000,
+                        at,
+                    },
+                )
+                .unwrap();
+            ledger
+                .reserve(&HoldRequest {
+                    id: "hold".into(),
+                    account: "customer".into(),
+                    quote: "q".into(),
+                    execution: "e".into(),
+                    terms: "t".into(),
+                    amount_msat: 19_000,
+                    at,
+                })
+                .unwrap();
+            let replay = Arc::new(
+                openagents_x402::FileReplayStore::open(
+                    &home.path().join(format!("replay-{}", network.as_str())),
+                )
+                .unwrap(),
+            );
+            let mut broker = Broker::open(ledger, network, buyer.pubkey(), replay).unwrap();
+            let settle = |broker: &mut Broker| {
+                settle_paid_decision(
+                    broker,
+                    &event,
+                    None,
+                    false,
+                    DecisionPayer::Customer {
+                        account: "customer",
+                        community: true,
+                    },
+                    "hold",
+                    1_000_000,
+                    100_000,
+                    at,
+                    None,
+                    None,
+                )
+            };
+            if network == Network::Bitcoin {
+                assert!(settle(&mut broker).unwrap_err().contains("grant.json"));
+                assert!(broker.ledger().pylon_jobs().unwrap().is_empty());
+            } else {
+                let recorded = settle(&mut broker).unwrap().unwrap();
+                assert_eq!(recorded.received_msat, 19_000);
+                assert_eq!(
+                    broker
+                        .ledger()
+                        .pylon_job(&event.id)
+                        .unwrap()
+                        .unwrap()
+                        .provider_msat,
+                    16_150
+                );
+                assert!(
+                    broker
+                        .ledger()
+                        .available_shares(provider.pubkey())
+                        .unwrap()
+                        .is_empty()
+                );
+                assert_eq!(settle(&mut broker).unwrap().unwrap().key, recorded.key);
+            }
+        }
+    }
+}

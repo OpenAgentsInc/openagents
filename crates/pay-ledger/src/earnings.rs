@@ -5,6 +5,7 @@
 //! shares. Account settings are a fallback to signed sources. Reservations
 //! continue to pin the destination they already recorded.
 
+use chrono::Datelike;
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use serde::Serialize;
 
@@ -75,6 +76,8 @@ pub struct Figures {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Statement {
+    pub payee_details_needed: bool,
+    pub paid_year_usd_micros: i64,
     pub figures: Figures,
     pub earnings: Vec<Earning>,
     pub payouts: Vec<Payment>,
@@ -87,6 +90,13 @@ pub(crate) const TABLES: &str = "CREATE TABLE IF NOT EXISTS account_payout (
     version INTEGER NOT NULL CHECK(version > 0),
     value TEXT NOT NULL,
     updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS payee_exchange_rate (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), usd_per_btc INTEGER NOT NULL CHECK(usd_per_btc>0)
+);
+CREATE TABLE IF NOT EXISTS payout_usd (
+ payout TEXT PRIMARY KEY REFERENCES payout(id), year INTEGER NOT NULL,
+ usd_micros INTEGER NOT NULL CHECK(usd_micros>=0)
 );";
 
 impl Ledger {
@@ -173,6 +183,17 @@ impl Ledger {
         if limit == 0 || limit > MAX_PAGE || after_earning < 0 || after_payout < 0 {
             return Err(Error::Invalid("statement page bounds"));
         }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| Error::Invalid("statement time"))?
+            .as_secs();
+        let year = chrono::DateTime::from_timestamp(
+            i64::try_from(now).map_err(|_| Error::Invalid("statement time"))?,
+            0,
+        )
+        .ok_or(Error::Invalid("statement time"))?
+        .year();
+        let paid_year_usd_micros = self.paid_year_usd_micros(party, year)?;
         let tx = self.connection.transaction()?;
         let earned_msat = tx.query_row(
             "SELECT COALESCE(SUM(amount_msat),0) FROM payable_share WHERE party=?",
@@ -221,7 +242,7 @@ impl Ledger {
                       UNION ALL SELECT payout,settlement,party,role FROM commission_payout_item) i
                 JOIN payout p ON p.id=i.payout AND p.state!='failed'
             )
-            SELECT s.role,s.amount_msat,a.state,a.id
+            SELECT s.role,s.amount_msat,COALESCE(a.state,CASE WHEN s.role='provider' AND EXISTS(SELECT 1 FROM pylon_decision d WHERE d.settlement=s.settlement AND d.released=0) THEN 'held' END),a.id
             FROM payable_share s JOIN settlement t ON t.payment_hash=s.settlement
             LEFT JOIN active a ON a.settlement=s.settlement AND a.party=s.party AND a.role=s.role
             WHERE s.party=? AND t.seq=? ORDER BY s.role",
@@ -260,6 +281,8 @@ impl Ledger {
             .collect::<Result<Vec<_>>>()?;
         tx.commit()?;
         Ok(Statement {
+            payee_details_needed: paid_year_usd_micros >= 2_000_000_000,
+            paid_year_usd_micros,
             figures,
             earnings,
             payouts,
@@ -309,5 +332,30 @@ fn payment(cursor: i64, p: crate::payout::Payout) -> Payment {
         reason,
         reason_digest: p.error.as_deref().map(crate::digest),
         lookup_required: matches!(p.state, PayoutState::Sending | PayoutState::Unknown),
+    }
+}
+
+impl Ledger {
+    /// Set the USD price used to value subsequent successful payouts.
+    /// Earlier payouts keep their recorded exchange rate.
+    pub fn set_payee_usd_per_btc(&mut self, usd_per_btc: u64) -> Result<()> {
+        let rate = i64::try_from(usd_per_btc).map_err(|_| Error::Invalid("bitcoin price"))?;
+        if rate <= 0 {
+            return Err(Error::Invalid("bitcoin price"));
+        }
+        self.connection.execute("INSERT INTO payee_exchange_rate VALUES(1,?) ON CONFLICT(singleton) DO UPDATE SET usd_per_btc=excluded.usd_per_btc", [rate])?;
+        Ok(())
+    }
+
+    /// Paid value in one UTC calendar year, excluding fees and failed payouts.
+    pub fn paid_year_usd_micros(&self, party: &str, year: i32) -> Result<i64> {
+        Ok(self.connection.query_row("SELECT COALESCE(SUM(v.usd_micros),0) FROM payout_usd v JOIN payout p ON p.id=v.payout WHERE p.party=? AND v.year=?", params![party,year], |r|r.get(0))?)
+    }
+
+    /// Parties requiring payee details, for the operator's annual report.
+    pub fn payee_details_report(&self, year: i32) -> Result<Vec<String>> {
+        let mut q = self.connection.prepare("SELECT p.party FROM payout_usd v JOIN payout p ON p.id=v.payout WHERE v.year=? GROUP BY p.party HAVING SUM(v.usd_micros)>=2000000000 ORDER BY p.party")?;
+        Ok(q.query_map([year], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?)
     }
 }

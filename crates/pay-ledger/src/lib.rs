@@ -736,8 +736,10 @@ impl Ledger {
         if state == PayoutState::Planned {
             return Err(Error::Invalid("a payout never returns to planned"));
         }
-        let existing: Option<Option<String>> = self
+        let tx = self
             .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let existing: Option<Option<String>> = tx
             .query_row(
                 "SELECT wallet_reference FROM payout WHERE id=? AND state IN ('planned','sending','unknown')",
                 [id],
@@ -761,10 +763,36 @@ impl Ledger {
                 "a sending or sent payout needs a wallet reference",
             ));
         }
-        let changed = self.connection.execute("UPDATE payout SET state=?,wallet_reference=?,updated_at=? WHERE id=? AND state IN ('planned','sending','unknown')", params![state.as_str(),reference,at,id])?;
+        let changed = tx.execute("UPDATE payout SET state=?,wallet_reference=?,updated_at=? WHERE id=? AND state IN ('planned','sending','unknown')", params![state.as_str(),reference,at,id])?;
         if changed != 1 {
             return Err(Error::Invalid("payout absent or terminal"));
         }
+        if state == PayoutState::Sent {
+            let rate: Option<i64> = tx
+                .query_row(
+                    "SELECT usd_per_btc FROM payee_exchange_rate WHERE singleton=1",
+                    [],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(rate) = rate {
+                let amount: i64 = tx.query_row(
+                    "SELECT COALESCE(sent_msat,(amount_msat/1000)*1000) FROM payout WHERE id=?",
+                    [id],
+                    |r| r.get(0),
+                )?;
+                let micros = i64::try_from(i128::from(amount) * i128::from(rate) / 100_000)
+                    .map_err(|_| Error::Invalid("paid value overflow"))?;
+                let year = DateTime::from_timestamp(at, 0)
+                    .ok_or(Error::Invalid("payout time"))?
+                    .year();
+                tx.execute(
+                    "INSERT INTO payout_usd VALUES(?,?,?)",
+                    params![id, year, micros],
+                )?;
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 }
@@ -802,7 +830,8 @@ pub(crate) fn register_payee_in(connection: &Connection, payee: Payee) -> Result
     Ok(())
 }
 
-pub(crate) const AVAILABLE: &str = "(s.role!='commission' OR NOT EXISTS (SELECT 1 FROM commission_admission a JOIN commission_abuse h ON h.admission=a.id WHERE a.payment_hash=s.settlement AND h.state='held')) AND NOT EXISTS (SELECT 1 FROM commission_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
+pub(crate) const UNRESERVED: &str = "(s.role!='commission' OR NOT EXISTS (SELECT 1 FROM commission_admission a JOIN commission_abuse h ON h.admission=a.id WHERE a.payment_hash=s.settlement AND h.state='held')) AND NOT EXISTS (SELECT 1 FROM commission_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
+pub(crate) const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM pylon_decision d WHERE d.settlement=s.settlement AND d.released=0 AND s.role='provider') AND (s.role!='commission' OR NOT EXISTS (SELECT 1 FROM commission_admission a JOIN commission_abuse h ON h.admission=a.id WHERE a.payment_hash=s.settlement AND h.state='held')) AND NOT EXISTS (SELECT 1 FROM commission_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
 fn available_shares(connection: &Connection, party: &str) -> Result<Vec<Share>> {
     let mut stmt = connection.prepare(&format!("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s JOIN settlement t ON t.payment_hash=s.settlement WHERE s.party=? AND s.amount_msat>0 AND {AVAILABLE} ORDER BY t.seq,s.role"))?;
     let rows = stmt.query_map([party], |r| {

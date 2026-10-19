@@ -367,7 +367,14 @@ impl Ledger {
             let record = crate::read_record(&self.connection, &format!("debit:{}", out.intent.id))?;
             return Ok((hold, record));
         }
-        self.settle_local_hold(id, charge_msat, at, RETAIL_RESOURCE, Split::OpenAgents)
+        self.settle_local_hold(
+            id,
+            charge_msat,
+            at,
+            RETAIL_RESOURCE,
+            Split::OpenAgents,
+            None,
+        )
     }
 
     /// Settle a hold that paid for one saved customer environment's setup,
@@ -388,7 +395,14 @@ impl Ledger {
                 "a shared retail hold never pays for a saved environment",
             ));
         }
-        self.settle_local_hold(id, charge_msat, at, ENVIRONMENT_RESOURCE, Split::OpenAgents)
+        self.settle_local_hold(
+            id,
+            charge_msat,
+            at,
+            ENVIRONMENT_RESOURCE,
+            Split::OpenAgents,
+            None,
+        )
     }
 
     /// Settle a hold that paid for one brokered pylon job: as
@@ -424,6 +438,35 @@ impl Ledger {
                 receipt: receipt.into(),
                 plugin,
             },
+            None,
+        )
+    }
+
+    /// Settle a gateway-counted decision and hold its provider share atomically.
+    pub fn settle_decision_hold(
+        &mut self,
+        id: &str,
+        charge_msat: i64,
+        at: i64,
+        terms: &crate::pylon::Decision,
+    ) -> Result<(Hold, Option<Recorded>)> {
+        if charge_msat <= 0 {
+            return Err(Error::Invalid("a paid decision needs a positive charge"));
+        }
+        if self.shared_retail_outcome(id)?.is_some() {
+            return Err(Error::Invalid("decision needs a local funded balance"));
+        }
+        self.settle_local_hold(
+            id,
+            charge_msat,
+            at,
+            crate::pylon::DECISION_RESOURCE,
+            Split::PylonJob {
+                provider: terms.party.clone(),
+                receipt: terms.receipt.clone(),
+                plugin: None,
+            },
+            Some(terms),
         )
     }
 
@@ -434,6 +477,7 @@ impl Ledger {
         at: i64,
         resource: &str,
         split: Split,
+        decision: Option<&crate::pylon::Decision>,
     ) -> Result<(Hold, Option<Recorded>)> {
         let tx = self
             .connection
@@ -445,6 +489,9 @@ impl Ledger {
         if hold.state == HoldState::Settled {
             if hold.charge_msat != Some(charge_msat) {
                 return Err(Error::Conflict("the hold settled at another charge"));
+            }
+            if let Some(terms) = decision {
+                crate::pylon::check_decision(&tx, &format!("debit:{id}"), terms, at)?;
             }
             let recorded = crate::read_record(&tx, &format!("debit:{id}"))?;
             return Ok((hold, recorded));
@@ -477,6 +524,9 @@ impl Ledger {
         } else {
             None
         };
+        if let (Some(terms), Some(record)) = (decision, recorded.as_ref()) {
+            crate::pylon::record_decision(&tx, &record.key, terms, at)?;
+        }
         let hold = read_hold(&tx, "id", id)?.ok_or(Error::Invalid("missing hold"))?;
         tx.commit()?;
         Ok((hold, recorded))

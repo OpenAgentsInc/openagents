@@ -28,6 +28,14 @@ pub(crate) const TABLES: &str = "CREATE TABLE IF NOT EXISTS pylon_job (
  settlement TEXT PRIMARY KEY REFERENCES settlement(payment_hash),
  receipt TEXT NOT NULL UNIQUE,
  provider TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pylon_decision (
+ settlement TEXT PRIMARY KEY REFERENCES pylon_job(settlement),
+ pylon TEXT NOT NULL, owner_linked INTEGER NOT NULL, house_expense INTEGER NOT NULL,
+ closes_at INTEGER NOT NULL, released INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS pylon_launch_party (
+ party TEXT PRIMARY KEY, settlement TEXT NOT NULL UNIQUE
 );";
 
 /// One brokered pylon job as the ledger holds it.
@@ -200,4 +208,166 @@ fn self_adjustments(c: &Connection, settlement: &str) -> Result<Vec<Adjustment>>
         })
     })?;
     Ok(rows.collect::<std::result::Result<_, _>>()?)
+}
+
+/// Decisions remain unpaid for ten minutes unless the gateway configures another window.
+pub const SAMPLING_WINDOW_SECS: i64 = 600;
+pub const DECISION_RESOURCE: &str = "openagents.pylon.decision.v1";
+
+/// Verified receipt and owner attribution supplied by the gateway, never by the pylon.
+#[derive(Debug, Clone)]
+pub struct Decision {
+    pub pylon: String,
+    pub party: String,
+    pub receipt: String,
+    pub owner_linked: bool,
+    pub house_expense: bool,
+    /// Mainnet house expenses are checked atomically against per-payment and daily ceilings.
+    pub expense_ceilings_msat: Option<(u64, u64)>,
+    pub sampling_window_secs: i64,
+}
+
+pub(crate) fn check_decision(c: &Connection, key: &str, terms: &Decision, at: i64) -> Result<()> {
+    let stored: Option<(String, bool, bool, i64)> = c
+        .query_row(
+            "SELECT pylon,owner_linked,house_expense,closes_at FROM pylon_decision WHERE settlement=?",
+            [key],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .optional()?;
+    let job = job_in(c, key)?.ok_or(Error::Conflict("decision settlement"))?;
+    if stored
+        != Some((
+            terms.pylon.clone(),
+            terms.owner_linked,
+            terms.house_expense,
+            at.checked_add(terms.sampling_window_secs)
+                .ok_or(Error::Invalid("sampling time"))?,
+        ))
+        || job.provider != terms.party
+        || job.receipt != terms.receipt
+    {
+        return Err(Error::Conflict("decision terms"));
+    }
+    Ok(())
+}
+
+pub(crate) fn record_decision(c: &Connection, key: &str, terms: &Decision, at: i64) -> Result<()> {
+    if terms.sampling_window_secs < 0 || !is_event_id(&terms.pylon) || at < 0 {
+        return Err(Error::Invalid("decision sampling window or pylon"));
+    }
+    let closes = at
+        .checked_add(terms.sampling_window_secs)
+        .ok_or(Error::Invalid("sampling time"))?;
+    if terms.house_expense
+        && let Some((per_payment, daily)) = terms.expense_ceilings_msat
+    {
+        let expense: i64 = c.query_row(
+            "SELECT received_msat FROM settlement WHERE payment_hash=?",
+            [key],
+            |r| r.get(0),
+        )?;
+        let spent: i64 = c.query_row("SELECT COALESCE(SUM(s.received_msat),0) FROM pylon_decision d JOIN settlement s ON s.payment_hash=d.settlement WHERE d.house_expense=1 AND s.settled_at>=?",[at.saturating_sub(86400)],|r|r.get(0))?;
+        if u64::try_from(expense).map_or(true, |n| n > per_payment)
+            || u64::try_from(spent)
+                .unwrap_or(u64::MAX)
+                .saturating_add(u64::try_from(expense).unwrap_or(u64::MAX))
+                > daily
+        {
+            return Err(Error::Denied(
+                "the decision exceeds the owner's spending ceiling",
+            ));
+        }
+    }
+    c.execute("INSERT INTO pylon_decision(settlement,pylon,owner_linked,house_expense,closes_at) VALUES(?,?,?,?,?)", params![key,terms.pylon,terms.owner_linked,terms.house_expense,closes])?;
+    Ok(())
+}
+
+impl Ledger {
+    /// Close sampling windows before a sweep. Only checked, unforfeited decisions
+    /// qualify for a launch award. Awards transfer existing OpenAgents claims.
+    pub fn release_decisions(&mut self, now: i64) -> Result<()> {
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut q = tx.prepare("SELECT d.settlement,j.provider,d.owner_linked FROM pylon_decision d JOIN pylon_job j ON j.settlement=d.settlement JOIN settlement s ON s.payment_hash=d.settlement WHERE d.released=0 AND d.closes_at<=? ORDER BY d.closes_at,s.seq")?;
+        let jobs = q
+            .query_map([now], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, bool>(2)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        drop(q);
+        for (key, party, linked) in jobs {
+            tx.execute(
+                "UPDATE pylon_decision SET released=1 WHERE settlement=?",
+                [&key],
+            )?;
+            let job = job_in(&tx, &key)?.ok_or(Error::Invalid("missing decision"))?;
+            if !linked || job.forfeited_msat > 0 || job.provider_msat == 0 {
+                continue;
+            }
+            let count: i64 =
+                tx.query_row("SELECT COUNT(*) FROM pylon_launch_party", [], |r| r.get(0))?;
+            let seen: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pylon_launch_party WHERE party=?)",
+                [&party],
+                |r| r.get(0),
+            )?;
+            if count >= 100 || seen {
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO pylon_launch_party VALUES(?,?)",
+                params![party, key],
+            )?;
+        }
+        let mut q = tx.prepare("SELECT l.settlement,l.party FROM pylon_launch_party l LEFT JOIN bonus b ON b.settlement=l.settlement AND b.party=l.party AND b.kind='first_paid_call' WHERE b.outcome IS NULL OR b.outcome='bonus_unfunded' ORDER BY l.rowid")?;
+        let pending = q
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        drop(q);
+        for (key, party) in pending {
+            tx.execute("DELETE FROM bonus WHERE settlement=? AND party=? AND kind='first_paid_call' AND outcome='bonus_unfunded'", params![key,party])?;
+            let job = job_in(&tx, &key)?.ok_or(Error::Invalid("missing decision"))?;
+            // Reuse funded bonus obligations and their payout reservations.
+            let input = crate::SettlementInput {
+                key: key.clone(),
+                resource: DECISION_RESOURCE.into(),
+                plugin_id: Some(format!("pylon-decision:{party}")),
+                release_id: None,
+                price_msat: job.received_msat,
+                received_msat: job.received_msat,
+                rail: crate::Rail::Balance,
+                payer_alias: None,
+                settled_at: now,
+                split: crate::Split::OpenAgents,
+            };
+            crate::first_call_bonus(&tx, &input, &party, 1_000_000)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The gateway calls this on a verified strike. Only decisions in the
+    /// indicated window are affected, including held shares. Replays are harmless.
+    pub fn forfeit_unpaid(&mut self, pylon: &str, since: i64) -> Result<Vec<Adjustment>> {
+        let mut q = self.connection.prepare("SELECT j.receipt,d.closes_at FROM pylon_decision d JOIN pylon_job j ON j.settlement=d.settlement JOIN settlement s ON s.payment_hash=d.settlement WHERE d.pylon=? AND s.settled_at>=? AND d.released=0 ORDER BY s.seq")?;
+        let receipts = q
+            .query_map(params![pylon, since], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        drop(q);
+        receipts
+            .into_iter()
+            .map(|(receipt, at)| {
+                let evidence = crate::digest(&format!("decision-strike:{pylon}:{since}:{receipt}"));
+                self.forfeit_pylon_job(&receipt, &evidence, at)
+            })
+            .collect()
+    }
 }

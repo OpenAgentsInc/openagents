@@ -187,7 +187,7 @@ from the server's `/v1/models`) and its free slots; the beacon says
 `draining` while the Clef server does not answer. Each decision job gets
 `27010 processing`, then a `26910` result whose answer names the model, the
 pylon (`service.door: "pylon:<slug>"`), and the latency, with a sealed
-receipt naming the artifact digest. Decisions are free work. Without
+receipt naming the artifact digest. Direct decisions are free work. Without
 `--decisions-only` the same pylon also serves text jobs from `--engine`.
 The gateway trusts only the pylon keys in its `DECISION_PYLONS` (default
 CoderOS-4080's), and logs its own dispatch key at start (`decisions: …
@@ -583,3 +583,31 @@ testnet market for captures.
   command execution, so there is nothing to put inside `coder-boundary` yet.
 - Only day plans route to the pool; reflections, share drafts, and
   consolidations still use the agent's own model.
+
+## Turn on paid decisions
+
+The settlement interface is available, but the public decision dispatcher does
+not yet call it. Do not enable real payments until that connection is complete.
+
+Direct decision jobs remain free. For gateway-brokered contributor decisions,
+the price is $0.019 per million input tokens, with no output charge. The
+gateway counts the input tokens. The provider earns 85% after the checking
+window closes (10 minutes by default). A strike forfeits unpaid decision
+shares in that window. Operator pylons earn no new payment.
+
+Before enabling real payments:
+
+1. Fund the customer balance or, for our own decisions, the OpenAgents house
+   balance. House spending remains subject to the owner's daily ceiling.
+2. Have the owner write `grant.json` in the broker's pylon home, with
+   `per_payment_msat` and `daily_msat` ceilings. No command writes this file.
+   A `bitcoin` book refuses paid decisions and payouts without the grant.
+3. Set the bitcoin dollar price used for charges and paid-year totals.
+4. Have the owner approve the first real payout before starting regular sweeps.
+
+The first 100 owner-linked parties qualify for a one-time 1,000-sat launch
+bonus when their first paid decision passes its checking window. The bonus
+uses OpenAgents' existing share; if that share cannot cover it yet, it waits
+for revenue. Bonus payouts use the same grant ceilings. A party paid the
+equivalent of $2,000 in a calendar year is flagged for payee details in its
+statement and the operator report. Payouts continue.

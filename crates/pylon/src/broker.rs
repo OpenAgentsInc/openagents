@@ -412,6 +412,61 @@ impl Broker {
         recorded.ok_or_else(|| "a zero charge settles nothing".into())
     }
 
+    /// Settle a contributor decision using a price counted by the gateway.
+    /// Operator pylons must not call this path. `internal` charges the already
+    /// funded house hold and records an expense under the owner's ceiling.
+    #[allow(clippy::too_many_arguments)]
+    pub fn settle_decision(
+        &mut self,
+        event: &Event,
+        owner: Option<&str>,
+        hold: &str,
+        charge_msat: i64,
+        at: i64,
+        sampling_window_secs: i64,
+        internal: bool,
+        grant: Option<Grant>,
+        usd_per_btc: u64,
+    ) -> Result<Recorded, String> {
+        let receipt = self.job(event, owner)?;
+        if receipt.lane != nostr::pylon::Lane::CjDecision {
+            return Err("This receipt is not for a decision.".into());
+        }
+        if receipt.payment.is_some() {
+            return Err("A balance payment needs a receipt without a separate payment.".into());
+        }
+        let expense_ceilings_msat = if self.network == Network::Bitcoin {
+            let grant = grant.ok_or("Paid decisions need the owner's grant.json.")?;
+            internal.then_some((grant.per_payment_msat, grant.daily_msat))
+        } else {
+            None
+        };
+        self.ledger
+            .set_payee_usd_per_btc(usd_per_btc)
+            .map_err(|e| e.to_string())?;
+        let terms = pay_ledger::pylon::Decision {
+            pylon: receipt.provider.clone(),
+            party: party(&receipt.provider, owner),
+            receipt: event.id.clone(),
+            owner_linked: owner.is_some(),
+            house_expense: internal,
+            expense_ceilings_msat,
+            sampling_window_secs,
+        };
+        let (_, recorded) = self
+            .ledger
+            .settle_decision_hold(hold, charge_msat, at, &terms)
+            .map_err(|e| e.to_string())?;
+        recorded.ok_or_else(|| "A paid decision needs a positive charge.".into())
+    }
+
+    /// Apply the gateway's verified strike to the pylon's unpaid decisions.
+    pub fn forfeit_unpaid(&mut self, pylon: &str, since: i64) -> Result<Vec<Adjustment>, String> {
+        self.ledger
+            .forfeit_unpaid(pylon, since)
+            .map_err(|e| e.to_string())
+    }
+
     /// Forfeit the unpaid share of every sold job a trusted checker in
     /// `checkers` failed: `labels` are check labels and `receipts` the
     /// receipt events they name. Returns the adjustments, one per failed

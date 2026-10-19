@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::payout::Payout;
-use crate::{Ledger, PayoutState, Result};
+use crate::{Error, Ledger, PayoutState, Result};
 
 /// The report's schema name.
 pub const SCHEMA: &str = "openagents.pay-reconciliation.v1";
@@ -201,6 +201,7 @@ pub struct Report {
     /// `listed`, `looked_up`, or `unreachable`.
     pub receiver: &'static str,
     pub spark: &'static str,
+    pub payee_details_needed: Vec<String>,
     pub figures: Figures,
     pub resolved: Vec<Resolution>,
     pub findings: Vec<Finding>,
@@ -673,6 +674,14 @@ pub fn reconcile(ledger: &Ledger, snapshot: &Snapshot, now: i64) -> Result<Repor
         State::Ok
     };
     Ok(Report {
+        payee_details_needed: ledger.payee_details_report(
+            chrono::DateTime::from_timestamp(now, 0)
+                .ok_or(Error::Invalid("report time"))?
+                .format("%Y")
+                .to_string()
+                .parse()
+                .map_err(|_| Error::Invalid("report year"))?,
+        )?,
         schema: SCHEMA,
         at: now,
         state,
@@ -781,6 +790,9 @@ impl Report {
             "Owed: {} msat ({} accrued, {} reserved).",
             f.owed_msat, f.accrued_msat, f.reserved_msat
         );
+        for party in &self.payee_details_needed {
+            let _ = writeln!(out, "Payee details needed: {party}. Payouts continue.");
+        }
         let held = |m: Option<i64>| m.map_or_else(|| "unread".to_string(), |m| format!("{m} msat"));
         let _ = writeln!(
             out,

@@ -535,6 +535,7 @@ pub fn tick(
     new_id: &mut dyn FnMut() -> String,
 ) -> Result<Vec<Step>> {
     let mut steps = vec![];
+    ledger.release_decisions(now)?;
     recover(ledger, rails, now, &mut steps)?;
     if ledger.commission_payouts_held()? {
         return Ok(steps);

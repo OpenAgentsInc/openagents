@@ -228,6 +228,25 @@ pub fn rows(row: &RateRow, sats: Option<&SatsRate>) -> Vec<Row> {
     out
 }
 
+/// Community decision price, in USD micros per million gateway-counted input tokens.
+pub const DECISION_INPUT_MICROS: u64 = 19_000;
+
+/// The fixed decision row; output tokens are free.
+#[must_use]
+pub fn decision_row(sats: Option<&SatsRate>) -> Row {
+    Row {
+        model: "clef-flash".into(),
+        provider: "OpenAgents Pylons".into(),
+        upstream: "pylon:decision".into(),
+        kind: Kind::List,
+        label: None,
+        margin_percent: "0".into(),
+        input: amount(DECISION_INPUT_MICROS, 0, DECISION_INPUT_MICROS, sats),
+        cached_input: amount(DECISION_INPUT_MICROS, 0, DECISION_INPUT_MICROS, sats),
+        output: amount(0, 0, 0, sats),
+    }
+}
+
 impl Card {
     /// The card over `rates`, in model order, each model's providers in
     /// upstream order.
@@ -246,6 +265,7 @@ impl Card {
             rows: ordered
                 .into_iter()
                 .flat_map(|row| rows(row, sats))
+                .chain(std::iter::once(decision_row(sats)))
                 .collect(),
         }
     }
@@ -380,7 +400,7 @@ mod tests {
             output: 0,
         });
         let card = Card::from_rates(&RateCard::new([row]), None);
-        assert_eq!(card.rows.len(), 2);
+        assert_eq!(card.rows.len(), 3);
         assert_eq!(card.rows[0].kind, Kind::List);
         assert_eq!(card.rows[0].input.price_usd, "0.1575");
         assert_eq!(card.rows[1].kind, Kind::Promotion);
@@ -414,7 +434,7 @@ mod tests {
         );
         let card = Card::from_rates(&RateCard::new([row.clone()]), None);
         if crate::meter::card::today().as_str() < "2026-12-01" {
-            assert_eq!(card.rows.len(), 2);
+            assert_eq!(card.rows.len(), 3);
             assert_eq!(card.rows[0].input.list_usd, "2");
             assert_eq!(card.rows[0].cached_input.list_usd, "0.1");
             assert_eq!(card.rows[0].output.price_usd, "10.5");
@@ -423,7 +443,7 @@ mod tests {
             assert_eq!(card.rows[1].input.price_usd, "4.2");
             assert_eq!(card.rows[1].output.price_usd, "21");
         } else {
-            assert_eq!(card.rows.len(), 1);
+            assert_eq!(card.rows.len(), 2);
             assert_eq!(card.rows[0].input.list_usd, "4");
         }
         let offering = crate::upstream::vertex::default_models()
@@ -504,5 +524,21 @@ mod tests {
         for gone in crate::retired::RETIRED {
             assert!(!published.contains(gone.id), "{published}");
         }
+    }
+}
+
+#[cfg(test)]
+mod decision_tests {
+    use super::*;
+    #[test]
+    fn paid_decision_rate_is_published_with_free_output() {
+        let card = Card::from_rates(&RateCard::new([]), None);
+        let row = card
+            .rows
+            .iter()
+            .find(|r| r.upstream == "pylon:decision")
+            .unwrap();
+        assert_eq!(row.input.price_usd, "0.019");
+        assert_eq!(row.output.price_usd, "0");
     }
 }

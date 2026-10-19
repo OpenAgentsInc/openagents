@@ -1,5 +1,5 @@
 //! Append-only reductions of original unpaid claims. Reserved claims stay held.
-use crate::{AVAILABLE, Error, Ledger, Result};
+use crate::{Error, Ledger, Result, UNRESERVED};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 
@@ -88,7 +88,7 @@ pub(crate) fn reduce_in(
     {
         return Err(Error::Invalid("adjustment exceeds original claim"));
     }
-    let available:i64=c.query_row(&format!("SELECT s.amount_msat FROM payable_share s WHERE s.settlement=? AND s.party=? AND s.role=? AND {AVAILABLE}"),params![settlement,party,role],|r|r.get(0)).optional()?.unwrap_or(0);
+    let available:i64=c.query_row(&format!("SELECT s.amount_msat FROM payable_share s WHERE s.settlement=? AND s.party=? AND s.role=? AND {UNRESERVED}"),params![settlement,party,role],|r|r.get(0)).optional()?.unwrap_or(0);
     let reduced_msat = available.max(0).min(requested_msat);
     let loss_msat = requested_msat - reduced_msat;
     c.execute(
