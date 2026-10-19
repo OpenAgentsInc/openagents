@@ -551,5 +551,7 @@ mod tests {
     }
 }
 
+pub(crate) mod actions;
+pub use actions::*;
 mod projection;
 pub use projection::*;

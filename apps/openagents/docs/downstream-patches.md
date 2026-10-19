@@ -1148,3 +1148,12 @@ links remain readable. Upstream fixes now require manual ports.
   to the saved reader. Android decodes only returned bytes, caps ordinary image
   bitmaps at 2 MiB each, and clears bytes/bitmaps on cancellation and retirement.
   Source-fence fixtures are authored but unrun.
+
+- #12100: Retain Rust Native Lab note/version forms in the Android host across
+  Activity recreation. Resolve actions from current frame widgets and the same
+  account-fenced Lab document; reuse existing note/version SDK methods, note
+  limits, and current-view identities. Native video supplies only its sampled
+  playback position. Rust owns drafts, version choices, busy/error states, and
+  confirmation; Android borrows the form and disposes its modal mount. Synthetic
+  limits, stale-action, duplicate, retirement, and retained-draft fixtures are
+  authored but unrun.
