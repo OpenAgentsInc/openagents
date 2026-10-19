@@ -958,8 +958,8 @@ pub fn kill_remote(run: &str) -> String {
 pub fn issue_command(issue: u64, land: Option<&str>, engine: &str) -> Result<String, String> {
     let land = match land {
         None => String::new(),
-        Some(word @ ("main" | "queue" | "pr" | "none")) => format!(" --land {word}"),
-        Some(_) => return Err("Choose queue, pr, or none for landing.".into()),
+        Some(word @ ("direct" | "main" | "queue" | "pr" | "none")) => format!(" --land {word}"),
+        Some(_) => return Err("Choose direct, queue, pr, or none for landing.".into()),
     };
     Ok(format!(
         r#"OA_CLI=$HOME/.oa-pool/bin/openagents OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder OPENAGENTS_CODER_PLACEMENT=gce \

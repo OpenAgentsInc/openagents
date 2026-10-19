@@ -66,8 +66,10 @@ the orchestrating computer's ChatGPT login copy and the pool's Claude
 token, so a run that hands off to Claude Code can sign in. Each
 host runs `openagents chat work --local --engine E`, which makes the
 briefing, runs the agent with `verify` (it compiles, tests and formats on
-the host), replays the checks on the real diff, and lands through the
-landing queue with `--land queue` ([work-on-issues.md](work-on-issues.md)).
+the host), replays the checks on the real diff, and lands on main
+directly, falling back to the landing queue when the change needs its
+repair step (`--land queue` always uses the queue;
+[work-on-issues.md](work-on-issues.md)).
 `--engine bare` runs the Coder issue flow there instead. Hosts build
 `briefed-agent` beside `openagents`, and the host agent installs numpy for
 the context finder. (`--on boat` still sends the briefed agent to

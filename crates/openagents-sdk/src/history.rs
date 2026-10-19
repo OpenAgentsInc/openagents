@@ -967,9 +967,11 @@ pub struct SavedPinOrder {
     ids: Vec<String>,
 }
 impl SavedPinOrder {
+    /// The order's revision; a write names it to replace this order.
     pub fn revision(&self) -> u64 {
         self.revision
     }
+    /// The pinned conversation ids, first to last.
     pub fn ids(&self) -> &[String] {
         &self.ids
     }

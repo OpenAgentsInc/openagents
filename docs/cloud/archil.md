@@ -28,11 +28,16 @@ openagents chat work --on archil --issues 12131,12126 --parallel 2 --land queue
    engine's scripts as this binary carries them and the run's credentials.
    The credentials go in a private file that the run deletes first thing.
 4. **The run.** The fork moves the checkout to `origin/main`, rebuilds the
-   briefed agent if main moved, and runs `work_issue.py --land push`. A
-   change that passes its replayed checks is pushed to `land/archil-N-*` on
-   github.com.
-5. **Landing, here.** This computer runs `openagents land submit --branch
-   land/archil-N-* --issue N` (or `gh pr create` with `--land pr`). Then it
+   briefed agent if main moved, and runs `work_issue.py --land direct`
+   (#12165). A change that passes its replayed checks is rebased onto
+   `origin/main`, checked again, and pushed to `main`. On a conflict, a
+   failing check, or files the checks rewrite, and always with `--land
+   queue` or `pr`, it's pushed to `land/archil-N-*` instead.
+5. **Landing, here.** The sandbox can't reach GitHub's API, so this
+   computer posts the comment: the commit on main, or why the change went
+   to the queue. For a pushed branch, it runs `openagents land submit
+   --branch land/archil-N-* --issue N` (or `gh pr create` with `--land pr`).
+   Then it
    stops and deletes the sandbox, comments the run's wall time and cost on
    the issue, and appends a route record (placement `archil`) to
    `~/.openagents/cloud/runs.jsonl`. The driver's result, with each check's

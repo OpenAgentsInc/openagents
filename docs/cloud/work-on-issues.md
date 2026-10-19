@@ -36,9 +36,14 @@ the work and why.
      (`OA_WORK_MAX_VERIFY_FAILS`, 4) with no pass, or its change failed the
      replayed checks.
 5. **Landing.** On a pass it commits (with the issue's title) and then, as
-   asked: `queue` hands the branch to the [landing queue](land-queue.md)
-   (`openagents land submit --issue N`), `pr` pushes `work/issue-N-…` and
-   opens a pull request, `none` keeps the commit.
+   asked: `direct`, the default where the policy lands on main (#12165),
+   rebases onto `origin/main`, replays the touched checks once more, and
+   pushes to `main`. A rebase conflict, a check that fails after the
+   rebase, or files the checks rewrite (formatting, generated files) hand
+   it to the [landing queue](land-queue.md) instead, and the issue comment
+   says why. `queue` hands the branch to the landing queue (`openagents land
+   submit --issue N`), `pr` pushes `work/issue-N-…` and opens a pull
+   request, `none` keeps the commit.
 
 Each run prints one JSON progress line per step and ends with
 `{"type": "result", engine, escalated, ok, cost_usd, secs, checks, diff,

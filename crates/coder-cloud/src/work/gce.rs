@@ -274,12 +274,13 @@ impl crate::Backend for Issue {
 fn issue_command(request: &WorkRequest) -> Result<String, Error> {
     let engine = request.engine.as_deref().unwrap_or("briefed:codex");
     let land = match request.land {
+        LandMode::Direct => "direct",
         LandMode::Queue => "queue",
         LandMode::Pr => "pr",
         LandMode::None if engine.starts_with("briefed") => "none",
         LandMode::None => {
             return Err(Error::invalid(
-                "Choose queue or pr for this engine; it cannot leave work unlanded.",
+                "Choose direct, queue, or pr for this engine; it cannot leave work unlanded.",
             ));
         }
     };

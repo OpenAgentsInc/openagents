@@ -15,11 +15,14 @@
 //! 3. this computer reads the issue and writes it, the engine's scripts as
 //!    this binary carries them, and the run's credentials (as a private
 //!    file the run deletes first thing) into the fork;
-//! 4. the fork runs `scripts/work/work_issue.py --land push`: the engine's
-//!    change, judged by its replayed checks, is pushed to a `land/archil-*`
-//!    branch on github.com;
-//! 5. this computer submits that branch to the landing queue
-//!    (`openagents land submit --branch`), or opens the pull request, then
+//! 4. the fork runs `scripts/work/work_issue.py`. By default (#12165) it
+//!    lands directly: it rebases the change onto `origin/main`, replays the
+//!    touched checks, and pushes to main. On a conflict, a failing check, or
+//!    rewritten files, and always with `--land queue` or `pr`, it pushes a
+//!    `land/archil-*` branch instead;
+//! 5. this computer comments on the issue (the landing, or why it went to
+//!    the queue), submits a pushed branch to the landing queue
+//!    (`openagents land submit --branch`) or opens the pull request, then
 //!    stops and deletes the sandbox, comments the run's cost on the issue,
 //!    and appends a route record (placement computer `archil`) to
 //!    `~/.openagents/cloud/runs.jsonl`.
@@ -187,6 +190,34 @@ fn cost_comment(sandbox: &str, outcome: &str, wall: Duration, dollars: f64) -> S
         archil::MEM_MIB / 1024,
         wall.as_secs(),
     )
+}
+
+/// Whether a run lands its change on main itself (#12165): the default,
+/// and `--land main`/`direct`.
+fn lands_directly(land: Option<Land>) -> bool {
+    matches!(land, None | Some(Land::Main))
+}
+
+/// The comment for a change an Archil run pushed straight to main.
+fn direct_comment(commit: &str, run_id: &str, landed: &Value) -> String {
+    let base = landed["base"].as_str().unwrap_or_default();
+    let mut body = format!(
+        "Landed on main in {commit} from an Archil sandbox (`openagents chat work --on archil`, \
+         run `{run_id}`), directly: its checks passed again after a rebase onto {}.\n",
+        &base[..base.len().min(10)]
+    );
+    for check in landed["checks"].as_array().into_iter().flatten() {
+        body.push_str(&format!(
+            "\n- {}: `{}`",
+            if check["ok"] == true {
+                "pass"
+            } else {
+                "no checker here"
+            },
+            check["name"].as_str().unwrap_or_default()
+        ));
+    }
+    body
 }
 
 /// The comment that claims an issue for one Archil run.
@@ -368,6 +399,7 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
         &request.repository,
         issue,
         &request.engine,
+        lands_directly(request.land),
         &branch,
         &run_id,
     );
@@ -462,7 +494,30 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
     }
     let mut result = result_or(result, code, &tail);
     keep_result(issue, &run_id, &result);
-    // The sandbox pushed the change; this computer lands it.
+    // Landed directly: the sandbox can't comment, so this computer does
+    // (the commit's "fixes #N" closes the issue).
+    if result["ok"] == true
+        && result["landed"]["how"] == "direct"
+        && let Some(commit) = result["landed"]["commit"].as_str()
+    {
+        let body = direct_comment(commit, &run_id, &result["landed"]);
+        let repository = request.repository.clone();
+        let _ =
+            tokio::task::spawn_blocking(move || super::boat::comment(&repository, issue, &body))
+                .await;
+    }
+    // The sandbox pushed the change; this computer lands it, saying why
+    // when a direct landing fell back to the queue.
+    if let Some(why) = result["landed"]["fallback"]
+        .as_str()
+        .filter(|_| result["ok"] == true)
+    {
+        let body = format!("Landing through the queue instead of directly: {why}.");
+        let repository = request.repository.clone();
+        let _ =
+            tokio::task::spawn_blocking(move || super::boat::comment(&repository, issue, &body))
+                .await;
+    }
     if result["ok"] == true
         && result["landed"]["how"] == "push"
         && let Some(pushed) = result["landed"]["branch"].as_str().map(str::to_owned)
@@ -483,7 +538,10 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
         .await
         .unwrap_or_else(|_| Err("land submit did not run".into()));
         match landed {
-            Ok(landed) => result["landed"] = landed,
+            Ok(mut landed) => {
+                landed["fallback"] = result["landed"]["fallback"].clone();
+                result["landed"] = landed;
+            }
             Err(message) => {
                 result["ok"] = json!(false);
                 result["error"] = json!(format!("pushed {pushed}, but {message}"));
@@ -638,7 +696,12 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     }
     let landed = results
         .iter()
-        .filter(|r| matches!(r["outcome"].as_str(), Some("queued" | "pull_request")))
+        .filter(|r| {
+            matches!(
+                r["outcome"].as_str(),
+                Some("landed" | "queued" | "pull_request")
+            )
+        })
         .count();
     let total: f64 = results.iter().filter_map(|r| r["cost_usd"].as_f64()).sum();
     event(
@@ -652,9 +715,12 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
             results.len()
         );
     }
-    let good = results
-        .iter()
-        .all(|r| matches!(r["outcome"].as_str(), Some("queued" | "pull_request")));
+    let good = results.iter().all(|r| {
+        matches!(
+            r["outcome"].as_str(),
+            Some("landed" | "queued" | "pull_request")
+        )
+    });
     Ok(if good { 0 } else { crate::EXIT_FAILURE })
 }
 
@@ -690,6 +756,13 @@ mod tests {
         assert_eq!(record["run"]["cost_microusd"], 126_700);
         assert_eq!(record["machine"], archil::machine());
         assert!(claim_comment("oa-issue-7-x", "briefed").starts_with("Claimed:"));
+        assert!(lands_directly(None) && lands_directly(Some(Land::Main)));
+        assert!(!lands_directly(Some(Land::Queue)) && !lands_directly(Some(Land::PullRequest)));
+        let landed = json!({"base": "abcdef0123456789",
+            "checks": [{"name": "cargo test -p x", "ok": true}]});
+        let body = direct_comment("c0ffee", "run1", &landed);
+        assert!(body.contains("Landed on main in c0ffee") && body.contains("abcdef0123"));
+        assert!(body.contains("- pass: `cargo test -p x`"));
         let comment = cost_comment("oa-issue-7-x", "queued", Duration::from_secs(600), 0.1267);
         assert!(comment.contains("600 s") && comment.contains("$0.1267"));
     }

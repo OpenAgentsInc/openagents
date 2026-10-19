@@ -83,12 +83,15 @@ pub(super) const SCRIPTS: [(&str, &str); 12] = [
 /// How a green change lands, as the engine reads it.
 pub(super) fn land_word(given: Option<&str>, policy_main: bool) -> Result<&'static str, String> {
     match given.map(str::trim) {
-        None => Ok(if policy_main { "queue" } else { "pr" }),
-        Some("main" | "queue") => Ok("queue"),
+        // A repository that lands on main lands directly (#12165): the
+        // queue is for changes that need its repair step.
+        None => Ok(if policy_main { "direct" } else { "pr" }),
+        Some("direct" | "main") => Ok("direct"),
+        Some("queue") => Ok("queue"),
         Some("pr" | "pull_request" | "pull-request") => Ok("pr"),
         Some("none") => Ok("none"),
         Some(other) => Err(format!(
-            "--land is `queue` (or `main`), `pr`, or `none`, not `{other}`"
+            "--land is `direct` (or `main`), `queue`, `pr`, or `none`, not `{other}`"
         )),
     }
 }
@@ -172,6 +175,7 @@ pub(super) fn finished(output: &Output, issue: u64, result: &Value) -> Value {
         "failed"
     } else {
         match landed["how"].as_str() {
+            Some("direct") => "landed",
             Some("queue") => "queued",
             Some("pr") => "pull_request",
             _ => "committed",
@@ -194,7 +198,9 @@ pub(super) fn finished(output: &Output, issue: u64, result: &Value) -> Value {
         .as_array()
         .map_or(0, |c| c.iter().filter(|c| c["ok"] == true).count());
     let mut message = format!("{engine}, {secs:.0} s, {cost}, checks {passed}/{checks}");
-    if let Some(url) = landed["url"].as_str() {
+    if let (Some("direct"), Some(commit)) = (landed["how"].as_str(), landed["commit"].as_str()) {
+        message.push_str(&format!(", on main in {}", &commit[..commit.len().min(10)]));
+    } else if let Some(url) = landed["url"].as_str() {
         message.push_str(&format!(", {url}"));
     } else if let Some(entry) = landed["entry"]["id"].as_str() {
         message.push_str(&format!(", landing queue entry {entry}"));
@@ -203,6 +209,9 @@ pub(super) fn finished(output: &Output, issue: u64, result: &Value) -> Value {
     }
     if let Some(why) = result["escalated"].as_str() {
         message.push_str(&format!(" (handed to Claude Code: {why})"));
+    }
+    if let Some(why) = landed["fallback"].as_str() {
+        message.push_str(&format!(" (through the queue, not directly: {why})"));
     }
     if let Some(error) = result["error"].as_str() {
         message.push_str(&format!(". {error}"));
@@ -547,9 +556,11 @@ mod tests {
 
     #[test]
     fn land_words() {
-        assert_eq!(land_word(None, true), Ok("queue"));
+        assert_eq!(land_word(None, true), Ok("direct"));
         assert_eq!(land_word(None, false), Ok("pr"));
-        assert_eq!(land_word(Some("main"), false), Ok("queue"));
+        assert_eq!(land_word(Some("main"), false), Ok("direct"));
+        assert_eq!(land_word(Some("direct"), false), Ok("direct"));
+        assert_eq!(land_word(Some("queue"), true), Ok("queue"));
         assert_eq!(land_word(Some("pr"), true), Ok("pr"));
         assert_eq!(land_word(Some("none"), true), Ok("none"));
         assert!(land_word(Some("push"), true).is_err());
@@ -577,6 +588,32 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_direct_landing_reads_landed_and_a_fallback_names_its_reason() {
+        let output = Output::new(true);
+        let direct = json!({"ok": true, "engine": "briefed",
+            "landed": {"how": "direct", "commit": "0123456789abcdef"}});
+        let record = finished(&output, 7, &direct);
+        assert_eq!(record["outcome"], "landed");
+        assert!(
+            record["message"]
+                .as_str()
+                .unwrap()
+                .contains("on main in 0123456789")
+        );
+        let queued = json!({"ok": true, "engine": "briefed",
+            "landed": {"how": "queue", "entry": {"id": "e1"},
+                "fallback": "the change conflicts with main"}});
+        let record = finished(&output, 7, &queued);
+        assert_eq!(record["outcome"], "queued");
+        assert!(
+            record["message"]
+                .as_str()
+                .unwrap()
+                .contains("not directly: the change conflicts with main")
+        );
     }
 
     #[test]
