@@ -63,7 +63,7 @@ def configure(passwords):
     print(json.dumps({'database':'space_computers','numeric_secret_version':1,'passwords_in_sql_or_argv':False,'password_update_requested':passwords}))
 
 
-def deploy(commit,digest,template,vcpu,memory,disable_creates,rollout=None,keep_project_iam=False,poll_ms=None,command_workspace=None):
+def deploy(commit,digest,template,vcpu,memory,disable_creates,rollout=None,keep_project_iam=False,poll_ms=None,command_workspace=None,capacity=2):
     rollout=rollout or ['space-qualification-11814']
     # Explicit test owners use the web's digest form; at most two for dedicated tests.
     if len(rollout)>2 or len(set(rollout))!=len(rollout) or any(not (o=='space-qualification-11814' or re.fullmatch(r'account:[0-9a-f]{64}',o)) for o in rollout): raise RuntimeError('Name one or two exact test owners.')
@@ -83,7 +83,7 @@ def deploy(commit,digest,template,vcpu,memory,disable_creates,rollout=None,keep_
     config={'default':'space-private-11814','policy':'space-private-11814-v1','deployments':[{
         'id':'space-private-11814','kind':'space','api_url':'https://oa-space-service-api-ezxz4mgdsq-uc.a.run.app',
         'data_plane_url':'https://oa-space-service-data-ezxz4mgdsq-uc.a.run.app','credential_env':'SPACE_API_TOKEN',
-        'template':template,'scope':'00000000-0000-4000-8000-000000011814','capacity':2,'admit_new':not disable_creates,
+        'template':template,'scope':'00000000-0000-4000-8000-000000011814','capacity':capacity,'admit_new':not disable_creates,
         'rollout_accounts':rollout,'shapes':({'small':{'vcpus':vcpu,'memory_mib':memory,'min_disk_gib':None}} if vcpu is not None else {}),
         **({'command_workspace':command_workspace} if command_workspace else {})}]}
     registry=json.dumps(config,separators=(',',':')).encode()
@@ -147,11 +147,12 @@ if __name__=='__main__':
     parser.add_argument('--small-vcpus',type=int)
     parser.add_argument('--small-memory-mib',type=int)
     parser.add_argument('--disable-creates',action='store_true')
+    parser.add_argument('--capacity',type=int,default=2,choices=[2,3],help='Deployment capacity; 3 only while a stranded row holds a slot.')
     parser.add_argument('--command-workspace',help='Guest directory for identified commands without the credential proxy (#12146).')
     parser.add_argument('--poll-ms',type=int,help='Service and driver poll interval in milliseconds.')
     parser.add_argument('--keep-project-iam',action='store_true',help='Redeploy without changing the existing instance-scoped Cloud SQL binding.')
     parser.add_argument('--rollout-account',action='append',help='An exact test owner (account:HEX); repeat for a second.')
     args=parser.parse_args()
     if args.deploy_commit:
-        deploy(args.deploy_commit,args.deploy_digest,args.template,args.small_vcpus,args.small_memory_mib,args.disable_creates,args.rollout_account,args.keep_project_iam,args.poll_ms,args.command_workspace)
+        deploy(args.deploy_commit,args.deploy_digest,args.template,args.small_vcpus,args.small_memory_mib,args.disable_creates,args.rollout_account,args.keep_project_iam,args.poll_ms,args.command_workspace,args.capacity)
     else: configure(args.set_password)
