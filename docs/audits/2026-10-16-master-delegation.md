@@ -653,3 +653,4 @@ Already in `NEEDS_OWNER.md`, and they don't block closing: the CAD history copy 
 - Production web runs a commit from Saturday's `main`, and the patch files are gone from `docs/audits/`.
 - No test resource is left on the owner's account, and every machine created for a check is deleted or labeled for the reaper.
 - [ ] #12143: rerun the 60 s native API outage cases (wake, stop, delete) against the private SPACE deployment; the driver now resends an uncertain request under its saved key.
+- [ ] #12161: after the next pool deploy, start two runs on one pool host within the same second and confirm both pass the checkout fetch.
