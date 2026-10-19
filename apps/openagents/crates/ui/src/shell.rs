@@ -548,11 +548,13 @@ pub enum SettingsSection {
     General,
     Appshots,
     Archived,
+    /// Share this computer and see what it earned (`openagents pylon`).
+    Earn,
 }
 
 impl SettingsSection {
     /// Sections shown in Settings. `Agents` is a legacy Accounts route alias.
-    pub const ALL: [SettingsSection; 10] = [
+    pub const ALL: [SettingsSection; 11] = [
         SettingsSection::General,
         SettingsSection::Appearance,
         SettingsSection::Notifications,
@@ -560,6 +562,7 @@ impl SettingsSection {
         SettingsSection::Shortcuts,
         SettingsSection::Harnesses,
         SettingsSection::Devices,
+        SettingsSection::Earn,
         SettingsSection::Files,
         SettingsSection::Appshots,
         SettingsSection::Archived,
@@ -605,6 +608,7 @@ impl SettingsSection {
             SettingsSection::General => "general",
             SettingsSection::Appshots => "appshots",
             SettingsSection::Archived => "archived",
+            SettingsSection::Earn => "earn",
         }
     }
 
@@ -622,6 +626,7 @@ impl SettingsSection {
             "general" | "conversations" => SettingsSection::General,
             "appshots" => SettingsSection::Appshots,
             "archived" => SettingsSection::Archived,
+            "earn" => SettingsSection::Earn,
             _ => return None,
         })
     }
@@ -647,6 +652,7 @@ impl SettingsSection {
             SettingsSection::General => "General",
             SettingsSection::Appshots => "Appshots",
             SettingsSection::Archived => "Archived sessions",
+            SettingsSection::Earn => "Earn",
         }
     }
 }
@@ -2123,6 +2129,8 @@ pub struct Shell {
     appearance_page: Option<Entity<AppearancePage>>,
     files_settings_page: Option<Entity<FilesSettingsPage>>,
     notifications_page: Option<Entity<NotificationsPage>>,
+    /// Dropped whenever Settings leaves Earn, which ends its refresh.
+    earn_page: Option<Entity<crate::settings::earn::EarnPage>>,
     shortcuts_page: Option<Entity<ShortcutsPage>>,
     accounts_page: Option<Entity<AccountsPage>>,
     harnesses_page: Option<Entity<HarnessesPage>>,
@@ -2668,6 +2676,7 @@ impl Shell {
             appearance_page: None,
             files_settings_page: None,
             notifications_page: None,
+            earn_page: None,
             shortcuts_page: None,
             accounts_page: None,
             harnesses_page: None,
@@ -5028,6 +5037,9 @@ impl Shell {
 
     fn set_route(&mut self, route: Route, cx: &mut Context<Self>) {
         self.command_palette = None;
+        if route != Route::Settings(SettingsSection::Earn) {
+            self.earn_page = None;
+        }
         self.route = route;
     }
 
@@ -5685,6 +5697,11 @@ impl Shell {
                     None => Empty.into_any_element(),
                 }
             }
+            SettingsSection::Earn => self
+                .earn_page
+                .get_or_insert_with(|| cx.new(crate::settings::earn::EarnPage::new))
+                .clone()
+                .into_any_element(),
             SettingsSection::Voice => {
                 let card = crate::dictation::card(cx);
                 let state = self.state.read(cx);
@@ -7936,6 +7953,7 @@ impl Shell {
             SettingsSection::General => icons::SETTINGS,
             SettingsSection::Appshots => icons::MONITOR,
             SettingsSection::Archived => icons::ARCHIVE_MINIMALISTIC,
+            SettingsSection::Earn => icons::FAST_TIER,
         };
         settings::widgets::scroll_faded(
             "settings-nav-scroll",

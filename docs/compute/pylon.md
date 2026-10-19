@@ -353,6 +353,36 @@ under the default root) looks at that file every 5 seconds and starts or
 stops the pylon; it needs a Psionic server at `--engine` (default
 `http://127.0.0.1:18080`), and shows `draining` until the server answers.
 
+### Earn from the desktop app
+
+OpenAgents Desktop has an **Earn** page in Settings. It is a view over the
+commands above and adds nothing of its own:
+
+- **Share this computer and earn** turns sharing on (`openagents pylon up
+  --yes`) and off (`openagents pylon down`). The line under it reads
+  `openagents --json pylon status` every 10 seconds while the page is open:
+  Serving, Paused (for example, while you are using the computer), Setting
+  up (downloading the 6.5 GB model the first time), or Can't serve, with
+  what blocks it and the fix from `openagents pylon doctor`.
+- **Earnings** shows today's checked decisions and what was earned and paid
+  so far (`openagents pylon earnings`). When nothing is earned yet, it says
+  that earnings follow demand and can be zero.
+- **Earnings go to your wallet** shows this computer's wallet balance
+  (`openagents wallet balance`). Without a wallet, **Create wallet** makes
+  one (`openagents wallet create`) and shows its 12 recovery words once.
+  **Send earnings somewhere else** takes a Lightning address
+  (`openagents pylon payout set ADDRESS`); **Send to your wallet instead**
+  goes back (`openagents pylon payout set`).
+- **Pause on battery** and **Pause when hot** are off until you turn them
+  on (`openagents pylon settings --pause-on-battery on|off`,
+  `--pause-when-hot on|off`).
+
+The app runs the OpenAgents command line from `~/.openagents/bin` or your
+PATH. Without it, the page shows the install command
+(`curl -fsSL https://openagents.com/cli/install.sh | bash`). A command this
+build of the command line does not have shows "Not available in this
+build" instead of a control.
+
 ### Send Alice's and the crew's text jobs to the pool
 
 ```sh

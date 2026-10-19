@@ -322,6 +322,7 @@ pub mod claude;
 pub mod codex;
 pub mod cursor;
 pub(crate) mod executable;
+pub use executable::find_openagents_cli;
 pub mod host;
 pub mod install;
 pub(crate) mod internal_tags;

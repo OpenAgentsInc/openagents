@@ -96,6 +96,51 @@ pub(crate) fn find_on_paths(exe: &str, extra: Vec<PathBuf>) -> Option<PathBuf> {
     newest_candidate(candidates)
 }
 
+/// The OpenAgents command line (`openagents`, installed to
+/// `~/.openagents/bin` or on PATH). This app's binary has the same name, so
+/// it and any copy inside an app bundle are skipped.
+pub fn find_openagents_cli() -> Option<PathBuf> {
+    let own = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.canonicalize().ok());
+    let extra = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(|home| {
+            vec![
+                PathBuf::from(home)
+                    .join(".openagents")
+                    .join("bin")
+                    .join("openagents"),
+            ]
+        })
+        .unwrap_or_default();
+    let mut candidates = Vec::new();
+    find_on_paths_matching_with(
+        "openagents",
+        extra,
+        &|key| std::env::var_os(key),
+        crate::shell_env::login_shell_path().map(OsString::from),
+        Platform::current(),
+        |path| {
+            if runnable(path) && is_openagents_cli(path, own.as_deref()) {
+                candidates.push(path.to_path_buf());
+            }
+            false
+        },
+    );
+    newest_candidate(candidates)
+}
+
+/// Whether `path` is the command line rather than this app (`own`) or
+/// another copy of the app.
+fn is_openagents_cli(path: &Path, own: Option<&Path>) -> bool {
+    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    own.is_none_or(|own| own != resolved)
+        && !resolved
+            .components()
+            .any(|part| part.as_os_str().to_string_lossy().ends_with(".app"))
+}
+
 pub(crate) fn binary_hint(path: &Path) -> String {
     format!(
         "{} (version {})",
@@ -537,6 +582,24 @@ pub(crate) fn find_on_paths_matching_with(
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn the_openagents_cli_is_never_this_app() {
+        let own = Path::new("/opt/oa/openagents");
+        assert!(!is_openagents_cli(own, Some(own)));
+        assert!(!is_openagents_cli(
+            Path::new("/Applications/OpenAgents.app/Contents/MacOS/openagents"),
+            Some(own)
+        ));
+        assert!(is_openagents_cli(
+            Path::new("/home/me/.openagents/bin/openagents"),
+            Some(own)
+        ));
+        assert!(is_openagents_cli(
+            Path::new("/usr/local/bin/openagents"),
+            None
+        ));
+    }
 
     #[test]
     fn semantic_versions_support_cli_labels_and_prereleases() {

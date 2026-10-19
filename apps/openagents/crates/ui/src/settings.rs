@@ -22,6 +22,7 @@ pub mod appearance;
 pub mod archived;
 pub mod composer;
 pub mod devices;
+pub mod earn;
 pub mod files;
 pub(crate) mod voice_agent;
 pub mod harnesses;
