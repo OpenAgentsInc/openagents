@@ -253,12 +253,14 @@ final class OpenAgentsHistoryTests: XCTestCase {
         expandSavedChats(app)
         let row = app.descendants(matching: .any).matching(identifier: "saved-chat-" + chat).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 30)); row.tap()
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "saved-message-count").firstMatch.waitForExistence(timeout: 15))
+        // The saved chat opens as a transcript; its value counts the loaded messages.
+        let transcript = app.scrollViews["transcript"]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 15))
         _ = exchange("/phone-ready")
         let deadline = Date().addingTimeInterval(180)
         while Date() < deadline {
             let labels = app.staticTexts.allElementsBoundByIndex.map { $0.label }
-            _ = exchange("/phone-proof", ["epoch": Date().timeIntervalSince1970, "chat": chat, "count": app.tables["saved-history-page"].value as? String ?? "", "labels": labels])
+            _ = exchange("/phone-proof", ["epoch": Date().timeIntervalSince1970, "chat": chat, "count": transcript.value as? String ?? "", "labels": labels])
             if exchange("/status")["stop"] as? Bool == true { break }
             Thread.sleep(forTimeInterval: 0.6)
         }
