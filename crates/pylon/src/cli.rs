@@ -89,6 +89,10 @@ Commands:
                             Nothing listens beyond loopback; the pylon dials out.
       --port N              Psionic's loopback port (default 18096).
       --device NAME         metal, cuda, or cpu (default: what doctor picks).
+      --yes                 Link this pylon to your OpenAgents key and send its
+                            earnings to your OpenAgents wallet without asking,
+                            when neither is set. On a terminal start asks;
+                            without one and without --yes it changes nothing.
   selfcheck                 Answer the shipped reference decisions on this
                             computer and compare them with the reference; serve
                             refuses decisions after a failed self-check.
@@ -166,6 +170,19 @@ Commands:
       --credential JSON     Store a link minted elsewhere: the auth
                             tag [\"auth\", owner, \"kind=30200\", signature].
       --remove              Remove the link.
+  earnings                  What this pylon has earned so far (earned, held for
+                            checking, paid, forfeited), where it is paid, and
+                            the wallet balance when that is this computer's
+                            OpenAgents wallet. Read from the OpenAgents API as
+                            the earning key: the linked owner, else the pylon.
+      --owner-secret FILE   The linked owner's key, when it is not this
+                            computer's OpenAgents key (read once, never stored).
+      --api URL             The OpenAgents API (default https://api.openagents.com,
+                            or OPENAGENTS_API_BASE).
+  payout set [ADDRESS]      Where earnings go: a Lightning address or a Spark
+                            address. With no ADDRESS, this computer's OpenAgents
+                            wallet (`openagents wallet`). Bitcoin rails only.
+                            Takes --owner-secret FILE and --api URL as earnings.
   route on|off|status       Send Alice's and the crew's low-risk text jobs (day
                             plans) to the pool, falling back to their own model.
       --pylon NPUB          Only this pylon (default: the best fresh one).
@@ -367,6 +384,8 @@ fn dispatch(
             "setup" => setup(json_out, &mut args, false).await,
             "update" => setup(json_out, &mut args, true).await,
             "start" => start(json_out, &mut args, &relay, wallet).await,
+            "earnings" => earnings(json_out, &mut args, wallet).await,
+            "payout" => payout(json_out, &mut args, wallet).await,
             "spec" | "agent-rules" | "net-policy" | "version" => {
                 meta(json_out, command, &args, &relay)
             }
@@ -1722,6 +1741,7 @@ async fn start(
     let port = u16::try_from(args.number("--port", u64::from(crate::setup::DECIDE_PORT))?)
         .map_err(|_| "--port takes a port number")?;
     let device = args.value("--device")?;
+    let yes = args.flag("--yes");
     let url = format!("http://127.0.0.1:{port}");
     let mut child = None;
     if crate::setup::serving(&url).await.is_none() {
@@ -1800,9 +1820,86 @@ async fn start(
             ));
         }
     }
+    start_offers(yes, wallet).await;
     args.words
         .extend(["--decide".to_string(), url, "--decisions-only".to_string()]);
     let served = serve(json_out, args, relay, wallet).await;
     drop(child);
     served
+}
+
+/// On `start` (and `up`): offer to link this pylon to the person's key and
+/// to send its earnings to this computer's OpenAgents wallet. Neither
+/// blocks serving; with no terminal and no `yes` neither changes anything.
+pub async fn start_offers(yes: bool, wallet: &dyn Wallet) {
+    use crate::earnings::PayoutOffer;
+    use crate::identity::{LinkOffer, ask_on_terminal, offer_link};
+    let home = home();
+    let Ok(provider) = key("provider") else {
+        return;
+    };
+    match offer_link(&home, &provider, yes) {
+        Ok(LinkOffer::LinkedNow(owner)) => {
+            eprintln!("pylon: linked to {}; its earnings go to you", npub(&owner));
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("pylon: this pylon was not linked: {e}"),
+    }
+    let Some(spark) = wallet.spark() else {
+        return;
+    };
+    let Ok(party) = crate::earnings::party(&home, &provider, None) else {
+        return;
+    };
+    let api = crate::earnings::api_base(None);
+    match crate::earnings::offer_payout(&api, &party, Some(spark), yes, &mut ask_on_terminal).await
+    {
+        Ok(PayoutOffer::SetNow(address)) => {
+            eprintln!("pylon: earnings go to your OpenAgents wallet ({address})");
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!(
+            "pylon: where earnings go is not set ({e}); `openagents pylon payout set` sets it"
+        ),
+    }
+}
+
+/// `earnings`: this pylon's statement.
+async fn earnings(json_out: bool, args: &mut Args, wallet: &dyn Wallet) -> Result<(), String> {
+    let api = crate::earnings::api_base(args.value("--api")?);
+    let secret = args.value("--owner-secret")?;
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let party = crate::earnings::party(
+        &home(),
+        &key("provider")?,
+        secret.as_deref().map(std::path::Path::new),
+    )?;
+    let (value, text) = crate::earnings::earnings(&api, &party, wallet.spark()).await?;
+    emit(json_out, &value, &text);
+    Ok(())
+}
+
+/// `payout set [ADDRESS]`: where this pylon's earnings go.
+async fn payout(json_out: bool, args: &mut Args, wallet: &dyn Wallet) -> Result<(), String> {
+    let api = crate::earnings::api_base(args.value("--api")?);
+    let secret = args.value("--owner-secret")?;
+    if args.words.first().map(String::as_str) != Some("set") {
+        return Err("usage: openagents pylon payout set [ADDRESS]".into());
+    }
+    args.words.remove(0);
+    let address = (!args.words.is_empty()).then(|| args.words.remove(0));
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let party = crate::earnings::party(
+        &home(),
+        &key("provider")?,
+        secret.as_deref().map(std::path::Path::new),
+    )?;
+    let (value, text) =
+        crate::earnings::payout_set(&api, &party, address.as_deref(), wallet.spark()).await?;
+    emit(json_out, &value, &text);
+    Ok(())
 }

@@ -284,6 +284,56 @@ from the pylon's provider key or its verified owner never counts toward the
 pool's totals or the field's job counts. The owner key is read once to mint
 the tag and never stored.
 
+`start` (and `up`) offers the link itself. When the pylon is not linked and
+this computer holds your own OpenAgents key (the profile key `openagents key
+show` prints, `~/.openagents/verse/default.key`; `OPENAGENTS_PROFILE` picks
+another profile and `VERSE_HOME` moves the directory), it asks "Link this
+pylon to your account so earnings go to you? [Y/n]" on a terminal, and with
+`--yes` links without asking. That key is read once to mint the tag and only
+the tag is stored. Without a terminal and without `--yes` nothing changes,
+and the pylon's MCP tools never link. An unlinked pylon still works; its
+earnings belong to the pylon key.
+
+### Where earnings go
+
+```sh
+openagents pylon earnings              # earned so far, held, paid, forfeited, paid to
+openagents pylon payout set            # pay into this computer's OpenAgents wallet
+openagents pylon payout set name@example.com   # or a Lightning address, or a spark1… address
+```
+
+A pylon's earnings belong to its party: the linked owner, else the pylon
+key. Both commands talk to the OpenAgents API (`https://api.openagents.com`;
+`--api URL` or `OPENAGENTS_API_BASE` for another) as that party, each
+request signed with the party's key (NIP-98, for that exact URL and method,
+and for a change the body too). A linked pylon signs with your OpenAgents
+key on this computer, or `--owner-secret FILE` when your key lives in a
+file; that key is read for the one command and never stored.
+
+`earnings` shows what was earned so far, what is held while checkers check
+it, what was paid, what a failed check forfeited, and where it is paid.
+When that is this computer's OpenAgents wallet it also shows "paid into
+your wallet" and the wallet's balance, as `openagents wallet balance` reads
+it. Nothing is a projection: earnings follow paid demand and can be zero.
+
+`payout set` with no address uses this computer's OpenAgents wallet (the
+Spark wallet `openagents wallet` and the phone share), so earnings land in
+the balance you already have. With no wallet here it says so and names
+`openagents wallet create`; you can give a Lightning address instead.
+Payouts go to Bitcoin rails only: a Lightning address or a mainnet Spark
+address. Anything else is refused before any request is sent. `start` (and
+`up`) also offers "Send earnings to your OpenAgents wallet? [Y/n]" when no
+destination is set and this computer has a wallet (with `--yes`, it sets
+it); it never replaces a destination, and MCP never changes one.
+
+### Relay list (NIP-65)
+
+When `serve` (or `start`) begins, the pylon key publishes a kind `10002`
+relay list naming each relay it reads jobs from and answers on, with no
+marker (read and write). Buyers find where to reach a pylon from that list,
+as NIP-PYLON says. The relay is only chosen at start, so each start
+publishes the list again; the newest one replaces the last.
+
 ## Use a pylon
 
 ```sh

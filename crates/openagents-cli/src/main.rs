@@ -115,6 +115,8 @@ mod projects;
 mod provider_key;
 mod pylon_mcp;
 #[cfg(unix)]
+mod pylon_payout;
+#[cfg(unix)]
 mod pylon_wallet;
 #[cfg(feature = "verse")]
 mod quest;

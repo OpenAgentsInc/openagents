@@ -243,3 +243,242 @@ pub fn mint_owner(secret_file: &Path, pylon: &str) -> Result<MintedOwnerAttestat
     let owner = Identity::load_existing(secret_file)?;
     nostr::domain::mint_owner_attestation(owner.secret(), pylon, OWNER_CONDITIONS)
 }
+
+/// The kind `10002` (NIP-65) relay list the pylon key publishes: each relay
+/// it reads jobs from and writes answers to, unmarked (both), in order.
+///
+/// # Errors
+///
+/// When `relays` is empty or names something that is not a relay URL.
+pub fn relay_list_event(
+    pylon: &Identity,
+    relays: &[String],
+    created_at: u64,
+) -> Result<nostr::domain::Event, String> {
+    let listed: Vec<nostr::domain::ListedRelay> = relays
+        .iter()
+        .map(|url| nostr::domain::ListedRelay {
+            url: url.clone(),
+            marker: nostr::domain::RelayMarker::Both,
+        })
+        .collect();
+    let tags = nostr::domain::relay_list_tags(&listed).map_err(|e| e.to_string())?;
+    Ok(pylon.signer().sign(
+        created_at,
+        nostr::domain::RELAY_LIST_KIND,
+        tags,
+        String::new(),
+    ))
+}
+
+/// The file holding the person's own Nostr key on this computer: the
+/// OpenAgents profile key the CLI signs as them with (`openagents key
+/// show`), `~/.openagents/verse/PROFILE.key` (`VERSE_HOME` moves the
+/// directory, `OPENAGENTS_PROFILE` picks the profile, default `default`).
+/// It is never created here.
+#[must_use]
+pub fn person_key_path() -> std::path::PathBuf {
+    let dir = std::env::var_os("VERSE_HOME").map_or_else(
+        || {
+            user_home::home_os()
+                .map_or_else(|| std::path::PathBuf::from("."), std::path::PathBuf::from)
+                .join(".openagents")
+                .join("verse")
+        },
+        std::path::PathBuf::from,
+    );
+    let profile = std::env::var("OPENAGENTS_PROFILE")
+        .ok()
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| "default".into());
+    dir.join(format!("{profile}.key"))
+}
+
+/// What [`offer_link`] did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LinkOffer {
+    /// Already linked to this owner (hex key).
+    Linked(String),
+    /// Linked just now to this owner (hex key).
+    LinkedNow(String),
+    /// This computer holds no key for the person, so there is nothing to
+    /// link to.
+    NoPersonKey,
+    /// The person said no.
+    Declined,
+    /// No terminal to ask on and no `--yes`: nothing was changed.
+    NotAsked,
+}
+
+/// The question [`offer_link`] asks.
+pub const LINK_QUESTION: &str = "Link this pylon to your account so earnings go to you? [Y/n] ";
+
+/// Offer to link this pylon to the person whose key is on this computer
+/// ([`person_key_path`]), for `up` and `start`. When the pylon is not
+/// linked and the key exists: with `yes`, link without asking; on a
+/// terminal, ask [`LINK_QUESTION`]; otherwise change nothing. Linking reads
+/// the person's key once to mint the NIP-OA tag and stores only the tag.
+/// Never called from MCP.
+///
+/// # Errors
+///
+/// When the stored link or the person's key cannot be read.
+pub fn offer_link(home: &Path, pylon: &Identity, yes: bool) -> Result<LinkOffer, String> {
+    offer_link_with(home, pylon, &person_key_path(), yes, &mut ask_on_terminal)
+}
+
+/// Ask a `[Y/n]` question on the terminal: `Some(true)` for yes or a bare
+/// Enter, `Some(false)` for anything else, `None` with no terminal.
+#[must_use]
+pub fn ask_on_terminal(question: &str) -> Option<bool> {
+    use std::io::{IsTerminal, Write};
+    if !(std::io::stdin().is_terminal() && std::io::stderr().is_terminal()) {
+        return None;
+    }
+    eprint!("{question}");
+    let _ = std::io::stderr().flush();
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer).ok()?;
+    let answer = answer.trim().to_ascii_lowercase();
+    Some(answer.is_empty() || answer == "y" || answer == "yes")
+}
+
+/// [`offer_link`] with the person's key at `person_key` and `ask` for the
+/// question (`None` when there is no one to ask).
+///
+/// # Errors
+///
+/// When the stored link or the person's key cannot be read.
+pub fn offer_link_with(
+    home: &Path,
+    pylon: &Identity,
+    person_key: &Path,
+    yes: bool,
+    ask: &mut dyn FnMut(&str) -> Option<bool>,
+) -> Result<LinkOffer, String> {
+    if let Some(owner) = load_owner(home)? {
+        return Ok(LinkOffer::Linked(owner.owner_pubkey));
+    }
+    if !person_key.exists() {
+        return Ok(LinkOffer::NoPersonKey);
+    }
+    if !yes {
+        match ask(LINK_QUESTION) {
+            None => return Ok(LinkOffer::NotAsked),
+            Some(false) => return Ok(LinkOffer::Declined),
+            Some(true) => {}
+        }
+    }
+    let credential = mint_owner(person_key, pylon.pubkey())?;
+    check_owner(pylon, &credential)?;
+    save_owner(home, Some(&credential))?;
+    Ok(LinkOffer::LinkedNow(credential.owner_pubkey))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_relay_list_names_each_relay_for_reading_and_writing() {
+        let pylon = Identity::generate();
+        let event = relay_list_event(
+            &pylon,
+            &[
+                "wss://relay.openagents.com".into(),
+                "wss://two.example".into(),
+            ],
+            1_791_400_000,
+        )
+        .unwrap();
+        assert_eq!(event.kind, 10_002);
+        assert_eq!(event.pubkey, pylon.pubkey());
+        assert!(event.content.is_empty());
+        event.validate_structure().unwrap();
+        event.validate_crypto().unwrap();
+        let tags: Vec<&[String]> = event.tags.iter().map(|t| t.as_slice()).collect();
+        assert_eq!(
+            tags,
+            vec![
+                &["r".to_string(), "wss://relay.openagents.com".to_string()][..],
+                &["r".to_string(), "wss://two.example".to_string()][..],
+            ]
+        );
+        let list = nostr::domain::open_relay_list(&event).unwrap();
+        assert_eq!(
+            nostr::domain::read_relays(&list),
+            nostr::domain::write_relays(&list)
+        );
+        assert!(relay_list_event(&pylon, &[], 1).is_err());
+    }
+
+    #[test]
+    fn linking_with_yes_stores_only_the_tag() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("compute");
+        let person = Identity::generate();
+        let key_file = dir.path().join("default.key");
+        let secret = person.secret().display_secret().to_string();
+        std::fs::write(&key_file, format!("{secret}\n")).unwrap();
+        let pylon = Identity::generate();
+        let mut asked = false;
+        let offer = offer_link_with(&home, &pylon, &key_file, true, &mut |_| {
+            asked = true;
+            Some(false)
+        })
+        .unwrap();
+        assert!(!asked, "--yes never asks");
+        assert_eq!(offer, LinkOffer::LinkedNow(person.pubkey().to_string()));
+        let stored = load_owner(&home).unwrap().unwrap();
+        assert_eq!(stored.owner_pubkey, person.pubkey());
+        check_owner(&pylon, &stored).unwrap();
+        // Only the tag is written: the person's secret appears nowhere in
+        // the pylon's home.
+        for entry in std::fs::read_dir(&home).unwrap() {
+            let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+            assert!(!text.contains(&secret));
+        }
+        let tag: Vec<String> =
+            serde_json::from_str(&std::fs::read_to_string(owner_path(&home)).unwrap()).unwrap();
+        assert_eq!(tag[0], "auth");
+        assert_eq!(tag.len(), 4);
+        // Linked already: nothing more happens.
+        assert_eq!(
+            offer_link_with(&home, &pylon, &key_file, true, &mut |_| None).unwrap(),
+            LinkOffer::Linked(person.pubkey().to_string())
+        );
+    }
+
+    #[test]
+    fn without_yes_it_asks_and_headless_it_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("compute");
+        let key_file = dir.path().join("default.key");
+        let pylon = Identity::generate();
+        assert_eq!(
+            offer_link_with(&home, &pylon, &key_file, true, &mut |_| Some(true)).unwrap(),
+            LinkOffer::NoPersonKey
+        );
+        let person = Identity::generate();
+        std::fs::write(&key_file, person.secret().display_secret().to_string()).unwrap();
+        assert_eq!(
+            offer_link_with(&home, &pylon, &key_file, false, &mut |_| None).unwrap(),
+            LinkOffer::NotAsked
+        );
+        assert_eq!(
+            offer_link_with(&home, &pylon, &key_file, false, &mut |_| Some(false)).unwrap(),
+            LinkOffer::Declined
+        );
+        assert!(load_owner(&home).unwrap().is_none());
+        let mut question = String::new();
+        assert_eq!(
+            offer_link_with(&home, &pylon, &key_file, false, &mut |q| {
+                question = q.to_string();
+                Some(true)
+            })
+            .unwrap(),
+            LinkOffer::LinkedNow(person.pubkey().to_string())
+        );
+        assert_eq!(question, LINK_QUESTION);
+    }
+}

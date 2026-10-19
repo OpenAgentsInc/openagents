@@ -478,6 +478,20 @@ impl Provider {
     }
 
     async fn beacon_loop(self: Arc<Self>) {
+        // NIP-65: the relays this pylon reads jobs from and answers on, once
+        // per start (the relay set changes only with a restart).
+        match crate::identity::relay_list_event(
+            &self.identity,
+            std::slice::from_ref(&self.config.relay),
+            now(),
+        ) {
+            Ok(event) => {
+                if self.outbound.send(event).await.is_err() {
+                    return;
+                }
+            }
+            Err(e) => eprintln!("pylon: relay list: {e}"),
+        }
         let mut last: Option<(Instant, (Status, u32))> = None;
         let mut checked = Instant::now() - Duration::from_secs(60);
         loop {

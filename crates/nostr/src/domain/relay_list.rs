@@ -8,9 +8,11 @@
 //! The relay stores the newest list. It does not choose where a client
 //! publishes, and it does not enforce the 2-4 relay guidance.
 
-use super::{DomainError, Event};
+use super::{DomainError, Event, Tag};
 
-const KIND: u16 = 10_002;
+/// The NIP-65 relay list kind.
+pub const RELAY_LIST_KIND: u16 = 10_002;
+const KIND: u16 = RELAY_LIST_KIND;
 
 /// Whether a relay accepts reads, writes, or both.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,6 +84,33 @@ pub fn open_relay_list(event: &Event) -> Result<RelayList, DomainError> {
         ));
     }
     Ok(RelayList { relays })
+}
+
+/// The `r` tags of a kind `10002` list, one per relay in order: no marker
+/// for [`RelayMarker::Both`], else `read` or `write`. Sign them with kind
+/// [`RELAY_LIST_KIND`] and empty content.
+///
+/// # Errors
+///
+/// Returns a sentence when the list is empty or a URL is not a relay.
+pub fn relay_list_tags(relays: &[ListedRelay]) -> Result<Vec<Tag>, DomainError> {
+    if relays.is_empty() || relays.iter().any(|relay| !is_relay(&relay.url)) {
+        return Err(invalid(
+            "kind 10002 requires valid r relay tags and read/write markers",
+        ));
+    }
+    Ok(relays
+        .iter()
+        .map(|relay| {
+            let mut values = vec!["r".to_owned(), relay.url.clone()];
+            match relay.marker {
+                RelayMarker::Both => {}
+                RelayMarker::Read => values.push("read".into()),
+                RelayMarker::Write => values.push("write".into()),
+            }
+            Tag::new(values)
+        })
+        .collect())
 }
 
 /// Relays the user writes to, in list order.
@@ -236,5 +265,37 @@ mod tests {
         assert!(marked.validate_structure().is_err());
         let empty = list(1_700_000_300, Vec::new());
         assert!(empty.validate_structure().is_err());
+    }
+
+    #[test]
+    fn built_tags_round_trip_through_the_reader() {
+        let relays = vec![
+            ListedRelay {
+                url: "wss://relay.openagents.com".into(),
+                marker: RelayMarker::Both,
+            },
+            ListedRelay {
+                url: "wss://read.example".into(),
+                marker: RelayMarker::Read,
+            },
+            ListedRelay {
+                url: "wss://write.example".into(),
+                marker: RelayMarker::Write,
+            },
+        ];
+        let tags = relay_list_tags(&relays).unwrap();
+        assert_eq!(tags[0].as_slice(), ["r", "wss://relay.openagents.com"]);
+        assert_eq!(tags[1].as_slice(), ["r", "wss://read.example", "read"]);
+        let event = list(1_700_000_000, tags);
+        event.validate_structure().unwrap();
+        assert_eq!(open_relay_list(&event).unwrap().relays, relays);
+        assert!(relay_list_tags(&[]).is_err());
+        assert!(
+            relay_list_tags(&[ListedRelay {
+                url: "https://not-a-relay".into(),
+                marker: RelayMarker::Both,
+            }])
+            .is_err()
+        );
     }
 }

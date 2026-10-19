@@ -246,7 +246,8 @@ pub use relay_access::{
     open_relay_access_request,
 };
 pub use relay_list::{
-    ListedRelay, RelayList, RelayMarker, open_relay_list, publish_relays, read_relays, write_relays,
+    ListedRelay, RELAY_LIST_KIND, RelayList, RelayMarker, open_relay_list, publish_relays,
+    read_relays, relay_list_tags, write_relays,
 };
 pub use remote_sign::{
     BunkerUrl, NostrConnectUrl, Permission, RemoteRequest, RemoteResponse, RemoteSigner,

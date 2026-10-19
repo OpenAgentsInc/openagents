@@ -32,6 +32,7 @@ pub mod cli;
 pub mod client;
 pub mod decide;
 pub mod decide_client;
+pub mod earnings;
 pub mod engine;
 pub mod envelope;
 pub mod field;

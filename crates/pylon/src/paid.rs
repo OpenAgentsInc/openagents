@@ -254,6 +254,12 @@ pub trait Wallet: Send + Sync {
     ///
     /// No wallet, or a wallet on another network.
     fn payer(&self, network: Network, max_msat: u64) -> Result<Arc<dyn Payer>, String>;
+    /// This computer's OpenAgents wallet (Spark), where `payout set` with
+    /// no address and the payout offer on `start` send earnings. None by
+    /// default: the standalone `pylon` binary has no wallet.
+    fn spark(&self) -> Option<&dyn crate::earnings::SparkWallet> {
+        None
+    }
 }
 
 /// No wallet: priced serving and paid asking are refused.

@@ -4,12 +4,22 @@
 //! request resolves a current credential and checks current membership. The
 //! dashboard uses the same authorization; its mutation form also carries a
 //! session-bound forgery token. This module never starts or retries a payment.
+//!
+//! A party named by its own Nostr key (64 lowercase hex, as a pylon's
+//! provider share is: the pylon's NIP-OA owner, else the pylon key) may
+//! also act for itself with no account: a NIP-98 `Authorization: Nostr …`
+//! event signed by that key, for the exact URL and method, within 60
+//! seconds, bound to the body's SHA-256 on a `PUT`, reads its statement,
+//! destination, and payouts and sets its own destination
+//! (`openagents pylon earnings` and `payout set`). The signed body carries
+//! the expected destination version, so a replayed change conflicts.
 
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Form, Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::body::Bytes;
+use axum::extract::{Form, OriginalUri, Path, Query, State};
+use axum::http::{HeaderMap, StatusCode, Uri};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{MethodRouter, get, post};
 use serde::Deserialize;
@@ -111,6 +121,8 @@ fn answer(body: Value) -> Response {
 struct Credential<'a> {
     headers: &'a HeaderMap,
     browser: bool,
+    /// The party key a NIP-98 header proved ([`party_key`]), if any.
+    party_key: Option<String>,
 }
 
 impl Credential<'_> {
@@ -121,6 +133,106 @@ impl Credential<'_> {
             accounts::principal(state, self.headers)
         }
     }
+
+    /// Who may act for `party`: the party's own key (`None`), or an
+    /// account granted access to it.
+    fn check(&self, state: &ServeState, party: &str) -> Result<Option<Principal>, Response> {
+        if let Some(key) = &self.party_key {
+            return if key == party {
+                Ok(None)
+            } else {
+                Err(accounts::refused(
+                    StatusCode::FORBIDDEN,
+                    "payee_forbidden",
+                    "A signed request reaches only the payee named by its own key.",
+                ))
+            };
+        }
+        let principal = self.principal(state)?;
+        authorize(state, &principal, party)?;
+        Ok(Some(principal))
+    }
+}
+
+/// The longest `Authorization: Nostr …` value read.
+const NOSTR_HEADER_MAX: usize = 8 * 1024;
+
+/// The key a NIP-98 `Authorization: Nostr …` header proves for this
+/// request: kind 27235, signed within 60 seconds, its `u` tag this exact
+/// URL on an accepted origin (`oa_auth::nostr::DEFAULT_ORIGINS`, the
+/// configured `public_origin`, or the request's own `Host`), its `method`
+/// tag `method`, and its `payload` tag the SHA-256 of `body` when there is
+/// one. `None` when the request carries no Nostr authorization.
+fn party_key(
+    state: &ServeState,
+    headers: &HeaderMap,
+    method: &str,
+    uri: &Uri,
+    body: Option<&[u8]>,
+) -> Result<Option<String>, Response> {
+    let Some(header) = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .filter(|h| h.starts_with("Nostr "))
+    else {
+        return Ok(None);
+    };
+    let denied = || {
+        accounts::refused(
+            StatusCode::UNAUTHORIZED,
+            "nostr_auth_denied",
+            "That signed request didn't check out. Sign it with the payee's key for this exact URL and method, and send it within 60 seconds.",
+        )
+    };
+    if header.len() > NOSTR_HEADER_MAX {
+        return Err(denied());
+    }
+    let path = uri.path_and_query().map_or(uri.path(), |p| p.as_str());
+    let host = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .filter(|h| !h.is_empty() && h.bytes().all(|b| b.is_ascii_graphic() && b != b'/'));
+    let origins = oa_auth::nostr::DEFAULT_ORIGINS
+        .iter()
+        .map(|o| (*o).to_string())
+        .chain(state.config.public_origin.clone())
+        .chain(
+            host.into_iter()
+                .flat_map(|h| [format!("https://{h}"), format!("http://{h}")]),
+        );
+    let payload = body
+        .filter(|b| !b.is_empty())
+        .map(|b| hex::encode(<sha2::Sha256 as sha2::Digest>::digest(b)));
+    let now = accounts::unix_now();
+    for origin in origins {
+        let url = format!("{}{path}", origin.trim_end_matches('/'));
+        if let Ok(auth) = nostr::domain::parse_http_authorization_hash(
+            header,
+            method,
+            &url,
+            payload.as_deref(),
+            now,
+        ) {
+            return Ok(Some(auth.pubkey));
+        }
+    }
+    Err(denied())
+}
+
+/// The credential for a JSON API request: a NIP-98 party key, else the
+/// account behind the headers.
+fn api_credential<'a>(
+    state: &ServeState,
+    headers: &'a HeaderMap,
+    method: &str,
+    uri: &Uri,
+    body: Option<&[u8]>,
+) -> Result<Credential<'a>, Response> {
+    Ok(Credential {
+        headers,
+        browser: false,
+        party_key: party_key(state, headers, method, uri, body)?,
+    })
 }
 
 fn authorize(state: &ServeState, principal: &Principal, party: &str) -> Result<(), Response> {
@@ -255,8 +367,7 @@ async fn statement_body(
     let mut ledger = state.earnings.as_ref().unwrap().lock().await;
     native_custody(state, &ledger)?;
     // Recheck after waiting for the ledger, before reading private state.
-    let principal = credential.principal(state)?;
-    authorize(state, &principal, party)?;
+    credential.check(state, party)?;
     let statement = ledger
         .earnings_statement(party, page.after_earning, page.after_payout, page.limit)
         .map_err(failure)?;
@@ -291,8 +402,7 @@ async fn update(
 ) -> Result<Value, Response> {
     let mut ledger = state.earnings.as_ref().unwrap().lock().await;
     native_custody(state, &ledger)?;
-    let principal = credential.principal(state)?;
-    authorize(state, &principal, party)?;
+    let principal = credential.check(state, party)?;
     let (kind, _) = pay_ledger::payee::classify(&change.value)
         .ok_or_else(|| failure(pay_ledger::Error::Invalid("destination")))?;
     let rail = match kind {
@@ -325,6 +435,20 @@ async fn update(
             "accepted commission destination",
         )));
     }
+    let Some(principal) = principal else {
+        // The party's own key: no account membership to hold.
+        ledger
+            .change_account_payout(
+                party,
+                change.expected_version,
+                &change.value,
+                accounts::unix_now() as i64,
+            )
+            .map_err(failure)?;
+        return Ok(
+            json!({"v":SCHEMA,"party":party,"destination":destination_body(state,&ledger,party)?}),
+        );
+    };
     // Keep current native membership and referrer management locked through
     // the short destination append. An ownership transfer cannot win between
     // authorization and this mutation.
@@ -380,19 +504,14 @@ async fn statement(
     State(state): State<Arc<ServeState>>,
     Path(party): Path<String>,
     Query(page): Query<Page>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    match statement_body(
-        &state,
-        &Credential {
-            headers: &headers,
-            browser: false,
-        },
-        &party,
-        &page,
-    )
-    .await
-    {
+    let credential = match api_credential(&state, &headers, "GET", &uri, None) {
+        Ok(credential) => credential,
+        Err(r) => return private(r),
+    };
+    match statement_body(&state, &credential, &party, &page).await {
         Ok(body) => answer(body),
         Err(r) => private(r),
     }
@@ -401,17 +520,18 @@ async fn statement(
 async fn destination(
     State(state): State<Arc<ServeState>>,
     Path(party): Path<String>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
+    let credential = match api_credential(&state, &headers, "GET", &uri, None) {
+        Ok(credential) => credential,
+        Err(r) => return private(r),
+    };
     let ledger = state.earnings.as_ref().unwrap().lock().await;
     if let Err(r) = native_custody(&state, &ledger) {
         return private(r);
     }
-    let p = match accounts::principal(&state, &headers) {
-        Ok(p) => p,
-        Err(r) => return private(r),
-    };
-    if let Err(r) = authorize(&state, &p, &party) {
+    if let Err(r) = credential.check(&state, &party) {
         return private(r);
     }
     match destination_body(&state, &ledger, &party) {
@@ -423,20 +543,18 @@ async fn destination(
 async fn change_destination(
     State(state): State<Arc<ServeState>>,
     Path(party): Path<String>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
-    Json(change): Json<Change>,
+    body: Bytes,
 ) -> Response {
-    match update(
-        &state,
-        &Credential {
-            headers: &headers,
-            browser: false,
-        },
-        &party,
-        change,
-    )
-    .await
-    {
+    let credential = match api_credential(&state, &headers, "PUT", &uri, Some(&body)) {
+        Ok(credential) => credential,
+        Err(r) => return private(r),
+    };
+    let Ok(Json(change)) = Json::<Change>::from_bytes(&body) else {
+        return private(failure(pay_ledger::Error::Invalid("destination")));
+    };
+    match update(&state, &credential, &party, change).await {
         Ok(body) => answer(body),
         Err(r) => private(r),
     }
@@ -450,8 +568,7 @@ async fn payout_body(
 ) -> Result<Value, Response> {
     let ledger = state.earnings.as_ref().unwrap().lock().await;
     native_custody(state, &ledger)?;
-    let principal = credential.principal(state)?;
-    authorize(state, &principal, party)?;
+    credential.check(state, party)?;
     let p = ledger
         .earnings_payout(party, id)
         .map_err(failure)?
@@ -470,19 +587,14 @@ async fn payout_body(
 async fn payout(
     State(state): State<Arc<ServeState>>,
     Path((party, id)): Path<(String, String)>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    match payout_body(
-        &state,
-        &Credential {
-            headers: &headers,
-            browser: false,
-        },
-        &party,
-        &id,
-    )
-    .await
-    {
+    let credential = match api_credential(&state, &headers, "GET", &uri, None) {
+        Ok(credential) => credential,
+        Err(r) => return private(r),
+    };
+    match payout_body(&state, &credential, &party, &id).await {
         Ok(body) => answer(body),
         Err(r) => private(r),
     }
@@ -501,19 +613,14 @@ async fn export(
     State(state): State<Arc<ServeState>>,
     Path(party): Path<String>,
     Query(page): Query<Page>,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    match statement_body(
-        &state,
-        &Credential {
-            headers: &headers,
-            browser: false,
-        },
-        &party,
-        &page,
-    )
-    .await
-    {
+    let credential = match api_credential(&state, &headers, "GET", &uri, None) {
+        Ok(credential) => credential,
+        Err(r) => return private(r),
+    };
+    match statement_body(&state, &credential, &party, &page).await {
         Ok(body) => download(body),
         Err(r) => private(r),
     }
@@ -559,6 +666,7 @@ async fn statement_page(
         &Credential {
             headers: &headers,
             browser: true,
+            party_key: None,
         },
         &party,
         &page,
@@ -660,6 +768,7 @@ async fn change_page(
         &Credential {
             headers: &headers,
             browser: true,
+            party_key: None,
         },
         &party,
         Change {
@@ -685,6 +794,7 @@ async fn export_page(
         &Credential {
             headers: &headers,
             browser: true,
+            party_key: None,
         },
         &party,
         &page,
@@ -701,7 +811,7 @@ async fn payout_page(
     Path((party, id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Response {
-    match payout_body(&state,&Credential { headers: &headers, browser: true },&party,&id).await {
+    match payout_body(&state,&Credential { headers: &headers, browser: true, party_key: None },&party,&id).await {
         Ok(body) => private(dashboard::page("Payout reconciliation",None,&format!("<h1>Payout reconciliation</h1><p><a href=\"/dashboard/earnings/{}\">Back to earnings</a></p><pre>{}</pre>",esc(&party),esc(&serde_json::to_string_pretty(&body).unwrap()))).into_response()),
         Err(r) => private(r),
     }
@@ -789,6 +899,7 @@ mod tests {
             let credential = Credential {
                 headers: &headers,
                 browser: false,
+                party_key: None,
             };
             let mut pending = Box::pin(update(
                 &state,
@@ -869,5 +980,167 @@ mod tests {
                 .is_err()
             );
         }
+    }
+
+    fn nostr_header(
+        signer: &nostr::domain::RelaySigner,
+        method: &str,
+        url: &str,
+        body: Option<&[u8]>,
+    ) -> String {
+        use base64::Engine as _;
+        let mut tags = vec![
+            nostr::domain::Tag::new(vec!["u".into(), url.into()]),
+            nostr::domain::Tag::new(vec!["method".into(), method.into()]),
+        ];
+        if let Some(body) = body {
+            tags.push(nostr::domain::Tag::new(vec![
+                "payload".into(),
+                hex::encode(<sha2::Sha256 as sha2::Digest>::digest(body)),
+            ]));
+        }
+        let event = signer.sign(accounts::unix_now(), 27_235, tags, String::new());
+        format!(
+            "Nostr {}",
+            base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&event).unwrap())
+        )
+    }
+
+    #[tokio::test]
+    async fn a_party_key_reads_and_sets_only_its_own_destination() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        Registry::install(
+            dir.path(),
+            Manifest {
+                v: tenancy::SCHEMA.into(),
+                sequence: 0,
+                supersedes: None,
+                shared: Default::default(),
+                tenants: [(
+                    "acme".into(),
+                    Tenant {
+                        credential: "key-ref:acme".into(),
+                        principals: vec![],
+                        doors: Default::default(),
+                        quota: None,
+                    },
+                )]
+                .into(),
+                digest: String::new(),
+            },
+        )
+        .unwrap();
+        Accounts::install(dir.path()).unwrap();
+        let path = dir.path().join("pay.sqlite");
+        drop(pay_ledger::Ledger::open(&path).unwrap());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let config: crate::config::Config = serde_json::from_value(json!({"v":crate::config::SCHEMA,"listen":"127.0.0.1:0","registry":dir.path(),"accounts":{},"earnings":{"ledger":path,"grants":[],"rails":{"lightning":"synthetic-qualification","spark":"synthetic-qualification"}}})).unwrap();
+        let state = ServeState::open(config).unwrap();
+
+        let pylon = nostr::domain::RelaySigner::from_secret_hex(&"11".repeat(32)).unwrap();
+        let party = pylon.pubkey().to_string();
+        let route = format!("/v1/earnings/{party}/destination");
+        let uri: Uri = route.parse().unwrap();
+        let url = format!("https://api.openagents.com{route}");
+        let body =
+            serde_json::to_vec(&json!({"expected_version":0,"value":"pylon@example.com"})).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "authorization",
+            nostr_header(&pylon, "PUT", &url, Some(&body))
+                .parse()
+                .unwrap(),
+        );
+
+        // The signature covers the method, the URL, and the body.
+        assert_eq!(
+            party_key(&state, &headers, "PUT", &uri, Some(&body)).unwrap(),
+            Some(party.clone())
+        );
+        assert!(party_key(&state, &headers, "GET", &uri, None).is_err());
+        assert!(party_key(&state, &headers, "PUT", &uri, Some(b"{}")).is_err());
+        let elsewhere: Uri = "/v1/earnings/someone/destination".parse().unwrap();
+        assert!(party_key(&state, &headers, "PUT", &elsewhere, Some(&body)).is_err());
+        assert_eq!(
+            party_key(&state, &HeaderMap::new(), "PUT", &uri, Some(&body)).unwrap(),
+            None
+        );
+
+        let credential = api_credential(&state, &headers, "PUT", &uri, Some(&body)).unwrap();
+        let refused = update(
+            &state,
+            &credential,
+            &"22".repeat(32),
+            Change {
+                expected_version: 0,
+                value: "pylon@example.com".into(),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+        update(
+            &state,
+            &credential,
+            &party,
+            Change {
+                expected_version: 0,
+                value: "pylon@example.com".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let setting = state
+            .earnings
+            .as_ref()
+            .unwrap()
+            .lock()
+            .await
+            .account_payout(&party)
+            .unwrap()
+            .unwrap();
+        assert_eq!(setting.value, "pylon@example.com");
+        assert_eq!(setting.version, 1);
+        // A replay of the same signed change conflicts on the version.
+        assert_eq!(
+            update(
+                &state,
+                &credential,
+                &party,
+                Change {
+                    expected_version: 0,
+                    value: "pylon@example.com".into(),
+                },
+            )
+            .await
+            .unwrap_err()
+            .status(),
+            StatusCode::CONFLICT
+        );
+
+        // The same key reads its own statement, and only its own.
+        let page = Page {
+            limit: 1,
+            ..Default::default()
+        };
+        let body = statement_body(&state, &credential, &party, &page)
+            .await
+            .unwrap();
+        assert_eq!(body["party"], party);
+        assert!(
+            statement_body(&state, &credential, &"22".repeat(32), &page)
+                .await
+                .is_err()
+        );
+        // Without a Nostr header or an account, nothing is read.
+        let anonymous = HeaderMap::new();
+        let nobody = api_credential(&state, &anonymous, "GET", &uri, None).unwrap();
+        assert!(
+            statement_body(&state, &nobody, &party, &page)
+                .await
+                .is_err()
+        );
     }
 }

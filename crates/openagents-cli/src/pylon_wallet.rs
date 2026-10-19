@@ -123,6 +123,10 @@ impl Wallet for Wallets {
             pay_with: self.pay_with,
         }))
     }
+
+    fn spark(&self) -> Option<&dyn pylon::earnings::SparkWallet> {
+        Some(&crate::pylon_payout::Spark)
+    }
 }
 
 /// This computer's Lightning node as a receiver, called off the runtime.

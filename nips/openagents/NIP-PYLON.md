@@ -127,6 +127,24 @@ earnings. Earnings come only from receipts, which the provider does not
 sign. Reachability is not a beacon field; a buyer reaches a pylon through
 the relays in the provider's NIP-65 list and the CJ transport.
 
+### Relay list
+
+A provider publishes a NIP-65 kind `10002` list from the pylon key when it
+starts serving and whenever the relays it reads change. Each relay it reads
+requests from and publishes results to is one `r` tag with no marker (read
+and write); a relay it only reads or only writes takes `read` or `write`.
+The content is empty. A buyer sends jobs to the provider's read relays; a
+reader that has no list falls back to the relay the beacon arrived on.
+
+```json
+{
+  "kind": 10002,
+  "pubkey": "<pylon key>",
+  "tags": [["r", "wss://relay.openagents.com"]],
+  "content": ""
+}
+```
+
 ### Hardware classes
 
 | `tier` | `unified-memory` | `gpu` | `cpu` |
