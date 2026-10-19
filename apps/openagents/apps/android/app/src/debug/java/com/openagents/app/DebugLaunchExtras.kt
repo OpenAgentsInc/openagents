@@ -10,7 +10,7 @@ internal data class DebugLaunchExtras(
 ) {
     companion object {
         fun read(intent: Intent) = DebugLaunchExtras(
-            demo = intent.getBooleanExtra("openagents.demo", true),
+            demo = intent.getBooleanExtra("openagents.demo", false),
             route = intent.getStringExtra("openagents.route"),
             lab = intent.getStringExtra("openagents.lab"),
         )
