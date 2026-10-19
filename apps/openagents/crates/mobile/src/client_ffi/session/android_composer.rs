@@ -271,7 +271,9 @@ impl CoreAndroidComposer {
             busy,
             primary_label: "Send".into(),
             stop_key: busy.then(|| "composer".into()),
-            attachment_key: attachment.then(|| "composer".into()),
+            // The composer node activates Stop while busy and Attach otherwise,
+            // so offering both under the one key would be ambiguous.
+            attachment_key: (attachment && !busy).then(|| "composer".into()),
             error,
             shared_cards_json,
         })
