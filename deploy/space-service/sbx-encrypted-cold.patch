@@ -1,0 +1,51 @@
+diff --git a/crates/libs/sbx/mgr/server/src/service/create_support.rs b/crates/libs/sbx/mgr/server/src/service/create_support.rs
+index d640605..187b071 100644
+--- a/crates/libs/sbx/mgr/server/src/service/create_support.rs
++++ b/crates/libs/sbx/mgr/server/src/service/create_support.rs
+@@ -134,11 +134,14 @@ impl SandboxManagerService {
+         // change at adoption. Skip ineligible donors before testing occupancy so
+         // valid caller intent follows the same fallback whether the pool is full
+         // or empty. A rootfs resize additionally requires a cold create.
+-        let eligible_mode = if req.rootfs_size_mb.is_some() {
++        // An encrypted (BYOK) sandbox cannot boot from a template base
++        // snapshot: the restore path loads vmstate and memory only from the
++        // sealed `snapshot.luks` volume a suspend wrote, and a clean base
++        // snapshot has none, so node-manager finds no backing to open.
++        let eligible_mode = if req.rootfs_size_mb.is_some() || req.volume_encryption {
+             BootMode::Cold
+         } else if requested_mode == BootMode::Pool
+             && (requested_id.is_some()
+-                || req.volume_encryption
+                 || req.snapshots_enabled
+                 || req.disk_io_max_operations_per_sec.is_some()
+                 || req.disk_io_max_bandwidth_mib_per_sec.is_some()
+diff --git a/crates/libs/sbx/mgr/server/src/service/create_support/tests.rs b/crates/libs/sbx/mgr/server/src/service/create_support/tests.rs
+index 44fe7b1..496ce54 100644
+--- a/crates/libs/sbx/mgr/server/src/service/create_support/tests.rs
++++ b/crates/libs/sbx/mgr/server/src/service/create_support/tests.rs
+@@ -384,7 +384,8 @@ async fn create_intent_preserves_immutables_independently_of_pool_occupancy() {
+                         );
+                         continue;
+                     }
+-                    let expected = if request.rootfs_size_mb.is_some() {
++                    let expected = if request.rootfs_size_mb.is_some() || request.volume_encryption
++                    {
+                         BootMode::Cold
+                     } else if requested_mode == BootMode::Pool
+                         && populated_pool
+diff --git a/crates/libs/sbx/mgr/server/src/service/start.rs b/crates/libs/sbx/mgr/server/src/service/start.rs
+index dd6b261..e78ef6f 100644
+--- a/crates/libs/sbx/mgr/server/src/service/start.rs
++++ b/crates/libs/sbx/mgr/server/src/service/start.rs
+@@ -1362,6 +1362,11 @@ impl SandboxManagerService {
+         let vmstate_path = snapshot_dir.join("vmstate");
+ 
+         if !vmstate_path.exists() {
++            // A base snapshot has no sealed `snapshot.luks`, which an
++            // encrypted restore requires; boot such a sandbox cold instead.
++            if sandbox.volume_encryption && sandbox.state != SandboxState::Suspended {
++                return Ok(None);
++            }
+             let resolved_template = resolve_template_paths_for_start(
+                 self.template_resolver.as_ref(),
+                 pplx_space_template_mgr_client::proto::TemplateRef {
