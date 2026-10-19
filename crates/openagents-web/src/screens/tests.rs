@@ -102,6 +102,36 @@ async fn the_index_and_screen_pages_list_everything() {
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
 
+/// Design Lab's Web board reads every screen and state from the JSON list,
+/// and may frame the samples from another local port.
+#[tokio::test]
+async fn the_json_list_names_every_screen_and_state() {
+    let response = list().await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+    let doc: serde_json::Value = serde_json::from_str(&body(response).await).unwrap();
+    assert!(doc["started"].as_u64().unwrap() > 0);
+    let listed = doc["screens"].as_array().unwrap();
+    let all = screens();
+    assert_eq!(listed.len(), all.len());
+    for (json, screen) in listed.iter().zip(&all) {
+        assert_eq!(json["id"], screen.id);
+        assert_eq!(json["group"], screen.group.title());
+        assert!(!json["area"].as_str().unwrap().is_empty());
+        let states: Vec<&str> = json["states"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["id"].as_str().unwrap())
+            .collect();
+        let expected: Vec<&str> = screen.states.iter().map(|s| s.id).collect();
+        assert_eq!(states, expected, "{}", screen.id);
+    }
+    let policy = inert_policy(None);
+    assert!(policy.contains("http://127.0.0.1:*"), "{policy}");
+    assert!(!policy.contains("frame-ancestors 'none'"), "{policy}");
+}
+
 /// The site states show their sample data and answer with their status.
 #[tokio::test]
 async fn site_states_show_their_sample_data() {

@@ -1,7 +1,9 @@
 //! Design Lab: every screen of the current OpenAgents apps on one board.
 //!
-//! The board holds three apps ([`APPS`]), the phone (iOS), the Android app,
-//! and the desktop app, all in `apps/openagents/`.
+//! The board holds three captured apps ([`APPS`]), the phone (iOS), the
+//! Android app, and the desktop app, all in `apps/openagents/`. Its fourth,
+//! the website ([`WEB`]), is live: the page frames the web app's screens
+//! gallery from a running server and holds no captures.
 //! `apps/openagents/scripts/design-lab-capture.sh` drives the phone's offline
 //! demo through every screen, and its runs sit in the captures folder itself.
 //! `apps/openagents/scripts/design-lab-capture-android.sh` does the same for
@@ -44,6 +46,11 @@ pub const ANDROID_DIR: &str = "android";
 pub const DESKTOP_DIR: &str = "desktop";
 /// The apps whose runs sit in a folder of their own: app and folder.
 const APP_DIRS: [(&str, &str); 2] = [(ANDROID, ANDROID_DIR), (DESKTOP, DESKTOP_DIR)];
+/// The Web board's live screens: the web app's screens gallery
+/// (`crates/openagents-web/src/screens/`), framed from a running server
+/// rather than captured. This is the address `scripts/web-dev.sh` serves.
+pub const WEB: &str = "web";
+pub const DEFAULT_WEB: &str = "http://127.0.0.1:4380";
 /// The marker a capture script keeps in a run folder until the run is done.
 pub const CAPTURING: &str = ".capturing";
 
@@ -502,6 +509,18 @@ pub const PAGE: &str = include_str!("board.html");
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_web_board_reads_the_running_web_app() {
+        // The board lists the web app and frames its screens gallery live.
+        assert!(PAGE.contains(r#"{ id: "web", name: "Web""#));
+        assert!(PAGE.contains("/ui/screens.json"));
+        assert!(PAGE.contains(&format!(r#""{DEFAULT_WEB}""#)));
+        // The dev loop serves where the board looks by default.
+        let script = include_str!("../scripts/web-dev.sh");
+        let port = DEFAULT_WEB.rsplit(':').next().unwrap();
+        assert!(script.contains(&format!("DESIGN_LAB_WEB_PORT:-{port}")));
+    }
 
     #[test]
     fn captures_name_their_area_and_screen() {

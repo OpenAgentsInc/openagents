@@ -29,7 +29,7 @@ use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::extract::{Path, Query};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use maud::{Markup, html};
 use openagents_ui::shell::{THEME_COOKIE, Theme};
@@ -324,22 +324,69 @@ pub(crate) const fn recorded(
     }
 }
 
+/// The area modules in gallery order, with the name each area goes by.
+fn areas() -> [(&'static str, Vec<Screen>); 5] {
+    [
+        ("Sign-in", auth::screens()),
+        ("Chat", chat::screens()),
+        ("Account", account::screens()),
+        ("Traces", traces::screens()),
+        ("Site", site::screens()),
+    ]
+}
+
 /// Every screen, in gallery order. Each area module adds its own list.
 pub(crate) fn screens() -> Vec<Screen> {
-    let mut all = Vec::new();
-    all.extend(auth::screens());
-    all.extend(chat::screens());
-    all.extend(account::screens());
-    all.extend(traces::screens());
-    all.extend(site::screens());
-    all
+    areas().into_iter().flat_map(|(_, list)| list).collect()
 }
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(PAGE, get(index))
+        .route("/ui/screens.json", get(list))
         .route("/ui/screens/{screen}", get(screen))
         .route("/ui/screens/{screen}/{state}", get(one))
+}
+
+/// When this server started, so a board can tell it restarted.
+static STARTED: std::sync::LazyLock<u128> = std::sync::LazyLock::new(|| {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+});
+
+/// `GET /ui/screens.json`: every screen and state, for Design Lab's Web
+/// board (`crates/design-lab`), which frames each state from another local
+/// port. `started` changes when the server restarts, so the board reloads
+/// its frames.
+async fn list() -> Response {
+    let screens: Vec<serde_json::Value> = areas()
+        .into_iter()
+        .flat_map(|(area, list)| {
+            list.into_iter().map(move |screen| {
+                serde_json::json!({
+                    "id": screen.id,
+                    "title": screen.title,
+                    "group": screen.group.title(),
+                    "area": area,
+                    "routes": screen.routes,
+                    "states": screen.states.iter().map(|state| serde_json::json!({
+                        "id": state.id,
+                        "label": state.label,
+                    })).collect::<Vec<_>>(),
+                })
+            })
+        })
+        .collect();
+    let body = serde_json::json!({ "started": *STARTED, "screens": screens });
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CACHE_CONTROL, "no-store")
+        // A list of sample screens, the same for everyone.
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .body(Body::from(body.to_string()))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 /// The gallery's policy: the `/ui` policy plus frames from this site.
@@ -501,6 +548,11 @@ fn sample_note() -> Markup {
 /// What the strip at the top of a made-up sample page says.
 pub(crate) const SAMPLE_NOTE: &str = "Sample page. Made-up data; buttons and forms do nothing.";
 
+/// Who may frame a sample: this site and pages on the viewer's own computer.
+/// A sample carries no session and can post or fetch nothing.
+pub(crate) const FRAME_ANCESTORS: &str =
+    "frame-ancestors 'self' http://127.0.0.1:* http://localhost:*";
+
 /// `policy` with no form posts and no requests, framable by this site.
 pub(crate) fn inert_policy(policy: Option<&str>) -> String {
     let mut directives: Vec<&str> = policy
@@ -517,7 +569,8 @@ pub(crate) fn inert_policy(policy: Option<&str>) -> String {
     directives.extend([
         "connect-src 'none'",
         "form-action 'none'",
-        "frame-ancestors 'self'",
+        // Design Lab's Web board frames samples from a page on this computer.
+        FRAME_ANCESTORS,
     ]);
     directives.join("; ")
 }

@@ -42,6 +42,7 @@
   #apps button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
   #apps button:last-child { border-radius: 0 8px 8px 0; }
   button.on { background: #3d3d3d; border-color: #5a5a5a; }
+  #bar button, #bar .chip { white-space: nowrap; }
   button { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
     color: inherit; font: inherit; cursor: pointer; }
   button:hover { border-color: #0d99ff; }
@@ -119,6 +120,28 @@
     display: flex; align-items: center; justify-content: center; font-size: 26px; cursor: pointer; }
   .frame .new:hover { border-color: #0d99ff; color: #e6e6e6; }
   .frame .badge { color: #ffb020; margin-left: 6px; }
+  .frame .pic iframe { border: 0; display: block; transform-origin: 0 0; pointer-events: none; background: #fff; }
+  .frame .wait { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    padding: 16px; text-align: center; color: #8a8a8a; font-size: 28px; }
+  #webaddr { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
+    color: inherit; font: inherit; width: 210px; outline: none; }
+  #webaddr:focus { border-color: #0d99ff; }
+  #webstatus.live::before, #webstatus.down::before { content: ""; display: inline-block; width: 8px; height: 8px;
+    border-radius: 4px; margin-right: 6px; background: #3ecf6e; }
+  #webstatus.down::before { background: #ffb020; }
+  .webonly { display: none !important; }
+  body.web .webonly { display: inline-block !important; }
+  body.web .notweb { display: none !important; }
+  #wview { position: fixed; inset: 0; background: rgba(10,10,10,.92); display: none; z-index: 10; }
+  #wview.open { display: flex; }
+  #wview .stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; min-width: 0; }
+  #wframe { position: relative; overflow: hidden; border-radius: 8px; background: #fff; box-shadow: 0 2px 24px rgba(0,0,0,.6); }
+  #wframe iframe { border: 0; display: block; transform-origin: 0 0; }
+  #wview aside { width: 320px; padding: 24px; border-left: 1px solid #333; overflow: auto; }
+  #wview h2 { margin: 0 0 4px; font-size: 18px; }
+  #wview .meta { color: #9a9a9a; margin: 2px 0; word-break: break-all; }
+  #wview .nav { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
+  #wview a { color: #4db1ff; }
   #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #2c2c2c;
     border: 1px solid #4a4a4a; border-radius: 8px; padding: 9px 14px; z-index: 20; display: none;
     gap: 10px; align-items: center; box-shadow: 0 4px 18px rgba(0,0,0,.5); }
@@ -129,7 +152,7 @@
 <div id="canvas"><div id="world"></div></div>
 <div id="bar">
   <span class="chip"><span id="title">Design Lab</span> <span id="count"></span></span>
-  <span id="apps" title="Show the phone app, the Android app or the desktop app (P)"></span>
+  <span id="apps" title="Show the phone app, the Android app, the desktop app or the website (P)"></span>
   <input id="search" type="search" placeholder="Find a screen" autocomplete="off">
   <select id="areas"><option value="">All areas</option></select>
   <span class="spacer"></span>
@@ -137,11 +160,15 @@
   <span id="zoom" class="chip">100%</span>
   <button id="in" title="Zoom in (+)">+</button>
   <button id="fit" title="Show everything (Shift+1)">Fit</button>
+  <span id="webstatus" class="chip webonly"></span>
+  <input id="webaddr" class="webonly" type="text" spellcheck="false" autocomplete="off"
+    title="The web server whose screens the Web board shows. Press Return to switch.">
+  <button id="webwidth" class="webonly" title="Draw web screens at a phone's width (390) or a desktop browser's (1280 × 800)">Phone width</button>
   <button id="mode" title="Show screens in light or dark mode (D)">Light</button>
-  <button id="removed" title="Also show screens the app no longer has">Show removed</button>
+  <button id="removed" class="notweb" title="Also show screens the app no longer has">Show removed</button>
   <button id="newmock" class="edit" title="Start a blank mock screen the size of this app's screens (N)">New mock screen</button>
 </div>
-<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it, select its elements and pin notes · D switches light and dark · P switches phone, Android and desktop</div>
+<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it, select its elements and pin notes · D switches light and dark · P switches phone, Android, desktop and web</div>
 <div id="empty">No screens match.</div>
 <div id="view">
   <div class="stage"><div id="shot"><img id="big" alt=""><div id="marks"></div><div id="pins"></div></div></div>
@@ -175,6 +202,26 @@
     <div class="row edit"><a id="vspec" target="_blank" class="meta">Spec for building agents</a></div>
     <h3>Versions</h3>
     <div class="strip" id="vstrip"></div>
+  </aside>
+</div>
+<div id="wview">
+  <div class="stage" id="wstage"><div id="wframe"></div></div>
+  <aside>
+    <h2 id="wtitle"></h2>
+    <div class="meta" id="wwhere"></div>
+    <div class="nav">
+      <button id="wprev">← Previous state</button>
+      <button id="wnext">Next state →</button>
+      <button id="wclose">Close</button>
+    </div>
+    <div class="hint">This is the live page. Save a web file and it reloads here once the server restarts.</div>
+    <h3>States</h3>
+    <div class="row" id="wstates"></div>
+    <h3>Open</h3>
+    <div class="row"><a id="wopen" target="_blank" rel="noopener">Open this page</a></div>
+    <div class="row"><a id="wgallery" target="_blank" rel="noopener">Every state of this screen</a></div>
+    <h3>Site addresses</h3>
+    <div class="row" id="wroutes"></div>
   </aside>
 </div>
 <div id="editor">
@@ -245,7 +292,7 @@ document.getElementById("removed").onclick = () => {
   layout();
   fit();
 };
-function visible(s) { return (showRemoved || s.current !== false) && appOf(s) === app; }
+function visible(s) { return (showRemoved || s.current !== false || s.live) && appOf(s) === app; }
 
 // The board shows one app at a time: the phone, Android or desktop app. Each has
 // its own screens; mocks and notes are shared.
@@ -256,6 +303,9 @@ const APPS = [
     capture: "apps/openagents/scripts/design-lab-capture-android.sh" },
   { id: "desktop", name: "Desktop", w: 1280, h: 800,
     capture: "apps/openagents/scripts/design-lab-capture-desktop.sh" },
+  // The website is live, not captured: each frame is the web app's screens
+  // gallery page for one state, from a running web server.
+  { id: "web", name: "Web", w: 1280, h: 800, live: true },
 ];
 const appOf = (s) => (s && s.app) || "phone";
 const appInfo = (id) => APPS.find((a) => a.id === id) || APPS[0];
@@ -266,10 +316,13 @@ function setApp(next) {
   app = next;
   try { localStorage.setItem("design-lab-app", app); } catch (e) {}
   for (const b of document.querySelectorAll("#apps button")) b.classList.toggle("on", b.dataset.app === app);
-  if (!board.screens.length && !mocks.mocks.length) return;
+  document.body.classList.toggle("web", app === "web");
+  if (app === "web") webPoll();
+  if (!loaded) return;
+  setMode(mode);
   areas();
   layout();
-  fit();
+  if (app === "web" && webList) webStart(); else fit();
 }
 for (const a of APPS) {
   const b = document.createElement("button");
@@ -287,17 +340,19 @@ function setMode(next) {
   mode = next;
   try { localStorage.setItem("design-lab-mode", mode); } catch (e) {}
   const b = document.getElementById("mode");
-  const dark = board.screens.some((s) => s.versions.some((v) => v.dark));
+  const dark = app === "web" || board.screens.some((s) => s.versions.some((v) => v.dark));
   b.textContent = mode === "dark" ? (dark ? "Dark" : "Dark · none captured yet") : "Light";
   b.title = dark ? "Show screens in light or dark mode (D)"
     : "No dark-mode captures yet. Run apps/openagents/scripts/design-lab-capture.sh to take them.";
   b.classList.toggle("on", mode === "dark");
-  if (board.screens.length) layout();
+  if (loaded) layout();
   if (current) show();
+  if (wcurrent) webShow();
 }
 document.getElementById("mode").onclick = () => setMode(mode === "dark" ? "light" : "dark");
 
 function aspect(v, screen) {
+  if (screen && screen.live) return webSize().w / webSize().h;
   if (v.width && v.height) return v.width / v.height;
   const a = appInfo(appOf(screen));
   return a.w / a.h;
@@ -316,6 +371,9 @@ function el(cls, x, y, w, h, text) {
 // The board shows each screen's newest version only: its light picture,
 // then its dark one when that was captured. Older versions stay in the viewer.
 function shots(screen) {
+  if (screen.live) {
+    return screen.web.states.map((st, i) => ({ v: {}, i, st, live: true, src: webUrl(screen.web, st) }));
+  }
   const i = screen.versions.length - 1;
   const v = screen.versions[i];
   const out = [{ v, i, mode: "light", src: "img/" + v.image }];
@@ -348,7 +406,7 @@ function layout() {
   const byArea = new Map();
   let shown = 0;
   let inApp = 0;
-  for (const screen of board.screens) {
+  for (const screen of allScreens()) {
     if (appOf(screen) === app) inApp++;
     if (!visible(screen)) continue;
     if (only && screen.area !== only) continue;
@@ -373,7 +431,9 @@ function layout() {
     for (const it of s.items) {
       const label = el("screen", it.x, it.y, 0, 0, it.screen.title);
       const small = document.createElement("small");
-      small.textContent = "v" + it.screen.versions.length + " · " + when(it.screen.versions[it.screen.versions.length - 1].unix);
+      small.textContent = it.screen.live
+        ? it.screen.web.group + " · " + (it.screen.web.states.length === 1 ? "1 state" : it.screen.web.states.length + " states")
+        : "v" + it.screen.versions.length + " · " + when(it.screen.versions[it.screen.versions.length - 1].unix);
       label.appendChild(small);
       box.appendChild(label);
       let fx = it.x;
@@ -382,8 +442,8 @@ function layout() {
         const fw = it.sizes[k];
         const fy = it.y + NAME;
         const f = el("frame", fx, fy, fw, PIC);
-        const name = el("name", 0, 0, 0, 0, s.mode === "dark" ? "Dark" : "Light");
-        const openNotes = notesOn(it.screen.id, v).filter((n) => !n.resolved).length;
+        const name = el("name", 0, 0, 0, 0, s.live ? s.st.label : s.mode === "dark" ? "Dark" : "Light");
+        const openNotes = s.live ? 0 : notesOn(it.screen.id, v).filter((n) => !n.resolved).length;
         if (openNotes) {
           const badge = document.createElement("span");
           badge.className = "badge";
@@ -393,14 +453,17 @@ function layout() {
         f.appendChild(name);
         const pic = el("pic", 0, 0);
         pic.style.position = "static";
+        if (s.live) pic.appendChild(el("wait", 0, 0, 0, 0, s.st.label));
+        if (s.live) pic.firstChild.style.position = "static";
         pic.addEventListener("click", () => {
           if (moved) return;
+          if (s.live) { openWeb(it.screen, k); return; }
           if (mode !== s.mode) setMode(s.mode);
           open(it.screen, i);
         });
         f.appendChild(pic);
         box.appendChild(f);
-        frames.push({ el: pic, src: s.src, x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
+        frames.push({ el: pic, src: s.src, live: !!s.live, x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
         fx += fw + GAP;
       });
     }
@@ -413,6 +476,7 @@ function layout() {
   document.getElementById("count").textContent = shown + " screens";
   const empty = document.getElementById("empty");
   empty.textContent = inApp ? "No screens match."
+    : app === "web" ? (webList ? "The web server lists no screens." : webWaiting())
     : "No " + appInfo(app).name.toLowerCase() + " screens yet. Run " + appInfo(app).capture + " to capture them.";
   empty.style.display = shown ? "none" : "flex";
   render();
@@ -436,7 +500,12 @@ function render() {
       const sx = view.x + f.x * view.k, sy = view.y + f.y * view.k;
       const visible = sx < W + margin && sy < H + margin &&
         sx + f.w * view.k > -margin && sy + f.h * view.k > -margin;
-      if (visible && f.h * view.k > 6) {
+      // A live page loads once it is big enough to read; until then it shows its name.
+      if (visible && f.live && f.h * view.k > 90) {
+        f.el.textContent = "";
+        f.el.appendChild(webIframe(f.src, f.h));
+        f.loaded = true;
+      } else if (visible && !f.live && f.h * view.k > 6) {
         const img = document.createElement("img");
         img.decoding = "async";
         img.alt = "";
@@ -521,7 +590,7 @@ function areas() {
   const select = document.getElementById("areas");
   const keep = select.value;
   select.length = 1;
-  const names = board.screens.filter(visible).map((s) => s.area);
+  const names = allScreens().filter(visible).map((s) => s.area);
   for (const a of [...new Set(names)]) {
     const o = document.createElement("option");
     o.value = a; o.textContent = a;
@@ -575,6 +644,13 @@ document.querySelector("#view .stage").addEventListener("click", (e) => { if (e.
 addEventListener("keydown", (e) => {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) { if (e.key === "Escape") e.target.blur(); return; }
   if (editing) { editorKey(e); return; }
+  if (wcurrent) {
+    if (e.key === "Escape") closeWeb();
+    if (e.key === "ArrowLeft") $("wprev").click();
+    if (e.key === "ArrowRight") $("wnext").click();
+    if (e.key === "d" || e.key === "D") setMode(mode === "dark" ? "light" : "dark");
+    return;
+  }
   if (current) {
     if (e.key === "Escape") close();
     if (e.key === "ArrowLeft") document.getElementById("prev").click();
@@ -1316,20 +1392,190 @@ function editorKey(e) {
   if (e.key === "t" || e.key === "T") $("etext").click();
 }
 
-Promise.all([fetch("board.json").then((r) => r.json()), loadMocks()]).then(([b]) => {
+// ---- The Web board. Its screens come from a running web server's screens
+// gallery (`/ui/screens.json`), and each frame is that server's page for one
+// state. The board checks the server every second and a half; when it has
+// restarted (the web-dev script rebuilt it), every open frame reloads.
+let webBase = "", webList = null, webStarted = null, webDown = false, webTimer = 0, webBusy = false;
+let webPhone = false;
+try { webPhone = localStorage.getItem("design-lab-web-width") === "phone"; } catch (e) {}
+const webSize = () => (webPhone ? { w: 390, h: 844 } : { w: 1280, h: 800 });
+const webUrl = (screen, st) => webBase + "/ui/screens/" + encodeURIComponent(screen.id) + "/" +
+  encodeURIComponent(st.id) + "?theme=" + (mode === "dark" ? "dark" : "light");
+const webWaiting = () => "Waiting for the web server at " + webBase +
+  ". Start it with crates/design-lab/scripts/web-dev.sh, or type another address above.";
+function allScreens() {
+  if (!webList) return board.screens;
+  return board.screens.concat(webList.map((w) => ({
+    id: "web:" + w.id, title: w.title, area: w.area, app: "web", live: true, web: w, versions: [],
+  })));
+}
+// A page drawn at the web size and scaled to `h` pixels tall.
+function webIframe(src, h) {
+  const size = webSize(), f = document.createElement("iframe");
+  f.width = size.w; f.height = size.h;
+  f.style.transform = "scale(" + h / size.h + ")";
+  f.setAttribute("sandbox", "allow-same-origin allow-scripts");
+  f.title = "Live page";
+  f.src = src;
+  return f;
+}
+function webStatus() {
+  const chip = $("webstatus");
+  chip.className = "chip webonly " + (webList && !webDown ? "live" : "down");
+  chip.textContent = webList && !webDown ? "Live" : webList ? "Server restarting…" : "No web server yet";
+  chip.title = webList && !webDown ? "Showing live pages from " + webBase + ". They reload when the server restarts."
+    : webWaiting();
+}
+function setWebBase(next, save) {
+  next = (next || "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//.test(next)) { toast("Type a web address that starts with http://"); $("webaddr").value = webBase; return; }
+  webBase = next;
+  $("webaddr").value = webBase;
+  if (save) { try { localStorage.setItem("design-lab-web", webBase); } catch (e) {} }
+  webList = null; webStarted = null; webDown = false;
+  webStatus();
+  if (app === "web" && loaded) { areas(); layout(); }
+  webPoll();
+}
+function webPoll() {
+  clearTimeout(webTimer);
+  if (app !== "web" || webBusy || !webBase) return;
+  webBusy = true;
+  const base = webBase;
+  fetch(base + "/ui/screens.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((doc) => {
+      if (base !== webBase) return;
+      const first = !webList, restarted = webStarted !== null && doc.started !== webStarted;
+      const changed = JSON.stringify(doc.screens) !== JSON.stringify(webList);
+      webStarted = doc.started; webList = doc.screens; webDown = false;
+      if (first || changed) { if (loaded) { areas(); layout(); if (first) webStart(); } }
+      // `#screen=web:<screen>` opens a web screen once the list is in.
+      const linked = first && new URLSearchParams(location.hash.slice(1)).get("screen");
+      if (linked && linked.startsWith("web:")) {
+        const sc = allScreens().find((x) => x.id === linked);
+        if (sc) openWeb(sc, 0);
+      }
+      else if (restarted) webReload();
+      if (wcurrent && (restarted || changed)) {
+        const again = webList.find((w) => w.id === wcurrent.screen.web.id);
+        if (again) { wcurrent.screen.web = again; wcurrent.k = Math.min(wcurrent.k, again.states.length - 1); webShow(); }
+        else closeWeb();
+      }
+      if (restarted) toast("The web server restarted. The pages reloaded.");
+    })
+    .catch(() => { if (base === webBase) { webDown = true; if (!webList && loaded) layout(); } })
+    .finally(() => { webBusy = false; webStatus(); webTimer = setTimeout(webPoll, 1500); });
+}
+// Everything at once is too small to read, so the Web board opens at its top
+// left, close enough that those pages load. Fit (0) still shows everything.
+function webStart() {
+  view = { x: 40, y: 80, k: 0.3 };
+  render();
+}
+// Reloads every live page that is open, on the board and in the viewer.
+function webReload() {
+  for (const f of document.querySelectorAll("#world iframe, #wframe iframe")) f.src = f.src;
+}
+$("webaddr").addEventListener("keydown", (e) => { if (e.key === "Enter") { setWebBase($("webaddr").value, true); e.target.blur(); } });
+$("webaddr").addEventListener("change", () => { if ($("webaddr").value.trim() !== webBase) setWebBase($("webaddr").value, true); });
+function webWidthButton() {
+  $("webwidth").textContent = webPhone ? "Desktop width" : "Phone width";
+  $("webwidth").title = webPhone ? "Draw web screens at a desktop browser's size (1280 × 800)"
+    : "Draw web screens at a phone's width (390 × 844)";
+}
+$("webwidth").onclick = () => {
+  webPhone = !webPhone;
+  try { localStorage.setItem("design-lab-web-width", webPhone ? "phone" : "desktop"); } catch (e) {}
+  webWidthButton();
+  layout(); fit();
+  if (wcurrent) webShow();
+};
+webWidthButton();
+
+// The open web screen and state, live and larger.
+let wcurrent = null;
+function openWeb(screen, k) {
+  wcurrent = { screen, k };
+  $("wview").classList.add("open");
+  webShow();
+}
+function webShow() {
+  const { screen, k } = wcurrent, w = screen.web, st = w.states[k];
+  const url = webUrl(w, st);
+  $("wtitle").textContent = w.title + " · " + st.label;
+  $("wwhere").textContent = w.group + " · " + w.area + " · state " + (k + 1) + " of " + w.states.length;
+  $("wprev").disabled = k === 0;
+  $("wnext").disabled = k === w.states.length - 1;
+  const size = webSize(), stage = $("wstage");
+  const fit = Math.min((stage.clientWidth - 48) / size.w, (stage.clientHeight - 48) / size.h, 1);
+  const frame = $("wframe");
+  frame.style.width = size.w * fit + "px";
+  frame.style.height = size.h * fit + "px";
+  const old = frame.querySelector("iframe");
+  if (!old || old.dataset.url !== url || old.width != size.w) {
+    frame.textContent = "";
+    const f = webIframe(url, size.h * fit);
+    f.dataset.url = url;
+    f.style.pointerEvents = "auto";
+    frame.appendChild(f);
+  } else old.style.transform = "scale(" + fit + ")";
+  $("wopen").href = url;
+  $("wgallery").href = webBase + "/ui/screens/" + encodeURIComponent(w.id) + "#" + encodeURIComponent(st.id);
+  const states = $("wstates");
+  states.textContent = "";
+  w.states.forEach((s, j) => {
+    const b = document.createElement("button");
+    b.className = "small" + (j === k ? " on" : "");
+    b.textContent = s.label;
+    b.onclick = () => { wcurrent.k = j; webShow(); };
+    states.appendChild(b);
+  });
+  const routes = $("wroutes");
+  routes.textContent = "";
+  for (const r of w.routes) {
+    const c = document.createElement("code");
+    c.textContent = r;
+    routes.appendChild(c);
+  }
+  if (!w.routes.length) routes.textContent = "A part of a page, not a page of its own.";
+}
+function closeWeb() {
+  $("wview").classList.remove("open");
+  $("wframe").textContent = "";
+  wcurrent = null;
+}
+$("wprev").onclick = () => { if (wcurrent && wcurrent.k > 0) { wcurrent.k--; webShow(); } };
+$("wnext").onclick = () => { if (wcurrent && wcurrent.k < wcurrent.screen.web.states.length - 1) { wcurrent.k++; webShow(); } };
+$("wclose").onclick = closeWeb;
+$("wstage").addEventListener("click", (e) => { if (e.target === e.currentTarget) closeWeb(); });
+addEventListener("resize", () => { if (wcurrent) webShow(); });
+
+let loaded = false;
+const webDefault = fetch("web.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null))
+  .then((j) => (j && j.url) || "http://127.0.0.1:4380").catch(() => "http://127.0.0.1:4380");
+Promise.all([fetch("board.json").then((r) => r.json()), loadMocks(), webDefault]).then(([b, , web]) => {
   board = b;
+  loaded = true;
   document.getElementById("title").textContent = b.name;
   document.title = b.name + " · Design Lab";
   // `#q=words` opens the board already searched, so a view can be linked.
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.get("q")) document.getElementById("search").value = hash.get("q");
+  // `#web=http://127.0.0.1:PORT` points the Web board at another web server.
+  let saved = null;
+  try { saved = localStorage.getItem("design-lab-web"); } catch (e) {}
+  setWebBase(hash.get("web") || saved || web, !!hash.get("web"));
   // `#app=android` or `#app=desktop` opens that app's board; a linked screen opens its own app.
   const linked = hash.get("screen") && board.screens.find((x) => x.id === hash.get("screen"));
   if (linked) app = appOf(linked);
+  else if ((hash.get("screen") || "").startsWith("web:")) app = "web";
   else if (hash.get("app")) app = hash.get("app");
   // An app without screens yet still shows; the board says how to capture it.
   if (!APPS.some((a) => a.id === app)) app = "phone";
   for (const btn of document.querySelectorAll("#apps button")) btn.classList.toggle("on", btn.dataset.app === app);
+  document.body.classList.toggle("web", app === "web");
+  if (app === "web") webPoll();
   areas();
   setMode(mode);
   layout();

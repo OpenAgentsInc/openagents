@@ -2,15 +2,17 @@
 
 A Figma-style board with every screen of the current OpenAgents apps, the
 iOS phone app, the Android app, and the desktop app (all in
-`apps/openagents/`), so you can zoom
+`apps/openagents/`), and the website, so you can zoom
 around a whole app in one place. Nothing on it is an old screenshot: every
-picture is captured from the app's code.
+picture is captured from the app's code, and every web screen is the live
+page.
 
 ```sh
 apps/openagents/scripts/design-lab-capture.sh          # every phone screen (simulator)
 apps/openagents/scripts/design-lab-capture-android.sh  # every Android screen (emulator)
 apps/openagents/scripts/design-lab-capture-desktop.sh  # every desktop screen (offscreen)
-cargo run -p design-lab -- serve                       # http://127.0.0.1:8798
+crates/design-lab/scripts/web-dev.sh                   # the web app, rebuilt on every save
+cargo run -p design-lab -- serve                       # http://127.0.0.1:8798 (#app=web for the website)
 cargo run -p design-lab -- export /tmp/board           # static index.html + board.json + img/
 cargo run -p design-lab -- spec m1                     # a mock's spec as Markdown, plus its PNG
 ```
@@ -48,9 +50,40 @@ cargo run -p design-lab -- spec m1                     # a mock's spec as Markdo
   To build it without running it:
   `cargo check -p openagents-ui --example design-lab-tour --features account-fixture`
   from `apps/openagents`.
-- **Apps.** **Phone**, **Android**, and **Desktop** in the toolbar switch
-  between the three apps' screens, and `P` steps to the next app;
-  `#app=android` or `#app=desktop` in the address opens that app's board.
+- **The website, live.** **Web** shows every screen of the web app's
+  screens gallery (`crates/openagents-web/src/screens/`), in every state,
+  as the live page: each frame is `/ui/screens/{screen}/{state}?theme=`
+  from a running web server, not a picture. The board reads the list from
+  that server's `/ui/screens.json`, so a screen added to the gallery shows
+  up by itself, and screens sit in the gallery's areas (Sign-in, Chat,
+  Account, Traces, Site). Frames are drawn at 1280 × 800; **Phone width**
+  draws them 390 wide. **Light / Dark** (`D`) switches `?theme=`. A frame
+  loads its page once it is zoomed big enough to read. Click a screen to
+  open it larger, still live and clickable, step through its states with
+  the arrow keys, and **Open this page** in its own tab.
+- **Editing the website and watching it.** `crates/design-lab/scripts/web-dev.sh`
+  builds `openagents-web`, runs it on `127.0.0.1:4380` with an empty store
+  of its own (the gallery uses sample data only, so no account, chat
+  service or computer is needed), and rebuilds and restarts it whenever a
+  file changes in a crate the web app is built from. The board checks the server every second
+  and a half; when it comes back after a restart, every open frame reloads.
+  So: save a web file, wait for the build, and the board shows the change,
+  with no capture step. The loop builds incrementally (it skips the shared
+  compile cache's wrapper, which would rebuild all of `openagents-web` on
+  every save; set `DESIGN_LAB_WEB_WRAPPER` to use one): a save in
+  `openagents-web` showed on the board in about 105 seconds on a busy Mac,
+  and the first build after starting the loop takes longer. A build that fails keeps the last good server
+  running and prints the error. `DESIGN_LAB_WEB_PORT` moves the port, and
+  `web-dev.sh CHECKOUT` builds and watches another checkout. The chip in
+  the toolbar says whether the server is live. To show another server, type
+  its address in the toolbar's address field, open `#web=http://127.0.0.1:PORT`,
+  or start the board with `serve --web URL` (or `DESIGN_LAB_WEB`). The web
+  app lets pages on this computer frame its samples (they carry no session
+  and can post nothing), so the board's frames work from another port.
+- **Apps.** **Phone**, **Android**, **Desktop**, and **Web** in the toolbar
+  switch between the apps' screens, and `P` steps to the next app;
+  `#app=android`, `#app=desktop` or `#app=web` in the address opens that
+  app's board.
   Each app's newest run decides which of its screens are current, and each
   app's screens are drawn at its own aspect ratio (412 × 915 dp for
   Android). An Android screen's id is `android:<area>--<screen>`, and a

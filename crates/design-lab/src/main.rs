@@ -1,4 +1,7 @@
-//! `design-lab serve [--port 8798] [--captures DIR]`: the board on 127.0.0.1.
+//! `design-lab serve [--port 8798] [--captures DIR] [--web URL]`: the board on
+//! 127.0.0.1. Its Web board frames the web app's screens gallery live from
+//! `--web` (default [`design_lab::DEFAULT_WEB`], the server
+//! `crates/design-lab/scripts/web-dev.sh` runs and restarts).
 //! `design-lab export DIR [--captures DIR]`: the same board as static files
 //! (`index.html`, `board.json`, `mocks.json`, `img/<run>/<file>`) for any
 //! file host; mocks and notes are read-only there.
@@ -27,7 +30,7 @@ use design_lab::{Board, mock};
 use lab_kit::Version;
 use serde_json::{Value, json};
 
-const USAGE: &str = "usage: design-lab serve [--port PORT] [--captures DIR] | \
+const USAGE: &str = "usage: design-lab serve [--port PORT] [--captures DIR] [--web URL] | \
 design-lab export DIR [--captures DIR] | design-lab spec MOCK_OR_SCREEN [--out DIR] [--captures DIR]";
 
 fn main() -> std::process::ExitCode {
@@ -51,6 +54,7 @@ struct Options {
     port: u16,
     captures: PathBuf,
     out: Option<PathBuf>,
+    web: String,
 }
 
 fn options(args: &[String]) -> Result<Options, String> {
@@ -61,6 +65,7 @@ fn options(args: &[String]) -> Result<Options, String> {
             .unwrap_or(8798),
         captures: design_lab::default_captures(),
         out: None,
+        web: std::env::var("DESIGN_LAB_WEB").unwrap_or_else(|_| design_lab::DEFAULT_WEB.into()),
     };
     let mut words = args.iter();
     while let Some(word) = words.next() {
@@ -69,6 +74,7 @@ fn options(args: &[String]) -> Result<Options, String> {
             "--port" => options.port = value()?.parse().map_err(|_| "--port needs a number")?,
             "--captures" => options.captures = PathBuf::from(value()?),
             "--out" => options.out = Some(PathBuf::from(value()?)),
+            "--web" => options.web = value()?.trim_end_matches('/').to_string(),
             _ => return Err(USAGE.into()),
         }
     }
@@ -174,6 +180,7 @@ struct Lab {
     captures: PathBuf,
     board: Board,
     port: u16,
+    web: String,
     mocks: Mutex<Version>,
 }
 
@@ -183,6 +190,7 @@ fn serve(args: &[String]) -> Result<(), String> {
         board: scanned(&options.captures)?,
         mocks: Mutex::new(mock::load(&options.captures)?),
         port: options.port,
+        web: options.web,
         captures: options.captures,
     });
     let port = options.port;
@@ -192,6 +200,7 @@ fn serve(args: &[String]) -> Result<(), String> {
             .route("/", get(|| async { Html(design_lab::PAGE) }))
             .route("/healthz", get(|| async { "ok" }))
             .route("/board.json", get(board))
+            .route("/web.json", get(web))
             .route("/img/{run}/{file}", get(image))
             .route("/img/android/{run}/{file}", get(android_image))
             .route("/img/desktop/{run}/{file}", get(desktop_image))
@@ -365,6 +374,11 @@ async fn spec_route(State(lab): State<Arc<Lab>>, UrlPath(name): UrlPath<String>)
         Ok(Err(why)) => (StatusCode::NOT_FOUND, why).into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
+}
+
+/// Where the Web board's live screens come from, unless the page says otherwise.
+async fn web(State(lab): State<Arc<Lab>>) -> Json<Value> {
+    Json(json!({ "url": lab.web }))
 }
 
 async fn board(State(lab): State<Arc<Lab>>) -> Json<Board> {
