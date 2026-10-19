@@ -9,8 +9,10 @@ import com.openagents.app.push.AndroidPushFlavor
 import uniffi.openagents_core.CoreClient
 import uniffi.openagents_core.OwnerNoteView
 import uniffi.openagents_core.PushPrefs
+import kotlinx.coroutines.launch
 
 private const val MAX_PENDING_OWNER_NOTES = 16
+internal interface AndroidHostObservation : AutoCloseable { fun foreground(visible: Boolean) }
 
 class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     internal val presentationWork = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
@@ -38,12 +40,18 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     private val activeVoice: AndroidActiveVoice? get() = voiceResources.value
     private var realHost: uniffi.openagents_core.CoreAndroidHost? = null
     private var demoHost: uniffi.openagents_core.CoreAndroidHost? = null
+    private var pushGeneration: ULong? = null
+    private var pushPermission: Boolean? = null
+    private var presentationForeground = false
     private var hostObserver: (() -> Unit)? = null
     private val hostListener = object : uniffi.openagents_core.AndroidHostListener {
         override fun onAndroidHostChanged() { mainHandler.post {
             // Account retirement must stop microphone/service resources even with no Activity mounted.
             val generation = realHost?.account()?.snapshot()?.generation
-            if (generation != null) voiceResources.retireFor(generation)
+            if (generation != null) {
+                voiceResources.retireFor(generation)
+                if (pushGeneration != null && pushGeneration != generation) signedInClient?.let { clearPushClient(it) }
+            }
             hostObserver?.invoke()
         } }
     }
@@ -92,11 +100,41 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
         return current
     }
 
-    fun observeAndroidHost(observer: () -> Unit): AutoCloseable {
+    internal fun observeAndroidHost(observer: () -> Unit): AndroidHostObservation {
         check(Looper.myLooper() == Looper.getMainLooper())
         hostObserver = observer
-        return AutoCloseable { if (hostObserver === observer) hostObserver = null }
+        presentationForeground = true
+        return object : AndroidHostObservation {
+            override fun foreground(visible: Boolean) { if (hostObserver === observer) presentationForeground = visible }
+            override fun close() { if (hostObserver === observer) { hostObserver = null; presentationForeground = false } }
+        }
     }
+    internal fun synchronizePush(owner: uniffi.openagents_core.CoreAndroidHost, snapshot: uniffi.openagents_core.AndroidHostSnapshot) {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        if (!AndroidPushFlavor.enabled || snapshot.account == null) return
+        val client = snapshot.client
+        if (client == null || !snapshot.signedIn) {
+            signedInClient?.let { clearPushClient(it) }
+            return
+        }
+        val allowed = AndroidPushNotifications.canPostNotifications(this)
+        val changed = pushGeneration != snapshot.generation || pushPermission != allowed
+        if (!changed) return
+        if (pushGeneration != snapshot.generation) installPushClient(client, owner.defaultPushPrefs())
+        pushGeneration = snapshot.generation
+        pushPermission = allowed
+        if (!allowed) {
+            currentClient()?.let { current -> presentationWork.launch { runCatching { current.unregisterPushTarget() } } }
+            return
+        }
+        val generation = snapshot.generation
+        AndroidPushFlavor.currentToken { token -> mainHandler.post {
+            if (token != null && pushGeneration == generation && AndroidPushNotifications.canPostNotifications(this)) {
+                com.openagents.app.platform.AndroidPushCoordinator(this, presentationWork).registerToken(token)
+            }
+        } }
+    }
+
 
 
     override fun onCreate() {
@@ -115,6 +153,9 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     }
 
     override fun currentClient(): CoreClient? = signedInClient
+
+    override fun canRegisterPush(): Boolean = AndroidPushFlavor.enabled && signedInClient != null &&
+        AndroidPushNotifications.canPostNotifications(this)
 
     override fun currentPushPrefs(): PushPrefs = synchronized(stateLock) {
         signedInPushPrefs.copy()
@@ -150,6 +191,8 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
             }
         }
         if (cleared) {
+            pushGeneration = null; pushPermission = null
+            AndroidOwnerNotifications.clear(this)
             ownerNotificationHandler = null
             clearPendingOwnerNotesOnMain()
         }
@@ -174,15 +217,12 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     }
 
     private fun deliverOwnerNotification(note: OwnerNoteView) {
-        val handler = ownerNotificationHandler
-        if (handler != null) {
-            handler(note)
-            return
+        if (presentationForeground) {
+            ownerNotificationHandler?.invoke(note)
+            return // Rust's chat state still carries attention; foreground never opens a chat automatically.
         }
-
-        if (pendingOwnerNotes.size == MAX_PENDING_OWNER_NOTES) {
-            pendingOwnerNotes.removeFirst()
-        }
+        if (AndroidOwnerNotifications.show(this, note)) return
+        if (pendingOwnerNotes.size == MAX_PENDING_OWNER_NOTES) pendingOwnerNotes.removeFirst()
         pendingOwnerNotes.addLast(note)
     }
 

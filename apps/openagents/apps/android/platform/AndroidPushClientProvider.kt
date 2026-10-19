@@ -11,6 +11,9 @@ interface AndroidPushClientProvider {
 
     fun currentPushPrefs(): PushPrefs
 
+    /** Native permission/flavor facts only; Rust still authorizes the account registration. */
+    fun canRegisterPush(): Boolean = true
+
     /** Called on the main thread; the app applies foreground suppression and tap routing. */
     fun dispatchOwnerNotification(note: OwnerNoteView)
 }

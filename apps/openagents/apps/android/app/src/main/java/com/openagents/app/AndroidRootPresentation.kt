@@ -51,6 +51,7 @@ internal class AndroidRootPresentation(
     private var canvas: TranscriptCanvas? = null
     private var layout: TranscriptView? = null
     private var relay: TranscriptFrameRelay? = null
+    private var notificationOpen: Job? = null
     private var mediaLoad: Job? = null
     private var mediaViewer: TranscriptMediaViewer? = null
     private var mediaRequest = 0L
@@ -84,7 +85,7 @@ internal class AndroidRootPresentation(
     private val chatContainer = FrameLayout(activity)
     private val routeContainer = FrameLayout(activity)
     private lateinit var panes: AdaptivePaneHost<CoreAndroidHost, CoreAndroidHost, AndroidTranscriptAnchor>
-    private val observation: AutoCloseable
+    private val observation: AndroidHostObservation
     private val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
 
     init {
@@ -172,6 +173,8 @@ internal class AndroidRootPresentation(
             bindDrawer(next)
         }
         snapshot = next
+        application.synchronizePush(owner, next)
+        resolveNotification(next)
         walletButton.visibility = if (next.account != null && next.signedIn) View.VISIBLE else View.GONE
         voiceSettingsButton.visibility = if (next.account != null && next.client != null) View.VISIBLE else View.GONE
         mountVoice(next)
@@ -545,13 +548,32 @@ internal class AndroidRootPresentation(
         guarded {
             when (action) {
                 is AndroidSessionAction.Cloud -> { owner.selectCloudChat(action.chat); panes.showSession() }
-                is AndroidSessionAction.Session -> { owner.selectSession(action.id); panes.showSession() }
+                is AndroidSessionAction.Session -> { owner.selectSession(action.id); panes.showSession(); activity.requestCallNotifications() }
                 is AndroidSessionAction.OpenUrl -> activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)))
                 is AndroidSessionAction.Clipboard -> (activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                     .setPrimaryClip(ClipData.newPlainText("OpenAgents", action.text))
                 AndroidSessionAction.Updated -> sessions?.showPicker()
                 AndroidSessionAction.Sharing -> showFailure()
             }
+        }
+    }
+
+    fun offerNotificationTap(link: String, request: String) {
+        if (!closed) guarded { owner.offerNotificationTap(link, request); panes.showSession() }
+    }
+    private fun resolveNotification(next: AndroidHostSnapshot) {
+        if (!next.pendingNotification || next.client == null || notificationOpen?.isActive == true) return
+        notificationOpen = scope.launch {
+            try {
+                do {
+                    val result = owner.resolveNotificationTap()
+                    val retry = result.retryAfterMs ?: break
+                    delay(retry.toLong())
+                } while (!closed && foreground)
+                if (!closed && foreground) refresh()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (!closed && snapshot?.pendingNotification == true) showFailure() }
+            finally { notificationOpen = null; if (!closed && foreground) refresh() }
         }
     }
 
@@ -568,6 +590,8 @@ internal class AndroidRootPresentation(
     fun background() {
         if (closed) return
         foreground = false
+        observation.foreground(false)
+        notificationOpen?.cancel(); notificationOpen = null
         closeMedia()
         microphoneRequest?.close(); microphoneRequest = null
         snapshot?.linkReview?.let { runCatching { owner.dismissLinkReview(it) } }
@@ -583,6 +607,7 @@ internal class AndroidRootPresentation(
     fun foreground() {
         if (closed) return
         foreground = true
+        observation.foreground(true)
         if (activity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             snapshot?.let { application.voice(it)?.close() }
         }

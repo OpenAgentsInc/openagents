@@ -51,8 +51,9 @@ class AndroidPushCoordinator(
     }
 
     fun registerToken(token: String) {
-        if (token.isBlank()) return
+        if (token.isBlank() || !provider.canRegisterPush()) return
         withCurrentClient { client ->
+            if (!provider.canRegisterPush() || provider.currentClient() !== client) return@withCurrentClient
             val prefs = provider.currentPushPrefs()
             scope.launch(Dispatchers.IO) {
                 try {
