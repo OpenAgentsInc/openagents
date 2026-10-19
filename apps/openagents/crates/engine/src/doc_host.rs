@@ -20,9 +20,9 @@ mod agent_lab;
 mod agent_wakes;
 mod continuations;
 mod custom_agents;
-mod voice_agent;
 mod owner_notifications;
 mod run_commands;
+mod voice_agent;
 pub use run_commands::RunCommandAuthority;
 mod session_index;
 mod transfer;
@@ -224,13 +224,18 @@ struct EdgeRoomUrl {
 }
 
 impl openagents_sync::UrlProvider for EdgeRoomUrl {
-    fn url(&self) -> futures::future::BoxFuture<'static, Result<String, openagents_sync::SyncError>> {
+    fn url(
+        &self,
+    ) -> futures::future::BoxFuture<'static, Result<String, openagents_sync::SyncError>> {
         let token = self.token.clone();
         let base = self.base.clone();
         let device = self.device_id.clone();
         let host = self.host_device.clone();
         Box::pin(async move {
-            let token = token.token().await.map_err(openagents_sync::SyncError::from)?;
+            let token = token
+                .token()
+                .await
+                .map_err(openagents_sync::SyncError::from)?;
             let mut url = format!("{base}?token={token}");
             if !device.is_empty() {
                 url.push_str(&format!("&device={device}"));
@@ -1125,7 +1130,10 @@ impl DocHost {
     /// see — so watch session status instead and re-drain every warm chat.
     /// `drain_queue` is a cheap no-op for empty queues and busy agents, which
     /// is why this can afford to be indiscriminate.
-    fn spawn_queue_flush_watcher(&self, mut statuses: watch::Receiver<Vec<openagents_proto::Session>>) {
+    fn spawn_queue_flush_watcher(
+        &self,
+        mut statuses: watch::Receiver<Vec<openagents_proto::Session>>,
+    ) {
         let host = self.clone();
         self.spawn_worker(async move {
             while statuses.changed().await.is_ok() {
@@ -3297,8 +3305,11 @@ impl DocHost {
             .as_ref()
             .and_then(|w| w.sync_status())
             .is_some_and(|s| s.connected);
-        let path_offline =
-            grace.degraded(GraceKey::OsPath, openagents_sync::wake::path_is_offline(), now);
+        let path_offline = grace.degraded(
+            GraceKey::OsPath,
+            openagents_sync::wake::path_is_offline(),
+            now,
+        );
         let registry_down = grace.degraded(GraceKey::Registry, !registry_connected, now);
         let (state, retry_at_ms, last_failure) = if path_offline {
             (
@@ -3355,7 +3366,9 @@ impl DocHost {
         }
         match snapshot.stats {
             Some(stats) if snapshot.delivery_live && stats.pending_pushes == 0 => S::Synced,
-            Some(_) if !snapshot.delivery_live && openagents_sync::wake::path_is_offline() => S::Offline,
+            Some(_) if !snapshot.delivery_live && openagents_sync::wake::path_is_offline() => {
+                S::Offline
+            }
             _ => S::Connecting,
         }
     }
@@ -4555,7 +4568,11 @@ impl DocHost {
             .into_iter()
             .flatten()
             .find(|d| d.id == target)
-            .and_then(|d| d.version.as_deref().and_then(openagents_proto::version_triple))
+            .and_then(|d| {
+                d.version
+                    .as_deref()
+                    .and_then(openagents_proto::version_triple)
+            })
             .is_some_and(|v| v >= RELAY_MIN_VERSION);
         if !supported {
             return Err("host does not support relay delivery (version gate)".into());
@@ -5438,7 +5455,8 @@ impl DocHost {
                     if openagents_proto::projectless::is_home_cwd(&request.cwd)
                         && let Ok(Some(chat)) = ws.chat(chat_id)
                         && let Some(cwd) = chat.cwd.filter(|cwd| {
-                            chat.space_id.is_none() && openagents_proto::projectless::is_scratch_cwd(cwd)
+                            chat.space_id.is_none()
+                                && openagents_proto::projectless::is_scratch_cwd(cwd)
                         })
                     {
                         request.cwd = cwd;
@@ -6246,8 +6264,9 @@ mod source_context_tests {
         git(&repo, &["add", "README.md"]);
         git(&repo, &["commit", "-m", "capture"]);
 
-        let store =
-            Arc::new(openagents_sync::DocsStore::open(dir.path().join("docs")).expect("store opens"));
+        let store = Arc::new(
+            openagents_sync::DocsStore::open(dir.path().join("docs")).expect("store opens"),
+        );
         let host = DocHost::new(
             store,
             DocHostConfig {
@@ -6321,9 +6340,9 @@ mod degrade_grace_tests {
     #[tokio::test]
     async fn dormant_chat_clears_old_degradation_before_reconnection() {
         use super::{DocHost, DocHostConfig, EdgeConfig, lock};
+        use openagents_proto::{ChatSyncState, HarnessId};
         use std::sync::Arc;
         use std::sync::atomic::Ordering;
-        use openagents_proto::{ChatSyncState, HarnessId};
 
         let dir = tempfile::tempdir().unwrap();
         let host = DocHost::new(

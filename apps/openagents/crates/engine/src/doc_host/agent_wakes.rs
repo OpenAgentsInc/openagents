@@ -266,7 +266,9 @@ impl DocHost {
     }
 
     pub(crate) fn is_always_on(&self) -> bool {
-        self.inner.always_on.load(std::sync::atomic::Ordering::Relaxed)
+        self.inner
+            .always_on
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub(crate) fn agent_wakes(&self) -> Option<&Arc<AgentWakes>> {
@@ -1774,7 +1776,10 @@ mod tests {
             }
             Json(json!({"recorded": true}))
         }
-        async fn page(State(log): State<Log>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
+        async fn page(
+            State(log): State<Log>,
+            Query(q): Query<HashMap<String, String>>,
+        ) -> Json<Value> {
             let after: usize = q.get("after").and_then(|a| a.parse().ok()).unwrap_or(0);
             let data: Vec<Value> = log.lock().unwrap().iter().skip(after).cloned().collect();
             Json(json!({"data": data, "next": null}))
@@ -1799,27 +1804,50 @@ mod tests {
             Arc::new(MemoryStore::default()),
             root.path().join("account/signed-out"),
         );
-        controller.import_credential(format!("sess_{:064x}", 9046)).await;
+        controller
+            .import_credential(format!("sess_{:064x}", 9046))
+            .await;
         desktop::register(root.path(), &controller);
         let lease = controller.lease().expect("signed in");
         let agents = lease.client().agents(lease.session()).unwrap();
 
         let first = WakeEngine::open(&root.path().join("host-a"), AGENT);
-        first.record("saw a", "decided a", "did a", vec![], 1).unwrap();
-        first.record("saw b", "decided b", "did b", vec![], 2).unwrap();
-        first.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        first
+            .record("saw a", "decided a", "did a", vec![], 1)
+            .unwrap();
+        first
+            .record("saw b", "decided b", "did b", vec![], 2)
+            .unwrap();
+        first
+            .mirror_decisions(&agents, &lease.cancel)
+            .await
+            .unwrap();
         // Repeating changes nothing on the account or in the file.
-        first.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        first
+            .mirror_decisions(&agents, &lease.cancel)
+            .await
+            .unwrap();
         assert_eq!(log.lock().unwrap().len(), 2);
         assert_eq!(first.read(10).len(), 2);
 
         let second = WakeEngine::open(&root.path().join("host-b"), AGENT);
         assert!(second.read(10).is_empty());
-        second.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        second
+            .mirror_decisions(&agents, &lease.cancel)
+            .await
+            .unwrap();
         assert_eq!(second.read(10), first.read(10));
-        second.record("saw c", "decided c", "did c", vec![], 3).unwrap();
-        second.mirror_decisions(&agents, &lease.cancel).await.unwrap();
-        first.mirror_decisions(&agents, &lease.cancel).await.unwrap();
+        second
+            .record("saw c", "decided c", "did c", vec![], 3)
+            .unwrap();
+        second
+            .mirror_decisions(&agents, &lease.cancel)
+            .await
+            .unwrap();
+        first
+            .mirror_decisions(&agents, &lease.cancel)
+            .await
+            .unwrap();
         assert_eq!(log.lock().unwrap().len(), 3);
         assert_eq!(decisions_saw(&first), ["saw a", "saw b", "saw c"]);
         assert_eq!(decisions_saw(&second), decisions_saw(&first));

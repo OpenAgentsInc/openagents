@@ -25,13 +25,13 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use tokio::sync::Notify;
-use tokio_util::sync::CancellationToken;
 use openagents_doc::{REGISTRY_DOC_ID, RegistryDoc};
 use openagents_sync::{
     DocsStore, RegistryClient, RegistryEvent, RegistryTransport, RegistryTuning, SyncError,
     UrlProvider,
 };
+use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 use crate::client::ClientInner;
 use crate::error::{ClientError, Result};

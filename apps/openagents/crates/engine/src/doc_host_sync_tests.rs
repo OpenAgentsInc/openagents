@@ -1,9 +1,9 @@
 //! Exercise the dispatcher against slow but live loopback transports.
 use super::*;
 use futures::{SinkExt, StreamExt};
+use openagents_sync::chat_frames::{decode, encode, frame_type};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use openagents_sync::chat_frames::{decode, encode, frame_type};
 
 #[derive(Clone, Copy)]
 enum Hold {
@@ -907,12 +907,10 @@ async fn interactive_handoff_prefers_an_unprotected_slot_over_a_view() {
         handles.push(h);
     }
     until(|| {
-        handles
-            .iter()
-            .all(|h| {
-                lock(&h.chat2).as_ref().is_some_and(|c| c.caught_up())
-                    && !store.has_pending_chat_updates(h.chat_id()).unwrap()
-            })
+        handles.iter().all(|h| {
+            lock(&h.chat2).as_ref().is_some_and(|c| c.caught_up())
+                && !store.has_pending_chat_updates(h.chat_id()).unwrap()
+        })
     })
     .await;
     for n in 0..32 {
