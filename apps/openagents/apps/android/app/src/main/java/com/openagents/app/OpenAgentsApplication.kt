@@ -66,7 +66,10 @@ class OpenAgentsApplication : Application(), AndroidPushClientProvider {
     /** Activity mounts borrow these process-owned Rust handles. */
     fun androidHost(demo: Boolean): uniffi.openagents_core.CoreAndroidHost {
         check(Looper.myLooper() == Looper.getMainLooper())
-        if (demo) return demoHost ?: uniffi.openagents_core.CoreAndroidHost.demo(hostListener)
+        if (demo) return demoHost ?: runCatching {
+            uniffi.openagents_core.CoreAndroidHost.demoWithSessions(
+                java.io.File(cacheDir, "demo").absolutePath, hostListener)
+        }.getOrElse { uniffi.openagents_core.CoreAndroidHost.demo(hostListener) }
             .also { demoHost = it }
         return realHost ?: run {
             val preferences = getSharedPreferences("android-install", MODE_PRIVATE)

@@ -186,7 +186,7 @@ internal class AndroidRootPresentation(
                     } while (!closed && dirty)
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (!closed) showFailure() }
+            catch (error: Exception) { if (!closed) showFailure(error) }
             finally { queued = false }
         }
     }

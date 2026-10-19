@@ -23,7 +23,7 @@ import uniffi.openagents_core.SessionRow
  */
 class RustDrawerCore(
     private val live: CoreClientInterface,
-    private val saved: CoreSavedHistoryInterface,
+    private val saved: CoreSavedHistoryInterface?,
     private val selected: () -> DrawerKey?,
     private val openLive: (SessionHandle) -> Unit,
     private val openSaved: (String) -> Unit,
@@ -59,6 +59,8 @@ class RustDrawerCore(
                         projects = workspace.projects.map { DrawerProject(it.id, it.name) })
                 }
                 DrawerTab.SAVED -> {
+                    // The offline demo has no account, so no saved chats.
+                    val saved = saved ?: return@withLock DrawerFrame(emptyList(), selected(), false)
                     val previous = savedRequest
                     if (previous == null || previous.projectId != request.projectId) {
                         saved.action(SavedHistoryAction.SelectProject(request.projectId))
@@ -103,25 +105,25 @@ class RustDrawerCore(
                         if (router != null) {
                             withContext(Dispatchers.Main) { router(intent.key.id) }
                         } else {
-                            val detail = saved.indexedSession(intent.key.id)
+                            val detail = requireNotNull(saved).indexedSession(intent.key.id)
                             withContext(Dispatchers.Main) { openIndexed(detail) }
-                            if (acknowledgeOnOpen) detail.row.activityRevision?.let { saved.markIndexedSeen(detail.row.key, it) }
+                            if (acknowledgeOnOpen) detail.row.activityRevision?.let { saved?.markIndexedSeen(detail.row.key, it) }
                         }
                     }
                     DrawerOrigin.SAVED -> {
-                        saved.action(SavedHistoryAction.Open(intent.key.id))
+                        saved?.action(SavedHistoryAction.Open(intent.key.id))
                         withContext(Dispatchers.Main) { openSaved(intent.key.id) }
                     }
                 }
                 is DrawerIntent.Pin -> { require(intent.key.origin != DrawerOrigin.INDEXED); if (intent.key.origin == DrawerOrigin.LIVE) {
                     if (intent.pinned) live.pinSession(intent.key.id) else live.unpinSession(intent.key.id)
-                } else saved.fileChat(intent.key.id, SavedFilingChange.Pin(intent.pinned)) }
+                } else saved?.fileChat(intent.key.id, SavedFilingChange.Pin(intent.pinned)) }
                 is DrawerIntent.Archive -> { require(intent.key.origin != DrawerOrigin.INDEXED); if (intent.key.origin == DrawerOrigin.LIVE) {
                     if (intent.archived) live.archiveSession(intent.key.id) else live.unarchiveSession(intent.key.id)
-                } else saved.fileChat(intent.key.id, SavedFilingChange.Archive(intent.archived)) }
+                } else saved?.fileChat(intent.key.id, SavedFilingChange.Archive(intent.archived)) }
                 is DrawerIntent.Rename -> { require(intent.key.origin != DrawerOrigin.INDEXED); if (intent.key.origin == DrawerOrigin.LIVE) {
                     live.renameSession(intent.key.id, intent.title)
-                } else saved.fileChat(intent.key.id, SavedFilingChange.Rename(intent.title)) }
+                } else saved?.fileChat(intent.key.id, SavedFilingChange.Rename(intent.title)) }
                 is DrawerIntent.MovePin -> {
                     require(intent.key.origin != DrawerOrigin.INDEXED)
                     require(intent.after == null || intent.after.origin == intent.key.origin)
@@ -129,12 +131,12 @@ class RustDrawerCore(
                     if (intent.key.origin == DrawerOrigin.LIVE) {
                         live.movePin(intent.key.id, intent.after?.id, intent.before?.id)
                     } else {
-                        saved.movePin(intent.key.id, intent.after?.id, intent.before?.id, requireNotNull(intent.revision))
+                        saved?.movePin(intent.key.id, intent.after?.id, intent.before?.id, requireNotNull(intent.revision))
                     }
                 }
-                DrawerIntent.MoreProjects -> if (activeTab == DrawerTab.SAVED) saved.action(SavedHistoryAction.MoreProjects)
-                DrawerIntent.More -> if (activeTab == DrawerTab.SAVED) saved.action(SavedHistoryAction.MoreChats)
-                DrawerIntent.Refresh -> if (activeTab == DrawerTab.SAVED) saved.action(SavedHistoryAction.RefreshChats)
+                DrawerIntent.MoreProjects -> if (activeTab == DrawerTab.SAVED) saved?.action(SavedHistoryAction.MoreProjects)
+                DrawerIntent.More -> if (activeTab == DrawerTab.SAVED) saved?.action(SavedHistoryAction.MoreChats)
+                DrawerIntent.Refresh -> if (activeTab == DrawerTab.SAVED) saved?.action(SavedHistoryAction.RefreshChats)
             }
         }
     }

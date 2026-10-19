@@ -555,6 +555,37 @@ impl CoreAndroidHost {
             start_failed: AtomicBool::new(false),
         })
     }
+    /// The offline demo with the same seeded computer sessions as the iOS
+    /// demo, so screenshots and checks show a full Sessions list. Nothing is
+    /// signed in and nothing reaches the network.
+    #[uniffi::constructor]
+    pub fn demo_with_sessions(
+        data_dir: String,
+        listener: Arc<dyn AndroidHostListener>,
+    ) -> CoreResult<Arc<Self>> {
+        let host = Self::demo(listener);
+        let client = CoreClient::new(
+            CoreConfig {
+                edge_url: "https://edge.invalid".into(),
+                data_dir,
+                device_id: "android-demo".into(),
+                device_name: "Android demo".into(),
+                platform: "android".into(),
+                app_version: "0".into(),
+            },
+            Credentials::Demo {
+                options: DemoOptions {
+                    fixture: DemoFixture::Standard,
+                    transcript_scale: TranscriptScale::Normal,
+                    stream_speed: StreamSpeed::Realistic,
+                    long_reply: false,
+                },
+            },
+            host.events.clone(),
+        )?;
+        host.state.lock().map_err(|_| CoreError::Closed)?.client = Some(client);
+        Ok(host)
+    }
     /// Called by the Application once. Activity recreation never starts another identity flow.
     pub fn start(&self) {
         if !self.started.swap(true, Ordering::AcqRel) {
@@ -1552,6 +1583,19 @@ mod tests {
     struct Listener;
     impl AndroidHostListener for Listener {
         fn on_android_host_changed(&self) {}
+    }
+    #[test]
+    fn the_demo_with_sessions_has_a_client_and_no_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = CoreAndroidHost::demo_with_sessions(
+            dir.path().display().to_string(),
+            Arc::new(Listener),
+        )
+        .unwrap();
+        assert!(host.account().is_none());
+        let client = host.client().unwrap().expect("demo client");
+        assert!(client.is_demo());
+        client.shutdown();
     }
     #[test]
     fn voice_target_requires_the_selected_online_execution_host_and_capability() {

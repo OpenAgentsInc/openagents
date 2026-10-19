@@ -2184,6 +2184,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_coreandroidhost_demo(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_coreandroidhost_demo_with_sessions(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_coreandroidhost_production(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_coreandroiddemo_new(
@@ -2591,6 +2593,8 @@ internal object UniffiLib {
     external fun uniffi_openagents_mobile_fn_free_coreandroidhost(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_constructor_coreandroidhost_demo(`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_constructor_coreandroidhost_demo_with_sessions(`dataDir`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_constructor_coreandroidhost_production(`dataDir`: RustBuffer.ByValue,`deviceId`: RustBuffer.ByValue,`deviceName`: RustBuffer.ByValue,`version`: RustBuffer.ByValue,`storage`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
@@ -5015,6 +5019,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidhost_demo() and 0xFFFF) != 41549) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidhost_demo_with_sessions() and 0xFFFF) != 32562) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_coreandroidhost_production() and 0xFFFF) != 82) {
@@ -12933,6 +12940,25 @@ open class CoreAndroidHost: Disposable, AutoCloseable, CoreAndroidHostInterface
     UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroidhost_demo(
 
 
+        FfiConverterTypeAndroidHostListener.lower(`listener`),_status)
+}
+    )
+    }
+
+
+
+    /**
+     * The offline demo with the same seeded computer sessions as the iOS
+     * demo, so screenshots and checks show a full Sessions list. Nothing is
+     * signed in and nothing reaches the network.
+     */
+    @Throws(CoreException::class) fun `demoWithSessions`(`dataDir`: kotlin.String, `listener`: AndroidHostListener): CoreAndroidHost {
+            return FfiConverterTypeCoreAndroidHost.lift(
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_coreandroidhost_demo_with_sessions(
+
+
+        FfiConverterString.lower(`dataDir`),
         FfiConverterTypeAndroidHostListener.lower(`listener`),_status)
 }
     )
