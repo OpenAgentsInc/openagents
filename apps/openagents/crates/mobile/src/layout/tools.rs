@@ -1126,26 +1126,53 @@ fn place_agents(t: &ToolGroup, px: Px, x: f32, y: f32, cw: f32, mut out: Option<
 }
 
 pub(crate) fn heap_bytes(t: &ToolGroup) -> usize {
+    fn reveal_bytes(text: &PText) -> usize {
+        text.reveal_ms.capacity() * std::mem::size_of::<Option<u32>>()
+    }
     t.summary.p.heap_bytes()
+        + reveal_bytes(&t.summary)
         + t.lines
             .iter()
             .map(|l| {
                 l.label.p.heap_bytes()
-                    + l.detail.as_ref().map_or(0, |d| d.p.heap_bytes())
-                    + l.badge.as_ref().map_or(0, |b| b.1.p.heap_bytes())
+                    + reveal_bytes(&l.label)
+                    + l.detail.as_ref().map_or(0, |d| d.p.heap_bytes() + reveal_bytes(d))
+                    + l.badge.as_ref().map_or(0, |b| b.1.p.heap_bytes() + reveal_bytes(&b.1))
                     + l.body
                         .iter()
                         .map(|b| match b {
-                            DetailBlock::Lines { lines, .. } => lines.iter().map(|p| p.p.heap_bytes()).sum(),
+                            DetailBlock::Lines { lines, more } => {
+                                lines.iter().map(|p| p.p.heap_bytes() + reveal_bytes(p)).sum::<usize>()
+                                    + more.as_ref().map_or(0, reveal_bytes)
+                            }
                             DetailBlock::Thought(t) => t
                                 .lines
                                 .iter()
                                 .flat_map(|l| [&l.gutter, &l.bars, &l.body])
                                 .flatten()
-                                .map(|p| p.p.heap_bytes())
+                                .map(|p| p.p.heap_bytes() + reveal_bytes(p))
                                 .sum::<usize>(),
-                            DetailBlock::Stats(rows) => rows.iter().map(|r| r.path.p.heap_bytes()).sum(),
-                            DetailBlock::Diff { rows, .. } => rows.iter().map(|r| r.text.p.heap_bytes()).sum(),
+                            DetailBlock::Stats(rows) => rows
+                                .iter()
+                                .map(|r| {
+                                    r.path.p.heap_bytes()
+                                        + reveal_bytes(&r.path)
+                                        + reveal_bytes(&r.add)
+                                        + reveal_bytes(&r.del)
+                                })
+                                .sum(),
+                            DetailBlock::Diff { rows, notice, .. } => {
+                                rows.iter()
+                                    .map(|r| {
+                                        r.text.p.heap_bytes()
+                                            + reveal_bytes(&r.text)
+                                            + r.old.as_ref().map_or(0, reveal_bytes)
+                                            + r.new.as_ref().map_or(0, reveal_bytes)
+                                            + r.marker.as_ref().map_or(0, reveal_bytes)
+                                    })
+                                    .sum::<usize>()
+                                    + notice.as_ref().map_or(0, reveal_bytes)
+                            }
                         })
                         .sum::<usize>()
             })
