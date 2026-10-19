@@ -233,6 +233,7 @@ mod tests {
             edge_token: None,
             ipc_port: 0,
             default_harness: HarnessId::Mock,
+            device_origin: openagents_engine::DeviceOrigin::Unknown,
             org_id: None,
             workos_client_id: Some("client_test".into()),
         }

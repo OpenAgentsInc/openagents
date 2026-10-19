@@ -247,6 +247,7 @@ fn device(id: &str, name: &str) -> Device {
         version: Some("0.1.0".into()),
         cursor_sdk_version: Some("1.0.31".into()),
         capabilities: Vec::new(),
+        origin: openagents_proto::DeviceOrigin::Unknown,
     }
 }
 
@@ -355,6 +356,9 @@ fn rows_round_trip_and_upsert_refreshes() {
     let mut doc = RegistryDoc::new("dev-a");
     let mut device = device("dev-a", "laptop");
     device.capabilities = vec![openagents_proto::capabilities::MESSAGE_QUEUE_V1.into()];
+    device.origin = openagents_proto::DeviceOrigin::ManagedCloud {
+        computer_id: "cmp_0123456789abcdefabcd".into(),
+    };
     doc.upsert_device(&device).unwrap();
     doc.upsert_chat(&chat("chat-1", "dev-a")).unwrap();
     doc.upsert_session(&session("chat-1", "dev-a", SessionStatus::Working))
@@ -366,6 +370,17 @@ fn rows_round_trip_and_upsert_refreshes() {
     assert_eq!(
         state.sessions,
         vec![session("chat-1", "dev-a", SessionStatus::Working)]
+    );
+
+    let mut replica = RegistryDoc::new("phone");
+    let mut server = HashMap::new();
+    let mut seq = 0;
+    server_round(&mut server, &mut seq, &mut [&mut doc, &mut replica]);
+    assert_eq!(
+        replica.read_devices().unwrap()[0].origin,
+        openagents_proto::DeviceOrigin::ManagedCloud {
+            computer_id: "cmp_0123456789abcdefabcd".into(),
+        }
     );
 
     let mut updated = chat("chat-1", "dev-a");

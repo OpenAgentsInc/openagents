@@ -1056,6 +1056,7 @@ impl RegistryDoc {
             ),
             ("cursorSdkEngineVersion", opt_str(device.version.as_deref())),
             ("capabilities", json!(device.capabilities)),
+            ("origin", json!(device.origin)),
         ]);
         self.write(KIND_DEVICES, &device.id.clone(), OpKind::Upsert, set);
         Ok(())

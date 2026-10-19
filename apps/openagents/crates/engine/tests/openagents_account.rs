@@ -48,6 +48,7 @@ async fn sdk_identity_drives_synced_rooms_and_logout_removes_authority() {
         edge_token: None,
         ipc_port: 0,
         default_harness: HarnessId::Mock,
+        device_origin: openagents_engine::DeviceOrigin::Unknown,
         org_id: None,
         workos_client_id: None,
     };
@@ -170,6 +171,7 @@ async fn local_boot_does_not_wait_for_a_blocked_credential_restore() {
         edge_token: None,
         ipc_port: 0,
         default_harness: HarnessId::Mock,
+        device_origin: openagents_engine::DeviceOrigin::Unknown,
         org_id: None,
         workos_client_id: None,
     };
@@ -232,6 +234,7 @@ async fn a_saved_login_opens_the_synced_workspace_even_when_the_server_is_slow()
         edge_token: None,
         ipc_port: 0,
         default_harness: HarnessId::Mock,
+        device_origin: openagents_engine::DeviceOrigin::Unknown,
         org_id: None,
         workos_client_id: None,
     };

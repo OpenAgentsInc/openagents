@@ -27,6 +27,7 @@ fn row(computer: &PairedComputer) -> openagents_proto::Device {
         version: None,
         cursor_sdk_version: None,
         capabilities: vec![],
+        origin: openagents_proto::DeviceOrigin::Unknown,
     }
 }
 

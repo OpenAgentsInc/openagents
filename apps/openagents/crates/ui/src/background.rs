@@ -36,13 +36,18 @@ pub(crate) async fn ensure_engine(config: &EngineBootConfig) -> bool {
             tracing::info!(reason, "engine runs in the app");
             return false;
         }
-        let spec = match openagents_background::cli::spec_from_env(&data_dir, port) {
+        let mut spec = match openagents_background::cli::spec_from_env(&data_dir, port) {
             Ok(spec) => spec,
             Err(error) => {
                 tracing::warn!(%error, "no background engine");
                 return false;
             }
         };
+        spec.env.retain(|(key, _)| {
+            key != "OPENAGENTS_DEVICE_ORIGIN" && key != "OPENAGENTS_CLOUD_HOST_COMPUTER_ID"
+        });
+        spec.env
+            .push(("OPENAGENTS_DEVICE_ORIGIN".into(), "personal".into()));
         let outcome = openagents_background::ensure(Ensure {
             spec: &spec,
             mode,

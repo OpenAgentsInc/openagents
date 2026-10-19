@@ -72,6 +72,25 @@ impl SidebarPreferencesState {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DeviceOrigin {
+    #[default]
+    Unknown,
+    Personal,
+    ManagedCloud {
+        computer_id: String,
+    },
+}
+
+impl DeviceOrigin {
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+}
+
+/// A registered engine's presentation origin. This does not grant access or
+/// change which capabilities the device may use.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Device {
@@ -94,6 +113,9 @@ pub struct Device {
     /// this device row. Missing on older builds.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<String>,
+    /// Explicit producer metadata. Missing legacy values stay unknown.
+    #[serde(default, skip_serializing_if = "DeviceOrigin::is_unknown")]
+    pub origin: DeviceOrigin,
 }
 
 impl Device {
@@ -1571,6 +1593,27 @@ mod tests {
         let mut live = chat;
         live.delivery_live = true;
         assert_eq!(serde_json::to_value(live).unwrap()["deliveryLive"], true);
+    }
+
+    #[test]
+    fn legacy_device_rows_default_to_unknown_and_typed_origins_round_trip() {
+        let legacy: Device = serde_json::from_value(serde_json::json!({
+            "id": "legacy",
+            "name": "Old host",
+            "platform": "linux",
+            "lastSeenAt": null
+        }))
+        .unwrap();
+        assert_eq!(legacy.origin, DeviceOrigin::Unknown);
+
+        let origin = DeviceOrigin::ManagedCloud {
+            computer_id: "cmp_0123456789abcdefabcd".into(),
+        };
+        let encoded = serde_json::to_value(&origin).unwrap();
+        assert_eq!(
+            serde_json::from_value::<DeviceOrigin>(encoded).unwrap(),
+            origin
+        );
     }
 
     #[test]

@@ -26,6 +26,7 @@ fn device(id: &str) -> Device {
         version: Some("0.1.0".into()),
         cursor_sdk_version: None,
         capabilities: Vec::new(),
+        origin: openagents_proto::DeviceOrigin::Unknown,
     }
 }
 

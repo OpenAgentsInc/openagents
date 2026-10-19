@@ -397,6 +397,7 @@ fn engine_config_from_env() -> openagents_engine::EngineConfig {
         edge_url: edge_url_from_env(),
         ipc_port: ipc_port_from_env(),
         default_harness: harness_from_env(),
+        device_origin: openagents_engine::device_origin_from_env(),
         // WorkOS mode: the signed-in session's org wins; OPENAGENTS_ORG_ID (dev
         // default "dev-org") scopes the workspace room otherwise.
         org_id: openagents_brand::env_var("OPENAGENTS_ORG_ID").ok(),

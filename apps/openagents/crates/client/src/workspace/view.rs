@@ -20,7 +20,7 @@ use openagents_proto::view::{
 };
 use openagents_proto::{
     ChangeRequestState, ChangeRequestSummary, Chat, ChatIndicator, CheckoutChangeRequestStatus,
-    Device, Session, SidebarPreferences, Space,
+    Device, DeviceOrigin, Session, SidebarPreferences, Space,
 };
 
 use crate::catalog;
@@ -170,6 +170,7 @@ pub struct DeviceView {
     pub last_seen_ms: Option<i64>,
     pub version: Option<String>,
     pub capabilities: Vec<String>,
+    pub origin: DeviceOrigin,
     /// Can run sessions (desktop/server engines — not phones).
     pub is_execution_host: bool,
     /// This device.
@@ -733,6 +734,7 @@ pub(crate) fn derive(
                 .or_else(|| device.last_seen_at.map(|t| t.timestamp_millis())),
             version: device.version.clone(),
             capabilities: device.capabilities.clone(),
+            origin: device.origin.clone(),
             is_execution_host: is_execution_host(device),
             is_self: device.id == cx.self_device_id,
             session_count: active.iter().filter(|c| c.device_id == device.id).count() as u32,
@@ -817,6 +819,7 @@ impl Hash for DeviceView {
         self.online.hash(h);
         self.version.hash(h);
         self.capabilities.hash(h);
+        self.origin.hash(h);
         self.is_execution_host.hash(h);
         self.session_count.hash(h);
     }
@@ -834,5 +837,45 @@ mod tests {
         assert_eq!(relative_time_label(now - 34 * 60_000, now), "34m");
         assert_eq!(relative_time_label(now - 4 * 3_600_000 - 1, now), "4h");
         assert_eq!(relative_time_label(now - 2 * 86_400_000, now), "2d");
+    }
+
+    #[test]
+    fn device_origin_survives_workspace_view_derivation() {
+        let origin = DeviceOrigin::ManagedCloud {
+            computer_id: "cmp_0123456789abcdefabcd".into(),
+        };
+        let state = WorkspaceState {
+            devices: vec![Device {
+                id: "engine-id".into(),
+                name: "Our cloud".into(),
+                platform: "linux".into(),
+                last_seen_at: None,
+                created_at: None,
+                version: None,
+                cursor_sdk_version: None,
+                capabilities: Vec::new(),
+                origin: origin.clone(),
+            }],
+            spaces: Vec::new(),
+            chats: Vec::new(),
+            sessions: Vec::new(),
+        };
+        let presence = HashMap::new();
+        let changes = Vec::new();
+        let sends = HashMap::new();
+        let view = derive(
+            &state,
+            None,
+            &DeriveContext {
+                self_device_id: "phone",
+                now: Utc::now(),
+                presence: &presence,
+                change_requests: &changes,
+                send_states: &sends,
+                synced: true,
+                previous: None,
+            },
+        );
+        assert_eq!(view.devices[0].origin, origin);
     }
 }
