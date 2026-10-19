@@ -16,7 +16,9 @@
 //! `list_runs` reads this computer's terminal agent sessions and identifies
 //! claims whose holder is dead or has stopped producing output (#12041).
 //! `judge` asks a coordination question set of the Decisions API and
-//! returns its receipt (#12042).
+//! returns its receipt (#12042). `pylon_status` and `pylon_earnings` run
+//! `openagents --json pylon status` / `earnings` read-only, so a chat can
+//! answer "is my pylon earning?" (#12189).
 //!
 //! The server is hand-rolled rather than an SDK: the MCP surface a stdio
 //! tool server needs is five methods (`initialize`, `ping`, `tools/list`,
@@ -41,6 +43,7 @@ mod machine_action;
 pub mod machine_status;
 mod inbox;
 mod jsonrpc;
+pub mod pylon;
 mod reexec;
 #[cfg(unix)]
 mod runs;

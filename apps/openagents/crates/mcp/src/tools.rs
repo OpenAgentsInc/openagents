@@ -969,6 +969,7 @@ impl Tools {
             .chain(upgrade_host_tool().filter(|_| in_chat))
             .chain(grant_machine_tools().into_iter().filter(|_| in_chat))
             .chain(machine_status_tool())
+            .chain(crate::pylon::tools())
             .filter(|tool| !self.voice_relay() || Self::voice_tool(tool.name))
             .collect()
     }
@@ -1042,6 +1043,9 @@ impl Tools {
                 self.openagents.call(openagents_rpc::methods::NOTIFY_OWNER, json!({"originChatId":chat,"requestId":note.request_id,"title":note.title,"body":note.body})).await
             }
             crate::judge::NAME => return crate::judge::call(self.decider.as_ref(), args).await,
+            crate::pylon::STATUS | crate::pylon::EARNINGS => {
+                return crate::pylon::call(name, args).await;
+            }
             #[cfg(unix)]
             crate::build_status::NAME => return crate::build_status::call(args),
             #[cfg(unix)]

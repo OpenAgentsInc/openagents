@@ -37,13 +37,13 @@ pub const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-0
 pub const SERVER_NAME: &str = "openagents";
 const MAX_MESSAGE_BYTES: u64 = 1024 * 1024;
 const MAX_ARGS: usize = 64;
-const MAX_ARG_BYTES: usize = 16 * 1024;
+pub(crate) const MAX_ARG_BYTES: usize = 16 * 1024;
 const MAX_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
+pub(crate) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
-const INVALID_PARAMS: i64 = -32602;
+pub(crate) const INVALID_PARAMS: i64 = -32602;
 
 pub const USAGE: &str = "usage: openagents mcp serve [--timeout SECONDS]
   serve    Serve the read-only commands as MCP tools over stdio, one tool
@@ -337,139 +337,182 @@ pub struct Server {
     pub toll: Option<Arc<dyn Toll>>,
 }
 
-impl Server {
-    pub fn serve(
-        &self,
-        mut input: impl BufRead,
-        mut output: impl Write,
-        mut log: impl Write,
-    ) -> u8 {
-        let mut phase = Phase::Start;
-        let mut line = Vec::new();
-        loop {
-            line.clear();
-            let read = match std::io::Read::take(&mut input, MAX_MESSAGE_BYTES + 1)
-                .read_until(b'\n', &mut line)
-            {
-                Ok(read) => read,
-                Err(error) => {
-                    let _ = writeln!(log, "openagents mcp: cannot read stdin: {error}");
-                    return crate::EXIT_FAILURE;
-                }
-            };
-            if read == 0 {
+/// What one stdio MCP server offers: its handshake, its tool list, and its
+/// calls. [`serve`] and [`handle`] run the lifecycle and the framing for any
+/// of them; `openagents mcp serve` and `openagents pylon mcp` both use them.
+pub(crate) trait Serves {
+    /// `serverInfo` and `instructions` for the `initialize` result.
+    fn handshake(&self) -> Value;
+    /// The `tools/list` result.
+    fn tool_list(&self) -> Value;
+    /// One `tools/call`, answered as a whole JSON-RPC response.
+    fn call(&self, id: &Value, params: Option<&Value>) -> Value;
+}
+
+/// Serve `server` over newline-delimited JSON-RPC until `input` ends.
+pub(crate) fn serve(
+    server: &impl Serves,
+    mut input: impl BufRead,
+    mut output: impl Write,
+    mut log: impl Write,
+) -> u8 {
+    let mut phase = Phase::Start;
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        let read = match std::io::Read::take(&mut input, MAX_MESSAGE_BYTES + 1)
+            .read_until(b'\n', &mut line)
+        {
+            Ok(read) => read,
+            Err(error) => {
+                let _ = writeln!(log, "openagents mcp: cannot read stdin: {error}");
+                return crate::EXIT_FAILURE;
+            }
+        };
+        if read == 0 {
+            return 0;
+        }
+        if read as u64 > MAX_MESSAGE_BYTES {
+            if !emit(
+                &mut output,
+                &error(
+                    Value::Null,
+                    INVALID_REQUEST,
+                    "the message is larger than the size limit",
+                ),
+            ) {
                 return 0;
             }
-            if read as u64 > MAX_MESSAGE_BYTES {
-                if !emit(
-                    &mut output,
-                    &error(
-                        Value::Null,
-                        INVALID_REQUEST,
-                        "the message is larger than the size limit",
-                    ),
-                ) {
+            continue;
+        }
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        let message: Value = match serde_json::from_slice(&line) {
+            Ok(message) => message,
+            Err(_) => {
+                if !emit(&mut output, &error(Value::Null, PARSE_ERROR, "parse error")) {
                     return 0;
                 }
                 continue;
             }
-            if line.iter().all(u8::is_ascii_whitespace) {
-                continue;
-            }
-            let message: Value = match serde_json::from_slice(&line) {
-                Ok(message) => message,
-                Err(_) => {
-                    if !emit(&mut output, &error(Value::Null, PARSE_ERROR, "parse error")) {
-                        return 0;
-                    }
-                    continue;
-                }
-            };
-            if let Some(response) = self.handle(&mut phase, &message)
-                && !emit(&mut output, &response)
-            {
-                return 0;
-            }
+        };
+        if let Some(response) = handle(server, &mut phase, &message)
+            && !emit(&mut output, &response)
+        {
+            return 0;
         }
+    }
+}
+
+/// Dispatch one message; `None` means nothing answers.
+pub(crate) fn handle(server: &impl Serves, phase: &mut Phase, message: &Value) -> Option<Value> {
+    let id = message.get("id").cloned();
+    if message.get("jsonrpc") != Some(&json!("2.0")) {
+        return Some(error(
+            id.unwrap_or(Value::Null),
+            INVALID_REQUEST,
+            "the message must include `jsonrpc: \"2.0\"`",
+        ));
+    }
+    let Some(method) = message.get("method").and_then(Value::as_str) else {
+        if message.get("result").is_some() || message.get("error").is_some() {
+            return None;
+        }
+        return Some(error(
+            id.unwrap_or(Value::Null),
+            INVALID_REQUEST,
+            "`method` must be a string",
+        ));
+    };
+    let Some(id) = id else {
+        if method == "notifications/initialized" && *phase == Phase::Negotiated {
+            *phase = Phase::Ready;
+        }
+        return None;
+    };
+    match method {
+        "initialize" => Some(initialize(server, phase, &id, message.get("params"))),
+        "ping" => Some(result(&id, json!({}))),
+        "tools/list" if *phase == Phase::Ready => Some(result(&id, server.tool_list())),
+        "tools/call" if *phase == Phase::Ready => Some(server.call(&id, message.get("params"))),
+        "tools/list" | "tools/call" => Some(error(
+            id,
+            INVALID_PARAMS,
+            "the session is not initialized yet; send `initialize`, then `notifications/initialized`",
+        )),
+        _ => Some(error(id, METHOD_NOT_FOUND, "method not found")),
+    }
+}
+
+fn initialize(
+    server: &impl Serves,
+    phase: &mut Phase,
+    id: &Value,
+    params: Option<&Value>,
+) -> Value {
+    if *phase != Phase::Start {
+        return error(
+            id.clone(),
+            INVALID_PARAMS,
+            "the session is already initialized",
+        );
+    }
+    let Some(requested) = params
+        .and_then(|p| p.get("protocolVersion"))
+        .and_then(Value::as_str)
+    else {
+        return error(
+            id.clone(),
+            INVALID_PARAMS,
+            "`initialize` params must include `protocolVersion`",
+        );
+    };
+    let version = if PROTOCOL_VERSIONS.contains(&requested) {
+        requested
+    } else {
+        PROTOCOL_VERSIONS[0]
+    };
+    *phase = Phase::Negotiated;
+    let mut answer = json!({
+        "protocolVersion": version,
+        "capabilities": { "tools": { "listChanged": false } },
+    });
+    if let (Some(answer), Value::Object(extra)) = (answer.as_object_mut(), server.handshake()) {
+        answer.extend(extra);
+    }
+    result(id, answer)
+}
+
+impl Serves for Server {
+    fn handshake(&self) -> Value {
+        json!({
+            "serverInfo": {
+                "name": SERVER_NAME,
+                "title": "openagents, the OpenAgents command",
+                "version": env!("CARGO_PKG_VERSION"),
+            },
+            "instructions": "Each tool is one `openagents` command group; only its read-only commands run. Pass the words that would follow the group on the command line as `args`; the result is the `--json` document the command prints, with its exit code (0 success, 1 refused or failed, 64 invalid usage). Pass [\"--help\"] to read a group's syntax. Commands never prompt: stdin is closed.",
+        })
+    }
+
+    fn tool_list(&self) -> Value {
+        Server::tool_list(self)
+    }
+
+    fn call(&self, id: &Value, params: Option<&Value>) -> Value {
+        Server::call(self, id, params)
+    }
+}
+
+impl Server {
+    pub fn serve(&self, input: impl BufRead, output: impl Write, log: impl Write) -> u8 {
+        serve(self, input, output, log)
     }
 
     /// Dispatch one message; `None` means nothing answers.
     pub fn handle(&self, phase: &mut Phase, message: &Value) -> Option<Value> {
-        let id = message.get("id").cloned();
-        if message.get("jsonrpc") != Some(&json!("2.0")) {
-            return Some(error(
-                id.unwrap_or(Value::Null),
-                INVALID_REQUEST,
-                "the message must include `jsonrpc: \"2.0\"`",
-            ));
-        }
-        let Some(method) = message.get("method").and_then(Value::as_str) else {
-            if message.get("result").is_some() || message.get("error").is_some() {
-                return None;
-            }
-            return Some(error(
-                id.unwrap_or(Value::Null),
-                INVALID_REQUEST,
-                "`method` must be a string",
-            ));
-        };
-        let Some(id) = id else {
-            if method == "notifications/initialized" && *phase == Phase::Negotiated {
-                *phase = Phase::Ready;
-            }
-            return None;
-        };
-        match method {
-            "initialize" => Some(self.initialize(phase, &id, message.get("params"))),
-            "ping" => Some(result(&id, json!({}))),
-            "tools/list" if *phase == Phase::Ready => Some(result(&id, self.tool_list())),
-            "tools/call" if *phase == Phase::Ready => Some(self.call(&id, message.get("params"))),
-            "tools/list" | "tools/call" => Some(error(
-                id,
-                INVALID_PARAMS,
-                "the session is not initialized yet; send `initialize`, then `notifications/initialized`",
-            )),
-            _ => Some(error(id, METHOD_NOT_FOUND, "method not found")),
-        }
-    }
-
-    fn initialize(&self, phase: &mut Phase, id: &Value, params: Option<&Value>) -> Value {
-        if *phase != Phase::Start {
-            return error(
-                id.clone(),
-                INVALID_PARAMS,
-                "the session is already initialized",
-            );
-        }
-        let Some(requested) = params
-            .and_then(|p| p.get("protocolVersion"))
-            .and_then(Value::as_str)
-        else {
-            return error(
-                id.clone(),
-                INVALID_PARAMS,
-                "`initialize` params must include `protocolVersion`",
-            );
-        };
-        let version = if PROTOCOL_VERSIONS.contains(&requested) {
-            requested
-        } else {
-            PROTOCOL_VERSIONS[0]
-        };
-        *phase = Phase::Negotiated;
-        result(
-            id,
-            json!({
-                "protocolVersion": version,
-                "capabilities": { "tools": { "listChanged": false } },
-                "serverInfo": {
-                    "name": SERVER_NAME,
-                    "title": "openagents, the OpenAgents command",
-                    "version": env!("CARGO_PKG_VERSION"),
-                },
-                "instructions": "Each tool is one `openagents` command group; only its read-only commands run. Pass the words that would follow the group on the command line as `args`; the result is the `--json` document the command prints, with its exit code (0 success, 1 refused or failed, 64 invalid usage). Pass [\"--help\"] to read a group's syntax. Commands never prompt: stdin is closed.",
-            }),
-        )
+        handle(self, phase, message)
     }
 
     /// One tool per callable group. The description is the row from the
@@ -604,43 +647,62 @@ impl Server {
     /// Run `openagents --json GROUP ARGS...` with no stdin under the timeout.
     fn exec(&self, group: &str, args: &[String]) -> Result<Outcome, String> {
         let exe = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
-        let mut child = std::process::Command::new(exe)
-            .arg("--json")
-            .arg(group)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("cannot start openagents {group}: {e}"))?;
-        let stdout = child.stdout.take().ok_or("no stdout")?;
-        let stderr = child.stderr.take().ok_or("no stderr")?;
-        let out = std::thread::spawn(move || read_bounded(stdout));
-        let err = std::thread::spawn(move || read_bounded(stderr));
-        let started = std::time::Instant::now();
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status,
-                Ok(None) if started.elapsed() >= self.timeout => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!(
-                        "openagents {group} did not finish within {} s and was stopped",
-                        self.timeout.as_secs()
-                    ));
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-                Err(e) => return Err(format!("cannot wait for openagents {group}: {e}")),
-            }
-        };
-        let stdout = out.join().unwrap_or_default();
-        let stderr = err.join().unwrap_or_default();
-        Ok(Outcome {
-            exit_code: status.code().unwrap_or(i32::from(crate::EXIT_FAILURE)),
-            stdout,
-            stderr,
-        })
+        let words: Vec<String> = std::iter::once(group.to_owned())
+            .chain(args.iter().cloned())
+            .collect();
+        exec(&exe, &words, self.timeout)
     }
+}
+
+/// Run `EXE --json WORDS...` with stdin closed, stopping it after `timeout`.
+/// Its output is read in full up to the size bound, so the child never
+/// blocks on a full pipe.
+pub(crate) fn exec(
+    exe: &std::path::Path,
+    words: &[String],
+    timeout: Duration,
+) -> Result<Outcome, String> {
+    let label = words
+        .iter()
+        .take(2)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut child = std::process::Command::new(exe)
+        .arg("--json")
+        .args(words)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("cannot start openagents {label}: {e}"))?;
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let stderr = child.stderr.take().ok_or("no stderr")?;
+    let out = std::thread::spawn(move || read_bounded(stdout));
+    let err = std::thread::spawn(move || read_bounded(stderr));
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "openagents {label} did not finish within {} s and was stopped",
+                    timeout.as_secs()
+                ));
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+            Err(e) => return Err(format!("cannot wait for openagents {label}: {e}")),
+        }
+    };
+    let stdout = out.join().unwrap_or_default();
+    let stderr = err.join().unwrap_or_default();
+    Ok(Outcome {
+        exit_code: status.code().unwrap_or(i32::from(crate::EXIT_FAILURE)),
+        stdout,
+        stderr,
+    })
 }
 
 fn read_bounded(mut reader: impl std::io::Read) -> String {
@@ -712,11 +774,11 @@ fn emit(output: &mut impl Write, message: &Value) -> bool {
         .is_ok()
 }
 
-fn error(id: Value, code: i64, message: &str) -> Value {
+pub(crate) fn error(id: Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
-fn result(id: &Value, value: Value) -> Value {
+pub(crate) fn result(id: &Value, value: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": value })
 }
 

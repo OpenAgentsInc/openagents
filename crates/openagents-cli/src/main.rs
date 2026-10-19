@@ -113,6 +113,7 @@ mod plugin_workbench;
 mod pr;
 mod projects;
 mod provider_key;
+mod pylon_mcp;
 #[cfg(unix)]
 mod pylon_wallet;
 #[cfg(feature = "verse")]
@@ -653,6 +654,10 @@ fn main() -> ExitCode {
         "reach" => reach::run(&output, &rest),
         "playtest" => playtest::run(&output, &rest),
         "relay" => relay::run(&output, &rest),
+        // `openagents pylon mcp`: this pylon as typed MCP tools (#12189).
+        "pylon" if rest.first().is_some_and(|word| word == "mcp") => {
+            pylon_mcp::run(&output, &rest[1..])
+        }
         #[cfg(unix)]
         "pylon" => pylon_wallet::run(output.json(), &rest),
         #[cfg(not(unix))]
