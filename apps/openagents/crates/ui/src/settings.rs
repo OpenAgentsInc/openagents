@@ -3020,7 +3020,7 @@ mod tests {
         )
         .unwrap();
         let loaded = UiSettings::load(dir.path());
-        assert_eq!(loaded.appearance, crate::appearance::AppearanceMode::System);
+        assert_eq!(loaded.appearance, crate::appearance::AppearanceMode::default());
         assert_eq!(loaded.accent, openagents_theme::AccentSelection::ThemeDefault);
         assert_eq!(loaded.surface, openagents_theme::SurfacePreference::ThemeDefault);
         assert_eq!(loaded.sidebar_width, 300.0);

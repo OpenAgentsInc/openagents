@@ -27,15 +27,27 @@ use crate::settings::{self, SavePolicy};
 use crate::theme::{Appearance, Theme};
 
 /// The user's appearance preference. Persisted in `ui-settings.json`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AppearanceMode {
-    /// Follow the OS. The default — matches every other native app on the
-    /// machine, including when the user has macOS set to switch at sunset.
-    #[default]
+    /// Follow the OS. The default on macOS — matches every other native app
+    /// on the machine, including when the user has macOS set to switch at
+    /// sunset.
     System,
     Light,
+    /// The default on Linux, where many desktops (CoderOS among them) don't
+    /// report a color scheme and "follow the OS" would mean light.
     Dark,
+}
+
+impl Default for AppearanceMode {
+    fn default() -> Self {
+        if cfg!(target_os = "linux") {
+            AppearanceMode::Dark
+        } else {
+            AppearanceMode::System
+        }
+    }
 }
 
 impl AppearanceMode {
@@ -388,8 +400,13 @@ mod tests {
     }
 
     #[test]
-    fn default_mode_is_system() {
-        assert_eq!(AppearanceMode::default(), AppearanceMode::System);
+    fn default_mode_is_dark_on_linux_and_system_elsewhere() {
+        let expected = if cfg!(target_os = "linux") {
+            AppearanceMode::Dark
+        } else {
+            AppearanceMode::System
+        };
+        assert_eq!(AppearanceMode::default(), expected);
     }
 
     /// The setting round-trips through the settings file as a lowercase string.

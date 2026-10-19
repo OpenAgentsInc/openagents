@@ -929,6 +929,17 @@ in
 
     hardware.graphics.enable = lib.mkDefault true;
 
+    # CoderOS is dark by default. Apps that follow the system theme read the
+    # color scheme from the portal's Settings interface; the Hyprland portal
+    # doesn't provide it, so the GTK portal serves it from this dconf value.
+    xdg.portal.extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+    programs.dconf = {
+      enable = true;
+      profiles.user.databases = [{
+        settings."org/gnome/desktop/interface".color-scheme = "prefer-dark";
+      }];
+    };
+
     # Hyprland resolves this path at launch. As a symlink into the store, the
     # path resolved to one generation's immutable file, so a running session
     # held the old store path and `hyprctl reload` re-read it rather than the
