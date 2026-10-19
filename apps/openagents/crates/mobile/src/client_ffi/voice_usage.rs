@@ -414,6 +414,7 @@ mod tests {
             id: id.into(),
             name: format!("Computer {id}"),
             platform: "macos".into(),
+            origin: openagents_proto::DeviceOrigin::Unknown,
             online,
             last_seen_ms: None,
             version: None,
