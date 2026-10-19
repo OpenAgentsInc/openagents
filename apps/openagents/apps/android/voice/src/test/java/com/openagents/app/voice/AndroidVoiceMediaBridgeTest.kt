@@ -79,7 +79,7 @@ class AndroidVoiceMediaBridgeTest {
     }
 
     @Test
-    fun closeWaitsForAnAlreadyRunningCompletionAndRejectsLaterReply() {
+    fun closeDoesNotWaitOnAnExternalCompletionAndFencesLaterReplies() {
         val driver = FakeVoiceMediaDriver()
         val bridge = AndroidVoiceMediaBridge(driver)
         val callbackEntered = CountDownLatch(1)
@@ -104,7 +104,7 @@ class AndroidVoiceMediaBridgeTest {
         }
         close.start()
 
-        assertFalse(closeReturned.await(50, TimeUnit.MILLISECONDS))
+        assertTrue(closeReturned.await(2, TimeUnit.SECONDS))
         allowCallbackToFinish.countDown()
         callback.join(2_000)
         close.join(2_000)

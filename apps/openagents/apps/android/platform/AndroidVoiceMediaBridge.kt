@@ -9,8 +9,6 @@ import uniffi.openagents_core.VoiceMediaListener
 import uniffi.openagents_core.VoiceMediaOperation
 import uniffi.openagents_core.VoiceMediaRequest
 import uniffi.openagents_core.VoiceNetworkState as CoreVoiceNetworkState
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 /** A media result returned to Rust. SDP is present only for offer operations. */
 data class VoiceMediaResult(
@@ -80,8 +78,6 @@ class AndroidVoiceMediaBridge(
     private val platformEventHandler: (VoiceMediaPlatformEvent) -> Unit = {},
 ) : VoiceMediaListener, AutoCloseable {
     private val lock = Any()
-    // Serializes callbacks with close without holding the state monitor across callbacks.
-    private val callbackGate = ReentrantLock()
     private val waitingForBinding = ArrayDeque<VoiceMediaRequest>()
     private val inFlight = mutableSetOf<ULong>()
     private data class Binding(
@@ -198,18 +194,18 @@ class AndroidVoiceMediaBridge(
         current: Binding,
         result: VoiceMediaResult,
     ) {
-        callbackGate.withLock {
-            synchronized(lock) {
-                if (!isActiveLocked(current) || !inFlight.remove(request.requestId)) return
-            }
-            current.completer.complete(
-                request.requestId,
-                result.failure,
-                result.sdp,
-                result.microphone,
-                result.speaker,
-            )
+        val shouldComplete = synchronized(lock) {
+            isActiveLocked(current) && inFlight.remove(request.requestId)
         }
+        if (!shouldComplete) return
+
+        current.completer.complete(
+            request.requestId,
+            result.failure,
+            result.sdp,
+            result.microphone,
+            result.speaker,
+        )
     }
 
     private fun receivePlatformEvent(event: VoiceMediaPlatformEvent) {
@@ -217,33 +213,30 @@ class AndroidVoiceMediaBridge(
             if (closed) return
             binding
         }
-        callbackGate.withLock {
-            val active = synchronized(lock) {
-                !closed && (current == null || isActiveLocked(current))
-            }
-            if (!active) return
-            platformEventHandler(event)
-            val sink = current?.stateSink ?: return
-            val stillActive = synchronized(lock) { isActiveLocked(current) }
-            if (stillActive) sink(event)
+        val active = synchronized(lock) {
+            !closed && (current == null || isActiveLocked(current))
         }
+        if (!active) return
+
+        platformEventHandler(event)
+        val sink = current?.stateSink ?: return
+        val stillActive = synchronized(lock) { isActiveLocked(current) }
+        if (stillActive) sink(event)
     }
 
     override fun close() {
-        callbackGate.withLock {
-            val shouldCloseDriver = synchronized(lock) {
-                if (closed) return
-                closed = true
-                generation += 1
-                binding = null
-                waitingForBinding.clear()
-                inFlight.clear()
-                true
-            }
-            if (shouldCloseDriver) {
-                driver.setEventListener(null)
-                driver.close()
-            }
+        val shouldCloseDriver = synchronized(lock) {
+            if (closed) return
+            closed = true
+            generation += 1
+            binding = null
+            waitingForBinding.clear()
+            inFlight.clear()
+            true
+        }
+        if (shouldCloseDriver) {
+            driver.setEventListener(null)
+            driver.close()
         }
     }
 }
