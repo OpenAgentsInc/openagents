@@ -19,6 +19,7 @@ import com.openagents.app.accessibility.*
 import com.openagents.app.composer.*
 import com.openagents.app.drawer.*
 import com.openagents.app.onboarding.*
+import com.openagents.app.onboarding.RecoveryClipboard as AndroidRecoveryClipboard
 import com.openagents.app.platform.AndroidVoiceOrbSurface
 import com.openagents.app.storage.AndroidRetiredSparkSeed
 import com.openagents.app.sessions.AndroidSessionsHost
@@ -251,7 +252,7 @@ internal class AndroidRootPresentation(
                 if (recovery == null) next.recovery?.let { core ->
                     recovery = RecoveryHost(routeContainer, activity.window, CoreRecoveryPort(core, ownsCore = false),
                         AndroidDeviceAuthentication(activity, CredentialLauncher(activity::launchDeviceCredential)),
-                        RecoveryClipboard(activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager),
+                        AndroidRecoveryClipboard(activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager),
                         application::recoveryWork,
                         { guarded { owner.selectDefaultChat(); panes.showSession() } },
                         { semantics(AndroidHostSurface.RECOVERY) },
@@ -294,7 +295,7 @@ internal class AndroidRootPresentation(
                     wallet = RecoveryHost(routeContainer, activity.window,
                         AndroidWalletRecoveryPort(core, application::recoveryWork, { wallet?.refresh() }),
                         AndroidDeviceAuthentication(activity, CredentialLauncher(activity::launchDeviceCredential)),
-                        RecoveryClipboard(activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager, label = "Wallet"),
+                        AndroidRecoveryClipboard(activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager, label = "Wallet"),
                         application::recoveryWork, {}, { semantics(AndroidHostSurface.WALLET) },
                     ).also { it.start("") }
                 } else wallet?.refresh()
