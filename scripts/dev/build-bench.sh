@@ -12,6 +12,8 @@
 #                source file, which forces the package itself to recompile
 # for both `cargo build -p P` and `cargo test -p P --no-run`. The edit is
 # reverted when the script exits.
+# With --edit-package, every row edits that package and measures the named
+# consumer. Each consumer must depend on the edited package.
 #
 # Options:
 #   --manifest-path M  a nested workspace (apps/openagents/Cargo.toml)
@@ -33,12 +35,15 @@
 #   --no-wrapper       bypass the compile cache wrapper (kache or sccache),
 #                      to time the compiler itself
 #   --only build|test  run one of the two commands
+#   --edit-package P   edit P instead of each measured package, to time a
+#                      split crate together with its dependents
 #   --timings          pass --timings to the warm-up build (an HTML report
 #                      under the target's cargo-timings folder)
 #   --cold             first build every named package together, timed as
 #                      the "(all)" row, with --timings; on an empty target
 #                      this is the cold build
-#   --out FILE         append rows as tab-separated values
+#   --out FILE         append rows as tab-separated values; the final column
+#                      names the edited package
 #
 # A variant changes compiler flags, so give each variant its own target
 # directory unless a cold build is what you want to time. The script loads
@@ -55,6 +60,7 @@ jobs=
 profile=
 wrapper=1
 only=
+edit_package=
 timings=0
 cold=0
 out=
@@ -69,10 +75,15 @@ while [ $# -gt 0 ]; do
     --profile) profile=$2; shift 2 ;;
     --no-wrapper) wrapper=0; shift ;;
     --only) only=$2; shift 2 ;;
+    --edit-package)
+      [ $# -ge 2 ] && [ -n "$2" ] && [[ $2 != -* ]] || {
+        echo 'Name a package after --edit-package.' >&2; exit 2;
+      }
+      edit_package=$2; shift 2 ;;
     --timings) timings=1; shift ;;
     --cold) cold=1; shift ;;
     --out) out=$2; shift 2 ;;
-    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^set -/{ /^set -/d; p; }' "$0"; exit 0 ;;
     -*) echo "Unknown option: $1" >&2; exit 2 ;;
     *) packages+=("$1"); shift ;;
   esac
@@ -194,22 +205,27 @@ edit() {
 }
 
 host_name=$(hostname -s 2>/dev/null || hostname)
-printf '%-28s %-14s %-6s %8s %8s %8s\n' package variant cmd prep noop edit
+printf '%-28s %-14s %-6s %8s %8s %8s %s\n' package variant cmd prep noop edit edited_package
 row() {
-  printf '%-28s %-14s %-6s %8s %8s %8s\n' "$1" "$variant" "$2" "$3" "$4" "$5"
+  printf '%-28s %-14s %-6s %8s %8s %8s %s\n' "$1" "$variant" "$2" "$3" "$4" "$5" "$6"
   if [ -n "$out" ]; then
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$host_name" "$1" "$variant" "$2" \
-      "$CARGO_BUILD_JOBS" "$3" "$4" "$5" >> "$out"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$host_name" "$1" "$variant" "$2" \
+      "$CARGO_BUILD_JOBS" "$3" "$4" "$5" "$6" >> "$out"
   fi
 }
+edit_file=
+if [ -n "$edit_package" ]; then
+  edit_file=$(src_of "$edit_package") || { echo "No package named $edit_package" >&2; exit 2; }
+fi
 if [ "$cold" = 1 ]; then
   all=()
   for pkg in "${packages[@]}"; do all+=(-p "$pkg"); done
   cold_time=$(timed cargo build -q "${cargo_args[@]}" "${profile_args[@]}" "${all[@]}" --timings)
-  row '(all)' cold "$cold_time" - -
+  row '(all)' cold "$cold_time" - - -
 fi
 for pkg in "${packages[@]}"; do
   file=$(src_of "$pkg") || { echo "No package named $pkg" >&2; exit 2; }
+  [ -n "$edit_file" ] && file=$edit_file
   for cmd in build test; do
     [ -n "$only" ] && [ "$only" != "$cmd" ] && continue
     if [ "$cmd" = build ]; then
@@ -223,6 +239,6 @@ for pkg in "${packages[@]}"; do
     noop=$(timed "${argv[@]}")
     edit "$file"
     change=$(timed "${argv[@]}")
-    row "$pkg" "$cmd" "$prep" "$noop" "$change"
+    row "$pkg" "$cmd" "$prep" "$noop" "$change" "${edit_package:-$pkg}"
   done
 done
