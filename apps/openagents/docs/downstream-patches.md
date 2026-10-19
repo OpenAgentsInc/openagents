@@ -1217,3 +1217,40 @@ links remain readable. Upstream fixes now require manual ports.
   file into `~/Downloads` in chunks over the new `ReadWorkspaceBytes` device
   method (`crates/ui/src/files/download.rs`), and a chat link whose text
   starts with "Download" starts one.
+
+## The chat UI on the web (`/demo/gpui`)
+
+The desktop chat UI runs in a browser from `web/`, its own Cargo workspace,
+so wasm-only dependencies stay out of the desktop lock and its hakari crate
+(`web/hack-stub` stands in for it).
+
+- `web/gpui-web` (`openagents-gpui-web`) is zui's `gpui_web` platform
+  (canvas window, `requestAnimationFrame` frames, DOM input and IME, wgpu
+  over WebGPU or WebGL2, cosmic-text), ported by hand with three changes:
+  the app passes in the font faces it draws (`WebFonts`) instead of the
+  upstream's bundled IBM Plex and Lilex, which its git checkout doesn't
+  carry; the single-threaded build compiles (`shared_memory_supported` is
+  no longer behind `multithreaded`, which stays off because it needs a
+  nightly compiler); and the window's logical size comes from the CSS box,
+  with the device-pixel box used only when it agrees with CSS × dpr.
+- `web/demo` (`openagents-web-demo`) compiles the client's demo fixtures
+  (`crates/client/src/demo/{fixtures,transcripts,visuals,png}.rs`) unchanged
+  through `#[path]`, with shims for the few client internals they name, and
+  draws them with GPUI elements styled from the dark theme: the sidebar, the
+  transcript in a `ListState` that follows the tail, markdown from
+  `openagents-markdown`'s block tree, tool groups with the shared
+  `tool_group_summary`, question cards, and the composer (after GPUI's
+  `examples/input.rs`). Replies are the demo's scripted turns, streamed word
+  by word with the desktop veil's curve. It is a port of the components,
+  not the `openagents-ui` crate itself, which needs tokio, reqwest,
+  alacritty, and the webviews.
+- Start the app with `Application::run_embedded` and keep the handle: on
+  the web, `Application::run` drops the app as soon as it launches.
+- GPUI drops a named font family whose face has no Latin `m`, so the CJK
+  subset keeps ASCII and the emoji face isn't named as a fallback.
+- Fonts: Geist and Geist Mono from `crates/ui/assets/fonts`, plus Noto Sans
+  CJK JP and Noto Color Emoji subset to `web/demo/assets/fonts/demo-chars.txt`
+  (OFL; licenses beside them).
+
+Build with `scripts/build-web-demo.sh OUTDIR`; `openagents-web --gpui-demo
+OUTDIR` serves it at `/demo/gpui`.

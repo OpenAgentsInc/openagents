@@ -1,0 +1,7 @@
+# Empty stand-in for the desktop workspace's hakari crate, which unifies
+# native features (tokio, reqwest, ...) that do not build for wasm32.
+[package]
+name = "openagents-workspace-hack"
+version = "0.1.0"
+edition = "2021"
+publish = false
