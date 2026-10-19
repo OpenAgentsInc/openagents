@@ -1,4 +1,5 @@
 //! Shared Rust composer projection for the Android host's cloud and live routes.
+mod saved;
 use super::*;
 use crate::client_ffi::{CoreAccount, CoreCloudChat};
 use rust_native::{Element, Node, View};
@@ -21,8 +22,14 @@ pub struct AndroidComposerFrame {
     pub stop_key: Option<String>,
     pub attachment_key: Option<String>,
     pub error: Option<String>,
+    pub shared_cards_json: Option<String>,
 }
 enum Target {
+    Saved {
+        history: Arc<crate::client_ffi::CoreSavedHistory>,
+        id: String,
+        draft_key: String,
+    },
     Live(Arc<SessionHandle>),
     Cloud {
         chat: Arc<CoreCloudChat>,
@@ -32,6 +39,7 @@ enum Target {
 }
 struct Model {
     revision: u64,
+    saved_cards: saved::Cards,
     registry: NativeViewRegistry,
     mirror: Mirror,
     pending_send: bool,
@@ -47,6 +55,16 @@ pub struct CoreAndroidComposer {
     closed: AtomicBool,
 }
 impl CoreAndroidComposer {
+    pub(crate) fn saved(
+        history: Arc<crate::client_ffi::CoreSavedHistory>,
+        id: String,
+    ) -> Arc<Self> {
+        Self::make(Target::Saved {
+            draft_key: format!("android:saved:{id}"),
+            history,
+            id,
+        })
+    }
     fn make(target: Target) -> Arc<Self> {
         Arc::new(Self {
             target,
@@ -54,6 +72,7 @@ impl CoreAndroidComposer {
             token: "message".into(),
             model: Arc::new(Mutex::new(Model {
                 revision: 0,
+                saved_cards: Default::default(),
                 registry: Default::default(),
                 mirror: Default::default(),
                 pending_send: false,
@@ -71,7 +90,7 @@ impl CoreAndroidComposer {
             .is_none_or(|state| state.text.is_empty())
             && !model.pending_send
         {
-            if let Some(draft) = drafts.restore(CLOUD_DEFAULT_DRAFT)? {
+            if let Some(draft) = drafts.restore(self.draft_key())? {
                 model.mirror.dispose();
                 model
                     .mirror
@@ -87,9 +106,25 @@ impl CoreAndroidComposer {
             model.listener = Some(listener);
         }
     }
+    fn draft_key(&self) -> &str {
+        match &self.target {
+            Target::Saved { draft_key, .. } => draft_key,
+            _ => CLOUD_DEFAULT_DRAFT,
+        }
+    }
     fn current(&self) -> CoreResult<()> {
         if self.closed.load(Ordering::Acquire) {
             return Err(CoreError::Closed);
+        }
+        if let Target::Saved { history, id, .. } = &self.target {
+            if !history.current_view()
+                || history
+                    .reader()
+                    .target()
+                    .is_none_or(|t| t.chat.id() != id.as_str())
+            {
+                return Err(CoreError::Closed);
+            }
         }
         if let Target::Cloud {
             account: Some(account),
@@ -145,6 +180,7 @@ impl CoreAndroidComposer {
                     editor.stamp(),
                 )
             }
+            Target::Saved { history, .. } => saved::frame(history, &model),
             Target::Cloud { chat, account, .. } => {
                 let snapshot = chat.snapshot();
                 let enabled = account.as_ref().is_none_or(|a| {
@@ -166,7 +202,7 @@ impl CoreAndroidComposer {
                         .or(model
                             .drafts
                             .as_ref()
-                            .map(|d| d.restore(CLOUD_DEFAULT_DRAFT))
+                            .map(|d| d.restore(self.draft_key()))
                             .transpose()?
                             .flatten())
                         .unwrap_or_default(),
@@ -204,10 +240,16 @@ impl CoreAndroidComposer {
             Target::Live(s) => {
                 s.prepare_native_view(view)?;
             }
-            Target::Cloud { .. } => {
+            Target::Cloud { .. } | Target::Saved { .. } => {
                 model.registry.prepare(&view)?;
             }
         }
+        let shared_cards_json = match &self.target {
+            Target::Saved { history, .. } => {
+                saved::cards(&mut model.saved_cards, &self.instance, revision, history)?
+            }
+            _ => None,
+        };
         Ok(AndroidComposerFrame {
             instance: self.instance.clone(),
             revision,
@@ -223,6 +265,7 @@ impl CoreAndroidComposer {
             stop_key: busy.then(|| "composer".into()),
             attachment_key: attachment.then(|| "composer".into()),
             error,
+            shared_cards_json,
         })
     }
     pub fn editor(&self, instance: String, revision: u64, request: Vec<u8>) -> CoreResult<Vec<u8>> {
@@ -258,16 +301,22 @@ impl CoreAndroidComposer {
         let response = model.mirror.call_json(&request);
         if let Some(drafts) = &model.drafts {
             if let Some(state) = model.mirror.state() {
-                drafts.save(CLOUD_DEFAULT_DRAFT, &state.text)?;
+                drafts.save(self.draft_key(), &state.text)?;
             }
         }
         Ok(response)
     }
     pub fn acknowledge(&self, instance: String, revision: u64) -> CoreResult<()> {
         self.current()?;
+        {
+            let mut model = self.model.lock().map_err(|_| CoreError::Closed)?;
+            if instance == format!("{}-cards", self.instance) {
+                return model.saved_cards.acknowledge(&instance, revision);
+            }
+        }
         match &self.target {
             Target::Live(s) => s.acknowledge_native_view(instance, revision),
-            Target::Cloud { .. } => self
+            Target::Cloud { .. } | Target::Saved { .. } => self
                 .model
                 .lock()
                 .map_err(|_| CoreError::Closed)?
@@ -316,6 +365,20 @@ impl CoreAndroidComposer {
         if text.trim().is_empty() || text.trim().chars().count() > 4000 {
             return Ok(false);
         }
+        if let Target::Saved { history, id, .. } = &self.target {
+            return saved::submit(
+                self,
+                history,
+                id,
+                instance,
+                revision,
+                token,
+                lifetime,
+                editor_revision,
+                choice,
+                text,
+            );
+        }
         let Target::Cloud {
             chat,
             account,
@@ -354,10 +417,11 @@ impl CoreAndroidComposer {
         {
             return Err(CoreError::Closed);
         }
-        let completion = chat.send_completion(text.clone(), lease)?;
+        // Complete fallible storage work before starting the send operation.
         if let Some(drafts) = &model.drafts {
-            drafts.save(CLOUD_DEFAULT_DRAFT, "")?;
+            drafts.save(self.draft_key(), &text)?;
         }
+        let completion = chat.send_completion(text.clone(), lease)?;
         model.pending_send = true;
         model
             .mirror
@@ -398,6 +462,9 @@ impl CoreAndroidComposer {
                 .activate_native(instance, revision, key, None, vec![])
                 .map(|r| r == NativeActionResult::AttachmentPickerRequested);
         }
+        if let Target::Saved { history, id, .. } = &self.target {
+            return saved::activate(self, history, id, instance, revision, key);
+        }
         let intent = self
             .model
             .lock()
@@ -429,6 +496,7 @@ fn restore_unsent(mirror: &mut Mirror, cleared: Option<&EditorStamp>, text: &str
 
 #[cfg(test)]
 mod tests {
+    mod saved;
     use super::*;
     #[test]
     fn failed_send_restores_only_the_unchanged_editor() {

@@ -143,6 +143,8 @@ data class ComposerFrame(
     val sendOnEnter: Boolean = false,
     /** Validated Rust Native JSON for question, approval, or queued-message views. */
     val sharedCardsJson: String? = null,
+    /** The editor and auxiliary cards have separate Rust view identities. */
+    val separateEditorView: Boolean = false,
 )
 
 /** Narrow boundary to Rust's composer editor and current-view intent resolver. */
@@ -380,7 +382,7 @@ class AndroidComposerPresentation(
         renderChips(contextRow, next.contextChips)
         renderAttachments(next.attachments)
         renderMentions(next.mentionSuggestions)
-        if (next.sharedCardsJson == null) {
+        if (next.sharedCardsJson == null || next.separateEditorView) {
             core.acknowledge(next.stamp.instance, next.stamp.viewRevision)
         }
     }
