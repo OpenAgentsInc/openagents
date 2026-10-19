@@ -985,35 +985,38 @@ fn place_user(u: &UserBubble, px: Px, x: f32, y: f32, cw: f32, out: Option<&mut 
 
 /// Heap held by a row's prepared text (diagnostics; blocks recurse).
 pub(crate) fn content_heap_bytes(content: &Content) -> usize {
+    fn text(t: &PText) -> usize {
+        t.p.heap_bytes() + t.reveal_ms.capacity() * std::mem::size_of::<Option<u32>>()
+    }
     fn block(b: &PBlock) -> usize {
         match b {
-            PBlock::Text(t) | PBlock::Heading(t) => t.p.heap_bytes(),
-            PBlock::Code(c) => c.body.p.heap_bytes() + c.source.len() + c.label.as_ref().map_or(0, |l| l.p.heap_bytes()),
+            PBlock::Text(t) | PBlock::Heading(t) => text(t),
+            PBlock::Code(c) => text(&c.body) + c.source.len() + c.label.as_ref().map_or(0, text),
             PBlock::Quote(children) => children.iter().map(block).sum(),
             PBlock::List { items, .. } => items
                 .iter()
-                .map(|i| i.children.iter().map(block).sum::<usize>() + i.marker.as_ref().map_or(0, |m| m.p.heap_bytes()))
+                .map(|i| i.children.iter().map(block).sum::<usize>() + i.marker.as_ref().map_or(0, text))
                 .sum(),
-            PBlock::Table(t) => t.cells.iter().flatten().map(|c| c.p.heap_bytes()).sum(),
+            PBlock::Table(t) => t.cells.iter().flatten().map(text).sum(),
             PBlock::Rule => 0,
         }
     }
     match content {
         Content::Block { block: b, .. } => block(b),
-        Content::User(u) => u.text.p.heap_bytes() + u.more.p.heap_bytes() + u.files.iter().map(|(_, n)| n.p.heap_bytes()).sum::<usize>(),
+        Content::User(u) => text(&u.text) + text(&u.more) + u.files.iter().map(|(_, n)| text(n)).sum::<usize>(),
         Content::Tools(t) => super::tools::heap_bytes(t),
-        Content::Chip(c) => c.text.p.heap_bytes(),
+        Content::Chip(c) => text(&c.text),
         Content::Image { reference } => reference.len(),
         Content::Lab(lab) => lab
             .pieces
             .iter()
             .map(|p| match p {
-                super::lab::Piece::Text(t) => t.p.heap_bytes(),
+                super::lab::Piece::Text(t) => text(t),
                 super::lab::Piece::Media(_) => 0,
             })
             .sum::<usize>()
-            + lab.note.p.heap_bytes()
-            + lab.open.as_ref().map_or(0, |t| t.p.heap_bytes()),
+            + text(&lab.note)
+            + lab.open.as_ref().map_or(0, text),
         Content::Working { .. } | Content::Visual(_) => 0,
     }
 }
