@@ -10,7 +10,9 @@
 //! `machine_action` prunes a build cache or stops a process under the
 //! owner's grant to the calling chat, and logs it (#12033), and
 //! `upgrade_host` starts an upgrade of this computer's app from `main`
-//! under the same kind of grant (#12056).
+//! under the same kind of grant (#12056). `grant_machine` and
+//! `revoke_machine` let a chat holding the owner's `delegate` grant give
+//! other chats machine scopes on their own computers, logged (#12163).
 //! `list_runs` reads this computer's terminal agent sessions and identifies
 //! claims whose holder is dead or has stopped producing output (#12041).
 //! `judge` asks a coordination question set of the Decisions API and
@@ -31,6 +33,7 @@ mod chat_exchange;
 #[cfg(unix)]
 mod build_status;
 mod judge;
+pub mod grant_machine;
 #[cfg(unix)]
 mod machine_action;
 #[cfg(unix)]

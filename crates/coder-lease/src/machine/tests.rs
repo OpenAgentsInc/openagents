@@ -93,7 +93,7 @@ fn home() -> Home {
 fn scopes_go_by_dotted_wire_names() {
     assert_eq!(
         serde_json::to_string(&Scope::ALL).unwrap(),
-        r#"["build.prune","process.stop","host.upgrade"]"#
+        r#"["build.prune","process.stop","host.upgrade","delegate"]"#
     );
     for scope in Scope::ALL {
         assert_eq!(Scope::parse(scope.word()), Some(scope));
@@ -101,6 +101,118 @@ fn scopes_go_by_dotted_wire_names() {
     assert_eq!(Scope::parse("prune"), Some(Scope::BuildPrune));
     assert_eq!(Scope::parse("stop"), Some(Scope::ProcessStop));
     assert_eq!(Scope::parse("deploy"), None);
+}
+
+#[test]
+fn a_delegate_holder_grants_machine_scopes_and_the_owners_revoke_ends_them() {
+    let h = home();
+    let now = crate::now_ms();
+    // Without delegate, the coordinator's host refuses and logs it.
+    assert!(delegate::holds(&h.root, "foreman", "android", "disk low").is_err());
+    grant(&h.root, "foreman", &[Scope::Delegate], None).unwrap();
+    delegate::holds(&h.root, "foreman", "android", "disk low").unwrap();
+
+    // Only the three machine scopes are delegable, never delegate itself.
+    for scopes in [
+        vec![Scope::Delegate],
+        vec![Scope::BuildPrune, Scope::Delegate],
+    ] {
+        let err = delegate::grant(&h.root, "foreman", "android", &scopes, None, "x").unwrap_err();
+        assert!(err.contains("isn't delegable"), "{err}");
+    }
+    assert!(
+        delegate::grant(
+            &h.root,
+            "foreman",
+            "foreman",
+            &[Scope::BuildPrune],
+            None,
+            "x"
+        )
+        .is_err()
+    );
+    assert!(
+        delegate::grant(
+            &h.root,
+            "foreman",
+            "android",
+            &[Scope::BuildPrune],
+            None,
+            " "
+        )
+        .is_err()
+    );
+
+    let sub = delegate::grant(
+        &h.root,
+        "foreman",
+        "android",
+        &[Scope::BuildPrune],
+        None,
+        "disk low",
+    )
+    .unwrap();
+    assert_eq!(sub.issued_by.as_deref(), Some("foreman"));
+    delegate::grant(
+        &h.root,
+        "foreman",
+        "ios",
+        &[Scope::ProcessStop],
+        None,
+        "stuck build",
+    )
+    .unwrap();
+    // The owner's own grant to the same chat replaces only the owner's.
+    grant(&h.root, "android", &[Scope::HostUpgrade], None).unwrap();
+    let grants = Grants::load(&h.root).unwrap();
+    assert_eq!(
+        grants.scopes_of("android", now),
+        vec![Scope::BuildPrune, Scope::HostUpgrade]
+    );
+
+    // The coordinator ends its own subgrant, not the owner's.
+    assert!(delegate::revoke(&h.root, "foreman", "android", "done").unwrap());
+    assert!(!delegate::revoke(&h.root, "foreman", "android", "done").unwrap());
+    let grants = Grants::load(&h.root).unwrap();
+    assert_eq!(grants.scopes_of("android", now), vec![Scope::HostUpgrade]);
+
+    // The owner's revoke of the coordinator cascades to what it issued.
+    delegate::grant(
+        &h.root,
+        "foreman",
+        "android",
+        &[Scope::BuildPrune],
+        None,
+        "again",
+    )
+    .unwrap();
+    assert!(revoke(&h.root, "foreman").unwrap());
+    let grants = Grants::load(&h.root).unwrap();
+    assert!(grants.scopes_of("foreman", now).is_empty());
+    assert!(grants.scopes_of("ios", now).is_empty());
+    assert_eq!(grants.scopes_of("android", now), vec![Scope::HostUpgrade]);
+    // A host that only holds the subgrants (the chat's own) cascades too.
+    assert!(revoke(&h.root, "foreman").is_ok());
+
+    let log = read_log(&h.root, 50).unwrap();
+    let delegated: Vec<&Entry> = log.iter().filter(|e| e.scope == Scope::Delegate).collect();
+    assert!(delegated.iter().all(|e| e.agent == "foreman"));
+    assert!(
+        delegated
+            .iter()
+            .any(|e| e.outcome == Outcome::Refused && e.target.as_deref() == Some("android"))
+    );
+    assert!(
+        delegated
+            .iter()
+            .any(|e| e.detail == "granted build.prune until revoked" && e.reason == "disk low")
+    );
+    let ended: Vec<&&Entry> = delegated
+        .iter()
+        .filter(|e| e.detail.starts_with("revoked") && e.reason == "the owner revoked foreman")
+        .collect();
+    assert_eq!(ended.len(), 2, "android and ios both ended: {delegated:#?}");
+    assert!(ended.iter().any(|e| e.line().contains("to ios")));
 }
 
 #[test]

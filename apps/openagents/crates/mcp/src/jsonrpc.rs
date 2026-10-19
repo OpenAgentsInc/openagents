@@ -60,6 +60,8 @@ with authority to manage claims, release a dead or stalled holder with a note an
 If no run matches or the read fails, report that you couldn't check it. Never type into its terminal. \
 Pruning a build cache or stopping a process goes through `machine_action`, only under the \
 owner's grant to this chat, and every action is logged. \
+A chat holding the owner's `delegate` grant gives other chats `build.prune`, `process.stop` or \
+`host.upgrade` on their own computer with `grant_machine` and ends it with `revoke_machine`; both are logged. \
 To run the newest main in this computer's app, use `upgrade_host` (it needs the \
 host.upgrade scope); never rebuild or restart the app yourself.\n\
 Use `land_status` to read the shared landing queue through the signed-in app account: \

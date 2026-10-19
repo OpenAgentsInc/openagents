@@ -52,11 +52,20 @@ pub(crate) const USAGE: &str =
   grant machine AGENT --scope SCOPES [--for DURATION]
                  Let the agent AGENT, a chat ID or a session such as
                  claude-code:ID, use machine actions: build.prune,
-                 process.stop, or host.upgrade, comma separated. Never ends
-                 without --for. Asks you to confirm on this terminal, and
-                 refuses when an agent runs the command.
+                 process.stop, or host.upgrade, comma separated. delegate
+                 lets a coordinator grant those three to other chats on any
+                 of your computers; it reaches the chat's own computer, so
+                 run it once anywhere. Never ends without --for. Asks you to
+                 confirm on this terminal, and refuses when an agent runs
+                 the command.
   revoke machine AGENT
-                 End AGENT's machine grant.
+                 End AGENT's machine grant and, on every computer that
+                 answers, every grant AGENT issued under delegate.
+  subgrant CHAT --scope SCOPES --reason TEXT [--for DURATION]
+                 For an agent holding delegate: grant CHAT build.prune,
+                 process.stop, or host.upgrade on its own computer. Logged.
+  subrevoke CHAT --reason TEXT
+                 For an agent holding delegate: end its grant to CHAT.
   actions [--limit N]
                  The machine grants and the last N machine actions (default
                  20): who, what, size or pid, reason, outcome, Chicago time.
@@ -102,6 +111,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("revoke screen", Effect::Grants),
     Declared::computer("grant machine", Effect::Grants),
     Declared::computer("revoke machine", Effect::Grants),
+    Declared::computer("subgrant", Effect::Grants),
+    Declared::computer("subrevoke", Effect::Grants),
     Declared::computer("actions", Effect::ReadOnly),
     Declared::computer("prune", Effect::LocalWrite),
     Declared::computer("stop", Effect::LocalWrite),
@@ -127,6 +138,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "grant" => grant(output, &words[1..]),
         "revoke" => revoke(output, &words[1..]),
         "actions" => crate::lease_machine::actions(*output, &words[1..]),
+        "subgrant" | "subrevoke" => crate::lease_machine::subgrant(*output, first, &words[1..]),
         "prune" | "stop" => crate::lease_machine::act(*output, first, &words[1..]),
         "run" => hold(output, &words[1..], true),
         _ => hold(output, words, false),

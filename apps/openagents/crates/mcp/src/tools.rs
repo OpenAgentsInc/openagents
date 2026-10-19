@@ -97,6 +97,18 @@ fn machine_action_tool() -> Option<ToolDef> {
     }
 }
 
+/// OpenAgents #12163: delegated machine grants, from a chat on Unix.
+fn grant_machine_tools() -> Vec<ToolDef> {
+    #[cfg(unix)]
+    {
+        crate::grant_machine::tools().into()
+    }
+    #[cfg(not(unix))]
+    {
+        Vec::new()
+    }
+}
+
 /// OpenAgents #12056: upgrading this computer's app, on Unix.
 fn upgrade_host_tool() -> Option<ToolDef> {
     #[cfg(unix)]
@@ -955,6 +967,7 @@ impl Tools {
             .chain(list_runs_tool())
             .chain(machine_action_tool())
             .chain(upgrade_host_tool().filter(|_| in_chat))
+            .chain(grant_machine_tools().into_iter().filter(|_| in_chat))
             .chain(machine_status_tool())
             .filter(|tool| !self.voice_relay() || Self::voice_tool(tool.name))
             .collect()
@@ -1045,6 +1058,12 @@ impl Tools {
             crate::machine_action::NAME => {
                 let chat = self.openagents.origin().chat_id.clone();
                 return crate::machine_action::call(chat.as_deref(), args);
+            }
+            #[cfg(unix)]
+            crate::grant_machine::GRANT | crate::grant_machine::REVOKE => {
+                let chat = self.openagents.origin().chat_id.clone();
+                return crate::grant_machine::call(&self.openagents, chat.as_deref(), name, args)
+                    .await;
             }
             #[cfg(unix)]
             crate::upgrade_host::NAME => {
@@ -2662,6 +2681,7 @@ mod tests {
             "machine_status",
             "machine_action",
             "upgrade_host",
+            "grant_machine",
             "notify_owner",
             crate::work::NAME,
         ] {

@@ -535,6 +535,31 @@ to the agent. On one Unix account, as with the screen grant, this stops
 accidents and borrowed IDs, not a process set on reading the key file to
 forge a proof.
 
+**Delegated grants (#12163).** The owner grants one coordinator `delegate`,
+once, on any computer:
+
+```sh
+openagents lease grant machine CHAT_ID --scope delegate
+```
+
+The grant is written where the command runs and sent to the computer the
+coordinator's chat runs on. That chat can then grant `build.prune`,
+`process.stop` and `host.upgrade` to other chats with the `grant_machine` and
+`revoke_machine` tools, or from its shell with `openagents lease subgrant CHAT
+--scope prune --reason TEXT [--for 2h]` and `openagents lease subrevoke CHAT
+--reason TEXT`. The coordinator's computer checks its proof and its
+`delegate` grant. The subgrant goes through the device channel
+(`GrantMachine`/`RevokeMachine` with `targetDeviceId`) to the target chat's
+own computer, which writes it with `issuedBy` and the reason. Both computers
+log it (scope `delegate`, the coordinator as agent, the chat as target).
+`delegate` itself isn't delegable, and money, keys and secrets are never
+machine scopes. The prune and stop refusals above, including deploys and kept
+paths, still apply. A computer whose app predates these methods is named with
+its version and the subgrant fails; upgrade that computer first. `openagents
+lease revoke machine CHAT_ID` ends the coordinator's grant and every grant it
+issued, here and on every other computer that answers, and lists any it
+couldn't reach.
+
 ## Resources
 
 | Resource | Shape | Capacity | Notes |
