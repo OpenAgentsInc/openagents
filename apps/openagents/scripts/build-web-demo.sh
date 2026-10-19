@@ -6,7 +6,7 @@
 #   openagents_web_demo.js        wasm-bindgen's `--target web` glue
 #   openagents_web_demo_bg.wasm   the module
 #   start.js                      the page's one script: imports the glue
-#   *.gz                          a gzip copy of each, sent when asked
+#   *.gz, *.br                    gzip and brotli copies, sent when asked
 #
 # openagents.com's server shows them at /demo/gpui when started with
 # `openagents-web --gpui-demo OUTDIR`. With `--with-page`, also writes
@@ -15,7 +15,7 @@
 # Prerequisites: the pinned toolchain's wasm32-unknown-unknown target and the
 # `wasm-bindgen` CLI at the version web/Cargo.lock pins (`cargo install
 # wasm-bindgen-cli --version VERSION --locked`). `wasm-opt` (Binaryen) is
-# used when present.
+# used when present, and `brotli` when present.
 #
 # Usage: apps/openagents/scripts/build-web-demo.sh [--with-page] OUTDIR
 set -euo pipefail
@@ -23,7 +23,7 @@ set -euo pipefail
 app="$(cd "$(dirname "$0")/.." && pwd)"
 web="$app/web"
 target="wasm32-unknown-unknown"
-target_dir="${CARGO_TARGET_DIR:-$app/target}"
+target_dir="${CARGO_TARGET_DIR:-$web/target}"
 
 with_page=false
 out=""
@@ -46,7 +46,7 @@ if [ "$installed" != "$locked" ]; then
   exit 69
 fi
 
-cargo build --manifest-path "$web/Cargo.toml" -p openagents-web-demo \
+cargo build --locked --manifest-path "$web/Cargo.toml" -p openagents-web-demo \
   --release --target "$target"
 
 mkdir -p "$out"
@@ -60,6 +60,9 @@ fi
 cp "$web/demo/start.js" "$out/start.js"
 for file in openagents_web_demo.js openagents_web_demo_bg.wasm start.js; do
   gzip -9 -n -c "$out/$file" > "$out/$file.gz"
+  if command -v brotli >/dev/null 2>&1; then
+    brotli -q 11 -f -o "$out/$file.br" "$out/$file"
+  fi
 done
 if [ "$with_page" = true ]; then
   cp "$web/demo/index.html" "$out/index.html"

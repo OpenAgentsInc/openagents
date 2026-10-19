@@ -178,6 +178,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if config.icecream.is_none() && std::path::Path::new("/srv/icecream/start.js").is_file() {
         config.icecream = Some(PathBuf::from("/srv/icecream"));
     }
+    // The desktop chat UI's web build ships at /srv/gpui-demo in the image.
+    if config.gpui_demo.is_none() && std::path::Path::new("/srv/gpui-demo/start.js").is_file() {
+        config.gpui_demo = Some(PathBuf::from("/srv/gpui-demo"));
+    }
     // Snap Station's build ships at /srv/snap in the image.
     if config.snap.is_none() && std::path::Path::new("/srv/snap/start.js").is_file() {
         config.snap = Some(PathBuf::from("/srv/snap"));

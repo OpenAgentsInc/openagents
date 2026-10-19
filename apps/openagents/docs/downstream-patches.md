@@ -1253,4 +1253,6 @@ so wasm-only dependencies stay out of the desktop lock and its hakari crate
   (OFL; licenses beside them).
 
 Build with `scripts/build-web-demo.sh OUTDIR`; `openagents-web --gpui-demo
-OUTDIR` serves it at `/demo/gpui`.
+OUTDIR` serves it at `/demo/gpui`. The website image builds it in the
+`gpuiweb` stages of `crates/openagents-web/Dockerfile` (Rust 1.98.1) and
+copies it to `/srv/gpui-demo`, which the server uses without a flag.

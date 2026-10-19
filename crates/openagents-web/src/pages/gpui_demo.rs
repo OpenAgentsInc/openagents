@@ -10,7 +10,7 @@
 //! DIR/openagents_web_demo.js        wasm-bindgen's `--target web` glue
 //! DIR/openagents_web_demo_bg.wasm   the module
 //! DIR/start.js                      imports the glue and starts the demo
-//! DIR/*.gz                          gzip copies, sent when the request accepts them
+//! DIR/*.gz, *.br                    gzip and brotli copies, sent when accepted
 //! ```
 //!
 //! `/demo/gpui/{file}` serves any `.js` or `.wasm` file directly in `DIR`.

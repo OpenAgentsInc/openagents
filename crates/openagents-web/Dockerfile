@@ -206,12 +206,54 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/cad/start.js \
     && test -s /build/cad/cad.css
 
+# The desktop chat UI for the browser, which /demo/gpui serves
+# (apps/openagents/web, its own Cargo workspace and lock). GPUI needs the
+# app's pinned compiler, 1.98.1, so this stage has its own base: the wasm32
+# target, binaryen, brotli, and wasm-bindgen-cli at the version
+# apps/openagents/web/Cargo.lock pins. The target directory is named so the
+# deps stage and the build script share it.
+FROM rust:1.98.1-slim-trixie AS gpuiweb-skeleton
+RUN --mount=type=bind,target=/context \
+    sh /context/scripts/deploy/cargo-skeleton.sh /context /skeleton apps/openagents/web
+
+FROM rust:1.98.1-slim-trixie AS gpuiweb-base
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        --no-install-recommends build-essential pkg-config clang llvm binaryen brotli curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY scripts/deploy/oa-kache.sh /usr/local/bin/oa-kache
+RUN oa-kache install
+WORKDIR /build
+COPY apps/openagents/web/Cargo.lock /build/gpuiweb.lock
+RUN rustup target add wasm32-unknown-unknown \
+    && version="$(awk '$0 == "name = \"wasm-bindgen\"" { getline; gsub(/"/, "", $3); print $3; exit }' gpuiweb.lock)" \
+    && test -n "$version" \
+    && cargo install --locked wasm-bindgen-cli --version "$version"
+ENV CC_wasm32_unknown_unknown=/usr/bin/clang \
+    AR_wasm32_unknown_unknown=/usr/bin/llvm-ar \
+    CARGO_TARGET_DIR=/build/target-gpuiweb
+
+FROM gpuiweb-base AS gpuiweb-deps
+COPY --from=gpuiweb-skeleton /skeleton/ ./
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run \
+    cargo build --locked --manifest-path /build/apps/openagents/web/Cargo.toml \
+        -p openagents-web-demo --release --target wasm32-unknown-unknown
+
+FROM gpuiweb-deps AS gpuiweb
+COPY . .
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
+    && oa-kache run apps/openagents/scripts/build-web-demo.sh /build/gpui-demo \
+    && test -s /build/gpui-demo/openagents_web_demo.js \
+    && test -s /build/gpui-demo/openagents_web_demo_bg.wasm \
+    && test -s /build/gpui-demo/start.js
+
 # Every dependency layer, and nothing else: cloudbuild.yaml builds this
 # target first and exports it to the registry cache.
 FROM scratch AS deps
 COPY --from=builder-deps /build/Cargo.lock /builder-deps.lock
 COPY --from=everglade-deps /build/Cargo.lock /everglade-deps.lock
 COPY --from=cadweb-deps /build/Cargo.lock /cadweb-deps.lock
+COPY --from=gpuiweb-deps /build/gpuiweb.lock /gpuiweb-deps.lock
 
 FROM debian:13-slim
 
@@ -237,6 +279,7 @@ COPY --from=everglade /build/att /srv/att
 COPY --from=cadweb /build/cad /srv/cad
 COPY --from=everglade /build/sand /srv/sand
 COPY --from=everglade /build/layertree /srv/layertree
+COPY --from=gpuiweb /build/gpui-demo /srv/gpui-demo
 
 USER 10001:10001
 EXPOSE 8080

@@ -413,8 +413,8 @@ pub struct Config {
     /// `/games/grow-little-bunny/`. Without it, the game's page says it
     /// can't be played here.
     pub bunny: Option<PathBuf>,
-    /// The desktop chat UI's web build (`--gpui-demo DIR`), served under
-    /// `/demo/gpui/`. Without it, the demo's page says it isn't available.
+    /// The desktop chat UI's web build (`--gpui-demo DIR`, default
+    /// `/srv/gpui-demo` when it exists), served under `/demo/gpui/`. Without it, the demo's page says it isn't available.
     pub gpui_demo: Option<PathBuf>,
     /// The Ice Cream Man web build (`--icecream DIR`, default
     /// `/srv/icecream` when it exists), served under

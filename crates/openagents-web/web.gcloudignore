@@ -18,6 +18,12 @@
 /apps/openagents/*
 !/apps/openagents/Cargo.toml
 !/apps/openagents/crates/
+# The desktop chat UI's web build (/demo/gpui): its workspace and its build
+# script. Its Dockerfile stage runs the app's pinned compiler.
+!/apps/openagents/web/
+!/apps/openagents/scripts/
+/apps/openagents/scripts/*
+!/apps/openagents/scripts/build-web-demo.sh
 !/migrations/
 !/nips/
 !/tests/
