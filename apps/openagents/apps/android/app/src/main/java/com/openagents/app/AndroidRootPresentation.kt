@@ -22,6 +22,7 @@ import com.openagents.app.onboarding.*
 import com.openagents.app.onboarding.RecoveryClipboard as AndroidRecoveryClipboard
 import com.openagents.app.platform.AndroidVoiceOrbSurface
 import com.openagents.app.storage.AndroidRetiredSparkSeed
+import com.openagents.app.sessions.AndroidChatHomesHost
 import com.openagents.app.sessions.AndroidSessionsHost
 import com.openagents.app.settings.*
 import com.openagents.app.transcript.*
@@ -66,6 +67,7 @@ internal class AndroidRootPresentation(
     private var composer: AndroidComposerPresentation? = null
     private var attachments: AndroidComposerAttachmentResults? = null
     private var sessions: AndroidSessionsHost? = null
+    private var chatHomes: AndroidChatHomesHost? = null
     private var settings: SettingsHost? = null
     private var sharing: AndroidSharingMount? = null
     private var recovery: RecoveryHost? = null
@@ -94,7 +96,14 @@ internal class AndroidRootPresentation(
         addView(ownerNoteOpen)
     }
     private val notice = TextView(activity)
-    private val navigation = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+    private val navigation = FrameLayout(activity)
+    private val navigationContent = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+    private val drawerContinuationContainer = FrameLayout(activity).apply {
+        visibility = View.GONE
+        isClickable = true
+        isFocusable = true
+        setBackgroundColor(activity.getColor(R.color.oa_background))
+    }
     private val drawerView = DrawerView(activity)
     private val content = FrameLayout(activity)
     private val chatContainer = FrameLayout(activity)
@@ -119,8 +128,10 @@ internal class AndroidRootPresentation(
         buttons.addView(voiceButton)
         voiceSettingsButton = action("Voice") { owner.navigate(AndroidHostRoute.VOICE_SETTINGS); panes.showSession() }
         buttons.addView(voiceSettingsButton)
-        navigation.addView(buttons)
-        navigation.addView(drawerView, LinearLayout.LayoutParams(-1, 0, 1f))
+        navigationContent.addView(buttons)
+        navigationContent.addView(drawerView, LinearLayout.LayoutParams(-1, 0, 1f))
+        navigation.addView(navigationContent, FrameLayout.LayoutParams(-1, -1))
+        navigation.addView(drawerContinuationContainer, FrameLayout.LayoutParams(-1, -1))
         content.addView(chatContainer, FrameLayout.LayoutParams(-1, -1))
         content.addView(routeContainer, FrameLayout.LayoutParams(-1, -1))
         panes = AdaptivePaneHost(activity, navigation, content, {
@@ -183,6 +194,7 @@ internal class AndroidRootPresentation(
         ui()
         if (accountGeneration != next.generation) {
             closeOwnerNote()
+            closeChatHomes()
             closeRoutes()
             closeChat()
             drawer?.detach(); drawer = null
@@ -572,7 +584,58 @@ internal class AndroidRootPresentation(
         drawer = presenter
         drawerView.onRequest = presenter::show
         drawerView.onIntent = presenter::send
+        drawerView.onContinue = ::openChatHomes
         presenter.show()
+    }
+
+    private fun openChatHomes(key: DrawerKey) {
+        if (closed || !foreground) return
+        val current = snapshot ?: return
+        val sessions = current.sessions ?: return
+        val history = current.history ?: return
+        val host = chatHomes ?: AndroidChatHomesHost(
+            parent = drawerContinuationContainer,
+            sessions = sessions,
+            history = history,
+            scope = scope,
+            onAction = ::chatHomeAction,
+            route = { action -> closeChatHomes(); sessionAction(action) },
+            failure = { showFailure() },
+            dismiss = ::closeChatHomes,
+        ).also { chatHomes = it }
+        drawerContinuationContainer.visibility = View.VISIBLE
+        try {
+            host.open(key)
+        } catch (_: Exception) {
+            closeChatHomes()
+            showFailure()
+        }
+    }
+
+    private fun chatHomeAction(action: ChatHomeAction) {
+        when (action) {
+            is ChatHomeAction.OpenComputer -> guarded {
+                closeChatHomes()
+                owner.selectSession(action.id)
+                panes.showSession()
+                activity.requestCallNotifications()
+            }
+            is ChatHomeAction.OpenSaved -> guarded {
+                closeChatHomes()
+                owner.selectSavedChat(action.id)
+                panes.showSession()
+            }
+            // The host retains the Rust draft until the person chooses Continue.
+            is ChatHomeAction.Draft -> Unit
+        }
+    }
+
+    private fun closeChatHomes() {
+        val host = chatHomes
+        chatHomes = null
+        host?.close()
+        drawerContinuationContainer.removeAllViews()
+        drawerContinuationContainer.visibility = View.GONE
     }
 
     private fun openIndexed(key: String) {
@@ -669,6 +732,7 @@ internal class AndroidRootPresentation(
         recovery?.background()
         settings?.close(); settings = null
         sessions?.retire()
+        closeChatHomes()
         semanticMounts.values.forEach { runCatching { it.lifecycle("background") } }
         runCatching { owner.setForeground(false) }
     }
@@ -771,8 +835,9 @@ internal class AndroidRootPresentation(
         microphoneRequest?.close(); microphoneRequest = null
         closeVoiceViews()
         closeRoutes(); closeChat()
+        closeChatHomes()
         drawer?.detach(); drawer = null
-        drawerView.onRequest = {}; drawerView.onIntent = {}
+        drawerView.onRequest = {}; drawerView.onIntent = {}; drawerView.onContinue = {}
         ViewCompat.setOnApplyWindowInsetsListener(panes.view, null)
         panes.close()
         semanticMounts.values.forEach { it.close() }; semanticMounts.clear()
