@@ -28,7 +28,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 54] = [
+pub(crate) const DOCS: [(&str, &str); 53] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
@@ -41,6 +41,10 @@ pub(crate) const DOCS: [(&str, &str); 54] = [
     ("website", include_str!("../../content/docs/website.md")),
     ("mac", include_str!("../../content/docs/mac.md")),
     ("iphone", include_str!("../../content/docs/iphone.md")),
+    (
+        "custom-agents",
+        include_str!("../../content/docs/custom-agents.md"),
+    ),
     ("terminal", include_str!("../../content/docs/terminal.md")),
     ("cli", include_str!("../../content/docs/cli.md")),
     ("chat", include_str!("../../content/docs/chat.md")),
@@ -99,10 +103,6 @@ pub(crate) const DOCS: [(&str, &str); 54] = [
     (
         "github-issues",
         include_str!("../../content/docs/github-issues.md"),
-    ),
-    (
-        "ship-from-your-phone",
-        include_str!("../../content/docs/ship-from-your-phone.md"),
     ),
     (
         "fix-a-failing-test",
@@ -173,7 +173,6 @@ pub(crate) const DOCS: [(&str, &str); 54] = [
     // and served from `/static/verse-grid.jpg`.
     ("the-grid", include_str!("../../content/docs/the-grid.md")),
     ("wallet", include_str!("../../content/docs/wallet.md")),
-    ("decks", include_str!("../../content/docs/decks.md")),
     ("settings", include_str!("../../content/docs/settings.md")),
     (
         "keyboard-shortcuts",
@@ -208,7 +207,7 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 10] = [
     ),
     (
         "Apps",
-        "The website, the Mac and iPhone apps, the Terminal, and the command.",
+        "The website, the phone and desktop apps, custom agents, the Terminal, and the command.",
         "website",
     ),
     (
@@ -238,7 +237,7 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 10] = [
     ),
     (
         "The Gym, the Verse, and the wallet",
-        "XP, the shared world, bitcoin, and decks.",
+        "XP, the shared world, and bitcoin.",
         "gym-and-xp",
     ),
     (
@@ -303,6 +302,15 @@ pub(crate) fn routes() -> Router<App> {
             "/docs/install",
             get(|| async { Redirect::permanent("/docs/download") }),
         )
+        // Guides to apps that aren't published.
+        .route(
+            "/docs/decks",
+            get(|| async { Redirect::permanent("/docs") }),
+        )
+        .route(
+            "/docs/ship-from-your-phone",
+            get(|| async { Redirect::permanent("/docs/iphone") }),
+        )
         // The troubleshooting guide's old name.
         .route(
             "/docs/help",
@@ -318,8 +326,8 @@ async fn docs_index(headers: HeaderMap) -> Response {
 /// The docs index for `headers`.
 pub(crate) fn docs_index_page(headers: &HeaderMap) -> Response {
     let mut body = String::from(
-        "<h1>Docs</h1><p class=\"oa-page-lead\">Guides to OpenAgents: the chat, Coder, the apps, \
-plugins, and the Gym.</p>",
+        "<h1>Docs</h1><p class=\"oa-page-lead\">Guides to OpenAgents: the chat, the apps, custom \
+agents, Coder, plugins, and the Gym.</p>",
     );
     let mut open = false;
     for (slug, source) in DOCS {

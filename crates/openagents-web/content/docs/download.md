@@ -127,7 +127,8 @@ task services and background automation need macOS or Linux for now.
 ## Web and phone
 
 Nothing to install for the web: chat at [openagents.com](/) in any
-browser. The iPhone app is in beta; see
-[OpenAgents for iPhone](/docs/iphone).
+browser. The iPhone app is in beta on TestFlight; see
+[OpenAgents for iPhone](/docs/iphone). The
+[desktop app](/docs/mac) and the Android app are coming soon.
 
 Next: [Chat on openagents.com](/docs/website).

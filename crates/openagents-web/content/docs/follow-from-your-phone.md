@@ -71,8 +71,8 @@ finishes what it can and hands that step back to you. See
 ## The iPhone app
 
 [OpenAgents for iPhone](/docs/iphone) is in beta. Once your phone is
-connected to your computer, it can also start Coder there, queue messages
-for the next turn, and stop a run. See
-[Watch, steer, and stop Coder](/docs/following-coder).
+[connected](/docs/connect-a-computer) to your computer, the computer's
+sessions show in the phone's sessions list. Open one and keep going; the
+computer answers.
 
 Next: [Use Coder on Windows](/docs/coder-on-windows).

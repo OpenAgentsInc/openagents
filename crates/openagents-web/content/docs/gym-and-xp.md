@@ -6,7 +6,7 @@ chat, and its results also stand on boards in the Verse.
 
 ## In the chat
 
-On the phone's Chat menu, tap a starter, or ask in any chat:
+Ask in a chat in [OpenAgents Terminal](/docs/terminal):
 
 - **What's new.** The Gym's news, from published results, checks, our
   changelog, and our notes.
@@ -21,10 +21,8 @@ public before anything does.
 
 ## In the Verse
 
-The Gym building stands straight ahead of where you start in the Grid. Its
-boards show published results by test set, with the checks on each, and
-our earlier coding results step by step. **See the board** under a
-plugin's result in chat walks you there. See [The Verse](/docs/verse).
+The Gym building stands in [the Grid](/docs/the-grid), straight ahead of
+where you start.
 
 ## XP
 
@@ -49,23 +47,16 @@ need a desktop computer with Docker and the command line, and a run costs
 about a cent. The season closes 2026-12-25.
 
 **Playtest XP** is separate: it comes from accepted feedback and bug
-reports during the playtest, and shows beside your trainer XP.
+reports during the playtest.
 
-## Your trainer card and level
+## Your level
 
-**Account → Trainer** on the phone is your trainer card: your level, XP,
-the XP to the next level, titles, and the awards behind them. Everyone
-starts at level 1; level 2 comes at 100 XP, level 3 at 283, and level 4 at
-520. Anyone can recompute your level from the signed records on our relay.
+Your trainer level comes from your XP. Everyone starts at level 1; level 2
+comes at 100 XP, level 3 at 283, and level 4 at 520. Anyone can recompute
+your level from the signed records on our relay.
 
-- **Show my level** lets other players see it over your head in the Grid.
-  **Hide my level** takes it down.
-- **Export card** signs your card and shares it.
-- **Link a key** lets XP earned on a computer count toward your level: tap
-  it, enter the computer key's npub, then run `microcoder xp link --relay
-  wss://relay.openagents.com --trainer YOUR_NPUB` on the computer. Neither
-  secret key moves.
-
-The menu's **Profile** shows what you made and the XP each item earned.
+To have XP earned on a computer count toward your level, run
+`microcoder xp link --relay wss://relay.openagents.com --trainer YOUR_NPUB`
+on the computer. Neither secret key moves.
 
 Next: [The Verse](/docs/verse).

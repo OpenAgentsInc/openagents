@@ -11,7 +11,7 @@ reports on the issue.
 
 ## Ask for it
 
-In a chat on the Mac, in the Terminal, or from a shell:
+In a chat in the Terminal, or from a shell:
 
 ```sh
 openagents chat "work on #10051"
@@ -67,4 +67,4 @@ A file at `.openagents/coder-issues.json` tells Coder how to land:
 Without the file, Coder opens a pull request and runs the tests and the
 diff checks. `--land main` or `--land pr` overrides it for one command.
 
-Next: [Ship an iPhone build from your phone](/docs/ship-from-your-phone).
+Next: [Fix a failing test](/docs/fix-a-failing-test).

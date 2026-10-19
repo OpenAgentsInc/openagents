@@ -11,16 +11,19 @@ machine-hours; it isn't on sale yet. See [Pricing](/docs/pricing).
 
 ## Do I need a computer?
 
-Not to chat. You need your own computer to run Coder: a Mac, Linux, or
-Windows computer with Coder installed ([Download and install](/docs/download)).
-We don't offer a hosted computer yet.
+No. On [OpenAgents for iPhone](/docs/iphone), coding work can run on
+OpenAgents Cloud, a cloud computer we start for you, with free cloud time
+to try it. To run Coder on your own computer, install it on a Mac, Linux,
+or Windows computer ([Download and install](/docs/download)).
 
 ## Do I need an account?
 
-Not for the apps or Coder: each device makes its own key the first time it
-runs. An account ([log in](https://openagents.com/login)) keeps your
-website chats, and with `coder login` and `/sync on` it shows Coder's
-chats from your computer. See [Sync, share, and export](/docs/coder-sync).
+You don't need to sign up. The phone app makes your account from 12 words
+the first time it opens. On the website, [log in](https://openagents.com/login)
+by scanning a code with the phone app or with a Nostr browser extension;
+GitHub still logs in accounts that signed up with it before. With
+`coder login` and `/sync on`, your account shows Coder's chats from your
+computer. See [Sync, share, and export](/docs/coder-sync).
 
 ## Which model answers the chat?
 
@@ -32,10 +35,10 @@ this?" to hear which one is answering now. See
 
 ## Do you keep or train on my chats?
 
-In the web chat on openagents.com, we keep your chats on our servers so
-you can open them again; you can delete one from its … menu in the sidebar. In
-the Mac app, Terminal, and phone app, your chats are saved on your device,
-and our chat service doesn't store your message text. We may use your
+In the web chat on openagents.com and in the phone app's cloud chats, we
+keep your chats on our servers so you can open them again; you can delete
+one from its … menu in the sidebar. In the Terminal, your chats are saved
+on your computer, and our chat service doesn't store your message text. We may use your
 chats to train and improve our models; on a paid plan you can ask us to
 opt you out, and we set that up with you. See [Privacy and security](/docs/privacy-and-security).
 
@@ -89,8 +92,8 @@ one business day. To report a bug, open an issue on
 ## Can I attach a photo or a file?
 
 In Coder, yes: paste a screenshot, drop in the path of an image or a PDF,
-or write `@path/to/file` in your message. Chats on the website and in the
-apps are text only for now.
+or write `@path/to/file` in your message. Chats on the website are text
+only for now.
 
 ## Do I need Tailscale?
 
@@ -124,7 +127,14 @@ Coder updates itself when a newer release is out.
 
 ## How do I see what changed in a build?
 
-On the phone, **Account → Changelog** lists what each build brought, and
-**Account → About this device** shows the version and build.
+On the phone, **Settings → About** shows the version and build, and
+TestFlight shows what each build brought. The [download page](/download)
+shows Coder's current version.
+
+## Is there a desktop app or an Android app?
+
+Both are coming soon. Until then, use [Coder](/docs/coder) and
+[OpenAgents Terminal](/docs/terminal) on your computer, and
+[OpenAgents for iPhone](/docs/iphone) on your phone.
 
 Next: [Glossary](/docs/glossary).

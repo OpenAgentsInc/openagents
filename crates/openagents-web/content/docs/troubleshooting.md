@@ -1,18 +1,5 @@
 # Troubleshooting
 
-## Coder isn't answering on this Mac
-
-The Mac app says "Coder isn't answering on this Mac" when its background
-helper (the host) doesn't answer. The app keeps trying on its own.
-
-1. Click **Try again** in [OpenAgents for Mac](/docs/mac).
-2. If the app says "OpenAgents needs your OK to run in the background",
-   click **Open Login Items** and turn on OpenAgents under **Allow in the
-   Background**, then come back.
-3. If it says "Coder couldn't start on this Mac", or the message lasts,
-   quit OpenAgents and open it again.
-4. Still stuck? Report a problem (below) with what the screen says.
-
 ## `coder` isn't found after installing
 
 Open a new terminal: the installer added `~/.openagents/bin` to your
@@ -120,7 +107,7 @@ See [Connect a computer](/docs/connect-a-computer).
 - Run `openagents connect invite` again and scan the new code in
   [OpenAgents for iPhone](/docs/iphone). Each code works once.
 - Can't scan? Run `openagents connect invite --text` and paste the code it
-  prints in the phone's **Paste a code**.
+  prints, then tap **Paste** at the top of the phone's scanner.
 
 ## A coding agent says it isn't logged in
 
@@ -129,11 +116,11 @@ user.
 
 1. Run the agent's own program in a terminal on that computer (for
    example `codex` or `claude`) and log in.
-2. Check the Mac app's sidebar or **Settings → Coder**, or OpenAgents
-   Terminal's **Agents** row: it should say **Logged in**.
+2. Check OpenAgents Terminal's **Agents** row (run `openagents`): it
+   should list the agent.
 3. Nothing needs enabling: Coder uses every logged-in agent. Only one you
-   turned off is skipped (**Agents Coder may run**, or
-   `openagents settings enable AGENT`).
+   turned off is skipped (`openagents settings enable AGENT` turns it
+   back on).
 
 If the agent you asked for isn't available, Coder runs another one and the
 start says why. See [Coding agents](/docs/coding-agents).
@@ -141,22 +128,20 @@ start says why. See [Coding agents](/docs/coding-agents).
 ## Coder won't start
 
 - **Not a project.** Coder needs a Git checkout with at least one commit.
-  In the Mac app, **Choose folder…**; in the Terminal, start in your
-  project's folder. If you set `coder.projects`, the checkout must be
+  In the Terminal, start in your project's folder. If you set `coder.projects`, the checkout must be
   inside one of those folders.
 - **No agent available.** No allowed agent is logged in with room right
   now. Sign one in, or turn another on.
 - **Settings file can't be read.** Fix or remove
   `~/.openagents/settings.json`; the message names the problem.
-- **From the phone:** on the Mac, check that it's online, a project is
-  picked, and **Let my phone start Coder here** is on. With **Ask first**,
-  tap **Run Coder** under the reply.
+- **From the phone:** check that the computer shows **Online** in the
+  phone's **Settings → Devices**, and that a project is picked.
 - **Offered but not started.** With **Ask first**, press Enter on an empty
-  line in the Terminal, or choose **Run Coder** in the app.
+  line in the Terminal.
 
 ## The usage meters look out of date
 
-The Mac app's usage meters come from the last reading your computer took;
+Coder's usage meters come from the last reading your computer took;
 it reads again in the background when a reading is due.
 
 - **Reading usage…** means no reading yet. Wait a little.
@@ -176,16 +161,14 @@ start a new chat.
 
 ## Remove a phone
 
-Click **Remove** next to the phone in the Mac app's **Phones and
-computers**, or run `openagents connect remove DEVICE`.
+On the computer, run `openagents connect remove DEVICE`
+(`openagents connect devices` lists them).
 
 ## Report a problem
 
-In the iPhone app, open **Account → Report a problem**, or long-press the
-tab bar on any screen so the report knows where you were. Pick a kind,
-say what happened and what you expected, and add a screenshot if you want;
-you see it first, and the Wallet and key screens never attach one.
-**My reports** lists what you sent. You can also open an issue on
-[GitHub](https://github.com/OpenAgentsInc/openagents/issues).
+Open an issue on
+[GitHub](https://github.com/OpenAgentsInc/openagents/issues) with what
+the screen says. In the iPhone beta, take a screenshot and send it as
+TestFlight feedback.
 
 Next: [Run your own OpenAgents](/docs/self-host).

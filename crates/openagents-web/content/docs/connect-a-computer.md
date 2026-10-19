@@ -43,11 +43,9 @@ Settings page, or from a terminal with `openagents keys revoke NAME`
 
 ## Connect your phone
 
-Get [OpenAgents for iPhone](/docs/iphone) on TestFlight at
-[testflight.apple.com/join/dvQdns5B](https://testflight.apple.com/join/dvQdns5B).
-Connect your phone to a computer once, and the phone can reach it from
-anywhere: chat with it, run Coder in your projects, and open a terminal
-on it.
+Connect [OpenAgents for iPhone](/docs/iphone) to a computer once, and the
+phone can reach it from anywhere: chat with it, run coding work in your
+projects there, and see its sessions.
 
 1. Install Coder on the computer (above). It adds the `openagents`
    command.
@@ -55,9 +53,10 @@ on it.
    `openagents host serve --iroh --control`
 3. In a second terminal, run `openagents connect invite`. It draws a QR
    code.
-4. On your phone, open **Account**, then **Computers**, then **Connect a
-   computer**, and scan the code.
-5. Both the terminal and the phone say the computer is connected.
+4. On your phone, open **Settings**, then **Connect a computer**, and
+   scan the code.
+5. The computer shows in the phone's **Devices**, and it joins your
+   account and signs in as you.
 
 There is no key to copy, and you don't need Tailscale. The code works
 once, for one phone, and stops working when the command ends.
@@ -65,7 +64,8 @@ once, for one phone, and stops working when the command ends.
 ## Can't scan?
 
 Run `openagents connect invite --text` instead. It prints a code under
-the QR code; paste it in the phone's **Paste a code**.
+the QR code. Copy it to your phone, then tap **Paste** at the top of the
+phone's scanner.
 
 ## A computer you reach over SSH
 
@@ -82,9 +82,9 @@ never required. See [Manage computers](/docs/manage-computers).
 
 ## What a connected phone can do
 
-A connected phone has full access to that computer: it can chat through
-it, run Coder in your projects, open a terminal, and see the phones
-connected to it. To take a phone's access away, run
+A connected phone has full access to that computer. In the app, it chats
+through it, runs coding work in your projects there, and shows its
+sessions. To take a phone's access away, run
 `openagents connect remove DEVICE` on the computer
 (`openagents connect devices` lists them).
 

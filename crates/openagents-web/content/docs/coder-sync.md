@@ -38,7 +38,7 @@ deletes it in the other.
 ## Read and reply on the web and phone
 
 Synced chats appear in the sidebar on [openagents.com](/), marked with
-this computer's name, and in the phone app's chat list.
+this computer's name.
 
 While Coder is open on that computer, you can reply there: Coder picks up
 your reply as soon as it's free, shows it in the chat as your message,

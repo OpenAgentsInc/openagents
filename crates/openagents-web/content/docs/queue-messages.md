@@ -49,9 +49,9 @@ The [web chat](/new) takes the same keys, with `⌘+Enter` on a Mac.
   and sends your message now. What the reply wrote so far stays, marked
   "You stopped this answer."
 
-## In the apps
+## In the Terminal
 
-The Mac and iPhone apps queue too; how is in
+OpenAgents Terminal queues too; how is in
 [Watch, steer, and stop Coder](/docs/following-coder).
 
 Next: [Share a project with a teammate](/docs/share-a-project).

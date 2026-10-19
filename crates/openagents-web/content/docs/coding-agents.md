@@ -2,7 +2,7 @@
 
 Coder runs the coding agents you already use, on your computer, under
 your own login with each one. This page covers Coder tasks started from
-the Mac app, OpenAgents Terminal, the phone, or `openagents chat`; for
+OpenAgents Terminal or `openagents chat`; for
 the `coder` terminal app, see [Choose who answers](/docs/coder-agents).
 
 | Agent | Order | Model when you don't name one |
@@ -30,8 +30,8 @@ the same user that runs Coder:
    their makers' own instructions.
 2. Run it once in a terminal (for example `codex`, `claude`, or
    `opencode`) and log in.
-3. Check: the Mac app's sidebar and **Settings → Coder** say **Logged in**
-   for it, and OpenAgents Terminal lists it under **Agents**.
+3. Check: OpenAgents Terminal lists it under **Agents**. Run `openagents`
+   to open it.
 
 Coder only checks whether each agent is logged in. It never reads or sends
 your login itself.
@@ -42,11 +42,11 @@ Name the agent in your message: "run this with Claude Code", "do it with
 Codex". Coder puts that agent first for the run, unless you turned it off
 on that computer. If it can't use it, because it isn't logged in, is
 turned off, or has no room right now, the start says why and names the one
-running instead. This works from the phone too.
+running instead.
 
 In the `coder` terminal app, `Shift+Tab` and `/models` choose the agent
-and its model; see [Choose who answers](/docs/coder-agents). The Mac app
-and OpenAgents Terminal have no model picker yet. To choose a model
+and its model; see [Choose who answers](/docs/coder-agents). OpenAgents
+Terminal has no model picker yet. To choose a model
 there, name it in the settings (`codex:MODEL`, `opencode:PROVIDER/MODEL`);
 see the [settings reference](/docs/settings).
 
@@ -60,9 +60,8 @@ away earlier is skipped until it has room again.
 
 Every logged-in agent is used unless you turn it off.
 
-- **Mac app:** **Settings → Coder → Agents Coder may run.** Turn one off to
-  keep Coder from using it. At least one stays on.
-- **OpenAgents Terminal:** `/settings`, the same switches.
+- **OpenAgents Terminal:** `/settings` turns one off to keep Coder from
+  using it. At least one stays on.
 - **Anywhere:** `openagents settings disable devin` (and `enable devin`).
   `openagents settings set coder.providers claude,codex` puts Claude Code
   first; agents you leave out still follow.
@@ -70,7 +69,6 @@ Every logged-in agent is used unless you turn it off.
 Delegated sessions show inside their Coder chat: when a task hands work to
 OpenCode or Devin CLI, that session appears as a row you can open. Separate
 Codex, Claude Code, OpenCode, and Devin CLI sessions aren't listed in the chat
-list; in the Mac app, **Saved sessions** shows your Codex and Claude Code
-sessions.
+list.
 
 Next: [Watch, steer, and stop Coder](/docs/following-coder).

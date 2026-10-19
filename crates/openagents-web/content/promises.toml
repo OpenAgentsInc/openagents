@@ -92,7 +92,7 @@ title = "Earlier ideas"
 [[promise]]
 id = "A1"
 group = "A"
-statement = "You have one OpenAgents account, logged in with GitHub, that works on every surface."
+statement = "You have one OpenAgents account on every surface, and the phone app makes it for you with no sign-in."
 surfaces = ["web", "terminal", "mobile", "desktop"]
 status = "launching"
 link = "/login"
@@ -346,6 +346,19 @@ posts = [
   { date = "2024-05-20", url = "https://x.com/OpenAgentsInc/status/1792360190689386537" },
   { date = "2024-10-21", url = "https://x.com/OpenAgentsInc/status/1848211700450726214" },
   { date = "2024-12-30", url = "https://x.com/OpenAgentsInc/status/1873821809386340369" },
+]
+
+[[promise]]
+id = "B17"
+group = "B"
+statement = "You save your own agents, and anyone can start a copy of an agent you publish."
+surfaces = ["iphone", "api"]
+status = "shipped"
+link = "/docs/custom-agents"
+issues = [12048, 12049]
+evidence = [
+  { test = "crates/openagents-web/src/published_agents.rs::anyone_forks_a_published_agent_follows_its_revisions_and_publishes_their_own" },
+  { doc = "crates/openagents-web/content/docs/custom-agents.md" },
 ]
 
 [[promise]]

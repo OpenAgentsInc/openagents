@@ -155,6 +155,8 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/desktop", "goes to Download"),
     ("/docs/install", "goes to a guide"),
     ("/docs/help", "goes to a guide"),
+    ("/docs/decks", "goes to the docs index"),
+    ("/docs/ship-from-your-phone", "goes to a guide"),
     ("/chat", "goes home"),
     ("/chat/list", "part of the chat list"),
     ("/chat/assets/*", "files"),

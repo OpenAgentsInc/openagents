@@ -10,6 +10,8 @@ whichever agent, model, or computer in the network serves it best.
 - **Chat.** Ask about OpenAgents, about your project, or about anything
   else. Many answers come at once from our prepared answers and product
   notes. See [Chat](/docs/chat).
+- **Make your own agents.** Give an agent a name and instructions, and
+  any chat can use it. See [Custom agents](/docs/custom-agents).
 - **Hand work to Coder.** When a message is coding work, Coder, our coding
   agent, does it on your own computer, with the coding agents you already
   use there: Codex, Claude Code, Grok Build, OpenCode, or Devin CLI. See
@@ -25,15 +27,17 @@ whichever agent, model, or computer in the network serves it best.
 | Where | What it is |
 | --- | --- |
 | [openagents.com](/docs/website) | Start a chat from the homepage. |
-| [OpenAgents for Mac](/docs/mac) | Chats, Coder on your Mac, the Verse, the Map, and decks. It also connects your phone to your Mac. |
-| [OpenAgents for iPhone](/docs/iphone) | Chats, Coder on your computers, the Verse, and a bitcoin wallet. |
+| [OpenAgents for iPhone](/docs/iphone) | Chats, coding work in our cloud or on your computers, custom agents, voice, and a bitcoin wallet. In beta on TestFlight. |
 | [Coder](/docs/coder) | A coding agent in your terminal: run `coder` in any project folder. |
 | [OpenAgents Terminal](/docs/terminal) | The same chat full screen in a terminal, with Coder in the folder you start from. |
-| [The `openagents` command](/docs/cli) | Chat, settings, plugins, and pairing from a shell or a script. |
+| [The `openagents` command](/docs/cli) | Chat, settings, plugins, and connecting your phone, from a shell or a script. |
+| [The API and SDK](/docs/sdk) | Our models, your chats, and your agents, from your own code. |
 
-On a computer, your chats are the same chats in the Mac app, the Terminal,
-and the `openagents` command, and a phone connected to that computer sees
-them too.
+The [desktop app](/docs/mac) and the Android app are coming soon.
+
+On a computer, your chats are the same chats in the Terminal and the
+`openagents` command, and a phone connected to that computer sees them
+too.
 
 ## Open, all the way down
 
@@ -41,8 +45,8 @@ OpenAgents runs on open protocols: messages, results, and XP are signed
 records on Nostr, an open network of relays. The app, the chat service,
 Coder, and the protocols are open source at
 [github.com/OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents),
-under the Apache License 2.0. The apps need no account or password: each
-device makes its own key the first time it runs.
+under the Apache License 2.0. The phone app needs no sign-in: it makes
+your account from 12 words the first time it opens.
 
 Why we built it this way is in two essays:
 [The Return of the General Agent](https://github.com/OpenAgentsInc/openagents/blob/main/docs/essays/2026-10-01-the-return-of-the-general-agent.md)

@@ -28,8 +28,7 @@ The welcome card shows three rows:
 - **Project:** the Git checkout you started in, where Coder would work.
 - **Agents:** the coding agents ready on this computer, such as Codex,
   Claude Code, and Grok Build.
-- **Chats:** `synced` when this computer's host is running (the Mac app
-  runs it), so your threads are the Mac app's threads and a connected phone
+- **Chats:** `synced` when this computer's host is running, so a connected phone
   sees them; `this computer` when no host runs; `scratch` for `--scratch`.
 
 The line above the composer says what's happening (`ready`, `replying`,
@@ -91,8 +90,7 @@ copy of your checkout, so your files aren't touched. See
 
 ## Threads
 
-Ctrl+T lists threads: pinned first, then newest, then archived, as in the
-Mac app and on the phone. Enter opens one, `n` starts a new one, `a`
+Ctrl+T lists threads: pinned first, then newest, then archived. Enter opens one, `n` starts a new one, `a`
 archives the selected one, and Esc closes the list.
 
 ## Sync and pairing
@@ -100,11 +98,11 @@ archives the selected one, and Esc closes the list.
 With no host running, the welcome card offers **Ctrl+S**: it installs this
 computer's host as a background service, so your threads sync with a
 connected phone. If something is missing, it tells you the one thing to do
-instead, usually opening the Mac app. It never installs anything you didn't
+instead. It never installs anything you didn't
 ask for.
 
 `/connect` draws a QR code in text, so it works over SSH. Scan it with the
-OpenAgents app on your phone (**Account → Computers → Connect a
+[OpenAgents app on your phone](/docs/iphone) (**Settings → Connect a
 computer**).
 
 ## Where it keeps things

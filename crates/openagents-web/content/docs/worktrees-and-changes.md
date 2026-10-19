@@ -1,7 +1,6 @@
 # Worktrees and changes
 
-A Coder task started from the Mac app, OpenAgents Terminal, the phone, or
-`openagents chat` never works in your checkout. Each task gets its own Git
+A Coder task started from OpenAgents Terminal or `openagents chat` never works in your checkout. Each task gets its own Git
 worktree: a separate folder with a copy of your project at its last
 commit. Your files, your branch, and any uncommitted changes stay as they
 were. (In the `coder` terminal app, a chat works in the folder you open;
@@ -25,7 +24,7 @@ When a finished task recorded its change, the chat shows a **What changed**
 card.
 
 1. The card opens on a click, and the diff shows in a pane on the right
-   (on the phone, in the chat). The pane is read-only.
+   The pane is read-only.
 2. The card names the exact commits it shows. If the worktree changes
    while you look, the card says the view is out of date and offers
    **Refresh**.

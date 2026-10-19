@@ -9,7 +9,7 @@ rerun it, build on it, and use the plugin.
 openagents plugin test publish evals/results/TIMESTAMP/report.json
 ```
 
-On the phone, it's **Add to the Gym**. Publishing puts two signed records
+Publishing puts two signed records
 on Nostr, the open protocol OpenAgents runs on: your test set, released
 under your key, and your result. A result is public whatever it says,
 **Worse** included.
@@ -66,14 +66,7 @@ and each quest sets the amounts; in the current quests:
   tests that showed it 100, and each tester whose result was confirmed 50.
 
 Running, publishing, viewing, or downloading earns nothing. XP can't be
-spent, transferred, or converted. Your profile in the app shows what you
-made and the XP it earned.
-
-## On the map
-
-In OpenAgents for Mac, the **Map** page shows each plugin and the step it
-has reached: Not packaged, Candidate, a verdict, Reproduced, Validated,
-or Adopted, with the next step for each. See [Decks and the Map](/docs/decks).
+spent, transferred, or converted.
 
 The specifications are on GitHub:
 [testing and publishing](https://github.com/OpenAgentsInc/openagents/blob/main/docs/extensions/evaluation.md),

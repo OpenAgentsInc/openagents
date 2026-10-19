@@ -31,7 +31,7 @@
     key shows by name only, and a saved Claude credential by its kind only.
     From a terminal logged in with `coder login`, `coder export --account`
     saves the same file (`--output FILE` to choose where).
-- **In the Mac app, Terminal, and phone app,** your chats are saved on your
+- **In the Terminal,** your chats are saved on your
   device, encrypted with its key (on a computer, by its host). Your
   messages are encrypted before they leave your device, and the OpenAgents
   relay that carries them to our chat service sees only the encrypted form
@@ -133,8 +133,8 @@ of these keeps a cookie in your browser, so we can credit who sent you.
   QR code (or pasted its code, or approved it on the computer's screen).
 - Every connected phone gets full access to that computer, a terminal
   included. The computer checks each message against that access.
-  **Remove** in the Mac app cuts a phone off at once.
-- The Mac app keeps its keys in the Mac's keychain.
+  `openagents connect remove DEVICE` on the computer cuts a phone off at
+  once.
 - Coder works on your computer, in your projects. Like Codex or Claude Code
   on their own, the coding agent it runs sends what it reads to that
   agent's model provider, under your login there.
@@ -146,11 +146,11 @@ of these keeps a cookie in your browser, so we can credit who sent you.
 
 ## Your phone's keys
 
-- **Device key:** made on your phone, kept in its Keychain on this device
-  only, and never synced. It holds access to your computers.
-- **World key:** a separate key for the Verse and your XP, so other players
-  can't link you to your device key.
-- **Wallet:** its own recovery words, separate from both.
+- **Your account:** made on your phone from 12 words, kept in its
+  Keychain. The same 12 words open a new wallet, so one backup covers
+  both.
+- **Computers:** the access each connected computer gave this phone is
+  kept in its Keychain too.
 
 The full details are in the [Privacy Policy](/privacy) and the
 [Terms of Service](/terms).

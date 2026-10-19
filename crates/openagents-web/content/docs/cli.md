@@ -46,8 +46,7 @@ openagents chat work --issues 101,102                     # work GitHub issues
 Ctrl-C stops following a run; the run keeps going. See
 [Coder](/docs/coder) and [Work on a GitHub issue](/docs/github-issues).
 
-When the Mac app (or another host) runs on this computer, these are the
-same threads it shows. Without one, the command keeps its threads in
+When this computer's host runs, these are the same threads it shows. Without one, the command keeps its threads in
 `~/.openagents/chat/`, and they move into the host's store the first time a
 host runs. `--scratch` uses a throwaway identity and thread.
 
@@ -126,7 +125,7 @@ your wallet ([Pay per request](/docs/api/pay-per-request)).
 
 ## Connect
 
-For a computer without the Mac app, or to script pairing. The host must be
+To connect your phone to this computer, or to script pairing. The host must be
 running.
 
 ```sh

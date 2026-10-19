@@ -79,7 +79,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
-const PAGES: [&str; 64] = [
+const PAGES: [&str; 63] = [
     "/new",
     "/blog",
     "/blog/coder-1-0",
@@ -116,7 +116,6 @@ const PAGES: [&str; 64] = [
     "/docs/following-coder",
     "/docs/worktrees-and-changes",
     "/docs/github-issues",
-    "/docs/ship-from-your-phone",
     "/docs/connect-a-computer",
     "/docs/manage-computers",
     "/docs/plugins",
@@ -127,7 +126,7 @@ const PAGES: [&str; 64] = [
     "/docs/verse",
     "/docs/the-grid",
     "/docs/wallet",
-    "/docs/decks",
+    "/docs/custom-agents",
     "/docs/settings",
     "/docs/troubleshooting",
     "/docs/self-host",
@@ -2125,6 +2124,8 @@ async fn the_download_page_offers_every_platform_from_its_table() {
         ("/desktop", "/download"),
         ("/docs/install", "/docs/download"),
         ("/docs/help", "/docs/troubleshooting"),
+        ("/docs/decks", "/docs"),
+        ("/docs/ship-from-your-phone", "/docs/iphone"),
     ] {
         let (status, headers, _) = get_with(router(config(root.path().into())), old, LOCAL).await;
         assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{old}");
