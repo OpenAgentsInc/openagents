@@ -14,12 +14,22 @@ cap is enforced on an agent machine and how to reclaim the store
 local_max_size = "30GiB"
 gc_evict_shared = true
 preserve_incremental = true
+cache_executables = false
 ```
 
 `preserve_incremental = true` keeps rustc's incremental state for the crates
 the workspace profile compiles incrementally (#12178). Without it, kache
 strips Cargo's `-C incremental` flag and caches the crate instead, so an edit
 recompiles the whole crate. Every other crate is cached as before.
+
+`cache_executables = false` stops kache from storing linked executables. On
+macOS kache runs `dsymutil` on each executable it stores, on the build's
+path. An executable relinks whenever the crate it tests changes, so the
+store almost never pays off in an edit loop, and `dsymutil` took 40 to 51 s
+on the largest test binaries. Measured on 2026-10-19, alternating the two
+settings on one target: a `coder-host` test build after a one-line edit took
+36.8 s with executables cached and 20.4 s without; a `coder` test build took
+152 to 155 s and 105 to 116 s (#12178).
 
 `gc_evict_shared = true` is required on a machine with long-lived agent
 target directories. Without it, the cap isn't enforced:

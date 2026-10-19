@@ -186,7 +186,8 @@ every other crate without it, so kache still reuses those; a one-line edit to
 `openagents-web` rebuilds in 27 s instead of 93 s. Add a crate to the list only
 when all its workspace dependents are on it. kache needs
 `preserve_incremental = true` in `~/.config/kache/config.toml`, or it strips
-the flag ([kache.md](docs/background/kache.md)). After choosing `CARGO_TARGET_DIR`, load
+the flag, and on macOS `cache_executables = false`, or it runs `dsymutil` on
+every test binary it stores ([kache.md](docs/background/kache.md)). After choosing `CARGO_TARGET_DIR`, load
 `. "$(git rev-parse --show-toplevel)/scripts/dev/cargo-build-env.sh"`, then
 run Cargo directly. The helper pins `RUSTC` to the selected compiler, hashes
 its full `rustc -vV` output and path with the physical workspace manifest path
