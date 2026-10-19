@@ -862,3 +862,12 @@ links remain readable. Upstream fixes now require manual ports.
   Fake-server fixtures cover invitation success, expiry, wrong-account
   refusal, and replay refusal. Focused Rust tests remain pending coordinator
   build admission.
+
+- [OpenAgents #12095](https://github.com/OpenAgentsInc/openagents/issues/12095):
+  add the account-owned `CoreAndroidSessions` bridge and Rust Native new-session
+  menus. Its default cloud-chat object survives native view recreation; project,
+  branch, provider, model, effort, sharing, and continuation choices stay in Rust.
+  A strict selected-computer catalog API never substitutes cached/bundled choices.
+  The Android host forwards typed actions using the existing Views adapter.
+  Focused fixture checks are pending coordinator build admission. Automatic
+  own-computer-card dismissal still needs authoritative cloud-device classification.
