@@ -1,3 +1,20 @@
+## Decide two SPACE qualification gaps (#11816)
+
+The final SPACE qualification run passed 31 of 33 required cases, but the named
+group can't be admitted yet. Two of the gaps need your decision:
+
+- **Snapshot boots.** Our qualification organization uses encrypted volumes,
+  and SPACE can't boot an encrypted computer from a clean base snapshot, so
+  every create boots cold (about 4.4 s to first output). To measure snapshot
+  boots, choose either an organization without encrypted volumes, or waiting
+  for upstream SPACE to support encrypted warm boots.
+- **Web tasks on SPACE.** Web chat tasks create their computer from a saved
+  environment, and SPACE doesn't offer environment images yet, so those tasks
+  run on Boat. Decide whether SPACE should get environment images before the
+  named group starts.
+
+The status and evidence are in `docs/sdk/space-qualification.md`.
+
 ## Check the new-chat computer picker on iPhone (#12133)
 
 After the next app update, use a dedicated test account with an online Mac

@@ -1,11 +1,11 @@
 {
   "schema": "openagents.computers.space-qualification.v1",
   "identity": {
-    "web_commit": "c3cb714436f653efae340ebeb252c3c28fc068b8",
-    "computers_commit": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
-    "sdk_commit": "a53a9731f996a8d93f22f1af11f5158894288c54",
+    "web_commit": "5da26860e484e9841794edfe8bb3339dee62392f",
+    "computers_commit": "85141f12a6a0cde5f8337acba1891fc8f270cc48",
+    "sdk_commit": "86e76f44a55617d754c28d2ddf13e24ed185b22b",
     "native_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
-    "native_image_sha256": "b03fac6e4f70ff5a34d07023a1ae251d20820d32a788b83529a5461f5f1fafe6",
+    "native_image_sha256": "7aae0e415ba303a2526417b080757dc0dbb5eb47cfe541ce30e43d122a4dcb57",
     "template": "code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149",
     "runtime_sha256": "7e8b57e88c459396d4680d83dcdd8c7f72305447cb55b11f4ac98ad70a3f7825",
     "policy_sha256": "65e6dab85820b6bfe9a51244674520ab5d26f0b64713b37d8426889d790b3c51",
@@ -13,7 +13,7 @@
     "vcpus": 2,
     "memory_mib": 1024
   },
-  "observed_unix": 1792373557,
+  "observed_unix": 1792403273,
   "advertised": {
     "fork": false,
     "terminal": false,
@@ -35,114 +35,111 @@
     "snapshot_p90_ms": 2000,
     "wake_p90_ms": 5000,
     "maximum_error_permille": 10,
-    "maximum_service_cost_per_useful_task_micros": 50000,
+    "maximum_service_cost_per_useful_task_micros": 150000,
     "currency": "USD",
     "maximum_age_seconds": 86400
   },
   "cases": {
     "public_sdk": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/public_sdk.json",
-        "sha256": "baf7b6a6cd3a5f68bbc95ea6fc0e189409a8216840a118969fe78e51a2e8ca5f"
+        "path": "evidence/space-qualification-2026-10-19/receipts/public_sdk.json",
+        "sha256": "031fa4fca46933bc5090138cf432d11f02529d40af916fda1ff72a1af26303a4"
       }
     },
     "web_task_and_followup": {
-      "status": "failed",
-      "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/web_task_and_followup.json",
-        "sha256": "d86eae8d59549c8e8f9b457e8011cd6185b5324f703d2e2cc22a60119016c805"
-      }
+      "status": "pending",
+      "artifact": null
     },
     "account_isolation": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/account_isolation.json",
-        "sha256": "d39e28ba085b58c1e3c9593a0bb1579c15645b0f13f3c461dc9d36d6c7d81771"
+        "path": "evidence/space-qualification-2026-10-19/receipts/account_isolation.json",
+        "sha256": "9c282c43a46efed109354ad948056d2cf2c88a9289c7bd3837f709b8500e442e"
       }
     },
     "actual_boot_and_shape": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/actual_boot_and_shape.json",
-        "sha256": "022b9c061a1ca4d4bfc8dd6306bd9b4ca1a98316876b1b97746bb2b25124e24f"
+        "path": "evidence/space-qualification-2026-10-19/receipts/actual_boot_and_shape.json",
+        "sha256": "e487a8225d69f6510c70f65e57f8b27dd763f23f446ad2dd0e524fa8a9b1984b"
       }
     },
     "stage_timings": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/stage_timings.json",
-        "sha256": "ac8f1df74ff17fc8ad386cdcc6739db8768c70f6eafe97761dee83cce983d190"
+        "path": "evidence/space-qualification-2026-10-19/receipts/stage_timings.json",
+        "sha256": "a6815114b08f602fe5c0d83c8d2e231250d9b8994b54b767b7b8e89592917841"
       }
     },
     "memory_and_workspace": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/memory_and_workspace.json",
-        "sha256": "249a5d1b84c2920c05fdd272d58ba9f454d511f88eddcfd89451b45c37cf47c8"
+        "path": "evidence/space-qualification-2026-10-19/receipts/memory_and_workspace.json",
+        "sha256": "1c4ed364691b6b01dd0e2fd3295cc32c5658b23e61fc1063a0f3b53f09513962"
       }
     },
     "cancellation_and_children": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/cancellation_and_children.json",
-        "sha256": "29c6bf8f03c74c6b0bbb6ffd6843204aadfab068a55ef29701abf85583cf2c5e"
+        "path": "evidence/space-qualification-2026-10-19/receipts/cancellation_and_children.json",
+        "sha256": "4a0605c7af3de83292eef5e68e1365f4ea1965eff4284c5e07faf962a8b5b44c"
       }
     },
     "api_restart": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/api_restart.json",
-        "sha256": "9241e7804cf4118fe8cda01b5f556253df4b0804885b1624aed6d8f56b5d8c01"
+        "path": "evidence/space-qualification-2026-10-19/receipts/api_restart.json",
+        "sha256": "79fa7c6cc64002ddddb37f3ca3d8ca0ed60119929cf6c48908a4233f50def34f"
       }
     },
     "reconciler_restart": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/reconciler_restart.json",
-        "sha256": "08326425a27286f104e66609a5898bdd712b75a4e7469474cf2bad348d324b24"
+        "path": "evidence/space-qualification-2026-10-19/receipts/reconciler_restart.json",
+        "sha256": "c71a348ea3f65c9164b085d28844f944cf599fef7076c9398da29a7f564553de"
       }
     },
     "lost_create_reply": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/lost_create_reply.json",
-        "sha256": "5fc6d28d830f046abe59b0d2604527a89a96284c65d9c5fd36b5888890aeaefa"
+        "path": "evidence/space-qualification-2026-10-19/receipts/lost_create_reply.json",
+        "sha256": "0c1458936b5f0f3db21307255c8d70d8aac604d972e769e158330b30ce2887e9"
       }
     },
     "lost_command_reply": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/lost_command_reply.json",
-        "sha256": "158c7ac2194787db8d00b63e284b11bd3825c9ec497203395cdd14019f36ebdb"
+        "path": "evidence/space-qualification-2026-10-19/receipts/lost_command_reply.json",
+        "sha256": "b53be5d10ccb692b8df2b75f716ad3daa821b603d2d60803ab4ffe202c98d732"
       }
     },
     "attach_interruption": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/attach_interruption.json",
-        "sha256": "96055ebd93a3f4209e9bd183c624b48d9690552d9b47a708a0a3905b496bdcf9"
+        "path": "evidence/space-qualification-2026-10-19/receipts/attach_interruption.json",
+        "sha256": "26d222fa80a870889ea23ad5f3ee944c7eccb3b37d5188b3e3dda8f7fb15f112"
       }
     },
     "duplicate_delivery": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/duplicate_delivery.json",
-        "sha256": "6b5b950bce4016b79736bb31ef3a008403dbdb4efa9a745b245c33f0d47535a6"
+        "path": "evidence/space-qualification-2026-10-19/receipts/duplicate_delivery.json",
+        "sha256": "3fabd76d0b7800138f0013d10b9202e0b856a13c69fc072605062bc7e09198de"
       }
     },
     "delayed_lifecycle": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/delayed_lifecycle.json",
-        "sha256": "5273170d7911c7a0404ff46aa7a86a02c0ce1c510d167561662d4870cf4c0512"
+        "path": "evidence/space-qualification-2026-10-19/receipts/delayed_lifecycle.json",
+        "sha256": "584e61016c324c24b422ae55bf1fca778a8fa7da33efcd4616bb9b807c0e7c8c"
       }
     },
     "worker_loss_and_single_writer": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/worker_loss_and_single_writer.json",
-        "sha256": "daa3102fcd3ff38de45d3aee8db9e4b8516ec4da08f4f06a2d1067cb81d25bf1"
+        "path": "evidence/space-qualification-2026-10-19/receipts/worker_loss_and_single_writer.json",
+        "sha256": "ca9f2c290c6c9131561e3cff5e9d22d85d9495b3529d8f9fae63bb955c697c8a"
       }
     },
     "cross_host_memory_restore": {
@@ -152,29 +149,29 @@
     "checkpoint_recovery": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/checkpoint_recovery.json",
-        "sha256": "4f062ad390ebebe8e8cc6c165267c516bf4cab45ad97b713d75017dfff307d2d"
+        "path": "evidence/space-qualification-2026-10-19/receipts/checkpoint_recovery.json",
+        "sha256": "4cae0164b97851a57e1d8e4ff02d0446829ef25978de3f77570e4f7815b7a4b5"
       }
     },
     "database_restore": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/database_restore.json",
-        "sha256": "b9d9875a5c5a4640f0403067a3c03522096334e1e692332733b7f846e2c640e5"
+        "path": "evidence/space-qualification-2026-10-19/receipts/database_restore.json",
+        "sha256": "239fdaa8cd03bb39895759506cd27625fb2dd98553a8915290468435769ce272"
       }
     },
     "storage_outage": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/storage_outage.json",
-        "sha256": "8544104465ef1bb57d4a316df5d9ad5732e52a3df34b3af10593fedbb052d268"
+        "path": "evidence/space-qualification-2026-10-19/receipts/storage_outage.json",
+        "sha256": "b61ad6b841f39dfd6f17c2699a830678ee292e346a12621e2d18c5d6e97da555"
       }
     },
     "provider_outage": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/provider_outage.json",
-        "sha256": "ca223e8eeb5c61bbdc3699e307c9e87e7c169f3ddc103233905af5b04c4c6642"
+        "path": "evidence/space-qualification-2026-10-19/receipts/provider_outage.json",
+        "sha256": "a9d8f585225ae4665180bba1704f657e2471cce86c87110eed13ffeb093d6174"
       }
     },
     "credential_revocation": {
@@ -184,92 +181,92 @@
     "egress_bypass": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/egress_bypass.json",
-        "sha256": "bd8a4cb8c010a6620787402bf6ffa47cdb4713179e01d2de459a4061c0c5fbe3"
+        "path": "evidence/space-qualification-2026-10-19/receipts/egress_bypass.json",
+        "sha256": "4c94f83fb2f9a6a220ed67580234e5ed9e9370aa6c6a205e5109f76979d22dc7"
       }
     },
     "capacity_exhaustion": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/capacity_exhaustion.json",
-        "sha256": "f9ac818a9a4723e645a79ff7e509e2f0a9fe8689993d6680585771400656068a"
+        "path": "evidence/space-qualification-2026-10-19/receipts/capacity_exhaustion.json",
+        "sha256": "66321c1e287549b8230d721d489b415452730e16e68a7c978316b42fbf1856dc"
       }
     },
     "concurrent_wake": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/concurrent_wake.json",
-        "sha256": "48f65fed36a6724638112591bfaba90eb238f59c4825a38356d93fb462f9b5d8"
+        "path": "evidence/space-qualification-2026-10-19/receipts/concurrent_wake.json",
+        "sha256": "bc8fa46c2ace702d199a78a14c229ddccdbfc0f8fbfb8a9fcb1d9fe767c424c2"
       }
     },
     "quotas_and_accounting": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/quotas_and_accounting.json",
-        "sha256": "1f6bdc0a67e12573ef61341d9c8bf52dec10fd2eb37faadf197ac7cea89ec5ac"
+        "path": "evidence/space-qualification-2026-10-19/receipts/quotas_and_accounting.json",
+        "sha256": "252e179035786dcc14d4e240af939aba0aa7ca52dad1e762c302a697746d3a3b"
       }
     },
     "retention": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/retention.json",
-        "sha256": "145eaabdb66f6ae8289699e750f6461110822cbf05d14fdc3d3946dc302bb749"
+        "path": "evidence/space-qualification-2026-10-19/receipts/retention.json",
+        "sha256": "d17c543a1e9b89268d6702d126bf246c7eceb644009782134a76683efd818da1"
       }
     },
     "account_deletion": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/account_deletion.json",
-        "sha256": "50b80e90d8f0327d59ea7bc53ffff73cc15259228b4d70cbffc1044c7abccea1"
+        "path": "evidence/space-qualification-2026-10-19/receipts/account_deletion.json",
+        "sha256": "e1746ae30c6a79a60b33b790cf552cc56f3761a5accb70b974bdfffca5c25ce5"
       }
     },
     "orphan_cleanup": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/orphan_cleanup.json",
-        "sha256": "9e41894920884885a6d880a674e11ee46b1e578b2f4d141b7cd8995f9ff1aac6"
+        "path": "evidence/space-qualification-2026-10-19/receipts/orphan_cleanup.json",
+        "sha256": "1f7f2784033ccabb15cc2df97dfd8268295af0fe5cfa8a9bb02a01b0add2b16d"
       }
     },
     "upgrade_and_rollback": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/upgrade_and_rollback.json",
-        "sha256": "e748c58494ba82411a809ea44f549a5957cdfda58273dd0e85a68b71bd0cb23a"
+        "path": "evidence/space-qualification-2026-10-19/receipts/upgrade_and_rollback.json",
+        "sha256": "e2ca5838b2a7c40ba47d1d3f449b2266afac1cc8a37795b63f45ac0a260d4451"
       }
     },
     "disabled_placement": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/disabled_placement.json",
-        "sha256": "0fec8c8b8b4e08660d4f05ac6bb1ed14fedce40ba6aea7b8969e9ab731893a9e"
+        "path": "evidence/space-qualification-2026-10-19/receipts/disabled_placement.json",
+        "sha256": "7176ae9c1dfe63e3d0aff5ad0d8a4112495540aee38034c5e1d8643c450d527b"
       }
     },
     "legacy_boat": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/legacy_boat.json",
-        "sha256": "c4fdab1afca5145df4c5e2ba3d4afa5fee2cfd8766a5be346d972895cbfb7e5f"
+        "path": "evidence/space-qualification-2026-10-19/receipts/legacy_boat.json",
+        "sha256": "713d3c2d1c50bd503748d1e3aa4a9f6d2e30fd0511483dc73354947ac6c2a9da"
       }
     },
     "unsupported_controls": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/unsupported_controls.json",
-        "sha256": "4b2db3e63cff28fbf4396796fadceaaec5d42ff88a567cc3a8f541c0c8aa0ce6"
+        "path": "evidence/space-qualification-2026-10-19/receipts/unsupported_controls.json",
+        "sha256": "b642a813419da73d9520197d3cf1cbc82520ae34b3deefa89e3ff9aa65373890"
       }
     },
     "monitoring": {
       "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/monitoring.json",
-        "sha256": "e929c22eea83810bfb0c836352611bf73306f7c57f64691df1662470d0e85e53"
+        "path": "evidence/space-qualification-2026-10-19/receipts/monitoring.json",
+        "sha256": "6d8cc6fe240d53371b7678912f91ff2ca49a6d86e777c5eb34f239b733908c4c"
       }
     },
     "fixture_cleanup": {
-      "status": "failed",
+      "status": "passed",
       "artifact": {
-        "path": "evidence/space-qualification-2026-10-18/receipts/fixture_cleanup.json",
-        "sha256": "f50458e1c5c8ce5a20331be4c114c2215002b0ee2249475e454204617958f0c9"
+        "path": "evidence/space-qualification-2026-10-19/receipts/fixture_cleanup.json",
+        "sha256": "24fae05ee9bae2d9fe9e937e1ec6f1a0f4c5add28e80cb0216c16d7e334c64d3"
       }
     }
   },
@@ -280,13 +277,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 309,
+        "create_ms": 268,
         "reconcile_ms": null,
-        "readiness_ms": 3731,
+        "readiness_ms": 3535,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 4486
+        "first_useful_ms": 4305
       }
     },
     {
@@ -295,268 +292,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 184,
-        "reconcile_ms": null,
-        "readiness_ms": 3612,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4389
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 172,
-        "reconcile_ms": null,
-        "readiness_ms": 3674,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4492
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 182,
-        "reconcile_ms": null,
-        "readiness_ms": 3525,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4282
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 170,
-        "reconcile_ms": null,
-        "readiness_ms": 3804,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4304
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 207,
-        "reconcile_ms": null,
-        "readiness_ms": 3711,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4247
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 173,
-        "reconcile_ms": null,
-        "readiness_ms": 3819,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4652
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 182,
-        "reconcile_ms": null,
-        "readiness_ms": 9124,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 9941
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 165,
-        "reconcile_ms": null,
-        "readiness_ms": 3684,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4190
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 171,
-        "reconcile_ms": null,
-        "readiness_ms": 3533,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4036
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 168,
-        "reconcile_ms": null,
-        "readiness_ms": 3616,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4099
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 165,
-        "reconcile_ms": null,
-        "readiness_ms": 3675,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4611
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 156,
-        "reconcile_ms": null,
-        "readiness_ms": 3620,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4363
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 173,
-        "reconcile_ms": null,
-        "readiness_ms": 3636,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4129
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 161,
+        "create_ms": 177,
         "reconcile_ms": null,
         "readiness_ms": 3654,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 4222
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 220,
-        "reconcile_ms": null,
-        "readiness_ms": 3891,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4638
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 199,
-        "reconcile_ms": null,
-        "readiness_ms": 3671,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4164
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 165,
-        "reconcile_ms": null,
-        "readiness_ms": 3629,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4295
-      }
-    },
-    {
-      "kind": "cold",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 161,
-        "reconcile_ms": null,
-        "readiness_ms": 3776,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4561
+        "first_useful_ms": 4448
       }
     },
     {
@@ -567,296 +309,356 @@
       "timings": {
         "create_ms": 181,
         "reconcile_ms": null,
-        "readiness_ms": 9194,
+        "readiness_ms": 3573,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 9698
+        "first_useful_ms": 4365
       }
     },
     {
       "kind": "cold",
       "cache": "warm",
-      "concurrency": 2,
+      "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 444,
+        "create_ms": 181,
         "reconcile_ms": null,
-        "readiness_ms": 5338,
+        "readiness_ms": 3574,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 6186
+        "first_useful_ms": 4381
       }
     },
     {
       "kind": "cold",
       "cache": "warm",
-      "concurrency": 2,
+      "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 350,
+        "create_ms": 177,
         "reconcile_ms": null,
-        "readiness_ms": 5428,
+        "readiness_ms": 3829,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 5983
+        "first_useful_ms": 4583
       }
     },
     {
       "kind": "cold",
       "cache": "warm",
-      "concurrency": 2,
+      "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 279,
+        "create_ms": 172,
         "reconcile_ms": null,
-        "readiness_ms": 4954,
+        "readiness_ms": 3520,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 35665
+        "first_useful_ms": 4311
       }
     },
     {
       "kind": "cold",
       "cache": "warm",
-      "concurrency": 2,
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 180,
+        "reconcile_ms": null,
+        "readiness_ms": 3621,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4458
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
       "succeeded": true,
       "timings": {
         "create_ms": 186,
         "reconcile_ms": null,
-        "readiness_ms": 4859,
+        "readiness_ms": 3640,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 5629
+        "first_useful_ms": 4474
       }
     },
     {
       "kind": "cold",
       "cache": "warm",
-      "concurrency": 2,
+      "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 209,
+        "create_ms": 188,
         "reconcile_ms": null,
-        "readiness_ms": 10475,
+        "readiness_ms": 3570,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11017
+        "first_useful_ms": 4096
       }
     },
     {
       "kind": "cold",
       "cache": "warm",
-      "concurrency": 2,
+      "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 286,
+        "create_ms": 218,
         "reconcile_ms": null,
-        "readiness_ms": 5434,
+        "readiness_ms": 3662,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 6241
+        "first_useful_ms": 4469
       }
     },
     {
-      "kind": "snapshot",
+      "kind": "cold",
       "cache": "warm",
       "concurrency": 1,
-      "succeeded": false,
+      "succeeded": true,
       "timings": {
-        "create_ms": 284,
+        "create_ms": 179,
         "reconcile_ms": null,
-        "readiness_ms": 11142,
+        "readiness_ms": 3684,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11898
+        "first_useful_ms": 4441
       }
     },
     {
-      "kind": "snapshot",
+      "kind": "cold",
       "cache": "warm",
       "concurrency": 1,
-      "succeeded": false,
+      "succeeded": true,
       "timings": {
-        "create_ms": 172,
+        "create_ms": 192,
         "reconcile_ms": null,
-        "readiness_ms": 10990,
+        "readiness_ms": 3677,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11724
+        "first_useful_ms": 4201
       }
     },
     {
-      "kind": "snapshot",
+      "kind": "cold",
       "cache": "warm",
       "concurrency": 1,
-      "succeeded": false,
+      "succeeded": true,
       "timings": {
-        "create_ms": 177,
+        "create_ms": 195,
         "reconcile_ms": null,
-        "readiness_ms": 11046,
+        "readiness_ms": 3684,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11803
+        "first_useful_ms": 4240
       }
     },
     {
-      "kind": "snapshot",
+      "kind": "cold",
       "cache": "warm",
       "concurrency": 1,
-      "succeeded": false,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 176,
+        "reconcile_ms": null,
+        "readiness_ms": 3644,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4411
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
       "timings": {
         "create_ms": 178,
         "reconcile_ms": null,
-        "readiness_ms": 11009,
+        "readiness_ms": 3868,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 11738
+        "first_useful_ms": 4664
       }
     },
     {
-      "kind": "snapshot",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 169,
-        "reconcile_ms": null,
-        "readiness_ms": 11104,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11847
-      }
-    },
-    {
-      "kind": "snapshot",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 147,
-        "reconcile_ms": null,
-        "readiness_ms": 10951,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11444
-      }
-    },
-    {
-      "kind": "snapshot",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 164,
-        "reconcile_ms": null,
-        "readiness_ms": 10919,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11391
-      }
-    },
-    {
-      "kind": "snapshot",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 162,
-        "reconcile_ms": null,
-        "readiness_ms": 10901,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 11395
-      }
-    },
-    {
-      "kind": "snapshot",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 163,
-        "reconcile_ms": null,
-        "readiness_ms": 16246,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 16743
-      }
-    },
-    {
-      "kind": "wake",
+      "kind": "cold",
       "cache": "warm",
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 200,
+        "create_ms": 161,
         "reconcile_ms": null,
-        "readiness_ms": 2662,
+        "readiness_ms": 3798,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3429
+        "first_useful_ms": 4302
       }
     },
     {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 200,
-        "reconcile_ms": null,
-        "readiness_ms": 32933,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 33685
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 173,
-        "reconcile_ms": null,
-        "readiness_ms": 2520,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 3289
-      }
-    },
-    {
-      "kind": "wake",
+      "kind": "cold",
       "cache": "warm",
       "concurrency": 1,
       "succeeded": true,
       "timings": {
         "create_ms": 174,
         "reconcile_ms": null,
-        "readiness_ms": 2547,
+        "readiness_ms": 3556,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3335
+        "first_useful_ms": 4320
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 207,
+        "reconcile_ms": null,
+        "readiness_ms": 3768,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4533
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 192,
+        "reconcile_ms": null,
+        "readiness_ms": 3823,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4341
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 231,
+        "reconcile_ms": null,
+        "readiness_ms": 3900,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4679
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 334,
+        "reconcile_ms": null,
+        "readiness_ms": 5015,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 5810
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 436,
+        "reconcile_ms": null,
+        "readiness_ms": 5289,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 5836
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 329,
+        "reconcile_ms": null,
+        "readiness_ms": 5076,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 5597
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 213,
+        "reconcile_ms": null,
+        "readiness_ms": 4986,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 5816
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 290,
+        "reconcile_ms": null,
+        "readiness_ms": 5205,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 6055
+      }
+    },
+    {
+      "kind": "cold",
+      "cache": "warm",
+      "concurrency": 2,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 203,
+        "reconcile_ms": null,
+        "readiness_ms": 4742,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 5307
       }
     },
     {
@@ -865,13 +667,28 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 177,
+        "create_ms": 169,
         "reconcile_ms": null,
-        "readiness_ms": 8370,
+        "readiness_ms": 2419,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 9272
+        "first_useful_ms": 3188
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 173,
+        "reconcile_ms": null,
+        "readiness_ms": 2515,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 3292
       }
     },
     {
@@ -882,11 +699,11 @@
       "timings": {
         "create_ms": 162,
         "reconcile_ms": null,
-        "readiness_ms": 8335,
+        "readiness_ms": 32527,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 9075
+        "first_useful_ms": 33306
       }
     },
     {
@@ -895,28 +712,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 167,
+        "create_ms": 161,
         "reconcile_ms": null,
-        "readiness_ms": 4621,
+        "readiness_ms": 2645,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 5373
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": false,
-      "timings": {
-        "create_ms": 149,
-        "reconcile_ms": null,
-        "readiness_ms": 2792,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 3539
+        "first_useful_ms": 3152
       }
     },
     {
@@ -925,13 +727,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 173,
+        "create_ms": 197,
         "reconcile_ms": null,
-        "readiness_ms": 2601,
+        "readiness_ms": 2947,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3137
+        "first_useful_ms": 3702
       }
     },
     {
@@ -940,13 +742,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 187,
+        "create_ms": 159,
         "reconcile_ms": null,
-        "readiness_ms": 2615,
+        "readiness_ms": 2731,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3445
+        "first_useful_ms": 3522
       }
     },
     {
@@ -955,13 +757,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 187,
+        "create_ms": 165,
         "reconcile_ms": null,
-        "readiness_ms": 2710,
+        "readiness_ms": 2694,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3480
+        "first_useful_ms": 3462
       }
     },
     {
@@ -970,13 +772,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 173,
+        "create_ms": 194,
         "reconcile_ms": null,
-        "readiness_ms": 32998,
+        "readiness_ms": 2817,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 33780
+        "first_useful_ms": 3601
       }
     },
     {
@@ -985,13 +787,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 152,
+        "create_ms": 175,
         "reconcile_ms": null,
-        "readiness_ms": 2717,
+        "readiness_ms": 2816,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3485
+        "first_useful_ms": 3319
       }
     },
     {
@@ -1000,28 +802,13 @@
       "concurrency": 1,
       "succeeded": true,
       "timings": {
-        "create_ms": 172,
+        "create_ms": 191,
         "reconcile_ms": null,
-        "readiness_ms": 2738,
+        "readiness_ms": 3037,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3479
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 152,
-        "reconcile_ms": null,
-        "readiness_ms": 2725,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 3547
+        "first_useful_ms": 3844
       }
     },
     {
@@ -1032,56 +819,11 @@
       "timings": {
         "create_ms": 190,
         "reconcile_ms": null,
-        "readiness_ms": 2767,
+        "readiness_ms": 32968,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3637
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 216,
-        "reconcile_ms": null,
-        "readiness_ms": 3579,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 4475
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 187,
-        "reconcile_ms": null,
-        "readiness_ms": 33017,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 33612
-      }
-    },
-    {
-      "kind": "wake",
-      "cache": "warm",
-      "concurrency": 1,
-      "succeeded": true,
-      "timings": {
-        "create_ms": 184,
-        "reconcile_ms": null,
-        "readiness_ms": 3162,
-        "attach_ms": null,
-        "repository_ms": null,
-        "model_ms": null,
-        "first_useful_ms": 3948
+        "first_useful_ms": 33743
       }
     },
     {
@@ -1092,11 +834,131 @@
       "timings": {
         "create_ms": 178,
         "reconcile_ms": null,
-        "readiness_ms": 2942,
+        "readiness_ms": 2991,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3681
+        "first_useful_ms": 3740
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 180,
+        "reconcile_ms": null,
+        "readiness_ms": 3361,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4118
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 230,
+        "reconcile_ms": null,
+        "readiness_ms": 3290,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4055
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 180,
+        "reconcile_ms": null,
+        "readiness_ms": 3254,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4016
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 190,
+        "reconcile_ms": null,
+        "readiness_ms": 3336,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4107
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 191,
+        "reconcile_ms": null,
+        "readiness_ms": 3382,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4182
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 174,
+        "reconcile_ms": null,
+        "readiness_ms": 3508,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4291
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 175,
+        "reconcile_ms": null,
+        "readiness_ms": 3515,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4260
+      }
+    },
+    {
+      "kind": "wake",
+      "cache": "warm",
+      "concurrency": 1,
+      "succeeded": true,
+      "timings": {
+        "create_ms": 195,
+        "reconcile_ms": null,
+        "readiness_ms": 3715,
+        "attach_ms": null,
+        "repository_ms": null,
+        "model_ms": null,
+        "first_useful_ms": 4488
       }
     },
     {
@@ -1105,13 +967,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 166,
+        "create_ms": 227,
         "reconcile_ms": null,
-        "readiness_ms": 3186,
+        "readiness_ms": 33590,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3926
+        "first_useful_ms": 34366
       }
     },
     {
@@ -1120,13 +982,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 193,
+        "create_ms": 174,
         "reconcile_ms": null,
-        "readiness_ms": 2352,
+        "readiness_ms": 2430,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 2897
+        "first_useful_ms": 3196
       }
     },
     {
@@ -1135,13 +997,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 187,
+        "create_ms": 172,
         "reconcile_ms": null,
-        "readiness_ms": 3272,
+        "readiness_ms": 3440,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 4051
+        "first_useful_ms": 4201
       }
     },
     {
@@ -1150,13 +1012,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 176,
+        "create_ms": 160,
         "reconcile_ms": null,
-        "readiness_ms": 32497,
+        "readiness_ms": 2481,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 33031
+        "first_useful_ms": 3252
       }
     },
     {
@@ -1165,13 +1027,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 235,
+        "create_ms": 178,
         "reconcile_ms": null,
-        "readiness_ms": 3274,
+        "readiness_ms": 3858,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 4051
+        "first_useful_ms": 4677
       }
     },
     {
@@ -1180,13 +1042,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 164,
+        "create_ms": 216,
         "reconcile_ms": null,
-        "readiness_ms": 32639,
+        "readiness_ms": 2725,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 33414
+        "first_useful_ms": 3621
       }
     },
     {
@@ -1195,13 +1057,13 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 169,
+        "create_ms": 165,
         "reconcile_ms": null,
-        "readiness_ms": 3148,
+        "readiness_ms": 3855,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3961
+        "first_useful_ms": 4662
       }
     },
     {
@@ -1210,24 +1072,24 @@
       "concurrency": 2,
       "succeeded": true,
       "timings": {
-        "create_ms": 179,
+        "create_ms": 205,
         "reconcile_ms": null,
-        "readiness_ms": 2739,
+        "readiness_ms": 32717,
         "attach_ms": null,
         "repository_ms": null,
         "model_ms": null,
-        "first_useful_ms": 3485
+        "first_useful_ms": 33487
       }
     }
   ],
   "economics": {
-    "duration_ms": 21997000,
+    "duration_ms": 7275000,
     "worker_vcpus": 8,
-    "guest_vcpu_ms": null,
-    "command_wall_ms": 232319,
-    "task_attempts": 63,
-    "useful_tasks": 51,
-    "provider_cost_micros": 4896777,
+    "guest_vcpu_ms": 11981239,
+    "command_wall_ms": 178145,
+    "task_attempts": 54,
+    "useful_tasks": 54,
+    "provider_cost_micros": 1619500,
     "currency": "USD"
   }
 }

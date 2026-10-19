@@ -1,0 +1,50 @@
+{
+ "account": "acct_4570d993d9897bdd (dedicated staging test account; not the owner)",
+ "binding": {
+  "default": "our-cloud (Boat)",
+  "other_owners_see": [
+   "our-cloud"
+  ],
+  "pricing": "off",
+  "test_owner_sees": [
+   "our-cloud",
+   "fast-sandbox"
+  ]
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "note": "crates/openagents-sdk/examples/computers.rs against staging: create, upload, command, read, stop, wake, read after wake, command after wake, and cleanup on fast-sandbox (#12146 fixed: files and commands are offered on SPACE).",
+ "owner_digest": "account:8054ef2df12c490f3e0153403b42b613bfb73ad25077b5dbfea5abc8c19b2166",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "run": {
+  "api": "https://staging.openagents.com/v1",
+  "cleanup_passed": true,
+  "computer": "cmp_e135d6ecc1172360c8e1",
+  "contains_credentials": false,
+  "contains_file_or_command_output": false,
+  "dedicated_test_account": true,
+  "elapsed_ms": 137912,
+  "latency_sample_eligible": true,
+  "placement": "fast-sandbox",
+  "request_key": "612fb9c6439678f718cea383ba1e799e",
+  "resumed_checkpoint": false,
+  "schema": "openagents.sdk.computers.workflow.v1",
+  "timings_ms": {
+   "cleanup_ms": 94437,
+   "command_after_wake_ms": 2060,
+   "create_response_ms": 281,
+   "first_command_ms": 1704,
+   "first_useful_output_ms": 7322,
+   "read_after_wake_ms": 368,
+   "readiness_ms": 4733,
+   "stop_ms": 30798,
+   "upload_or_reconcile_ms": 600,
+   "wake_ms": 2919
+  },
+  "workflow_passed": true
+ },
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "test_header": true
+}

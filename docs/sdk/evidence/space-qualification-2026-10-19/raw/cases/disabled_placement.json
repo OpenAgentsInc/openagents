@@ -1,0 +1,46 @@
+{
+ "contains_credentials": false,
+ "control": "computers.py --disable-creates (admit_new false, enabled true, same image, template, shape, and registry deployment ID), revision oa-space-service-computers-00017-xsl at 09:01:09 UTC",
+ "creates_refused": [
+  {
+   "error": "forbidden",
+   "message": "This kind of computer isn't available for your account.",
+   "owner": "a",
+   "status": 403
+  },
+  {
+   "error": "forbidden",
+   "message": "This kind of computer isn't available for your account.",
+   "owner": "a",
+   "status": 403
+  }
+ ],
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "existing_computer_operations": {
+  "computer": "cmp_ed949972a2148b06d32e",
+  "cycles": 33,
+  "errors": [],
+  "memory": {
+   "error": null,
+   "exit_code": 0,
+   "preserved": true,
+   "turn": "trn_de071b26c32154e88075"
+  },
+  "natives": [
+   {
+    "created_at": "2026-10-19T08:58:01.894871Z",
+    "id": "01a15361-d0f3-777b-8853-baa286d9d470",
+    "lifecycle": "started",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "started"
+   }
+  ],
+  "stops_and_wakes_all_202": true,
+  "window": "08:58 to 09:08 UTC, across both revision rollouts"
+ },
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "restored": "admit_new true redeployed at 09:01:48 UTC (revision oa-space-service-computers-00018-ll7); later creates were admitted",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed"
+}

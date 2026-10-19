@@ -1,0 +1,37 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "provider_meter": "SPACE meter events report measurement unknown and provider_seconds null; the allowances stay held, never free.",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "turn_at_limit": [
+  {
+   "result": {
+    "error": null,
+    "exit_code": 124,
+    "id": "trn_a77538799f8d519133bb",
+    "state": "done"
+   },
+   "stdout": "",
+   "turn": "trn_a77538799f8d519133bb"
+  }
+ ],
+ "turn_over_limit": [
+  {
+   "ms": 74.3,
+   "status": 429,
+   "value": {
+    "error": "quota_exhausted",
+    "message": "The computer limit has been reached."
+   }
+  }
+ ],
+ "usage_read": {
+  "held_cpu_ms": 27129600000,
+  "settled_cpu_ms": 0,
+  "unknown_allowances": 0,
+  "unresolved_allowances": 314
+ }
+}

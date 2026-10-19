@@ -5,62 +5,71 @@ tracks the product qualification that follows the separate SPACE foundations.
 Source completion does not qualify a customer rollout. Lane 0 owns shared
 deployments and the live checks in the [master delegation](../audits/2026-10-16-master-delegation.md#after-close-checks).
 
-## Status, 2026-10-18
+## Status, 2026-10-19
 
-Lane 0 ran the live qualification on the private candidate
-(`space-private-11814`, private Computers revision with 100 ms polling) with two
-synthetic test owners, then ran the public cases through staging with a
-dedicated staging test account (`acct_4570d993d9897bdd`, not the owner). The
-[packet](space-qualification-packet.json) pins the running identity, private
-management, and the exercised rollback; `--test-accounts` passes. The
-named-group assessment does not pass. Receipts and scrubbed evidence are in
-[`evidence/space-qualification-2026-10-18/`](evidence/space-qualification-2026-10-18/).
+Lane 0 reran every case on the final private identity: Computers `85141f12a6`,
+the patched node image `native/worker-patched@sha256:7aae0e41…` (sandbox-manager
+erase safety, runtime-supervisor stop and rebind of a quiescent stale execution,
+and cold boots for encrypted creates), and shim `c35eb61a…`. The private cases
+used synthetic owners; the public cases ran on staging with the dedicated test
+account (`acct_4570d993d9897bdd`, not the owner). The
+[packet](space-qualification-packet.json) pins that identity, private management,
+and the exercised rollback, and `--test-accounts` passes. The named-group
+assessment does not pass. Receipts and scrubbed evidence are in
+[`evidence/space-qualification-2026-10-19/`](evidence/space-qualification-2026-10-19/);
+the first run stays in [`evidence/space-qualification-2026-10-18/`](evidence/space-qualification-2026-10-18/).
 
 | Result | Cases |
 | --- | --- |
-| Passed (22) | `account_isolation`, `actual_boot_and_shape`, `memory_and_workspace`, `attach_interruption`, `api_restart`, `reconciler_restart`, `lost_create_reply`, `delayed_lifecycle`, `worker_loss_and_single_writer`, `checkpoint_recovery`, `database_restore`, `storage_outage`, `egress_bypass`, `capacity_exhaustion`, `concurrent_wake`, `quotas_and_accounting`, `retention`, `account_deletion`, `disabled_placement`, `legacy_boat`, `unsupported_controls`, `monitoring` |
-| Failed (10) | `public_sdk`, `web_task_and_followup`, and `stage_timings` ([#12146](https://github.com/OpenAgentsInc/openagents/issues/12146): SPACE placements refuse files and commands); `cancellation_and_children` and `upgrade_and_rollback` ([#12141](https://github.com/OpenAgentsInc/openagents/issues/12141)); `lost_command_reply` and `duplicate_delivery` ([#12142](https://github.com/OpenAgentsInc/openagents/issues/12142)); `provider_outage` ([#12143](https://github.com/OpenAgentsInc/openagents/issues/12143), fixed in source, not yet deployed here); `orphan_cleanup` and `fixture_cleanup` ([#12151](https://github.com/OpenAgentsInc/openagents/issues/12151)) |
-| Pending (1) | `credential_revocation` (the credential adapter is not deployed) |
+| Passed (31) | `public_sdk`, `account_isolation`, `actual_boot_and_shape`, `stage_timings`, `memory_and_workspace`, `cancellation_and_children`, `api_restart`, `reconciler_restart`, `lost_create_reply`, `lost_command_reply`, `attach_interruption`, `duplicate_delivery`, `delayed_lifecycle`, `worker_loss_and_single_writer`, `checkpoint_recovery`, `database_restore`, `storage_outage`, `provider_outage`, `egress_bypass`, `capacity_exhaustion`, `concurrent_wake`, `quotas_and_accounting`, `retention`, `account_deletion`, `orphan_cleanup`, `upgrade_and_rollback`, `disabled_placement`, `legacy_boat`, `unsupported_controls`, `monitoring`, `fixture_cleanup` |
+| Failed (0) | none |
+| Pending (2) | `web_task_and_followup` (SPACE advertises no environment artifacts, so web tasks place on Boat), `credential_revocation` (the credential adapter is not deployed) |
 | Not required | `cross_host_memory_restore` (not advertised; one worker) |
 
-Owner decisions, 2026-10-18:
+Fixed and closed since the first run: [#12141](https://github.com/OpenAgentsInc/openagents/issues/12141)
+(stop by guest marker), [#12142](https://github.com/OpenAgentsInc/openagents/issues/12142)
+(turn idempotency), [#12143](https://github.com/OpenAgentsInc/openagents/issues/12143)
+(resend an uncertain lifecycle request), [#12146](https://github.com/OpenAgentsInc/openagents/issues/12146)
+(files and commands on SPACE), [#12151](https://github.com/OpenAgentsInc/openagents/issues/12151)
+(node cleanup after a worker reset), [#12164](https://github.com/OpenAgentsInc/openagents/issues/12164)
+(encrypted base-snapshot creates; deleting an uncertain create), and
+[#12169](https://github.com/OpenAgentsInc/openagents/issues/12169) (slow wakes).
 
-- Alerts email the owner through the Resend integration. The control-node
-  monitor sends one email when a condition opens and one when it clears.
-- A dedicated staging test account may use SPACE. Staging Computers
-  (`deploy/space-service/staging_binding.py`) keeps Boat as the default and
-  binds only that account to `fast-sandbox`; pricing stays off.
-- Cost is measured as an estimate when billing data is unavailable.
-- Losing the last checkpoint of a computer that is awake when its worker fails is
-  accepted for now. A suspended computer must lose nothing, and in the worker
-  reset it lost nothing.
-
-The packet's trials were rerun after the [#12144](https://github.com/OpenAgentsInc/openagents/issues/12144)
-fix. Each net gateway resolved two local role accounts through OS Login and the
-metadata server, which its sandbox network can't reach; locked local `dev` and
-`deploy` accounts on the worker cut native boot-to-ready from about 10.6 s to
-2.9 s. Create-to-verified-output on the private path (nearest rank, warm
-template cache, concurrency 1 and 2):
+Create-to-verified-output on the private path (nearest rank, warm template cache,
+concurrency 1 and 2):
 
 | Kind | Attempts | Failures | p50 | p90 |
 | --- | --- | --- | --- | --- |
-| Cold create | 26 | 2 (uncertain turn, #12141) | 4,486 ms | 9,941 ms |
-| Snapshot create | 9 | 9 (every boot was cold; #12145 fix not yet deployed) | none | none |
-| Wake | 28 | 1 (uncertain turn) | 3,926 ms | 33,612 ms |
+| Cold create | 26 | 0 | 4,448 ms | 5,816 ms |
+| Snapshot create | 0 | not offered: encrypted (BYOK) organizations boot creates cold (#12164) | none | none |
+| Wake (packet) | 28 | 0 | 4,016 ms | 33,487 ms |
+| Wake (after the #12169 fix) | 30 | 0 | 3,625 ms | 4,304 ms |
 
-Before the fix the same arms measured 11,637 ms and 12,732 ms p50; those
-series stay in `raw/trials`. On staging the public SDK workflow created and
-readied a SPACE computer in 345 ms and 4.9 s before the refused upload. About one
-wake in five still waits for a later Computers revisit (8 to 33 s). No sample has
-a cold template cache.
+The packet's wake series ran on `85141f12a6`; about one wake in seven waited for
+a 30 s reconciler revisit. Computers `7761ec5326` keeps a wake that arrives during
+a reconciler visit due, and the 30 wakes after it are in
+`raw/trials/post-packet-fix12169-wake-warm-c1.jsonl`; they are not part of the
+packet, which binds one identity. The assessment still fails the wake p90 budget
+and the snapshot-create samples.
 
-The operator can't read the billing account or an export, so
-`deploy/space-service/cost_estimate.py` multiplies the deployment inventory by
-on-demand list prices from the Cloud Billing Catalog API: USD 0.80 an hour, or
-USD 4.90 for this 6.1-hour window, about USD 0.096 for each of 51 verified
-useful results. The packet records it as an estimate; it excludes discounts,
-NAT data, object operations, and transfer. Boat stays the public default,
-pricing stays off, and no customer account is admitted.
+On staging the public SDK workflow on `fast-sandbox` created a computer in 281 ms,
+was ready in 4.7 s, produced its first verified output in 7.3 s, and woke in
+2.9 s; the same workflow on Boat took 144 s to its first output. With SPACE
+disabled on staging, an existing SPACE computer still ran a command, stopped,
+woke, and deleted.
+
+The window cost an estimated USD 1.62 (2.02 hours at USD 0.80 an hour of list
+prices from the Cloud Billing Catalog API, `deploy/space-service/cost_estimate.py`),
+or about USD 0.030 for each of 54 verified useful results, under the USD 0.15
+budget. It excludes discounts, NAT data, object operations, and transfer. Boat
+stays the public default, pricing stays off, and no customer account is admitted.
+
+Owner decisions, 2026-10-18: alerts email the owner through Resend (the rerun's
+worker-reset check opened and cleared a live `computers_stranded` alert); a
+dedicated staging test account may use SPACE with Boat as the default; cost is
+measured as an estimate when billing data is unavailable; and losing the last
+checkpoint of a computer that is awake when its worker fails is accepted for now.
+In both worker resets the suspended computer lost nothing.
 
 ## Check a qualification packet
 

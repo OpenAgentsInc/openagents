@@ -1,0 +1,82 @@
+{
+ "boot_after_duplicates": "823d5e6f-0634-4b2d-9ba5-e4c4f58f75dc",
+ "boot_turn": {
+  "error": null,
+  "exit_code": 0,
+  "id": "trn_554b68f3ed0ff6d050d3",
+  "state": "done"
+ },
+ "case": "duplicates",
+ "computer": "cmp_3b9abb184167c04b108d",
+ "contains_credentials": false,
+ "create_replies": [
+  {
+   "id": "cmp_3b9abb184167c04b108d",
+   "status": 200
+  },
+  {
+   "id": "cmp_3b9abb184167c04b108d",
+   "status": 202
+  },
+  {
+   "id": "cmp_3b9abb184167c04b108d",
+   "status": 200
+  }
+ ],
+ "delete_replies": [
+  202,
+  202
+ ],
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "distinct_computers": 1,
+ "duplicate_turn_executions": 1,
+ "duplicate_turn_ids": [
+  "trn_7d0f9a9d45b85a64e1a9",
+  "trn_7d0f9a9d45b85a64e1a9"
+ ],
+ "issue": 12142,
+ "lost_create_drop": {
+  "reply_read": false,
+  "sent_bytes": 422
+ },
+ "lost_create_retry": {
+  "id": "cmp_3b9abb184167c04b108d",
+  "status": 200
+ },
+ "natives_after_create": [
+  {
+   "created_at": "2026-10-19T07:52:54.840864Z",
+   "id": "01a15326-32ff-72cc-803f-a93403b9f7da",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "natives_after_delete": [],
+ "natives_after_lifecycle": [
+  {
+   "created_at": "2026-10-19T07:52:54.840864Z",
+   "id": "01a15326-32ff-72cc-803f-a93403b9f7da",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "observed_unix": 1792396586,
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "request_key": "q16-dup-98187191",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "stop_replies": [
+  202,
+  202,
+  202
+ ],
+ "turn_request_key": "q16-dupturn-2acb1c1d9cbb",
+ "wake_replies": [
+  202,
+  202,
+  202
+ ]
+}

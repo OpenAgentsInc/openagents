@@ -1,0 +1,73 @@
+{
+ "checks": {
+  "capabilities": [
+   {
+    "offers": [
+     {
+      "command_sessions": true,
+      "credential_proxy": false,
+      "default_environment_available": true,
+      "egress_profile": null,
+      "enrolled_host": null,
+      "environment_artifacts": false,
+      "memory_suspend": true,
+      "profiles": [
+       "core",
+       "suspend"
+      ],
+      "shapes": {
+       "large": {
+        "memory_mib": 8192,
+        "vcpus": 8
+       },
+       "medium": {
+        "memory_mib": 4096,
+        "vcpus": 4
+       },
+       "small": {
+        "memory_mib": 1024,
+        "vcpus": 2
+       }
+      },
+      "sizes": [
+       "small",
+       "medium",
+       "large"
+      ],
+      "workspace_attachment": false,
+      "workspace_file_bytes": 4194304
+     }
+    ],
+    "placement": "fast-sandbox"
+   }
+  ],
+  "command_checksum_ok": true,
+  "command_create": 202,
+  "command_create_reply": null,
+  "command_state": "succeeded",
+  "computer": "cmp_85631597de6bf4d88bd0",
+  "fork": 404,
+  "get": 200,
+  "output_fields": [
+   "command",
+   "encoding",
+   "gaps",
+   "has_more",
+   "next_cursor",
+   "stderr",
+   "stdout",
+   "terminal"
+  ],
+  "preview": 404,
+  "put": 200,
+  "read_back_equal": true,
+  "snapshots": 404,
+  "terminal": 404
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed"
+}

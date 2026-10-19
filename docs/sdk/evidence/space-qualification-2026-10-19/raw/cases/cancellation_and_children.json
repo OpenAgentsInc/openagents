@@ -1,0 +1,31 @@
+{
+ "case": "cancellation",
+ "check_turn": "trn_f2a5c91a011f633c11b8",
+ "computer": "cmp_016c4405823555718dac",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "finished_marker_printed": false,
+ "issue": 12141,
+ "late_files_after_16s": 0,
+ "note": "Fixed by the marker-based stop (computer-driver space: OA_SPACE_EXEC marker, exit file, kill by marker; RuntimeDriver and BoundDriver forward cancel_exec).",
+ "observed_unix": 1792396315,
+ "owners": "synthetic account digests only; no owner account or host",
+ "passed": true,
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "sleep12_processes": 0,
+ "status": "passed",
+ "stop_reply": {
+  "id": "trn_be95128976831510e0ae",
+  "state": "running"
+ },
+ "stop_status": 202,
+ "stop_to_final_ms": 829,
+ "stopped_turn": {
+  "error": "Stopped.",
+  "exit_code": null,
+  "id": "trn_be95128976831510e0ae",
+  "state": "failed"
+ },
+ "turn": "trn_be95128976831510e0ae"
+}

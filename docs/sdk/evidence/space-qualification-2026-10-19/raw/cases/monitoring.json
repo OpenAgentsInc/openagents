@@ -1,0 +1,36 @@
+{
+ "alerts": "monitor.py emails the owner through Resend when one of twelve conditions opens and when it clears (deduplicated by /var/lib/oa-space-monitor/alert-state.json, at most 6 emails an hour); Cloud Monitoring keeps the matching twelve policies",
+ "change": "computers_unknown now counts every unfinished unknown row, including stuck deletes (#12164); installed on the control node 09:26 UTC",
+ "collector_errors": 0,
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "latest_run": {
+  "collector_errors": 0,
+  "measurements": 15,
+  "nodes_ready": 2,
+  "observed_at": "2026-10-19T09:47:53Z",
+  "probe_errors": 0,
+  "published": true,
+  "services_ready_ratio": 1.0
+ },
+ "live_alert": {
+  "cause": "the awake computer stranded by the worker-reset check (09:23:56 reset), cleared when it was deleted",
+  "cleared": "2026-10-19T09:46:29Z",
+  "condition": "computers_stranded",
+  "opened": "2026-10-19T09:31:29Z"
+ },
+ "measurements": 15,
+ "owner_decision": "2026-10-18: email the owner through the Resend integration",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "test_email": {
+  "created_at": "2026-10-19T00:50:56Z",
+  "last_event": "delivered",
+  "resend_id": "01a151a3-dfc8-72ae-a8a3-918a6e1bb26b",
+  "subject": "SPACE monitoring test",
+  "to": "chris@openagents.com"
+ },
+ "tests": "deploy/space-service/test_monitoring.py, 7 passed"
+}

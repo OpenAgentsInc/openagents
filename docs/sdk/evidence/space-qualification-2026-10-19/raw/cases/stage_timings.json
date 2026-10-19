@@ -1,0 +1,34 @@
+{
+ "boat_path_ms_for_comparison": {
+  "cleanup_ms": 80643,
+  "command_after_wake_ms": 1560,
+  "create_response_ms": 265,
+  "first_command_ms": 1669,
+  "first_useful_output_ms": 144477,
+  "read_after_wake_ms": 444,
+  "readiness_ms": 141878,
+  "stop_ms": 16798,
+  "upload_or_reconcile_ms": 652,
+  "wake_ms": 73944
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "not_measured": "Repository and model stages belong to the web task, which stays pending (see web_task_and_followup).",
+ "owners": "synthetic account digests only; no owner account or host",
+ "private_path": "Create response, readiness, and first verified output for every private trial are in raw/trials.",
+ "public_path_ms": {
+  "cleanup_ms": 94437,
+  "command_after_wake_ms": 2060,
+  "create_response_ms": 281,
+  "first_command_ms": 1704,
+  "first_useful_output_ms": 7322,
+  "read_after_wake_ms": 368,
+  "readiness_ms": 4733,
+  "stop_ms": 30798,
+  "upload_or_reconcile_ms": 600,
+  "wake_ms": 2919
+ },
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed"
+}

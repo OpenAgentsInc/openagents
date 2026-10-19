@@ -1,0 +1,11 @@
+{
+ "checked": "boot ID, canary PID, /proc start ticks, SHA-256 of the canary environment value, and SHA-256 of a 1 MiB random workspace file, before suspension and after each wake",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "memory_preserved": 28,
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "wake_trials_with_memory_check": 28
+}

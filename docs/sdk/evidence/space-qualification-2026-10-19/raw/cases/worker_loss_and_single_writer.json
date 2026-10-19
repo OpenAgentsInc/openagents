@@ -1,0 +1,137 @@
+{
+ "contains_credentials": false,
+ "data_loss_boundary": "The computer that was awake at the loss is not recoverable: its running turn becomes uncertain and it must be deleted, so its last checkpoint is not offered. The suspended computer lost nothing.",
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "fault": "gcloud compute instances reset oa-space-service-worker (hard reset, disks kept)",
+ "node_cleanup_after_deletion": "The awake computer's sandbox (quarantined after the reset) and the suspended computer's sandbox were both erased from the node after deletion: no node sandbox rows, cleanup jobs, cache or jail directories, or dm mappings remained at 09:47 UTC (#12151 fix).",
+ "owner_decision": {
+  "by": "owner",
+  "date": "2026-10-18",
+  "decision": "Accept losing the last checkpoint of a computer that is awake when its worker fails, for now. Suspended computers must lose nothing."
+ },
+ "owners": "synthetic account digests only; no owner account or host",
+ "prepare": {
+  "awake_computer": "cmp_ed949972a2148b06d32e",
+  "case": "worker",
+  "long_turn": "trn_e647aac697422689198c",
+  "marker1_turn": {
+   "error": null,
+   "exit_code": 0,
+   "id": "trn_ae5c14a8d4189cc58fba",
+   "state": "done"
+  },
+  "observed_unix": 1792401832,
+  "phase": "prepare",
+  "ready_unix": 1792401832.9227908,
+  "started_unix": 1792401766,
+  "stopped_computer": "cmp_877cb36868f228439e97",
+  "w_state": {
+   "at_ms": 66360,
+   "attempts": 0,
+   "desired": "stopped",
+   "last_error": null,
+   "state": "stopped",
+   "status": 200
+  },
+  "z_state": {
+   "at_ms": 66303,
+   "attempts": 0,
+   "desired": "running",
+   "last_error": null,
+   "state": "turn",
+   "status": 200
+  }
+ },
+ "qualification": 11816,
+ "recovery_time": "The suspended computer woke 3.7 s after its wake request once the worker was back.",
+ "reset_unix": [
+  "1792401833",
+  "1792401836"
+ ],
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "single_writer": "Each computer kept at most one native sandbox throughout; no second active copy appeared.",
+ "status": "passed",
+ "watch": {
+  "awake_computer": "cmp_ed949972a2148b06d32e",
+  "case": "worker",
+  "long_turn_after": {
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "id": "trn_e647aac697422689198c",
+   "state": "failed"
+  },
+  "natives_w": [
+   {
+    "created_at": "2026-10-19T09:22:42.234054Z",
+    "id": "01a15378-6780-74ed-92fd-cb56cc7d8e9c",
+    "lifecycle": "suspended",
+    "node": null,
+    "status": "suspended"
+   }
+  ],
+  "natives_w_final": [
+   {
+    "created_at": "2026-10-19T09:22:42.234054Z",
+    "id": "01a15378-6780-74ed-92fd-cb56cc7d8e9c",
+    "lifecycle": "started",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "started"
+   }
+  ],
+  "natives_z": [
+   {
+    "created_at": "2026-10-19T08:58:01.894871Z",
+    "id": "01a15361-d0f3-777b-8853-baa286d9d470",
+    "lifecycle": "quarantined",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "quarantined"
+   }
+  ],
+  "natives_z_final": [
+   {
+    "created_at": "2026-10-19T08:58:01.894871Z",
+    "id": "01a15361-d0f3-777b-8853-baa286d9d470",
+    "lifecycle": "quarantined",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "quarantined"
+   }
+  ],
+  "observed_unix": 1792403164,
+  "phase": "watch",
+  "started_unix": 1792401953,
+  "states": {
+   "cmp_877cb36868f228439e97": [
+    {
+     "at_ms": 230,
+     "attempts": 0,
+     "desired": "stopped",
+     "last_error": null,
+     "state": "stopped",
+     "status": 200,
+     "t": 0.2
+    }
+   ],
+   "cmp_ed949972a2148b06d32e": [
+    {
+     "at_ms": 173,
+     "attempts": 5,
+     "desired": "running",
+     "last_error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+     "state": "turn",
+     "status": 200,
+     "t": 0.2
+    }
+   ]
+  },
+  "stopped_computer": "cmp_877cb36868f228439e97",
+  "w_memory": {
+   "error": null,
+   "exit_code": 0,
+   "preserved": true,
+   "turn": "trn_98dc3ccf6277ef61f7ec"
+  },
+  "w_wake_s": 3.7,
+  "worker_ready_s": 0.4,
+  "z_recovery_error": "RuntimeError: cmp_ed949972a2148b06d32e is stranded by an uncertain turn (#12141)"
+ }
+}

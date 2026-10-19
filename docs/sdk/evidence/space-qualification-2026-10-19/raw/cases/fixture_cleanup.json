@@ -1,0 +1,30 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "kept_on_purpose": [
+  "qualification tools under /space/config/deployment-tools and records under /space/qualification-11816 (no credentials)",
+  "the dedicated staging test account and its 0600 credential file",
+  "the patched node image, shim, and Computers image, pinned with rollbacks in deploy/space-service/image-pins.json",
+  "locked dev and deploy accounts on the worker (#12144)",
+  "the monitor collector and its alert policies"
+ ],
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "remaining": [
+  "owner B remains closed from the first run",
+  "soft-deleted snapshot generations, kept 7 days by bucket policy",
+  "the synthetic admin session, which expires on its own"
+ ],
+ "removed": [
+  "all qualification computers (0 rows not done; no native sandboxes; no node sandboxes)",
+  "owner A closed through account cleanup at 10:50:58Z (407 storage holds released, 176 resolutions); owner C (the #12169 verification owner) closed at 11:18:01Z (31 released)",
+  "recovery database copies oa-space-service-restore-11814 (deleted after each check)",
+  "Cloud Run job oa-space-cleanup-11816 (deleted)",
+  "worker probe tools, guest sampler, its samples, and the storage-block script; no q16 iptables or ip6tables rules remain",
+  "base snapshot policy back to ensure_base_snapshot false",
+  "staging SPACE re-enabled for the test account only, as before the run (oa-computers-staging-00030-4kj)",
+  "private deployment capacity back to 2 and service limits back to 2 computers / 4 vCPUs"
+ ],
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed"
+}

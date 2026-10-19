@@ -1,0 +1,26 @@
+{
+ "case": "lost_turn_reply",
+ "changed_body_status": 409,
+ "computer": "cmp_016c4405823555718dac",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "drop": {
+  "reply_read": false,
+  "sent_bytes": 515
+ },
+ "executions": 1,
+ "executions_of_logical_request": 1,
+ "issue": 12142,
+ "observed_unix": 1792396233,
+ "owners": "synthetic account digests only; no owner account or host",
+ "passed": true,
+ "qualification": 11816,
+ "request_identity_supported": true,
+ "request_key": "q16-lost-89e8c53b2f18",
+ "retry_status": 202,
+ "retry_turn": "trn_7e9e40edf45c7539eb44",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "turns_after": 3,
+ "turns_before": 2
+}

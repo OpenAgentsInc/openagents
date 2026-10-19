@@ -1,0 +1,179 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "probes": [
+  {
+   "exit_code": 0,
+   "group": "1",
+   "probes": [
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "metadata_ipv4",
+     "target": "http://169.254.169.254/computeMetadata/v1/instance/id"
+    },
+    {
+     "denied": true,
+     "error": "gaierror",
+     "probe": "metadata_dns",
+     "target": "metadata.google.internal"
+    },
+    {
+     "denied": true,
+     "error": "gaierror",
+     "probe": "redirect_to_metadata",
+     "target": "http://httpbin.org/redirect-to?url=http%3A%2F%2F169.254.169.254%2FcomputeMetadata%2Fv1%2F"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "dns_bypass",
+     "target": "8.8.8.8:53/udp"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "dns_bypass",
+     "target": "1.1.1.1:53/udp"
+    },
+    {
+     "denied": true,
+     "error": "gaierror",
+     "probe": "public_dns",
+     "target": "example.com"
+    }
+   ],
+   "state": "done",
+   "stderr_bytes": 0,
+   "turn": "trn_1fd430f831cf996e669d"
+  },
+  {
+   "exit_code": 1,
+   "group": "2",
+   "probes": [
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:6443"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:8443"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:8444"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:9810"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:10250"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.11:9800"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.11:10250"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.220.1.1:9800"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.220.0.1:443"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.43.0.1:443"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.16.3:5432"
+    },
+    {
+     "denied": false,
+     "probe": "management",
+     "target": "199.36.153.8:443"
+    },
+    {
+     "denied": false,
+     "probe": "management",
+     "target": "199.36.153.4:443"
+    },
+    {
+     "denied": false,
+     "probe": "public_ip",
+     "target": "1.1.1.1:443"
+    },
+    {
+     "denied": false,
+     "probe": "public_ip",
+     "target": "8.8.8.8:443"
+    },
+    {
+     "denied": false,
+     "probe": "public_ip",
+     "target": "142.250.190.78:443"
+    },
+    {
+     "denied": false,
+     "probe": "public_ip",
+     "target": "140.82.112.3:443"
+    },
+    {
+     "denied": true,
+     "error": "OSError",
+     "probe": "ipv6",
+     "target": "2001:4860:4860::8888:443"
+    },
+    {
+     "denied": true,
+     "error": "OSError",
+     "probe": "ipv6",
+     "target": "2606:4700:4700::1111:443"
+    },
+    {
+     "denied": true,
+     "error": "OSError",
+     "probe": "ipv6",
+     "target": "fd20::1:443"
+    }
+   ],
+   "state": "done",
+   "stderr_bytes": 0,
+   "turn": "trn_0e9aff992b232a833e19"
+  }
+ ],
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "scope": "Guest denial under the deny-all template profile; the credential gateway is not deployed.",
+ "status": "passed"
+}

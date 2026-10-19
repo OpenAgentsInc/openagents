@@ -1,0 +1,34 @@
+{
+ "active_snapshot_groups_at_final": {
+  "01a15397-ab0a-77ef-a332-8d97e6ad0b5a": "93 objects of owner C computer cmp_570b450333f7720f6d43, deleted 10:16 UTC, inside the native sweeper's 1-hour grace"
+ },
+ "computers_not_done": 0,
+ "contains_credentials": false,
+ "deletions_performed_by_inventory": 0,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "final_object_inventory": {
+  "openagentsgemini-oa-space-service-snapshots": {
+   "active_bytes": 4150485801,
+   "active_objects": 93,
+   "latest_soft_delete_expiry": "2026-10-26T10:47:06.596000+00:00",
+   "soft_deleted_bytes": 44210275256,
+   "soft_deleted_objects": 1350
+  },
+  "openagentsgemini-oa-space-service-templates": {
+   "active_bytes": 1182053577,
+   "active_objects": 6,
+   "latest_soft_delete_expiry": "2026-10-23T22:27:00.654000+00:00",
+   "soft_deleted_bytes": 14680128,
+   "soft_deleted_objects": 3
+  }
+ },
+ "native_sandboxes_at_final": [],
+ "node_state_at_final": "no node sandbox rows, cleanup jobs, cache or jail directories, execution bindings, or dm mappings on oa-space-service-worker (10:51 UTC)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "reset_orphans": "Both sandboxes left by worker resets (01a150ed-... from the first run, 01a152b8-... from the 06:04 reset) were erased after the #12151 node patches rolled out at 07:17 UTC (7.2 GB freed); the 09:23 reset of this run left none after deletion.",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "soft_deletion": "Buckets keep soft-deleted generations for 7 days (retentionDurationSeconds 604800); these are listed separately and are not orphans.",
+ "status": "passed",
+ "unattached_owned_disks": []
+}

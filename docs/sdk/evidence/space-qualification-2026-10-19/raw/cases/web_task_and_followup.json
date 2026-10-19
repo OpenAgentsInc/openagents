@@ -1,0 +1,23 @@
+{
+ "account": "acct_4570d993d9897bdd (dedicated staging test account; not the owner)",
+ "binding": {
+  "default": "our-cloud (Boat)",
+  "other_owners_see": [
+   "our-cloud"
+  ],
+  "pricing": "off",
+  "test_owner_sees": [
+   "our-cloud",
+   "fast-sandbox"
+  ]
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "owner_digest": "account:8054ef2df12c490f3e0153403b42b613bfb73ad25077b5dbfea5abc8c19b2166",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "reason": "Web tasks create their computer from a saved environment. The SPACE deployment advertises no environment artifacts (no space_compatibility in the registry and no environment published as a SPACE template), so a web task is placed on Boat. Commands and files on SPACE now work (#12146), so this needs only a SPACE environment artifact.",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "pending",
+ "test_header": true
+}

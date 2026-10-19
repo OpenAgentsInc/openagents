@@ -1,0 +1,28 @@
+{
+ "after": {
+  "complete": true,
+  "completed_at": "2026-10-19T10:50:58Z",
+  "held": 0,
+  "released": 407,
+  "resolutions": 176
+ },
+ "before": {
+  "computers": 176,
+  "held_storage_allowances": 407,
+  "live_computers": 0
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "fenced": "a create for the closed owner at 09:49:11Z returned 429",
+ "owner": "account:f9b110d34613b1783bcac550f001f45c76f98fd84d76856b928f172a7ec42d75",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "request": "2026-10-19T09:49:10Z, the same statement and advisory lock as oa-computers-usage account-cleanup (computers.account_cleanup insert under pg_advisory_xact_lock(11815))",
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "storage_resolution": {
+  "final_inventory_receipt_sha256": "9ff3c9a9f124fc839bb09c2f8c004f1d4dacf967da26ee550163fa11a680c8b2",
+  "method": "operator Cloud Run job oa-space-cleanup-11816 (qualification-11816/storage_cleanup_job.py) running oa-computers-usage storage-cleanup with q16_proofs.py proofs in five runs (64, 64, 39, 7, 2 computers) as the snapshot sweeper removed each deleted computer's objects; job deleted afterwards",
+  "proof_inputs": "per-computer resources and namespaced create operations from the Computers record; zero live native sandboxes, zero active snapshot objects, zero unfinished uploads"
+ }
+}

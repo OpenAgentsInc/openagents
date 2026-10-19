@@ -1,0 +1,72 @@
+{
+ "api_ready": {
+  "args": "rollout status deployment/space-api --timeout=300s",
+  "at_ms": 43113,
+  "err": "",
+  "out": "i\" rollout to finish: 0 of 1 updated replicas are available...\nWaiting for deployment \"space-api\" rollout to finish: 0 of 1 updated replicas are available...\nWaiting for deployment \"space-api\" rollout to finish: 0 of 1 updated replicas are available...\ndeployment \"space-api\" successfully rolled out\n",
+  "rc": 0
+ },
+ "awake_at_ms": 89344,
+ "before": {
+  "at_ms": 171,
+  "attempts": 0,
+  "desired": "running",
+  "last_error": null,
+  "state": "checkpointing",
+  "status": 200
+ },
+ "case": "api_restart",
+ "computer": "cmp_736ae51fe65152c39e66",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "fault": "delete the native space-api pod during wake",
+ "memory": {
+  "error": null,
+  "exit_code": 0,
+  "preserved": true,
+  "turn": "trn_1367b4109132278a67d4"
+ },
+ "natives": [
+  {
+   "created_at": "2026-10-19T08:01:50.353248Z",
+   "id": "01a1532e-5ee9-700b-a7c4-d79b5a93b929",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "observed_unix": 1792397005,
+ "owners": "synthetic account digests only; no owner account or host",
+ "passed": true,
+ "qualification": 11816,
+ "restart": {
+  "args": "delete pod -l app.kubernetes.io/name=space-api --wait=false",
+  "at_ms": 27423,
+  "err": "",
+  "out": "pod \"space-api-cdb98ddb4-btwg6\" deleted from space namespace\n",
+  "rc": 0
+ },
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "started_unix": 1792396914,
+ "states": [
+  {
+   "at_ms": 27505,
+   "attempts": 0,
+   "desired": "running",
+   "last_error": null,
+   "state": "booting",
+   "status": 200
+  },
+  {
+   "at_ms": 31627,
+   "attempts": 0,
+   "desired": "running",
+   "last_error": null,
+   "state": "awake",
+   "status": 200
+  }
+ ],
+ "status": "passed",
+ "wake_at_ms": 27187,
+ "wake_status": 202
+}

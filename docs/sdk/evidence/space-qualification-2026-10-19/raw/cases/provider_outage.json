@@ -1,0 +1,101 @@
+{
+ "awake_at_ms": 117388,
+ "case": "provider_outage",
+ "computer": "cmp_736ae51fe65152c39e66",
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "down": [
+  {
+   "args": "scale deployment/space-api --replicas=0",
+   "at_ms": 28259,
+   "err": "",
+   "out": "deployment.apps/space-api scaled\n",
+   "rc": 0
+  },
+  {
+   "args": "scale deployment/space-data-plane --replicas=0",
+   "at_ms": 28488,
+   "err": "",
+   "out": "deployment.apps/space-data-plane scaled\n",
+   "rc": 0
+  }
+ ],
+ "fault": "scale the native space-api and data-plane to zero for 60 s while waking",
+ "identity_unchanged": true,
+ "issue": 12143,
+ "memory": {
+  "error": null,
+  "exit_code": 0,
+  "preserved": true,
+  "turn": "trn_f0beb8588576414e8d58"
+ },
+ "natives": [
+  {
+   "created_at": "2026-10-19T08:01:50.353248Z",
+   "id": "01a1532e-5ee9-700b-a7c4-d79b5a93b929",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "observed_unix": 1792397381,
+ "owners": "synthetic account digests only; no owner account or host",
+ "passed": true,
+ "qualification": 11816,
+ "ready": [
+  {
+   "args": "rollout status deployment/space-api --timeout=300s",
+   "at_ms": 112057,
+   "err": "",
+   "out": "Waiting for deployment \"space-api\" rollout to finish: 0 of 1 updated replicas are available...\nWaiting for deployment \"space-api\" rollout to finish: 0 of 1 updated replicas are available...\ndeployment \"space-api\" successfully rolled out\n",
+   "rc": 0
+  },
+  {
+   "args": "rollout status deployment/space-data-plane --timeout=300s",
+   "at_ms": 112342,
+   "err": "",
+   "out": "deployment \"space-data-plane\" successfully rolled out\n",
+   "rc": 0
+  }
+ ],
+ "restored_at_ms": 112342,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "started_unix": 1792397263,
+ "states_during_outage": [
+  {
+   "at_ms": 33787,
+   "attempts": 0,
+   "desired": "running",
+   "last_error": null,
+   "state": "stopped",
+   "status": 200
+  },
+  {
+   "at_ms": 35849,
+   "attempts": 1,
+   "desired": "running",
+   "last_error": "no progress on Inspect",
+   "state": "unknown",
+   "status": 200
+  }
+ ],
+ "status": "passed",
+ "up": [
+  {
+   "args": "scale deployment/space-api --replicas=1",
+   "at_ms": 95775,
+   "err": "",
+   "out": "deployment.apps/space-api scaled\n",
+   "rc": 0
+  },
+  {
+   "args": "scale deployment/space-data-plane --replicas=1",
+   "at_ms": 96033,
+   "err": "",
+   "out": "deployment.apps/space-data-plane scaled\n",
+   "rc": 0
+  }
+ ],
+ "wake_at_ms": 33687,
+ "wake_status": 202
+}
