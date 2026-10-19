@@ -66,7 +66,8 @@ put('worker_loss_and_single_writer', {'status': 'passed', 'fault': 'gcloud compu
     'prepare': j(C / 'fault-worker-prepare.json'), 'watch': w,
     'single_writer': 'Each computer kept exactly one native sandbox throughout; no second active copy appeared.',
     'data_loss_boundary': 'A computer that was awake at the loss is not recoverable: its turn becomes uncertain and the product requires deletion (#12141), so its last durable checkpoint is not offered for restore. A suspended computer loses nothing.',
-    'recovery_time': 'The checkpointed computer woke 29.4 s after its wake request once the worker was back.'})
+    'recovery_time': 'The checkpointed computer woke 29.4 s after its wake request once the worker was back.',
+    'owner_decision': {'date': '2026-10-18', 'by': 'owner', 'decision': 'Accept losing the last checkpoint of a computer that is awake when its worker fails, for now. Suspended computers must lose nothing.'}})
 put('checkpoint_recovery', {'status': 'passed', 'computer': w['stopped_computer'], 'wake_after_worker_reset_s': w.get('w_wake_s'), 'memory': w.get('w_memory'),
     'natives': w.get('natives_w_final'), 'note': 'Same boot ID, PID, start ticks, canary, and workspace hash after the hard reset; restored from the durable local and uploaded checkpoint.'})
 put('cross_host_memory_restore', {'status': 'not_required', 'reason': 'Not advertised: the deployment has one worker and its capabilities advertise no cross-host restore.'})

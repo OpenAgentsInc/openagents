@@ -63,6 +63,9 @@ INVITE_ONLY = json.dumps(
 # invite); its key is the Secret Manager secret
 # openagents-web-1-staging-agent-smoke-key, read only by the smoke suite.
 AGENT_ACCOUNTS = "acct_dc7a799879686fc5"
+# The dedicated SPACE qualification account (#11816, owner-approved
+# 2026-10-18) may use cloud computers; staging Computers binds only it to SPACE.
+SPACE_TEST_ACCOUNT = "acct_4570d993d9897bdd"
 # Who may save a Claude subscription token (#11235, cloud/byo.rs
 # TokenAllow): the owner, and on staging only the same smoke test account,
 # so the Settings, Claude connect flow (#11255) and Claude Code runs on the
@@ -112,7 +115,7 @@ def main():
             plain("INVITE_ONLY_JSON", INVITE_ONLY),
             # The smoke suite's operator test account (#11155): staging only.
             plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),
-            plain("OPENAGENTS_WEB_AGENT_ACCOUNTS", AGENT_ACCOUNTS),
+            plain("OPENAGENTS_WEB_AGENT_ACCOUNTS", f"{AGENT_ACCOUNTS},{SPACE_TEST_ACCOUNT}"),
             plain("OPENAGENTS_WEB_PRO_TEST_ACCOUNTS", AGENT_ACCOUNTS),
             plain("OPENAGENTS_WEB_CLAUDE_TOKEN_ACCOUNTS", CLAUDE_TOKEN_ACCOUNTS),
             plain("OPENAGENTS_WEB_STAGING_PUSH_REPOS", PUSH_STANDIN_REPOS),

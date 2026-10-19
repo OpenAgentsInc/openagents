@@ -223,11 +223,13 @@ async fn main() -> Result<()> {
     }
     let origin = std::env::var("OPENAGENTS_TEST_API")
         .unwrap_or_else(|_| "https://api.openagents.com/v1".into());
-    let (website, expected_account) = match origin.as_str() {
-        "https://api.openagents.com/v1" => ("https://openagents.com", "acct_83d16a35955ef908"),
-        "https://staging.openagents.com/v1" => {
-            ("https://staging.openagents.com", "acct_dc7a799879686fc5")
-        }
+    // Staging also accepts the dedicated SPACE qualification account (#11816).
+    let (website, expected_accounts): (&str, &[&str]) = match origin.as_str() {
+        "https://api.openagents.com/v1" => ("https://openagents.com", &["acct_83d16a35955ef908"]),
+        "https://staging.openagents.com/v1" => (
+            "https://staging.openagents.com",
+            &["acct_dc7a799879686fc5", "acct_4570d993d9897bdd"],
+        ),
         _ => return Err("Use the production or staging test deployment.".into()),
     };
     let placement = match std::env::var("OPENAGENTS_TEST_PLACEMENT").ok().as_deref() {
@@ -261,7 +263,7 @@ async fn main() -> Result<()> {
     // Session owns the authenticated credential; don't keep another copy here.
     credential.clear();
     let session = session?;
-    if session.account().id != expected_account {
+    if !expected_accounts.contains(&session.account().id.as_str()) {
         return Err("This example requires the dedicated test account.".into());
     }
     let computers = client

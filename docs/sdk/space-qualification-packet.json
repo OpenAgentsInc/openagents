@@ -1,7 +1,7 @@
 {
   "schema": "openagents.computers.space-qualification.v1",
   "identity": {
-    "web_commit": "b4442103d26e9723e90cb63f3002c8a10f462b03",
+    "web_commit": "c3cb714436f653efae340ebeb252c3c28fc068b8",
     "computers_commit": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
     "sdk_commit": "a53a9731f996a8d93f22f1af11f5158894288c54",
     "native_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
@@ -13,7 +13,7 @@
     "vcpus": 2,
     "memory_mib": 1024
   },
-  "observed_unix": 1792370625,
+  "observed_unix": 1792373557,
   "advertised": {
     "fork": false,
     "terminal": false,
@@ -44,99 +44,105 @@
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/public_sdk.json",
-        "sha256": "63972fd7966453c8c678d9684a5c028b9613c13d1b8733d13b2789dabbbbd52b"
+        "sha256": "baf7b6a6cd3a5f68bbc95ea6fc0e189409a8216840a118969fe78e51a2e8ca5f"
       }
     },
     "web_task_and_followup": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/web_task_and_followup.json",
+        "sha256": "d86eae8d59549c8e8f9b457e8011cd6185b5324f703d2e2cc22a60119016c805"
+      }
     },
     "account_isolation": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/account_isolation.json",
-        "sha256": "47360134ae5553f1807371ec85bc44b044e82f708857b73392bef81b1bf731c6"
+        "sha256": "d39e28ba085b58c1e3c9593a0bb1579c15645b0f13f3c461dc9d36d6c7d81771"
       }
     },
     "actual_boot_and_shape": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/actual_boot_and_shape.json",
-        "sha256": "9967136916c0e687635b68f6eb4693697a9cbe98a3fdb7c305f0ec7c5614dedf"
+        "sha256": "022b9c061a1ca4d4bfc8dd6306bd9b4ca1a98316876b1b97746bb2b25124e24f"
       }
     },
     "stage_timings": {
-      "status": "pending",
-      "artifact": null
+      "status": "failed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/stage_timings.json",
+        "sha256": "ac8f1df74ff17fc8ad386cdcc6739db8768c70f6eafe97761dee83cce983d190"
+      }
     },
     "memory_and_workspace": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/memory_and_workspace.json",
-        "sha256": "5209fa2561caaf54f530e8fcdb0bd5748aba2596823501a522470c04fa41f6b2"
+        "sha256": "249a5d1b84c2920c05fdd272d58ba9f454d511f88eddcfd89451b45c37cf47c8"
       }
     },
     "cancellation_and_children": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/cancellation_and_children.json",
-        "sha256": "6a8479137fbc0c9a3b6552c716a0092cfd25dd09750f6f642fd79e2836519848"
+        "sha256": "29c6bf8f03c74c6b0bbb6ffd6843204aadfab068a55ef29701abf85583cf2c5e"
       }
     },
     "api_restart": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/api_restart.json",
-        "sha256": "b6b11a4e1be6e556a4a302ad333398e7aeb6b618763e7dc5ba2adbf284a04603"
+        "sha256": "9241e7804cf4118fe8cda01b5f556253df4b0804885b1624aed6d8f56b5d8c01"
       }
     },
     "reconciler_restart": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/reconciler_restart.json",
-        "sha256": "a989bff3ddc4ff27f9a08dea0439324d1ff528f643a3e0faa909ec573bd016b4"
+        "sha256": "08326425a27286f104e66609a5898bdd712b75a4e7469474cf2bad348d324b24"
       }
     },
     "lost_create_reply": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/lost_create_reply.json",
-        "sha256": "48087822caf2906cdf91494d4c37a05e935077845bfab23c2f4e4a60702acd7b"
+        "sha256": "5fc6d28d830f046abe59b0d2604527a89a96284c65d9c5fd36b5888890aeaefa"
       }
     },
     "lost_command_reply": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/lost_command_reply.json",
-        "sha256": "a9e580164fd31b469b1c1beb70bb00498fc0b89c7e673952eeec5059f0abc05f"
+        "sha256": "158c7ac2194787db8d00b63e284b11bd3825c9ec497203395cdd14019f36ebdb"
       }
     },
     "attach_interruption": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/attach_interruption.json",
-        "sha256": "8138c9cee81fdd0d700c199a2e834a5fc0ad743f149aae0f4078020ecfc0a48c"
+        "sha256": "96055ebd93a3f4209e9bd183c624b48d9690552d9b47a708a0a3905b496bdcf9"
       }
     },
     "duplicate_delivery": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/duplicate_delivery.json",
-        "sha256": "ed33b1f384e901bfb0eed0522de5d719468947f5d77d3485fa946b788b9ecdd2"
+        "sha256": "6b5b950bce4016b79736bb31ef3a008403dbdb4efa9a745b245c33f0d47535a6"
       }
     },
     "delayed_lifecycle": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/delayed_lifecycle.json",
-        "sha256": "7d83bf9aa0cc18253305a3d015b2555a119289918eadf73db06a54be172b4459"
+        "sha256": "5273170d7911c7a0404ff46aa7a86a02c0ce1c510d167561662d4870cf4c0512"
       }
     },
     "worker_loss_and_single_writer": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/worker_loss_and_single_writer.json",
-        "sha256": "59ec4a7c756223061adeef7d2479f42b5f1c74693ebce22141b5875c34459784"
+        "sha256": "daa3102fcd3ff38de45d3aee8db9e4b8516ec4da08f4f06a2d1067cb81d25bf1"
       }
     },
     "cross_host_memory_restore": {
@@ -147,28 +153,28 @@
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/checkpoint_recovery.json",
-        "sha256": "30cc51973bab5e94c68906c2e55a982ad992db51cea679430518a4b6234ef718"
+        "sha256": "4f062ad390ebebe8e8cc6c165267c516bf4cab45ad97b713d75017dfff307d2d"
       }
     },
     "database_restore": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/database_restore.json",
-        "sha256": "327f34ad5586cfaa3d5defbd5fd5b874c97a19955f3e641531cbb852c0b4454e"
+        "sha256": "b9d9875a5c5a4640f0403067a3c03522096334e1e692332733b7f846e2c640e5"
       }
     },
     "storage_outage": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/storage_outage.json",
-        "sha256": "ec5b72516498e3866bc395f6a77a55160fc7601b24c375180c9d0ff651618af3"
+        "sha256": "8544104465ef1bb57d4a316df5d9ad5732e52a3df34b3af10593fedbb052d268"
       }
     },
     "provider_outage": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/provider_outage.json",
-        "sha256": "99d7f581b755774c6dfff0fafb0c3db8b7a72502b12026bb8b49f3923b048903"
+        "sha256": "ca223e8eeb5c61bbdc3699e307c9e87e7c169f3ddc103233905af5b04c4c6642"
       }
     },
     "credential_revocation": {
@@ -179,85 +185,91 @@
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/egress_bypass.json",
-        "sha256": "81c32cb1f914b9e8a27b37c22f684c6de04f51b2a041a0a768ce23fb570404a0"
+        "sha256": "bd8a4cb8c010a6620787402bf6ffa47cdb4713179e01d2de459a4061c0c5fbe3"
       }
     },
     "capacity_exhaustion": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/capacity_exhaustion.json",
-        "sha256": "154b26b014f973c55e98b88c1c52480c7c3a7d345cb1e6e9f0941fe5adb3fa29"
+        "sha256": "f9ac818a9a4723e645a79ff7e509e2f0a9fe8689993d6680585771400656068a"
       }
     },
     "concurrent_wake": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/concurrent_wake.json",
-        "sha256": "ded7e146ddafe540a2eed056f2b576b4be9a7fabd3bf07a82ab8e1706d1a9b18"
+        "sha256": "48f65fed36a6724638112591bfaba90eb238f59c4825a38356d93fb462f9b5d8"
       }
     },
     "quotas_and_accounting": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/quotas_and_accounting.json",
-        "sha256": "f4c027079724b6ba745b05fe09691cfb62b20ea972a89e080ec3f65c9e8bd936"
+        "sha256": "1f6bdc0a67e12573ef61341d9c8bf52dec10fd2eb37faadf197ac7cea89ec5ac"
       }
     },
     "retention": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/retention.json",
-        "sha256": "bdab3cce70d4d88549a8d14fbe7a2932ae2f6dc839668ddeb711d5d5fc8dcaf5"
+        "sha256": "145eaabdb66f6ae8289699e750f6461110822cbf05d14fdc3d3946dc302bb749"
       }
     },
     "account_deletion": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/account_deletion.json",
-        "sha256": "2a4c48abd109261603d749efc8ebf19e9530613ca70a48054e1f852142a87be4"
+        "sha256": "50b80e90d8f0327d59ea7bc53ffff73cc15259228b4d70cbffc1044c7abccea1"
       }
     },
     "orphan_cleanup": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/orphan_cleanup.json",
-        "sha256": "06370e51b93bddbff23e1bec47b56127db44820964fde77dd29110ebd1650f5e"
+        "sha256": "9e41894920884885a6d880a674e11ee46b1e578b2f4d141b7cd8995f9ff1aac6"
       }
     },
     "upgrade_and_rollback": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/upgrade_and_rollback.json",
-        "sha256": "8d41074aafd67b5fc06505c9704e5e60694bf57079d4b817a2059901f89a6246"
+        "sha256": "e748c58494ba82411a809ea44f549a5957cdfda58273dd0e85a68b71bd0cb23a"
       }
     },
     "disabled_placement": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/disabled_placement.json",
-        "sha256": "a0bba8e18114fedfe33fbedbcb6bf4c044c0e2e89189d50ae9a67fbf1fc1d7e9"
+        "sha256": "0fec8c8b8b4e08660d4f05ac6bb1ed14fedce40ba6aea7b8969e9ab731893a9e"
       }
     },
     "legacy_boat": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/legacy_boat.json",
+        "sha256": "c4fdab1afca5145df4c5e2ba3d4afa5fee2cfd8766a5be346d972895cbfb7e5f"
+      }
     },
     "unsupported_controls": {
       "status": "passed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/unsupported_controls.json",
-        "sha256": "c70f058f6c89b480560151d68bd19b891cdd42858a0bd5d958ed90c624a4a0c4"
+        "sha256": "4b2db3e63cff28fbf4396796fadceaaec5d42ff88a567cc3a8f541c0c8aa0ce6"
       }
     },
     "monitoring": {
-      "status": "pending",
-      "artifact": null
+      "status": "passed",
+      "artifact": {
+        "path": "evidence/space-qualification-2026-10-18/receipts/monitoring.json",
+        "sha256": "e929c22eea83810bfb0c836352611bf73306f7c57f64691df1662470d0e85e53"
+      }
     },
     "fixture_cleanup": {
       "status": "failed",
       "artifact": {
         "path": "evidence/space-qualification-2026-10-18/receipts/fixture_cleanup.json",
-        "sha256": "45a667ea8a101b1da71afa8d5e118503a5a2d9404cf99492d52a1da512a958d5"
+        "sha256": "f50458e1c5c8ce5a20331be4c114c2215002b0ee2249475e454204617958f0c9"
       }
     }
   },
@@ -1209,13 +1221,13 @@
     }
   ],
   "economics": {
-    "duration_ms": 19065000,
+    "duration_ms": 21997000,
     "worker_vcpus": 8,
     "guest_vcpu_ms": null,
     "command_wall_ms": 232319,
     "task_attempts": 63,
     "useful_tasks": 51,
-    "provider_cost_micros": null,
+    "provider_cost_micros": 4896777,
     "currency": "USD"
   }
 }

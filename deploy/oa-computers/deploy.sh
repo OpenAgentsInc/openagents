@@ -37,13 +37,17 @@ sdk_legacy_mapping() {
 import json,sys
 service=json.load(sys.stdin)
 env={e["name"]:e.get("value") for e in service["spec"]["template"]["spec"]["containers"][0].get("env",[])}
-if (env.get("OA_COMPUTERS_REGISTRY_FILE") or
-    env.get("OA_COMPUTERS_DRIVER","boat") != "boat" or
+# Staging may carry the reviewed SPACE test binding (deploy/space-service/staging_binding.py,
+# #11816): its registry keeps oa-boat-primary as the default legacy connection.
+registry=env.get("OA_COMPUTERS_REGISTRY_FILE")
+if registry and not (sys.argv[2] == "oa-computers-staging" and registry == "/var/run/space-registry/registry.json"):
+    sys.exit("The running computer connection differs. Keep its deployment mapping before using this helper.")
+if (env.get("OA_COMPUTERS_DRIVER","boat") != "boat" or
     env.get("BOAT_API_BASE","https://api.boat.dev/api/v1").rstrip("/") != sys.argv[1].rstrip("/") or
     env.get("OA_COMPUTERS_LEGACY_DEPLOYMENT", "oa-boat-primary") != "oa-boat-primary"):
     sys.exit("The running computer connection differs. Keep its deployment mapping before using this helper.")
 print("oa-boat-primary")
-' "$sdk_boat_base"
+' "$sdk_boat_base" "$sdk_service"
 }
 sdk_legacy=$(sdk_legacy_mapping)
 if [[ $sdk_environment == staging ]]; then

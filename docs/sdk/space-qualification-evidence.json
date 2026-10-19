@@ -146,7 +146,11 @@
       "locked dev and deploy accounts on the worker (#12144)",
       "monitor.py and three alert policies (#12147)",
       "temporary RUST_LOG on space-sandbox-manager, removed",
-      "operator storage-cleanup job for owner B, deleted"
+      "operator storage-cleanup job for owner B, deleted",
+      "staging Computers registry with Boat default and SPACE for one test account (oa-computers-staging-00021-qjf)",
+      "staging web agent accounts add the test account (openagents-web-1-staging-00207-vkf)",
+      "SPACE VPC subnet oa-space-service-staging-run with NAT; NAT ports 1024 to 8192",
+      "Resend alert mail secret oa-space-service-alert-mail for the control identity"
     ],
     "not_changed": [
       "production and staging web",
@@ -156,16 +160,24 @@
       "Boat default"
     ],
     "result": {
-      "passed": 20,
-      "failed": 8,
-      "pending": 5,
+      "passed": 22,
+      "failed": 10,
+      "pending": 1,
       "not_required": 1
     },
     "trials": "post-#12144 series in the packet; pre-fix series retained in raw/trials",
     "estimated_cost_usd": {
-      "run_rate_per_hour": 0.81,
-      "window_total": 5.0,
-      "basis": "list prices for the two VMs, disks, Cloud SQL, the always-on Computers service, NAT, and storage; not billing data"
+      "run_rate_per_hour": 0.8014,
+      "window_hours": 6.11,
+      "window_total": 4.9,
+      "per_useful_task": 0.096,
+      "basis": "deploy/space-service/cost_estimate.py, Cloud Billing Catalog API list prices; not billing data"
+    },
+    "owner_decisions_2026_10_18": {
+      "alerts": "Resend email to the owner from the control-node monitor",
+      "staging": "dedicated staging test account acct_4570d993d9897bdd bound to SPACE only; Boat default; pricing off",
+      "cost": "list-price estimate from the Cloud Billing Catalog API",
+      "worker_loss": "accept losing the last checkpoint of an awake computer for now"
     }
   }
 }

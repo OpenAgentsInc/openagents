@@ -216,6 +216,24 @@ the defaults are 1 s and 3 s), and `--keep-project-iam` for a redeploy by an
 operator who can't change project IAM; the existing instance-scoped Cloud SQL
 binding then stays in place.
 
+Alerts email the owner (owner decision, 2026-10-18): `monitor.py` reads the
+Resend key and addresses from `oa-space-service-alert-mail` and sends one email
+when one of the twelve conditions opens and one when it clears, at most six an
+hour, with its state in `/var/lib/oa-space-monitor`. `monitor.py --test-mail`
+sends one test message. Run `test_monitoring.py` after changing a threshold;
+it checks that the email table matches the Cloud Monitoring policies.
+
+`staging_binding.py --account acct_…` binds one dedicated staging test account
+to this deployment through staging Computers: Boat stays the default and keeps
+its `oa-boat-primary` connection, pricing stays off, and egress goes through the
+`oa-space-service-staging-run` subnet and its NAT. `--disable-space` stops new
+SPACE placement and keeps the connection; `--rollback REVISION` restores an
+earlier revision. `deploy/oa-computers/deploy.sh staging` keeps this binding.
+
+`cost_estimate.py HOURS` multiplies the deployment inventory by on-demand list
+prices from the Cloud Billing Catalog API. It is an estimate for when no billing
+export is readable; it excludes discounts and usage-based charges.
+
 `qualification-11816/` holds the #11816 live qualification tools. Install
 `q16*.py` beside the protected control tools and `q16_worker.py` and
 `q16_storage_block.sh` as root on the worker. They use two synthetic owners,

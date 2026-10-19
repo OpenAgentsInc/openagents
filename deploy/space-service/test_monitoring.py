@@ -88,5 +88,30 @@ class ComputersQuery(unittest.TestCase):
         self.assertLess(value['oldest_requested_lifecycle_seconds'], 16 * 60)
 
 
+class AlertMail(unittest.TestCase):
+    def test_alert_table_matches_the_cloud_policies(self):
+        kinds = {'COMPARISON_LT': 'lt', 'COMPARISON_GT': 'gt'}
+        self.assertEqual([(m, kinds[c], t, d) for m, c, t, d in monitoring.ALERT_SPECS], monitor.ALERTS)
+
+    def test_a_condition_opens_after_its_duration_and_clears_once(self):
+        state = {}
+        self.assertEqual(monitor.transitions(state, {'computers_stranded': 1}, 1000), [])
+        self.assertEqual(monitor.transitions(state, {'computers_stranded': 1}, 1200), [])
+        self.assertEqual(monitor.transitions(state, {'computers_stranded': 1}, 1300), [('computers_stranded', 'open', 1)])
+        self.assertEqual(monitor.transitions(state, {'computers_stranded': 2}, 1360), [], 'an open alert is not resent')
+        self.assertEqual(monitor.transitions(state, {'computers_stranded': 0}, 1420), [('computers_stranded', 'clear', 0)])
+        self.assertEqual(monitor.transitions(state, {'computers_stranded': 0}, 1480), [])
+
+    def test_a_short_breach_never_opens(self):
+        state = {}
+        monitor.transitions(state, {'services_ready_ratio': 0.5}, 0)
+        self.assertEqual(monitor.transitions(state, {'services_ready_ratio': 1.0}, 60), [])
+
+    def test_mail_is_rate_limited_per_hour(self):
+        state = {'_sent': [100.0 * i for i in range(monitor.MAIL_PER_HOUR)]}
+        self.assertEqual(monitor.admit_mail(state, 600), 0)
+        self.assertEqual(monitor.admit_mail(state, 3700), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

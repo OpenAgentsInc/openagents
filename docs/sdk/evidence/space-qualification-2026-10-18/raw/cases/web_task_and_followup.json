@@ -1,9 +1,20 @@
 {
+ "account": "acct_4570d993d9897bdd (dedicated staging test account, made 2026-10-19 with the staging operator signup token; not the owner)",
+ "command_refusal": {
+  "error": {
+   "code": "unavailable",
+   "message": "Cloud computers aren't available right now. Try again later."
+  },
+  "status": 503
+ },
  "contains_credentials": false,
  "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "finding": "Web tasks run through the computer commands API (crates/openagents-web/src/computer_runs.rs). On the SPACE-bound staging computer cmp_99ed8f05785ba9f4a22e that API answered 503 (the Computers service refuses commands on SPACE: 422 unsupported), so no web task can start. Files are refused as well (501).",
+ "issue": 12146,
+ "owner_digest": "account:8054ef2df12c490f3e0153403b42b613bfb73ad25077b5dbfea5abc8c19b2166",
  "owners": "synthetic account digests only; no owner account or host",
  "qualification": 11816,
- "reason": "No staging environment binds a dedicated test account to SPACE (#12146), and SPACE placements lack the file and command paths the web task uses.",
  "schema": "openagents.computers.space-case-evidence.v1",
- "status": "pending"
+ "status": "failed",
+ "test_header": true
 }
