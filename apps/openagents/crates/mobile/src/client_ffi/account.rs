@@ -353,6 +353,7 @@ impl CoreAccount {
         let website = self.deployment.website().clone();
         let http = invitation_http()?;
         super::on_runtime(async move {
+            Ok(async {
             let body = invitation_post(
                 &http,
                 &website,
@@ -362,8 +363,10 @@ impl CoreAccount {
             )
             .await?;
             invitation_preview(&body)
+        }
+        .await)
         })
-        .await
+        .await?
     }
 
     /// Accept a project invitation for the active account after the person
@@ -376,6 +379,7 @@ impl CoreAccount {
         let website = self.deployment.website().clone();
         let http = invitation_http()?;
         super::on_runtime(async move {
+            Ok(async {
             let body = invitation_post(
                 &http,
                 &website,
@@ -392,8 +396,10 @@ impl CoreAccount {
                 .ok_or_else(|| CoreError::HostError {
                     message: "The invitation service returned an invalid project.".into(),
                 })
+        }
+        .await)
         })
-        .await
+        .await?
     }
 
     /// Have the computer `device_id`, just connected by code, sign in as
