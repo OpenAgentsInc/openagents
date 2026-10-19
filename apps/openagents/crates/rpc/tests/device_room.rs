@@ -707,6 +707,19 @@ async fn presence_reset_skips_the_backoff_once_per_streak() {
         "the reset dials: {err}"
     );
 
+    // A sibling's successful upgrade says the network works, but gives no
+    // evidence that this host is back. It must also preserve reset_spent.
+    let sibling_url = device_room_ws_url(
+        &relay.edge_url(),
+        "another-device",
+        "client",
+        Some("online-signal"),
+        "test-user",
+    );
+    let _sibling = openagents_sync::dial::connect_ws(&sibling_url)
+        .await
+        .expect("sibling upgrade succeeds");
+    tokio::time::sleep(Duration::from_millis(20)).await;
     links.reset_cooldown("dev-a");
     let Err(err) = links.client("dev-a").await else {
         panic!("still no host")
@@ -1007,4 +1020,35 @@ async fn a_refusing_room_without_a_direct_route_says_sync_is_unavailable() {
     assert!(message.contains("429"), "got: {message}");
     assert!(!message.contains("offline"), "got: {message}");
     assert_eq!(links.status("dev-a"), Some(STATUS_SYNC_UNAVAILABLE));
+}
+
+#[tokio::test]
+async fn a_successful_upgrade_retries_room_connection_failures() {
+    let (edge, room_dials, room) = refusing_room().await;
+    let mut config = LinkCacheConfig::new(edge, Arc::new(StaticToken("test-user".into())));
+    config.cooldown_base = Duration::from_secs(120);
+    config.cooldown_max = Duration::from_secs(120);
+    let links = LinkCache::new(config);
+
+    assert!(links.client("dev-a").await.is_err());
+    let attempts = room_dials.load(Ordering::SeqCst);
+    let relay = FakeRelay::start().await;
+    let url = device_room_ws_url(
+        &relay.edge_url(),
+        "another-device",
+        "client",
+        Some("online-signal"),
+        "test-user",
+    );
+    let _sibling = openagents_sync::dial::connect_ws(&url)
+        .await
+        .expect("sibling upgrade succeeds");
+    tokio::time::sleep(Duration::from_millis(20)).await;
+
+    let Err(error) = links.client("dev-a").await else {
+        panic!("room still refuses connections")
+    };
+    assert!(error.to_string().contains("429"), "room retried: {error}");
+    assert!(room_dials.load(Ordering::SeqCst) > attempts);
+    room.abort();
 }

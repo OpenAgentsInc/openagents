@@ -130,10 +130,11 @@
       "12141": "uncertain turns and unconfirmed stops strand computers",
       "12142": "turns lack request identity",
       "12143": "requested lifecycle never recovers after a provider outage",
-      "12144": "10 s network policy retry on every boot and wake",
+      "12144": "fixed in 1668c41a3c (local dev/deploy accounts)",
       "12145": "creates always cold boot",
       "12146": "public SDK path cannot run on fast-sandbox",
-      "12147": "monitoring gaps and no notification channel"
+      "12147": "fixed in 1668c41a3c (Computers-layer measurements and policies)",
+      "12151": "worker reset leaves a deleted sandbox in cleanup_failed with node files"
     },
     "deployment_changes": [
       "private Computers registry: rollout accounts set to the two synthetic owners",
@@ -141,7 +142,11 @@
       "account limits rows for both owners",
       "code-runtime base snapshot policy enabled for the snapshot arm, then set back to ensure_base_snapshot false",
       "native API and controller upgraded to the checked cleanup images and rolled back, three times",
-      "admit_new false and back to true for disabled_placement"
+      "admit_new false and back to true for disabled_placement",
+      "locked dev and deploy accounts on the worker (#12144)",
+      "monitor.py and three alert policies (#12147)",
+      "temporary RUST_LOG on space-sandbox-manager, removed",
+      "operator storage-cleanup job for owner B, deleted"
     ],
     "not_changed": [
       "production and staging web",
@@ -149,6 +154,18 @@
       "maintained control and worker hosts and their data disks (the worker was hard reset once)",
       "pricing (off)",
       "Boat default"
-    ]
+    ],
+    "result": {
+      "passed": 20,
+      "failed": 8,
+      "pending": 5,
+      "not_required": 1
+    },
+    "trials": "post-#12144 series in the packet; pre-fix series retained in raw/trials",
+    "estimated_cost_usd": {
+      "run_rate_per_hour": 0.81,
+      "window_total": 5.0,
+      "basis": "list prices for the two VMs, disks, Cloud SQL, the always-on Computers service, NAT, and storage; not billing data"
+    }
   }
 }

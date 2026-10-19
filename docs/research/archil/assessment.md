@@ -224,3 +224,42 @@ For comparison:
 These sandboxes held no workspace, so they don't settle the lazy-restore
 question above. The decisive check is still a fork of a warm openagents
 checkout to its first `cargo build`, against `oa-boat`'s 33 s plus 93 s.
+
+## The deciding measurement: a warm fork to its first build (2026-10-18, #12157)
+
+This is the test Boat failed. The template is the one `chat work --on
+archil` forks (#12136): image `archil-worker:v3`, 8 vCPU and 16 GiB, the
+openagents checkout at `origin/main` (b4d5d88c50), and a target warmed by
+building `briefed-agent` and `openagents-cli`. Each of 10 forks timed:
+
+1. fork to ready (`fork` with wait, from this Mac);
+2. after a one-line change to `crates/coder/src/lib.rs`, the first
+   `cargo build -p coder` (the warm target's profile: no debug info, no
+   incremental);
+3. a second one-line change and build in the same fork.
+
+| | p50 | p90 | range |
+| --- | --- | --- | --- |
+| Fork to ready | 4.8 s | 5.2 s | 4.5–7.1 s |
+| First build | 82.6 s | 87.2 s | 81.6–89.2 s |
+| Second build, same fork | 34.7 s | 36.4 s | 34.0–37.1 s |
+
+- **Archil beats oa-boat on this test.** Fork plus first build is about
+  87 s at p50, against oa-boat's 126 s (33 s to a ready warm fork, plus
+  93 s to the first build).
+- **The lazy restore costs about 48 s.** The first build is about 48 s
+  slower than the second, and the second is the steady state. That's
+  Archil fetching the warm target on first access. It's bounded and steady
+  (a 7.6 s spread), not Boat's 3 to 9 minute stall.
+- **Cost.** One sample (fork, two builds, delete) used about 2.2 minutes of
+  an 8 vCPU, 16 GiB sandbox. At $0.76 an hour, that's about $0.03.
+- **Dead forks.** In an earlier batch the same day, 5 of 11 forks reported
+  `running` but refused every process with HTTP 400. They were mostly the
+  ones that took about 22 s to become ready. This batch had none. The
+  `--on archil` backend now runs `true` in each fork and forks again when a
+  fork doesn't answer, up to three times.
+
+**Recommendation:** use Archil for issue runs. The per-issue path
+`chat work --on archil` (#12136) already forks this template. Keep oa-boat
+as the fallback, since a vendor outage or the dead-fork behavior would
+otherwise stop issue work.

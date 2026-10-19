@@ -368,7 +368,7 @@ async fn run_commands(
     // An evaluation run fetched its crates before the flow; fetching here
     // would let a changed manifest pull code from the network.
     if !setup.evaluation {
-        record.prefetch = prefetch(setup, &cargo).await;
+        record.prefetch = prefetch(setup, &cargo, packages).await;
     }
     let spec = coder_boundary::Boundary::writing(&setup.workdir);
     let spec = if setup.target.starts_with(&setup.workdir) {
@@ -497,25 +497,40 @@ async fn run_commands(
 
 /// A normal run's `cargo fetch` on the host before the tests, so a test
 /// command that can't write Cargo's cache still finds every crate.
-pub async fn prefetch(setup: &Setup, cargo: &Path) -> String {
+pub async fn prefetch(setup: &Setup, cargo: &Path, packages: &[String]) -> String {
     if !setup.workdir.join("Cargo.toml").is_file() {
         return "skipped".to_string();
     }
-    let ended = supervise::Job::new(cargo.as_os_str())
-        .args(["fetch", "-q"])
-        .in_directory(&setup.workdir)
-        .bounded(supervise::Limits::within(FETCH_DEADLINE))
-        .run()
-        .await;
-    if ended.ending.success() {
-        "fetched".to_string()
-    } else {
-        format!(
-            "failed ({}): {}",
-            ended.ending,
-            crate::judge::clip(ended.stderr.text.trim(), 300)
-        )
+    // Packages of a nested workspace (apps/openagents) resolve through its
+    // own manifest and lockfile; fetch those too, or the boundary can't
+    // reach their git dependencies such as gpui (#12128).
+    let mut manifests: Vec<Option<String>> = vec![None];
+    for package in packages {
+        let nested = super::manifest_of(&setup.workdir, package);
+        if nested.is_some() && !manifests.contains(&nested) {
+            manifests.push(nested);
+        }
     }
+    for manifest in manifests {
+        let mut args = vec!["fetch".to_string(), "-q".to_string()];
+        if let Some(manifest) = &manifest {
+            args.extend(["--manifest-path".to_string(), manifest.clone()]);
+        }
+        let ended = supervise::Job::new(cargo.as_os_str())
+            .args(args)
+            .in_directory(&setup.workdir)
+            .bounded(supervise::Limits::within(FETCH_DEADLINE))
+            .run()
+            .await;
+        if !ended.ending.success() {
+            return format!(
+                "failed ({}): {}",
+                ended.ending,
+                crate::judge::clip(ended.stderr.text.trim(), 300)
+            );
+        }
+    }
+    "fetched".to_string()
 }
 
 /// The problem one package's Clippy command leaves, or `None` when it

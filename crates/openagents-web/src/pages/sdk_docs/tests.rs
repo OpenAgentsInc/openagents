@@ -137,6 +137,7 @@ fn every_public_sdk_item_is_described_and_its_calls_resolve() {
         "GET /v1/cloud-host",
         "GET /v1/device/keys",
         "GET /v1/schedules",
+        "GET /v1/schedules/*/health",
         "GET /v1/web-sign-in/*",
         "POST /v1/cloud-host",
         "POST /v1/cloud-host/stop",

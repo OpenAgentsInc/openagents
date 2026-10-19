@@ -515,6 +515,8 @@ fn schedules_rows(headers: &HeaderMap) -> Response {
         paused: false,
         updated: NOW - DAY,
         deleted: false,
+        last_ran_at: None,
+        alarmed_after: None,
     };
     let hourly = crate::account_schedules::Schedule {
         id: "sch-sample-2".into(),

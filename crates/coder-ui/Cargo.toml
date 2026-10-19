@@ -7,8 +7,9 @@ publish.workspace = true
 description = "Coder application presentation and theme values."
 
 [features]
-default = ["rust-native-syntax"]
-rust-native-syntax = ["rust-native/syntax"]
+default = ["syntax"]
+# The OpenAgents app workspace links its own tree-sitter and turns this off.
+syntax = ["rust-native/syntax"]
 
 [dependencies]
 atif = { path = "../atif" }

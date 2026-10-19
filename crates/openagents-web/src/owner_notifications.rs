@@ -17,23 +17,11 @@ pub(crate) fn routes() -> Router<App> {
         .route("/v1/notify/{id}/read", post(forward))
         .layer(DefaultBodyLimit::max(8192))
 }
-async fn forward(
-    State(app): State<App>,
-    OriginalUri(uri): OriginalUri,
-    method: Method,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    let Some(bearer) = headers
-        .get("authorization")
-        .filter(|h| h.to_str().is_ok_and(|h| h.starts_with("Bearer ")))
-    else {
-        return StatusCode::UNAUTHORIZED.into_response();
-    };
-    let base = &app.config.owner_notifications_url;
-    let Ok(base_url) = reqwest::Url::parse(base) else {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
-    };
+/// The sync service's base and a client for it, when its address is one
+/// this site may send an account's token to.
+fn upstream(app: &App) -> Option<(&str, reqwest::Client)> {
+    let base = app.config.owner_notifications_url.as_str();
+    let base_url = reqwest::Url::parse(base).ok()?;
     if !base_url.username().is_empty()
         || base_url.password().is_some()
         || base_url.query().is_some()
@@ -47,13 +35,61 @@ async fn forward(
                             .is_ok_and(|ip| ip.is_loopback())
                 })))
     {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        return None;
     }
-    let Ok(client) = reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(45))
         .build()
+        .ok()?;
+    Some((base, client))
+}
+
+/// Send `body` (`{request_id, note}`) as `POST /v1/notify` with the
+/// caller's own token, for a notice this site raises itself (a scheduled
+/// prompt that stopped, #12051). Returns whether it was accepted.
+pub(crate) async fn send(app: &App, headers: &HeaderMap, body: serde_json::Value) -> bool {
+    let Some(bearer) = headers
+        .get("authorization")
+        .filter(|h| h.to_str().is_ok_and(|h| h.starts_with("Bearer ")))
     else {
+        return false;
+    };
+    let Some((base, client)) = upstream(app) else {
+        return false;
+    };
+    let mut request = client
+        .post(format!("{}/v1/notify", base.trim_end_matches('/')))
+        .header("authorization", bearer)
+        .header("content-type", "application/json")
+        .body(body.to_string());
+    if headers
+        .get("x-openagents-test")
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(|h| h.trim() == "1")
+    {
+        request = request.header("x-openagents-test", "1");
+    }
+    request
+        .send()
+        .await
+        .is_ok_and(|response| response.status().is_success())
+}
+
+async fn forward(
+    State(app): State<App>,
+    OriginalUri(uri): OriginalUri,
+    method: Method,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let Some(bearer) = headers
+        .get("authorization")
+        .filter(|h| h.to_str().is_ok_and(|h| h.starts_with("Bearer ")))
+    else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let Some((base, client)) = upstream(&app) else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     let path = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");

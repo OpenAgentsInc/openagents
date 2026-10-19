@@ -1,0 +1,21 @@
+{
+ "computer": "cmp_bc247bbcbc89421648ed",
+ "contains_credentials": false,
+ "deleted": "2026-10-19T00:15:01Z",
+ "deletion_intent": "2026-10-19T00:15:00.7Z (3623 s after the stop)",
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "explicit_stop_resource_done": "2026-10-18T23:14:37Z",
+ "limit": "stopped_retention_seconds 3600 (account and service), configured 1 day, per-computer 7 days; the minimum applies",
+ "native_sandboxes_after": [],
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "soft_deletion": "Snapshot objects are removed by the native snapshot sweeper about 1 hour after deletion; the buckets then keep soft-deleted generations for 7 days (retentionDurationSeconds 604800). These are stated separately from computer retention.",
+ "status": "passed",
+ "usage_events": [
+  "accepted intent:4 stopped/stopped 23:15:07",
+  "accepted intent:5 stopped/deleted 00:15:00",
+  "observed revision:17-19 deleting -> deleted",
+  "observed storage-history deleted 00:15:11"
+ ]
+}

@@ -2,7 +2,9 @@ use rust_native::view::{Activation, FieldChange, ValidatedView, View, ViewError}
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-use super::session::{BusyPolicy, SendOutcome, UserInputAnswer};
+use openagents_proto::UserInputAnswer;
+
+use super::session::{BusyPolicy, SendOutcome};
 use super::types::{CoreError, CoreResult};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

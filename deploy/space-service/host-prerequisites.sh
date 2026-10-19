@@ -26,6 +26,16 @@ while IFS=: read -r alias user uid group; do
     useradd --system --no-create-home --uid "$uid" --gid "$group" --shell /usr/sbin/nologin "$user"
   fi
 done <<< "$SPACE_USER_SPECS"
+# SPACE peer authorization resolves the local role accounts `dev` and `deploy`
+# by name in every service, including each sandbox's net gateway. On GCE an
+# unknown name falls through to the OS Login NSS module, which asks the metadata
+# server; the gateway's sandbox network cannot reach it, so each lookup waited
+# about 4.5 s and every boot and wake waited about 9 s (#12144). Locked local
+# accounts answer from /etc/passwd. No process runs as them and they can't log in.
+for user in dev deploy; do
+  getent passwd "$user" >/dev/null || useradd --system --no-create-home --user-group --shell /usr/sbin/nologin "$user"
+  passwd -l "$user" >/dev/null
+done
 install -d -m 0755 /space/etc/deployed /space/run/node-manager /space/run/firecracker/sandboxes /space/cache/firecracker/jails /var/run/netns
 install -d -m 0750 -o root -g space-sbxclients /space/run/dependency-drain /space/run/dependency-drain/sandbox-manager
 install -d -m 0755 -o space-sbxmgr -g space-sbxmgr /space/run/sandbox-host-control

@@ -8,11 +8,8 @@
         "web_task_and_followup",
         "stage_timings",
         "credential_revocation",
-        "retention",
-        "account_deletion",
-        "orphan_cleanup",
         "legacy_boat",
-        "fixture_cleanup"
+        "monitoring"
     ],
     "failed_cases": [
         "public_sdk",
@@ -20,8 +17,9 @@
         "lost_command_reply",
         "duplicate_delivery",
         "provider_outage",
+        "orphan_cleanup",
         "upgrade_and_rollback",
-        "monitoring"
+        "fixture_cleanup"
     ],
     "invalid_artifacts": [],
     "blockers": [
@@ -35,14 +33,14 @@
     ],
     "cold": {
         "attempts": 26,
-        "failures": 3,
-        "successful_samples": 23,
-        "p50_ms": 11637,
-        "p90_ms": 11852,
+        "failures": 2,
+        "successful_samples": 24,
+        "p50_ms": 4486,
+        "p90_ms": 9941,
         "cold_cache_samples": 0,
-        "warm_cache_samples": 23,
+        "warm_cache_samples": 24,
         "maximum_concurrency": 2,
-        "observed_error_permille": 116
+        "observed_error_permille": 77
     },
     "snapshot": {
         "attempts": 9,
@@ -57,23 +55,23 @@
     },
     "wake": {
         "attempts": 28,
-        "failures": 0,
-        "successful_samples": 28,
-        "p50_ms": 12732,
-        "p90_ms": 42739,
+        "failures": 1,
+        "successful_samples": 27,
+        "p50_ms": 3926,
+        "p90_ms": 33612,
         "cold_cache_samples": 0,
-        "warm_cache_samples": 28,
+        "warm_cache_samples": 27,
         "maximum_concurrency": 2,
-        "observed_error_permille": 0
+        "observed_error_permille": 36
     },
     "observed_error_permille": 191,
     "economics": {
         "schema": "openagents.computers.service-economics.v1",
-        "duration_ms": 14005000,
-        "worker_capacity_vcpu_ms": 112040000,
+        "duration_ms": 19065000,
+        "worker_capacity_vcpu_ms": 152520000,
         "guest_vcpu_ms": null,
         "unallocated_worker_vcpu_ms": null,
-        "command_wall_ms": 139906,
+        "command_wall_ms": 232319,
         "task_attempts": 63,
         "useful_tasks": 51,
         "provider_cost_micros": null,

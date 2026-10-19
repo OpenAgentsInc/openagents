@@ -47,6 +47,28 @@ pub struct Schedule {
     pub updated: u64,
     #[serde(default)]
     pub deleted: bool,
+    /// Unix seconds of the last run, written by the host on each tick
+    /// (#12051). The site keeps the later one whichever record wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_ran_at: Option<i64>,
+}
+
+/// Whether a schedule ran when it should have (`GET /v1/schedules/{id}/health`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum Health {
+    /// It ran within its last interval.
+    OnTime,
+    /// It missed this many runs in a row. At two, the site tells the owner
+    /// once, through the agent the schedule wakes.
+    Late { missed: u32 },
+    /// No host has recorded a run yet.
+    NeverRan,
+}
+
+#[derive(Deserialize)]
+struct HealthAnswer {
+    health: Health,
 }
 
 impl Schedule {
@@ -151,6 +173,26 @@ impl Schedules<'_> {
             .await?;
         Ok(listing.schedules)
     }
+
+    /// Whether the schedule ran on time, from its last recorded run.
+    pub async fn health(
+        &self,
+        schedule: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Health, Error> {
+        if !schedule.starts_with(PREFIX) || schedule.len() > 40 {
+            return Err(Error::InvalidReference);
+        }
+        let answer: HealthAnswer = self
+            .send(
+                Method::GET,
+                &["schedules", schedule, "health"],
+                None,
+                cancel,
+            )
+            .await?;
+        Ok(answer.health)
+    }
 }
 
 #[cfg(test)]
@@ -191,5 +233,30 @@ mod tests {
         let wire = serde_json::to_value(every(1200)).unwrap();
         assert_eq!(wire["every_secs"], 1200);
         assert!(wire.get("time").is_none());
+        assert!(wire.get("last_ran_at").is_none());
+    }
+
+    #[test]
+    fn the_run_time_and_health_read_from_the_wire() {
+        let ran = Schedule {
+            last_ran_at: Some(1_700_000_000),
+            agent: Some("a".repeat(64)),
+            ..every(1200)
+        };
+        let wire = serde_json::to_value(&ran).unwrap();
+        assert_eq!(wire["last_ran_at"], 1_700_000_000);
+        assert_eq!(serde_json::from_value::<Schedule>(wire).unwrap(), ran);
+        // An old record without it still reads.
+        let old: Schedule =
+            serde_json::from_value(serde_json::json!({"id": "prompt-x", "computer": "c"})).unwrap();
+        assert_eq!(old.last_ran_at, None);
+        for (text, health) in [
+            (r#"{"state":"on_time"}"#, Health::OnTime),
+            (r#"{"state":"late","missed":2}"#, Health::Late { missed: 2 }),
+            (r#"{"state":"never_ran"}"#, Health::NeverRan),
+        ] {
+            assert_eq!(serde_json::from_str::<Health>(text).unwrap(), health);
+            assert_eq!(serde_json::to_string(&health).unwrap(), text);
+        }
     }
 }

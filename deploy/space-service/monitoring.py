@@ -2,6 +2,7 @@
 """Configure owned Cloud Monitoring alerts without changing unrelated policies."""
 import http.client
 import json
+import re
 import subprocess
 from urllib.parse import quote
 from broker import cloud,PROJECT,PREFIX,MARKER
@@ -9,6 +10,18 @@ from broker import cloud,PROJECT,PREFIX,MARKER
 BASE='/v3/projects/'+PROJECT
 METRICS='custom.googleapis.com/openagents/space/'
 LABELS={'openagents_issue':'11814','openagents_service':'space'}
+METRIC_NAMES=('nodes_ready','services_ready_ratio','collector_errors','oldest_operation_seconds',
+    'oldest_transition_seconds','worker_disk_free_bytes','sandbox_count',
+    'orphan_snapshot_locations','oldest_orphan_seconds','unfinished_uploads',
+    'oldest_unfinished_upload_seconds','computers_stranded','oldest_stranded_turn_seconds',
+    'computers_unknown','oldest_requested_lifecycle_seconds')
+ALERT_SPECS=[('nodes_ready','COMPARISON_LT',2,120),('services_ready_ratio','COMPARISON_LT',1,120),
+    ('collector_errors','COMPARISON_GT',0,120),('oldest_operation_seconds','COMPARISON_GT',600,120),
+    ('oldest_transition_seconds','COMPARISON_GT',900,120),('worker_disk_free_bytes','COMPARISON_LT',60*1024**3,300),
+    ('sandbox_count','COMPARISON_GT',2,120),('oldest_orphan_seconds','COMPARISON_GT',7200,120),
+    ('oldest_unfinished_upload_seconds','COMPARISON_GT',3600,120),
+    ('computers_stranded','COMPARISON_GT',0,300),('computers_unknown','COMPARISON_GT',0,900),
+    ('oldest_requested_lifecycle_seconds','COMPARISON_GT',600,120)]
 
 
 def api(method,path,body=None,missing=False):
@@ -27,13 +40,18 @@ def api(method,path,body=None,missing=False):
     finally: connection.close()
 
 
-def configure():
-    cloud('projects','add-iam-policy-binding',PROJECT,'--member=serviceAccount:'+PREFIX+'-control@'+PROJECT+'.iam.gserviceaccount.com',
-        '--role=roles/monitoring.metricWriter','--condition=None')
-    for metric in ('nodes_ready','services_ready_ratio','collector_errors','oldest_operation_seconds',
-        'oldest_transition_seconds','worker_disk_free_bytes','sandbox_count',
-        'orphan_snapshot_locations','oldest_orphan_seconds','unfinished_uploads',
-        'oldest_unfinished_upload_seconds'):
+def notification_channels(existing,channel):
+    """Keep existing assignments; add the owner's chosen channel when one is named."""
+    return sorted(set(existing)|({channel} if channel else set()))
+
+
+def configure(channel=None,keep_project_iam=False):
+    if channel is not None and not re.fullmatch(r'projects/'+PROJECT+r'/notificationChannels/[0-9]+',channel):
+        raise RuntimeError('Name an existing notification channel as projects/PROJECT/notificationChannels/ID.')
+    if not keep_project_iam:
+        cloud('projects','add-iam-policy-binding',PROJECT,'--member=serviceAccount:'+PREFIX+'-control@'+PROJECT+'.iam.gserviceaccount.com',
+            '--role=roles/monitoring.metricWriter','--condition=None')
+    for metric in METRIC_NAMES:
         path=BASE+'/metricDescriptors/'+METRICS+metric
         descriptor=api('GET',path,missing=True)
         if descriptor is None:
@@ -52,13 +70,8 @@ def configure():
         if not token: break
         path=BASE+'/alertPolicies?pageSize=100&pageToken='+quote(token,safe='')
     else: raise RuntimeError('The alert inventory exceeded its page bound.')
-    specs=[('nodes_ready','COMPARISON_LT',2,120),('services_ready_ratio','COMPARISON_LT',1,120),
-        ('collector_errors','COMPARISON_GT',0,120),('oldest_operation_seconds','COMPARISON_GT',600,120),
-        ('oldest_transition_seconds','COMPARISON_GT',900,120),('worker_disk_free_bytes','COMPARISON_LT',60*1024**3,300),
-        ('sandbox_count','COMPARISON_GT',2,120),('oldest_orphan_seconds','COMPARISON_GT',7200,120),
-        ('oldest_unfinished_upload_seconds','COMPARISON_GT',3600,120)]
     policies=[]
-    for metric,comparison,threshold,duration in specs:
+    for metric,comparison,threshold,duration in ALERT_SPECS:
         name='SPACE private: '+metric
         matches=[p for p in existing if p.get('displayName')==name]
         if len(matches)>1 or any(p.get('userLabels')!=LABELS for p in matches):
@@ -70,7 +83,7 @@ def configure():
         policy={'displayName':name,'userLabels':LABELS,'enabled':True,'combiner':'OR',
             'conditions':[{'displayName':metric,'conditionThreshold':condition}],
             'documentation':{'mimeType':'text/markdown','content':'Inspect the owned control and worker, current operations, and disk capacity. Disable new placements before draining a busy worker. See deploy/space-service/README.md.'},
-            'notificationChannels':matches[0].get('notificationChannels',[]) if matches else []}
+            'notificationChannels':notification_channels(matches[0].get('notificationChannels',[]) if matches else [],channel)}
         if matches:
             policy['name']=matches[0]['name'];result=api('PATCH','/v3/'+policy['name'],policy)
         else: result=api('POST',BASE+'/alertPolicies',policy)
@@ -79,4 +92,10 @@ def configure():
     print(json.dumps({'policies':policies,'notifications':'Cloud Monitoring incidents; existing channel assignments are preserved'}))
 
 
-if __name__=='__main__': configure()
+if __name__=='__main__':
+    import argparse
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--notification-channel',help='An existing channel the owner chose, as projects/PROJECT/notificationChannels/ID.')
+    parser.add_argument('--keep-project-iam',action='store_true',help='Keep the existing Metrics Writer binding (for an operator without project IAM rights).')
+    args=parser.parse_args()
+    configure(args.notification_channel,args.keep_project_iam)

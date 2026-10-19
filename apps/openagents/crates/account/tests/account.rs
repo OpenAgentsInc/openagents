@@ -171,6 +171,13 @@ async fn setup() -> (
     );
     (controller, server, store, root, client)
 }
+fn signed_out_marked(root: &std::path::Path) -> bool {
+    std::fs::read_dir(root.join("account")).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|entry| entry.file_name().to_string_lossy().starts_with("signed-out"))
+    })
+}
 async fn phase(c: &Controller, p: impl Fn(&Phase) -> bool) {
     let mut watch = c.watch();
     tokio::time::timeout(std::time::Duration::from_secs(8), async {
@@ -507,7 +514,7 @@ async fn deletion_completion_cannot_sign_out_or_forget_a_newer_account() {
             serde_json::to_value(store.record.lock().unwrap().as_ref().unwrap()).unwrap()
                 == serde_json::to_value(&saved).unwrap()
         );
-        assert!(!root.path().join("account/signed-out").exists());
+        assert!(!signed_out_marked(root.path()));
         assert!(matches!(
             controller
                 .delete_account_for_generation(old.generation, true)
@@ -537,7 +544,7 @@ async fn deletion_keeps_typed_refusals_and_only_forgets_after_success() {
         }
         assert!(lease.is_current());
         assert!(store.record.lock().unwrap().is_some());
-        assert!(!root.path().join("account/signed-out").exists());
+        assert!(!signed_out_marked(root.path()));
     }
     server.delete_mode.store(0, Ordering::SeqCst);
     assert!(matches!(
@@ -546,7 +553,7 @@ async fn deletion_keeps_typed_refusals_and_only_forgets_after_success() {
     ));
     assert!(controller.lease().is_none());
     assert!(store.record.lock().unwrap().is_none());
-    assert!(root.path().join("account/signed-out").exists());
+    assert!(signed_out_marked(root.path()));
     assert_eq!(
         *server.delete_requests.lock().unwrap(),
         [false, false, false, true]

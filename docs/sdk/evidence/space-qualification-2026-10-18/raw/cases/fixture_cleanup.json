@@ -1,0 +1,30 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "issue": 12151,
+ "kept_on_purpose": [
+  "private registry rollout accounts (the two synthetic owners) and their limit rows",
+  "qualification tools under /space/config/deployment-tools and records under /space/qualification-11816 (no credentials)",
+  "dev and deploy locked accounts on the worker (#12144 fix)",
+  "updated monitor collector and three new alert policies (#12147)"
+ ],
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "remaining": [
+  "native sandbox 01a150ed-\u2026 in cleanup_failed with its node files (#12151)",
+  "snapshot objects of computers deleted in the last hour, pending the 1-hour sweeper grace",
+  "owner A storage holds (161), held by design until an operator storage proof; no provider resources",
+  "the refreshed synthetic admin session, which expires at about 03:40 UTC"
+ ],
+ "removed": [
+  "all qualification computers (0 live; the private service lists none)",
+  "owner B closed through account cleanup; its 39 storage holds released",
+  "recovery database copy oa-space-service-restore-11814",
+  "Cloud Run job oa-space-cleanup-11816",
+  "worker probe tools, guest sampler, grpcurl and protos; no q16 iptables rules remain",
+  "temporary RUST_LOG on space-sandbox-manager",
+  "base snapshot policy back to ensure_base_snapshot false"
+ ],
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "failed"
+}

@@ -5,6 +5,12 @@ Keep fork-specific changes here so upstream updates can review each integration.
 - OpenAgents #12077: make the Coder UI Rust Native syntax feature optional
   while preserving its default, so the Android app can keep its existing
   Tree-sitter version. Resolve the app lockfile without changing existing pins.
+- OpenAgents #12100: bind cloud sends to the captured account lease and saved
+  submit, retry, and stop actions to their expected chat before admission.
+- [OpenAgents #12159](https://github.com/OpenAgentsInc/openagents/issues/12159):
+  Device relay clients keep their retry delay when a WebSocket opens but the
+  requested host remains offline. A successful connection to another room
+  no longer clears that host's failed attempts.
 
 - [OpenAgents #12127](https://github.com/OpenAgentsInc/openagents/issues/12127):
   The desktop transcript rail caches prompt ticks between changes, limits
@@ -965,6 +971,8 @@ links remain readable. Upstream fixes now require manual ports.
   row version. The SDK and server changes land together. Indexed transcript reads
   keep shared-project authorization; no legacy-ID join or second room path is
   added. New source fixtures and binding/integration checks remain unrun.
+
+
 - [OpenAgents #12099](https://github.com/OpenAgentsInc/openagents/issues/12099):
   add isolated Android onboarding/recovery presentation over shared Rust account,
   identity, wallet recovery, and tutorial APIs. Rust Native owns the cards,

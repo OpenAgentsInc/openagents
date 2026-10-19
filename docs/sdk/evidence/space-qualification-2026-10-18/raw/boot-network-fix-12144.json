@@ -1,0 +1,18 @@
+{
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "issue": 12144,
+ "finding": "Each per-sandbox net gateway resolves the SPACE local role accounts dev and deploy by name (peer_auth.rs default_local_role_accounts). On GCE an unknown name falls through to the OS Login NSS module, which connects to 169.254.169.254:80; the gateway's sandbox network cannot reach it. strace showed the gateway main thread in 1 s poll loops for about 9 s while its control server could not answer, so the sandbox manager's readiness refresh succeeded only on its 8.88 s retry.",
+ "evidence": {
+  "grpcurl_refresh_during_boot": "context deadline exceeded for about 6 s after the control socket appeared, then NETWORK_STATE_READY",
+  "strace": "openat /etc/passwd, systemd userdb, /etc/oslogin_passwd.cache.bin, then connect 169.254.169.254:80 EINPROGRESS and poll(..., 1000) timeouts; userdb lookups name deploy.user",
+  "thread_states": "main thread in poll_schedule_timeout for 9.1 s after start, tokio workers idle"
+ },
+ "fix": "Locked nologin system accounts dev and deploy on the worker (host-prerequisites.sh, commit 1668c41a3c). No process runs as them.",
+ "result": {
+  "native_create_to_guest_ready_s": {"before": 10.6, "after": 2.85},
+  "network_policy_refresh_ms": {"before": 9400, "after": 3},
+  "computers_cold_first_useful_p50_ms": {"before": 11637, "after": "see packet trials"}
+ },
+ "note": "The network policy generation conflict event still appears and does not delay readiness.",
+ "contains_credentials": false
+}

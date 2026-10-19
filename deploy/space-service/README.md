@@ -191,10 +191,17 @@ The inventory does not change retention, restore objects, or release allowances.
 
 Install `monitor.py` beside the protected control tools and the monitor service
 and timer under `/etc/systemd/system`. Run `monitoring.py` before enabling
-`oa-space-monitor.timer`. Eleven fixed measurements publish every minute through
-the control identity's Metrics Writer role; nine policies cover missing or
-unhealthy services, stale work, collection failures, capacity, cleanup age, and
-less than 60 GiB free on the worker data disk. Orphan storage alerts after two
+`oa-space-monitor.timer`. Fifteen fixed measurements publish every minute through
+the control identity's Metrics Writer role; twelve policies cover missing or
+unhealthy services, stale work, collection failures, capacity, cleanup age,
+less than 60 GiB free on the worker data disk, and three Computers states the
+native measurements can't see: a computer held in `turn` by a command outcome
+nobody confirmed (5 minutes), a computer in `unknown` (15 minutes), and a
+lifecycle request still `requested` for a live computer (10 minutes). Pass
+`--notification-channel projects/openagentsgemini/notificationChannels/ID` to
+attach the channel the owner chose, and `--keep-project-iam` when the Metrics
+Writer binding already exists. Run `test_monitoring.py` with PostgreSQL on
+`PATH` to check the Computers query against a disposable cluster. Orphan storage alerts after two
 hours; unfinished uploads alert after one hour. Policies appear in Cloud Monitoring incidents. The
 helper preserves existing notification channels and creates none automatically.
 See the [time-series API](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.timeSeries/create)
