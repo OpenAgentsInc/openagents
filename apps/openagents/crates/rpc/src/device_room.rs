@@ -963,6 +963,9 @@ struct DialState {
     failures: u32,
     last_failure: Option<Instant>,
     cooldown_until: Option<Instant>,
+    /// A successful dial elsewhere can retry a failed room connection, but
+    /// does not show that this peer's host has returned.
+    reset_on_online: bool,
     /// A presence reset already skipped this streak's cooldown. Presence
     /// beats every few seconds, so without this a peer the room cannot reach
     /// (`host_offline`) was redialed on every beat (#12130).
@@ -997,9 +1000,9 @@ impl LinkCache {
         // Wake = every cached link is half-open and every cooldown is moot
         // (the failures belonged to the pre-suspend network). Drop them so the
         // next call redials immediately with fresh credentials. An online
-        // event (network path back / sibling dial success) likewise voids the
-        // cooldowns — those failures belonged to the dead network — but keeps
-        // live links, which a mere network *recovery* has not invalidated.
+        // event clears only room connection failures. Every successful HTTP
+        // upgrade emits that event, including a dial that gets host_offline
+        // immediately afterward; it must not reset that peer's backoff.
         // Skipped outside a runtime (sync unit tests).
         if tokio::runtime::Handle::try_current().is_ok() {
             let weak = Arc::downgrade(&cache);
@@ -1021,7 +1024,7 @@ impl LinkCache {
                         result = online.recv() => {
                             if result.is_err() { return; }
                             let Some(cache) = weak.upgrade() else { return };
-                            lock(&cache.dial_state).clear();
+                            lock(&cache.dial_state).retain(|_, state| !state.reset_on_online);
                         }
                         _ = token_changed(&mut token_changes) => {
                             let Some(cache) = weak.upgrade() else { return };
@@ -1112,6 +1115,7 @@ impl LinkCache {
         // with a direct route skips the room's retry sequence entirely.
         let room_known_down = self.room_recently_down();
         let skip_room = direct.is_some() && (dark || room_known_down);
+        let mut reset_on_online = skip_room && room_known_down;
         if !skip_room {
             for attempt in 0..DIAL_ATTEMPTS {
                 if attempt > 0 {
@@ -1128,6 +1132,7 @@ impl LinkCache {
                         return Ok(client);
                     }
                     Err(failure) => {
+                        reset_on_online = failure.room_down;
                         tracing::debug!(device = %device_id, attempt, error = %failure.error, room_down = failure.room_down, "peer: dial attempt failed");
                         if failure.room_down {
                             room_down = true;
@@ -1159,7 +1164,7 @@ impl LinkCache {
         }
         // Only the exhausted sequence counts as ONE failure on the cooldown
         // curve — the in-call retries must not escalate it by themselves.
-        self.note_failure(device_id);
+        self.note_failure(device_id, reset_on_online);
         let err = last_err.unwrap_or(RpcError::Closed);
         if dark && !room_down && !room_known_down {
             return Err(RpcError::Transport(format!(
@@ -1289,7 +1294,7 @@ impl LinkCache {
         ))
     }
 
-    fn note_failure(&self, device_id: &str) {
+    fn note_failure(&self, device_id: &str, reset_on_online: bool) {
         let mut state = lock(&self.dial_state);
         let entry = state.entry(device_id.to_string()).or_default();
         // Stale streaks restart the curve rather than escalating it.
@@ -1301,6 +1306,7 @@ impl LinkCache {
             entry.reset_spent = false;
         }
         entry.last_failure = Some(Instant::now());
+        entry.reset_on_online = reset_on_online;
         entry.failures += 1;
         let backoff = self
             .config
