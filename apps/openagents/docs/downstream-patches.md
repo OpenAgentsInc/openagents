@@ -1111,3 +1111,10 @@ links remain readable. Upstream fixes now require manual ports.
   Android sessions drawer and settings. Rust supplies the view and authorizes
   actions; Android copies only an explicit Rust copy result and disposes the
   mount on route, account, or lifecycle changes. Integrated checks are unrun.
+
+- #12100: Give saved web chats the shared Rust composer with account/chat-scoped
+  drafts, expected-chat send/retry/stop admission, and Rust Native retry controls.
+  Preserve uncertain-send request identity and later typing. Separate editor and
+  auxiliary-card acknowledgments without changing the legacy combined-view path.
+  Complete fallible cloud draft writes before starting sends. Retargeting,
+  admission, retry, and editor fixtures are authored but unrun.

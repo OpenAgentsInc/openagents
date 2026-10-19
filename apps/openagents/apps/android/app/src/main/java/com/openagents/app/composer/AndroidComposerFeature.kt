@@ -23,6 +23,8 @@ object AndroidComposerFeature {
         enabled = value.enabled,
         busy = value.busy,
         primaryLabel = value.primaryLabel,
+        sharedCardsJson = value.sharedCardsJson,
+        separateEditorView = true,
         stopAction = value.stopKey?.let { ComposerAction(it, "Stop", true) },
         attachmentActions = value.attachmentKey?.let { listOf(ComposerAction(it, "Attach", true)) }.orEmpty(),
     )

@@ -1357,7 +1357,8 @@ impl CoreAndroidHost {
         let history = s.history.clone().ok_or(CoreError::Closed)?;
         history.action(SavedHistoryAction::Open { id: id.clone() })?;
         history.follow(true);
-        self.replace(&mut s, Content::Saved { id, history }, None)?;
+        let composer = CoreAndroidComposer::saved(history.clone(), id.clone());
+        self.replace(&mut s, Content::Saved { id, history }, Some(composer))?;
         drop(s);
         self.events.0.on_android_host_changed();
         Ok(())
