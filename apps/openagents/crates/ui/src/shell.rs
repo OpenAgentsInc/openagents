@@ -70,6 +70,7 @@ pub use account_chats::capture_sidebar;
 pub(crate) use connect_phone::TITLE as CONNECT_PHONE_TITLE;
 mod actions_ui;
 mod chat_dropzone;
+mod check_ins;
 mod chat_homes;
 #[cfg(test)]
 mod chat_dropzone_tests;
@@ -1996,6 +1997,8 @@ pub struct Shell {
     _saved_history_observation: Option<Subscription>,
     state: Entity<AppState>,
     sidebar_pane: Entity<SidebarPane>,
+    /// Saved agents' check-ins with Pause / Resume (#12173).
+    sidebar_check_ins: Entity<check_ins::SidebarCheckIns>,
     transcript: Entity<Transcript>,
     composer: Entity<Composer>,
     /// The window's voice orchestrator: independent of the selected chat.
@@ -2582,6 +2585,10 @@ impl Shell {
             shell: shell.downgrade(),
             _observation: cx.observe(&shell, |_, _, cx| cx.notify()),
         });
+        let sidebar_check_ins = {
+            let state = state.clone();
+            cx.new(|cx| check_ins::SidebarCheckIns::new(state, cx))
+        };
         Self {
             home: None,
             _home_events: None,
@@ -2592,6 +2599,7 @@ impl Shell {
             _saved_history_observation: saved_history_observation,
             state,
             sidebar_pane,
+            sidebar_check_ins,
             transcript,
             composer,
             voice,
@@ -9521,6 +9529,7 @@ impl Shell {
             // window above this column.)
             .child(filter_row)
             .child(sidebar_lists)
+            .child(self.sidebar_check_ins.clone())
             // Global connection pill (durable-by-design UI truth): appears
             // whenever the edge posture is degraded; hidden while healthy —
             // appearing IS the signal.

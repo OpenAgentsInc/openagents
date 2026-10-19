@@ -36,6 +36,7 @@ pub(super) struct AgentWakesCard {
     selects: HashMap<String, widgets::SelectState>,
     task: Option<Task<()>>,
     _refresh: Task<()>,
+    _changed: gpui::Subscription,
 }
 
 /// The status Design Lab's offscreen tour shows instead of asking an engine.
@@ -44,6 +45,30 @@ static FIXTURE: std::sync::OnceLock<WakesStatus> = std::sync::OnceLock::new();
 /// Show `status` in every Check-ins card, for Design Lab captures.
 pub fn install_fixture(status: WakesStatus) {
     let _ = FIXTURE.set(status);
+}
+
+/// The Design Lab status, when one is installed.
+pub(crate) fn fixture() -> Option<&'static WakesStatus> {
+    FIXTURE.get()
+}
+
+/// Bumped whenever this window saves a check-ins change, so the sidebar
+/// list and this card re-read each other's changes (#12173).
+#[derive(Default)]
+struct WakesChanged;
+impl gpui::Global for WakesChanged {}
+
+/// Tell every open check-ins view that the settings changed.
+pub(crate) fn changed(cx: &mut gpui::App) {
+    cx.set_global(WakesChanged);
+}
+
+/// Run `f` whenever another view saves a check-ins change.
+pub(crate) fn observe_changes<V: 'static>(
+    cx: &mut Context<V>,
+    f: impl FnMut(&mut V, &mut Context<V>) + 'static,
+) -> gpui::Subscription {
+    cx.observe_global::<WakesChanged>(f)
 }
 
 /// A saved agent that isn't Foreman, with a grant, its log on, and two
@@ -103,6 +128,11 @@ pub fn fixture_status() -> WakesStatus {
 
 impl AgentWakesCard {
     pub fn new(state: Entity<AppState>, cx: &mut Context<Self>) -> Self {
+        let changed = observe_changes(cx, |card: &mut Self, cx| {
+            if !card.saving {
+                card.request(None, cx);
+            }
+        });
         if let Some(status) = FIXTURE.get() {
             return Self {
                 state,
@@ -112,6 +142,7 @@ impl AgentWakesCard {
                 selects: HashMap::new(),
                 task: None,
                 _refresh: Task::ready(()),
+                _changed: changed,
             };
         }
         let refresh = cx.spawn(async move |this, cx| {
@@ -137,6 +168,7 @@ impl AgentWakesCard {
             selects: HashMap::new(),
             task: None,
             _refresh: refresh,
+            _changed: changed,
         };
         card.request(None, cx);
         card
@@ -176,6 +208,9 @@ impl AgentWakesCard {
                     Ok(status) => {
                         card.error = None;
                         card.status = Loadable::Ready(status);
+                        if saving {
+                            changed(cx);
+                        }
                     }
                     Err(error) if saving => card.error = Some(error),
                     Err(error) => card.status = Loadable::Error(error),
