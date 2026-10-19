@@ -777,3 +777,23 @@ async fn a_saved_lab_card_lists_its_versions_and_shows_one() {
     c.sign_out().await;
     assert!(!r.lab_show_version(&path, 3).await);
 }
+
+#[tokio::test]
+async fn a_chat_list_older_than_the_chat_opens_its_newest_messages_without_a_reload() {
+    let (c, r, server, _root) = setup().await;
+    // The chat list saw 2 messages at revision 1; another device has since
+    // added messages.
+    let mut chat = target(&c, 1);
+    chat.summary.messages = 2;
+    server.count.store(6, Ordering::SeqCst);
+    server.revision.store(2, Ordering::SeqCst);
+    r.open_latest(chat).unwrap();
+    r.more().await;
+    let snapshot = r.snapshot();
+    assert!(!snapshot.reload_required);
+    assert_eq!(snapshot.state, LoadState::Ready);
+    assert_eq!(snapshot.messages.len(), 6);
+    assert_eq!(snapshot.first, 0);
+    assert_eq!(snapshot.received, 6);
+    assert_eq!(snapshot.summary.unwrap().revision, 2);
+}

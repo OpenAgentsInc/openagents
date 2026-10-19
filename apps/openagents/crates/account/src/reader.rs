@@ -340,6 +340,7 @@ impl Reader {
                     } else {
                         200.min(this.limits.messages)
                     },
+                    s.latest_first && s.snapshot.messages.is_empty(),
                 ))
             } else {
                 None
@@ -352,17 +353,35 @@ impl Reader {
                 mut reader,
                 cancel,
                 latest_first,
-                replace,
+                mut replace,
                 mut page_start,
                 page_size,
+                first_window,
             )) = request
             else {
                 return;
             };
             let result = async {
-                let mut page = reader
+                let first = reader
                     .next_page(target.lease.client(), target.lease.session(), &cancel)
-                    .await?;
+                    .await;
+                let mut page = match first {
+                    // The chat list's copy is older than the chat (another
+                    // device added messages): read the newest page afresh
+                    // instead of asking the person to reload.
+                    Err(Error::Changed) if first_window && !replace => {
+                        replace = true;
+                        reader = target
+                            .lease
+                            .client()
+                            .transcript(target.lease.session(), &target.chat)?
+                            .with_page_size(page_size)?;
+                        reader
+                            .next_page(target.lease.client(), target.lease.session(), &cancel)
+                            .await?
+                    }
+                    other => other?,
+                };
                 if latest_first
                     && replace
                     && let Some(probe) = &page
@@ -388,6 +407,9 @@ impl Reader {
                 return;
             }
             s.page_start = page_start;
+            if replace && result.is_ok() {
+                s.replace = true;
+            }
             match result {
                 Ok(Some(page)) => {
                     let bytes = page
