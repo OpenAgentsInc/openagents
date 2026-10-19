@@ -16,4 +16,11 @@ pkgs.mkShell {
     libxkbcommon wayland libglvnd vulkan-loader
     (pkgs.libxcb or pkgs.xorg.libxcb) (pkgs.libx11 or pkgs.xorg.libX11)
   ]) + ":/run/opengl-driver/lib";
+  # GPUI draws its own pointer from an xcursor theme. A NixOS host with no
+  # theme installed has no `left_ptr`, so the window had no cursor at all
+  # (#12175); this shell brings Adwaita and puts it first on the path.
+  shellHook = ''
+    export XCURSOR_THEME="''${XCURSOR_THEME:-Adwaita}"
+    export XCURSOR_PATH="${pkgs.adwaita-icon-theme}/share/icons''${XCURSOR_PATH:+:$XCURSOR_PATH}"
+  '';
 }

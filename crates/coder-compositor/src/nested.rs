@@ -13,7 +13,6 @@
 use std::cell::RefCell;
 use std::os::unix::fs::MetadataExt;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use smithay::backend::egl::{EGLDevice, EGLDisplay};
@@ -36,7 +35,7 @@ use crate::input;
 use crate::layout;
 use crate::render::{self, Element};
 use crate::screencopy;
-use crate::state::{ClientState, Coder, Graphics, Parts};
+use crate::state::{Coder, Graphics, Parts};
 use coder_desk::serve as desk;
 
 /// The name this compositor's screen answers to in the desk protocol.
@@ -177,10 +176,7 @@ pub fn run() -> Result<(), String> {
         }
         state.hands_pass();
         while let Ok(Some(stream)) = socket.accept() {
-            match handle
-                .clone()
-                .insert_client(stream, Arc::new(ClientState::default()))
-            {
+            match crate::clients::admit(&mut handle.clone(), stream) {
                 Ok(client) => clients.push(client),
                 Err(err) => log::warn!("a client was refused: {err}"),
             }

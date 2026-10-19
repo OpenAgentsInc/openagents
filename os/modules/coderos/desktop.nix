@@ -1007,9 +1007,10 @@ in
     # foot is what `coder-pane` runs. libnotify is the notice the close key
     # raises; the key carries its own copy through `runtimeInputs`, and the
     # session gets one so a person can raise a notification by hand while
-    # testing.
+    # testing. adwaita-icon-theme is the cursor theme: without one, clients
+    # that draw their own cursor (GPUI, GTK) find no `left_ptr` (#12175).
     environment.systemPackages =
-      [ cfg.panePackage pkgs.foot closeWindow pkgs.libnotify ]
+      [ cfg.panePackage pkgs.foot closeWindow pkgs.libnotify pkgs.adwaita-icon-theme ]
       ++ lib.optionals (runsCoderCompositor && cfg.compositorSessionPackage != null) [ cfg.compositorSessionPackage ]
       ++ lib.optionals (runsCoderCompositor && cfg.compositorBinary == null && cfg.compositorPackage != null) [ cfg.compositorPackage ];
 
@@ -1028,6 +1029,11 @@ in
     environment.sessionVariables = {
       CODER_PANE_CLIENT = cfg.command;
       CODER_PANE_TERMINAL = "${pkgs.foot}/bin/foot";
+      # The cursor theme the compositor and its clients load, from
+      # adwaita-icon-theme above; NixOS already puts its share/icons on
+      # XCURSOR_PATH.
+      XCURSOR_THEME = "Adwaita";
+      XCURSOR_SIZE = "24";
     } // lib.optionalAttrs (cfg.directory != null) {
       CODER_PANE_DIRECTORY = cfg.directory;
     };

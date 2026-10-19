@@ -52,12 +52,13 @@ use smithay::wayland::shell::xdg::{
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_drm_syncobj,
+    delegate_compositor, delegate_cursor_shape, delegate_data_device, delegate_dmabuf, delegate_drm_syncobj,
     delegate_fractional_scale, delegate_idle_notify, delegate_output, delegate_primary_selection,
     delegate_seat, delegate_shm, delegate_text_input_manager, delegate_viewporter,
     delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_shell,
 };
 use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::tablet_manager::TabletSeatHandler;
 use smithay::xwayland::XWaylandClientData;
 
 use crate::focus::Focus;
@@ -356,6 +357,10 @@ impl SeatHandler for Coder {
     }
 }
 
+// The cursor-shape protocol asks for this; no tablet tool has an image of
+// its own here, so the defaults ignore one.
+impl TabletSeatHandler for Coder {}
+
 impl XdgShellHandler for Coder {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
@@ -490,6 +495,7 @@ impl Coder {
 }
 
 delegate_compositor!(Coder);
+delegate_cursor_shape!(Coder);
 delegate_data_device!(Coder);
 delegate_dmabuf!(Coder);
 delegate_drm_syncobj!(Coder);

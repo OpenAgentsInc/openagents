@@ -30,6 +30,7 @@
 
 mod backend;
 mod binds;
+mod clients;
 mod closing;
 mod connectors;
 mod constraints;

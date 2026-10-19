@@ -25,6 +25,7 @@ use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER, Serial};
 use smithay::wayland::compositor::{CompositorClientState, CompositorState, with_states};
+use smithay::wayland::cursor_shape::CursorShapeManagerState;
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufState};
 use smithay::wayland::drm_syncobj::DrmSyncobjState;
 use smithay::wayland::fractional_scale::FractionalScaleManagerState;
@@ -237,8 +238,15 @@ impl smithay::reexports::wayland_server::backend::ClientData for ClientState {
     fn disconnected(
         &self,
         _id: smithay::reexports::wayland_server::backend::ClientId,
-        _reason: smithay::reexports::wayland_server::backend::DisconnectReason,
+        reason: smithay::reexports::wayland_server::backend::DisconnectReason,
     ) {
+        // A client that broke the protocol is told why, but its own log may
+        // say only "broken pipe"; keep the reason here too.
+        if let smithay::reexports::wayland_server::backend::DisconnectReason::ProtocolError(error) =
+            reason
+        {
+            log::warn!("a client was disconnected for a protocol error: {error}");
+        }
     }
 }
 
@@ -283,6 +291,10 @@ impl Coder {
         // the policy and reads the constraint off the surface.
         PointerConstraintsState::new::<Coder>(&display);
         RelativePointerManagerState::new::<Coder>(&display);
+        // Named cursors: a client asks for a shape and the compositor draws
+        // it, so a client with no xcursor theme of its own (GPUI on a host
+        // with none installed) keeps a pointer instead of losing it (#12175).
+        CursorShapeManagerState::new::<Coder>(&display);
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&display, seat);

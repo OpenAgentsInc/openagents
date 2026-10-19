@@ -83,7 +83,7 @@ use crate::input::on_input;
 use crate::layout;
 use crate::render::{self, Element};
 use crate::screencopy;
-use crate::state::{ClientState, Coder, Graphics, Parts};
+use crate::state::{Coder, Graphics, Parts};
 use coder_desk::serve as desk;
 
 /// The variable that names the graphics card the backend drives, as a path
@@ -304,10 +304,7 @@ pub fn run() -> Result<(), String> {
     let loop_handle = events.handle();
     loop_handle
         .insert_source(socket, |stream, _, state| {
-            if let Err(err) = state
-                .display
-                .insert_client(stream, Arc::new(ClientState::default()))
-            {
+            if let Err(err) = crate::clients::admit(&mut state.display, stream) {
                 log::warn!("a client was refused: {err}");
             }
         })

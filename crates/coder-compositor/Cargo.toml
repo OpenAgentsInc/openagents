@@ -67,6 +67,13 @@ smithay = { version = "0.7", default-features = false, features = [
     "xwayland",
 ] }
 
+# Smithay's own `wayland-server`, named here only to turn on the per-client
+# buffer limit (`Client::set_max_buffer_size`, in `src/clients.rs`). The
+# feature adds declarations and links nothing; the server stays Rust.
+wayland-server = { version = "0.31", default-features = false, features = [
+    "libwayland_1_23",
+] }
+
 # The host's own launchers and window rules, read from the grant at
 # /etc/coderos/compositor.json in `src/extras.rs`, and the Xwayland
 # answer's round trip through its wire form in the tests.
