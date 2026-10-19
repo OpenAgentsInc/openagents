@@ -1124,3 +1124,10 @@ links remain readable. Upstream fixes now require manual ports.
   Preserve bounded notes while a foreground mount is absent, fence queued
   delivery to the captured account client, and prevent retired Activity cleanup
   from removing a replacement callback. Lifecycle fixtures are authored, unrun.
+
+- #12100: Mount live question and approval forms as bounded Rust Native views
+  over the existing session input request. Rust owns option selection, free-text
+  bounds, current-request checks, answer submission, and duplicate prevention;
+  Android forwards view identities and field values through the generic composer
+  port. Keep editor and form acknowledgments separate. Synthetic stale-request,
+  approval, multiple-choice, and field-bound fixtures are authored but unrun.

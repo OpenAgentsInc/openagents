@@ -90,7 +90,8 @@ class RustComposerCorePort private constructor(
     }
 
     override fun changeField(instance: String, revision: Long, node: String, value: String) {
-        requireNotNull(session).changeNativeField(instance, unsigned(revision, "view revision"), node, value)
+        if (host != null) host.changeField(instance, unsigned(revision, "view revision"), node, value)
+        else requireNotNull(session).changeNativeField(instance, unsigned(revision, "view revision"), node, value)
     }
 
     override fun acknowledge(instance: String, revision: Long) {
