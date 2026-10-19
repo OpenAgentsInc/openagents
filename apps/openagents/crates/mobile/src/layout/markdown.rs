@@ -381,73 +381,60 @@ fn apply_text_reveal(ctx: &mut Ctx, previous: Option<&PText>, next: &mut PText, 
     let suffix = common_suffix_bytes(&old_text[prefix..], &new_text[prefix..]);
     let old_suffix = old_text.len() - suffix;
     let new_suffix = new_text.len() - suffix;
-    let mut timed_chars = Vec::new();
-    for (start, ch) in new_text.char_indices() {
-        let end = start + ch.len_utf8();
-        let old_start = if end <= prefix {
-            Some(start)
-        } else if start >= new_suffix {
-            Some(old_suffix + start - new_suffix)
-        } else {
-            None
-        };
-        let inherited = old_start.and_then(|at| text_age_at(previous, at));
-        timed_chars.push((start..end, inherited.unwrap_or(age_ms)));
-    }
+    let mut timed_ranges = Vec::with_capacity(previous.p.spans().len() + 2);
+    append_inherited_reveal_ranges(previous, 0..prefix, 0, age_ms, &mut timed_ranges);
+    append_reveal_range(&mut timed_ranges, prefix..new_suffix, Some(age_ms));
+    append_inherited_reveal_ranges(previous, old_suffix..old_text.len(), new_suffix, age_ms, &mut timed_ranges);
 
     let old_spans = next.p.spans().to_vec();
     let mut spans = Vec::with_capacity(old_spans.len() + 2);
     let mut paints = Vec::with_capacity(old_spans.len() + 2);
     let mut reveal_ms = Vec::with_capacity(old_spans.len() + 2);
     let mut first_span = Vec::with_capacity(old_spans.len());
+    let mut range_index = 0;
     for (span_index, span) in old_spans.iter().enumerate() {
         first_span.push(spans.len());
-        let chunks: Vec<_> = timed_chars
-            .iter()
-            .filter(|(range, _)| range.start >= span.range.start && range.end <= span.range.end)
-            .fold(Vec::<(std::ops::Range<usize>, u32)>::new(), |mut chunks, (range, age)| {
-                if let Some((last_range, last_age)) = chunks.last_mut()
-                    && *last_age == *age
-                    && last_range.end == range.start
-                {
-                    last_range.end = range.end;
-                } else {
-                    chunks.push((range.clone(), *age));
-                }
-                chunks
-            });
-        if chunks.is_empty() {
+        while range_index < timed_ranges.len() && timed_ranges[range_index].range.end <= span.range.start {
+            range_index += 1;
+        }
+        if span.range.is_empty() {
             let mut empty = span.clone();
             empty.pad_start = 0.0;
             empty.pad_end = 0.0;
             spans.push(empty);
-            paints.push(next.paints.get(span_index).copied().unwrap_or(SpanPaint {
-                color: ColorRole::Text,
-                decoration: Decoration::None,
-                link: None,
-                chip: false,
-            }));
+            paints.push(paint_at(&next.paints, span_index));
             reveal_ms.push(Some(age_ms));
             continue;
         }
-        for (chunk_index, (range, age)) in chunks.iter().enumerate() {
+        let first_chunk = spans.len();
+        let mut cursor = span.range.start;
+        while cursor < span.range.end {
+            while range_index < timed_ranges.len() && timed_ranges[range_index].range.end <= cursor {
+                range_index += 1;
+            }
+            let (end, inherited_age) = timed_ranges.get(range_index).map_or((span.range.end, None), |timed| {
+                if cursor < timed.range.start {
+                    (timed.range.start.min(span.range.end), None)
+                } else {
+                    (timed.range.end.min(span.range.end), Some(timed.age_ms))
+                }
+            });
+            let end = if end > cursor { end } else { span.range.end };
+            let age = inherited_age.unwrap_or(Some(age_ms));
             let mut split = span.clone();
-            split.range = range.clone();
-            if chunk_index > 0 {
+            split.range = cursor..end;
+            if cursor > span.range.start {
                 split.pad_start = 0.0;
             }
-            if chunk_index + 1 < chunks.len() {
+            if end < span.range.end {
                 split.pad_end = 0.0;
             }
             spans.push(split);
-            paints.push(next.paints.get(span_index).copied().unwrap_or(SpanPaint {
-                color: ColorRole::Text,
-                decoration: Decoration::None,
-                link: None,
-                chip: false,
-            }));
-            reveal_ms.push(Some(*age));
+            paints.push(paint_at(&next.paints, span_index));
+            reveal_ms.push(age);
+            cursor = end;
         }
+        debug_assert!(spans.len() > first_chunk);
     }
 
     let badges = next
@@ -462,13 +449,77 @@ fn apply_text_reveal(ctx: &mut Ctx, previous: Option<&PText>, next: &mut PText, 
     next.badges = badges;
 }
 
-fn text_age_at(text: &PText, byte: usize) -> Option<u32> {
-    text.p
-        .spans()
-        .iter()
-        .enumerate()
-        .find(|(_, span)| span.range.start <= byte && byte < span.range.end)
-        .and_then(|(index, _)| text.reveal_ms.get(index).copied().flatten())
+#[derive(Clone)]
+struct TimedRevealRange {
+    range: std::ops::Range<usize>,
+    age_ms: Option<u32>,
+}
+
+fn append_reveal_range(ranges: &mut Vec<TimedRevealRange>, range: std::ops::Range<usize>, age_ms: Option<u32>) {
+    if range.is_empty() {
+        return;
+    }
+    if let Some(last) = ranges.last_mut()
+        && last.range.end == range.start
+        && last.age_ms == age_ms
+    {
+        last.range.end = range.end;
+    } else {
+        ranges.push(TimedRevealRange { range, age_ms });
+    }
+}
+
+fn append_inherited_reveal_ranges(
+    previous: &PText,
+    old_range: std::ops::Range<usize>,
+    new_start: usize,
+    fallback_age_ms: u32,
+    ranges: &mut Vec<TimedRevealRange>,
+) {
+    if old_range.is_empty() {
+        return;
+    }
+    let mut cursor = old_range.start;
+    for (index, span) in previous.p.spans().iter().enumerate() {
+        if span.range.end <= cursor {
+            continue;
+        }
+        if span.range.start >= old_range.end {
+            break;
+        }
+        if cursor < span.range.start {
+            let gap_end = span.range.start.min(old_range.end);
+            append_reveal_range(ranges, new_start + cursor - old_range.start..new_start + gap_end - old_range.start, Some(fallback_age_ms));
+            cursor = gap_end;
+        }
+        let start = cursor.max(span.range.start);
+        let end = span.range.end.min(old_range.end);
+        if start < end {
+            if let Some(age) = previous.reveal_ms.get(index) {
+                // `Some(None)` means this range was already visible. A missing
+                // entry means no age was recorded for the range.
+                append_reveal_range(ranges, new_start + start - old_range.start..new_start + end - old_range.start, *age);
+            } else {
+                append_reveal_range(ranges, new_start + start - old_range.start..new_start + end - old_range.start, Some(fallback_age_ms));
+            }
+            cursor = end;
+        }
+        if cursor >= old_range.end {
+            break;
+        }
+    }
+    if cursor < old_range.end {
+        append_reveal_range(ranges, new_start + cursor - old_range.start..new_start + old_range.end - old_range.start, Some(fallback_age_ms));
+    }
+}
+
+fn paint_at(paints: &[SpanPaint], index: usize) -> SpanPaint {
+    paints.get(index).copied().unwrap_or(SpanPaint {
+        color: ColorRole::Text,
+        decoration: Decoration::None,
+        link: None,
+        chip: false,
+    })
 }
 
 fn common_prefix_bytes(left: &str, right: &str) -> usize {

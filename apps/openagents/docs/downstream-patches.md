@@ -1037,8 +1037,12 @@ links remain readable. Upstream fixes now require manual ports.
   the changed middle receives the new Rust age sample. The Android viewer is
   `AutoCloseable`; its owner can dismiss it and release the decoded bitmap on
   route or account retirement. Three transcript fixture constructors now
-  supply a null reveal age for synthetic rows. Rust/Kotlin fixtures and real UniFFI
-  regeneration remain unrun; no earlier test receipt applies to this follow-up.
+  supply a null reveal age for synthetic rows. The latest source follow-up
+  intersects ordered reveal intervals with style spans in linear passes, keeps
+  inherited `None` ages visible when streaming resumes, and counts the reveal
+  vector in prepared-text heap estimates. Settled-prefix and many-style-span
+  fixtures cover those cases. Rust/Kotlin fixtures and real UniFFI regeneration
+  remain unrun; no earlier test receipt applies to this follow-up.
 - #12100: Wire the selected live session's Rust-authorized voice target to F2's
   RTC bridge and F3's Rust Native capsule/screen. The process owns media/service
   resources across Activity recreation; Rust owns the call and rejects stale
