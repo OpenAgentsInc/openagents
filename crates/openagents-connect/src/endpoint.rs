@@ -109,19 +109,6 @@ impl ConnectEndpoint {
         let mut builder = Endpoint::builder(presets::Minimal)
             .secret_key(secret)
             .relay_mode(config.relay.mode())
-            // iroh otherwise keeps a silent direct path for 15s, preferring
-            // it over the working relay even when UDP sends fail (#12170).
-            // Only authenticated inbound traffic renews the path lease after
-            // the first send. Keep backup paths probed so healthy idle LAN
-            // connections survive; iroh gives relay paths their own, longer
-            // lease. noq still applies its 3-PTO floor for high-latency links.
-            // Abandonment retransmits pending stream bytes on the relay.
-            .transport_config(
-                QuicTransportConfig::builder()
-                    .default_path_max_idle_timeout(Duration::from_millis(500))
-                    .default_path_keep_alive_interval(Duration::from_millis(200))
-                    .build(),
-            )
             .alpns(config.alpns)
             .transport_config(transport_config())
             .address_lookup(lookup.clone());
@@ -174,11 +161,16 @@ impl ConnectEndpoint {
 /// 15 s, so a direct address the phone cannot reach (a Tailscale address from
 /// an emulator) kept stalling calls for 15-30 s before the relay path took
 /// over (#12170).
-const PATH_MAX_IDLE: Duration = Duration::from_secs(4);
+#[doc(hidden)]
+pub const PATH_MAX_IDLE: Duration = Duration::from_secs(4);
 /// Probe each path often enough that a dead one is noticed inside
 /// [`PATH_MAX_IDLE`].
-const PATH_KEEP_ALIVE: Duration = Duration::from_secs(2);
+#[doc(hidden)]
+pub const PATH_KEEP_ALIVE: Duration = Duration::from_secs(2);
 
+// iroh gives relay paths a separate, longer lease. noq retains its three-PTO
+// floor for high-latency links; pending stream bytes are retransmitted over the
+// relay when a silent direct path is abandoned, without replaying calls.
 fn transport_config() -> QuicTransportConfig {
     QuicTransportConfig::builder()
         .default_path_max_idle_timeout(PATH_MAX_IDLE)

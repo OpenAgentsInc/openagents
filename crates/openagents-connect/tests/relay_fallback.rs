@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 use iroh::endpoint::Connection;
 use iroh::{EndpointAddr, SecretKey};
 use iroh_relay::server::{RelayConfig, Server, ServerConfig};
-use openagents_connect::endpoint::{ConnectEndpoint, EndpointConfig, Relay};
+use openagents_connect::endpoint::{
+    ConnectEndpoint, EndpointConfig, PATH_KEEP_ALIVE, PATH_MAX_IDLE, Relay,
+};
 use tokio::net::UdpSocket;
 use tokio::task::JoinHandle;
 
@@ -137,14 +139,14 @@ async fn a_silent_direct_path_is_abandoned_and_calls_stay_on_the_relay() {
     .await
     .expect("direct path and relay backup never established");
     // The shorter lease must preserve healthy direct paths during idle time.
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(PATH_MAX_IDLE + PATH_KEEP_ALIVE).await;
     assert!(conn.paths().iter().any(|p| p.is_selected() && p.is_ip()));
     tokio::time::timeout(Duration::from_secs(1), round_trip(&conn))
         .await
         .expect("healthy idle direct path stopped answering");
     route.blocked.store(true, Ordering::SeqCst);
     let start = Instant::now();
-    tokio::time::timeout(Duration::from_secs(1), round_trip(&conn))
+    tokio::time::timeout(PATH_MAX_IDLE + Duration::from_secs(2), round_trip(&conn))
         .await
         .expect("call stalled on the unreachable direct path");
     assert!(
