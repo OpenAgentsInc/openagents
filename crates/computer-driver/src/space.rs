@@ -212,6 +212,10 @@ impl SpaceDriver {
         Ok(self)
     }
 
+    fn workspace_path(&self, path: &str) -> String {
+        format!("{}/{}", self.command_workspace.trim_end_matches('/'), path)
+    }
+
     pub fn from_env() -> std::result::Result<Self, String> {
         let required = |name| std::env::var(name).map_err(|_| format!("Set {name} to use SPACE."));
         Self::new(
@@ -1011,6 +1015,54 @@ impl Driver for SpaceDriver {
         self.stop_identified(computer, id).await
     }
 
+    /// Workspace files share the command workspace (#12146): a relative path
+    /// resolves under it, so files and commands see the same tree.
+    async fn read_workspace_file(
+        &self,
+        computer: &str,
+        path: &str,
+    ) -> std::result::Result<Vec<u8>, computer_files::FileError> {
+        computer_files::validate_path(path)?;
+        match self.get_file(computer, &self.workspace_path(path)).await {
+            Outcome::Done { value } if value.len() > computer_files::MAX_BYTES => {
+                Err(computer_files::FileError::TooLarge)
+            }
+            Outcome::Done { value } => Ok(value),
+            Outcome::Failed { .. } => Err(computer_files::FileError::Missing),
+            Outcome::Unknown { .. } => Err(computer_files::FileError::Unavailable),
+        }
+    }
+
+    async fn write_workspace_file(
+        &self,
+        computer: &str,
+        path: &str,
+        bytes: &[u8],
+        overwrite: bool,
+    ) -> std::result::Result<computer_files::FileInfo, computer_files::FileError> {
+        computer_files::validate_path(path)?;
+        if bytes.len() > computer_files::MAX_BYTES {
+            return Err(computer_files::FileError::TooLarge);
+        }
+        let full = self.workspace_path(path);
+        if !overwrite && matches!(self.get_file(computer, &full).await, Outcome::Done { .. }) {
+            return Err(computer_files::FileError::Exists);
+        }
+        match self.put_file(computer, &full, bytes).await {
+            Outcome::Done { .. } => {}
+            Outcome::Failed { .. } => return Err(computer_files::FileError::Unavailable),
+            Outcome::Unknown { .. } => return Err(computer_files::FileError::WriteUncertain),
+        }
+        // Confirm the stored bytes before reporting success.
+        match self.get_file(computer, &full).await {
+            Outcome::Done { value } if value == bytes => Ok(computer_files::FileInfo {
+                size: bytes.len(),
+                sha256: computer_files::digest(bytes),
+            }),
+            _ => Err(computer_files::FileError::WriteUncertain),
+        }
+    }
+
     async fn put_file(&self, computer: &str, path: &str, bytes: &[u8]) -> Outcome<()> {
         if bytes.len() > MAX_FILE || path.is_empty() {
             return Outcome::failed("SPACE accepts files up to 16 MiB and needs a path.");
@@ -1201,6 +1253,10 @@ mod tests {
         let driver = driver.with_command_sessions("/home/user").unwrap();
         assert!(driver.capabilities().command_sessions);
         assert_eq!(driver.command_workspace, "/home/user");
+        assert_eq!(
+            driver.workspace_path("dir/file.bin"),
+            "/home/user/dir/file.bin"
+        );
     }
 
     fn create_server(
