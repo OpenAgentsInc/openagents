@@ -591,6 +591,14 @@ impl SpaceDriver {
     }
 
     async fn command(&self, computer: &str, exec: &Exec) -> Result<ExecOutput> {
+        self.command_with(computer, exec, true).await
+    }
+
+    /// `tracked` runs the command under a guest marker (#12141): every process
+    /// it starts, including `setsid` children, inherits `OA_SPACE_EXEC`, and
+    /// the exit code is also written to a guest file. A stop kills by marker;
+    /// a stream that loses its exit frame reads the file instead.
+    async fn command_with(&self, computer: &str, exec: &Exec, tracked: bool) -> Result<ExecOutput> {
         self.running(computer).await?;
         let has_secrets = !exec.secret_env.is_empty();
         let shell = if has_secrets {
@@ -599,6 +607,12 @@ impl SpaceDriver {
             format!("eval \"$(cat)\"; exec sh -c {}", quote(&exec.command))
         } else {
             exec.command.clone()
+        };
+        let marker = uuid::Uuid::new_v4().simple().to_string();
+        let shell = if tracked {
+            tracked_shell(&marker, &shell)
+        } else {
+            shell
         };
         let mut body = json!({"command":["sh", "-c", shell], "stdin":has_secrets,
             "timeout":format!("{}s", exec.timeout_seconds.clamp(1,3600)), "env":{}});
@@ -633,10 +647,12 @@ impl SpaceDriver {
             ))
             .await
             .map_err(|_| Error::unknown("couldn't authenticate the command attachment"))?;
-        self.active
-            .lock()
-            .unwrap()
-            .insert(computer.to_owned(), id.to_owned());
+        if tracked {
+            self.active
+                .lock()
+                .unwrap()
+                .insert(computer.to_owned(), marker.clone());
+        }
         let lost = std::cell::Cell::new(false);
         // Kept outside the stream so a lost exit frame still returns the output read.
         let mut stdout = Vec::new();
@@ -719,8 +735,8 @@ impl SpaceDriver {
         .await;
         let result = match streamed {
             // The data plane can close a stream before its exit frame. The
-            // session's own record still says how the process ended.
-            Err(e) if lost.get() => match self.session_exit(id, false).await {
+            // guest's exit file still says how the process ended.
+            Err(e) if tracked && lost.get() => match self.marker_exit(computer, &marker).await {
                 Some(code) => Ok(ExecOutput {
                     code,
                     stdout: String::from_utf8_lossy(&stdout).into_owned(),
@@ -731,73 +747,78 @@ impl SpaceDriver {
             other => other,
         };
         let mut active = self.active.lock().unwrap();
-        if active.get(computer).is_some_and(|s| s == id) {
+        if tracked && active.get(computer).is_some_and(|s| *s == marker) {
             active.remove(computer);
         }
+        let _ = id;
         result
     }
 
-    /// The session's exit code once SPACE reports it ended. With `wait`
-    /// false this still polls briefly for the record to settle.
-    async fn session_exit(&self, id: &str, long: bool) -> Option<i64> {
-        if !valid_id(id, "proc_") {
-            return None;
-        }
-        let tries = if long { 40 } else { 10 };
-        for _ in 0..tries {
-            if let Ok(v) = self
-                .json(Method::GET, &format!("/v1/sessions/{id}"), None, None)
-                .await
+    /// Read a tracked command's exit code from its guest file, waiting up to
+    /// about ten seconds for the command to finish writing it.
+    async fn marker_exit(&self, computer: &str, marker: &str) -> Option<i64> {
+        let mut read = Exec::new(exit_file_script(marker));
+        read.timeout_seconds = 5;
+        for _ in 0..20 {
+            if let Ok(out) = Box::pin(self.command_with(computer, &read, false)).await
+                && out.code == 0
+                && let Ok(code) = out.stdout.trim().parse::<i64>()
             {
-                let v = v.get("session").unwrap_or(&v);
-                let ended = matches!(
-                    v["state"].as_str().or_else(|| v["status"].as_str()),
-                    Some("exited" | "completed" | "finished" | "killed" | "cancelled")
-                ) || v.get("exited_at").is_some_and(|x| !x.is_null());
-                if ended {
-                    if let Some(code) = v["exit_code"].as_i64() {
-                        return Some(code);
-                    }
-                    // Killed by a signal: no code, but the process is gone.
-                    if let Some(sig) = v["signal"].as_i64() {
-                        return Some(128 + sig);
-                    }
-                }
+                return Some(code);
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
         None
     }
 
-    /// Kill the computer's running command session (its whole process
-    /// group) and wait until SPACE reports it ended.
+    /// Kill every guest process carrying the running command's marker, then
+    /// confirm none remain.
     async fn cancel_session(&self, computer: &str) -> Outcome<()> {
-        let id = self.active.lock().unwrap().get(computer).cloned();
-        let Some(id) = id else {
-            return Outcome::unknown("No running command session is known for this computer.");
+        let marker = self.active.lock().unwrap().get(computer).cloned();
+        let Some(marker) = marker else {
+            return Outcome::unknown("No running command is known for this computer.");
         };
-        if !valid_id(&id, "proc_") {
-            return Outcome::unknown("invalid command session ID");
-        }
-        let kill = self
-            .response(
-                Method::POST,
-                &format!("/v1/sessions/{id}/kill"),
-                Some(json!({"signal":"KILL", "process_group":true})),
-                None,
-            )
-            .await;
-        // A refusal because the session already ended is fine; the status
-        // read below decides.
-        let _ = kill;
-        match self.session_exit(&id, true).await {
-            Some(_) => {
-                self.active.lock().unwrap().remove(computer);
+        let mut sweep = Exec::new(kill_marker_script(&marker));
+        sweep.timeout_seconds = 15;
+        match Box::pin(self.command_with(computer, &sweep, false)).await {
+            Ok(out) if out.code == 0 => {
+                let mut active = self.active.lock().unwrap();
+                if active.get(computer).is_some_and(|s| *s == marker) {
+                    active.remove(computer);
+                }
                 Outcome::done(())
             }
-            None => Outcome::unknown("The command stop could not be confirmed."),
+            _ => Outcome::unknown("The command stop could not be confirmed."),
         }
     }
+}
+
+const EXEC_DIR: &str = "/tmp/oa-space-exec";
+
+fn marker_ok(marker: &str) -> bool {
+    marker.len() == 32 && marker.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Run `shell` with an inherited marker and record its exit code in the guest.
+fn tracked_shell(marker: &str, shell: &str) -> String {
+    debug_assert!(marker_ok(marker));
+    format!(
+        "export OA_SPACE_EXEC={marker}; mkdir -p -m 700 {EXEC_DIR}; sh -c {}; c=$?; printf %s \"$c\" > {EXEC_DIR}/{marker}.exit; exit \"$c\"",
+        quote(shell)
+    )
+}
+
+fn exit_file_script(marker: &str) -> String {
+    debug_assert!(marker_ok(marker));
+    format!("cat {EXEC_DIR}/{marker}.exit")
+}
+
+/// Kill all processes whose environment carries the marker; exit 0 once none remain.
+fn kill_marker_script(marker: &str) -> String {
+    debug_assert!(marker_ok(marker));
+    format!(
+        "m=OA_SPACE_EXEC={marker}; for i in $(seq 1 100); do found=0; for d in /proc/[0-9]*; do p=${{d#/proc/}}; [ \"$p\" = \"$$\" ] && continue; if tr '\\0' '\\n' < \"$d/environ\" 2>/dev/null | grep -qx \"$m\"; then kill -KILL \"$p\" 2>/dev/null; found=1; fi; done; [ \"$found\" = 0 ] && exit 0; sleep 0.1; done; exit 1"
+    )
 }
 
 fn quote(s: &str) -> String {
@@ -1116,6 +1137,37 @@ mod recovery_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tracked_commands_carry_a_marker_and_their_scripts_parse() {
+        let marker = "0123456789abcdef0123456789abcdef";
+        let wrapped = tracked_shell(marker, "echo 'hi'; exit 3");
+        assert!(wrapped.starts_with("export OA_SPACE_EXEC=0123456789abcdef0123456789abcdef;"));
+        for script in [
+            wrapped.clone(),
+            exit_file_script(marker),
+            kill_marker_script(marker),
+        ] {
+            let status = std::process::Command::new("sh")
+                .args(["-n", "-c", &script])
+                .status()
+                .unwrap();
+            assert!(status.success(), "{script}");
+        }
+        // The wrapper keeps the command's exit code and writes it to the exit file.
+        let dir = std::env::temp_dir().join(format!("oa-space-exec-test-{}", std::process::id()));
+        let local = wrapped.replace(EXEC_DIR, dir.to_str().unwrap());
+        let status = std::process::Command::new("sh")
+            .args(["-c", &local])
+            .status()
+            .unwrap();
+        assert_eq!(status.code(), Some(3));
+        assert_eq!(
+            std::fs::read_to_string(dir.join(format!("{marker}.exit"))).unwrap(),
+            "3"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn files_are_advertised_and_command_sessions_need_an_explicit_workspace() {

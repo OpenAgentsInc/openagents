@@ -8,7 +8,7 @@ if systemctl is-active --quiet oa-space-k3s; then
   echo 'Drain and stop the node agent before installing its runtime handler.' >&2
   exit 1
 fi
-printf '%s  %s\n' e41783d6e36cd49679b109764b6edc62cc1ea84fc34182841e4f6cda1776fb5d "$space_shim" | sha256sum --check
+printf '%s  %s\n' c35eb61afc6999c88bd3edafc872f37a2383a966989d6bd0f79b5d8cb8210241 "$space_shim" | sha256sum --check
 space_shim_config=/space/k3s/agent/etc/containerd/config-v3.toml.tmpl
 install -d -m 0700 /space/config
 cat >/space/config/space-containerd-config.new <<'EOF'
@@ -22,7 +22,7 @@ if [[ -e $space_shim_config ]] && ! cmp -s /space/config/space-containerd-config
   exit 1
 fi
 if [[ -e /usr/local/lib/space/containerd-shim-space-v2 ]]; then
-  printf '%s  %s\n' e41783d6e36cd49679b109764b6edc62cc1ea84fc34182841e4f6cda1776fb5d /usr/local/lib/space/containerd-shim-space-v2 | sha256sum --check
+  printf '%s  %s\n' c35eb61afc6999c88bd3edafc872f37a2383a966989d6bd0f79b5d8cb8210241 /usr/local/lib/space/containerd-shim-space-v2 | sha256sum --check
 fi
 space_shim_installer=/space/config/install-shim-de87b436.sh
 curl --fail --silent --show-error --location --retry 3 \

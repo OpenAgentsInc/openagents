@@ -10,6 +10,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+pub mod archil_backend;
 pub mod boat_backend;
 pub mod budget;
 pub mod claude;

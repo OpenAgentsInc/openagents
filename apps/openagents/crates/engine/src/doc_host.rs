@@ -20,9 +20,9 @@ mod agent_lab;
 mod agent_wakes;
 mod continuations;
 mod custom_agents;
-mod voice_agent;
 mod owner_notifications;
 mod run_commands;
+mod voice_agent;
 pub use run_commands::RunCommandAuthority;
 mod session_index;
 mod transfer;
@@ -224,13 +224,18 @@ struct EdgeRoomUrl {
 }
 
 impl openagents_sync::UrlProvider for EdgeRoomUrl {
-    fn url(&self) -> futures::future::BoxFuture<'static, Result<String, openagents_sync::SyncError>> {
+    fn url(
+        &self,
+    ) -> futures::future::BoxFuture<'static, Result<String, openagents_sync::SyncError>> {
         let token = self.token.clone();
         let base = self.base.clone();
         let device = self.device_id.clone();
         let host = self.host_device.clone();
         Box::pin(async move {
-            let token = token.token().await.map_err(openagents_sync::SyncError::from)?;
+            let token = token
+                .token()
+                .await
+                .map_err(openagents_sync::SyncError::from)?;
             let mut url = format!("{base}?token={token}");
             if !device.is_empty() {
                 url.push_str(&format!("&device={device}"));
@@ -639,6 +644,10 @@ pub struct ChatDocHandle {
     /// A threshold checkpoint POST is in flight (review H1: the quiesce
     /// tick must not stack concurrent full-snapshot uploads).
     checkpointing: Arc<AtomicBool>,
+    /// After a failed checkpoint: no new one before this time (ms), and how
+    /// long the last wait was. A 33 MB snapshot refused on every quiesce
+    /// tick took the uplink from the chat's own traffic (#12137).
+    checkpoint_retry: Arc<(AtomicI64, AtomicI64)>,
     /// Set when a chat2 seed replaced this handle's lineage on disk: every
     /// further snapshot save from this handle is a stale FAT doc that would
     /// clobber the thin one — retired handles never persist again (unless no
@@ -1121,7 +1130,10 @@ impl DocHost {
     /// see — so watch session status instead and re-drain every warm chat.
     /// `drain_queue` is a cheap no-op for empty queues and busy agents, which
     /// is why this can afford to be indiscriminate.
-    fn spawn_queue_flush_watcher(&self, mut statuses: watch::Receiver<Vec<openagents_proto::Session>>) {
+    fn spawn_queue_flush_watcher(
+        &self,
+        mut statuses: watch::Receiver<Vec<openagents_proto::Session>>,
+    ) {
         let host = self.clone();
         self.spawn_worker(async move {
             while statuses.changed().await.is_ok() {
@@ -1660,6 +1672,7 @@ impl DocHost {
             room_gen,
             retired: AtomicBool::new(false),
             checkpointing: Arc::new(AtomicBool::new(false)),
+            checkpoint_retry: Arc::new((AtomicI64::new(0), AtomicI64::new(0))),
             chat2: Mutex::new(None),
             sync_started: AtomicBool::new(false),
             sync_requested: AtomicBool::new(false),
@@ -2880,9 +2893,11 @@ impl DocHost {
     /// chat2 host duties on the doc-quiesce tick (docs/chat2-sync.md C3):
     /// - threshold checkpoint: when the room's row log passes 512KB or 200
     ///   rows, post a full checkpoint so cold readers load one compact blob
-    ///   instead of replaying the log (the alert-shaped growth bound);
-    /// - tail sidecar: publish the last-64 transcript JSON for thin/instant
-    ///   readers (the iOS fallback path).
+    ///   instead of replaying the log (the alert-shaped growth bound).
+    ///
+    /// The tail sidecar (`PUT /chat2/{id}/tail`) is gone: coder-sync never
+    /// served it, and a whale's multi-MB tail upload reset sync connections
+    /// until Cloud Run ran out of routable instances (#12128).
     async fn chat2_maintenance(&self, handle: &Arc<ChatDocHandle>) {
         if handle.retired.load(Ordering::Relaxed) {
             return;
@@ -2891,48 +2906,8 @@ impl DocHost {
             Some(client) => client.stats(),
             None => return,
         };
-        let Some(edge) = self.inner.config.edge.clone() else {
+        if self.inner.config.edge.is_none() {
             return;
-        };
-        let chat_id = handle.chat_id.clone();
-        // A whale's last 64 joined messages can still contain its entire
-        // history. Materialization/encoding must not occupy a network worker.
-        let doc = handle.doc.clone();
-        let body = tokio::task::spawn_blocking(move || {
-            let tail =
-                openagents_doc::materialize_tail(&doc, now_ms(), openagents_doc::TAIL_MESSAGE_COUNT).ok()?;
-            serde_json::to_vec(&tail).ok()
-        })
-        .await
-        .ok()
-        .flatten();
-        if let Some(body) = body {
-            let http = self.inner.http.clone();
-            let edge_tail = edge.clone();
-            let chat = chat_id.clone();
-            self.spawn_worker(async move {
-                let Ok(bearer) = edge_tail.bearer().await else {
-                    return;
-                };
-                let url = format!(
-                    "{}/chat2/{}/tail",
-                    edge_tail.url.trim_end_matches('/'),
-                    chat
-                );
-                let Ok(_permit) = openagents_sync::budget::shared()
-                    .http(openagents_sync::budget::Priority::Background)
-                    .await
-                else {
-                    return;
-                };
-                let _ = http
-                    .put(&url)
-                    .bearer_auth(&bearer)
-                    .header("content-type", "application/json")
-                    .body(body)
-                    .send()
-                    .await;
-            });
         }
         // Threshold checkpoint (rowBytes > 512KB || rows > 200), one in
         // flight at a time (review H1).
@@ -2960,6 +2935,9 @@ impl DocHost {
             None => return,
         };
         let chat_id = handle.chat_id.clone();
+        if now_ms() < handle.checkpoint_retry.0.load(Ordering::Acquire) {
+            return;
+        }
         if handle
             .checkpointing
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -2968,6 +2946,14 @@ impl DocHost {
             return;
         }
         let in_flight = handle.checkpointing.clone();
+        let retry = handle.checkpoint_retry.clone();
+        // 1 min doubling to 1 h; a success clears it.
+        let back_off = move || {
+            let wait = (retry.1.load(Ordering::Acquire) * 2).clamp(60_000, 3_600_000);
+            retry.1.store(wait, Ordering::Release);
+            retry.0.store(now_ms() + wait, Ordering::Release);
+        };
+        let retry = handle.checkpoint_retry.clone();
         let publication_store = self.inner.store.clone();
         let snapshot_doc = handle.doc.clone();
         let seq_covered = stats.cursor;
@@ -3006,19 +2992,11 @@ impl DocHost {
                 return;
             };
             let size = snapshot.len() as u64;
-            match http
-                .post(&url)
-                .timeout(std::time::Duration::from_secs(300))
-                .bearer_auth(&bearer)
-                .header(
-                    "x-chat2-frontier",
-                    base64::engine::general_purpose::STANDARD.encode(&frontier),
-                )
-                .body(snapshot)
-                .send()
-                .await
-            {
+            let frontier = base64::engine::general_purpose::STANDARD.encode(&frontier);
+            match post_chat2_checkpoint(&http, &url, &bearer, &frontier, snapshot).await {
                 Ok(res) if res.status().is_success() => {
+                    retry.0.store(0, Ordering::Release);
+                    retry.1.store(0, Ordering::Release);
                     tracing::info!(chat = %chat_id, seq_covered, reason, "chat2 checkpoint posted");
                     for batch_id in &covered_rejections {
                         if let Err(err) = publication_store.acknowledge_chat_update(&chat_id,batch_id) {
@@ -3033,10 +3011,12 @@ impl DocHost {
                     }
                 }
                 Ok(res) => {
+                    back_off();
                     tracing::warn!(chat = %chat_id, status = res.status().as_u16(),
                         "chat2 checkpoint rejected");
                 }
                 Err(err) => {
+                    back_off();
                     let err = describe_http_error(err);
                     tracing::warn!(chat = %chat_id, error = %err, "chat2 checkpoint POST failed");
                 }
@@ -3325,8 +3305,11 @@ impl DocHost {
             .as_ref()
             .and_then(|w| w.sync_status())
             .is_some_and(|s| s.connected);
-        let path_offline =
-            grace.degraded(GraceKey::OsPath, openagents_sync::wake::path_is_offline(), now);
+        let path_offline = grace.degraded(
+            GraceKey::OsPath,
+            openagents_sync::wake::path_is_offline(),
+            now,
+        );
         let registry_down = grace.degraded(GraceKey::Registry, !registry_connected, now);
         let (state, retry_at_ms, last_failure) = if path_offline {
             (
@@ -3383,7 +3366,9 @@ impl DocHost {
         }
         match snapshot.stats {
             Some(stats) if snapshot.delivery_live && stats.pending_pushes == 0 => S::Synced,
-            Some(_) if !snapshot.delivery_live && openagents_sync::wake::path_is_offline() => S::Offline,
+            Some(_) if !snapshot.delivery_live && openagents_sync::wake::path_is_offline() => {
+                S::Offline
+            }
             _ => S::Connecting,
         }
     }
@@ -4583,7 +4568,11 @@ impl DocHost {
             .into_iter()
             .flatten()
             .find(|d| d.id == target)
-            .and_then(|d| d.version.as_deref().and_then(openagents_proto::version_triple))
+            .and_then(|d| {
+                d.version
+                    .as_deref()
+                    .and_then(openagents_proto::version_triple)
+            })
             .is_some_and(|v| v >= RELAY_MIN_VERSION);
         if !supported {
             return Err("host does not support relay delivery (version gate)".into());
@@ -5466,7 +5455,8 @@ impl DocHost {
                     if openagents_proto::projectless::is_home_cwd(&request.cwd)
                         && let Ok(Some(chat)) = ws.chat(chat_id)
                         && let Some(cwd) = chat.cwd.filter(|cwd| {
-                            chat.space_id.is_none() && openagents_proto::projectless::is_scratch_cwd(cwd)
+                            chat.space_id.is_none()
+                                && openagents_proto::projectless::is_scratch_cwd(cwd)
                         })
                     {
                         request.cwd = cwd;
@@ -6274,8 +6264,9 @@ mod source_context_tests {
         git(&repo, &["add", "README.md"]);
         git(&repo, &["commit", "-m", "capture"]);
 
-        let store =
-            Arc::new(openagents_sync::DocsStore::open(dir.path().join("docs")).expect("store opens"));
+        let store = Arc::new(
+            openagents_sync::DocsStore::open(dir.path().join("docs")).expect("store opens"),
+        );
         let host = DocHost::new(
             store,
             DocHostConfig {
@@ -6349,9 +6340,9 @@ mod degrade_grace_tests {
     #[tokio::test]
     async fn dormant_chat_clears_old_degradation_before_reconnection() {
         use super::{DocHost, DocHostConfig, EdgeConfig, lock};
+        use openagents_proto::{ChatSyncState, HarnessId};
         use std::sync::Arc;
         use std::sync::atomic::Ordering;
-        use openagents_proto::{ChatSyncState, HarnessId};
 
         let dir = tempfile::tempdir().unwrap();
         let host = DocHost::new(
@@ -6837,3 +6828,45 @@ mod sync_lifecycle_tests;
 
 #[path = "doc_host_delivery.rs"]
 mod remote_delivery;
+
+/// Largest checkpoint posted in one request; Cloud Run refuses HTTP/1
+/// requests over 32 MiB at its frontend with 413 (#12137).
+const CHAT2_CHECKPOINT_WHOLE_MAX: usize = 24 * 1024 * 1024;
+/// Size of each part of a larger checkpoint.
+const CHAT2_CHECKPOINT_PART: usize = 16 * 1024 * 1024;
+
+/// Post a chat2 checkpoint, whole or in parts to `/checkpoint/part`; the
+/// answer is the whole post's, the last part's, or the first refusal.
+async fn post_chat2_checkpoint(
+    http: &reqwest::Client,
+    url: &str,
+    bearer: &str,
+    frontier: &str,
+    snapshot: Vec<u8>,
+) -> reqwest::Result<reqwest::Response> {
+    let send = |url: String, body: Vec<u8>| {
+        http.post(url)
+            .timeout(std::time::Duration::from_secs(300))
+            .bearer_auth(bearer)
+            .header("x-chat2-frontier", frontier)
+            .body(body)
+            .send()
+    };
+    if snapshot.len() <= CHAT2_CHECKPOINT_WHOLE_MAX {
+        return send(url.to_owned(), snapshot).await;
+    }
+    let (path, query) = url.split_once('?').unwrap_or((url, ""));
+    let upload = uuid::Uuid::new_v4();
+    let chunks: Vec<&[u8]> = snapshot.chunks(CHAT2_CHECKPOINT_PART).collect();
+    let parts = chunks.len();
+    for (part, chunk) in chunks.iter().enumerate().take(parts - 1) {
+        let url = format!("{path}/part?{query}&upload={upload}&part={part}&parts={parts}");
+        let response = send(url, chunk.to_vec()).await?;
+        if !response.status().is_success() {
+            return Ok(response);
+        }
+    }
+    let last = parts - 1;
+    let url = format!("{path}/part?{query}&upload={upload}&part={last}&parts={parts}");
+    send(url, chunks[last].to_vec()).await
+}

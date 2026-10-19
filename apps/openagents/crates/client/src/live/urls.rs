@@ -141,7 +141,10 @@ mod tests {
 
     #[test]
     fn endpoint_shapes() {
-        assert_eq!(ws_base("https://sync.openagents.com/"), "wss://sync.openagents.com");
+        assert_eq!(
+            ws_base("https://sync.openagents.com/"),
+            "wss://sync.openagents.com"
+        );
         assert_eq!(ws_base("http://127.0.0.1:8787"), "ws://127.0.0.1:8787");
         assert_eq!(
             registry_ws("https://e.sh", "org_1", "a.b", "ios-1"),

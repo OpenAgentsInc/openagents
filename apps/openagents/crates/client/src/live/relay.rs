@@ -6,10 +6,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use serde_json::{Value, json};
-use tokio_util::sync::CancellationToken;
 use openagents_proto::CheckoutChangeRequestStatus;
 use openagents_rpc::{LinkCache, LinkCacheConfig, PeerLiveness, RpcError, methods};
+use serde_json::{Value, json};
+use tokio_util::sync::CancellationToken;
 
 use super::{Bearer, b64};
 use crate::client::ClientInner;

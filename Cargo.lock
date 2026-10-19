@@ -3553,6 +3553,7 @@ dependencies = [
 name = "coder-cloud"
 version = "1.0.0"
 dependencies = [
+ "archil",
  "atif",
  "base64 0.22.1",
  "boat",

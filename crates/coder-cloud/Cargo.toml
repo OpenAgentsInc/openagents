@@ -20,6 +20,8 @@ secret-screen = { path = "../secret-screen" }
 coder-engine-status = { path = "../coder-engine-status" }
 microcoder-loop = { path = "../microcoder-loop" }
 boat = { path = "../boat" }
+# `chat work --on archil`: one Archil sandbox per issue (#12136).
+archil = { path = "../archil" }
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
