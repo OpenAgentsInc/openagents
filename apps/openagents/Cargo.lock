@@ -11013,7 +11013,6 @@ dependencies = [
  "nostr",
  "oa-copy",
  "openagents-brand",
- "openagents-dashboard",
  "openagents-doc",
  "openagents-proto",
  "openagents-sdk",
@@ -11129,7 +11128,6 @@ dependencies = [
 name = "openagents-dashboard"
 version = "1.0.0"
 dependencies = [
- "rust-native",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -11623,7 +11621,6 @@ dependencies = [
  "openagents-account",
  "openagents-background",
  "openagents-brand",
- "openagents-dashboard",
  "openagents-doc",
  "openagents-engine",
  "openagents-gpui-test",

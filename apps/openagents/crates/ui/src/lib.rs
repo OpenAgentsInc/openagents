@@ -38,7 +38,6 @@ pub mod frost;
 mod glass;
 mod haptics;
 pub mod history;
-pub mod home;
 mod host_upgrade;
 pub mod icons;
 pub(crate) mod image_media;

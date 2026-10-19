@@ -90,7 +90,7 @@ impl Shell {
     pub(super) fn navigation_focus_fallback(&self, cx: &App) -> (FocusHandle, FocusHandle) {
         let right_open = match self.route {
             Route::Chat => self.right_pane_open(cx),
-            Route::Home | Route::Settings(_) | Route::SavedHistory => false,
+            Route::Settings(_) | Route::SavedHistory => false,
         };
         if matches!(self.route, Route::SavedHistory) {
             (self.navigation_focus.main.clone(), self.unfocused.clone())

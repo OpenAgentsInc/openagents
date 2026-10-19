@@ -39,7 +39,6 @@ pub enum Account {
 pub enum Start {
     /// A boot gate instead of the workspace.
     Gate(Gate),
-    Home,
     /// The chat route with this fixture chat selected, or the new-chat canvas.
     Chat(Option<&'static str>),
     Settings(SettingsSection),
@@ -106,16 +105,16 @@ impl Shot {
 
 /// Every screen the tour captures, in order. Add a screen here.
 pub fn shots() -> Vec<Shot> {
-    use Start::{Chat, Gate as G, Home};
+    use Start::{Chat, Gate as G};
     let mut shots = vec![
         // Before the workspace: the boot gates.
         Shot::new("welcome", "sign-in", G(Gate::SignIn)).signed_out(),
         Shot::new("welcome", "organization", G(Gate::Organization)),
         Shot::new("welcome", "engine-failed", G(Gate::Failed)),
-        // Home, signed in (the identity row) and signed out.
-        Shot::new("home", "home", Home),
-        Shot::new("home", "signed-out", Home).signed_out(),
-        Shot::new("home", "account-menu", Home).then(open_account_menu),
+        // The new-chat canvas, signed in (the identity row) and signed out.
+        Shot::new("home", "home", Chat(None)),
+        Shot::new("home", "signed-out", Chat(None)).signed_out(),
+        Shot::new("home", "account-menu", Chat(None)).then(open_account_menu),
         // The sidebar: projects, pinned, sessions.
         Shot::new("sidebar", "by-project", Chat(Some(COMPOSER))),
         Shot::new("sidebar", "one-list", Chat(Some(COMPOSER))).one_list(),
@@ -346,7 +345,6 @@ impl Tour<'_> {
         update_shell(&mut cx, window, move |shell, _, cx| {
             match start {
                 Start::Gate(_) => {}
-                Start::Home => shell.set_route(Route::Home, cx),
                 Start::Chat(chat) => {
                     shell.set_route(Route::Chat, cx);
                     select(shell, chat, cx);
