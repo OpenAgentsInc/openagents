@@ -1,4 +1,6 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
+mod fixtures;
+pub use fixtures::{AndroidDemoChat, AndroidDemoChoice, CoreAndroidDemo};
 mod images;
 mod links;
 mod notifications;
@@ -234,6 +236,10 @@ impl State {
         let Content::Live { client, id, .. } = &self.content else {
             return None;
         };
+        // Offline fixtures never offer microphone, RTC, or execution-host calls.
+        if client.is_demo() {
+            return None;
+        }
         let row = client.session_row(id.clone())?;
         client
             .devices()
