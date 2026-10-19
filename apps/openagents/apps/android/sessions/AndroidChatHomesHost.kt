@@ -145,9 +145,9 @@ class AndroidChatHomesHost(
             try {
                 val action = requests.withLock {
                     withContext(Dispatchers.IO) {
-                        owner.activate(instance, revision.toULong(), key)
-                    }.also { result ->
-                        if (result is ChatHomeAction.Draft) unownedDraft = result.draft
+                        owner.activate(instance, revision.toULong(), key).also { result ->
+                            if (result is ChatHomeAction.Draft) unownedDraft = result.draft
+                        }
                     }
                 }
                 withContext(Dispatchers.Main.immediate) {
