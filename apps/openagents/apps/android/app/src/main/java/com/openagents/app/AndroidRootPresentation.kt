@@ -801,7 +801,13 @@ internal class AndroidRootPresentation(
 
     fun offerAppLink(raw: String) {
         if (closed) return
-        guarded { owner.offerAppLink(raw); panes.showSession() }
+        // The review shows over the chat: leave Your ID, Settings, or any
+        // other page first so a scanned code is never hidden behind it.
+        guarded {
+            if (snapshot?.route != AndroidHostRoute.CHAT) owner.navigate(AndroidHostRoute.CHAT)
+            owner.offerAppLink(raw)
+            panes.showSession()
+        }
     }
 
     fun handleBack(): Boolean {

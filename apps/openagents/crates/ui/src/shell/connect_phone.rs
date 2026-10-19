@@ -427,6 +427,7 @@ impl Shell {
             }
             _ => frame.bg(theme.glass_hover()).child(
                 div()
+                    .w_full()
                     .px(px(24.0))
                     .text_center()
                     .text_color(theme.text_muted)

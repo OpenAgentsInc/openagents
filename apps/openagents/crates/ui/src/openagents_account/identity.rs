@@ -721,6 +721,9 @@ impl AppAccount {
             .child(
                 div()
                     .flex_1()
+                    // Let the hint wrap inside the row instead of running
+                    // past its border (seen on Linux's wider fallback font).
+                    .min_w_0()
                     .flex()
                     .flex_col()
                     .gap(px(2.))
