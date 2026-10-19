@@ -49,6 +49,7 @@ internal class AndroidRootPresentation(
     private var imeBottom = 0
     private var chat: AndroidChatPresentation? = null
     private var canvas: TranscriptCanvas? = null
+    private var transcriptSurfaces: AndroidTranscriptSurfaces? = null
     private var layout: TranscriptView? = null
     private var relay: TranscriptFrameRelay? = null
     private var notificationOpen: Job? = null
@@ -214,7 +215,7 @@ internal class AndroidRootPresentation(
             // Saved-history updates also feed the existing Rust layout, without native message rows.
             owner.refreshTranscript(requireNotNull(layout), next.generation, next.contentRevision)
         }
-        if (next.route != AndroidHostRoute.CHAT) closeMedia()
+        if (next.route != AndroidHostRoute.CHAT) { closeMedia(); transcriptSurfaces?.retire() }
         if (next.route != AndroidHostRoute.SHARING) { sharing?.close(); sharing = null }
         if (next.route != AndroidHostRoute.VOICE_SETTINGS) { voiceSettings?.close(); voiceSettings = null }
         if (next.route != AndroidHostRoute.WALLET) { wallet?.close(); wallet = null }
@@ -385,6 +386,7 @@ internal class AndroidRootPresentation(
             transcript.onViewportChanged = { width, scale -> bound.setViewport(width, scale) }
             var reportedMount = false
             transcript.onPaintStats = { stats ->
+                if (!closed && foreground && snapshot?.route == AndroidHostRoute.CHAT) transcriptSurfaces?.refresh()
                 if (!closed && !reportedMount && stats.visibleRows > 0) {
                     reportedMount = true
                     scope.launch {
@@ -394,7 +396,12 @@ internal class AndroidRootPresentation(
                     }
                 }
             }
-            val selectionView = mountSelection(transcript, bound, next)
+            val surfaces = AndroidTranscriptSurfaces(activity, transcript, bound, owner,
+                next.generation, next.contentRevision, next.history, scope) { url ->
+                if (!closed && foreground) activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }
+            transcriptSurfaces = surfaces
+            val selectionView = mountSelection(transcript, bound, next, surfaces.view)
             owner.attachTranscript(bound, next.generation, next.contentRevision)
             val presentation = next.composer?.let { AndroidComposerFeature.createHost(activity, it) }
             if (presentation != null) {
@@ -409,6 +416,7 @@ internal class AndroidRootPresentation(
             next.anchor?.let { transcript.restoreViewportAnchor(TranscriptViewportAnchor(it.row, it.inside, it.following)) }
             transcript.submitFrame(RustTranscriptFrame(bound.frame()))
         } catch (error: Exception) {
+            transcriptSurfaces?.close(); transcriptSurfaces = null
             selectionCallbacks = false
             selection?.close(); selection = null
             transcriptNavigation?.close(); transcriptNavigation = null
@@ -417,12 +425,12 @@ internal class AndroidRootPresentation(
         }
     }
 
-    private fun mountSelection(transcript: TranscriptCanvas, engine: TranscriptView, next: AndroidHostSnapshot): TranscriptSelectionHost {
+    private fun mountSelection(transcript: TranscriptCanvas, engine: TranscriptView, next: AndroidHostSnapshot, content: View): TranscriptSelectionHost {
         val conversation = "${next.generation}/${next.contentRevision}"
         var restored = next.selection == null
         var replacingFrame = false
         selectionCallbacks = true
-        val host = TranscriptSelectionHost(activity, transcript, transcript::interactionSnapshot,
+        val host = TranscriptSelectionHost(activity, content, transcript::interactionSnapshot,
             AndroidTranscriptSelectionGeometry(application.transcriptFonts),
             object : TranscriptSelectionCallbacks {
                 override fun onSelection(token: TranscriptSelectionToken, range: TranscriptTextSelection?) {
@@ -446,6 +454,7 @@ internal class AndroidRootPresentation(
                             is TranscriptHitTarget.Widget -> when (val effect = owner.transcriptWidget(engine,
                                 next.generation, next.contentRevision, current.frame.revision, target.rowKey, target.widgetId)) {
                                 AndroidTranscriptEffect.Handled -> Unit
+                                is AndroidTranscriptEffect.OpenPage -> activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(effect.url)))
                                 is AndroidTranscriptEffect.Copy -> (activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                                     .setPrimaryClip(ClipData.newPlainText("OpenAgents", effect.text))
                                 is AndroidTranscriptEffect.Media -> openMedia(next, current.frame.revision,
@@ -474,10 +483,12 @@ internal class AndroidRootPresentation(
         val observer = host.observer(conversation)
         transcript.interactionObserver = object : TranscriptInteractionObserver {
             override fun beforeFrameReplacement(frame: TranscriptFrame) {
+                transcriptSurfaces?.retire()
                 replacingFrame = true
                 observer.beforeFrameReplacement(frame)
             }
             override fun viewportChanged() {
+                if (foreground && snapshot?.route == AndroidHostRoute.CHAT) transcriptSurfaces?.refresh()
                 observer.viewportChanged()
                 replacingFrame = false
                 if (!restored) next.selection?.let { saved ->
@@ -495,7 +506,7 @@ internal class AndroidRootPresentation(
                     }
                 }
             }
-            override fun beforeFrameClose() { selectionCallbacks = false; observer.beforeFrameClose() }
+            override fun beforeFrameClose() { transcriptSurfaces?.retire(); selectionCallbacks = false; observer.beforeFrameClose() }
         }
         return host
     }
@@ -634,6 +645,7 @@ internal class AndroidRootPresentation(
         foreground = false
         observation.foreground(false)
         closeOwnerNote()
+        transcriptSurfaces?.retire()
         notificationOpen?.cancel(); notificationOpen = null
         closeMedia()
         microphoneRequest?.close(); microphoneRequest = null
@@ -658,6 +670,7 @@ internal class AndroidRootPresentation(
         runCatching { owner.setForeground(true) }
         semanticMounts.values.forEach { runCatching { it.lifecycle("foreground") } }
         wallet?.foreground(); recovery?.foreground(); sessions?.showPicker(); refresh()
+        canvas?.invalidate()
     }
     fun configurationChanged() {
         if (closed) return
@@ -686,6 +699,7 @@ internal class AndroidRootPresentation(
         routeContainer.removeAllViews()
     }
     private fun closeChat() {
+        transcriptSurfaces?.close(); transcriptSurfaces = null
         closeMedia()
         val current = mountedIdentity
         canvas?.saveViewportAnchor()?.let { anchor ->

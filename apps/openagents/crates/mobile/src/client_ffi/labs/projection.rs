@@ -1,7 +1,7 @@
 //! Account-fenced Lab cards and their registered media for native adapters.
 use super::{CoreError, CoreResult, CoreSavedHistory, LabCardFiles, LabMediaFile, files, is_live};
 use lab_ui::{Intent, Projection};
-use rust_native::Activation;
+use rust_native::{Activation, Element, Node, View};
 use std::{
     collections::BTreeSet,
     sync::{Arc, Mutex},
@@ -44,6 +44,28 @@ impl Document {
         };
         this.snapshot()?;
         Ok(this)
+    }
+    fn inline(card: &lab_kit::Card, space: &str, instance: &str) -> CoreResult<Self> {
+        Self::into_inline(Self::new(card, space, instance)?, instance)
+    }
+    fn into_inline(mut document: Self, instance: &str) -> CoreResult<Self> {
+        let mut surfaces = vec![];
+        registered_surfaces(&document.projection.view.view().root, &mut surfaces);
+        if surfaces.len() != 1 {
+            return Err(unavailable());
+        }
+        let node = surfaces.pop().ok_or_else(unavailable)?;
+        let Element::Surface { resource, .. } = &node.element else {
+            return Err(unavailable());
+        };
+        if !document.projection.media.contains_key(resource) {
+            return Err(unavailable());
+        }
+        document.projection.media.retain(|key, _| key == resource);
+        document.projection.view = View::new_v3(instance, 1, node)
+            .validate()
+            .map_err(|_| unavailable())?;
+        Ok(document)
     }
     fn snapshot(&self) -> CoreResult<LabCardProjection> {
         if self.closed {
@@ -124,6 +146,21 @@ impl Document {
         self.projection.media.clear();
     }
 }
+fn registered_surfaces(node: &Node<Intent>, found: &mut Vec<Node<Intent>>) {
+    match &node.element {
+        Element::Surface { .. } => found.push(node.clone()),
+        Element::Stack { children, .. }
+        | Element::Card { children, .. }
+        | Element::Choice { children, .. }
+        | Element::Dialog { children, .. }
+        | Element::Tool { children, .. } => {
+            for child in children {
+                registered_surfaces(child, found);
+            }
+        }
+        _ => {}
+    }
+}
 fn artifacts(files: &LabCardFiles) -> BTreeSet<String> {
     files
         .main
@@ -176,6 +213,20 @@ pub struct CoreLabCard {
 #[uniffi::export]
 impl CoreSavedHistory {
     /// Read only an existing account-scoped saved or live Lab card.
+    /// Mount only the registered media in a Rust transcript's LabMedia rectangle.
+    pub fn lab_inline_projection(self: &Arc<Self>, card: String) -> CoreResult<Arc<CoreLabCard>> {
+        let (space, value) = self.projection_card(&card).ok_or_else(unavailable)?;
+        let document = Document::inline(
+            &value,
+            &space,
+            &format!("lab-inline-{}", uuid::Uuid::new_v4()),
+        )?;
+        Ok(Arc::new(CoreLabCard {
+            history: self.clone(),
+            key: card,
+            document: Mutex::new(document),
+        }))
+    }
     pub fn lab_projection(self: &Arc<Self>, card: String) -> CoreResult<Arc<CoreLabCard>> {
         let (space, value) = self.projection_card(&card).ok_or_else(unavailable)?;
         let document = Document::new(&value, &space, &format!("lab-{}", uuid::Uuid::new_v4()))?;
@@ -277,6 +328,27 @@ mod tests {
     fn card() -> lab_kit::Card {
         serde_json::from_value(serde_json::json!({"kind":"video","document":"synthetic","version":1,
             "title":"Test video","view":"video","primary":"test-video","poster":"test-poster","page":"/test"})).unwrap()
+    }
+    #[test]
+    fn inline_media_reuses_only_the_registered_rust_surface() {
+        let mut document = Document::inline(&card(), "test", "inline").unwrap();
+        let projection = document.snapshot().unwrap();
+        assert_eq!(projection.surfaces.len(), 1);
+        let resource = &projection.surfaces[0].resource;
+        assert!(matches!(&document.projection.view.view().root.element,
+            Element::Surface { resource: selected, .. } if selected == resource));
+        assert!(document.permits("inline", 1, resource, "test-video"));
+        assert!(!document.permits("inline", 1, resource, "foreign"));
+        assert!(document.matches(&card()));
+        document.close();
+        assert!(document.snapshot().is_err());
+        assert!(!document.permits("inline", 1, resource, "test-video"));
+    }
+    #[test]
+    fn inline_media_rejects_a_surface_without_its_registration() {
+        let mut document = Document::new(&card(), "test", "inline").unwrap();
+        document.projection.media.clear();
+        assert!(Document::into_inline(document, "inline").is_err());
     }
     #[test]
     fn registered_media_rejects_missing_foreign_and_stale_identities() {
