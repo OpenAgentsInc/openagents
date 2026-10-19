@@ -539,9 +539,6 @@ pub struct Directory {
     pub next: Option<String>,
 }
 
-#[cfg(feature = "views")]
-pub mod view;
-
 #[cfg(test)]
 mod tests {
     use super::*;

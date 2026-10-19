@@ -12554,8 +12554,6 @@ dependencies = [
 name = "openagents-dashboard"
 version = "1.0.0"
 dependencies = [
- "oa-copy",
- "rust-native",
  "schemars 1.2.2",
  "serde",
  "serde_json",
