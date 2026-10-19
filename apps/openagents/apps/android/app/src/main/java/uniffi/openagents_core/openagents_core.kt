@@ -36393,6 +36393,8 @@ data class SettingsCapabilities (
     ,
     var `projectSharing`: kotlin.Boolean
     ,
+    var `wallet`: kotlin.Boolean
+    ,
     var `notificationSettings`: kotlin.Boolean
     ,
     var `shareChooser`: kotlin.Boolean
@@ -36420,6 +36422,7 @@ public object FfiConverterTypeSettingsCapabilities: FfiConverterRustBuffer<Setti
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -36430,6 +36433,7 @@ public object FfiConverterTypeSettingsCapabilities: FfiConverterRustBuffer<Setti
             FfiConverterBoolean.allocationSize(value.`cloud`) +
             FfiConverterBoolean.allocationSize(value.`archive`) +
             FfiConverterBoolean.allocationSize(value.`projectSharing`) +
+            FfiConverterBoolean.allocationSize(value.`wallet`) +
             FfiConverterBoolean.allocationSize(value.`notificationSettings`) +
             FfiConverterBoolean.allocationSize(value.`shareChooser`)
     )
@@ -36441,6 +36445,7 @@ public object FfiConverterTypeSettingsCapabilities: FfiConverterRustBuffer<Setti
             FfiConverterBoolean.write(value.`cloud`, buf)
             FfiConverterBoolean.write(value.`archive`, buf)
             FfiConverterBoolean.write(value.`projectSharing`, buf)
+            FfiConverterBoolean.write(value.`wallet`, buf)
             FfiConverterBoolean.write(value.`notificationSettings`, buf)
             FfiConverterBoolean.write(value.`shareChooser`, buf)
     }
@@ -42758,6 +42763,9 @@ sealed class SettingsEffect {
     object OpenProjectSharing : SettingsEffect()
 
 
+    object OpenWallet : SettingsEffect()
+
+
     object OpenNotificationSettings : SettingsEffect()
 
 
@@ -42809,14 +42817,15 @@ public object FfiConverterTypeSettingsEffect : FfiConverterRustBuffer<SettingsEf
             2 -> SettingsEffect.OpenPairing
             3 -> SettingsEffect.OpenArchive
             4 -> SettingsEffect.OpenProjectSharing
-            5 -> SettingsEffect.OpenNotificationSettings
-            6 -> SettingsEffect.ChooseWallpaper(
+            5 -> SettingsEffect.OpenWallet
+            6 -> SettingsEffect.OpenNotificationSettings
+            7 -> SettingsEffect.ChooseWallpaper(
                 FfiConverterString.read(buf),
                 )
-            7 -> SettingsEffect.PreferencesChanged(
+            8 -> SettingsEffect.PreferencesChanged(
                 FfiConverterTypeSettingsPreferences.read(buf),
                 )
-            8 -> SettingsEffect.ShareText(
+            9 -> SettingsEffect.ShareText(
                 FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 )
@@ -42844,6 +42853,12 @@ public object FfiConverterTypeSettingsEffect : FfiConverterRustBuffer<SettingsEf
             )
         }
         is SettingsEffect.OpenProjectSharing -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is SettingsEffect.OpenWallet -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
@@ -42897,22 +42912,26 @@ public object FfiConverterTypeSettingsEffect : FfiConverterRustBuffer<SettingsEf
                 buf.putInt(4)
                 Unit
             }
-            is SettingsEffect.OpenNotificationSettings -> {
+            is SettingsEffect.OpenWallet -> {
                 buf.putInt(5)
                 Unit
             }
-            is SettingsEffect.ChooseWallpaper -> {
+            is SettingsEffect.OpenNotificationSettings -> {
                 buf.putInt(6)
+                Unit
+            }
+            is SettingsEffect.ChooseWallpaper -> {
+                buf.putInt(7)
                 FfiConverterString.write(value.`ticket`, buf)
                 Unit
             }
             is SettingsEffect.PreferencesChanged -> {
-                buf.putInt(7)
+                buf.putInt(8)
                 FfiConverterTypeSettingsPreferences.write(value.`preferences`, buf)
                 Unit
             }
             is SettingsEffect.ShareText -> {
-                buf.putInt(8)
+                buf.putInt(9)
                 FfiConverterString.write(value.`title`, buf)
                 FfiConverterString.write(value.`text`, buf)
                 Unit
