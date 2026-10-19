@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@0fc444292c46",
-  "bank": "chat-answers-v1@a7e38b5d361b",
+  "bank": "chat-answers-v1@ef65e3933b4a",
   "routes": [
     {
       "id": "meta",
@@ -185,7 +185,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs",
+        "crates/openagents-chat/src/basic_coder.rs",
         "docs/deployment/chat-worker.md",
         "crates/coder-new/README.md"
       ]
@@ -356,7 +356,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
@@ -370,7 +370,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs",
+        "crates/openagents-chat/src/basic_coder.rs",
         "crates/coder/src/builtin_plugins.rs"
       ]
     },
@@ -430,7 +430,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
@@ -488,7 +488,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs",
+        "crates/openagents-chat/src/basic_coder.rs",
         "README.md"
       ]
     },
@@ -573,7 +573,7 @@
       "sources": [
         "docs/auth/github.md",
         "crates/openagents-web/src/projects/mod.rs",
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
@@ -680,7 +680,7 @@
       "offer": null,
       "sources": [
         "crates/coder/src/bin/coder-worker.rs",
-        "crates/openagents-mobile/src/basic_chats.rs",
+        "crates/openagents-chat/src/basic_chats.rs",
         "crates/openagents-web/src/chat_store.rs",
         "INVARIANTS.md"
       ]
@@ -810,7 +810,7 @@
         "label": "Run Coder"
       },
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
@@ -828,7 +828,7 @@
         "label": "Run Coder"
       },
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
@@ -846,7 +846,7 @@
         "label": "Run Coder"
       },
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
@@ -865,7 +865,7 @@
       },
       "sources": [
         "crates/coder/src/router/capability.rs",
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
@@ -921,7 +921,7 @@
         "label": "Connect a computer"
       },
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
@@ -1105,7 +1105,7 @@
       },
       "sources": [
         "docs/coder/runtime/host-service.md",
-        "crates/openagents-mobile/src/basic_coder.rs"
+        "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
     {
