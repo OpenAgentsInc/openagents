@@ -150,9 +150,11 @@ fn registered_surfaces(node: &Node<Intent>, found: &mut Vec<Node<Intent>>) {
     match &node.element {
         Element::Surface { .. } => found.push(node.clone()),
         Element::Stack { children, .. }
-        | Element::Card { children, .. }
+        | Element::List { children, .. }
         | Element::Choice { children, .. }
         | Element::Dialog { children, .. }
+        | Element::Transcript { children, .. }
+        | Element::Message { children, .. }
         | Element::Tool { children, .. } => {
             for child in children {
                 registered_surfaces(child, found);
