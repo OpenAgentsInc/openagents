@@ -57,7 +57,8 @@ pub(super) struct Request {
     pub land: Option<Land>,
     pub engine_fallback: bool,
     /// The `chat work --engine` the host runs (`briefed:codex` by default
-    /// on the pool, whose hosts carry no Claude login).
+    /// on the pool; Claude Code is its fallback when the run carries
+    /// `CLAUDE_CODE_OAUTH_TOKEN`, #12203).
     pub engine: String,
 }
 

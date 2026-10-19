@@ -82,6 +82,10 @@ const XAI_SECRET: &str = "openagents-xai-api-key";
 /// With it Coder prefers Codex (`gpt-6.1-sol`, medium, as one lean
 /// `codex exec` session); without it the run is on Grok Build.
 const OPENAI_SECRET: &str = "coder-openai-api-key";
+/// The `claude setup-token` value Claude Code signs in with on a cloud run
+/// (#12203): optional. With it the briefed agent can hand a failed Codex
+/// change to Claude Code, and `--engine briefed` runs there.
+const CLAUDE_SECRET: &str = "coder-pool-claude-token";
 /// The least time a ChatGPT access token must have left to go to a cloud
 /// run: a run can take an hour, and the copy it gets cannot be refreshed.
 const CODEX_MIN_LEFT_SECS: u64 = 2 * 3600;
@@ -397,6 +401,20 @@ fn select_codex(
     }
 }
 
+/// Claude Code's token for a cloud run: `CLAUDE_CODE_OAUTH_TOKEN` here,
+/// else [`CLAUDE_SECRET`]. A run without one carries on without Claude.
+fn claude_token() -> Option<String> {
+    first_token(variable("CLAUDE_CODE_OAUTH_TOKEN"), || {
+        secret(CLAUDE_SECRET)
+    })
+}
+
+/// A token from this computer's environment, else from Secret Manager,
+/// which is asked only when the environment has none.
+fn first_token(local: Option<String>, stored: impl FnOnce() -> Option<String>) -> Option<String> {
+    local.or_else(stored)
+}
+
 /// Every credential a run needs, read once for the whole queue.
 pub(super) fn credentials(
     logins: EngineLogins,
@@ -447,6 +465,9 @@ pub(super) fn credentials(
          Secret Manager coder-pool-git-token, or sign `gh` in",
     )?;
     variables.insert("GH_TOKEN".to_owned(), token);
+    if let Some(claude) = claude_token() {
+        variables.insert("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), claude);
+    }
     for (name, key) in [("OA_GIT_NAME", "user.name"), ("OA_GIT_EMAIL", "user.email")] {
         if let Some(value) = variable(name).or_else(|| git_config(key)) {
             variables.insert(name.to_owned(), value);
@@ -1752,6 +1773,20 @@ mod tests {
             .status()
             .unwrap();
         assert!(checked.success());
+    }
+
+    #[test]
+    fn the_claude_token_comes_from_here_first_and_asks_secret_manager_only_without_one() {
+        assert_eq!(
+            first_token(Some("here".into()), || panic!("asked Secret Manager")),
+            Some("here".into())
+        );
+        assert_eq!(
+            first_token(None, || Some("stored".into())),
+            Some("stored".into())
+        );
+        assert_eq!(first_token(None, || None), None);
+        assert_eq!(CLAUDE_SECRET, "coder-pool-claude-token");
     }
 
     #[test]

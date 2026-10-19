@@ -63,6 +63,10 @@ A run always uses the requesting person's own Claude sign-in:
   server's key is never used. One account's runs take turns (a Claude plan
   runs one automated turn at a time).
 - **CLI on this computer:** this computer's own Claude Code login.
+- **CLI on the GCE pool** (`chat work --on gce`): `CLAUDE_CODE_OAUTH_TOKEN`
+  from this computer, else Secret Manager `coder-pool-claude-token` (a
+  `claude setup-token` value, #12203). With it, a failed Codex change goes to
+  Claude Code on the same host; without it the run stops at the failed checks.
 
 ## Entry points
 
