@@ -392,7 +392,7 @@ impl CoreAndroidHost {
             .ok_or(CoreError::Closed)?;
         if let Some(composer) = &composer {
             composer.bind_listener(self.events.0.clone());
-            if matches!(&content, Content::Cloud(_)) {
+            if matches!(&content, Content::Cloud(_) | Content::Saved { .. }) {
                 if let Some(client) = &state.client {
                     composer.bind_drafts(client.composer_drafts.clone())?;
                 }
