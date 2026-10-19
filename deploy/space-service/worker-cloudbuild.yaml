@@ -1,0 +1,42 @@
+# The worker image with the maintained deployment's sandbox-manager patch (#12151).
+# Build with the full _COMMIT that contains sbx-erase-safety.patch.
+substitutions:
+  _COMMIT: ''
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q config
+        git -C config fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git '${_COMMIT}'
+        git -C config checkout -q FETCH_HEAD
+        test "$$(git -C config rev-parse HEAD)" = '${_COMMIT}'
+        git init -q space
+        git -C space fetch -q --depth 1 https://github.com/perplexityai/SPACE.git de87b436c35dac056564bdd5b2a113c9046e189b
+        git -C space checkout -q FETCH_HEAD
+        git -C space apply ../config/deploy/space-service/sbx-erase-safety.patch
+        sha256sum config/deploy/space-service/sbx-erase-safety.patch
+  - name: gcr.io/cloud-builders/docker
+    dir: space
+    entrypoint: bash
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - -c
+      - |
+        set -eu
+        sed -i '/^WORKDIR \/workspace/a ENV CARGO_BUILD_JOBS=16' docker/Dockerfile.rust-build-common
+        docker build -f docker/Dockerfile.rust-build-common --target build-artifacts-worker \
+          --build-arg SPACE_RUST_ARTIFACT_SET=worker --build-arg SPACE_CARGO_RELEASE_LTO=false \
+          -t space-rust-build-worker:maintained .
+        docker build -f docker/Dockerfile.worker \
+          --build-arg SPACE_RUST_BUILD_IMAGE=space-rust-build-worker:maintained \
+          --build-arg SPACE_GIT_SHA=de87b436c35dac056564bdd5b2a113c9046e189b \
+          --label com.openagents.patch-source='${_COMMIT}' --label com.openagents.patch=sbx-erase-safety-v1 \
+          -t 'us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker-patched:${_COMMIT}' .
+images: ['us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker-patched:${_COMMIT}']
+options:
+  machineType: E2_HIGHCPU_32
+  diskSizeGb: 250
+timeout: 3600s

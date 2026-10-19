@@ -173,12 +173,12 @@ def record(label, rec):
     print(json.dumps({k: rec.get(k) for k in ('kind','cache','concurrency','index','succeeded','create_ms','readiness_ms','first_useful_ms','cleanup_ms','error')}), flush=True)
 
 
-def send_and_drop(method, path, body, who='a'):
+def send_and_drop(method, path, body, who='a', key=None):
     """Send a complete request and close before reading any reply byte."""
     import ssl, socket
     data = json.dumps(body).encode() if body is not None else b''
     h = (f'{method} {path} HTTP/1.1\r\nHost: {HOST}\r\nAuthorization: Bearer ' + fixture()['computers_token'] +
-         f'\r\nX-OpenAgents-Account: {owner(who)}\r\nX-OpenAgents-Test: 1\r\nContent-Type: application/json\r\nContent-Length: {len(data)}\r\nConnection: close\r\n\r\n').encode()
+         f'\r\nX-OpenAgents-Account: {owner(who)}\r\nX-OpenAgents-Test: 1\r\n' + (f'Idempotency-Key: {key}\r\n' if key else '') + f'Content-Type: application/json\r\nContent-Length: {len(data)}\r\nConnection: close\r\n\r\n').encode()
     ctx = ssl.create_default_context()
     with socket.create_connection((HOST, 443), timeout=10) as raw:
         with ctx.wrap_socket(raw, server_hostname=HOST) as tls:

@@ -64,20 +64,23 @@ def attach(cid, who):
     return ev
 
 def lost_turn_reply(cid, who):
-    """Turns carry no request identity: show what a client can recover after a lost reply."""
+    """A dropped turn submission is retried with its saved Idempotency-Key (#12142)."""
     ev = {'computer': cid}
     ensure_awake(cid, who)
+    key = 'q16-lost-' + secrets.token_hex(6); ev['request_key'] = key
+    body = {'command': 'echo q16-lost >> /home/user/q16-lost.log', 'timeout_seconds': 20}
     st, c0, _ = q.call('GET', f'/v1/computers/{cid}', who=who); ev['turns_before'] = c0.get('turns')
-    ev['drop'] = q.send_and_drop('POST', f'/v1/computers/{cid}/turns', {'command': 'echo q16-lost >> /home/user/q16-lost.log', 'timeout_seconds': 20}, who)
+    ev['drop'] = q.send_and_drop('POST', f'/v1/computers/{cid}/turns', body, who, key=key)
     time.sleep(8)
+    st, v, _ = q.call('POST', f'/v1/computers/{cid}/turns', body, who=who, headers={'Idempotency-Key': key})
+    ev['retry_status'] = st; ev['retry_turn'] = v.get('id'); final(cid, v['id'], who)
+    st, v2, _ = q.call('POST', f'/v1/computers/{cid}/turns', {**body, 'timeout_seconds': 21}, who=who, headers={'Idempotency-Key': key})
+    ev['changed_body_status'] = st
     st, c1, _ = q.call('GET', f'/v1/computers/{cid}', who=who); ev['turns_after'] = c1.get('turns')
-    # The only retry available is a new submission without identity.
-    st, v, _ = q.call('POST', f'/v1/computers/{cid}/turns', {'command': 'echo q16-lost >> /home/user/q16-lost.log', 'timeout_seconds': 20}, who=who)
-    ev['retry_status'] = st; r = final(cid, v['id'], who); ev['retry_turn'] = v.get('id')
     ensure_awake(cid, who)
     tid, r = q.turn(cid, 'wc -l < /home/user/q16-lost.log', who=who); ev['executions_of_logical_request'] = int((r.get('stdout') or '0').strip() or 0)
-    ev['request_identity_supported'] = False
-    ev['passed'] = ev['executions_of_logical_request'] == 1
+    ev['request_identity_supported'] = True
+    ev['passed'] = ev['executions_of_logical_request'] == 1 and ev['changed_body_status'] == 409
     return ev
 
 def duplicates(who):
@@ -111,9 +114,10 @@ def duplicates(who):
         ev['natives_after_lifecycle'] = q.native_sandboxes_for(cid)[1]
         keep()
         # Duplicate turn delivery: two identical submissions.
-        res = q.run_parallel([lambda: q.call('POST', f'/v1/computers/{cid}/turns', {'command': 'echo q16-dup >> /home/user/q16-dup.log', 'timeout_seconds': 20}, who=who) for _ in range(2)])
+        dkey = 'q16-dupturn-' + secrets.token_hex(6); ev['turn_request_key'] = dkey
+        res = q.run_parallel([lambda: q.call('POST', f'/v1/computers/{cid}/turns', {'command': 'echo q16-dup >> /home/user/q16-dup.log', 'timeout_seconds': 20}, who=who, headers={'Idempotency-Key': dkey}) for _ in range(2)])
         ev['duplicate_turn_ids'] = [(v or {}).get('id') for s, v, _ in res]
-        for t in ev['duplicate_turn_ids']:
+        for t in set(ev['duplicate_turn_ids']):
             if t: final(cid, t, who)
         ensure_awake(cid, who)
         tid, r = q.turn(cid, 'wc -l < /home/user/q16-dup.log', who=who); ev['duplicate_turn_executions'] = int((r.get('stdout') or '0').strip() or 0)

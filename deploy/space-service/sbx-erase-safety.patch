@@ -1,0 +1,75 @@
+diff --git a/crates/libs/sbx/mgr/server/src/db/cleanup_episodes.rs b/crates/libs/sbx/mgr/server/src/db/cleanup_episodes.rs
+index f81af9a..1107563 100644
+--- a/crates/libs/sbx/mgr/server/src/db/cleanup_episodes.rs
++++ b/crates/libs/sbx/mgr/server/src/db/cleanup_episodes.rs
+@@ -1091,7 +1091,15 @@ pub(crate) fn sandbox_erase_safety(
+     cleanup_completion: Option<CleanupCompletion>,
+     failure_reason: Option<&str>,
+ ) -> SandboxEraseSafety {
+-    if state == SandboxState::Suspending
++    // An interrupted activation resumes from a checkpoint the cluster already
++    // has; its cleanup owns no unpublished suspend, so a delete may erase it
++    // instead of waiting for a publication that can't happen (#12151).
++    let interrupted_activation = state == SandboxState::CleanupFailed
++        && cleanup_completion == Some(CleanupCompletion::MarkSuspended)
++        && failure_reason == Some(super::startup_recovery::INTERRUPTED_ACTIVATION_CLEANUP_REASON);
++    if interrupted_activation {
++        SandboxEraseSafety::Safe
++    } else if state == SandboxState::Suspending
+         || (matches!(
+             state,
+             SandboxState::CleanupRequired | SandboxState::CleanupFailed
+diff --git a/crates/libs/sbx/mgr/server/src/db/startup_recovery.rs b/crates/libs/sbx/mgr/server/src/db/startup_recovery.rs
+index e4f4ef8..1a4515a 100644
+--- a/crates/libs/sbx/mgr/server/src/db/startup_recovery.rs
++++ b/crates/libs/sbx/mgr/server/src/db/startup_recovery.rs
+@@ -2,6 +2,11 @@
+ 
+ use super::*;
+ 
++/// Failure reason startup recovery records when it resumes cleanup of an
++/// activation the node lost (for example, a worker reset while a guest ran).
++pub(crate) const INTERRUPTED_ACTIVATION_CLEANUP_REASON: &str =
++    "startup recovery resumed interrupted activation cleanup";
++
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub enum StartupRecoveryOutcome {
+     State(SandboxState),
+@@ -246,7 +251,7 @@ pub fn recover_interrupted_startup_states(
+                     &row.id,
+                     episode.id,
+                     reason,
+-                    "startup recovery resumed interrupted activation cleanup",
++                    INTERRUPTED_ACTIVATION_CLEANUP_REASON,
+                 )?;
+                 recovered.push(StartupRecoveryRecord {
+                     id: row.id,
+diff --git a/crates/libs/sbx/mgr/server/src/db/tests.rs b/crates/libs/sbx/mgr/server/src/db/tests.rs
+index 5235b10..813fe8b 100644
+--- a/crates/libs/sbx/mgr/server/src/db/tests.rs
++++ b/crates/libs/sbx/mgr/server/src/db/tests.rs
+@@ -1327,6 +1327,24 @@ fn suspend_publication_protects_live_and_retry_owned_suspend() {
+         SandboxEraseSafety::RetainedFilesystemOnlyCopy,
+         "a failed suspend with no artifact must retain its only filesystem copy",
+     );
++    assert_eq!(
++        sandbox_erase_safety(
++            SandboxState::CleanupFailed,
++            Some(CleanupCompletion::MarkSuspended),
++            Some(super::startup_recovery::INTERRUPTED_ACTIVATION_CLEANUP_REASON),
++        ),
++        SandboxEraseSafety::Safe,
++        "an interrupted activation owns no unpublished suspend and may be erased",
++    );
++    assert_eq!(
++        sandbox_erase_safety(
++            SandboxState::CleanupRequired,
++            Some(CleanupCompletion::MarkSuspended),
++            Some(super::startup_recovery::INTERRUPTED_ACTIVATION_CLEANUP_REASON),
++        ),
++        SandboxEraseSafety::SuspendPublicationPending,
++        "cleanup still in progress keeps its suspend ownership",
++    );
+     assert_eq!(
+         sandbox_erase_safety(SandboxState::Failed, None, Some("ordinary failure")),
+         SandboxEraseSafety::Safe,
