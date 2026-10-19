@@ -44,6 +44,17 @@ rules pin, actor grants, sequence and replay checks, disconnect recovery, and
 an explicit fairness model. A signed avatar pose proves publication, not a
 legal move, a hit, an item transfer, or a result accepted by other players.
 
+## Grid Arena: a robot duel
+
+The [Grid Arena](zones.md#grid-arena-controls) is a local duel under the
+combat model, with original rules that take only the SRD's mechanics (d20
+attack rolls against armor, saving throws for half, doubled dice on a natural
+20, and diminishing stuns). The player's four abilities sit on a 1 s global
+cooldown, with their own cooldowns of 0, 8, 15, and 12 s. The enemy robot's
+choices are a function of the fight's state and one seeded dice stream, so a
+seed and the same inputs replay the same fight. It is local-only and resets
+on each visit.
+
 ## Lagrange 1: physics without combat
 
 [Lagrange 1](lagrange-1.md) uses the same zone lifecycle with a different

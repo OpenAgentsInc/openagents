@@ -71,6 +71,8 @@ impl WorldRuntime {
                 }
                 everglade.altitude = everglade.altitude.min(top);
             }
+        } else if let Some(arena) = &mut self.zone_state.arena {
+            arena.move_player(&mut self.player, input, dt, ZoneId::Arena.half_extent());
         } else {
             self.player
                 .update(input, dt, &self.world.blockers, self.zone_half());
@@ -282,6 +284,81 @@ impl WorldRuntime {
         let _ = self.set_spawn(Lab::spawn(), Lab::spawn_yaw());
         self.camera = crate::camera::FollowCamera::default();
     }
+    /// Enter the Grid Arena: the robot duel on the Grid's floor. Its
+    /// geometry is generated; nothing is downloaded.
+    pub fn install_arena(&mut self) {
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.zone_cancel_loading();
+        let mut world = crate::world::bare_ground();
+        let ring = super::arena::Arena::world();
+        world.mesh.extend(&ring.mesh);
+        world.blockers.extend(ring.blockers);
+        self.world = world;
+        self.zone_state.arena = Some(Box::new(super::arena::Arena::new()));
+        self.zone = ZoneId::Arena;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(
+            super::arena::Arena::spawn(),
+            super::arena::Arena::spawn_yaw(),
+        );
+        self.camera = crate::camera::FollowCamera::default();
+        // The robots stand taller than the plaza's figure.
+        self.camera.distance = 10.5;
+    }
+
+    /// Enter the Grid Arena from the plaza, as `verse --arena` does.
+    ///
+    /// # Errors
+    ///
+    /// The player is not in the plaza.
+    pub fn enter_arena(&mut self) -> Result<(), String> {
+        if !self.is_plaza() {
+            return Err("Return to the plaza before entering the Grid Arena".into());
+        }
+        self.cancel_navigation();
+        self.doors.cancel_transient();
+        self.install_arena();
+        Ok(())
+    }
+
+    /// The Grid Arena, while the player is in it.
+    #[must_use]
+    pub fn arena(&self) -> Option<&super::arena::Arena> {
+        self.zone_state.arena.as_deref()
+    }
+
+    /// The Grid Arena, to change it, as a capture or a test does.
+    pub fn arena_mut(&mut self) -> Option<&mut super::arena::Arena> {
+        self.zone_state.arena.as_deref_mut()
+    }
+
+    /// Fires the Grid Arena's ability on `slot` (0-based, keys 1 to 4).
+    /// `None` outside the arena; a refusal shows its line on screen.
+    pub fn arena_press(
+        &mut self,
+        slot: usize,
+    ) -> Option<Result<super::arena::Ability, super::arena::Refusal>> {
+        self.zone_state.arena.as_deref_mut().map(|a| a.press(slot))
+    }
+
+    /// Starts the Grid Arena's fight again from the start marks. False
+    /// outside the arena.
+    pub fn arena_restart(&mut self) -> bool {
+        let Some(arena) = self.zone_state.arena.as_deref_mut() else {
+            return false;
+        };
+        let (pos, yaw) = arena.restart();
+        let _ = self.set_spawn(pos, yaw);
+        if let Some(arena) = self.zone_state.arena.as_deref_mut() {
+            arena.tick(1e-4, &mut self.player);
+        }
+        true
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn configure_robot_lab(&mut self, config: robotlab::local::Config) {
         self.zone_state.robot_lab_config = Some(config);
@@ -1389,6 +1466,7 @@ impl WorldRuntime {
                 self.zone_state.lagrange = None;
                 self.zone_state.lagrange2 = None;
                 self.zone_state.lab = None;
+                self.zone_state.arena = None;
                 self.zone_state.robot_lab = None;
                 self.zone_state.everglade = None;
                 #[cfg(not(target_arch = "wasm32"))]
@@ -2416,6 +2494,9 @@ impl WorldRuntime {
                 add(ids[index], label, intent, true);
             }
             room.caption()
+        } else if let Some(arena) = &self.zone_state.arena {
+            // The arena draws its own action bar; no panel controls.
+            arena.caption()
         } else if let Some(lab) = &self.zone_state.lab {
             add("knob_prev", "Prev", Intent::KnobPrev, true);
             add("knob_next", "Next", Intent::KnobNext, true);
@@ -2721,6 +2802,9 @@ impl WorldRuntime {
             false
         } else if let Some(lab) = &self.zone_state.lab {
             crate::runtime::mesh_occludes(lab.dynamic(), eye, direction, distance)
+        } else if self.zone_state.arena.is_some() {
+            // Two robots in an open ring hide nothing worth the test.
+            false
         } else if let Some(everglade) = &self.zone_state.everglade {
             crate::runtime::mesh_occludes(everglade.dynamic(), eye, direction, distance)
         } else {
@@ -3409,6 +3493,9 @@ impl WorldRuntime {
         if let Some(lab) = &mut self.zone_state.lab {
             lab.tick(dt);
         }
+        if let Some(arena) = &mut self.zone_state.arena {
+            arena.tick(dt, &mut self.player);
+        }
         if let Some(room) = &mut self.zone_state.robot_lab {
             room.tick(dt);
         }
@@ -3539,6 +3626,10 @@ impl WorldRuntime {
         }
         if let Some(room) = &self.zone_state.robot_lab {
             mesh.extend(room.dynamic());
+        }
+        // The arena draws the player as its robot; no plaza figure.
+        if let Some(arena) = &self.zone_state.arena {
+            mesh.extend(arena.dynamic());
         }
         if let Some(lab) = &self.zone_state.lab {
             mesh.extend(lab.dynamic());

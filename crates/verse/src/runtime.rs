@@ -696,6 +696,7 @@ impl WorldRuntime {
                     | crate::zones::ZoneId::MeteorShowcase
                     | crate::zones::ZoneId::WaterLab
                     | crate::zones::ZoneId::Coast
+                    | crate::zones::ZoneId::Arena
             )
     }
 

@@ -931,8 +931,9 @@ uses, and marks which are implemented and which are only specified.
   crowd of other players, particle effects, tooltips, scene labels, and the
   replay's places. `verse` re-exports each module under its old path.
 - `crates/verse-zone-lagrange`, `crates/verse-zone-lab`, `crates/verse-zone-everglade`
-  (Everglade with its studio, demolition yard, and pinned pack), and
-  `crates/verse-zone-grove` — one crate a zone, over `verse-core`, so an
+  (Everglade with its studio, demolition yard, and pinned pack),
+  `crates/verse-zone-grove`, and `crates/verse-zone-arena` (the Grid
+  Arena's robot duel) — one crate a zone, over `verse-core`, so an
   edit to a zone recompiles that crate and what depends on it. `verse`
   re-exports each as `zones::<name>`; the tests that walk through the world
   runtime stay in `verse` as `zones/<name>_tests.rs`. Put a zone's code in

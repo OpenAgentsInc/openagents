@@ -143,6 +143,21 @@ shared knobs also set the time scale, gravity, and the debug overlay.
 [Physics Lab](physics-lab.md) lists the scenarios, their knobs, and the
 physics API gaps the lab works around.
 
+### Grid Arena controls
+
+The Grid Arena (`verse --arena`, or `?zone=arena` and `/arena` on the web
+page) is a robot duel on the Grid's floor: the player's white Striker against
+the amber Brute inside a 20 m ring. No arch leads to it. You walk with the
+shared controller (`W`/`S`, `A`/`D`, `Q`/`E`, `Space` jumps, the right mouse
+button mouselooks). Keys `1` to `4` fire **Laser**, **Missile Salvo**,
+**Shield**, and **EMP Burst**; `R` starts the fight again and, on the
+desktop, `G` returns to the plaza. The Brute closes in, circles, fires
+plasma bolts you can sidestep, and winds up a ground slam that an EMP stun
+interrupts. The rules, dice, and numbers are in
+[`verse-zone-arena`](../../crates/verse-zone-arena/src/rules.rs);
+`cargo run -p verse --example arena_capture -- OUT.png` renders a frame of
+the fight, such as [this one](captures/grid-arena/duel.png).
+
 ### Everglade controls
 
 You walk the plaza character over the glade's generated ground; the camera

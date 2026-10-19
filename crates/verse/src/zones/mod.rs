@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use verse_zone_arena as arena;
 pub use verse_zone_coast as coast;
 pub use verse_zone_crypt as crypt;
 pub use verse_zone_everglade::zones::everglade;
@@ -19,6 +20,8 @@ mod private_assets;
 mod private_assets_tests;
 pub use verse_zone_lagrange as lagrange;
 pub use verse_zone_lagrange2 as lagrange2;
+#[cfg(test)]
+mod arena_tests;
 #[cfg(test)]
 mod budget_tests;
 pub mod cad_place;
@@ -106,9 +109,11 @@ pub enum ZoneId {
     /// The spaceship factory at Earth–Moon L2 ([`lagrange2`],
     /// `docs/verse/lagrange-2.md`), walked into from the Grid.
     Lagrange2,
+    /// The robot duel on the Grid's floor ([`arena`], `verse --arena`).
+    Arena,
 }
 impl ZoneId {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Plaza,
         Self::Lagrange1,
         Self::PhysicsLab,
@@ -121,6 +126,7 @@ impl ZoneId {
         Self::Coast,
         Self::MeteorShowcase,
         Self::Lagrange2,
+        Self::Arena,
     ];
 
     /// Whether this zone is one of the standalone Meteor Swarm stages: the
@@ -157,6 +163,7 @@ impl ZoneId {
             Self::Coast => "verse-coast",
             Self::MeteorShowcase => "verse-meteor-showcase",
             Self::Lagrange2 => "verse-lagrange-2",
+            Self::Arena => "verse-arena",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -173,6 +180,7 @@ impl ZoneId {
             Self::Coast => "Coast",
             Self::MeteorShowcase => "Meteor Showcase",
             Self::Lagrange2 => "Lagrange 2",
+            Self::Arena => "Grid Arena",
         }
     }
     pub const fn half_extent(self) -> f32 {
@@ -188,6 +196,7 @@ impl ZoneId {
             Self::Crypt => crypt::HALF_EXTENT,
             Self::WaterLab => water::HALF_EXTENT,
             Self::Coast => coast::HALF_EXTENT,
+            Self::Arena => arena::HALF_EXTENT,
         }
     }
     /// The zone's primary portal: the plaza's Lagrange 1 arch, or a zone's
@@ -230,6 +239,7 @@ impl ZoneId {
             // draws no arch.
             Self::WaterLab => vec![(Self::Plaza, water::EXIT)],
             Self::Coast => vec![(Self::Plaza, coast::RETURN_PORTAL)],
+            Self::Arena => vec![(Self::Plaza, arena::RETURN_PORTAL)],
         }
     }
     /// Short arch lettering for a destination.
@@ -247,6 +257,7 @@ impl ZoneId {
             Self::Coast => "COAST",
             Self::MeteorShowcase => "METEOR SHOWCASE",
             Self::Lagrange2 => "LAGRANGE 2",
+            Self::Arena => "GRID ARENA",
         }
     }
 }
@@ -263,7 +274,8 @@ pub const CRYPT_ARCH: glam::Vec3 = glam::Vec3::new(24.0, 0.0, -24.0);
 pub use verse_core::zone::Atmosphere;
 pub fn atmosphere(zone: ZoneId) -> Atmosphere {
     match zone {
-        ZoneId::Plaza => Atmosphere {
+        // The arena stands on the Grid, under the plaza's own field.
+        ZoneId::Plaza | ZoneId::Arena => Atmosphere {
             color: crate::palette::field(),
             fog_start: crate::render::FOG_START,
             fog_end: crate::render::FOG_END,
@@ -403,6 +415,8 @@ pub(crate) struct State {
     /// `everglade`, whose movement and character it walks with.
     water: Option<Box<water::WaterLab>>,
     coast: Option<Box<coast::Coast>>,
+    /// The Grid Arena's duel.
+    arena: Option<Box<arena::Arena>>,
     /// Open Everglade as the demolition yard (`verse --demolition`).
     demolition: bool,
     /// The town clock Everglade's sky follows (`verse --town-hour`,
@@ -487,6 +501,7 @@ impl Default for State {
             crypt: None,
             water: None,
             coast: None,
+            arena: None,
             demolition: false,
             town_clock: town_clock::Clock::DAYTIME,
             dev_destruction: false,
@@ -582,6 +597,7 @@ fn arch_rings(mesh: &mut crate::mesh::Mesh, zone: ZoneId, at: glam::Vec3, elapse
         }
         ZoneId::Crypt => [1.0, 0.56, 0.24],
         ZoneId::WaterLab | ZoneId::Coast => [0.35, 0.8, 1.0],
+        ZoneId::Arena => crate::palette::amber(coder_ui::theme::Intensity::Full),
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {

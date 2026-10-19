@@ -19705,6 +19705,7 @@ dependencies = [
  "verse-pbr",
  "verse-private",
  "verse-world",
+ "verse-zone-arena",
  "verse-zone-coast",
  "verse-zone-crypt",
  "verse-zone-everglade",
@@ -20032,6 +20033,20 @@ dependencies = [
  "verse-engine",
  "wasm-bindgen-futures",
  "web-time",
+]
+
+[[package]]
+name = "verse-zone-arena"
+version = "1.0.0"
+dependencies = [
+ "coder-ui",
+ "glam",
+ "oa-copy",
+ "serde",
+ "verse-core",
+ "verse-gfx",
+ "verse-pbr",
+ "verse-world",
 ]
 
 [[package]]

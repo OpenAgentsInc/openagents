@@ -113,6 +113,9 @@ pub struct Options {
     /// Open straight into the Grove, the druid training field, once the
     /// window shows (`verse --grove`).
     pub grove: bool,
+    /// Open straight into the Grid Arena, the robot duel, once the window
+    /// shows (`verse --arena`).
+    pub arena: bool,
     /// Open the standalone castle bombardment zone.
     pub meteor_stress_test: bool,
     /// Open the Meteor Showcase, two kit houses under an eight-meteor
@@ -200,6 +203,7 @@ impl Default for Options {
             robot_lab: false,
             robot_lab_config: None,
             grove: false,
+            arena: false,
             meteor_stress_test: false,
             meteor_showcase: false,
             crypt: false,
@@ -3507,6 +3511,29 @@ impl App {
                 });
                 return;
             }
+            // The Grid Arena: 1 to 4 fire the abilities, R starts the
+            // fight again, and G leaves.
+            if self.runtime.arena().is_some() {
+                let slot = match code {
+                    KeyCode::Digit1 => Some(0),
+                    KeyCode::Digit2 => Some(1),
+                    KeyCode::Digit3 => Some(2),
+                    KeyCode::Digit4 => Some(3),
+                    _ => None,
+                };
+                if let Some(slot) = slot {
+                    let _ = self.runtime.arena_press(slot);
+                    return;
+                }
+                if code == KeyCode::KeyR {
+                    self.runtime.arena_restart();
+                    return;
+                }
+                if code == KeyCode::KeyG {
+                    self.zone_action(ZoneIntent::Return);
+                    return;
+                }
+            }
             // The demolition yard's hotbar: 1 swings the sledgehammer, 2
             // aims Meteor Swarm, and R rebuilds. Escape leaves the aim or
             // stops the cast.
@@ -4887,6 +4914,24 @@ impl App {
                     }
                     ui.vertices.extend(bar.vertices);
                 }
+                // The Grid Arena's bars, numbers, and action bar.
+                if let (Some(atlas), Some(arena)) = (&self.map_atlas, self.runtime.arena()) {
+                    let mut bar = crate::ui::UiBatch::default();
+                    let logical = size.map(|v| v / self.scale);
+                    let view_proj = self.runtime.view(size[0] / size[1].max(1.0)).view_proj;
+                    zones::arena::hud::draw(
+                        &mut bar,
+                        atlas,
+                        logical,
+                        view_proj,
+                        arena,
+                        zones::arena::hud::CONTROLS,
+                    );
+                    for vertex in &mut bar.vertices {
+                        vertex.pos = vertex.pos.map(|v| v * self.scale);
+                    }
+                    ui.vertices.extend(bar.vertices);
+                }
                 self.layout = layout;
                 ui
             }
@@ -5336,6 +5381,16 @@ impl ApplicationHandler for App {
         if std::mem::take(&mut self.connection_options.robot_lab) {
             if let Err(error) = self.runtime.install_robot_lab() {
                 self.error = Some(error);
+            }
+        }
+        // `--arena` enters the Grid Arena once, from the first window.
+        if std::mem::take(&mut self.connection_options.arena) {
+            match self.runtime.enter_arena() {
+                Ok(()) => {
+                    self.keys = Keys::default();
+                    self.sync_zone_services(true);
+                }
+                Err(error) => self.error = Some(error),
             }
         }
         // `--everglade` enters once, from the first window; a later resume

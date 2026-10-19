@@ -392,7 +392,18 @@ async fn run() -> Result<(), String> {
     if grid {
         return run_grid(window, document, canvas).await;
     }
-    let bytes = download(&window).await?;
+    // `?zone=arena`, or the `/arena` page, opens the Grid Arena, the robot
+    // duel. Its geometry is generated, so nothing downloads.
+    let arena = query_value(&window, "zone").as_deref() == Some("arena")
+        || window
+            .location()
+            .pathname()
+            .is_ok_and(|path| path.trim_end_matches('/').ends_with("/arena"));
+    let bytes = if arena {
+        Vec::new()
+    } else {
+        download(&window).await?
+    };
     let mut runtime = WorldRuntime::new();
     // The town clock runs, as on the desktop; `?town-clock=off` stops it in
     // late-morning daylight and `?town-hour=18.5` pins the hour.
@@ -412,7 +423,9 @@ async fn run() -> Result<(), String> {
     // `?zone=water` opens the Water Lab, the cove for Verse's water, built
     // on the same pack (`docs/verse/water.md`).
     let water = query_value(&window, "zone").as_deref() == Some("water");
-    if query_value(&window, "zone").as_deref() == Some("coast") {
+    if arena {
+        runtime.enter_arena()?;
+    } else if query_value(&window, "zone").as_deref() == Some("coast") {
         status("Opening the coast…");
         runtime.install_coast_bytes(&bytes)?;
     } else if matches!(
@@ -444,7 +457,7 @@ async fn run() -> Result<(), String> {
         crate::light_proof::export(&runtime)?;
     }
     // The page opens no studio panel, on a keyboard or a touchscreen.
-    if let Err(error) = load_cad_models(&window, &mut runtime).await {
+    if !arena && let Err(error) = load_cad_models(&window, &mut runtime).await {
         web_sys::console::warn_1(&JsValue::from_str(&error));
     }
     runtime.interact_hint = verse::runtime::InteractHint::None;
@@ -517,8 +530,8 @@ async fn run() -> Result<(), String> {
         )));
     }
     // Without the physical renderer the page would show an empty field, so
-    // it says why instead.
-    let unavailable = renderer.physical_error().map(|error| {
+    // it says why instead. The arena draws only lines and faces.
+    let unavailable = renderer.physical_error().filter(|_| !arena).map(|error| {
         web_sys::console::error_1(&JsValue::from_str(&format!(
             "Everglade: the physical renderer is unavailable: {error}"
         )));
@@ -1064,6 +1077,17 @@ impl Page {
                 zones::grove::hotbar::draw_tip(&mut ui, atlas, size, 0.0, layout, &bar, index);
             }
         }
+        // The Grid Arena's bars, numbers, and action bar.
+        if let (Some(atlas), Some(arena)) = (&self.layout, self.runtime.arena()) {
+            zones::arena::hud::draw(
+                &mut ui,
+                atlas,
+                css,
+                view.view_proj,
+                arena,
+                zones::arena::hud::CONTROLS_WEB,
+            );
+        }
         if let Some(atlas) = &self.layout {
             super::terminal::draw(&mut ui, atlas, css);
         }
@@ -1218,6 +1242,30 @@ impl Page {
     /// = cast row 1's slots, and with Shift, Ctrl, or Alt (`modifiers`, in
     /// that order) rows 2, 3, and 4. Returns whether it used the key.
     fn hotbar_key(&mut self, code: &str, down: bool, modifiers: [bool; 3]) -> bool {
+        // The Grid Arena: 1 to 4 fire the abilities and R starts the fight
+        // again.
+        if self.runtime.arena().is_some() {
+            let slot = match code {
+                "Digit1" => Some(0),
+                "Digit2" => Some(1),
+                "Digit3" => Some(2),
+                "Digit4" => Some(3),
+                _ => None,
+            };
+            if let Some(slot) = slot {
+                if down {
+                    let _ = self.runtime.arena_press(slot);
+                }
+                return true;
+            }
+            if code == "KeyR" {
+                if down {
+                    self.runtime.arena_restart();
+                }
+                return true;
+            }
+            return false;
+        }
         if self.runtime.grove_bar().is_some() {
             // As the Giant Eagle, X holds a descent.
             if code == "KeyX" {

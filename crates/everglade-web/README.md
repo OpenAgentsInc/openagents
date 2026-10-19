@@ -79,6 +79,13 @@ openagents.com's `/druid` does, or when its URL has the query parameter
 `zone=grove`, for example `/?gl&zone=grove`. The Grove is built on the same
 pinned pack, so the page serves the same files and nothing else changes.
 
+### Grid Arena mode
+
+`?zone=arena`, or a path ending in `/arena`, opens the Grid Arena, the robot
+duel (`docs/verse/zones.md`). Its geometry is generated, so nothing
+downloads. Keys `1` to `4` fire the Striker's abilities and `R` starts the
+fight again.
+
 ### Water Lab mode
 
 `?zone=water` opens the Water Lab, the cove for Verse's water

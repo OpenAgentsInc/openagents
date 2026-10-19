@@ -32,6 +32,7 @@
 //! window is not in front; `V` mutes them, and `--studio-mute` starts muted.
 //! the podium, and merge decisions from the merge station.
 //! `--grove` opens straight into the Grove, the druid training field.
+//! `--arena` opens straight into the Grid Arena, a robot duel on the Grid.
 //! `--meteor-stress-test` opens an offline castle with five meteor casters.
 //! `--meteor-showcase` opens two medieval kit houses at golden hour, where a
 //! caster calls an eight-meteor swarm down on them; `R` rebuilds them.
@@ -325,6 +326,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--robot-lab" => options.robot_lab = true,
             "--robot-lab-config" => options.robot_lab_config = Some(value()?.into()),
             "--grove" => options.grove = true,
+            "--arena" => options.arena = true,
             "--meteor-stress-test" => {
                 options.meteor_stress_test = true;
                 options.relay = None;
