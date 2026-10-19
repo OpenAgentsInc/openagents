@@ -117,6 +117,23 @@ impl RuntimeConfig {
             None
         }
     }
+
+    /// [`Self::route`], except that a runtime still running background work
+    /// (agents, shells, monitors) is never replaced for a change of the same
+    /// harness's launch configuration (#12200): replacing it kills that
+    /// work. The message goes to the live runtime as is (`Some(false)`), and
+    /// the first send after the work ends starts the new configuration.
+    fn route_keeping_background(
+        &self,
+        harness_id: HarnessId,
+        request: &RunRequest,
+        background_tasks: usize,
+    ) -> Option<bool> {
+        match self.route(harness_id, request) {
+            None if background_tasks > 0 && self.harness_id == harness_id => Some(false),
+            route => route,
+        }
+    }
 }
 
 /// A run's live voice calls. They hold its idle reaper off, and each hang-up
@@ -629,10 +646,21 @@ impl SessionsEngine {
         openagents_proto::invocation::validate_harness_invocations(&request.prompt, harness_id)
             .map_err(EngineError::Other)?;
         let routed = lock(&self.inner.runs).get(chat_id).map(|h| {
+            let background = h.turn.background_tasks();
+            let route = h
+                .runtime_config
+                .route_keeping_background(harness_id, &request, background);
+            if route == Some(false) && !h.runtime_config.can_route(harness_id, &request) {
+                tracing::warn!(
+                    chat = %chat_id,
+                    background_tasks = background,
+                    "kept the live harness: it still runs background work; the changed run configuration applies once that work ends"
+                );
+            }
             (
                 h.run_id.clone(),
                 h.steerable && !h.retiring.load(std::sync::atomic::Ordering::Acquire),
-                h.runtime_config.route(harness_id, &request),
+                route,
                 h.steer_tx.clone(),
                 h.routed_steers.clone(),
                 h.fork_history_sent.clone(),
@@ -4136,6 +4164,34 @@ mod tests {
 
         follow_up.reasoning = Some(openagents_proto::ReasoningLevel::Medium);
         assert!(!config.can_route(HarnessId::Grok, &follow_up));
+    }
+
+    /// #12200: a launch-only change never replaces a runtime that still runs
+    /// background work; it waits for that work to end. Another harness, or
+    /// no background work, replaces it as before.
+    #[test]
+    fn a_runtime_with_background_work_is_never_replaced_for_a_setting() {
+        let initial = request();
+        let config = RuntimeConfig::new(
+            HarnessId::Grok,
+            &initial,
+            Arc::new(openagents_harness::AcpHarness::grok()),
+        );
+        let mut moved = initial.clone();
+        moved.cwd = "/elsewhere".into();
+        assert_eq!(config.route(HarnessId::Grok, &moved), None);
+        assert_eq!(config.route_keeping_background(HarnessId::Grok, &moved, 0), None);
+        assert_eq!(
+            config.route_keeping_background(HarnessId::Grok, &moved, 3),
+            Some(false)
+        );
+        assert_eq!(config.route_keeping_background(HarnessId::Devin, &moved, 3), None);
+        let mut same = initial.clone();
+        same.prompt = "again".into();
+        assert_eq!(
+            config.route_keeping_background(HarnessId::Grok, &same, 3),
+            Some(false)
+        );
     }
 
     #[test]

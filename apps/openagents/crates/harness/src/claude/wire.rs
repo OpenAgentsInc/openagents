@@ -389,6 +389,19 @@ pub(crate) fn set_model_request_line(request_id: &str, model: Option<&str>) -> S
     .to_string()
 }
 
+/// Switch the live process's permission mode (`bypassPermissions` or
+/// `default`), the Agent SDK's `set_permission_mode`. Switching to
+/// `bypassPermissions` needs the process launched with
+/// `--allow-dangerously-skip-permissions`, which every run is.
+pub(crate) fn set_permission_mode_line(request_id: &str, mode: &str) -> String {
+    json!({
+        "type": "control_request",
+        "request_id": request_id,
+        "request": { "subtype": "set_permission_mode", "mode": mode },
+    })
+    .to_string()
+}
+
 /// Replace the live process's flag-layer settings (effort, fast mode, …).
 pub(crate) fn apply_flag_settings_line(request_id: &str, settings: Value) -> String {
     json!({

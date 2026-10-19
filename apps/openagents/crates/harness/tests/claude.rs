@@ -1267,6 +1267,49 @@ async fn a_changed_model_and_effort_apply_to_the_live_process() {
     );
 }
 
+/// #12200: turning bypass permissions on or off for a chat changes the live
+/// process's permission mode in place. It used to replace the process,
+/// which killed every background agent, shell and monitor it held.
+#[tokio::test]
+async fn a_permission_toggle_applies_to_the_live_process() {
+    let mut on = request("b");
+    on.auto_approve = true;
+    let mut off = request("a");
+    off.auto_approve = false;
+    assert!(harness().reconfigures_in_place(&off, &on));
+    assert!(harness().reconfigures_in_place(&on, &off));
+
+    let (controls, steer, _token) = controls("A");
+    let mut launch = request("scenario:permission-toggle");
+    launch.auto_approve = false;
+    let mut bypass = launch.clone();
+    bypass.auto_approve = true;
+    let mut first = steer_msg("bypass on");
+    first.config = Some(Box::new(bypass));
+    steer.send(first).await.unwrap();
+    let mut second = steer_msg("bypass off");
+    second.config = Some(Box::new(launch.clone()));
+    steer.send(second).await.unwrap();
+    drop(steer);
+    let events = run_to_end(&harness(), launch, controls).await;
+    for text in ["bypassing", "asking again"] {
+        assert!(
+            events.contains(&AgentEvent::TextDelta { text: text.into() }),
+            "{text}: {events:?}"
+        );
+    }
+    assert!(
+        matches!(
+            events.last(),
+            Some(AgentEvent::Done {
+                status: DoneStatus::Completed,
+                ..
+            })
+        ),
+        "{events:?}"
+    );
+}
+
 /// "Marked done the moment I sent it": resuming a session whose background
 /// tasks died with its old process, the CLI settles them with empty results
 /// while the new prompt is still queued. Those are not the prompt's end.

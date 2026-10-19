@@ -272,6 +272,29 @@ case "$first" in
   exec sleep 30
   ;;
 
+*scenario:permission-toggle*)
+  # #12200: a permission-mode change is a `set_permission_mode` control
+  # request on the live process, never a new process. Every run launches
+  # with --allow-dangerously-skip-permissions so bypass can be turned on later.
+  case " $* " in *" --allow-dangerously-skip-permissions "*) ;; *) exit 20 ;; esac
+  emit '{"type":"system","subtype":"init","model":"claude-sonnet-5-5","tools":[],"cwd":"/tmp","session_id":"sess-pm"}'
+  emit '{"type":"result","subtype":"success","result":"first","errors":[],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-pm"}'
+  read -r mode || exit 1
+  case "$mode" in *'"subtype":"set_permission_mode"'*'"mode":"bypassPermissions"'*) ;; *) exit 21 ;; esac
+  read -r prompt || exit 1
+  case "$prompt" in *'bypass on'*) ;; *) exit 22 ;; esac
+  emit "$prompt"
+  emit '{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"bypassing"}}}'
+  emit '{"type":"result","subtype":"success","result":"bypassing","errors":[],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-pm"}'
+  read -r mode || exit 1
+  case "$mode" in *'"subtype":"set_permission_mode"'*'"mode":"default"'*) ;; *) exit 23 ;; esac
+  read -r prompt || exit 1
+  case "$prompt" in *'bypass off'*) ;; *) exit 24 ;; esac
+  emit "$prompt"
+  emit '{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"asking again"}}}'
+  emit '{"type":"result","subtype":"success","result":"asking again","errors":[],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-pm"}'
+  ;;
+
 *scenario:reconfigure*)
   # A follow-up sent with another model and effort: the live process
   # adopts them (`set_model`, then `apply_flag_settings`) before the prompt

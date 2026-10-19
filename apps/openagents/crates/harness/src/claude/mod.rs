@@ -104,6 +104,15 @@ fn mcp_config_arg(mcp: &openagents_proto::McpServer) -> String {
 
 /// The `--model` value: the 1M context window is selected via a model-id
 /// suffix (`sonnet[1m]`), exactly how the CLI itself does it.
+/// The CLI permission mode a request runs with.
+fn permission_mode(request: &RunRequest) -> &'static str {
+    if request.auto_approve {
+        "bypassPermissions"
+    } else {
+        "default"
+    }
+}
+
 fn model_arg(request: &RunRequest) -> Option<String> {
     let model = request.model.as_ref()?;
     let one_m = request
@@ -256,6 +265,10 @@ impl ClaudeHarness {
         if let Some(effort) = to_effort(request.reasoning, request.model.as_deref()) {
             args.extend(["--effort".into(), effort.into()]);
         }
+        // Every run may switch to bypass later on the live process
+        // (`set_permission_mode`): changing the permission mode must never
+        // replace the process, which would kill its background work (#12200).
+        args.push("--allow-dangerously-skip-permissions".into());
         if request.auto_approve {
             args.extend(
                 [
@@ -508,11 +521,13 @@ impl Harness for ClaudeHarness {
     fn same_runtime(&self, live: &RunRequest, next: &RunRequest) -> bool {
         live.cwd == next.cwd && Self::launch_args(live) == Self::launch_args(next)
     }
-    /// Model, context window, effort, fast mode, thinking and ultracode all
-    /// change on the live process (`set_model`, `apply_flag_settings`). Only
-    /// the directory and the permission mode it launched with need a new one.
+    /// Model, context window, effort, fast mode, thinking, ultracode and the
+    /// permission mode all change on the live process (`set_model`,
+    /// `apply_flag_settings`, `set_permission_mode`). Only the directory
+    /// needs a new one (#12200: a permission toggle used to restart the
+    /// process and kill its background agents and shells).
     fn reconfigures_in_place(&self, live: &RunRequest, next: &RunRequest) -> bool {
-        live.cwd == next.cwd && live.auto_approve == next.auto_approve
+        live.cwd == next.cwd
     }
 
     /// Credential and executable identity scopes both initialize and catalog caches.
@@ -1174,6 +1189,13 @@ async fn run_session(session: Session) {
                             let line = wire::apply_flag_settings_line(
                                 &format!("openagents_settings_{reconfigures}"),
                                 flag_settings(&next),
+                            );
+                            if stdin_tx.send(StdinMsg::Line(line)).is_err() { break 'main; }
+                        }
+                        if next.auto_approve != config.auto_approve {
+                            let line = wire::set_permission_mode_line(
+                                &format!("openagents_permissions_{reconfigures}"),
+                                permission_mode(&next),
                             );
                             if stdin_tx.send(StdinMsg::Line(line)).is_err() { break 'main; }
                         }
