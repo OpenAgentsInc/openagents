@@ -495,3 +495,38 @@ fn id_names_the_pylon() {
     assert!(text.contains("not linked"), "{text}");
     assert!(value["buyer"].as_str().unwrap().starts_with("npub1"));
 }
+
+#[test]
+fn a_stopped_or_dead_foreground_supervisor_does_not_block_up() {
+    let at = 1_000;
+    let mine = Live {
+        at,
+        supervisor: "foreground".into(),
+        pid: std::process::id(),
+        state: Phase::Serving,
+        ..Live::default()
+    };
+    // This very process is not "another terminal".
+    assert!(!online::foreground_running(&mine, at));
+    let mut child = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .unwrap();
+    let other = Live {
+        pid: child.id(),
+        ..mine.clone()
+    };
+    assert!(online::foreground_running(&other, at));
+    // Stopped: it wrote `off` as it ended.
+    let stopped = Live {
+        state: Phase::Off,
+        ..other.clone()
+    };
+    assert!(!online::foreground_running(&stopped, at));
+    // Killed: the process is gone.
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(!online::foreground_running(&other, at));
+    // Stale.
+    assert!(!online::foreground_running(&Live { at: 1, ..mine }, at));
+}

@@ -1112,6 +1112,38 @@ async fn fetch_model(json_out: bool, yes: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether `live` is another `up --foreground` that still runs: written
+/// recently, not stopped, and its process alive. A supervisor that was
+/// just stopped (by Ctrl-C, SIGTERM, or `down`) writes `off` as it ends, and
+/// one that was killed leaves a dead process id; neither is running.
+#[must_use]
+pub fn foreground_running(live: &Live, at: u64) -> bool {
+    live.fresh(at)
+        && live.supervisor == "foreground"
+        && live.state != Phase::Off
+        && live.pid != std::process::id()
+        && process_alive(live.pid)
+}
+
+/// Whether process `pid` exists (`kill -0`); `true` where that cannot be
+/// asked.
+fn process_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_or(true, |s| s.success())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        true
+    }
+}
+
 /// `openagents pylon up`.
 ///
 /// # Errors
@@ -1220,7 +1252,7 @@ pub async fn up(json_out: bool, words: &[String], relay: &str) -> Result<(), Str
         emit(json_out, &value, &text);
         return Ok(());
     }
-    if load_live(&home).is_some_and(|l| l.fresh(at) && l.supervisor == "foreground") {
+    if load_live(&home).is_some_and(|l| foreground_running(&l, at)) {
         let mut value = summary;
         value["supervisor"] = json!("foreground");
         emit(
