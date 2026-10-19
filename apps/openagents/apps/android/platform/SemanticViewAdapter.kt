@@ -42,6 +42,9 @@ class SemanticViewAdapter(
     private var disposed = false
     private var updating = false
     private var container: ViewGroup? = null
+    // The first unstyled heading in a mount is the screen title, drawn large as on iOS.
+    private var titleKey: String? = null
+    private var rootKey: String? = null
     private val builtins = setOf("stack", "list", "text", "rich_text", "button", "field", "choice", "dialog", "working", "message", "tool")
 
     /** Call on the UI thread. Acknowledgment follows a successful mount, never receipt. */
@@ -72,6 +75,8 @@ class SemanticViewAdapter(
         val semanticTree = semantics?.prepare(json)
         updating = true
         try {
+            titleKey = firstHeading(view.getJSONObject("root"))
+            rootKey = view.getJSONObject("root").getString("key")
             val seen = mutableSetOf<String>()
             val root = node(view.getJSONObject("root"), seen)
             children(parent, listOf(root))
@@ -103,6 +108,15 @@ class SemanticViewAdapter(
     }
 
     private fun column() = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private fun firstHeading(node: JSONObject): String? {
+        val element = node.getJSONObject("element")
+        val props = element.getJSONObject("props")
+        if (element.getString("kind") == "text" && props.optString("role") == "heading") return node.getString("key")
+        if (element.getString("kind") == "dialog") return null
+        val children = props.optJSONArray("children") ?: return null
+        for (i in 0 until children.length()) firstHeading(children.getJSONObject(i))?.let { return it }
+        return null
+    }
     private fun node(node: JSONObject, seen: MutableSet<String>): View {
         val key = node.getString("key")
         seen.add(key)
@@ -294,7 +308,7 @@ class SemanticViewAdapter(
                 require(updated === result) { "An extension must update its existing view." }
             }
         }
-        style(result, node.optJSONObject("style") ?: JSONObject())
+        style(result, node.optJSONObject("style") ?: JSONObject(), key, kind, props)
         return result
     }
 
@@ -305,14 +319,23 @@ class SemanticViewAdapter(
                 (child.parent as? ViewGroup)?.removeView(child)
                 val params = if (parent is LinearLayout) LinearLayout.LayoutParams(
                     if (parent.orientation == LinearLayout.HORIZONTAL) -2 else -1, -2
-                ) else ViewGroup.LayoutParams(-1, -2)
+                ).apply {
+                    // Unstyled rows sit apart from each other, as iOS grouped rows do.
+                    if (child.getTag(R.id.oa_default_row) == true) {
+                        if (parent.orientation == LinearLayout.HORIZONTAL) marginEnd = dp(8) else topMargin = dp(8)
+                    }
+                } else ViewGroup.LayoutParams(-1, -2)
                 parent.addView(child, index, params)
             }
         }
     }
     private fun dp(value: Int) = (context.resources.displayMetrics.density * value).toInt()
     private fun color(value: JSONObject) = Color.argb(value.getInt("alpha"), value.getInt("red"), value.getInt("green"), value.getInt("blue"))
-    private fun style(view: View, style: JSONObject) {
+    private fun style(view: View, style: JSONObject, key: String, kind: String, props: JSONObject) {
+        // Rust writes unset style fields as nulls; a style of only nulls is unstyled.
+        val unstyled = style.keys().asSequence().all { style.isNull(it) }
+        if (unstyled && defaultStyle(view, key, kind, props)) return
+        view.setTag(R.id.oa_default_row, null)
         fun space(name: String) = when (style.optString(name)) { "xs" -> 4; "sm" -> 8; "md" -> 16; "lg" -> 24; else -> 0 }
         val padding = style.optJSONArray("padding_points")
         view.setPaddingRelative(dp(padding?.optInt(3) ?: space("padding_start")), dp(padding?.optInt(0) ?: space("padding_top")),
@@ -323,10 +346,82 @@ class SemanticViewAdapter(
             style.optJSONObject("border")?.let { setStroke(dp(1), color(it)) }
         }
         if (view is TextView) {
-            style.optJSONObject("foreground")?.let { view.setTextColor(color(it)) }
+            view.setTextColor(style.optJSONObject("foreground")?.let { color(it) } ?: context.getColor(R.color.oa_text))
             view.textSize = style.optInt("text_size", 16).toFloat()
+            if (view.typeface != Typeface.MONOSPACE) view.typeface = OaStyle.typeface(context, when (style.optString("weight")) {
+                "medium" -> OaStyle.Weight.MEDIUM
+                "semibold" -> OaStyle.Weight.SEMIBOLD
+                "bold" -> OaStyle.Weight.BOLD
+                else -> if (props.optString("role") == "heading") OaStyle.Weight.SEMIBOLD else OaStyle.Weight.REGULAR
+            })
         }
     }
+
+    /**
+     * Unstyled nodes get the iOS look: a large title, secondary body text, and buttons as
+     * full-width rounded rows, with destructive actions in red. Returns false to use the
+     * plain path for kinds it leaves alone.
+     */
+    private fun defaultStyle(view: View, key: String, kind: String, props: JSONObject): Boolean {
+        view.setTag(R.id.oa_default_row, null)
+        val fill = context.getColor(R.color.oa_fill)
+        when {
+            view is CheckBox || view is RadioButton || kind == "choice" -> {
+                if (view is TextView) OaStyle.text(view, 17f)
+                view.setPaddingRelative(dp(4), dp(4), dp(4), dp(4))
+                view.background = null
+            }
+            view is Button -> {
+                val label = props.optString("label")
+                OaStyle.text(view, 17f, OaStyle.Weight.MEDIUM, if (destructive(label)) R.color.oa_danger else R.color.oa_text)
+                view.gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+                view.minHeight = dp(52)
+                view.minimumHeight = dp(52)
+                view.stateListAnimator = null
+                view.setPaddingRelative(dp(16), dp(12), dp(16), dp(12))
+                view.background = OaStyle.rowBackground(context, fill, 14f)
+                view.alpha = if (view.isEnabled) 1f else 0.45f
+                view.setTag(R.id.oa_default_row, true)
+            }
+            view is EditText -> {
+                OaStyle.text(view, 17f)
+                view.setHintTextColor(context.getColor(R.color.oa_secondary))
+                view.setPaddingRelative(dp(16), dp(12), dp(16), dp(12))
+                view.background = OaStyle.rounded(context, fill, 14f)
+                view.setTag(R.id.oa_default_row, true)
+            }
+            view is TextView -> {
+                val role = props.optString("role")
+                view.background = null
+                when {
+                    view.typeface == Typeface.MONOSPACE -> { view.textSize = 14f; view.setTextColor(context.getColor(R.color.oa_text)) }
+                    role == "heading" && key == titleKey -> {
+                        OaStyle.text(view, 32f, OaStyle.Weight.BOLD)
+                        view.setPaddingRelative(0, dp(12), 0, dp(12))
+                    }
+                    role == "heading" -> {
+                        OaStyle.text(view, 20f, OaStyle.Weight.SEMIBOLD)
+                        view.setPaddingRelative(0, dp(20), 0, dp(2))
+                    }
+                    else -> {
+                        OaStyle.text(view, 15f, colorResource = R.color.oa_secondary)
+                        view.setLineSpacing(dp(3).toFloat(), 1f)
+                        view.setPaddingRelative(0, dp(4), 0, dp(4))
+                    }
+                }
+            }
+            kind == "stack" || kind == "list" || kind == "message" || kind == "tool" -> {
+                view.background = null
+                if (key == rootKey) view.setPaddingRelative(dp(20), dp(8), dp(20), dp(32)) else view.setPaddingRelative(0, 0, 0, 0)
+            }
+            else -> return false
+        }
+        return true
+    }
+
+    private fun destructive(label: String) = label == "Sign out" || label == "Delete" || label == "Remove" ||
+        label.startsWith("Delete ") || label.startsWith("Remove ") || label.startsWith("Sign out ")
+
     private fun release(key: String) {
         val control = controls.remove(key) ?: return
         control.view.setOnClickListener(null)
