@@ -368,3 +368,114 @@ async fn a_turn_without_a_saved_queue_generation_waits_on_lookup_failure_then_re
         })
         .await;
 }
+
+// Hold a heartbeat at COMMIT, after its UPDATE but before its revision is
+// visible. Aborting that client future cannot cancel the server's COMMIT.
+async fn completion_waits_for_the_heartbeat_commit(api_command: bool) {
+    let Some(rig) = Rig::new().await else { return };
+    let request = Request {
+        command: "sleep 0.2; printf 'once\\n' >> counter".into(),
+        cwd: ".".into(),
+        timeout_seconds: 5,
+        env: Default::default(),
+        idempotency_key: "heartbeat-commit".into(),
+        credential_ref: None,
+    };
+    let id = if api_command {
+        rig.store
+            .add_command(OWNER, &rig.id, &request)
+            .await
+            .unwrap()
+            .0
+    } else {
+        let id = "legacy-heartbeat".to_owned();
+        rig.store
+            .add_turn(&id, &rig.id, OWNER, &request.command, Some("."), 5, &[])
+            .await
+            .unwrap();
+        id
+    };
+    let computer = rig.lease.read().await.unwrap();
+    let counter = rig
+        .root
+        .path()
+        .join(computer.resource().unwrap())
+        .join("counter");
+    rig.release().await;
+    let client = rig.db.client().await.unwrap();
+    client.batch_execute(r#"
+        CREATE FUNCTION computers.hold_heartbeat_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            IF NEW.phase = 'turn' AND OLD.phase = 'turn'
+                AND NEW.record->'turn'->>'heartbeat_ms' IS DISTINCT FROM OLD.record->'turn'->>'heartbeat_ms'
+            THEN PERFORM pg_advisory_xact_lock(12171); END IF;
+            RETURN NULL;
+        END $$;
+        CREATE CONSTRAINT TRIGGER hold_heartbeat_commit AFTER UPDATE ON computers.computers
+            DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION computers.hold_heartbeat_commit();
+        SELECT pg_advisory_lock(12171);
+    "#).await.unwrap();
+    let mut visit = Box::pin(rig.visit());
+    let ready = async {
+        loop {
+            let waiting: bool = client
+                .query_one(
+                    "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory'
+                    AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+                    AND classid=0 AND objid=12171 AND NOT granted)",
+                    &[],
+                )
+                .await
+                .unwrap()
+                .get(0);
+            if waiting && std::fs::read_to_string(&counter).is_ok_and(|s| s == "once\n") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::select! {
+        () = &mut visit => panic!("the visit must wait for the heartbeat transaction"),
+        result = tokio::time::timeout(Duration::from_secs(5), ready) => result.expect("heartbeat COMMIT and command effect"),
+    }
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), &mut visit)
+            .await
+            .is_err()
+    );
+    client
+        .batch_execute("SELECT pg_advisory_unlock(12171)")
+        .await
+        .unwrap();
+    visit.await;
+    let finished = rig.store.get(OWNER, &rig.id).await.unwrap().unwrap();
+    assert_eq!(
+        finished.record.phase,
+        Phase::Stopped,
+        "{:?}",
+        finished.last_error
+    );
+    assert_eq!(finished.record.turn.completed, 1);
+    assert_eq!(finished.record.turn.dispatched, 1);
+    assert!(finished.last_error.is_none());
+    let turn = rig.store.turn(OWNER, &rig.id, &id).await.unwrap().unwrap();
+    assert_eq!(turn.state, "done");
+    assert_eq!(turn.exit_code, Some(0));
+    assert_eq!(rig.effects().await, "once\n");
+    rig.visit().await;
+    assert_eq!(rig.effects().await, "once\n");
+}
+
+#[tokio::test]
+async fn command_completion_waits_for_an_inflight_heartbeat_commit() {
+    tokio::task::LocalSet::new()
+        .run_until(completion_waits_for_the_heartbeat_commit(true))
+        .await;
+}
+
+#[tokio::test]
+async fn legacy_turn_completion_waits_for_an_inflight_heartbeat_commit() {
+    tokio::task::LocalSet::new()
+        .run_until(completion_waits_for_the_heartbeat_commit(false))
+        .await;
+}

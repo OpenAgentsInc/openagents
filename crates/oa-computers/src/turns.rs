@@ -718,6 +718,53 @@ pub fn routes() -> Router<Arc<Api>> {
 
 // ----------------------------------------------------------- reconciler
 
+/// Stop between heartbeat writes, then wait for the last transaction before
+/// completing the turn. Aborting a future after PostgreSQL receives COMMIT
+/// can leave a heartbeat advancing the revision behind the completion write.
+pub(crate) struct TurnHeartbeat {
+    stop: tokio::sync::oneshot::Sender<()>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl TurnHeartbeat {
+    pub(crate) fn start(lease: &PgLease, generation: u64, every: Duration) -> Self {
+        let lease = PgLease {
+            store: lease.store.clone(),
+            id: lease.id.clone(),
+            holder: lease.holder.clone(),
+            lease: lease.lease,
+        };
+        let (stop, mut stopped) = tokio::sync::oneshot::channel();
+        let task = tokio::task::spawn_local(async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = &mut stopped => break,
+                    () = tokio::time::sleep(every) => {}
+                }
+                // Keep the whole transaction outside select so shutdown never
+                // cancels an in-flight COMMIT. Dropping the owner also stops us.
+                if lease
+                    .apply(
+                        &Command::Heartbeat { generation },
+                        crate::reconcile::now_ms(),
+                    )
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        Self { stop, task }
+    }
+
+    pub(crate) async fn stop(self) {
+        let _ = self.stop.send(());
+        let _ = self.task.await;
+    }
+}
+
 /// Run the computer's next waiting turn, if any, on an awake computer.
 /// Returns the settle the visit ends with.
 pub async fn run_next<D: Driver + Clone + 'static>(
@@ -812,29 +859,7 @@ pub async fn run_next<D: Driver + Clone + 'static>(
     let capture = exec.output.clone();
     let resource = computer.resource().unwrap_or_default().to_owned();
     // The turn's owner says it is alive while the command runs.
-    let beat = {
-        let lease = PgLease {
-            store: lease.store.clone(),
-            id: lease.id.clone(),
-            holder: lease.holder.clone(),
-            lease: lease.lease,
-        };
-        tokio::task::spawn_local(async move {
-            loop {
-                tokio::time::sleep(heartbeat).await;
-                if lease
-                    .apply(
-                        &Command::Heartbeat { generation },
-                        crate::reconcile::now_ms(),
-                    )
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-    };
+    let beat = TurnHeartbeat::start(lease, generation, heartbeat);
     // The command runs until it ends or the turn is asked to stop; a
     // stop abandons the call, which closes its connection to the computer.
     let outcome = {
@@ -870,7 +895,7 @@ pub async fn run_next<D: Driver + Clone + 'static>(
         }
     };
     secrets.stopped(&t.id);
-    beat.abort();
+    beat.stop().await;
     drop(exec);
     match &outcome {
         Outcome::Failed { reason } if reason == STOPPED => {

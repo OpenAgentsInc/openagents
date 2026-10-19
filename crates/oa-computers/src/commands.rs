@@ -547,29 +547,7 @@ pub async fn run<D: Driver + Clone + 'static>(
         .resource
         .clone()
         .unwrap_or_else(|| computer.resource().unwrap_or_default().to_owned());
-    let beat = {
-        let lease = PgLease {
-            store: lease.store.clone(),
-            id: lease.id.clone(),
-            holder: lease.holder.clone(),
-            lease: lease.lease,
-        };
-        tokio::task::spawn_local(async move {
-            loop {
-                tokio::time::sleep(heartbeat).await;
-                if lease
-                    .apply(
-                        &Command::Heartbeat { generation },
-                        crate::reconcile::now_ms(),
-                    )
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-    };
+    let beat = crate::turns::TurnHeartbeat::start(lease, generation, heartbeat);
     let result = async {
         if r.status == "queued" {
             if r.cancel {
@@ -700,7 +678,7 @@ pub async fn run<D: Driver + Clone + 'static>(
         }
         Ok::<(),coder_working_computer::store::StoreError>(())
     }.await;
-    beat.abort();
+    beat.stop().await;
     result?;
     if r.status == "unknown" && p.driver.capabilities().memory_suspend {
         return crate::turns::uncertain_memory_turn(p, lease, e, computer).await;
