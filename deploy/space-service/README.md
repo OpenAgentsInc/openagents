@@ -202,7 +202,20 @@ and [alert policy API](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/
 
 Use `computers.py --disable-creates` with the same pinned image, template, shape,
 and deployment ID to stop new placement while retaining existing computer
-operations. The registry stays available to the reconciler. Do not remove or
+operations.
+`computers.py` also takes `--rollout-account account:HEX` (one or two exact
+test owners in the web's digest form), `--poll-ms` (service and driver polling;
+the defaults are 1 s and 3 s), and `--keep-project-iam` for a redeploy by an
+operator who can't change project IAM; the existing instance-scoped Cloud SQL
+binding then stays in place.
+
+`qualification-11816/` holds the #11816 live qualification tools. Install
+`q16*.py` beside the protected control tools and `q16_worker.py` and
+`q16_storage_block.sh` as root on the worker. They use two synthetic owners,
+print no credentials, and restore every injected fault in a `finally` block or
+a bounded timer. `assemble.py`, `spec_builder.py`, and `build_packet.py` turn the
+saved records into the scrubbed receipts and packet under
+`docs/sdk/evidence/space-qualification-2026-10-18/`. The registry stays available to the reconciler. Do not remove or
 disable the deployment while its computers still need access or deletion.
 
 `database-recovery.py` creates and restores only the separate

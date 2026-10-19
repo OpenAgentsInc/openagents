@@ -8,17 +8,81 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use openagents::{Client, Deployment, Error};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::{Duration, Instant},
+};
 pub const ACCOUNT_HEADER: &str = "x-coder-verified-account";
+/// How long a confirmed token keeps working while the account service is down.
+pub const OUTAGE_GRACE: Duration = Duration::from_secs(5 * 60);
+const CONFIRMED_LIMIT: usize = 10_000;
+static CACHED_ADMISSIONS: AtomicU64 = AtomicU64::new(0);
+/// Admissions served from the confirmed-token cache since the process started.
+pub fn cached_admissions() -> u64 {
+    CACHED_ADMISSIONS.load(Ordering::Relaxed)
+}
 #[derive(Clone)]
-pub struct Accounts(Client);
+pub struct Accounts {
+    client: Client,
+    grace: Duration,
+    /// Token digest to the last successful confirmation; never the token.
+    confirmed: Arc<Mutex<HashMap<[u8; 32], (Instant, Identity)>>>,
+}
 impl Accounts {
     pub fn new(deployment: Deployment) -> Result<Self, Error> {
-        Client::with_timeout(deployment, Duration::from_secs(5)).map(Self)
+        Self::with_grace(deployment, OUTAGE_GRACE)
+    }
+    pub fn with_grace(deployment: Deployment, grace: Duration) -> Result<Self, Error> {
+        Ok(Self {
+            client: Client::with_timeout(deployment, Duration::from_secs(5))?,
+            grace,
+            confirmed: Default::default(),
+        })
     }
     pub async fn verify(&self, token: &str) -> Result<Identity, StatusCode> {
+        let key: [u8; 32] = Sha256::digest(token.as_bytes()).into();
+        match self.confirm(token).await {
+            Ok(who) => {
+                let mut cache = self.confirmed.lock().unwrap();
+                let now = Instant::now();
+                if cache.len() >= CONFIRMED_LIMIT && !cache.contains_key(&key) {
+                    cache.retain(|_, (at, _)| now.duration_since(*at) < self.grace);
+                    if cache.len() >= CONFIRMED_LIMIT {
+                        cache.clear();
+                    }
+                }
+                cache.insert(key, (now, who.clone()));
+                Ok(who)
+            }
+            Err(StatusCode::UNAUTHORIZED) => {
+                self.confirmed.lock().unwrap().remove(&key);
+                Err(StatusCode::UNAUTHORIZED)
+            }
+            Err(status) => {
+                let mut cache = self.confirmed.lock().unwrap();
+                match cache.get(&key) {
+                    Some((at, who)) if at.elapsed() < self.grace => {
+                        CACHED_ADMISSIONS.fetch_add(1, Ordering::Relaxed);
+                        tracing::debug!(account=%who.account, "account service unreachable; admitted a recently confirmed token");
+                        Ok(who.clone())
+                    }
+                    Some(_) => {
+                        cache.remove(&key);
+                        Err(status)
+                    }
+                    None => Err(status),
+                }
+            }
+        }
+    }
+    async fn confirm(&self, token: &str) -> Result<Identity, StatusCode> {
         let session = self
-            .0
+            .client
             .authenticate(token)
             .await
             .map_err(|error| match error {

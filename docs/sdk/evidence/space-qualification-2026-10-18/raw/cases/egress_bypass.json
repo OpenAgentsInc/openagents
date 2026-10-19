@@ -1,0 +1,194 @@
+{
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "finding": "Metadata (IP and name), DNS bypass, IPv6, management, database, and Private Google Access addresses are denied. TCP connects to public and Google VIP addresses are accepted locally by the gateway and reset on the first byte; no TLS session or HTTP reply is possible.",
+ "owners": "synthetic account digests only; no owner account or host",
+ "probes": [
+  {
+   "exit_code": 0,
+   "group": "1",
+   "probes": [
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "metadata_ipv4",
+     "target": "http://169.254.169.254/computeMetadata/v1/instance/id"
+    },
+    {
+     "denied": true,
+     "error": "gaierror",
+     "probe": "metadata_dns",
+     "target": "metadata.google.internal"
+    },
+    {
+     "denied": true,
+     "error": "gaierror",
+     "probe": "redirect_to_metadata",
+     "target": "http://httpbin.org/redirect-to?url=http%3A%2F%2F169.254.169.254%2FcomputeMetadata%2Fv1%2F"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "dns_bypass",
+     "target": "8.8.8.8:53/udp"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "dns_bypass",
+     "target": "1.1.1.1:53/udp"
+    },
+    {
+     "denied": true,
+     "error": "gaierror",
+     "probe": "public_dns",
+     "target": "example.com"
+    }
+   ],
+   "state": "done",
+   "stderr_bytes": 0,
+   "turn": "trn_c523bac1248f365f477d"
+  },
+  {
+   "exit_code": 1,
+   "group": "2",
+   "probes": [
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:6443"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:8443"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:8444"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:9810"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.10:10250"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.11:9800"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.14.11:10250"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.220.1.1:9800"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.220.0.1:443"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.43.0.1:443"
+    },
+    {
+     "denied": true,
+     "error": "TimeoutError",
+     "probe": "management",
+     "target": "10.219.16.3:5432"
+    },
+    {
+     "denied": false,
+     "probe": "management",
+     "target": "199.36.153.8:443"
+    },
+    {
+     "denied": false,
+     "probe": "management",
+     "target": "199.36.153.4:443"
+    },
+    {
+     "denied": false,
+     "probe": "public_ip",
+     "target": "1.1.1.1:443"
+    },
+    {
+     "denied": false,
+     "probe": "public_ip",
+     "target": "8.8.8.8:443"
+    },
+    {
+     "denied": false,
+     "probe": "public_ip",
+     "target": "142.250.190.78:443"
+    },
+    {
+     "denied": false,
+     "probe": "public_ip",
+     "target": "140.82.112.3:443"
+    },
+    {
+     "denied": true,
+     "error": "OSError",
+     "probe": "ipv6",
+     "target": "2001:4860:4860::8888:443"
+    },
+    {
+     "denied": true,
+     "error": "OSError",
+     "probe": "ipv6",
+     "target": "2606:4700:4700::1111:443"
+    },
+    {
+     "denied": true,
+     "error": "OSError",
+     "probe": "ipv6",
+     "target": "fd20::1:443"
+    }
+   ],
+   "state": "done",
+   "stderr_bytes": 0,
+   "turn": "trn_937453ed5c0cdf541d7b"
+  }
+ ],
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "scope": "Guest denial under the deny-all template profile; the credential gateway is not deployed, so header-injection redirects are out of scope until credential_revocation runs.",
+ "status": "passed",
+ "tls_and_http_by_ip": {
+  "result": {
+   "computer": "cmp_033a0b863352ba6e3074",
+   "env_names": [],
+   "error": null,
+   "exit_code": 0,
+   "generation": 5,
+   "id": "trn_7b341c194dec159a72c1",
+   "state": "done",
+   "stderr": "",
+   "stdout": "[{\"probe\": \"public_ip_tls\", \"target\": \"1.1.1.1:443\", \"sni\": \"one.one.one.one\", \"tls_established\": false, \"denied\": true, \"error\": \"ConnectionResetError: [Errno 104] Connection reset by peer\"}, {\"probe\": \"public_ip_tls\", \"target\": \"140.82.112.3:443\", \"sni\": \"github.com\", \"tls_established\": false, \"denied\": true, \"error\": \"ConnectionResetError: [Errno 104] Connection reset by peer\"}, {\"probe\": \"private_google_access_tls\", \"target\": \"199.36.153.8:443\", \"sni\": \"storage.googleapis.com\", \"tls_established\": false, \"denied\": true, \"error\": \"ConnectionResetError: [Errno 104] Connection reset by peer\"}, {\"probe\": \"private_google_access_tls\", \"target\": \"199.36.153.4:443\", \"sni\": \"secretmanager.googleapis.com\", \"tls_established\": false, \"denied\": true, \"error\": \"ConnectionResetError: [Errno 104] Connection reset by peer\"}, {\"probe\": \"public_ip_http\", \"target\": \"142.250.190.78:80\", \"host\": \"www.google.com\", \"denied\": true, \"error\": \"ConnectionResetError: [Errno 104] Connection reset by peer\"}, {\"probe\": \"public_ip_http\", \"target\": \"1.1.1.1:80\", \"host\": \"one.one.one.one\", \"denied\": true, \"error\": \"ConnectionResetError: [Errno 104] Connection reset by peer\"}]\n"
+  },
+  "turn": "trn_7b341c194dec159a72c1"
+ }
+}

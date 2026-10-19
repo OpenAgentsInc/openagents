@@ -1,0 +1,167 @@
+[
+ {
+  "id": "trn_9b0d5a9ec36431cc12b5",
+  "computer": "cmp_14ca9fd4a34edae55f3e",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T19:28:06.551503+00:00",
+  "started_at": "2026-10-18T19:28:06.767368+00:00",
+  "finished_at": "2026-10-18T19:28:06.935663+00:00",
+  "stdout_bytes": 112
+ },
+ {
+  "id": "trn_509ae91a8a1edb731043",
+  "computer": "cmp_58e3ee0bc6e14d82e4f5",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T19:33:03.791119+00:00",
+  "started_at": "2026-10-18T19:33:03.961361+00:00",
+  "finished_at": "2026-10-18T19:33:04.138631+00:00",
+  "stdout_bytes": 112
+ },
+ {
+  "id": "trn_6d337a175915c14ed3d4",
+  "computer": "cmp_6ec2fd089ad23548b166",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T19:34:28.585768+00:00",
+  "started_at": "2026-10-18T19:34:28.828122+00:00",
+  "finished_at": "2026-10-18T19:34:29.146096+00:00",
+  "stdout_bytes": 75
+ },
+ {
+  "id": "trn_e72421fc4520ea8eb80c",
+  "computer": "cmp_033a0b863352ba6e3074",
+  "state": "done",
+  "exit_code": 0,
+  "error": null,
+  "created_at": "2026-10-18T20:09:56.747961+00:00",
+  "started_at": "2026-10-18T20:09:56.967369+00:00",
+  "finished_at": "2026-10-18T20:09:57.16473+00:00",
+  "stdout_bytes": 176
+ },
+ {
+  "id": "trn_3762638b0381e6bee3f2",
+  "computer": "cmp_033a0b863352ba6e3074",
+  "state": "done",
+  "exit_code": 124,
+  "error": null,
+  "created_at": "2026-10-18T20:11:10.290731+00:00",
+  "started_at": "2026-10-18T20:11:10.456362+00:00",
+  "finished_at": "2026-10-18T20:12:05.604024+00:00",
+  "stdout_bytes": 0
+ },
+ {
+  "id": "trn_c523bac1248f365f477d",
+  "computer": "cmp_033a0b863352ba6e3074",
+  "state": "done",
+  "exit_code": 0,
+  "error": null,
+  "created_at": "2026-10-18T20:12:59.658505+00:00",
+  "started_at": "2026-10-18T20:12:59.941378+00:00",
+  "finished_at": "2026-10-18T20:13:10.799849+00:00",
+  "stdout_bytes": 689
+ },
+ {
+  "id": "trn_937453ed5c0cdf541d7b",
+  "computer": "cmp_033a0b863352ba6e3074",
+  "state": "done",
+  "exit_code": 1,
+  "error": null,
+  "created_at": "2026-10-18T20:13:57.017108+00:00",
+  "started_at": "2026-10-18T20:13:57.223976+00:00",
+  "finished_at": "2026-10-18T20:14:14.054052+00:00",
+  "stdout_bytes": 1746
+ },
+ {
+  "id": "trn_7b341c194dec159a72c1",
+  "computer": "cmp_033a0b863352ba6e3074",
+  "state": "done",
+  "exit_code": 0,
+  "error": null,
+  "created_at": "2026-10-18T20:15:00.190567+00:00",
+  "started_at": "2026-10-18T20:15:00.39082+00:00",
+  "finished_at": "2026-10-18T20:15:00.768677+00:00",
+  "stdout_bytes": 1163
+ },
+ {
+  "id": "trn_80d5d09fc9d7c6922a08",
+  "computer": "cmp_033a0b863352ba6e3074",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T20:16:17.994357+00:00",
+  "started_at": "2026-10-18T20:16:18.230978+00:00",
+  "finished_at": "2026-10-18T20:16:21.260215+00:00",
+  "stdout_bytes": 0
+ },
+ {
+  "id": "trn_7826aae5746417b81e4d",
+  "computer": "cmp_033a0b863352ba6e3074",
+  "state": "failed",
+  "exit_code": null,
+  "error": "The computer was deleted.",
+  "created_at": "2026-10-18T20:27:33.580656+00:00",
+  "started_at": null,
+  "finished_at": "2026-10-18T20:27:57.456793+00:00",
+  "stdout_bytes": 0
+ },
+ {
+  "id": "trn_e9c23e4e0e9251cfcb70",
+  "computer": "cmp_e85bfe79222693256361",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T20:37:13.347077+00:00",
+  "started_at": "2026-10-18T20:37:13.591601+00:00",
+  "finished_at": "2026-10-18T20:37:13.742346+00:00",
+  "stdout_bytes": 37
+ },
+ {
+  "id": "trn_7a914993f5779644723a",
+  "computer": "cmp_5c4921832cc839d1f276",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T21:14:04.505486+00:00",
+  "started_at": "2026-10-18T21:14:04.661668+00:00",
+  "finished_at": "2026-10-18T21:14:04.875826+00:00",
+  "stdout_bytes": 176
+ },
+ {
+  "id": "trn_124f206a67e726930a2b",
+  "computer": "cmp_0a3f361e82af6e8e39db",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T21:51:33.620505+00:00",
+  "started_at": "2026-10-18T21:51:33.856931+00:00",
+  "finished_at": "2026-10-18T21:51:48.980816+00:00",
+  "stdout_bytes": 0
+ },
+ {
+  "id": "trn_454a84a257a03b386084",
+  "computer": "cmp_6adadafbc610bbcad4e3",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T22:33:02.776644+00:00",
+  "started_at": "2026-10-18T22:33:02.984925+00:00",
+  "finished_at": "2026-10-18T22:33:03.199492+00:00",
+  "stdout_bytes": 112
+ },
+ {
+  "id": "trn_c6084a8a4e4c2e430b66",
+  "computer": "cmp_f5abd0d6178073c2ceaa",
+  "state": "failed",
+  "exit_code": null,
+  "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+  "created_at": "2026-10-18T22:56:05.06775+00:00",
+  "started_at": "2026-10-18T22:56:05.301371+00:00",
+  "finished_at": "2026-10-18T22:56:05.525174+00:00",
+  "stdout_bytes": 111
+ }
+]

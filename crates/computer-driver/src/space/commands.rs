@@ -131,6 +131,8 @@ mod tests {
             .output()
             .unwrap()
     }
+    // The shared scripts read /proc, which only Linux has.
+    #[cfg(target_os = "linux")]
     #[test]
     fn detached_commands_keep_one_identity_and_read_bounded_output() {
         let temp = tempfile::tempdir().unwrap();

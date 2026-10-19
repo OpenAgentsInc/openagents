@@ -521,54 +521,55 @@ impl AgentWakesCard {
                     ),
             );
 
-        let standing = agent.grants.iter().find(|g| g.is_standing());
-        let granted = standing.is_some();
-        let authority_meta = match (standing, agent.grants.len()) {
-            (Some(g), _) => format!(
-                "Since {}, it can message, start, steer and stop chats without asking. Money, keys, secrets, deploys and closing others' issues still need you.",
-                local_time(g.granted_at)
-            ),
-            (None, 0) => "Off: on check-ins it only looks and reports. Turn on to let it message, start, steer and stop chats without asking.".into(),
-            (None, n) => format!(
-                "It holds {n} narrower grant{} from your account. Turn on to let it message, start, steer and stop any chat without asking.",
-                if n == 1 { "" } else { "s" }
-            ),
-        };
-        let toggle_agent = agent.clone();
-        let authority_row = widgets::card_row(theme, false)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(160.0))
-                    .child(widgets::row_title(theme, "Standing authority"))
-                    .child(widgets::meta_line(
-                        theme,
-                        vec![div().child(authority_meta).into_any_element()],
-                    )),
-            )
-            .child(
-                widgets::toggle_switch(theme, granted, format!("wakes-authority-{id}"))
-                    .id(gpui::SharedString::from(format!(
-                        "wakes-authority-toggle-{id}"
-                    )))
-                    .flex_none()
-                    .role(gpui::Role::Switch)
-                    .aria_label("Standing authority")
-                    .aria_toggled(if granted {
-                        gpui::Toggled::True
-                    } else {
-                        gpui::Toggled::False
-                    })
-                    .when(interactive, |el| {
-                        el.cursor_pointer()
-                            .tab_index(0)
-                            .focus_visible(|s| s.border_2().border_color(theme.accent))
-                            .on_click(cx.listener(move |card, _, _, cx| {
-                                card.toggle_standing(&toggle_agent, cx)
-                            }))
-                    })
-                    .when(!interactive, |el| el.opacity(0.5)),
-            );
+        // Standing authority is hidden: agents act without grants (#12135, #12155).
+        // let standing = agent.grants.iter().find(|g| g.is_standing());
+        // let granted = standing.is_some();
+        // let authority_meta = match (standing, agent.grants.len()) {
+        //     (Some(g), _) => format!(
+        //         "Since {}, it can message, start, steer and stop chats without asking. Money, keys, secrets, deploys and closing others' issues still need you.",
+        //         local_time(g.granted_at)
+        //     ),
+        //     (None, 0) => "Off: on check-ins it only looks and reports. Turn on to let it message, start, steer and stop chats without asking.".into(),
+        //     (None, n) => format!(
+        //         "It holds {n} narrower grant{} from your account. Turn on to let it message, start, steer and stop any chat without asking.",
+        //         if n == 1 { "" } else { "s" }
+        //     ),
+        // };
+        // let toggle_agent = agent.clone();
+        // let authority_row = widgets::card_row(theme, false)
+        //     .child(
+        //         div()
+        //             .flex_1()
+        //             .min_w(px(160.0))
+        //             .child(widgets::row_title(theme, "Standing authority"))
+        //             .child(widgets::meta_line(
+        //                 theme,
+        //                 vec![div().child(authority_meta).into_any_element()],
+        //             )),
+        //     )
+        //     .child(
+        //         widgets::toggle_switch(theme, granted, format!("wakes-authority-{id}"))
+        //             .id(gpui::SharedString::from(format!(
+        //                 "wakes-authority-toggle-{id}"
+        //             )))
+        //             .flex_none()
+        //             .role(gpui::Role::Switch)
+        //             .aria_label("Standing authority")
+        //             .aria_toggled(if granted {
+        //                 gpui::Toggled::True
+        //             } else {
+        //                 gpui::Toggled::False
+        //             })
+        //             .when(interactive, |el| {
+        //                 el.cursor_pointer()
+        //                     .tab_index(0)
+        //                     .focus_visible(|s| s.border_2().border_color(theme.accent))
+        //                     .on_click(cx.listener(move |card, _, _, cx| {
+        //                         card.toggle_standing(&toggle_agent, cx)
+        //                     }))
+        //             })
+        //             .when(!interactive, |el| el.opacity(0.5)),
+        //     );
 
         // The grants, the Decision log switch and the log: the autonomy
         // card the phone and the website show too (#12045).
@@ -596,7 +597,7 @@ impl AgentWakesCard {
             .flex_col()
             .child(chat_row)
             .child(schedule_row)
-            .child(authority_row)
+            // .child(authority_row)
             .child(log_row)
             .when_some(agent.problem.clone(), |el, problem| {
                 el.child(

@@ -180,6 +180,13 @@ strip = "symbols"
 # gpui is slow unoptimized; match zed's approach for deps
 opt-level = 0
 
+# The owner's everyday bundle (scripts/run-macos-dev.sh, `host-upgrade`):
+# our crates at opt-level 2 so layout and prepaint aren't unoptimized (#12152).
+# Keeps debug info and incremental builds; `cargo build`/`cargo test` stay on dev.
+[profile.dev-opt]
+inherits = "dev"
+opt-level = 2
+
 [profile.dev.package."*"]
 opt-level = 2
 

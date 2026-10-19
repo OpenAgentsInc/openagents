@@ -1,0 +1,131 @@
+{
+ "contains_credentials": false,
+ "data_loss_boundary": "A computer that was awake at the loss is not recoverable: its turn becomes uncertain and the product requires deletion (#12141), so its last durable checkpoint is not offered for restore. A suspended computer loses nothing.",
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "fault": "gcloud compute instances reset oa-space-service-worker (hard reset, disks kept)",
+ "owners": "synthetic account digests only; no owner account or host",
+ "prepare": {
+  "awake_computer": "cmp_0a3f361e82af6e8e39db",
+  "case": "worker",
+  "long_turn": "trn_124f206a67e726930a2b",
+  "marker1_turn": {
+   "error": null,
+   "exit_code": 0,
+   "id": "trn_eae31ee45252b5ffde0b",
+   "state": "done"
+  },
+  "observed_unix": 1792360296,
+  "phase": "prepare",
+  "ready_unix": 1792360296.809872,
+  "started_unix": 1792360239,
+  "stopped_computer": "cmp_6adadafbc610bbcad4e3",
+  "w_state": {
+   "at_ms": 57222,
+   "attempts": 0,
+   "desired": "stopped",
+   "last_error": null,
+   "state": "stopped",
+   "status": 200
+  },
+  "z_state": {
+   "at_ms": 57166,
+   "attempts": 0,
+   "desired": "running",
+   "last_error": null,
+   "state": "turn",
+   "status": 200
+  }
+ },
+ "qualification": 11816,
+ "recovery_time": "The checkpointed computer woke 29.4 s after its wake request once the worker was back.",
+ "reset_unix": [
+  "1792360296",
+  "1792360300"
+ ],
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "single_writer": "Each computer kept exactly one native sandbox throughout; no second active copy appeared.",
+ "status": "passed",
+ "watch": {
+  "awake_computer": "cmp_0a3f361e82af6e8e39db",
+  "case": "worker",
+  "long_turn_after": {
+   "error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+   "exit_code": null,
+   "id": "trn_124f206a67e726930a2b",
+   "state": "failed"
+  },
+  "natives_w": [
+   {
+    "created_at": "2026-10-18T21:15:05.109669Z",
+    "id": "01a150de-3ff2-7743-a6e0-44bffc7cec94",
+    "lifecycle": "suspended",
+    "node": null,
+    "status": "suspended"
+   }
+  ],
+  "natives_w_final": [
+   {
+    "created_at": "2026-10-18T21:15:05.109669Z",
+    "id": "01a150de-3ff2-7743-a6e0-44bffc7cec94",
+    "lifecycle": "started",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "started"
+   }
+  ],
+  "natives_z": [
+   {
+    "created_at": "2026-10-18T21:31:51.102637Z",
+    "id": "01a150ed-9983-7703-81f0-9ea2e1818152",
+    "lifecycle": "cleanup_failed",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "cleanup_failed"
+   }
+  ],
+  "natives_z_final": [
+   {
+    "created_at": "2026-10-18T21:31:51.102637Z",
+    "id": "01a150ed-9983-7703-81f0-9ea2e1818152",
+    "lifecycle": "cleanup_failed",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "cleanup_failed"
+   }
+  ],
+  "observed_unix": 1792362147,
+  "phase": "watch",
+  "started_unix": 1792360311,
+  "states": {
+   "cmp_0a3f361e82af6e8e39db": [
+    {
+     "at_ms": 174,
+     "attempts": 1,
+     "desired": "running",
+     "last_error": "We couldn't confirm whether the command stopped. Delete this computer to end it.",
+     "state": "turn",
+     "status": 200,
+     "t": 0.2
+    }
+   ],
+   "cmp_6adadafbc610bbcad4e3": [
+    {
+     "at_ms": 232,
+     "attempts": 0,
+     "desired": "stopped",
+     "last_error": null,
+     "state": "stopped",
+     "status": 200,
+     "t": 0.2
+    }
+   ]
+  },
+  "stopped_computer": "cmp_6adadafbc610bbcad4e3",
+  "w_memory": {
+   "error": null,
+   "exit_code": 0,
+   "preserved": true,
+   "turn": "trn_1b9b025df966ff5fac2f"
+  },
+  "w_wake_s": 29.4,
+  "worker_ready_s": 0.4,
+  "z_recovery_error": "TimeoutError: cmp_0a3f361e82af6e8e39db did not reach awake; last 200 {\"id\": \"cmp_0a3f361e82af6e8e39db\", \"state\": \"turn\", \"desired\": \"running\", \"size\": \"small\", \"image\": \"code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149\", \"last_error\": \"We couldn't confirm whether the command stopped. Delete this computer to end it.\", \"resource\": \"sbx_01a150ed-9983-7703-81f0-9ea2e1818152\", \"turns\": 4, \"attempts\": 12}"
+ }
+}

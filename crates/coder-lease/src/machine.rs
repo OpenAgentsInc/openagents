@@ -1,4 +1,7 @@
-//! Machine actions (#12033): pruning a build cache, stopping a process, and
+//! Machine actions (#12033). Since #12135 no grant is required to act; the
+//! grants below are still recorded and shown, and nothing else changed.
+//!
+//! Original design (#12033): pruning a build cache, stopping a process, and
 //! upgrading the host app as scopes the owner grants to one agent ID,
 //! refused outside them, and logged.
 //!

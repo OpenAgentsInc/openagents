@@ -1,0 +1,152 @@
+{
+ "attempts": {
+  "1": "Candidate images applied; the existing computer was stranded by an uncertain turn (#12141); rolled back by hand with kubectl rollout undo at 22:44 UTC.",
+  "2": {
+   "case": "upgrade",
+   "exception": "TimeoutError: turn trn_1c60210d101f161e57d2 unresolved: {\"id\": \"trn_1c60210d101f161e57d2\", \"state\": \"queued\", \"error\": null, \"exit_code\": null}",
+   "observed_unix": 1792363954,
+   "passed": false,
+   "started_unix": 1792363819
+  },
+  "3": {
+   "case": "upgrade",
+   "exception": "TimeoutError: cmp_f5abd0d6178073c2ceaa did not reach stopped; last 200 {\"id\": \"cmp_f5abd0d6178073c2ceaa\", \"state\": \"turn\", \"desired\": \"running\", \"size\": \"small\", \"image\": \"code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149\", \"last_error\": \"We couldn't confirm whether the command stopped. Delete this computer to end it.\", \"resource\": \"sbx_01a15135-4224-762d-962a-3ccb5cc6ab9c\", \"turns\": 4, \"attempts\": 8}",
+   "existing": "cmp_f5abd0d6178073c2ceaa",
+   "observed_unix": 1792365065,
+   "passed": false,
+   "previous_images": {
+    "space-admin-api": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-runtime@sha256:45d859ed494fc2e79e9e6aa6a5cde67d480bdfd0c713943711dffff8224dfcc0",
+    "space-api": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-runtime@sha256:45d859ed494fc2e79e9e6aa6a5cde67d480bdfd0c713943711dffff8224dfcc0",
+    "space-cluster-controller": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/cluster-controller@sha256:9c99c7ee2bfe78c528dc285dba7b05053c22b88779ee259154b1606185246e9e"
+   },
+   "rollback_ready": [
+    {
+     "args": "rollout status deployment/space-api --timeout=300s",
+     "at_ms": 150099,
+     "err": "",
+     "out": "rollout to finish: 1 old replicas are pending termination...\nWaiting for deployment \"space-api\" rollout to finish: 1 old replicas are pending termination...\nWaiting for deployment \"space-api\" rollout to finish: 1 old replicas are pending termination...\ndeployment \"space-api\" successfully rolled out\n",
+     "rc": 0
+    },
+    {
+     "args": "rollout status deployment/space-admin-api --timeout=300s",
+     "at_ms": 156045,
+     "err": "",
+     "out": "Waiting for deployment \"space-admin-api\" rollout to finish: 0 of 1 updated replicas are available...\ndeployment \"space-admin-api\" successfully rolled out\n",
+     "rc": 0
+    },
+    {
+     "args": "rollout status deployment/space-cluster-controller --timeout=300s",
+     "at_ms": 156262,
+     "err": "",
+     "out": "deployment \"space-cluster-controller\" successfully rolled out\n",
+     "rc": 0
+    }
+   ],
+   "rolled_back_images": {
+    "space-admin-api": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-runtime@sha256:45d859ed494fc2e79e9e6aa6a5cde67d480bdfd0c713943711dffff8224dfcc0",
+    "space-api": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-runtime@sha256:45d859ed494fc2e79e9e6aa6a5cde67d480bdfd0c713943711dffff8224dfcc0",
+    "space-cluster-controller": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/cluster-controller@sha256:9c99c7ee2bfe78c528dc285dba7b05053c22b88779ee259154b1606185246e9e"
+   },
+   "set": [
+    {
+     "args": "set image deployment/space-api api=us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-cleanup@sha256:0aee5f68945231fc28034cffd0d8f844fed7a4f18c6be674997b6a155dd6e060",
+     "at_ms": 775,
+     "err": "",
+     "out": "deployment.apps/space-api image updated\n",
+     "rc": 0
+    },
+    {
+     "args": "set image deployment/space-admin-api api=us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-cleanup@sha256:0aee5f68945231fc28034cffd0d8f844fed7a4f18c6be674997b6a155dd6e060",
+     "at_ms": 1042,
+     "err": "",
+     "out": "deployment.apps/space-admin-api image updated\n",
+     "rc": 0
+    },
+    {
+     "args": "set image deployment/space-cluster-controller cluster-controller=us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/cluster-controller-cleanup@sha256:f9fbc943591a5a7b7404a6fb18e39ad66ca49ac6e03527bd1c15a1970219906f",
+     "at_ms": 1393,
+     "err": "",
+     "out": "deployment.apps/space-cluster-controller image updated\n",
+     "rc": 0
+    }
+   ],
+   "started_unix": 1792363995,
+   "undo": [
+    {
+     "args": "rollout undo deployment/space-api",
+     "at_ms": 134404,
+     "err": "pace-api was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.\n",
+     "out": "deployment.apps/space-api rolled back\n",
+     "rc": 0
+    },
+    {
+     "args": "rollout undo deployment/space-admin-api",
+     "at_ms": 134755,
+     "err": "dmin-api was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.\n",
+     "out": "deployment.apps/space-admin-api rolled back\n",
+     "rc": 0
+    },
+    {
+     "args": "rollout undo deployment/space-cluster-controller",
+     "at_ms": 135107,
+     "err": "ntroller was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.\n",
+     "out": "deployment.apps/space-cluster-controller rolled back\n",
+     "rc": 0
+    }
+   ],
+   "upgrade_ready": [
+    {
+     "args": "rollout status deployment/space-api --timeout=300s",
+     "at_ms": 16199,
+     "err": "",
+     "out": "rollout to finish: 1 old replicas are pending termination...\nWaiting for deployment \"space-api\" rollout to finish: 1 old replicas are pending termination...\nWaiting for deployment \"space-api\" rollout to finish: 1 old replicas are pending termination...\ndeployment \"space-api\" successfully rolled out\n",
+     "rc": 0
+    },
+    {
+     "args": "rollout status deployment/space-admin-api --timeout=300s",
+     "at_ms": 22046,
+     "err": "",
+     "out": "Waiting for deployment \"space-admin-api\" rollout to finish: 0 of 1 updated replicas are available...\ndeployment \"space-admin-api\" successfully rolled out\n",
+     "rc": 0
+    },
+    {
+     "args": "rollout status deployment/space-cluster-controller --timeout=300s",
+     "at_ms": 22268,
+     "err": "",
+     "out": "deployment \"space-cluster-controller\" successfully rolled out\n",
+     "rc": 0
+    }
+   ],
+   "upgraded": {
+    "existing_memory": {
+     "error": null,
+     "exit_code": 0,
+     "preserved": true,
+     "turn": "trn_44164da2c9f4ee5c1cca"
+    },
+    "existing_suspended": true,
+    "existing_wake_s": 12.5,
+    "new_computer": {
+     "computer": "cmp_9c9a60f02a6d6cabd9e6",
+     "deleted": true,
+     "error": null,
+     "first_useful_ms": 11684,
+     "succeeded": true
+    }
+   },
+   "upgraded_images": {
+    "space-admin-api": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-cleanup@sha256:0aee5f68945231fc28034cffd0d8f844fed7a4f18c6be674997b6a155dd6e060",
+    "space-api": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-cleanup@sha256:0aee5f68945231fc28034cffd0d8f844fed7a4f18c6be674997b6a155dd6e060",
+    "space-cluster-controller": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/cluster-controller-cleanup@sha256:f9fbc943591a5a7b7404a6fb18e39ad66ca49ac6e03527bd1c15a1970219906f"
+   }
+  }
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "finding": "Upgrading to the checked cleanup API and controller images and rolling back restored the exact previous images each time, and the existing computer kept its memory under the candidate. After rollback the existing computer was stranded by #12141, so continued operation across rollback is not shown.",
+ "issue": 12141,
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "failed"
+}

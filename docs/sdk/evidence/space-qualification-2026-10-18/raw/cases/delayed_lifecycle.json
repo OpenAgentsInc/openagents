@@ -1,0 +1,72 @@
+{
+ "case": "delayed",
+ "computer": "cmp_370b9068edfe52b6c9d4",
+ "contains_credentials": false,
+ "controller_ready": {
+  "args": "rollout status deployment/space-cluster-controller --timeout=300s",
+  "at_ms": 86619,
+  "err": "",
+  "out": "Waiting for deployment \"space-cluster-controller\" rollout to finish: 0 of 1 updated replicas are available...\ndeployment \"space-cluster-controller\" successfully rolled out\n",
+  "rc": 0
+ },
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "down": {
+  "args": "scale deployment/space-cluster-controller --replicas=0",
+  "at_ms": 12869,
+  "err": "",
+  "out": "deployment.apps/space-cluster-controller scaled\n",
+  "rc": 0
+ },
+ "fault": "scale the native cluster-controller to zero, request stop, hold 60 s, restore",
+ "memory": {
+  "error": null,
+  "exit_code": 0,
+  "preserved": true,
+  "turn": "trn_7be3bb271a555b290b35"
+ },
+ "natives": [
+  {
+   "created_at": "2026-10-18T20:09:44.132014Z",
+   "id": "01a150a2-6ba4-75de-bc6c-603fe6d87d2f",
+   "lifecycle": "started",
+   "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+   "status": "started"
+  }
+ ],
+ "observed_unix": 1792356882,
+ "owners": "synthetic account digests only; no owner account or host",
+ "passed": true,
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "started_unix": 1792356758,
+ "states_while_delayed": [
+  {
+   "at_ms": 18039,
+   "attempts": 0,
+   "desired": "stopped",
+   "last_error": null,
+   "state": "awake",
+   "status": 200
+  },
+  {
+   "at_ms": 20102,
+   "attempts": 0,
+   "desired": "stopped",
+   "last_error": null,
+   "state": "stopping",
+   "status": 200
+  }
+ ],
+ "status": "passed",
+ "stop_at_ms": 17982,
+ "stop_status": 202,
+ "stopped_at_ms": 110742,
+ "stopped_while_delayed": false,
+ "up": {
+  "args": "scale deployment/space-cluster-controller --replicas=1",
+  "at_ms": 80004,
+  "err": "",
+  "out": "deployment.apps/space-cluster-controller scaled\n",
+  "rc": 0
+ }
+}

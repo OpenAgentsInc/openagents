@@ -291,7 +291,7 @@ def replay_checks(run: Run, root: Path, base: str) -> list[dict]:
     nested = {c["package"] for c in planned if c["kind"] == "rust-nested"}
     packages = []
     for path in files:
-        if path.endswith(".rs") or path.endswith("Cargo.toml"):
+        if (path.endswith(".rs") or path.endswith("Cargo.toml")) and not kinds.nested_root(path):
             pkg = package_of(root, path)
             if pkg and pkg not in packages and pkg not in nested:
                 packages.append(pkg)

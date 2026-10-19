@@ -1,0 +1,24 @@
+{
+  "cases": {
+    "monitoring": "failed"
+  },
+  "identity": {
+    "computers_commit": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
+    "memory_mib": 1024,
+    "native_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+    "native_image_sha256": "b03fac6e4f70ff5a34d07023a1ae251d20820d32a788b83529a5461f5f1fafe6",
+    "policy_sha256": "65e6dab85820b6bfe9a51244674520ab5d26f0b64713b37d8426889d790b3c51",
+    "runtime_sha256": "7e8b57e88c459396d4680d83dcdd8c7f72305447cb55b11f4ac98ad70a3f7825",
+    "schema_sha256": "11e5b9690f6e3e4aa25727cdcf1e347b9c3e564c171a0c0080022a2f7aec676c",
+    "sdk_commit": "a53a9731f996a8d93f22f1af11f5158894288c54",
+    "template": "code-runtime@sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149",
+    "vcpus": 2,
+    "web_commit": "b4442103d26e9723e90cb63f3002c8a10f462b03"
+  },
+  "observed_unix": 1792365565,
+  "schema": "openagents.computers.space-case-receipt.v1",
+  "source": {
+    "path": "evidence/space-qualification-2026-10-18/raw/cases/monitoring.json",
+    "sha256": "1c61684f176c99a39bc3f749888dd7f2883198786debe8170ea723e232cc5888"
+  }
+}

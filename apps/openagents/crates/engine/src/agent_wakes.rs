@@ -1260,6 +1260,91 @@ impl WakeEngine {
         Ok(())
     }
 
+    fn mirror_path(&self) -> PathBuf {
+        self.root.join("decisions.mirror.json")
+    }
+
+    /// Every readable line of the log as the account keeps it, with the
+    /// request ID that makes sending it again a no-op: the same entry gets
+    /// the same ID on every host (#12046).
+    fn mirror_lines(&self) -> Vec<(String, openagents_sdk::agents::DecisionEntry)> {
+        let Ok(file) = std::fs::File::open(self.log_path()) else {
+            return Vec::new();
+        };
+        std::io::BufReader::new(file)
+            .lines()
+            .map_while(Result::ok)
+            .filter_map(|line| serde_json::from_str(&line).ok())
+            .map(|entry: openagents_sdk::agents::DecisionEntry| {
+                let canonical = serde_json::to_string(&entry).unwrap_or_default();
+                (hex64(&format!("decision:{}:{canonical}", self.agent)), entry)
+            })
+            .collect()
+    }
+
+    /// Copy this log to the account and the account's entries it lacks back
+    /// into the file, which stays the cache. A host that starts with an empty
+    /// file takes the account's whole log. Both directions are safe to repeat.
+    pub async fn mirror_decisions(
+        &self,
+        agents: &openagents_sdk::agents::Agents<'_>,
+        cancel: &openagents_sdk::CancellationToken,
+    ) -> Result<(), EngineError> {
+        #[derive(Default, Serialize, Deserialize)]
+        struct Mirror {
+            /// Local readable lines already on the account.
+            pushed: usize,
+            /// The account cursor read up to.
+            pulled: Option<String>,
+        }
+        let mut mirror: Mirror = std::fs::read(self.mirror_path())
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        let service = EngineError::AgentService;
+        // Pull first, so entries from other hosts reach the file.
+        let mut have: std::collections::HashSet<String> =
+            self.mirror_lines().into_iter().map(|(id, _)| id).collect();
+        loop {
+            let page = agents
+                .decisions(&self.agent, mirror.pulled.as_deref(), cancel)
+                .await
+                .map_err(service)?;
+            for stored in &page.data {
+                let Ok(entry) = serde_json::from_value::<DecisionEntry>(
+                    serde_json::to_value(&stored.entry).unwrap_or_default(),
+                ) else {
+                    continue;
+                };
+                if have.insert(stored.request_id.clone()) {
+                    self.append(&entry)?;
+                }
+            }
+            if let Some(last) = page.data.last() {
+                mirror.pulled = Some(last.cursor.clone());
+            }
+            if page.next.is_none() {
+                break;
+            }
+        }
+        // Then push what the account hasn't seen.
+        let lines = self.mirror_lines();
+        let start = mirror.pushed.min(lines.len());
+        let mut pushed = start;
+        for (id, entry) in &lines[start..] {
+            agents
+                .record_decision(&self.agent, id, entry, cancel)
+                .await
+                .map_err(service)?;
+            pushed += 1;
+        }
+        mirror.pushed = pushed;
+        let bytes = serde_json::to_vec(&mirror).map_err(|e| EngineError::Other(e.to_string()))?;
+        std::fs::create_dir_all(&self.root)?;
+        std::fs::write(self.mirror_path(), bytes)?;
+        Ok(())
+    }
+
     /// The latest `limit` entries, oldest first. Unreadable lines are skipped.
     pub fn read(&self, limit: usize) -> Vec<DecisionEntry> {
         let Ok(file) = std::fs::File::open(self.log_path()) else {

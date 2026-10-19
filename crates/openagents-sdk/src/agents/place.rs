@@ -53,6 +53,11 @@ pub fn place(
                 .position(|c| h.runtimes.iter().any(|r| *r == c.runtime))
         }
     };
+    // An agent that wakes on its own belongs on a computer that stays up
+    // (#12050), so a desktop restart can't end its check-in.
+    let keeps_running = agent.spec.autonomy.as_ref().is_some_and(|a| {
+        a.check_ins || a.authority || a.every_minutes.is_some() || !a.wakes.is_empty()
+    });
     let mut fit: Vec<(usize, &Host)> = hosts
         .iter()
         .filter(|h| computer.is_none_or(|c| h.id == c || same(&h.name, c)))
@@ -61,7 +66,13 @@ pub fn place(
     if fit.is_empty() {
         return Err(Unplaced::NoComputer);
     }
-    fit.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.seen_ms.cmp(&a.1.seen_ms)));
+    fit.sort_by(|a, b| {
+        let up = |h: &Host| !(keeps_running && h.always_on);
+        up(a.1)
+            .cmp(&up(b.1))
+            .then(a.0.cmp(&b.0))
+            .then(b.1.seen_ms.cmp(&a.1.seen_ms))
+    });
     let fit: Vec<&Host> = fit.into_iter().map(|(_, h)| h).collect();
     let pick = |h: &Host, wanted: &str| {
         h.projects
@@ -125,6 +136,7 @@ mod tests {
             runners: vec!["reviewer".into()],
             tools: vec![],
             seen_ms: seen,
+            always_on: false,
         }
     }
 
@@ -188,5 +200,23 @@ mod tests {
         let any = agent(crate::agents::ANY_RUNTIME, None);
         assert_eq!(id(&any, &hosts), Ok("codex".into()));
         assert_eq!(id(&any, &hosts[2..]), Err(Unplaced::NoComputer));
+    }
+
+    #[test]
+    fn an_agent_that_wakes_on_its_own_goes_to_a_computer_that_stays_up() {
+        let mut cloud = host("cloud", 1, &["claude-code"], &["openagents"]);
+        cloud.always_on = true;
+        let hosts = vec![host("mac", 9, &["claude-code"], &["openagents"]), cloud];
+        let id = |a: &AgentDefinition| place(&hosts, a, None, None, None).map(|(h, _)| h.id);
+        let mut a = agent("claude-code", None);
+        assert_eq!(id(&a), Ok("mac".into()));
+        a.spec.autonomy = Some(crate::agents::Autonomy {
+            check_ins: true,
+            ..Default::default()
+        });
+        assert_eq!(id(&a), Ok("cloud".into()));
+        // Naming the computer still wins.
+        let named = place(&hosts, &a, Some("mac"), None, None).map(|(h, _)| h.id);
+        assert_eq!(named, Ok("mac".into()));
     }
 }

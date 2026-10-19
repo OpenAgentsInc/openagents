@@ -265,6 +265,8 @@ struct DocHostInner {
     agent_wakes: OnceLock<Arc<crate::agent_wakes::AgentWakes>>,
     /// Where wake state saved before #12044 lives, to move once.
     agent_wakes_legacy: OnceLock<std::path::PathBuf>,
+    /// This engine runs headless on a computer that stays up (#12050).
+    always_on: AtomicBool,
     /// Where the checked-in agent's working state is saved (#12057).
     working: OnceLock<std::path::PathBuf>,
     store: Arc<DocsStore>,
@@ -1011,6 +1013,7 @@ impl DocHost {
                 run_command_authority: Mutex::new(None),
                 agent_wakes: OnceLock::new(),
                 agent_wakes_legacy: OnceLock::new(),
+                always_on: AtomicBool::new(false),
                 working: OnceLock::new(),
                 store,
                 config,

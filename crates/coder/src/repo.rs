@@ -728,7 +728,8 @@ mod tests {
     #[test]
     fn a_repo_discovers_this_workspace() {
         let repo = Repo::discover(Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
-        assert!(repo.members().iter().any(|member| member == "coder"));
+        // The card lists the first MEMBERS_MAX crates alphabetically, so `coder` itself may fall past the cut.
+        assert!(repo.members().iter().any(|member| member == "acp-client"));
         let context = repo.context_for("what does jev do");
         assert!(context.contains("crates/"));
     }

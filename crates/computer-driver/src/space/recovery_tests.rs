@@ -112,7 +112,7 @@ async fn authorized_retry_uses_a_new_wire_key_and_resumes_the_accepted_child() {
 }
 
 #[tokio::test]
-async fn an_unknown_child_response_is_never_submitted_twice() {
+async fn an_unknown_child_response_is_resent_under_its_saved_key() {
     let (journal, child) = authorized();
     let (driver, server) = super::tests::create_server_checked(
         vec![
@@ -127,6 +127,8 @@ async fn an_unknown_child_response_is_never_submitted_twice() {
         Outcome::Unknown { .. }
     ));
     server.join().unwrap();
+    // The saved key is resent once the provider answers; with the provider
+    // still down the request stays uncertain.
     assert!(matches!(
         driver.suspend_operation("sbx_test", "refused-root").await,
         Outcome::Unknown { .. }

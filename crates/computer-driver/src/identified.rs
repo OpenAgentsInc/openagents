@@ -200,7 +200,8 @@ echo signalled
     )
 }
 
-#[cfg(test)]
+// The scripts read /proc, which only Linux has.
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
     use std::collections::{BTreeMap, BTreeSet};

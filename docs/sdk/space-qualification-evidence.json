@@ -2,7 +2,7 @@
   "schema": "openagents.computers.space-qualification-delivery.v1",
   "date": "2026-10-17",
   "issue": 11816,
-  "status": "source_complete_live_qualification_pending",
+  "status": "live_qualification_partial_dedicated_tests_ready",
   "customer_ready": false,
   "named_group_qualified": false,
   "broad_admission": false,
@@ -115,5 +115,40 @@
     "reused_builder": "oa-sdk-build-11800 VM and boot disk deleted after retaining check artifacts. Empty subnet/VPC still wait for Google-managed reservation release.",
     "prior_11813": "All probe workloads, computers, credentials, secret sources, identities, CA pool, and the spike subnet/VPC are removed.",
     "final_inventory": "computers-delivery-evidence.json"
+  },
+  "live_qualification": {
+    "date": "2026-10-18",
+    "operator": "lane 0 (Claude Code session)",
+    "deployment": "space-private-11814 on the private candidate oa-space-service-computers",
+    "owners": "two synthetic account digests; no owner account, owner host, or customer data",
+    "packet": "space-qualification-packet.json",
+    "assessment": "space-qualification-assessment.json",
+    "evidence": "evidence/space-qualification-2026-10-18/",
+    "ready_for_dedicated_tests": true,
+    "ready_for_named_group": false,
+    "issues": {
+      "12141": "uncertain turns and unconfirmed stops strand computers",
+      "12142": "turns lack request identity",
+      "12143": "requested lifecycle never recovers after a provider outage",
+      "12144": "10 s network policy retry on every boot and wake",
+      "12145": "creates always cold boot",
+      "12146": "public SDK path cannot run on fast-sandbox",
+      "12147": "monitoring gaps and no notification channel"
+    },
+    "deployment_changes": [
+      "private Computers registry: rollout accounts set to the two synthetic owners",
+      "private Computers polling 100 ms",
+      "account limits rows for both owners",
+      "code-runtime base snapshot policy enabled for the snapshot arm, then set back to ensure_base_snapshot false",
+      "native API and controller upgraded to the checked cleanup images and rolled back, three times",
+      "admit_new false and back to true for disabled_placement"
+    ],
+    "not_changed": [
+      "production and staging web",
+      "production and staging Computers",
+      "maintained control and worker hosts and their data disks (the worker was hard reset once)",
+      "pricing (off)",
+      "Boat default"
+    ]
   }
 }

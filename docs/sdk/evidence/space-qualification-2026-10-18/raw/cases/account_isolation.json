@@ -1,0 +1,104 @@
+{
+ "all_refused": true,
+ "checks": [
+  {
+   "error": "not_found",
+   "method": "GET",
+   "path": "/v1/computers/{victim}",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": null,
+   "method": "GET",
+   "path": "/v1/computers",
+   "refused_or_empty": true,
+   "status": 200,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": "not_found",
+   "method": "GET",
+   "path": "/v1/computers/{victim}/turns/{turn}",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": "not_found",
+   "method": "POST",
+   "path": "/v1/computers/{victim}/turns",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": "not_found",
+   "method": "POST",
+   "path": "/v1/computers/{victim}/turns/{turn}/stop",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": {
+    "code": "not_found",
+    "message": "No such command."
+   },
+   "method": "POST",
+   "path": "/v1/computers/{victim}/commands",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": "not_found",
+   "method": "GET",
+   "path": "/v1/computers/{victim}/files?path=q16-workspace.bin",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": "not_found",
+   "method": "POST",
+   "path": "/v1/computers/{victim}/stop",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": "not_found",
+   "method": "POST",
+   "path": "/v1/computers/{victim}/wake",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": "not_found",
+   "method": "DELETE",
+   "path": "/v1/computers/{victim}",
+   "refused_or_empty": true,
+   "status": 404,
+   "victim_identifiers_in_response": false
+  },
+  {
+   "error": null,
+   "method": "GET",
+   "path": "/v1/usage",
+   "refused_or_empty": true,
+   "status": 200,
+   "victim_identifiers_in_response": false
+  }
+ ],
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "note": "Owner B tried every route on owner A computer and turn; all refused or empty, and A kept its computer. Credential references are not offered on this placement (credential proxy off).",
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed",
+ "victim_still_owned_by_a": true
+}

@@ -32,7 +32,7 @@ pub const CLAIM_SCHEMA: &str = "openagents.lease.issue-claim.v1";
 pub const DEFAULT_CLAIM_AGE: Duration = Duration::from_secs(6 * 3_600);
 
 /// A chat may declare this many issues as one active batch.
-pub const MAX_BATCH: usize = 3;
+pub const MAX_BATCH: usize = 16;
 
 /// One session's claim on one issue.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -420,7 +420,7 @@ pub fn admit_batch(
             || batch.contains(&0)
             || !batch.contains(&issue))
     {
-        return Err(Refused::Batch("Name one to three different issue numbers in --batch, including the issue you are claiming.".into()));
+        return Err(Refused::Batch("Name one to sixteen different issue numbers in --batch, including the issue you are claiming.".into()));
     }
     if batch.is_empty() {
         batch = held
@@ -444,7 +444,7 @@ pub fn admit_batch(
             .collect::<Vec<_>>()
             .join(", ");
         return Err(Refused::Batch(format!(
-            "This chat already holds {claims}. Finish or release that work first, or name up to three issues together with --batch."
+            "This chat already holds {claims}. Finish or release that work first, or name up to sixteen issues together with --batch."
         )));
     }
     Ok(batch)
@@ -752,7 +752,7 @@ mod tests {
     fn an_explicit_batch_names_at_most_three_issues() {
         let dir = tempfile::tempdir().unwrap();
         let me = me("chat:batch", Some(std::process::id()));
-        for invalid in [vec![1, 2, 3, 4], vec![1, 1], vec![0, 1], vec![2, 3]] {
+        for invalid in [(1..=17).collect::<Vec<u64>>(), vec![1, 1], vec![0, 1], vec![2, 3]] {
             assert!(
                 claim_batch(
                     dir.path(),

@@ -1,0 +1,210 @@
+{
+ "computers_revision_rollout_during_stop_wake_cycles": {
+  "case": "lifecycle_loop",
+  "computer": "cmp_6adadafbc610bbcad4e3",
+  "cycles": [
+   {
+    "at": 1792362225,
+    "op": "stop",
+    "s": 29.3,
+    "status": 202
+   },
+   {
+    "at": 1792362254,
+    "op": "wake",
+    "s": 17.4,
+    "status": 202
+   },
+   {
+    "at": 1792362271,
+    "op": "stop",
+    "s": 28.7,
+    "status": 202
+   },
+   {
+    "at": 1792362300,
+    "op": "wake",
+    "s": 12.0,
+    "status": 202
+   },
+   {
+    "at": 1792362312,
+    "op": "stop",
+    "s": 29.2,
+    "status": 202
+   },
+   {
+    "at": 1792362341,
+    "op": "wake",
+    "s": 12.0,
+    "status": 202
+   },
+   {
+    "at": 1792362353,
+    "op": "stop",
+    "s": 28.9,
+    "status": 202
+   },
+   {
+    "at": 1792362382,
+    "op": "wake",
+    "s": 11.9,
+    "status": 202
+   },
+   {
+    "at": 1792362394,
+    "op": "stop",
+    "s": 30.2,
+    "status": 202
+   },
+   {
+    "at": 1792362424,
+    "op": "wake",
+    "s": 11.9,
+    "status": 202
+   },
+   {
+    "at": 1792362436,
+    "op": "stop",
+    "s": 30.2,
+    "status": 202
+   },
+   {
+    "at": 1792362467,
+    "op": "wake",
+    "s": 12.1,
+    "status": 202
+   },
+   {
+    "at": 1792362479,
+    "op": "stop",
+    "s": 29.0,
+    "status": 202
+   },
+   {
+    "at": 1792362508,
+    "op": "wake",
+    "s": 12.0,
+    "status": 202
+   },
+   {
+    "at": 1792362520,
+    "op": "stop",
+    "s": 29.4,
+    "status": 202
+   },
+   {
+    "at": 1792362549,
+    "op": "wake",
+    "s": 12.0,
+    "status": 202
+   },
+   {
+    "at": 1792362561,
+    "op": "stop",
+    "s": 30.2,
+    "status": 202
+   },
+   {
+    "at": 1792362591,
+    "op": "wake",
+    "s": 17.5,
+    "status": 202
+   },
+   {
+    "at": 1792362609,
+    "op": "stop",
+    "s": 30.5,
+    "status": 202
+   },
+   {
+    "at": 1792362639,
+    "op": "wake",
+    "s": 12.0,
+    "status": 202
+   }
+  ],
+  "memory": {
+   "error": null,
+   "exit_code": 0,
+   "preserved": true,
+   "turn": "trn_2f8f3cce6ffa1572e895"
+  },
+  "natives": [
+   {
+    "created_at": "2026-10-18T21:15:05.109669Z",
+    "id": "01a150de-3ff2-7743-a6e0-44bffc7cec94",
+    "lifecycle": "started",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "started"
+   }
+  ],
+  "observed_unix": 1792362652,
+  "passed": true,
+  "started_unix": 1792362224
+ },
+ "contains_credentials": false,
+ "deployment": "space-private-11814 (private candidate oa-space-service-computers)",
+ "native_cluster_controller_restart_during_stop": {
+  "case": "controller_restart",
+  "computer": "cmp_370b9068edfe52b6c9d4",
+  "controller_ready": {
+   "args": "rollout status deployment/space-cluster-controller --timeout=300s",
+   "at_ms": 37085,
+   "err": "",
+   "out": "Waiting for deployment \"space-cluster-controller\" rollout to finish: 0 of 1 updated replicas are available...\ndeployment \"space-cluster-controller\" successfully rolled out\n",
+   "rc": 0
+  },
+  "fault": "delete the native cluster-controller pod during stop",
+  "memory": {
+   "error": null,
+   "exit_code": 0,
+   "preserved": true,
+   "turn": "trn_9cb21b31c21eab439810"
+  },
+  "natives": [
+   {
+    "created_at": "2026-10-18T20:09:44.132014Z",
+    "id": "01a150a2-6ba4-75de-bc6c-603fe6d87d2f",
+    "lifecycle": "started",
+    "node": "b51f6562-b968-5b78-a473-68a079b65f97",
+    "status": "started"
+   }
+  ],
+  "observed_unix": 1792356721,
+  "passed": true,
+  "restart": {
+   "args": "delete pod -l app.kubernetes.io/name=space-cluster-controller --wait=false",
+   "at_ms": 30818,
+   "err": "",
+   "out": "pod \"space-cluster-controller-b7d595d59-47d2f\" deleted from space namespace\n",
+   "rc": 0
+  },
+  "started_unix": 1792356587,
+  "states": [
+   {
+    "at_ms": 30945,
+    "attempts": 0,
+    "desired": "stopped",
+    "last_error": null,
+    "state": "stopping",
+    "status": 200
+   },
+   {
+    "at_ms": 96927,
+    "attempts": 0,
+    "desired": "stopped",
+    "last_error": null,
+    "state": "stopped",
+    "status": 200
+   }
+  ],
+  "stop_at_ms": 29564,
+  "stop_status": 202,
+  "stopped_at_ms": 121649
+ },
+ "owners": "synthetic account digests only; no owner account or host",
+ "qualification": 11816,
+ "schema": "openagents.computers.space-case-evidence.v1",
+ "status": "passed"
+}
