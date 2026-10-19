@@ -240,6 +240,26 @@ impl EngineCore {
         edge: Option<EdgeConfig>,
         lock: InstanceLock,
     ) -> Result<Self, EngineError> {
+        Self::assemble_with_origin(
+            profile,
+            registry,
+            default_harness,
+            edge,
+            lock,
+            DeviceOrigin::Unknown,
+        )
+    }
+
+    /// Assemble with the presentation origin an explicit producer supplied
+    /// ([`EngineConfig::device_origin`]); the other constructors use Unknown.
+    fn assemble_with_origin(
+        profile: EngineProfile,
+        registry: Arc<HarnessRegistry>,
+        default_harness: HarnessId,
+        edge: Option<EdgeConfig>,
+        lock: InstanceLock,
+        device_origin: DeviceOrigin,
+    ) -> Result<Self, EngineError> {
         let data_dir = profile.device_root();
         std::fs::create_dir_all(data_dir)?;
         let legacy_uploads_root = profile.claim_legacy_uploads_root()?;
@@ -265,7 +285,7 @@ impl EngineCore {
                 device_id: device_id.clone(),
                 device_name: local_device_name(&device_id),
                 platform: std::env::consts::OS.to_string(),
-                device_origin: config.device_origin.clone(),
+                device_origin,
                 org_id: profile.org_id().to_string(),
                 user_id: profile.user_id().to_string(),
                 edge: edge.clone(),
@@ -971,21 +991,21 @@ impl Engine {
         let preview_org = profile.org_id().to_string();
         let nip_host_root = profile.device_root().join("device-channel");
         let peer_direct_root = profile.device_root().join("peer-direct");
-        let core = match lock {
-            Some(lock) => EngineCore::assemble_with_profile_locked(
-                profile,
-                Arc::new(default_registry()),
-                config.default_harness,
-                edge.clone(),
-                lock,
-            )?,
-            None => EngineCore::assemble_with_profile(
-                profile,
-                Arc::new(default_registry()),
-                config.default_harness,
-                edge.clone(),
-            )?,
+        let lock = match lock {
+            Some(lock) => lock,
+            None => {
+                std::fs::create_dir_all(profile.device_root())?;
+                InstanceLock::acquire(profile.device_root())?
+            }
         };
+        let core = EngineCore::assemble_with_origin(
+            profile,
+            Arc::new(default_registry()),
+            config.default_harness,
+            edge.clone(),
+            lock,
+            config.device_origin.clone(),
+        )?;
         core.set_auth(auth.clone());
         let preview_workspace = core.workspace.clone();
         let preview_device = core.device_id.clone();
