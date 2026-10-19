@@ -177,3 +177,38 @@ async fn pausing_keeps_retry_identity_and_selection_changes_reject_late_results(
     assert!(f.turns.snapshot().chat.is_none());
     assert_eq!(f.turns.snapshot().accepted, 0);
 }
+
+#[tokio::test]
+async fn expected_chat_rejects_an_editor_after_reader_retargeting() {
+    let f = fixture().await;
+    let mut target = f.reader.target().unwrap();
+    let other = "d75ef8a1-16ca-49b6-83be-000000000094";
+    let chat = target
+        .lease
+        .client()
+        .chat(target.lease.session(), other)
+        .unwrap();
+    target.chat = chat.clone();
+    target.summary.chat = chat.clone();
+    f.reader.open_latest(target).unwrap();
+
+    f.turns.submit_for(CHAT.into(), "Old editor".into()).await;
+
+    assert_eq!(f.server.attempts.load(Ordering::SeqCst), 0);
+    let snapshot = f.turns.snapshot();
+    assert_eq!(snapshot.chat, Some(chat));
+    assert!(!snapshot.busy && !snapshot.retry);
+    assert_eq!(snapshot.accepted, 0);
+}
+
+#[tokio::test]
+async fn expected_chat_preserves_uncertain_send_retry_identity() {
+    let f = fixture().await;
+    f.server.lost.store(true, Ordering::SeqCst);
+    f.turns.submit_for(CHAT.into(), "Hello".into()).await;
+    assert!(f.turns.snapshot().retry);
+    f.turns.retry().await;
+    assert_eq!(f.server.attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(f.server.ids.lock().unwrap().len(), 1);
+    assert_eq!(f.turns.snapshot().accepted, 1);
+}

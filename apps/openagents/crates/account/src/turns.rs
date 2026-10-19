@@ -154,7 +154,28 @@ impl Turns {
         self: &Arc<Self>,
         text: String,
     ) -> impl std::future::Future<Output = ()> + Send + 'static {
+        self.submit_to(None, text)
+    }
+    /// Send only if the reader still selects the chat that owns this editor.
+    pub fn submit_for(
+        self: &Arc<Self>,
+        expected_chat: String,
+        text: String,
+    ) -> impl std::future::Future<Output = ()> + Send + 'static {
+        self.submit_to(Some(expected_chat), text)
+    }
+    fn submit_to(
+        self: &Arc<Self>,
+        expected_chat: Option<String>,
+        text: String,
+    ) -> impl std::future::Future<Output = ()> + Send + 'static {
         let job = self.target().and_then(|target| {
+            if expected_chat
+                .as_ref()
+                .is_some_and(|expected| target.chat.id() != expected.as_str())
+            {
+                return None;
+            }
             let mut s = self.state.lock().unwrap();
             if s.paused || s.snapshot.busy || s.snapshot.retry {
                 return None;
