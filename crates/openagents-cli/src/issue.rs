@@ -24,7 +24,7 @@ pub(crate) const USAGE: &str = "usage: openagents issue COMMAND [OPTIONS]
         \"In progress\" on each project it is on. Refused while another live
         session holds it or a fresh claim comment names another session;
         --force takes it anyway. Each chat holds one issue, or a batch of
-        up to three issues named together with --batch N,M[,P].
+        up to 16 issues named together with --batch N,M,....
   release N [--repo OWNER/NAME] [--note TEXT] [--force]
         Release a claim: drop this session's hold, then a release comment,
         you off the assignees, and \"Ready\" (or \"Todo\") on each project.
@@ -291,16 +291,24 @@ fn parse_batch(value: Option<&str>) -> Result<Vec<u64>, String> {
         .split(',')
         .map(|n| n.trim().trim_start_matches('#').parse())
         .collect::<Result<_, _>>()
-        .map_err(|_| "Name one to three issue numbers with --batch N,M[,P].".to_owned())?;
+        .map_err(|_| batch_usage())?;
     let distinct: std::collections::BTreeSet<_> = issues.iter().copied().collect();
     if issues.is_empty()
         || issues.len() > coder_lease::claims::MAX_BATCH
         || distinct.len() != issues.len()
         || distinct.contains(&0)
     {
-        return Err("Name one to three different issue numbers with --batch N,M[,P].".into());
+        return Err(batch_usage());
     }
     Ok(issues)
+}
+
+/// What `--batch` takes, at the claim cap (#12154).
+fn batch_usage() -> String {
+    format!(
+        "Name one to {} different issue numbers with --batch N,M,...",
+        coder_lease::claims::MAX_BATCH
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -515,7 +523,16 @@ mod tests {
             .is_err()
         );
         assert!(hub.state(4).comments.is_empty());
-        for invalid in ["", "1,1", "0", "1,2,3,4", "no"] {
+        let over = (1..=coder_lease::claims::MAX_BATCH as u64 + 1)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        assert_eq!(
+            parse_batch(Some("1,2,3,4")).unwrap().len(),
+            4,
+            "the cap is past three (#12154)"
+        );
+        for invalid in ["", "1,1", "0", over.as_str(), "no"] {
             assert!(parse_batch(Some(invalid)).is_err(), "{invalid}");
         }
     }

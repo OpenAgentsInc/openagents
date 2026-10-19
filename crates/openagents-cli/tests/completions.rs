@@ -14,6 +14,19 @@ fn generated(shell: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     (dir, path)
 }
 
+/// Whether `shell` runs here. zsh and fish are optional: a computer
+/// without one (the Archil worker image) skips its test and says so.
+fn installed(shell: &str) -> bool {
+    let found = Command::new(shell)
+        .args(["-c", "true"])
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if !found {
+        eprintln!("skipped: {shell} is not installed");
+    }
+    found
+}
+
 fn check(shell: &str, body: &str) -> String {
     let (dir, path) = generated(shell);
     let output = Command::new(shell)
@@ -49,6 +62,9 @@ COMP_WORDS=(openagents host adopt d); COMP_CWORD=3; _openagents; printf '%s\n' "
 
 #[test]
 fn zsh_sources_without_running_completion_and_autoloads() {
+    if !installed("zsh") {
+        return;
+    }
     assert_eq!(
         check(
             "zsh",
@@ -82,6 +98,9 @@ words=(openagents host adopt d); CURRENT=4; _openagents
 
 #[test]
 fn fish_sources_and_completes_subcommands_and_flags() {
+    if !installed("fish") {
+        return;
+    }
     let result = check(
         "fish",
         r#"
