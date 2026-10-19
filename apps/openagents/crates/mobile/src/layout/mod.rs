@@ -248,6 +248,7 @@ impl LayoutFrame {
             fades: out.fades,
             widgets: out.widgets,
             reveal_age_ms,
+            reveal_slices: out.reveal_slices,
             copy_text: r.core.copy_text.clone(),
         })
     }

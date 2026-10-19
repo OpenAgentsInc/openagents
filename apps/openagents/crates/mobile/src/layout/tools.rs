@@ -14,7 +14,7 @@ use openagents_text::WhiteSpace;
 
 use super::display::{ColorRole, Decoration, DisplayBuilder, FadeEdge, LinkHit, WidgetKind};
 use super::file_icons::{basename, file_icon_asset};
-use super::markdown::{Ctx, PText, Px, SpanPaint, place_text, prepare_plain};
+use super::markdown::{Ctx, PText, Px, SpanPaint, initial_reveal_ranges, place_text, prepare_plain};
 use super::rows::{Content, RowBuilder, RowCore, RowKind, next_version, place_text_lines, quick_hash, row_key};
 use super::style::{Family, Weight, baseline};
 
@@ -648,12 +648,13 @@ fn prepare_thought(ctx: &mut Ctx, st: &Styles, lines: &[Vec<InlineRun>], more: b
                 ..Default::default()
             },
         );
+        let reveal_ranges = initial_reveal_ranges(p.text());
         let body = PText {
             p,
             lh: st.out_lh,
             base: baseline(st.out_lh, st.label),
             paints,
-            reveal_ms: vec![None; spans.len()],
+            reveal_ranges,
             links: Vec::new(),
             chip: (0.0, 0.0),
             badges: Vec::new(),
@@ -1127,7 +1128,7 @@ fn place_agents(t: &ToolGroup, px: Px, x: f32, y: f32, cw: f32, mut out: Option<
 
 pub(crate) fn heap_bytes(t: &ToolGroup) -> usize {
     fn reveal_bytes(text: &PText) -> usize {
-        text.reveal_ms.capacity() * std::mem::size_of::<Option<u32>>()
+        text.reveal_ranges.capacity() * std::mem::size_of::<super::markdown::TimedRevealRange>()
     }
     t.summary.p.heap_bytes()
         + reveal_bytes(&t.summary)

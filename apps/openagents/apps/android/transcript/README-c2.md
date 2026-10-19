@@ -100,10 +100,12 @@ checks require fresh coordinator admission.
 nix develop ./os#android --command bash -c 'cd apps/openagents && CARGO_TARGET_DIR="$HOME/work/openagents-target-1-app" scripts/android/app.sh compile :app:assembleDebug :app:assembleDebugAndroidTest'
 ```
 
-Remaining C2 work includes mounting the host through the app owner, media zoom/dismiss,
-and a Rust-owned stable row-layout epoch/age for temporal streaming fade. Rust
-currently exposes `TextRun.reveal_ms` but no stable epoch or age through
-`TranscriptFrame`; keep rendering deterministic until that contract is explicit.
+Remaining C2 work includes mounting the host through the app owner and media
+zoom/dismiss. A source-only follow-up now carries row-age samples and absolute
+UTF-16 reveal slices alongside the unchanged prepared text and shaped runs.
+Android paints each original run once and uses its most visible slice alpha;
+mixed ages therefore stay visible until a safe per-glyph fade is available.
+The new shaping, append, and range-validation fixtures are authored but unrun.
 The current hit callback exposes a typed image/media widget target, but no media
 payload loader or viewer-dismiss contract. Also run native selection/action-mode/clipboard,
 API 26/35, TalkBack focus, real RTL caret positions, rotation and cancel, system

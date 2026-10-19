@@ -84,10 +84,61 @@ class AndroidTranscriptTextTest : InstrumentationTestCase() {
         } finally { engine.shutdown(); engine.close(); text.close() }
     }
 
+    fun testMixedRevealAgesKeepOneFullAndroidShapingContextPerRun() {
+        val fonts = fonts()
+        val text = TextSystem(fonts.faces, AndroidTranscriptMeasurer(fonts))
+        val ready = CountDownLatch(1)
+        val engine = TranscriptView(text, object : LayoutListener {
+            override fun frameReady(revision: ULong) { ready.countDown() }
+        })
+        try {
+            val sample = "ffi AV العربية e\u0301"
+            engine.setViewport(320f, 1f)
+            engine.setDebugEntries(listOf(DebugEntry("reveal-shaping", false, sample, false)), false)
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            val frame = engine.frame()
+            try {
+                val row = frame.display(0u)!!
+                val slices = row.runs.flatMapIndexed { index, run ->
+                    if (index != 0 || run.len < 2u) {
+                        listOf(RevealSlice(index.toUInt(), run.start, run.len, 0u))
+                    } else {
+                        var split = run.start + run.len / 2u
+                        val splitAt = split.toInt()
+                        if (splitAt < row.text.length && row.text[splitAt].isLowSurrogate()) split++
+                        if (split == run.start || split == run.start + run.len) {
+                            listOf(RevealSlice(index.toUInt(), run.start, run.len, 0u))
+                        } else listOf(
+                            RevealSlice(index.toUInt(), run.start, split - run.start, 0u),
+                            RevealSlice(index.toUInt(), split, run.start + run.len - split, 180u),
+                        )
+                    }
+                }
+                val metadataRow = row.copy(revealSlices = slices)
+                val canvas = PositionCanvas(Bitmap.createBitmap(640, 160, Bitmap.Config.ARGB_8888))
+                val painter = TranscriptPainter(fonts, TranscriptPalette { Color.BLACK })
+                painter.setStyles(frame.styles())
+                painter.draw(canvas, metadataRow, 1f, reducedMotion = false) { 0f }
+                val expected = row.runs.sumOf { run ->
+                    val start = run.start.toInt()
+                    val style = frame.styles().first { it.id == run.style }
+                    AndroidShapedText(
+                        row.text.substring(start, start + run.len.toInt()),
+                        fonts.paint(style.face, style.size, style.ligatures),
+                    ).runs.size
+                }
+                assertEquals(expected, canvas.origins.size)
+                assertEquals(row.runs.sumOf { it.len.toInt() }, canvas.contextUnits.sum())
+            } finally { frame.close() }
+        } finally { engine.shutdown(); engine.close(); text.close() }
+    }
+
     private class PositionCanvas(bitmap: Bitmap) : Canvas(bitmap) {
         val origins = ArrayList<Pair<Float, Float>>()
+        val contextUnits = ArrayList<Int>()
         override fun drawTextRun(text: CharArray, index: Int, count: Int, contextIndex: Int, contextCount: Int, x: Float, y: Float, isRtl: Boolean, paint: Paint) {
             origins.add(x to y)
+            contextUnits.add(count)
             super.drawTextRun(text, index, count, contextIndex, contextCount, x, y, isRtl, paint)
         }
     }

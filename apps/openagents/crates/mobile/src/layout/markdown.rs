@@ -8,8 +8,9 @@
 
 use openagents_markdown::parser::{Block, InlineRun, TableAlign};
 use openagents_text::{OverflowWrap, PrepareOptions, Prepared, Span, WhiteSpace, WidthCache};
+use unicode_segmentation::UnicodeSegmentation;
 
-use super::display::{ColorRole, Decoration, DisplayBuilder, TextRun, WidgetKind};
+use super::display::{ColorRole, Decoration, DisplayBuilder, RevealSlice, TextRun, WidgetKind};
 use super::style::{Family, Resolved, TYPE, Typography, Weight, baseline};
 
 pub(crate) struct Ctx<'a> {
@@ -32,14 +33,20 @@ pub(crate) struct PText {
     pub lh: f32,
     pub base: f32,
     pub paints: Vec<SpanPaint>,
-    /// Reveal start offsets aligned with the prepared spans.
-    pub reveal_ms: Vec<Option<u32>>,
+    /// Reveal ages kept separate from shaping spans and layout geometry.
+    pub reveal_ranges: Vec<TimedRevealRange>,
     pub links: Vec<String>,
     /// Chip rect within a line box: (top offset, height).
     pub chip: (f32, f32),
     /// Spans painted as mention chips (the desktop's file badge: a soft pill
     /// with an icon well at its start), with each one's icon.
     pub badges: Vec<(usize, String)>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TimedRevealRange {
+    pub range: std::ops::Range<usize>,
+    pub age_ms: Option<u32>,
 }
 
 pub(crate) struct PCode {
@@ -166,12 +173,13 @@ pub(crate) fn prepare_runs(ctx: &mut Ctx, runs: &[InlineRun], kind: TextKind, mu
             ..PrepareOptions::default()
         },
     );
+    let reveal_ranges = initial_reveal_ranges(p.text());
     PText {
         p,
         lh,
         base: baseline(lh, body),
         paints,
-        reveal_ms: vec![None; spans.len()],
+        reveal_ranges,
         links,
         chip: ((lh - chip_h) / 2.0, chip_h),
         badges: Vec::new(),
@@ -205,6 +213,7 @@ pub(crate) fn prepare_plain(
             ..PrepareOptions::default()
         },
     );
+    let reveal_ranges = initial_reveal_ranges(p.text());
     PText {
         p,
         lh,
@@ -215,7 +224,7 @@ pub(crate) fn prepare_plain(
             link: None,
             chip: false,
         }],
-        reveal_ms: if text.is_empty() { Vec::new() } else { vec![None] },
+        reveal_ranges,
         links: Vec::new(),
         chip: (0.0, 0.0),
         badges: Vec::new(),
@@ -294,31 +303,31 @@ pub(crate) fn prepare_block(ctx: &mut Ctx, block: &Block, depth: usize, muted: b
 
 /// Carries reveal offsets through a streaming row update without restarting
 /// text whose rendered content stayed the same.
-pub(crate) fn apply_reveal_history(ctx: &mut Ctx, previous: Option<&PBlock>, next: &mut PBlock, age_ms: Option<u32>) {
+pub(crate) fn apply_reveal_history(previous: Option<&PBlock>, next: &mut PBlock, age_ms: Option<u32>) {
     match (previous, next) {
         (Some(PBlock::Text(old)), PBlock::Text(new)) | (Some(PBlock::Heading(old)), PBlock::Heading(new)) => {
-            apply_text_reveal(ctx, Some(old), new, age_ms);
+            apply_text_reveal(Some(old), new, age_ms);
         }
         (Some(PBlock::Code(old)), PBlock::Code(new)) => {
             if let (Some(old), Some(new)) = (&old.label, &mut new.label) {
-                apply_text_reveal(ctx, Some(old), new, age_ms);
+                apply_text_reveal(Some(old), new, age_ms);
             }
-            apply_text_reveal(ctx, Some(&old.body), &mut new.body, age_ms);
+            apply_text_reveal(Some(&old.body), &mut new.body, age_ms);
         }
         (Some(PBlock::Quote(old)), PBlock::Quote(new)) => {
             for (index, block) in new.iter_mut().enumerate() {
-                apply_reveal_history(ctx, old.get(index), block, age_ms);
+                apply_reveal_history(old.get(index), block, age_ms);
             }
         }
         (Some(PBlock::List { items: old, .. }), PBlock::List { items: new, .. }) => {
             for (index, item) in new.iter_mut().enumerate() {
                 let previous = old.get(index);
                 if let Some(marker) = &mut item.marker {
-                    apply_text_reveal(ctx, previous.and_then(|item| item.marker.as_ref()), marker, age_ms);
+                    apply_text_reveal(previous.and_then(|item| item.marker.as_ref()), marker, age_ms);
                 }
                 for (child_index, child) in item.children.iter_mut().enumerate() {
                     let old_child = previous.and_then(|item| item.children.get(child_index));
-                    apply_reveal_history(ctx, old_child, child, age_ms);
+                    apply_reveal_history(old_child, child, age_ms);
                 }
             }
         }
@@ -326,7 +335,7 @@ pub(crate) fn apply_reveal_history(ctx: &mut Ctx, previous: Option<&PBlock>, nex
             for (row_index, row) in new.cells.iter_mut().enumerate() {
                 for (cell_index, cell) in row.iter_mut().enumerate() {
                     let previous = old.cells.get(row_index).and_then(|row| row.get(cell_index));
-                    apply_text_reveal(ctx, previous, cell, age_ms);
+                    apply_text_reveal(previous, cell, age_ms);
                 }
             }
         }
@@ -362,10 +371,14 @@ fn set_block_reveal_age(block: &mut PBlock, age_ms: Option<u32>) {
 }
 
 fn set_text_reveal_age(text: &mut PText, age_ms: Option<u32>) {
-    text.reveal_ms = vec![age_ms; text.p.spans().len()];
+    text.reveal_ranges = if text.p.text().is_empty() {
+        Vec::new()
+    } else {
+        vec![TimedRevealRange { range: 0..text.p.text().len(), age_ms }]
+    };
 }
 
-fn apply_text_reveal(ctx: &mut Ctx, previous: Option<&PText>, next: &mut PText, age_ms: Option<u32>) {
+fn apply_text_reveal(previous: Option<&PText>, next: &mut PText, age_ms: Option<u32>) {
     let Some(age_ms) = age_ms else {
         set_text_reveal_age(next, None);
         return;
@@ -381,78 +394,19 @@ fn apply_text_reveal(ctx: &mut Ctx, previous: Option<&PText>, next: &mut PText, 
     let suffix = common_suffix_bytes(&old_text[prefix..], &new_text[prefix..]);
     let old_suffix = old_text.len() - suffix;
     let new_suffix = new_text.len() - suffix;
-    let mut timed_ranges = Vec::with_capacity(previous.p.spans().len() + 2);
+    let mut timed_ranges = Vec::with_capacity(previous.reveal_ranges.len() + 2);
     append_inherited_reveal_ranges(previous, 0..prefix, 0, age_ms, &mut timed_ranges);
     append_reveal_range(&mut timed_ranges, prefix..new_suffix, Some(age_ms));
     append_inherited_reveal_ranges(previous, old_suffix..old_text.len(), new_suffix, age_ms, &mut timed_ranges);
-
-    let old_spans = next.p.spans().to_vec();
-    let mut spans = Vec::with_capacity(old_spans.len() + 2);
-    let mut paints = Vec::with_capacity(old_spans.len() + 2);
-    let mut reveal_ms = Vec::with_capacity(old_spans.len() + 2);
-    let mut first_span = Vec::with_capacity(old_spans.len());
-    let mut range_index = 0;
-    for (span_index, span) in old_spans.iter().enumerate() {
-        first_span.push(spans.len());
-        while range_index < timed_ranges.len() && timed_ranges[range_index].range.end <= span.range.start {
-            range_index += 1;
-        }
-        if span.range.is_empty() {
-            let mut empty = span.clone();
-            empty.pad_start = 0.0;
-            empty.pad_end = 0.0;
-            spans.push(empty);
-            paints.push(paint_at(&next.paints, span_index));
-            reveal_ms.push(Some(age_ms));
-            continue;
-        }
-        let first_chunk = spans.len();
-        let mut cursor = span.range.start;
-        while cursor < span.range.end {
-            while range_index < timed_ranges.len() && timed_ranges[range_index].range.end <= cursor {
-                range_index += 1;
-            }
-            let (end, inherited_age) = timed_ranges.get(range_index).map_or((span.range.end, None), |timed| {
-                if cursor < timed.range.start {
-                    (timed.range.start.min(span.range.end), None)
-                } else {
-                    (timed.range.end.min(span.range.end), Some(timed.age_ms))
-                }
-            });
-            let end = if end > cursor { end } else { span.range.end };
-            let age = inherited_age.unwrap_or(Some(age_ms));
-            let mut split = span.clone();
-            split.range = cursor..end;
-            if cursor > span.range.start {
-                split.pad_start = 0.0;
-            }
-            if end < span.range.end {
-                split.pad_end = 0.0;
-            }
-            spans.push(split);
-            paints.push(paint_at(&next.paints, span_index));
-            reveal_ms.push(age);
-            cursor = end;
-        }
-        debug_assert!(spans.len() > first_chunk);
-    }
-
-    let badges = next
-        .badges
-        .iter()
-        .filter_map(|(index, icon)| first_span.get(*index).map(|new_index| (*new_index, icon.clone())))
-        .collect();
-    let options = *next.p.options();
-    next.p = openagents_text::prepare(&ctx.typo.book, ctx.cache, &new_text, &spans, &options);
-    next.paints = paints;
-    next.reveal_ms = reveal_ms;
-    next.badges = badges;
+    next.reveal_ranges = normalize_reveal_ranges(&new_text, &timed_ranges, age_ms);
 }
 
-#[derive(Clone)]
-struct TimedRevealRange {
-    range: std::ops::Range<usize>,
-    age_ms: Option<u32>,
+pub(super) fn initial_reveal_ranges(text: &str) -> Vec<TimedRevealRange> {
+    if text.is_empty() {
+        Vec::new()
+    } else {
+        vec![TimedRevealRange { range: 0..text.len(), age_ms: None }]
+    }
 }
 
 fn append_reveal_range(ranges: &mut Vec<TimedRevealRange>, range: std::ops::Range<usize>, age_ms: Option<u32>) {
@@ -469,6 +423,49 @@ fn append_reveal_range(ranges: &mut Vec<TimedRevealRange>, range: std::ops::Rang
     }
 }
 
+fn normalize_reveal_ranges(text: &str, ranges: &[TimedRevealRange], fallback_age_ms: u32) -> Vec<TimedRevealRange> {
+    let mut normalized = Vec::new();
+    let mut first = 0;
+    for (start, grapheme) in text.grapheme_indices(true) {
+        let end = start + grapheme.len();
+        while first < ranges.len() && ranges[first].range.end <= start {
+            first += 1;
+        }
+        let mut scan = first;
+        let mut covered = start;
+        let mut visible = false;
+        let mut oldest_age = 0;
+        let mut has_timed_age = false;
+        while scan < ranges.len() && ranges[scan].range.start < end {
+            let range = &ranges[scan];
+            if range.range.start > covered {
+                has_timed_age = true;
+                oldest_age = oldest_age.max(fallback_age_ms);
+            }
+            let overlap_start = range.range.start.max(start);
+            let overlap_end = range.range.end.min(end);
+            if overlap_start < overlap_end {
+                match range.age_ms {
+                    None => visible = true,
+                    Some(age) => {
+                        has_timed_age = true;
+                        oldest_age = oldest_age.max(age);
+                    }
+                }
+                covered = covered.max(overlap_end);
+            }
+            scan += 1;
+        }
+        if covered < end {
+            has_timed_age = true;
+            oldest_age = oldest_age.max(fallback_age_ms);
+        }
+        let age_ms = if visible { None } else if has_timed_age { Some(oldest_age) } else { None };
+        append_reveal_range(&mut normalized, start..end, age_ms);
+    }
+    normalized
+}
+
 fn append_inherited_reveal_ranges(
     previous: &PText,
     old_range: std::ops::Range<usize>,
@@ -480,28 +477,26 @@ fn append_inherited_reveal_ranges(
         return;
     }
     let mut cursor = old_range.start;
-    for (index, span) in previous.p.spans().iter().enumerate() {
-        if span.range.end <= cursor {
+    for timed in &previous.reveal_ranges {
+        if timed.range.end <= cursor {
             continue;
         }
-        if span.range.start >= old_range.end {
+        if timed.range.start >= old_range.end {
             break;
         }
-        if cursor < span.range.start {
-            let gap_end = span.range.start.min(old_range.end);
+        if cursor < timed.range.start {
+            let gap_end = timed.range.start.min(old_range.end);
             append_reveal_range(ranges, new_start + cursor - old_range.start..new_start + gap_end - old_range.start, Some(fallback_age_ms));
             cursor = gap_end;
         }
-        let start = cursor.max(span.range.start);
-        let end = span.range.end.min(old_range.end);
+        let start = cursor.max(timed.range.start);
+        let end = timed.range.end.min(old_range.end);
         if start < end {
-            if let Some(age) = previous.reveal_ms.get(index) {
-                // `Some(None)` means this range was already visible. A missing
-                // entry means no age was recorded for the range.
-                append_reveal_range(ranges, new_start + start - old_range.start..new_start + end - old_range.start, *age);
-            } else {
-                append_reveal_range(ranges, new_start + start - old_range.start..new_start + end - old_range.start, Some(fallback_age_ms));
-            }
+            append_reveal_range(
+                ranges,
+                new_start + start - old_range.start..new_start + end - old_range.start,
+                timed.age_ms,
+            );
             cursor = end;
         }
         if cursor >= old_range.end {
@@ -511,15 +506,6 @@ fn append_inherited_reveal_ranges(
     if cursor < old_range.end {
         append_reveal_range(ranges, new_start + cursor - old_range.start..new_start + old_range.end - old_range.start, Some(fallback_age_ms));
     }
-}
-
-fn paint_at(paints: &[SpanPaint], index: usize) -> SpanPaint {
-    paints.get(index).copied().unwrap_or(SpanPaint {
-        color: ColorRole::Text,
-        decoration: Decoration::None,
-        link: None,
-        chip: false,
-    })
 }
 
 fn common_prefix_bytes(left: &str, right: &str) -> usize {
@@ -537,6 +523,66 @@ fn common_suffix_bytes(left: &str, right: &str) -> usize {
         .take_while(|(left, right)| left == right)
         .map(|(ch, _)| ch.len_utf8())
         .sum()
+}
+
+fn fragment_reveal_age(ranges: &[TimedRevealRange], fragment: &std::ops::Range<usize>) -> Option<u32> {
+    let mut found = false;
+    let mut oldest_age = 0;
+    for timed in ranges.iter().filter(|timed| timed.range.start < fragment.end && fragment.start < timed.range.end) {
+        found = true;
+        match timed.age_ms {
+            None => return None,
+            Some(age) => oldest_age = oldest_age.max(age),
+        }
+    }
+    found.then_some(oldest_age)
+}
+
+fn append_fragment_reveal_slices(
+    out: &mut DisplayBuilder,
+    prepared: &Prepared,
+    row_text_start: u32,
+    run_index: u32,
+    fragment: &std::ops::Range<usize>,
+    ranges: &[TimedRevealRange],
+) {
+    let mut cursor = fragment.start;
+    for timed in ranges {
+        if timed.range.end <= cursor {
+            continue;
+        }
+        if timed.range.start >= fragment.end {
+            break;
+        }
+        let start = cursor.max(timed.range.start);
+        if cursor < start {
+            append_one_reveal_slice(out, prepared, row_text_start, run_index, cursor..start, None);
+        }
+        let end = fragment.end.min(timed.range.end);
+        if start < end {
+            append_one_reveal_slice(out, prepared, row_text_start, run_index, start..end, timed.age_ms);
+            cursor = end;
+        }
+    }
+    if cursor < fragment.end {
+        append_one_reveal_slice(out, prepared, row_text_start, run_index, cursor..fragment.end, None);
+    }
+}
+
+fn append_one_reveal_slice(
+    out: &mut DisplayBuilder,
+    prepared: &Prepared,
+    row_text_start: u32,
+    run_index: u32,
+    bytes: std::ops::Range<usize>,
+    reveal_ms: Option<u32>,
+) {
+    if bytes.is_empty() {
+        return;
+    }
+    let start = prepared.utf16_offset(bytes.start) as u32 + row_text_start;
+    let end = prepared.utf16_offset(bytes.end) as u32 + row_text_start;
+    out.reveal_slices.push(RevealSlice { run_index, start, len: end - start, reveal_ms });
 }
 
 fn syntax_color(kind: openagents_syntax::HighlightKind) -> ColorRole {
@@ -628,6 +674,7 @@ fn prepare_code(ctx: &mut Ctx, language: Option<&str>, code: &str) -> PCode {
     );
     let lines = p.line_count(f32::INFINITY).max(1);
     let content_width = p.max_content_width();
+    let reveal_ranges = initial_reveal_ranges(p.text());
     let body = PText {
         p,
         lh,
@@ -641,7 +688,7 @@ fn prepare_code(ctx: &mut Ctx, language: Option<&str>, code: &str) -> PCode {
                 chip: false,
             })
             .collect(),
-        reveal_ms: vec![None; cover.len()],
+        reveal_ranges,
         links: Vec::new(),
         chip: (0.0, 0.0),
         badges: Vec::new(),
@@ -747,8 +794,16 @@ pub(crate) fn place_text(t: &PText, x: f32, y: f32, width: f32, out: Option<&mut
                 color: paint.color,
                 decoration: paint.decoration,
                 scroller: out.scroller,
-                reveal_ms: t.reveal_ms.get(f.span).copied().flatten(),
+                reveal_ms: fragment_reveal_age(&t.reveal_ranges, &f.range),
             });
+            append_fragment_reveal_slices(
+                out,
+                &t.p,
+                base16,
+                (out.runs.len() - 1) as u32,
+                &f.range,
+                &t.reveal_ranges,
+            );
             if let Some(link) = paint.link {
                 out.links.push(super::display::LinkHit {
                     x: x + f.x,

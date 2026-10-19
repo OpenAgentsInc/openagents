@@ -1165,3 +1165,10 @@ links remain readable. Upstream fixes now require manual ports.
   confirmation; Android borrows the form and disposes its modal mount. Synthetic
   limits, stale-action, duplicate, retirement, and retained-draft fixtures are
   authored but unrun.
+
+- OpenAgents #12085: preserve prepared text spans and Android's full-run
+  shaping while carrying reveal ages as absolute UTF-16 slices. Android paints
+  each original run once and keeps mixed-age or invalid coverage visible at the
+  most visible alpha. Synthetic append, relayout, range-validation, and Geist
+  shaping fixtures are authored but unrun; Cargo, Kotlin, API 26, and device
+  checks remain pending.

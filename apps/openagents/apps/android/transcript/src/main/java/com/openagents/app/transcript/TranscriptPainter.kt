@@ -32,7 +32,7 @@ class TranscriptPainter(
 ) {
     companion object { const val REVEAL_DURATION_MS: UInt = 200u }
     private data class Key(val key: ULong, val version: ULong, val width: Float)
-    private data class Line(val run: TextRun, val shaped: AndroidShapedText)
+    private data class Line(val runIndex: Int, val run: TextRun, val shaped: AndroidShapedText)
     private var styles = emptyList<StyleDesc>()
     private var styleTable = emptyMap<UShort, StyleDesc>()
     private val prepared = object : LinkedHashMap<Key, List<Line>>(16, .75f, true) {
@@ -52,14 +52,14 @@ class TranscriptPainter(
 
     fun draw(canvas: Canvas, row: RowDisplay, density: Float, elapsedSinceSampleMs: Long = 0, reducedMotion: Boolean = true, horizontalOffset: (UInt) -> Float) {
         val key = Key(row.key, row.version, row.width)
-        val lines = prepared[key] ?: row.runs.map { run ->
+        val lines = prepared[key] ?: row.runs.mapIndexed { runIndex, run ->
             val start = run.start.toInt()
             val end = start + run.len.toInt()
             require(start >= 0 && end >= start && end <= row.text.length)
             require(start == 0 || start == row.text.length || !row.text[start].isLowSurrogate())
             require(end == row.text.length || !row.text[end].isLowSurrogate())
             val style = styleTable.getValue(run.style)
-            Line(run, AndroidShapedText(row.text.substring(start, end), fonts.paint(style.face, style.size, style.ligatures)))
+            Line(runIndex, run, AndroidShapedText(row.text.substring(start, end), fonts.paint(style.face, style.size, style.ligatures)))
         }.also { prepared[key] = it }
         drawLayer(canvas, row, lines, null, density, elapsedSinceSampleMs, reducedMotion)
         row.scrollers.forEachIndexed { index, scroller ->
@@ -89,11 +89,11 @@ class TranscriptPainter(
         val assigned = lines.filter { it.run.scroller == layer }.groupBy { line ->
             fades.indexOfFirst { fade -> line.run.baseline > fade.y && line.run.baseline <= fade.y + fade.h + .5f }
         }
-        assigned[-1].orEmpty().forEach { drawLine(canvas, it, hairline, if (reducedMotion) 1f else transcriptRevealAlpha(row.revealAgeMs, it.run.revealMs, elapsedSinceSampleMs, REVEAL_DURATION_MS)) }
+        assigned[-1].orEmpty().forEach { drawLine(canvas, it, hairline, if (reducedMotion) 1f else transcriptRunRevealAlpha(row, it.runIndex.toUInt(), it.run, elapsedSinceSampleMs, REVEAL_DURATION_MS)) }
         fades.forEachIndexed { index, fade ->
             val group = assigned[index].orEmpty()
             if (group.isEmpty() || fade.w <= 0 || fade.h <= 0) return@forEachIndexed
-            drawFaded(canvas, fade) { group.forEach { drawLine(canvas, it, hairline, if (reducedMotion) 1f else transcriptRevealAlpha(row.revealAgeMs, it.run.revealMs, elapsedSinceSampleMs, REVEAL_DURATION_MS)) } }
+            drawFaded(canvas, fade) { group.forEach { drawLine(canvas, it, hairline, if (reducedMotion) 1f else transcriptRunRevealAlpha(row, it.runIndex.toUInt(), it.run, elapsedSinceSampleMs, REVEAL_DURATION_MS)) } }
         }
         widgets?.draw(canvas, row, layer)
     }

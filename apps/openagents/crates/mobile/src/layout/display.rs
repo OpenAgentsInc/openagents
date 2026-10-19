@@ -88,8 +88,22 @@ pub struct TextRun {
     pub decoration: Decoration,
     /// Index into [`RowDisplay::scrollers`] when the run scrolls horizontally.
     pub scroller: Option<u32>,
-    /// Fade-in start in ms since the row's layout epoch (streaming veil);
-    /// `None` = fully visible.
+    /// Coarse fade-in age for clients that cannot consume reveal slices.
+    /// Android uses [`RowDisplay::reveal_slices`] and paints the full run.
+    pub reveal_ms: Option<u32>,
+}
+
+/// A text range's reveal age, indexed into one original shaped text run.
+///
+/// `start` and `len` are absolute UTF-16 offsets in [`RowDisplay::text`].
+/// Slices cover the indexed run in order and do not change its shaping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct RevealSlice {
+    pub run_index: u32,
+    pub start: u32,
+    pub len: u32,
+    /// Fade-in start in ms since the row's Rust monotonic reveal clock.
+    /// `None` means fully visible.
     pub reveal_ms: Option<u32>,
 }
 
@@ -238,6 +252,8 @@ pub struct RowDisplay {
     pub reveal_age_ms: Option<u32>,
     /// Plain text for copy / accessibility.
     pub copy_text: String,
+    /// Ages follow grapheme-aligned ranges; slices follow existing runs and do not alter shaping.
+    pub reveal_slices: Vec<RevealSlice>,
 }
 
 /// Accumulates one row's primitives. `origin` offsets let nested layout code
@@ -247,6 +263,7 @@ pub(crate) struct DisplayBuilder {
     pub text: String,
     utf16_len: u32,
     pub runs: Vec<TextRun>,
+    pub reveal_slices: Vec<RevealSlice>,
     pub boxes: Vec<BoxPrim>,
     pub links: Vec<LinkHit>,
     pub scrollers: Vec<Scroller>,
