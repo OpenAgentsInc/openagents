@@ -544,6 +544,45 @@ impl WorkspaceFiles {
         .map_err(|e| WorkspaceFilesError::Io(e.to_string()))?
     }
 
+    /// One chunk of any regular file, for a download. Workspace files need
+    /// the current checkout identity; an absolute path outside it reads like
+    /// an outside image.
+    pub async fn read_bytes(
+        &self,
+        request: openagents_proto::ReadWorkspaceBytesRequest,
+    ) -> Result<openagents_proto::WorkspaceBytesChunk, WorkspaceFilesError> {
+        let workspace = self.resolve_target(&request.target).await?;
+        let absolute = request.target.chat_id.is_some() && request.path.starts_with('/');
+        let checkout_matches = !request.expected_checkout_id.is_empty()
+            && request.expected_checkout_id == workspace.checkout_id;
+        if !absolute && !checkout_matches {
+            return Err(WorkspaceFilesError::Authorization(
+                "Workspace changed before download".into(),
+            ));
+        }
+        tokio::task::spawn_blocking(move || {
+            if absolute {
+                return match resolve_absolute_read(&workspace, &request.path)? {
+                    AbsoluteRead::Inside(relative) => {
+                        if !checkout_matches {
+                            return Err(WorkspaceFilesError::Authorization(
+                                "Workspace changed before download".into(),
+                            ));
+                        }
+                        read_bytes_blocking(&workspace.root, &relative, &request)
+                    }
+                    AbsoluteRead::Outside { base, relative } => {
+                        read_bytes_blocking(&base, &relative, &request)
+                    }
+                };
+            }
+            let relative = WorkspaceRelativePath::file(&request.path)?;
+            read_bytes_blocking(&workspace.root, &relative, &request)
+        })
+        .await
+        .map_err(|e| WorkspaceFilesError::Io(e.to_string()))?
+    }
+
     pub async fn write_file(
         &self,
         request: WriteWorkspaceFileRequest,
@@ -1597,6 +1636,90 @@ fn read_image_blocking(
         next_offset: end,
         size: bytes.len(),
         done: end == bytes.len(),
+    })
+}
+
+fn file_revision(metadata: &std::fs::Metadata) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(metadata.len().to_le_bytes());
+    if let Ok(modified) = metadata.modified()
+        && let Ok(since) = modified.duration_since(std::time::UNIX_EPOCH)
+    {
+        hasher.update(since.as_nanos().to_le_bytes());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        hasher.update(metadata.dev().to_le_bytes());
+        hasher.update(metadata.ino().to_le_bytes());
+    }
+    hex(&hasher.finalize())
+}
+
+fn read_bytes_blocking(
+    root: &Path,
+    relative: &WorkspaceRelativePath,
+    request: &openagents_proto::ReadWorkspaceBytesRequest,
+) -> Result<openagents_proto::WorkspaceBytesChunk, WorkspaceFilesError> {
+    use base64::Engine as _;
+    use openagents_proto::{MAX_WORKSPACE_DOWNLOAD_BYTES, WORKSPACE_IMAGE_CHUNK_BYTES};
+    use std::io::{Read, Seek, SeekFrom};
+    if request.offset > 0 && request.expected_revision.is_none() {
+        return Err(bad_path("Download continuation requires a revision"));
+    }
+    let before = checked_file_metadata(root, relative)?;
+    if before.len() > MAX_WORKSPACE_DOWNLOAD_BYTES {
+        return Err(WorkspaceFilesError::Unsupported(
+            "File is larger than 512 MB".into(),
+        ));
+    }
+    let revision = file_revision(&before);
+    if request
+        .expected_revision
+        .as_ref()
+        .is_some_and(|expected| expected != &revision)
+    {
+        return Err(WorkspaceFilesError::Io(
+            "File changed during download".into(),
+        ));
+    }
+    if request.offset > before.len() {
+        return Err(bad_path("Invalid download offset"));
+    }
+    let mut file = std::fs::File::open(root.join(relative.as_path()))
+        .map_err(|e| WorkspaceFilesError::Io(e.to_string()))?;
+    let opened = file
+        .metadata()
+        .map_err(|e| WorkspaceFilesError::Io(e.to_string()))?;
+    if !same_file_revision(&before, &opened) {
+        return Err(WorkspaceFilesError::Io(
+            "File changed during download".into(),
+        ));
+    }
+    file.seek(SeekFrom::Start(request.offset))
+        .map_err(|e| WorkspaceFilesError::Io(e.to_string()))?;
+    let want = (before.len() - request.offset).min(WORKSPACE_IMAGE_CHUNK_BYTES as u64);
+    let mut bytes = Vec::with_capacity(want as usize);
+    (&mut file)
+        .take(want)
+        .read_to_end(&mut bytes)
+        .map_err(|e| WorkspaceFilesError::Io(e.to_string()))?;
+    let after = file
+        .metadata()
+        .map_err(|e| WorkspaceFilesError::Io(e.to_string()))?;
+    if bytes.len() as u64 != want || !same_file_revision(&opened, &after) {
+        return Err(WorkspaceFilesError::Io(
+            "File changed during download".into(),
+        ));
+    }
+    let next_offset = request.offset + want;
+    Ok(openagents_proto::WorkspaceBytesChunk {
+        checkout_id: request.expected_checkout_id.clone(),
+        revision,
+        data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+        next_offset,
+        size: before.len(),
+        done: next_offset == before.len(),
     })
 }
 
@@ -3146,6 +3269,62 @@ mod tests {
             panic!("expected inside resolution");
         };
         assert_eq!(relative.wire_path(), "in.png");
+    }
+
+    #[test]
+    fn byte_reads_page_any_regular_file_and_refuse_a_changed_one() {
+        use base64::Engine as _;
+        use openagents_proto::WORKSPACE_IMAGE_CHUNK_BYTES;
+        let root = tempfile::tempdir().unwrap();
+        let canonical = std::fs::canonicalize(root.path()).unwrap();
+        let payload: Vec<u8> = (0..WORKSPACE_IMAGE_CHUNK_BYTES + 17)
+            .map(|i| (i % 251) as u8)
+            .collect();
+        std::fs::write(canonical.join("shots.zip"), &payload).unwrap();
+        let relative = WorkspaceRelativePath::file("shots.zip").unwrap();
+        let mut request = openagents_proto::ReadWorkspaceBytesRequest {
+            target: WorkspaceTarget {
+                chat_id: Some("chat".into()),
+                space_id: None,
+                checkout_path: None,
+            },
+            path: "shots.zip".into(),
+            expected_checkout_id: "checkout-test".into(),
+            offset: 0,
+            expected_revision: None,
+        };
+        let mut bytes = Vec::new();
+        loop {
+            let chunk = read_bytes_blocking(&canonical, &relative, &request).unwrap();
+            assert_eq!(chunk.size, payload.len() as u64);
+            bytes.extend(
+                base64::engine::general_purpose::STANDARD
+                    .decode(&chunk.data)
+                    .unwrap(),
+            );
+            assert_eq!(chunk.next_offset, bytes.len() as u64);
+            if chunk.done {
+                break;
+            }
+            request.offset = chunk.next_offset;
+            request.expected_revision = Some(chunk.revision);
+        }
+        assert_eq!(bytes, payload);
+
+        // A continuation needs the first chunk's revision, and refuses a
+        // file that changed since.
+        request.expected_revision = None;
+        assert!(read_bytes_blocking(&canonical, &relative, &request).is_err());
+        request.expected_revision = Some("stale".into());
+        assert!(read_bytes_blocking(&canonical, &relative, &request).is_err());
+
+        // An empty file is one finished chunk.
+        std::fs::write(canonical.join("empty.bin"), b"").unwrap();
+        let empty = WorkspaceRelativePath::file("empty.bin").unwrap();
+        request.offset = 0;
+        request.expected_revision = None;
+        let chunk = read_bytes_blocking(&canonical, &empty, &request).unwrap();
+        assert!(chunk.done && chunk.size == 0 && chunk.data.is_empty());
     }
 
     fn write_request(

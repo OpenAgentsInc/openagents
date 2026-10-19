@@ -20,6 +20,7 @@ use crate::{
 pub mod client;
 mod context_menu;
 pub mod document;
+mod download;
 mod drag;
 pub mod editor;
 pub mod editor_adapter;
@@ -61,6 +62,15 @@ use crate::surface_chrome::{
 /// A file document opened by absolute path beyond the workspace root — a
 /// link-opened host file. It has no tree entry and no watch, and the owning
 /// device serves it read-only.
+/// Whether a chat link's text asks for a download ("Download all nine
+/// screenshots") rather than a look at the file.
+pub(crate) fn link_asks_for_download(label: &str) -> bool {
+    label
+        .trim_start()
+        .get(..8)
+        .is_some_and(|word| word.eq_ignore_ascii_case("download"))
+}
+
 pub(super) fn path_is_outside(path: &str) -> bool {
     path.starts_with('/')
 }
@@ -328,6 +338,8 @@ pub struct FilesSurface {
     watch_sequence: Option<u64>,
     watch_error: Option<SharedString>,
     preview: FilePreviewState,
+    downloads: HashMap<String, download::DownloadState>,
+    download_tasks: HashMap<String, Task<()>>,
     tree_context_menu: crate::popover::Popup<context_menu::TreeContextMenu>,
     pending_line_navigation: Option<(u32, Option<FileColumn>)>,
     line_navigation_generation: u64,
@@ -714,6 +726,8 @@ impl FilesSurface {
             watch_task: None,
             watch_sequence: None,
             watch_error: None,
+            downloads: HashMap::new(),
+            download_tasks: HashMap::new(),
             preview: FilePreviewState::new(
                 autosave_enabled,
                 autosave_delay_ms,

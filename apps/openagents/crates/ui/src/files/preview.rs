@@ -2311,7 +2311,7 @@ impl FilesSurface {
     /// Where the system's default app can open `path`. Only a workspace on
     /// this device shares the viewport's filesystem; remote spaces live on
     /// another device, so they get no path.
-    fn system_open_path(&self, path: &str) -> Option<std::path::PathBuf> {
+    pub(super) fn system_open_path(&self, path: &str) -> Option<std::path::PathBuf> {
         self.request_context
             .as_ref()
             .filter(|context| context.target_device_id.is_none())
@@ -2786,6 +2786,12 @@ impl FilesSurface {
             return centered_state("This file cannot be previewed.", theme.text_muted);
         };
         if file.text.is_none() {
+            if super::download::preview_choice(path, Some(file))
+                == super::download::PreviewChoice::Download
+            {
+                let file = file.clone();
+                return self.render_download_card(path, &file, theme, cx);
+            }
             return centered_state(read_only_message(file.read_only_reason), theme.text_muted);
         }
         let truncated = file.truncated;

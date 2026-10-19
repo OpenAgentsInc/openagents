@@ -3866,6 +3866,7 @@ impl Shell {
             ) && self.open_workspace_file_link(
                 &source,
                 &activation.target.original,
+                crate::files::link_asks_for_download(&activation.target.label),
                 window,
                 cx,
             ) {
@@ -4172,6 +4173,7 @@ impl Shell {
         &mut self,
         chat_id: &str,
         target: &str,
+        download: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
@@ -4213,6 +4215,8 @@ impl Shell {
         };
 
         self.set_surfaces_open(true, cx);
+        let owner_chat = owner.0.clone();
+        let path = link.path.clone();
         self.add_file_surface_at(
             owner,
             link.path,
@@ -4221,6 +4225,17 @@ impl Shell {
             window,
             cx,
         );
+        // A link that says "Download" starts the copy into Downloads; the
+        // panel beside it shows the progress.
+        if download
+            && let Some(file) = self
+                .file_surface_keys
+                .get(&(self.panel_key(cx), owner_chat, path.clone()))
+                .and_then(|id| self.file_surfaces.get(id))
+                .cloned()
+        {
+            file.update(cx, |file, cx| file.download_file(path, cx));
+        }
         true
     }
 

@@ -289,6 +289,98 @@ impl WorkspaceFilesClient {
         ))
     }
 
+    /// The checkout identity a byte or image read of `path` must name. Outside
+    /// (absolute) paths need none; legacy chats without synced metadata ask
+    /// the owning host once.
+    pub async fn checkout_for(&self, path: &str) -> Result<String, FilesClientError> {
+        if super::path_is_outside(path) {
+            return Ok(String::new());
+        }
+        if let Some(id) = self.context.checkout_id.clone().filter(|id| !id.is_empty()) {
+            return Ok(id);
+        }
+        let id = self
+            .read_file(ReadWorkspaceFileRequest {
+                target: self.context.target.clone(),
+                path: path.to_string(),
+            })
+            .await?
+            .checkout_id;
+        if id.is_empty() {
+            return Err(FilesClientError::Decode(
+                "Workspace checkout identity unavailable".into(),
+            ));
+        }
+        Ok(id)
+    }
+
+    /// Copy `path` off its device chunk by chunk into `sink`, returning the
+    /// file's size. `progress` hears the bytes received so far.
+    pub async fn download(
+        &self,
+        path: String,
+        checkout_id: String,
+        sink: &mut (dyn std::io::Write + Send),
+        progress: &(dyn Fn(u64, u64) + Send + Sync),
+    ) -> Result<u64, FilesClientError> {
+        use base64::Engine as _;
+        use openagents_proto::{
+            MAX_WORKSPACE_DOWNLOAD_BYTES, ReadWorkspaceBytesRequest, WORKSPACE_IMAGE_CHUNK_BYTES,
+            WorkspaceBytesChunk,
+        };
+        let mut request = ReadWorkspaceBytesRequest {
+            target: self.context.target.clone(),
+            path,
+            expected_checkout_id: checkout_id,
+            offset: 0,
+            expected_revision: None,
+        };
+        let mut size = None;
+        let limit = MAX_WORKSPACE_DOWNLOAD_BYTES / WORKSPACE_IMAGE_CHUNK_BYTES as u64 + 1;
+        for _ in 0..=limit {
+            let chunk: WorkspaceBytesChunk =
+                self.call(methods::READ_WORKSPACE_BYTES, &request).await?;
+            if chunk.checkout_id != request.expected_checkout_id
+                || chunk.revision.is_empty()
+                || chunk.size > MAX_WORKSPACE_DOWNLOAD_BYTES
+                || chunk.data.len() > WORKSPACE_IMAGE_CHUNK_BYTES.div_ceil(3) * 4
+                || request
+                    .expected_revision
+                    .as_ref()
+                    .is_some_and(|revision| revision != &chunk.revision)
+                || size.is_some_and(|s| s != chunk.size)
+            {
+                return Err(FilesClientError::Decode(
+                    "The file changed during download".into(),
+                ));
+            }
+            let part = base64::engine::general_purpose::STANDARD
+                .decode(&chunk.data)
+                .map_err(|e| FilesClientError::Decode(e.to_string()))?;
+            if (part.is_empty() && !chunk.done)
+                || request.offset.checked_add(part.len() as u64) != Some(chunk.next_offset)
+                || chunk.next_offset > chunk.size
+                || chunk.done != (chunk.next_offset == chunk.size)
+            {
+                return Err(FilesClientError::Decode(
+                    "Invalid download chunk offset".into(),
+                ));
+            }
+            sink.write_all(&part)
+                .map_err(|e| FilesClientError::Request(e.to_string()))?;
+            progress(chunk.next_offset, chunk.size);
+            if chunk.done {
+                return Ok(chunk.size);
+            }
+            request.offset = chunk.next_offset;
+            request.expected_revision = Some(chunk.revision);
+            size = Some(chunk.size);
+        }
+        Err(FilesClientError::Decode(
+            "Download chunk limit exceeded".into(),
+        ))
+    }
+
     pub async fn write_file(
         &self,
         request: WriteWorkspaceFileRequest,
@@ -825,7 +917,9 @@ mod tests {
     #[async_trait]
     impl WorkspaceFilesTransport for ImageTransport {
         async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
-            assert_eq!(method, methods::READ_WORKSPACE_IMAGE);
+            assert!(
+                method == methods::READ_WORKSPACE_IMAGE || method == methods::READ_WORKSPACE_BYTES
+            );
             self.calls.lock().unwrap().push(params);
             self.responses
                 .lock()
@@ -867,6 +961,57 @@ mod tests {
             done,
         })
         .unwrap()
+    }
+    fn bytes_chunk(data: &[u8], end: u64, revision: &str, done: bool) -> Value {
+        use base64::Engine as _;
+        serde_json::to_value(openagents_proto::WorkspaceBytesChunk {
+            checkout_id: String::new(),
+            revision: revision.into(),
+            data: base64::engine::general_purpose::STANDARD.encode(data),
+            next_offset: end,
+            size: 4,
+            done,
+        })
+        .unwrap()
+    }
+    #[tokio::test]
+    async fn remote_downloads_stream_every_chunk_and_refuse_a_changed_file() {
+        let (client, transport) = image_client(vec![
+            Ok(bytes_chunk(b"PK", 2, "rev", false)),
+            Ok(bytes_chunk(b"\x03\x04", 4, "rev", true)),
+        ]);
+        let mut sink = Vec::new();
+        let seen = Mutex::new(Vec::new());
+        let size = client
+            .download(
+                "/home/me/shots.zip".into(),
+                String::new(),
+                &mut sink,
+                &|done, total| seen.lock().unwrap().push((done, total)),
+            )
+            .await
+            .unwrap();
+        assert_eq!((size, sink.as_slice()), (4, b"PK\x03\x04".as_slice()));
+        assert_eq!(*seen.lock().unwrap(), vec![(2, 4), (4, 4)]);
+        let calls = transport.calls.lock().unwrap();
+        assert_eq!(calls[0]["targetDeviceId"], "remote");
+        assert_eq!(calls[0]["path"], "/home/me/shots.zip");
+        assert!(calls[0].get("expectedRevision").is_none());
+        assert_eq!(calls[1]["expectedRevision"], "rev");
+        assert_eq!(calls[1]["offset"], 2);
+        drop(calls);
+
+        let (client, _) = image_client(vec![
+            Ok(bytes_chunk(b"PK", 2, "rev", false)),
+            Ok(bytes_chunk(b"\x03\x04", 4, "other", true)),
+        ]);
+        let mut sink = Vec::new();
+        assert!(
+            client
+                .download("/shots.zip".into(), String::new(), &mut sink, &|_, _| {})
+                .await
+                .is_err()
+        );
     }
     #[tokio::test]
     async fn remote_images_keep_checkout_hash_and_offset_across_chunks() {

@@ -1210,3 +1210,10 @@ links remain readable. Upstream fixes now require manual ports.
   Rust Native controls over the existing account controller, preserves edits
   during refreshes, retries saved requests, and opens trial conversations in
   the main window.
+
+- [OpenAgents #12213](https://github.com/OpenAgentsInc/openagents/issues/12213):
+  the file panel shows a name and size card with Download (and Open on this
+  computer) for files it can't show as text or an image. Downloads copy the
+  file into `~/Downloads` in chunks over the new `ReadWorkspaceBytes` device
+  method (`crates/ui/src/files/download.rs`), and a chat link whose text
+  starts with "Download" starts one.

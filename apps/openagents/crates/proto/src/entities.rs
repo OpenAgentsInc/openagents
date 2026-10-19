@@ -746,6 +746,37 @@ pub struct WorkspaceImageChunk {
     pub done: bool,
 }
 
+/// Downloads copy any regular file off its device in the same bounded frames
+/// as images, up to this size.
+pub const MAX_WORKSPACE_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadWorkspaceBytesRequest {
+    #[serde(flatten)]
+    pub target: WorkspaceTarget,
+    pub path: String,
+    pub expected_checkout_id: String,
+    pub offset: u64,
+    /// The revision the first chunk reported; later chunks refuse a file
+    /// that changed since.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_revision: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBytesChunk {
+    pub checkout_id: String,
+    /// Identifies the file's size, modification time and inode.
+    pub revision: String,
+    /// Base64 of the bytes from the request offset.
+    pub data: String,
+    pub next_offset: u64,
+    pub size: u64,
+    pub done: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceFileText {
