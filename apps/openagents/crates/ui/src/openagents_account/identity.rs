@@ -164,7 +164,7 @@ impl AppAccount {
 
     /// Show the code, and sign in once a phone has linked this computer to
     /// its account (#12000). Until then nothing signs in.
-    fn welcome_connect_phone(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn welcome_connect_phone(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.close_welcome(cx);
         window.dispatch_action(Box::new(crate::shell::ConnectPhone), cx);
         if let Some(backend) = self.id.backend.clone() {

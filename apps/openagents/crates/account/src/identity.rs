@@ -409,6 +409,8 @@ pub fn phone_entropy() -> Result<Option<Vec<u8>>, StorageError> {
 /// device only unless the person chose the iCloud copy.
 pub struct KeychainVault {
     service: String,
+    /// Where a desktop without the Apple Keychain keeps the item instead.
+    files: Option<crate::file_secrets::FileSecrets>,
 }
 
 const VAULT_ACCOUNT: &str = "words-v1";
@@ -417,7 +419,20 @@ impl KeychainVault {
     pub fn new(service: &str) -> Self {
         Self {
             service: service.into(),
+            files: None,
         }
+    }
+
+    /// Keep the item in private files under `root` on platforms without the
+    /// Apple Keychain (Linux). macOS and iOS ignore it.
+    pub fn with_files(mut self, root: &Path) -> Self {
+        self.files = Some(crate::file_secrets::FileSecrets::new(root));
+        self
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    fn files(&self) -> Result<&crate::file_secrets::FileSecrets, StorageError> {
+        self.files.as_ref().ok_or(StorageError::Unavailable)
     }
 }
 
@@ -557,20 +572,30 @@ mod keychain {
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 mod keychain {
     use super::*;
-    pub(super) fn read(_: &str, _: bool) -> Result<Option<Vec<u8>>, StorageError> {
-        Err(StorageError::Unavailable)
-    }
-    pub(super) fn write(_: &str, _: &[u8], _: bool) -> Result<(), StorageError> {
-        Err(StorageError::Unavailable)
-    }
-    pub(super) fn remove(_: &str, _: bool) -> Result<(), StorageError> {
-        Err(StorageError::Unavailable)
-    }
     pub(super) fn wallet() -> WalletRead {
         WalletRead::Absent
     }
 }
 
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+impl IdentityVault for KeychainVault {
+    fn load(&self) -> Result<Option<(Vec<u8>, bool)>, StorageError> {
+        use crate::platform::Passwords as _;
+        Ok(self
+            .files()?
+            .get(&self.service, VAULT_ACCOUNT)?
+            .map(|bytes| (bytes, false)))
+    }
+    fn create_if_absent(&self, entropy: &[u8], _icloud: bool) -> Result<bool, StorageError> {
+        self.files()?.create(&self.service, VAULT_ACCOUNT, entropy)
+    }
+    fn store(&self, entropy: &[u8], _icloud: bool) -> Result<(), StorageError> {
+        use crate::platform::Passwords as _;
+        self.files()?.set(&self.service, VAULT_ACCOUNT, entropy)
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 impl IdentityVault for KeychainVault {
     fn load(&self) -> Result<Option<(Vec<u8>, bool)>, StorageError> {
         if let Some(bytes) = keychain::read(&self.service, false)? {

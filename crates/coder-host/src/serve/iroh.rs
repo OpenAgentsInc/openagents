@@ -223,6 +223,12 @@ pub(super) async fn redeem(shared: &Arc<Shared>, request: &str) -> Option<String
     let reply = tokio::task::spawn_blocking(move || authority.redeem(&event))
         .await
         .ok()?
+        .inspect_err(|error| {
+            eprintln!(
+                "openagents host: a connect code was refused ({:?}): {}",
+                error.code, error.message
+            );
+        })
         .ok()?;
     serde_json::to_string(&reply).ok()
 }

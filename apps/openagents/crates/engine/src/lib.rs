@@ -1210,7 +1210,7 @@ impl Engine {
             if let Ok(path) = openagents_brand::env_var("OPENAGENTS_NIP_HOST_INVITE_FILE") {
                 use std::io::Write;
                 let relay = openagents_brand::env_var("OPENAGENTS_NIP_HOST_RELAY")
-                    .unwrap_or_else(|_| "wss://relay.openagents.com".into());
+                    .unwrap_or_else(|_| host_rpc::DEFAULT_RELAY.into());
                 let code = runtime.device_channel_invitation(&relay)?;
                 let mut options = std::fs::OpenOptions::new();
                 options.write(true).create_new(true);

@@ -103,25 +103,72 @@ pub fn configured(data: &Path) -> Result<(Arc<Controller>, Option<String>), Erro
 }
 
 /// The desktop's identity (#11995, UI in #11997): its own Keychain item
-/// for the 12 words, with no wallet on this computer yet.
+/// for the 12 words, with no wallet on this computer yet. Without the Apple
+/// Keychain (Linux) the item is a private file under the data folder.
 pub fn identities(data: &Path) -> crate::identity::Identities {
     crate::identity::Identities::new(
-        Arc::new(crate::identity::KeychainVault::new(&identity_service())),
+        Arc::new(
+            crate::identity::KeychainVault::new(&identity_service(data))
+                .with_files(&secrets_dir(data)),
+        ),
         Arc::new(crate::identity::NoWallet),
         &data.join("openagents-account/identity"),
     )
 }
 
+/// Where a desktop without the Apple Keychain keeps its sign-in and
+/// identity: `0700` and `0600` files under the data folder.
+pub fn secrets_dir(data: &Path) -> PathBuf {
+    data.join("openagents-account/secrets")
+}
+
+/// The record naming the identity item a data folder uses, once it uses
+/// one of its own.
+const IDENTITY_SERVICE_FILE: &str = "openagents-account/identity-service";
+
 /// The Keychain service that holds this computer's identity, the one item
 /// [`identities`] reads. The engine's device connection reads the same
 /// item to sign a phone's link proof (`identity::link`).
-pub fn identity_service() -> String {
+///
+/// A build has one item for every data folder, so the everyday app keeps
+/// the identity it made. A test instance (`OPENAGENTS_TEST_RUN=1`, or
+/// `OPENAGENTS_IDENTITY_SCOPE=profile`) gets an item of its own for its data
+/// folder instead, so it can never sign in as the person whose app shares
+/// the Keychain. The choice is written beside the data and kept.
+pub fn identity_service(data: &Path) -> String {
+    let scoped = openagents_brand::env_var("OPENAGENTS_TEST_RUN").as_deref() == Ok("1")
+        || openagents_brand::env_var("OPENAGENTS_IDENTITY_SCOPE").as_deref() == Ok("profile");
+    identity_service_for(data, scoped)
+}
+
+fn identity_service_for(data: &Path, scoped: bool) -> String {
     let bundle = if cfg!(debug_assertions) {
         openagents_brand::DEV_BUNDLE_ID
     } else {
         openagents_brand::BUNDLE_ID
     };
-    format!("{bundle}.identity")
+    let base = format!("{bundle}.identity");
+    let record = data.join(IDENTITY_SERVICE_FILE);
+    if let Ok(text) = std::fs::read_to_string(&record) {
+        let text = text.trim();
+        if text.len() <= 256 && text.starts_with(&base) {
+            return text.to_owned();
+        }
+    }
+    if !scoped {
+        return base;
+    }
+    let digest: String = Sha256::digest(data.to_string_lossy().as_bytes())
+        .iter()
+        .take(8)
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let service = format!("{base}.{digest}");
+    if let Some(parent) = record.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&record, &service);
+    service
 }
 
 /// This computer's identity for the welcome and the identity row (#11997):
@@ -165,11 +212,13 @@ fn saved_store(data: &Path) -> PlatformStore {
         )
     };
     let profile = data.to_string_lossy().into_owned();
-    PlatformStore::new(format!("{bundle}.account"), profile).with_legacy(legacy_entries(
-        data,
-        bundle,
-        legacy_bundle,
-    ))
+    let store = PlatformStore::new(format!("{bundle}.account"), profile)
+        .with_legacy(legacy_entries(data, bundle, legacy_bundle));
+    #[cfg(not(any(target_os = "macos", target_os = "ios", windows)))]
+    let store = store.with_passwords(Arc::new(crate::file_secrets::FileSecrets::new(
+        secrets_dir(data),
+    )));
+    store
 }
 
 /// Whether a process started now without a startup credential, such as the
@@ -242,5 +291,41 @@ mod legacy_tests {
                 ),
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod identity_service_tests {
+    use super::*;
+
+    #[test]
+    fn a_test_instance_gets_its_own_identity_item_and_keeps_it() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let base = identity_service_for(a.path(), false);
+        assert!(base.ends_with(".identity"));
+        // The everyday app's folders share the one item, and record nothing.
+        assert_eq!(identity_service_for(b.path(), false), base);
+        assert!(!a.path().join(IDENTITY_SERVICE_FILE).exists());
+        // A test instance gets an item for its folder only.
+        let scoped_a = identity_service_for(a.path(), true);
+        let scoped_b = identity_service_for(b.path(), true);
+        assert!(scoped_a.starts_with(&base) && scoped_a != base);
+        assert_ne!(scoped_a, scoped_b);
+        // Once chosen, the folder keeps its item without the setting.
+        assert_eq!(identity_service_for(a.path(), false), scoped_a);
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "ios", windows)))]
+    #[test]
+    fn linux_keeps_the_identity_and_sign_in_in_private_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = identities(dir.path()).load_or_create().unwrap();
+        let again = identities(dir.path()).load_or_create().unwrap();
+        assert_eq!(first.pubkey_hex(), again.pubkey_hex());
+        assert!(secrets_dir(dir.path()).is_dir());
+        let deployment = Deployment::production();
+        let store = saved_store(dir.path());
+        assert!(store.load(&deployment).unwrap().is_none());
     }
 }

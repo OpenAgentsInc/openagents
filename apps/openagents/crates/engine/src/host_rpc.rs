@@ -272,6 +272,12 @@ impl coder_host::serve::keys::KeySource for ProfileKeys {
     }
 }
 
+/// The relay the device connection names in its invitations and grants. It
+/// must be the exact text a phone puts in a connect code's redemption
+/// (`coder_host::client::iroh::DEFAULT_RELAY`): the host refuses a request
+/// whose relay differs by even a trailing slash.
+pub(crate) const DEFAULT_RELAY: &str = coder_host::client::iroh::DEFAULT_RELAY;
+
 pub(crate) fn configuration(
     root: &std::path::Path,
     label: String,
@@ -283,7 +289,7 @@ pub(crate) fn configuration(
         use sha2::{Digest, Sha256};
         let generation = coder_service::generation::advance(root)?;
         let relay = openagents_brand::env_var("OPENAGENTS_NIP_HOST_RELAY")
-            .unwrap_or_else(|_| "wss://relay.openagents.com".into());
+            .unwrap_or_else(|_| DEFAULT_RELAY.into());
         let mut config = coder_host::Config::new(root.join("access"), vec![relay], generation);
         config.label = label;
         config.telemetry = false;
@@ -291,20 +297,50 @@ pub(crate) fn configuration(
         // The iroh endpoint serves enrollment, so a connect code can pair a
         // phone without an account.
         config.iroh = Some(coder_host::config::Iroh::openagents());
+        let platform = coder_host::serve::keys::platform_accounts()?;
         config.keys = Some(coder_host::serve::keys::Keys(
-            if openagents_brand::env_var("OPENAGENTS_NIP_HOST_KEY_STORE").as_deref() == Ok("file") {
+            if file_keys(
+                root,
+                openagents_brand::env_var("OPENAGENTS_NIP_HOST_KEY_STORE").as_deref() == Ok("file"),
+                || keychain_answers(platform.as_ref()),
+            ) {
                 Arc::new(coder_host::serve::keys::FileKeySource::new(
                     root.join("keys"),
                 )) as Arc<dyn coder_host::serve::keys::KeySource>
             } else {
                 Arc::new(ProfileKeys {
-                    keys: coder_host::serve::keys::platform_accounts()?,
+                    keys: platform,
                     scope: format!("{:x}", Sha256::digest(root.to_string_lossy().as_bytes())),
                 })
             },
         ));
         Ok(config)
     }
+}
+
+/// Whether the device connection keeps its keys in `0600` files under
+/// `root/keys` instead of the login keychain: when asked to, when it already
+/// does, or on a first start where no keychain answers (a Linux desktop
+/// without a Secret Service, such as CoderOS). A connection that started with
+/// the keychain keeps it, so a keychain that is briefly away never leads to
+/// new keys.
+fn file_keys(root: &std::path::Path, asked: bool, keychain_answers: impl FnOnce() -> bool) -> bool {
+    if asked || root.join("keys").is_dir() {
+        return true;
+    }
+    if root.join("access").exists() {
+        return false;
+    }
+    !keychain_answers()
+}
+
+/// Whether the login keychain answers a read. macOS and Windows always have
+/// one; a Linux session may have no Secret Service on its bus.
+fn keychain_answers(keys: &dyn coder_host::serve::keys::AccountKeys) -> bool {
+    if !cfg!(target_os = "linux") {
+        return true;
+    }
+    keys.load_account("app-device:probe").is_ok()
 }
 
 /// Install this on a Coder host with `Running::set_app_rpc`.
@@ -576,6 +612,30 @@ mod tests {
 
     #[derive(Default)]
     struct Service(Mutex<std::collections::BTreeSet<String>>);
+
+    #[test]
+    fn invitations_name_the_relay_phones_redeem_on() {
+        // A phone redeems a connect code on `iroh::DEFAULT_RELAY`; a host
+        // that wrote "wss://relay.openagents.com" refused every one.
+        assert_eq!(DEFAULT_RELAY, "wss://relay.openagents.com/");
+        assert_eq!(DEFAULT_RELAY, coder_host::client::iroh::DEFAULT_RELAY);
+    }
+
+    #[test]
+    fn keys_fall_back_to_files_only_on_a_first_start_without_a_keychain() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // A first start: the keychain decides.
+        assert!(!file_keys(root, false, || true));
+        assert!(file_keys(root, false, || false));
+        assert!(file_keys(root, true, || true));
+        // Started with the keychain: keep it, even while it is away.
+        std::fs::create_dir_all(root.join("access")).unwrap();
+        assert!(!file_keys(root, false, || false));
+        // Keys already in files stay there.
+        std::fs::create_dir_all(root.join("keys")).unwrap();
+        assert!(file_keys(root, false, || true));
+    }
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn pairing_checks_computer_identity_and_revocation_and_closes_on_drop() {
         use coder_access::{RelayPolicy, Rights};

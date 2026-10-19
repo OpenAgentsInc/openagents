@@ -13176,6 +13176,16 @@ fn header_icon_button_with(
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Test knob: `OPENAGENTS_OPEN_DIALOG=connect-phone` picks Connect your
+        // phone in the welcome, as a click would, so a check can pair a phone
+        // without synthetic input.
+        if self.debug_dialog.as_deref() == Some("connect-phone")
+            && let Some(account) = crate::openagents_account::AppAccount::global(cx)
+            && account.read(cx).identity_overlay_open()
+        {
+            self.debug_dialog = None;
+            account.update(cx, |account, cx| account.welcome_connect_phone(window, cx));
+        }
         // Every repaint (state frame, input, or the clock firing) reschedules
         // the next clock-driven one; the sidebar and transcript follow this
         // view's notifications.

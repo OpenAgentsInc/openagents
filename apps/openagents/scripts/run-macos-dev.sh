@@ -46,6 +46,13 @@ sed "s/__VERSION__/$VERSION/g" "$ROOT/dist/macos/Info-dev.plist" >"$CONTENTS/Inf
 plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$CONTENTS/Info.plist"
 plutil -replace LSEnvironment.OPENAGENTS_DATA_DIR -string "$DATA_DIR" "$CONTENTS/Info.plist"
 plutil -replace LSEnvironment.OPENAGENTS_IPC_PORT -string "$IPC_PORT" "$CONTENTS/Info.plist"
+# A test instance (OPENAGENTS_TEST_RUN=1) marks what it makes as a test and
+# keeps an identity of its own, never the everyday app's.
+for name in OPENAGENTS_TEST_RUN OPENAGENTS_ENGINE_MODE; do
+  if [[ -n "${!name:-}" ]]; then
+    plutil -replace "LSEnvironment.$name" -string "${!name}" "$CONTENTS/Info.plist"
+  fi
+done
 if [[ -n "${CODEX_EXECUTABLE:-}" ]]; then
   plutil -insert LSEnvironment.CODEX_EXECUTABLE -string "$CODEX_EXECUTABLE" "$CONTENTS/Info.plist"
 fi
@@ -113,6 +120,11 @@ OPEN_ENV=(
 if [[ -n "${CODEX_EXECUTABLE:-}" ]]; then
   OPEN_ENV+=(--env "CODEX_EXECUTABLE=$CODEX_EXECUTABLE")
 fi
+for name in OPENAGENTS_TEST_RUN OPENAGENTS_ENGINE_MODE; do
+  if [[ -n "${!name:-}" ]]; then
+    OPEN_ENV+=(--env "$name=${!name}")
+  fi
+done
 if [[ -n "${OPENAGENTS_OPEN_ROUTE:-}" ]]; then
   OPEN_ENV+=(--env "OPENAGENTS_OPEN_ROUTE=$OPENAGENTS_OPEN_ROUTE")
 fi

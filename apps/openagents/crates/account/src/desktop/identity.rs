@@ -424,7 +424,7 @@ pub mod link {
         let offer = OfferFile {
             v: 1,
             pubkey: pubkey.to_owned(),
-            keychain: super::super::identity_service(),
+            keychain: super::super::identity_service(data),
             at: now(),
         };
         if let Ok(bytes) = serde_json::to_vec(&offer) {
@@ -469,7 +469,7 @@ pub mod link {
         }
         let offer: OfferFile = serde_json::from_slice(&bytes).ok()?;
         (offer.v == 1
-            && offer.keychain == super::super::identity_service()
+            && offer.keychain == super::super::identity_service(data)
             && at <= offer.at.saturating_add(OFFER_STALE)
             && offer.at <= at.saturating_add(60))
         .then_some(offer.pubkey)
@@ -660,7 +660,7 @@ pub mod link {
             // The offer names the key and its Keychain item, never the secret.
             let written = std::fs::read_to_string(data.join(OFFER)).unwrap();
             assert!(written.contains(&key));
-            assert!(written.contains(&super::super::super::identity_service()));
+            assert!(written.contains(&super::super::super::identity_service(&data)));
             assert!(!written.contains(&identity.nsec()));
             #[cfg(unix)]
             {

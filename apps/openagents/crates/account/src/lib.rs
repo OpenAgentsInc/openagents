@@ -17,6 +17,7 @@ pub mod cloud_chat;
 pub mod cloud_chat_demo;
 pub mod dashboard;
 pub mod desktop;
+pub mod file_secrets;
 pub mod history;
 pub mod identity;
 mod key_session;

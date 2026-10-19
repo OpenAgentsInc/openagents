@@ -330,9 +330,9 @@ impl CoreAndroidLinkReview {
         self.state
             .lock()
             .map_err(|_| CoreError::Closed)?
-            .finish(match result {
-                Ok(message) => message,
-                Err(_) => "Couldn't finish. Open the link again to try again.",
+            .finish(&match result {
+                Ok(message) => message.to_owned(),
+                Err(error) => failure_message(&error),
             });
         self.listener.on_android_host_changed();
         Ok(false)
@@ -434,5 +434,49 @@ mod tests {
         assert!(checked_label("Fixture browser".into(), 300).is_ok());
         assert!(checked_label("x".repeat(301), 300).is_err());
         assert!(checked_label("browser\n".into(), 300).is_err());
+    }
+}
+
+/// What the person reads when a link didn't finish: the words pairing and
+/// linking already wrote for the screen, or a general line.
+fn failure_message(error: &CoreError) -> String {
+    match error {
+        CoreError::HostError { message }
+        | CoreError::HostUnavailable { message }
+        | CoreError::Unsupported { message }
+            if !message.trim().is_empty() && message.len() <= 300 =>
+        {
+            message.clone()
+        }
+        _ => "Couldn't finish. Open the link again to try again.".into(),
+    }
+}
+
+#[cfg(test)]
+mod failure_message_tests {
+    use super::*;
+
+    #[test]
+    fn a_pairing_refusal_reaches_the_screen_in_its_own_words() {
+        let refused = CoreError::HostError {
+            message: "Your computer didn't accept this code.".into(),
+        };
+        assert_eq!(
+            failure_message(&refused),
+            "Your computer didn't accept this code."
+        );
+        let signed_out = CoreError::Unsupported {
+            message: "Connecting a computer needs your account.".into(),
+        };
+        assert_eq!(
+            failure_message(&signed_out),
+            "Connecting a computer needs your account."
+        );
+        assert_eq!(
+            failure_message(&CoreError::Network {
+                message: "dns".into()
+            }),
+            "Couldn't finish. Open the link again to try again."
+        );
     }
 }

@@ -228,7 +228,8 @@ pub fn run_app(config: UiConfig) {
         appshots::set_enabled(ui_settings.appshots_enabled);
         terminal::panel::init(cx);
         app_menus::init(cx);
-        #[cfg(target_os = "macos")]
+        // Every desktop signs in: Linux keeps the sign-in and the identity
+        // in private files where macOS uses the Keychain.
         openagents_account::AppAccount::init(data_dir.clone(), cx);
         app_update::AppUpdate::init(config.boot().edge_url, data_dir.clone(), cx);
         cx.register_url_scheme(openagents_brand::URL_SCHEME)
