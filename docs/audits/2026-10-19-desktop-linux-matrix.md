@@ -55,7 +55,9 @@ commits that fixed them.
 | `f47b54cd48` | Each device-connection request held the host's access lock while the app answered; others gave up after two seconds with no reply ("the host did not answer in time"). App reads now release the lock. |
 | `f47b54cd48` | After a computer restarted, a phone never reopened its device connection until the app restarted. It now dials again from the saved pairing. |
 | `f47b54cd48` | Pairing with a computer already on the same account said "hasn't joined your account". |
-| this run's last commit | Android opened a new activity for each App Link, and a link's review could sit behind Your ID; text overflowed the welcome rows and the hidden-code box on Linux. |
+| `eb35901646` | Android opened a new activity for each App Link, and a link's review could sit behind Your ID; text overflowed the welcome rows and the hidden-code box on Linux. |
+
+| this commit | `openagents chats list` isn't a command, so it sent "list" as a new chat to whatever host answered; a bare `list` or `ls` now points to `chat threads`. |
 
 ## Open
 
@@ -64,7 +66,7 @@ commits that fixed them.
   the Mac reaches the same computer in under 100 ms every time. The QUIC
   path tries the computer's Tailscale address from the emulator's NAT
   (`sendmsg failed`). The phone's retry and redial hide most of it. Filed
-  as an issue.
+  as [#12170](https://github.com/OpenAgentsInc/openagents/issues/12170).
 - Moving a chat to a cloud computer wasn't run: it spends paid cloud time
   and needs the owner's approval.
 - Physical devices, push, and store builds stay owner steps, as in the
@@ -72,7 +74,20 @@ commits that fixed them.
 
 ## Cleanup
 
-The test chats were archived, the test computers removed from the account,
-the phones' pairings and the desktops' grants removed, the two systemd user
-units and their data folders deleted on coderos, and the Mac test instances
-and their data folders deleted. No GCE VM was created.
+- Desktop chats on the test account archived; the phone's cloud chat
+  deleted; the three desktop keys linked to the test account removed.
+- Both Linux instances signed out, their systemd user units disabled and
+  removed, and their data folders deleted; the Mac instances signed out,
+  their Keychain items (identity, device-connection keys) deleted, and
+  their data folders deleted. The owner's identity item and apps were
+  untouched.
+- The iOS test app uninstalled after clearing its fixture sign-in; the
+  Android release app uninstalled and the debug app's data cleared.
+- About 120 GB of stale build output was removed on coderos; it has 77 GB
+  free. No GCE VM was created.
+- Left: two new accounts the phones made from their own keys (one with an
+  archived chat), as the parity run's identity B; and one local thread
+  titled "list" on the owner's Mac host, sent by mistake through
+  `openagents chats list` (the CLI fix above stops that). It isn't on the
+  owner's account or phone, and the CLI has no way to delete a host-only
+  thread.

@@ -323,6 +323,13 @@ fn near_command(word: &str) -> Option<&'static str> {
         .map(|(name, _)| name)
 }
 
+/// Whether `words` is a bare listing command (`list` or `ls`, with only
+/// options after it), which this group spells `threads`.
+fn lists_threads(words: &[String]) -> bool {
+    words.first().is_some_and(|w| w == "list" || w == "ls")
+        && words[1..].iter().all(|w| w.starts_with("--"))
+}
+
 /// Edit distance between two short words, counting a swap of neighbours
 /// as one edit (`sned` is one from `send`).
 pub(super) fn edit_distance(a: &str, b: &str) -> usize {
@@ -369,6 +376,18 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 &format!(
                     "unknown command `{word}`; did you mean `openagents chat {near}`? \
                      To send this as a message: openagents chat send \"{message}\""
+                ),
+            );
+        }
+        // `chats list` reads like the other command groups' listing; as a
+        // message it started a chat that said "list" on whatever host
+        // answered.
+        word if lists_threads(words) => {
+            return output.refuse(
+                "chat",
+                &format!(
+                    "unknown command `{word}`; did you mean `openagents chat threads`? \
+                     To send this as a message: openagents chat send \"{word}\""
                 ),
             );
         }
@@ -1485,6 +1504,15 @@ mod tests {
             shown.contains("  Committed as 5ab07fa; 3 tests passed."),
             "{shown}"
         );
+    }
+
+    #[test]
+    fn a_bare_list_is_the_threads_command_not_a_message() {
+        let words = |text: &str| text.split(' ').map(str::to_owned).collect::<Vec<_>>();
+        assert!(lists_threads(&words("list")));
+        assert!(lists_threads(&words("ls --json")));
+        assert!(!lists_threads(&words("list the files here")));
+        assert!(!lists_threads(&words("hello")));
     }
 
     #[test]
