@@ -885,11 +885,48 @@ async fn child(
     }
 }
 
+/// Print a result: with `--json` it becomes the `openagents.pylon/1`
+/// envelope's `data` (one document, never a second one), else the text.
 fn emit(json_out: bool, value: &Value, text: &str) {
-    if json_out {
-        println!("{value}");
+    if let Some(line) = printed(json_out, value, text) {
+        println!("{line}");
+    }
+}
+
+/// What [`emit`] prints itself: nothing when the envelope took the value.
+fn printed(json_out: bool, value: &Value, text: &str) -> Option<String> {
+    if crate::envelope::take(value) {
+        return None;
+    }
+    Some(if json_out {
+        value.to_string()
     } else {
-        println!("{text}");
+        text.to_string()
+    })
+}
+
+#[cfg(test)]
+mod emit_tests {
+    /// `status`, `up`, `down` and `id` print through the envelope: under
+    /// `--json` their value becomes the envelope's data, so the command
+    /// prints one document (it printed its own object and then an empty
+    /// envelope before).
+    #[test]
+    fn json_results_go_into_the_envelope() {
+        let value = serde_json::json!({"state": "off"});
+        let mut inside = Some(String::new());
+        let code = crate::envelope::run("status", true, || {
+            inside = super::printed(true, &value, "off");
+            Ok(())
+        });
+        assert_eq!(code, 0);
+        assert_eq!(inside, None);
+        // Outside a command (as in a library call) it prints the value.
+        assert_eq!(
+            super::printed(true, &value, "off").as_deref(),
+            Some(r#"{"state":"off"}"#)
+        );
+        assert_eq!(super::printed(false, &value, "off").as_deref(), Some("off"));
     }
 }
 
