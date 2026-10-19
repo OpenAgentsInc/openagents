@@ -268,8 +268,9 @@ pub fn environment(command: &mut Command, setup: &Setup, scratch: Option<&Path>)
 /// Which cargo command the gate runs on each package.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Suite {
-    /// `cargo test -q -p PACKAGE --all-features`, or through a nested
-    /// workspace's manifest.
+    /// `cargo test -q -p PACKAGE` with the package's default features, or
+    /// through a nested workspace's manifest. `--all-features` pulled large
+    /// optional stacks into every check (#12162).
     Tests,
     /// `cargo clippy -q -p PACKAGE --all-targets -- -D warnings`, which
     /// builds the package's build scripts and macros, so it runs inside
@@ -279,20 +280,16 @@ pub enum Suite {
 
 impl Suite {
     /// The cargo arguments for `package`, with `--manifest-path` when it
-    /// belongs to the nested workspace whose manifest is `manifest`. A
-    /// nested workspace's tests run its default features: `--all-features`
-    /// is the root's convention, and the app's or Psionic's every feature
-    /// can need a platform or toolkit the checking host lacks.
+    /// belongs to the nested workspace whose manifest is `manifest`. Every
+    /// package's tests run its default features.
     #[must_use]
     pub fn args(self, package: &str, manifest: Option<&str>) -> Vec<String> {
         let mut words: Vec<&str> = match self {
             Suite::Tests => vec!["test", "-q", "-p", package],
             Suite::Clippy => vec!["clippy", "-q", "-p", package, "--all-targets"],
         };
-        match manifest {
-            Some(manifest) => words.extend(["--manifest-path", manifest]),
-            None if self == Suite::Tests => words.push("--all-features"),
-            None => {}
+        if let Some(manifest) = manifest {
+            words.extend(["--manifest-path", manifest]);
         }
         if self == Suite::Clippy {
             words.extend(["--", "-D", "warnings"]);
@@ -838,9 +835,9 @@ esac
                 3
             }
         );
-        assert!(lines[0].contains("test -q -p example --all-features|"));
+        assert!(lines[0].contains("test -q -p example|"));
         for line in &lines[1..] {
-            assert!(line.contains("test -q -p example --all-features tests::"));
+            assert!(line.contains("test -q -p example tests::"));
             assert!(line.contains(" -- --exact|"));
             assert!(line.ends_with(&target.display().to_string()));
         }

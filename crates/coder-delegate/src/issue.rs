@@ -2252,7 +2252,7 @@ mod tests {
             commands,
             vec![
                 "test -q -p engine --manifest-path apps/app/Cargo.toml",
-                "test -q -p inside --all-features",
+                "test -q -p inside",
             ]
         );
         let lints = confined::Suite::Clippy.args("engine", Some("apps/app/Cargo.toml"));

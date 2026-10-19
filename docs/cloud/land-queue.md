@@ -66,20 +66,33 @@ a worktree of its own (`~/.openagents/land-queue/plan`):
   fixture, a folder a test reads). A changed file outside every package
   that a package's sources name counts as that package's change, and its
   tests run too.
-- **Code slots.** Two by default (`--slots N` or `OPENAGENTS_LAND_SLOTS`),
-  each with its own worktree (`work-code-1`, `work-code-2`) and its own
-  build slot of the task store (its own `CARGO_TARGET_DIR`), sharing the
-  sccache bucket through `~/.cargo/config.toml`'s wrapper. Each check run is
-  a full `cargo test` that uses every one of the environment's 22 vCPUs,
-  and the host broker counts two build leases, so a third slot would wait.
+- **Code slots.** One per eight cores, two to four (`--slots N` or
+  `OPENAGENTS_LAND_SLOTS`; `oa-dev-env-1` sets 3 in
+  `~/.openagents/dev-env.env`), each with its own worktree (`work-code-1`,
+  `work-code-2`, ...) and its own build slot of the task store (its own
+  `CARGO_TARGET_DIR`), sharing the build cache through
+  `~/.cargo/config.toml`'s wrapper.
+- **Checks test default features.** Each touched package runs `cargo test
+  -q -p PACKAGE` with its default features, never `--all-features`, which
+  pulled the Verse stack and other optional crates into most checks
+  ([#12162](https://github.com/OpenAgentsInc/openagents/issues/12162)).
 - **Strict order where it matters.** Two code entries overlap when one's
   packages are among the other's packages, their dependencies, or their
   dependents (the relation the landing already uses to decide whether
-  newly landed commits re-run checks), when they change the same file, or
-  when either changes a workspace-wide build file (`Cargo.toml`,
-  `Cargo.lock`, `rust-toolchain.toml`, `.cargo/`). A code entry waits while
-  any earlier open entry overlaps it; `land status` says which
-  (`waits for <id>`).
+  newly landed commits re-run checks), when they change the same file
+  other than `Cargo.lock`, or when either changes a workspace-wide build
+  file (the root `Cargo.toml`, `rust-toolchain.toml`, `.cargo/`). A code
+  entry waits while any earlier open entry overlaps it; `land status` says
+  which (`waits for <id>`).
+- **`Cargo.lock` counts by package.** The plan compares the lockfile
+  before and after the change and counts only the local packages whose
+  locked entries changed or that reach a changed one: a version bump of
+  `regex` counts as a change to every package that locks `regex`, and a
+  hunk that only adds a new workspace member counts as a change to that
+  member. A lockfile that does not parse, or a package graph that cannot
+  be read, still overlaps everything. After a rebase, a change to
+  `Cargo.lock` re-runs its checks only when the newly landed commits
+  changed `Cargo.lock` too.
 
 Pushing to `main` stays strictly one at a time: every slot takes one lock
 for fetch → rebase → push only, never while checks run. When `main` moved

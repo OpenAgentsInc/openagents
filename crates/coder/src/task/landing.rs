@@ -546,7 +546,7 @@ pub(super) fn workspace_wide(path: &str) -> bool {
 ///
 /// - they touch a workspace-wide build file → they can;
 /// - they change the resolved dependencies of a changed package → they can;
-/// - the run changes `Cargo.lock` itself → re-run conservatively;
+/// - the change and they both change `Cargo.lock` → re-run conservatively;
 /// - they touch one of the change's packages, a package those depend on, or one that
 ///   depends on them (tests and dev-dependencies included) → they can;
 /// - the change touches files outside any package (its diff checks read
@@ -572,8 +572,12 @@ pub fn affects(worktree: &Path, base: &str, upstream: &str) -> Option<String> {
     }
     let change = git(worktree, &["diff", "--name-only", upstream, "HEAD"]).unwrap_or_default();
     let change_files: Vec<String> = change.lines().map(str::to_owned).collect();
-    if change_files.iter().any(|file| file == "Cargo.lock") {
-        return Some("the change itself touches `Cargo.lock`".to_owned());
+    // When the landed commits leave `Cargo.lock` alone, the rebased
+    // lockfile is the one the checks ran with (#12162).
+    if change_files.iter().any(|file| file == "Cargo.lock")
+        && landed_files.iter().any(|file| file == "Cargo.lock")
+    {
+        return Some("both the change and the landed commits touch `Cargo.lock`".to_owned());
     }
     if let Some(file) = landed_files.iter().find(|f| workspace_wide(f)) {
         return Some(format!(

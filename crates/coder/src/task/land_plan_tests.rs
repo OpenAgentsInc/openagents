@@ -198,9 +198,12 @@ fn entries_overlap_only_when_one_can_affect_the_others_checks() {
     let b = plan_of(&["scripts/x.sh", "scripts/y.sh"], &[]);
     let c = plan_of(&["scripts/z.sh"], &[]);
     assert!(overlap(&a, &b) && !overlap(&a, &c));
-    // A workspace-wide file overlaps every code entry.
+    // A workspace-wide file overlaps every code entry; so does a lockfile
+    // change nobody narrowed.
     let lock = plan_of(&["Cargo.lock"], &[]);
     assert!(lock.wide && overlap(&lock, &lone) && !overlap(&lock, &docs));
+    let toolchain = plan_of(&["rust-toolchain.toml"], &[]);
+    assert!(toolchain.wide && overlap(&toolchain, &lone));
     // Folders outside the workspace overlap themselves only.
     let psionic = plan_of(&["crates/psionic/crates/x/src/lib.rs"], &[]);
     let psionic2 = plan_of(&["crates/psionic/README.md"], &[]);
@@ -560,4 +563,128 @@ fn the_repository_graph_reaches_across_the_app_workspace() {
         &format!("dir:{APP}/sync")
     ));
     assert!(reaches(&engine, "dir:apps/openagents"));
+}
+
+const LOCK_BEFORE: &str = r#"version = 4
+
+[[package]]
+name = "base"
+version = "0.1.0"
+dependencies = ["serde"]
+
+[[package]]
+name = "core"
+version = "0.1.0"
+dependencies = ["base", "regex"]
+
+[[package]]
+name = "web"
+version = "0.1.0"
+dependencies = ["base"]
+
+[[package]]
+name = "lone"
+version = "0.1.0"
+dependencies = ["itoa"]
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "regex"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "itoa"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#;
+
+fn lock_plan(paths: &[&str], after: &str) -> Plan {
+    let graph = graph();
+    let members = lock_members(LOCK_BEFORE, after);
+    narrow_lockfile(plan_of(paths, &[]), members, Some(&graph))
+}
+
+#[test]
+fn a_lockfile_change_overlaps_only_what_its_locked_versions_reach() {
+    // `regex` bumped: only `core` locks it, so `core` and its relatives.
+    let bump = LOCK_BEFORE.replace(
+        "name = \"regex\"\nversion = \"1.0.0\"",
+        "name = \"regex\"\nversion = \"1.1.0\"",
+    );
+    assert_eq!(lock_members(LOCK_BEFORE, &bump).unwrap(), ["core"]);
+    let regex = lock_plan(&["Cargo.lock", "crates/core/Cargo.toml"], &bump);
+    assert!(!regex.wide, "{regex:?}");
+    let lone = plan_of(&["crates/lone/src/lib.rs"], &[]);
+    let cli = plan_of(&["crates/cli/src/main.rs"], &[]);
+    assert!(!overlap(&regex, &lone));
+    assert!(overlap(&regex, &cli));
+    // `itoa` bumped by another entry: both change `Cargo.lock`, yet they
+    // share no package, so they land side by side.
+    let itoa = LOCK_BEFORE.replace(
+        "name = \"itoa\"\nversion = \"1.0.0\"",
+        "name = \"itoa\"\nversion = \"1.2.0\"",
+    );
+    let itoa = lock_plan(&["Cargo.lock"], &itoa);
+    assert_eq!(itoa.packages, ["lone"]);
+    assert!(!overlap(&regex, &itoa));
+    // A shared dependency (`serde`, under `base`) reaches every package
+    // that locks it, so it overlaps them.
+    let serde = LOCK_BEFORE.replace(
+        "name = \"serde\"\nversion = \"1.0.0\"",
+        "name = \"serde\"\nversion = \"1.0.1\"",
+    );
+    assert_eq!(
+        lock_members(LOCK_BEFORE, &serde).unwrap(),
+        ["base", "core", "web"]
+    );
+    let serde = lock_plan(&["Cargo.lock"], &serde);
+    assert!(overlap(&serde, &regex) && overlap(&serde, &cli));
+    assert!(!overlap(&serde, &itoa));
+}
+
+#[test]
+fn a_new_member_in_the_lockfile_overlaps_only_that_member() {
+    let added = format!(
+        "{LOCK_BEFORE}\n[[package]]\nname = \"fresh\"\nversion = \"0.1.0\"\ndependencies = [\"serde\"]\n"
+    );
+    assert_eq!(lock_members(LOCK_BEFORE, &added).unwrap(), ["fresh"]);
+    let fresh = lock_plan(&["Cargo.lock", "crates/fresh/src/lib.rs"], &added);
+    assert!(!fresh.wide);
+    for other in [
+        "crates/core/src/lib.rs",
+        "crates/lone/src/lib.rs",
+        "crates/base/src/lib.rs",
+    ] {
+        assert!(!overlap(&fresh, &plan_of(&[other], &[])), "{other}");
+    }
+}
+
+#[test]
+fn an_unreadable_lockfile_or_another_wide_file_stays_wide() {
+    let graph = graph();
+    let unread = narrow_lockfile(
+        plan_of(&["Cargo.lock"], &[]),
+        lock_members(LOCK_BEFORE, "not toml ["),
+        Some(&graph),
+    );
+    assert!(unread.wide);
+    let both = narrow_lockfile(
+        plan_of(&["Cargo.lock", "rust-toolchain.toml"], &[]),
+        Some(vec!["lone".into()]),
+        Some(&graph),
+    );
+    assert!(both.wide);
+    let cargo = narrow_lockfile(
+        plan_of(&["Cargo.lock", ".cargo/config.toml"], &[]),
+        Some(vec!["lone".into()]),
+        Some(&graph),
+    );
+    assert!(cargo.wide);
+    let no_graph = narrow_lockfile(plan_of(&["Cargo.lock"], &[]), Some(vec![]), None);
+    assert!(no_graph.wide);
 }
