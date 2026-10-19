@@ -17,6 +17,7 @@ service-reach = ["service-net", "dep:coder-reach"]
 studio = ["dep:coder-access"]
 
 [dependencies]
+verse-cad-sync = { path = "../verse-cad-sync" }
 miniz_oxide = { version = "=0.8.9", optional = true }
 tokio = { version = "1", features = ["rt", "macros", "io-util", "sync", "time"], optional = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }

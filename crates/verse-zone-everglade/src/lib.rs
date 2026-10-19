@@ -63,9 +63,9 @@ mod production_tests {
         for path in [
             "crates/everglade-web/Cargo.toml",
             "crates/coder-mobile/Cargo.toml",
-            "crates/openagents-mobile/Cargo.toml",
+            "apps/openagents/crates/mobile/Cargo.toml",
             "crates/openagents-web/Dockerfile",
-            "scripts/release/testflight.sh",
+            "apps/openagents/scripts/ios/build-core.sh",
             "scripts/release/terminal.sh",
         ] {
             assert!(!read(path).contains("dev-destruction"), "{path}");

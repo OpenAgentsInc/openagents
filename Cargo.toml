@@ -135,6 +135,8 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-bake]
 opt-level = 3
+[profile.dev.package.verse-cad-sync]
+opt-level = 3
 [profile.dev.package.verse-world]
 opt-level = 3
 [profile.dev.package.verse-zone-everglade]

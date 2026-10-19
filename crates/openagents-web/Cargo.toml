@@ -25,9 +25,7 @@ openagents-dashboard = { path = "../openagents-dashboard" }
 computer-files = { path = "../computer-files" }
 # Referral links and campaign words for attribution (#11698).
 tenancy = { path = "../tenancy" }
-verse = { path = "../verse", default-features = false }
-# /lander3 bakes the Grid robots' poses from the pinned pack (pages/lander3.rs).
-verse-engine = { path = "../verse-engine" }
+verse-cad-sync = { path = "../verse-cad-sync" }
 glam = "0.30.10"
 snap-share = { path = "../snap-share" }
 snap-rules = { path = "../snap-rules" }

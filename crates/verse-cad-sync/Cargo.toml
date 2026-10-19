@@ -1,0 +1,18 @@
+[package]
+name = "verse-cad-sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Headless CAD placement, shared simulation, and Verse geometry."
+
+[dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
+glam = { version = "0.30.10", features = ["serde"] }
+physics = { path = "../physics" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[lints]
+workspace = true

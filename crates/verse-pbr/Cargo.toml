@@ -12,6 +12,7 @@ imported-surface = []
 imported-desktop = ["imported-surface", "dep:winit"]
 
 [dependencies]
+verse-cad-sync = { path = "../verse-cad-sync" }
 sha2 = "0.10"
 serde_json = "1"
 web-time = "1.1.0"

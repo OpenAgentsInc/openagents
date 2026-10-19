@@ -1,13 +1,11 @@
 //! Account-scoped CAD physics authority, persisted with conditional writes.
 use super::*;
 use axum::{Json, extract::DefaultBodyLimit};
-use verse::zones::{
+use verse_cad_sync::{
+    cad_physics::sync::{Binding, Inputs, Object, Snapshot},
     cad_place,
-    everglade::{
-        self,
-        cad_physics::sync::{Binding, Inputs, Object, Snapshot},
-        demolition::site::Site,
-    },
+    site::Site,
+    terrain,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -88,14 +86,18 @@ async fn models(
     let mut total = 0;
     let mut triangles = 0;
     let arrive = match zone {
-        "verse-meteor-showcase" => verse::zones::meteor_showcase::SPAWN,
-        "verse-meteor-stress-test" => verse::zones::meteor_stress::SPAWN,
+        "verse-meteor-showcase" => verse_cad_sync::spawns::meteor_showcase::SPAWN,
+        "verse-meteor-stress-test" => verse_cad_sync::spawns::meteor_stress::SPAWN,
         _ => cad_place::ahead(
-            everglade::Everglade::spawn(),
-            everglade::Everglade::spawn_yaw(),
+            glam::Vec3::new(
+                terrain::SPAWN.x,
+                terrain::height(terrain::SPAWN.x, terrain::SPAWN.z),
+                terrain::SPAWN.z,
+            ),
+            terrain::SPAWN_YAW,
         ),
     };
-    let default = glam::Vec3::new(arrive.x, everglade::land(arrive.x, arrive.z), arrive.z);
+    let default = glam::Vec3::new(arrive.x, terrain::land(arrive.x, arrive.z), arrive.z);
     for entry in entries.iter().filter(|p| p["zone"] == zone) {
         if out.len() >= 20 {
             return Err("This world has too many models.".into());
@@ -121,7 +123,7 @@ async fn models(
         out.push(cad_place::stand_bytes(
             &placement,
             &bytes,
-            everglade::land,
+            terrain::land,
             default,
         )?);
         if entry["sha256"]
@@ -149,7 +151,7 @@ fn make(
 ) -> Result<Host, String> {
     let mut site = Site::new(vec![], 1);
     if zone == "verse-everglade" {
-        site.set_cad_terrain(everglade::height);
+        site.set_cad_terrain(terrain::height);
     }
     for p in &models {
         site.put_cad(

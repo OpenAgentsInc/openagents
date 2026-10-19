@@ -32,7 +32,7 @@ use std::sync::Arc;
 pub const LOT: [f32; 2] = [-56.0, -5.0];
 /// Where the player stands when the zone opens: south of the lot, behind
 /// where the establishing view looks from.
-pub const SPAWN: Vec3 = Vec3::new(-50.0, 0.0, -42.0);
+pub use verse_cad_sync::spawns::meteor_showcase::SPAWN;
 /// The way back to the plaza, behind the spawn.
 pub const RETURN_PORTAL: Vec3 = Vec3::new(-46.0, 0.0, -94.0);
 /// Where the caster stands, west of the houses, so the meteors come in

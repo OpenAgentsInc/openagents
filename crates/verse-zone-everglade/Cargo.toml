@@ -30,6 +30,7 @@ name = "verse-private"
 path = "src/bin/verse_private/main.rs"
 
 [dependencies]
+verse-cad-sync = { path = "../verse-cad-sync" }
 user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 coder = { path = "../coder", optional = true }

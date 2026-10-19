@@ -1,5 +1,6 @@
 [package]
 name = "verse"
+default-run = "verse"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -51,6 +52,8 @@ browser-chamber = ["web", "verse-imported/chamber-client", "verse-world/reach-cl
 dev-destruction = ["verse-zone-everglade/dev-destruction"]
 
 [dependencies]
+base64 = "0.22"
+verse-cad-sync = { path = "../verse-cad-sync" }
 snap-web = { path = "../snap-web", default-features = false }
 snap-rules = { path = "../snap-rules" }
 verse-game = { path = "../verse-game" }
@@ -213,6 +216,10 @@ objc2 = "0.6"
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "lander3-scene"
+path = "src/bin/lander3-scene.rs"
 
 [[bin]]
 name = "verse"

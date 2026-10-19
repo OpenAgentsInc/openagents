@@ -13180,8 +13180,7 @@ dependencies = [
  "ttf-parser",
  "url",
  "user-home",
- "verse",
- "verse-engine",
+ "verse-cad-sync",
  "verse-lagrange2",
  "video-lab",
  "workbench",
@@ -20160,6 +20159,7 @@ version = "1.0.0"
 dependencies = [
  "arboard",
  "atif",
+ "base64 0.22.1",
  "bytemuck",
  "coder",
  "coder-access",
@@ -20221,6 +20221,7 @@ dependencies = [
  "town-clock",
  "townsfolk",
  "user-home",
+ "verse-cad-sync",
  "verse-content",
  "verse-core",
  "verse-engine",
@@ -20267,6 +20268,18 @@ dependencies = [
  "verse-pbr",
  "verse-zone-everglade",
  "wgpu",
+]
+
+[[package]]
+name = "verse-cad-sync"
+version = "1.0.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "physics",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -20506,6 +20519,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "toml 0.9.12+spec-1.1.0",
+ "verse-cad-sync",
  "verse-content",
  "verse-engine",
  "verse-gfx",
@@ -20576,6 +20590,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls",
+ "verse-cad-sync",
  "verse-engine",
  "wasm-bindgen-futures",
  "web-time",
@@ -20655,6 +20670,7 @@ dependencies = [
  "town-clock",
  "townsfolk",
  "user-home",
+ "verse-cad-sync",
  "verse-content",
  "verse-core",
  "verse-engine",

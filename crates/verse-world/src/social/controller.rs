@@ -56,25 +56,7 @@ pub struct InputState {
     pub jump: bool,
 }
 
-/// An axis-aligned footprint the character cannot walk through.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Footprint {
-    /// Minimum x and z, in meters.
-    pub min: [f32; 2],
-    /// Maximum x and z, in meters.
-    pub max: [f32; 2],
-}
-
-impl Footprint {
-    /// True when `(x, z)` lies inside this footprint grown by `margin`.
-    #[must_use]
-    pub fn contains(&self, x: f32, z: f32, margin: f32) -> bool {
-        x > self.min[0] - margin
-            && x < self.max[0] + margin
-            && z > self.min[1] - margin
-            && z < self.max[1] + margin
-    }
-}
+pub use verse_cad_sync::geometry::{Footprint, forward};
 
 /// The player character's position, facing, and vertical motion.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -297,12 +279,6 @@ impl PlayerController {
         self.pos.x += dx;
         self.pos.z += dz;
     }
-}
-
-/// The ground-plane unit vector for `yaw`.
-#[must_use]
-pub fn forward(yaw: f32) -> Vec3 {
-    Vec3::new(yaw.sin(), 0.0, yaw.cos())
 }
 
 /// Wraps an angle into `(-PI, PI]`.
