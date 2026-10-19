@@ -27,7 +27,10 @@ class SettingsPresenter(
                 val bytes = core.snapshot()
                 if (live && ticket == generation) mount(bytes)
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (live && ticket == generation) unavailable() }
+            catch (error: Exception) {
+                android.util.Log.w("OpenAgents", "Settings couldn't load", error)
+                if (live && ticket == generation) unavailable()
+            }
         }
     }
 

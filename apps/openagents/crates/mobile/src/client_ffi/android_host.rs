@@ -1229,14 +1229,16 @@ impl CoreAndroidHost {
     ) -> CoreResult<Arc<CoreAccessibilitySurface>> {
         let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
         self.refresh(&mut state)?;
-        if let Some(existing) = state.semantics.get(&surface) {
-            return Ok(existing.clone());
-        }
+        // Each mount of a screen is a new view instance, and a surface's focus
+        // tracker accepts only later revisions of one instance, so a reopened
+        // screen gets a fresh surface. The shell has closed the previous one.
         let semantics = CoreAccessibilitySurface::new(
             self.account.clone().ok_or(CoreError::Closed)?,
             surface.scope().into(),
         )?;
-        state.semantics.insert(surface, semantics.clone());
+        if let Some(previous) = state.semantics.insert(surface, semantics.clone()) {
+            previous.close();
+        }
         Ok(semantics)
     }
     pub fn account(&self) -> Option<Arc<CoreAccount>> {
@@ -1583,6 +1585,66 @@ mod tests {
     struct Listener;
     impl AndroidHostListener for Listener {
         fn on_android_host_changed(&self) {}
+    }
+    struct Secrets;
+    impl AndroidSecretStorage for Secrets {
+        fn read(&self, _: String, _: String) -> SecretRead {
+            SecretRead::Absent
+        }
+        fn create(&self, _: String, _: String, _: Vec<u8>) -> SecretMutation {
+            SecretMutation::Stored
+        }
+        fn replace(&self, _: String, _: String, _: Vec<u8>) -> SecretMutation {
+            SecretMutation::Stored
+        }
+        fn delete(&self, _: String, _: String) -> SecretMutation {
+            SecretMutation::Stored
+        }
+    }
+    struct QuietSettings;
+    impl SettingsListener for QuietSettings {
+        fn on_settings_changed(&self) {}
+    }
+    #[test]
+    fn a_reopened_screen_gets_a_surface_that_accepts_its_new_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = CoreAndroidHost::production(
+            dir.path().display().to_string(),
+            "android-test".into(),
+            "Test phone".into(),
+            "1.0.0".into(),
+            Arc::new(Secrets),
+            Arc::new(Listener),
+        )
+        .unwrap();
+        let account = host.account().unwrap();
+        let caps = SettingsCapabilities {
+            appearance: false,
+            wallpaper_picker: false,
+            pairing: false,
+            cloud: false,
+            archive: false,
+            project_sharing: false,
+            notification_settings: false,
+            share_chooser: false,
+            wallet: false,
+        };
+        // Each opening of Settings is a new view instance.
+        for _ in 0..2 {
+            let settings = open_settings(
+                account.clone(),
+                None,
+                caps.clone(),
+                "1.0.0".into(),
+                Arc::new(QuietSettings),
+            )
+            .unwrap();
+            host.accessibility_surface(AndroidHostSurface::Settings)
+                .unwrap()
+                .prepare(settings.snapshot().unwrap())
+                .unwrap();
+            settings.dispose();
+        }
     }
     #[test]
     fn the_demo_with_sessions_has_a_client_and_no_account() {
