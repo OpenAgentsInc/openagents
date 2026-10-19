@@ -67,14 +67,22 @@ Commands:
                             http://127.0.0.1:18096).
       --rehash              Re-hash the model instead of the remembered digest.
   setup                     Download the pinned decision model (Clef-Flash
-                            Q4_K_M, 6.5 GB, sha256-checked) and self-check a
-                            decision server that is already running.
+                            Q4_K_M, 6.5 GB, sha256-checked), install this
+                            release's Psionic engine for this platform in
+                            ~/.openagents/bin (size and sha256 checked), and
+                            self-check a decision server that is already
+                            running. Without a published engine for this
+                            platform, the one you built on PATH is used.
       --decide URL          The local decision server (default
                             http://127.0.0.1:18096).
   update                    As setup, but re-hash the model and fetch it again
-                            when it is not the file this build pins.
+                            when it is not the file this build pins. Never
+                            changes the served model id on its own.
       --decide URL          The local decision server (default
                             http://127.0.0.1:18096).
+      --accept-model-change The owner accepts a new served model id; the
+                            self-check runs again before it serves. Not
+                            offered to agents or timers.
   start                     Start Psionic's decision lane on loopback, self-check
                             it, and serve decisions only. Takes serve's options
                             (--allow NPUB or --allow-any, --slots, --rate, ...).
@@ -1568,16 +1576,25 @@ async fn doctor(
 }
 
 /// `setup` and `update`: fetch the pinned model when it is missing or not
-/// the pinned file, then self-check a running decision server.
+/// the pinned file, install this release's Psionic engine for this
+/// platform, then self-check a running decision server. Neither changes
+/// the served model id without `--accept-model-change`.
 async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), String> {
     let decide = args
         .value("--decide")?
         .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let accept = args.flag(crate::install::ACCEPT_MODEL_CHANGE);
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
     }
     let path = crate::setup::model_path();
     let mut state = crate::setup::model_state(&path, crate::setup::CLEF_FLASH_MODEL_ID, update);
+    let change = crate::install::guard_model_change(
+        &home(),
+        state.model_id.as_deref(),
+        crate::setup::CLEF_FLASH_MODEL_ID,
+        accept,
+    )?;
     let fetched = !state.verified;
     if fetched {
         if !json_out {
@@ -1615,8 +1632,35 @@ async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), Stri
             ));
         }
     }
-    let server = crate::setup::find_server();
-    let check = if crate::setup::serving(&decide).await.is_some() {
+    crate::install::record_served_model(&home(), crate::setup::CLEF_FLASH_MODEL_ID)?;
+    let host = crate::setup::host();
+    let platform = crate::install::platform(&host);
+    let pin = crate::install::this_pin(&host);
+    if let Some(pin) = &pin
+        && !json_out
+    {
+        eprintln!(
+            "checking the Psionic engine ({}, {:.0} MB)",
+            pin.platform,
+            pin.size as f64 / 1e6
+        );
+    }
+    let engine = crate::install::ensure_engine(
+        pin.as_ref(),
+        platform.as_deref(),
+        &crate::install::bin_dir(),
+        |_| {},
+    )
+    .await?;
+    let new_engine = matches!(engine, crate::install::EngineOutcome::Installed { .. });
+    if new_engine {
+        // A new engine is checked again before it serves.
+        crate::install::reset_selfcheck(&home())?;
+    }
+    let server = engine.path().map(std::path::Path::to_path_buf);
+    // A server already answering runs the old engine; `start` checks the
+    // new one.
+    let check = if !new_engine && crate::setup::serving(&decide).await.is_some() {
         Some(run_selfcheck(&decide, 64, json_out, None).await?)
     } else {
         None
@@ -1626,11 +1670,20 @@ async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), Stri
         next.push(crate::setup::BUILD_SERVER.to_string());
     }
     next.push("openagents pylon start --allow-any".to_string());
+    let changed = match &change {
+        crate::install::ModelChange::Changed { from, to } => {
+            format!(
+                "served model changed from {from} to {to}; it is checked again before it serves\n"
+            )
+        }
+        _ => String::new(),
+    };
     emit(
         json_out,
-        &json!({"model": state, "fetched": fetched, "server": server, "selfcheck": check, "next": next}),
+        &json!({"model": state, "fetched": fetched, "model_change": change, "engine": engine,
+                "server": server, "selfcheck": check, "next": next}),
         &format!(
-            "model {} ({}{})\nserver {}\n{}next: {}",
+            "{changed}model {} ({}{})\nengine {}\n{}next: {}",
             path.display(),
             if fetched {
                 "downloaded and verified"
@@ -1642,9 +1695,7 @@ async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), Stri
                 .as_deref()
                 .map(|sha| format!(", file sha256 {}…", &sha[..sha.len().min(8)]))
                 .unwrap_or_default(),
-            server
-                .as_ref()
-                .map_or_else(|| "not installed".into(), |p| p.display().to_string()),
+            engine.describe(),
             check
                 .as_ref()
                 .map(|c| format!(
@@ -1675,11 +1726,18 @@ async fn start(
     let mut child = None;
     if crate::setup::serving(&url).await.is_none() {
         let server = crate::setup::find_server().ok_or_else(|| {
-            format!(
-                "{} is not installed; build it with: {}",
-                crate::setup::SERVER,
-                crate::setup::BUILD_SERVER
-            )
+            if crate::install::this_pin(&crate::setup::host()).is_some() {
+                format!(
+                    "{} is not installed; run `openagents pylon setup`",
+                    crate::setup::SERVER
+                )
+            } else {
+                format!(
+                    "{} is not installed; build it with: {}",
+                    crate::setup::SERVER,
+                    crate::setup::BUILD_SERVER
+                )
+            }
         })?;
         let model = crate::setup::model_path();
         if !crate::setup::model_state(&model, crate::setup::CLEF_FLASH_MODEL_ID, false).verified {

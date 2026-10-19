@@ -251,6 +251,37 @@ configuration in `CLOUDSDK_CONFIG` (default
 coverage rule, and the installer against a local server (checksum mismatch,
 unpublished version, missing platform), with no bucket and no network.
 
+## Publishing the Psionic engine
+
+`openagents pylon setup` installs the Psionic engine
+(`psionic-openai-server`) that this CLI pins for the computer's platform,
+so a pylon never has to build Psionic. The release agent publishes it with
+`scripts/release/psionic.sh`; nobody else runs it with `--publish`.
+
+```sh
+scripts/release/psionic.sh --version 0.1.0              # build and sign here; uploads nothing
+scripts/release/psionic.sh --version 0.1.0 --publish    # release agent only
+```
+
+A host builds its own platforms: an Apple Silicon Mac builds
+`macos-aarch64` (Metal, signed and notarized like the CLI), a Linux x86_64
+box builds `linux-x86_64-cpu` and, with nvcc, `linux-x86_64-cuda` (CUDA 13,
+for the GPU architecture in `CUDAARCHS`, else the build host's). Each build
+is uploaded with its `psionic-manifest.json` (platform, sha256, size, build
+commit) to
+
+```
+gs://openagentsgemini-cli-releases/psionic/<version>/<platform>/psionic-openai-server
+gs://openagentsgemini-cli-releases/psionic/<version>/<platform>/psionic-manifest.json
+```
+
+and never replaces an object. The script prints one row per platform;
+paste them into `crates/pylon/src/release/psionic_pins.rs` and ship that in
+the next CLI release. A platform without a row keeps asking the user to
+build the engine. `update` installs a new engine for the same model and
+checks it again before it serves; it never changes the served model
+without `openagents pylon update --accept-model-change`.
+
 ## Releases
 
 | Version | Channel | Commit | Date |

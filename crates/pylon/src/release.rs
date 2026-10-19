@@ -238,7 +238,7 @@ mod tests {
                 .as_str()
                 .is_some_and(|s| s.starts_with("sha256:") && s.len() == 71)
         );
-        for platform in ["macos-arm64", "linux-x86_64-cuda", "linux-x86_64"] {
+        for platform in ["macos-aarch64", "linux-x86_64-cuda", "linux-x86_64-cpu"] {
             assert!(d["psionic"][platform].is_object(), "{platform}");
         }
     }

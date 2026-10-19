@@ -64,19 +64,19 @@ pub fn model_path() -> PathBuf {
 }
 
 /// The Psionic server, if it is on this computer: the folder in
-/// `OPENAGENTS_PSIONIC_BIN`, then `PATH`, then `~/.openagents/bin`.
+/// `OPENAGENTS_PSIONIC_BIN`, then `~/.openagents/bin` (where `setup`
+/// installs the published engine), then `PATH`.
 #[must_use]
 pub fn find_server() -> Option<PathBuf> {
-    let home = user_home::home_os().map(PathBuf::from);
     std::env::var_os("OPENAGENTS_PSIONIC_BIN")
         .map(PathBuf::from)
         .into_iter()
+        .chain(std::iter::once(crate::install::bin_dir()))
         .chain(
             std::env::var_os("PATH")
                 .into_iter()
                 .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>()),
         )
-        .chain(home.map(|h| h.join(".openagents").join("bin")))
         .map(|dir| dir.join(SERVER))
         .find(|path| path.is_file())
 }
@@ -389,12 +389,33 @@ pub async fn fetch(
     path: &Path,
     size: u64,
     sha256: &str,
+    progress: impl FnMut(u64),
+) -> Result<(), String> {
+    fetch_file(url, path, size, sha256, None, progress).await
+}
+
+/// [`fetch`] for any pinned file: it is written beside `path` as
+/// `<name>.part`, given `mode` (Unix permissions) when one is named, and
+/// takes its name only once its size and sha256 match.
+///
+/// # Errors
+///
+/// The download fails or the file is not the pinned one (the partial file
+/// is removed).
+pub async fn fetch_file(
+    url: &str,
+    path: &Path,
+    size: u64,
+    sha256: &str,
+    mode: Option<u32>,
     mut progress: impl FnMut(u64),
 ) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    let part = path.with_extension("gguf.part");
+    let mut part_name = path.file_name().unwrap_or_default().to_os_string();
+    part_name.push(".part");
+    let part = path.with_file_name(part_name);
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(20))
         .build()
@@ -423,9 +444,19 @@ pub async fn fetch(
     if got != size || digest != sha256 {
         let _ = std::fs::remove_file(&part);
         return Err(format!(
-            "the download is not the pinned model ({got} bytes, sha256 {digest}; wanted {size} bytes, {sha256})"
+            "the download is not the pinned file ({got} bytes, sha256 {digest}; wanted {size} bytes, {sha256})"
         ));
     }
+    #[cfg(unix)]
+    if let Some(mode) = mode {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(&part, std::fs::Permissions::from_mode(mode)) {
+            let _ = std::fs::remove_file(&part);
+            return Err(e.to_string());
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = mode;
     std::fs::rename(&part, path).map_err(|e| e.to_string())
 }
 
@@ -469,6 +500,9 @@ pub struct Report {
     pub fit: Fit,
     pub model: ModelState,
     pub server: Option<PathBuf>,
+    /// The engine this release publishes for this computer, and whether
+    /// the server found is that build.
+    pub engine: EngineCheck,
     pub serving: Option<Value>,
     pub selfcheck: Option<crate::calibrate::SelfCheck>,
     pub relay: String,
@@ -479,6 +513,18 @@ pub struct Report {
     pub next: Vec<String>,
 }
 
+/// The published engine for this computer and how the installed server
+/// compares with it.
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct EngineCheck {
+    /// This release's build for this platform; `None` when none is
+    /// published yet (the user builds the engine).
+    pub pin: Option<crate::install::EnginePin>,
+    /// Whether the server found is that build (its sha256), when both are
+    /// known.
+    pub pinned: Option<bool>,
+}
+
 /// Put a report together from what was read. Pure, for tests.
 #[must_use]
 #[allow(clippy::too_many_arguments)]
@@ -486,6 +532,33 @@ pub fn report(
     host: Host,
     model: ModelState,
     server: Option<PathBuf>,
+    serving: Option<Value>,
+    selfcheck: Option<crate::calibrate::SelfCheck>,
+    relay: &str,
+    relay_reachable: bool,
+) -> Report {
+    report_with_engine(
+        host,
+        model,
+        server,
+        EngineCheck::default(),
+        serving,
+        selfcheck,
+        relay,
+        relay_reachable,
+    )
+}
+
+/// [`report`], with the published engine checked too: a missing engine
+/// is fixed by `setup` when this release publishes one, and a server that
+/// is not that build is fixed by `update`.
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn report_with_engine(
+    host: Host,
+    model: ModelState,
+    server: Option<PathBuf>,
+    engine: EngineCheck,
     serving: Option<Value>,
     selfcheck: Option<crate::calibrate::SelfCheck>,
     relay: &str,
@@ -521,11 +594,20 @@ pub fn report(
             fix: "openagents pylon setup".into(),
         });
     }
-    if server.is_none() {
-        blocks.push(Block {
+    match (&server, &engine.pin, engine.pinned) {
+        (None, Some(_), _) => blocks.push(Block {
+            what: format!("{SERVER} is not installed"),
+            fix: "openagents pylon setup".into(),
+        }),
+        (None, None, _) => blocks.push(Block {
             what: format!("{SERVER} is not installed"),
             fix: BUILD_SERVER.into(),
-        });
+        }),
+        (Some(path), Some(_), Some(false)) => blocks.push(Block {
+            what: format!("{} is not this release's engine", path.display()),
+            fix: "openagents pylon update".into(),
+        }),
+        _ => {}
     }
     if !fit.useful {
         warnings.push(fit.note.clone());
@@ -582,6 +664,7 @@ pub fn report(
         fit,
         model,
         server,
+        engine,
         serving,
         selfcheck,
         relay: relay.into(),
@@ -612,10 +695,20 @@ pub async fn serving(url: &str) -> Option<Value> {
 pub async fn doctor(relay: &str, decide: &str, rehash: bool) -> Report {
     let host = host();
     let model = model_state(&model_path(), CLEF_FLASH_MODEL_ID, rehash);
-    report(
+    let server = find_server();
+    let pin = crate::install::this_pin(&host);
+    // A developer's own engine (`OPENAGENTS_PSIONIC_BIN`) is not held to
+    // the published build.
+    let pinned = if std::env::var_os("OPENAGENTS_PSIONIC_BIN").is_some() {
+        None
+    } else {
+        crate::install::engine_matches(pin.as_ref(), server.as_deref())
+    };
+    report_with_engine(
         host,
         model,
-        find_server(),
+        server,
+        EngineCheck { pin, pinned },
         serving(decide).await,
         crate::calibrate::last(&crate::home()),
         relay,
@@ -792,6 +885,45 @@ mod tests {
         assert!(r.next.contains(&"openagents pylon setup".to_string()));
         assert!(r.next.iter().any(|n| n.contains("psionic-openai-server")));
         assert!(r.blocks.iter().all(|b| !b.fix.is_empty()));
+    }
+
+    #[test]
+    fn a_published_engine_is_installed_by_setup_and_checked_by_digest() {
+        let pin = crate::install::EnginePin {
+            platform: "macos-aarch64".into(),
+            url: "https://example.invalid/psionic-openai-server".into(),
+            sha256: "ab".repeat(32),
+            size: 7,
+        };
+        let missing = report_with_engine(
+            mac(128.0),
+            verified(),
+            None,
+            EngineCheck {
+                pin: Some(pin.clone()),
+                pinned: None,
+            },
+            None,
+            None,
+            "wss://relay.openagents.com",
+            true,
+        );
+        assert_eq!(missing.next, vec!["openagents pylon setup".to_string()]);
+        let other = report_with_engine(
+            mac(128.0),
+            verified(),
+            Some(PathBuf::from("/b/psionic-openai-server")),
+            EngineCheck {
+                pin: Some(pin),
+                pinned: Some(false),
+            },
+            None,
+            None,
+            "wss://relay.openagents.com",
+            true,
+        );
+        assert!(!other.ready);
+        assert_eq!(other.next, vec!["openagents pylon update".to_string()]);
     }
 
     fn weights(meta: &[(&str, &str)]) -> Vec<u8> {

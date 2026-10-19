@@ -19,8 +19,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=src/kernels/digit.cu");
     println!("cargo:rerun-if-changed=src/kernels/digit_stub.c");
     println!("cargo:rerun-if-env-changed=NVCC");
+    println!("cargo:rerun-if-env-changed=PSIONIC_CUDA");
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
-    if let Some(nvcc) = find_nvcc() {
+    // `PSIONIC_CUDA=off` links the stubs even where nvcc is installed: the
+    // CPU-only engine build (`scripts/release/psionic.sh`) must not need
+    // the CUDA runtime.
+    let cuda = !matches!(env::var("PSIONIC_CUDA").as_deref(), Ok("off"));
+    if let Some(nvcc) = find_nvcc().filter(|_| cuda) {
         compile_cuda_kernels(&nvcc, &out_dir)?;
     } else {
         cc::Build::new()

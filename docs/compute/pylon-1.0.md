@@ -237,9 +237,14 @@ full-precision model strikes 36 %). 1.0 makes Psionic installable:
 - The CLI release ships `psionic-openai-server` per platform
   (macOS arm64 with Metal; Linux x86_64 with CUDA 13 and without), signed
   and notarized with the CLI, its digest pinned in the
-  [release descriptor](#the-release-descriptor). Today `start` needs a
-  binary the user built (new).
-- `setup` places the binary and the model; `doctor` checks both digests.
+  [release descriptor](#the-release-descriptor). `scripts/release/psionic.sh`
+  builds and signs each one and the release agent publishes it under
+  `psionic/<version>/<platform>/` in the CLI release bucket; the pins live
+  in `crates/pylon/src/release/psionic_pins.rs` (**built**, #12188; empty
+  until the first engine is published, and until then `start` uses a
+  binary the user built).
+- `setup` places the binary and the model; `doctor` checks both digests
+  (**built**, #12188).
 - Warm-up before `/health` (**built**), so the first real job is not a
   compile stall and self-check timings are honest.
 

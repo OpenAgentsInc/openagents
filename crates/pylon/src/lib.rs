@@ -40,6 +40,7 @@ pub mod fixture;
 pub mod harden;
 pub mod identity;
 pub mod inflight;
+pub mod install;
 pub mod items;
 pub mod job;
 pub mod league;

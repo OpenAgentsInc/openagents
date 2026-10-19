@@ -91,9 +91,9 @@ work.
 
 ```sh
 openagents pylon doctor                # what this computer has, and what blocks serving
-openagents pylon setup                 # fetch Clef-Flash Q4_K_M (6.5 GB, pinned sha256)
+openagents pylon setup                 # fetch Clef-Flash Q4_K_M (6.5 GB) and the Psionic engine, both digest-checked
 openagents pylon start --allow-any     # run Psionic on loopback, self-check, serve decisions
-openagents pylon update                # re-hash the model; fetch again when the pin moved
+openagents pylon update                # re-hash the model and engine; fetch again when a pin moved
 openagents pylon selfcheck             # compare this computer's answers with the reference
 ```
 
@@ -109,7 +109,25 @@ its name in `~/.openagents/models`. A model is identified by its weights,
 not its file: the model id is a sha256 over every tensor's name, shape,
 type and bytes (`gguf-tensors:sha256:2e417b22…`), so a copy whose header
 metadata differs is still the pinned model; `doctor` shows the file's
-sha256 beside it. `start` runs Psionic's decision lane
+sha256 beside it.
+
+`setup` also installs this release's Psionic engine for the computer
+(`macos-aarch64` with Metal, `linux-x86_64-cuda` with an NVIDIA GPU,
+`linux-x86_64-cpu` otherwise) in `~/.openagents/bin`, again checking its
+size and sha256 before it takes the name `psionic-openai-server`, so
+nothing needs building. Until an engine is published for a platform,
+`setup` says so and uses the one you built and put on your `PATH`.
+`doctor` and `start` look in `~/.openagents/bin` first, then `PATH`
+(`OPENAGENTS_PSIONIC_BIN` names another folder), and `doctor` flags an
+engine that is not this release's build. `update` replaces an older
+engine and the next `start` checks this computer again before it serves.
+`update` never changes which model this computer serves on its own: when
+a new CLI pins a different model, it stops and says so, and only the
+owner's `openagents pylon update --accept-model-change` switches it (that
+also clears the last self-check, so the new model is checked before it
+serves). The flag is never offered to agents or timers.
+
+`start` runs Psionic's decision lane
 on `127.0.0.1:18096` (or uses one already answering there), self-checks it
 when this model has no passing self-check, and then serves decisions only
 with `serve`'s options. `selfcheck` answers the 128 reference decisions
