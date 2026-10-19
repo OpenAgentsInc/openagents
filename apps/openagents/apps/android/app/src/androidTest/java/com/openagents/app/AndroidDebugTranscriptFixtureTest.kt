@@ -9,6 +9,16 @@ import com.openagents.app.transcript.TranscriptSelectionHost
 
 /** Offline component fixture only; does not exercise account or Lab journeys. */
 class AndroidDebugTranscriptFixtureTest : InstrumentationTestCase() {
+    fun testFixtureRouteRequiresExplicitDemoOptIn() {
+        val routeOnly = Intent()
+            .putExtra("openagents.route", "lab")
+            .putExtra("openagents.lab", "transcript")
+
+        val launch = DebugLaunchExtras.read(routeOnly)
+        assertFalse(launch.demo)
+        assertFalse(DebugFixtureRoutes.accepts(launch))
+    }
+
     fun testPauseResumeAndCloseRetireTheOldCanvasAndQueuedFrames() {
         val intent = Intent(instrumentation.targetContext, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
