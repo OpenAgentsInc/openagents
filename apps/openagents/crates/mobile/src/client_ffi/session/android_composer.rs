@@ -1,4 +1,5 @@
 //! Shared Rust composer projection for the Android host's cloud and live routes.
+mod questions;
 mod saved;
 use super::*;
 use crate::client_ffi::{CoreAccount, CoreCloudChat};
@@ -40,6 +41,7 @@ enum Target {
 struct Model {
     revision: u64,
     saved_cards: saved::Cards,
+    questions: questions::Questions,
     registry: NativeViewRegistry,
     mirror: Mirror,
     pending_send: bool,
@@ -73,6 +75,7 @@ impl CoreAndroidComposer {
             model: Arc::new(Mutex::new(Model {
                 revision: 0,
                 saved_cards: Default::default(),
+                questions: Default::default(),
                 registry: Default::default(),
                 mirror: Default::default(),
                 pending_send: false,
@@ -248,6 +251,11 @@ impl CoreAndroidComposer {
             Target::Saved { history, .. } => {
                 saved::cards(&mut model.saved_cards, &self.instance, revision, history)?
             }
+            Target::Live(session) => {
+                model
+                    .questions
+                    .frame(&self.instance, revision, session.composer().open_input)?
+            }
             _ => None,
         };
         Ok(AndroidComposerFrame {
@@ -312,6 +320,9 @@ impl CoreAndroidComposer {
             let mut model = self.model.lock().map_err(|_| CoreError::Closed)?;
             if instance == format!("{}-cards", self.instance) {
                 return model.saved_cards.acknowledge(&instance, revision);
+            }
+            if instance == format!("{}-questions", self.instance) {
+                return model.questions.acknowledge(&instance, revision);
             }
         }
         match &self.target {
@@ -455,9 +466,57 @@ impl CoreAndroidComposer {
         }
         Ok(true)
     }
+    pub fn change_field(
+        &self,
+        instance: String,
+        revision: u64,
+        key: String,
+        value: String,
+    ) -> CoreResult<()> {
+        self.current()?;
+        let Target::Live(session) = &self.target else {
+            return Err(CoreError::Closed);
+        };
+        if instance == format!("{}-questions", self.instance) {
+            let mut model = self.model.lock().map_err(|_| CoreError::Closed)?;
+            model.questions.change(
+                instance,
+                revision,
+                key,
+                value,
+                session.composer().open_input,
+            )?;
+            let listener = model.listener.clone();
+            drop(model);
+            if let Some(listener) = listener {
+                listener.on_android_host_changed();
+            }
+            return Ok(());
+        }
+        session
+            .change_native_field(instance, revision, key, value)
+            .map(|_| ())
+    }
     pub fn activate(&self, instance: String, revision: u64, key: String) -> CoreResult<bool> {
         self.current()?;
         if let Target::Live(s) = &self.target {
+            if instance == format!("{}-questions", self.instance) {
+                let mut model = self.model.lock().map_err(|_| CoreError::Closed)?;
+                let answer =
+                    model
+                        .questions
+                        .activate(instance, revision, key, s.composer().open_input)?;
+                if let Some((request, answers)) = answer {
+                    s.respond_input(request, answers)?;
+                    model.questions.submitted();
+                }
+                let listener = model.listener.clone();
+                drop(model);
+                if let Some(listener) = listener {
+                    listener.on_android_host_changed();
+                }
+                return Ok(false);
+            }
             return s
                 .activate_native(instance, revision, key, None, vec![])
                 .map(|r| r == NativeActionResult::AttachmentPickerRequested);
@@ -496,6 +555,7 @@ fn restore_unsent(mirror: &mut Mirror, cleared: Option<&EditorStamp>, text: &str
 
 #[cfg(test)]
 mod tests {
+    mod questions;
     mod saved;
     use super::*;
     #[test]
