@@ -43,6 +43,8 @@ struct Controls {
 #[derive(uniffi::Object)]
 pub struct CoreChatHomes {
     lease: Lease,
+    account: Arc<CoreAccount>,
+    core: Arc<CoreClient>,
     client: openagents_client::Client,
     origin: Origin,
     instance: String,
@@ -61,14 +63,27 @@ pub struct CoreContinuationDraft {
     native: Option<String>,
     device: String,
     id: String,
+    pub(super) setup: Arc<super::CoreAndroidSessions>,
     creating: tokio::sync::Mutex<()>,
 }
+#[derive(uniffi::Enum)]
+pub enum ContinuationDraftAction {
+    Updated,
+    Continue,
+}
 impl CoreChatHomes {
-    fn new(lease: Lease, client: &CoreClient, origin: Origin) -> CoreResult<Arc<Self>> {
-        current(&lease, client.client())?;
+    fn new(
+        account: Arc<CoreAccount>,
+        lease: Lease,
+        core: Arc<CoreClient>,
+        origin: Origin,
+    ) -> CoreResult<Arc<Self>> {
+        current(&lease, core.client())?;
         Ok(Arc::new(Self {
             lease,
-            client: client.client().clone(),
+            account,
+            client: core.client().clone(),
+            core,
             origin,
             instance: format!("chat-homes-{}", uuid::Uuid::new_v4()),
             controls: Mutex::new(Controls {
@@ -315,8 +330,13 @@ impl CoreChatHomes {
                     lease: self.lease.clone(),
                     source,
                     native,
-                    device,
                     id,
+                    setup: super::CoreAndroidSessions::continuation_setup(
+                        self.account.clone(),
+                        self.core.clone(),
+                        device.clone(),
+                    )?,
+                    device,
                     creating: tokio::sync::Mutex::new(()),
                 }),
             });
@@ -365,6 +385,29 @@ impl CoreChatHomes {
 impl CoreContinuationDraft {
     pub fn device_id(&self) -> String {
         self.device.clone()
+    }
+    pub fn view(&self) -> CoreResult<Vec<u8>> {
+        self.setup.view()
+    }
+    pub fn acknowledge(&self, instance: String, revision: u64) -> CoreResult<()> {
+        self.setup.acknowledge(instance, revision)
+    }
+    pub async fn activate(
+        &self,
+        instance: String,
+        revision: u64,
+        key: String,
+    ) -> CoreResult<ContinuationDraftAction> {
+        let is_continue = key == "continue";
+        self.setup.activate(instance, revision, key).await?;
+        Ok(if is_continue {
+            ContinuationDraftAction::Continue
+        } else {
+            ContinuationDraftAction::Updated
+        })
+    }
+    pub fn close(&self) {
+        self.setup.close();
     }
     pub async fn start(
         &self,
@@ -441,7 +484,7 @@ impl CoreContinuationDraft {
 #[uniffi::export]
 impl CoreAccount {
     pub fn chat_homes(
-        &self,
+        self: &Arc<Self>,
         client: Arc<CoreClient>,
         chat: String,
     ) -> CoreResult<Arc<CoreChatHomes>> {
@@ -449,7 +492,7 @@ impl CoreAccount {
             .controller()
             .lease()
             .ok_or_else(|| failed("Log in to OpenAgents."))?;
-        CoreChatHomes::new(lease, &client, Origin::Computer(chat))
+        CoreChatHomes::new(self.clone(), lease, client, Origin::Computer(chat))
     }
 }
 #[uniffi::export]
@@ -503,8 +546,9 @@ impl CoreSavedHistory {
             .target()
             .ok_or_else(|| failed("Open a chat first."))?;
         CoreChatHomes::new(
+            self.account.clone(),
             self.lease.clone(),
-            &client,
+            client,
             Origin::Saved {
                 reader: self.reader().clone(),
                 target,

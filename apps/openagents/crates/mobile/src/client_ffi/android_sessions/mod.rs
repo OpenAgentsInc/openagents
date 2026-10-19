@@ -43,6 +43,7 @@ enum Intent {
     OwnCopy,
     OwnComputer,
     CloseOwnComputer,
+    Continue,
 }
 #[derive(uniffi::Enum)]
 pub enum AndroidSessionAction {
@@ -68,6 +69,7 @@ struct State {
     folder_is_repo: Option<bool>,
     notice: Option<String>,
     closed: bool,
+    continuation: bool,
 }
 #[derive(uniffi::Object)]
 pub struct CoreAndroidSessions {
@@ -77,6 +79,10 @@ pub struct CoreAndroidSessions {
     state: Mutex<State>,
     instance: String,
     actions: tokio::sync::Mutex<()>,
+}
+struct QuietCloudListener;
+impl CloudChatListener for QuietCloudListener {
+    fn on_cloud_chat_changed(&self, _: CloudChatSnapshot) {}
 }
 fn node(key: impl Into<String>, element: Element<Intent>) -> Node<Intent> {
     Node {
@@ -124,6 +130,38 @@ fn own_personal_computer_count(devices: &[zc::DeviceView]) -> u32 {
 }
 
 impl CoreAndroidSessions {
+    pub(super) fn continuation_setup(
+        account: Arc<CoreAccount>,
+        core: Arc<CoreClient>,
+        device: String,
+    ) -> Result<Arc<Self>, CoreError> {
+        let setup = Self::new(account, Arc::new(QuietCloudListener));
+        setup.attach_client(core)?;
+        {
+            let mut state = setup.state.lock().unwrap();
+            state.draft.computer(device);
+            state.continuation = true;
+        }
+        Ok(setup)
+    }
+    fn continuation_session(
+        &self,
+        core: &Arc<CoreClient>,
+        device: &str,
+    ) -> Result<NewSession, CoreError> {
+        let mut state = self.state.lock().unwrap();
+        self.current(&mut state)?;
+        if !state.continuation
+            || state.draft.device.as_deref() != Some(device)
+            || state
+                .client
+                .as_ref()
+                .is_none_or(|client| !Arc::ptr_eq(client, core))
+        {
+            return Err(CoreError::Closed);
+        }
+        state.draft.session()
+    }
     fn current(&self, s: &mut State) -> Result<(), CoreError> {
         if s.closed {
             return Err(CoreError::Closed);
@@ -253,6 +291,7 @@ impl CoreAndroidSessions {
                 folder_is_repo: None,
                 notice: None,
                 closed: false,
+                continuation: false,
             }),
         })
     }
@@ -296,7 +335,7 @@ impl CoreAndroidSessions {
     /// The same account/room/grant continuation owner as the other shells.
     pub fn chat_homes(&self, chat: String) -> Result<Arc<CoreChatHomes>, CoreError> {
         let (core, _) = self.core()?;
-        self.account.chat_homes(core, chat)
+        self.account.clone().chat_homes(core, chat)
     }
     pub fn view(&self) -> Result<Vec<u8>, CoreError> {
         let mut s = self.state.lock().unwrap();
@@ -315,33 +354,43 @@ impl CoreAndroidSessions {
                 .collect();
             s.projects = core.projects();
         }
-        let mut body = vec![text("title", "New chat", TextRole::Heading)];
+        let mut body = vec![text(
+            "title",
+            if s.continuation {
+                "Continue chat"
+            } else {
+                "New chat"
+            },
+            TextRole::Heading,
+        )];
         let start = s.page * 16;
         let mut total = 0;
         match s.menu {
             Menu::Home => {
-                body.push(button("cloud", "Chat here", true, Intent::Cloud));
-                body.push(button(
-                    "new-cloud",
-                    "New cloud chat",
-                    true,
-                    Intent::NewCloud,
-                ));
-                body.push(button(
-                    "computers",
-                    s.draft
-                        .device
-                        .as_ref()
-                        .and_then(|id| {
-                            s.devices
-                                .iter()
-                                .find(|d| d.id == *id)
-                                .map(|d| d.name.as_str())
-                        })
-                        .unwrap_or("Run on"),
-                    s.client.is_some(),
-                    Intent::Computers,
-                ));
+                if !s.continuation {
+                    body.push(button("cloud", "Chat here", true, Intent::Cloud));
+                    body.push(button(
+                        "new-cloud",
+                        "New cloud chat",
+                        true,
+                        Intent::NewCloud,
+                    ));
+                    body.push(button(
+                        "computers",
+                        s.draft
+                            .device
+                            .as_ref()
+                            .and_then(|id| {
+                                s.devices
+                                    .iter()
+                                    .find(|d| d.id == *id)
+                                    .map(|d| d.name.as_str())
+                            })
+                            .unwrap_or("Run on"),
+                        s.client.is_some(),
+                        Intent::Computers,
+                    ));
+                }
                 if s.draft.device.is_some() {
                     if s.draft.models.is_empty() {
                         body.push(button(
@@ -406,38 +455,48 @@ impl CoreAndroidSessions {
                         ));
                     }
                     body.push(button(
-                        "create",
-                        "Create chat",
+                        if s.continuation { "continue" } else { "create" },
+                        if s.continuation {
+                            "Continue"
+                        } else {
+                            "Create chat"
+                        },
                         s.draft.session().is_ok(),
-                        Intent::Create,
+                        if s.continuation {
+                            Intent::Continue
+                        } else {
+                            Intent::Create
+                        },
                     ));
                     body.push(button("browse", "Browse folders", true, Intent::Browse));
                 }
-                body.push(button("sharing", "Shared projects", true, Intent::Sharing));
-                body.push(button(
-                    "cloud-status",
-                    "Our cloud computer",
-                    true,
-                    Intent::CloudStatus,
-                ));
-                body.push(button(
-                    "cloud-start",
-                    "Start cloud computer",
-                    true,
-                    Intent::CloudStart,
-                ));
-                body.push(button(
-                    "cloud-stop",
-                    "Stop cloud computer",
-                    true,
-                    Intent::CloudStop,
-                ));
+                if !s.continuation {
+                    body.push(button("sharing", "Shared projects", true, Intent::Sharing));
+                    body.push(button(
+                        "cloud-status",
+                        "Our cloud computer",
+                        true,
+                        Intent::CloudStatus,
+                    ));
+                    body.push(button(
+                        "cloud-start",
+                        "Start cloud computer",
+                        true,
+                        Intent::CloudStart,
+                    ));
+                    body.push(button(
+                        "cloud-stop",
+                        "Stop cloud computer",
+                        true,
+                        Intent::CloudStop,
+                    ));
+                }
                 let own_computers = s
                     .client
                     .as_ref()
                     .map(|client| own_personal_computer_count(&client.client().workspace().devices))
                     .unwrap_or_default();
-                if self.offer.shows(self.cloud.clone(), own_computers) {
+                if !s.continuation && self.offer.shows(self.cloud.clone(), own_computers) {
                     let card = self.offer.card();
                     body.push(text("own-title", card.title, TextRole::Heading));
                     body.push(text("own-body", card.body, TextRole::Body));
@@ -647,7 +706,9 @@ impl CoreAndroidSessions {
             }
             Intent::NewCloud => {
                 if let Some(client) = self.state.lock().unwrap().client.clone() {
-                    client.composer_drafts.save(super::composer_drafts::CLOUD_DEFAULT_DRAFT, "")?;
+                    client
+                        .composer_drafts
+                        .save(super::composer_drafts::CLOUD_DEFAULT_DRAFT, "")?;
                 }
                 self.cloud.new_chat();
                 return Ok(AndroidSessionAction::Cloud {
@@ -853,6 +914,7 @@ impl CoreAndroidSessions {
                     Intent::Models => Self::menu(&mut s, Menu::Models),
                     Intent::Efforts => Self::menu(&mut s, Menu::Efforts),
                     Intent::Branches => Self::menu(&mut s, Menu::Branches),
+                    Intent::Continue => {}
                     Intent::Back => Self::menu(&mut s, Menu::Home),
                     Intent::Next => {
                         s.page += 1;
@@ -931,14 +993,13 @@ impl CoreAndroidSessions {
             .try_lock()
             .map_err(|_| failed("Wait for the current request to finish."))?;
         let (core, generation) = self.core()?;
-        let new_session = {
+        {
             let mut s = self.state.lock().unwrap();
             self.current(&mut s)?;
-            if s.draft.device.as_deref() != Some(draft.device_id().as_str()) {
-                return Err(CoreError::Closed);
-            }
-            s.draft.session()?
-        };
+        }
+        let new_session = draft
+            .setup
+            .continuation_session(&core, &draft.device_id())?;
         let id = draft.create(core.clone(), new_session).await?;
         let mut s = self.state.lock().unwrap();
         self.current(&mut s)?;
@@ -1158,5 +1219,69 @@ mod tests {
             .unwrap();
         owner.close();
         assert!(owner.view().is_err());
+    }
+
+    #[tokio::test]
+    async fn continuation_view_is_target_locked_and_requires_native_acknowledgment() {
+        let dir = tempfile::tempdir().unwrap();
+        let owner = owner(dir.path());
+        {
+            let mut state = owner.state.lock().unwrap();
+            state.continuation = true;
+            state.draft.computer("fixed-target".into());
+            let generation = state.draft.generation;
+            let token = state.draft.token;
+            state
+                .draft
+                .catalog(
+                    generation,
+                    token,
+                    "fixed-target",
+                    "codex".into(),
+                    vec![HarnessInfo {
+                        id: "codex".into(),
+                        label: "Fixture provider".into(),
+                        supports_steering: None,
+                        steering_mode: None,
+                        reasoning_levels: vec![],
+                        installed: true,
+                        enabled: Some(true),
+                        offered: true,
+                        mid_turn_steering: None,
+                    }],
+                    vec![ModelInfo {
+                        id: "fixture-model".into(),
+                        label: "Fixture model".into(),
+                        description: None,
+                        reasoning_levels: vec![],
+                        options: vec![],
+                        default_reasoning: None,
+                    }],
+                )
+                .unwrap();
+            state.draft.model = Some("fixture-model".into());
+        }
+        let view: serde_json::Value = serde_json::from_slice(&owner.view().unwrap()).unwrap();
+        let revision = view["revision"].as_u64().unwrap();
+        let rendered = view.to_string();
+        assert!(rendered.contains("continue"));
+        assert!(!rendered.contains("computers"));
+        assert!(
+            owner
+                .activate(owner.instance.clone(), revision, "continue".into())
+                .await
+                .is_err()
+        );
+        owner.acknowledge(owner.instance.clone(), revision).unwrap();
+        assert!(matches!(
+            owner
+                .activate(owner.instance.clone(), revision, "continue".into())
+                .await,
+            Ok(AndroidSessionAction::Updated)
+        ));
+        assert_eq!(
+            owner.state.lock().unwrap().draft.device.as_deref(),
+            Some("fixed-target")
+        );
     }
 }

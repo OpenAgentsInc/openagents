@@ -176,6 +176,7 @@ pub trait SavedHistoryListener: Send + Sync {
 #[derive(uniffi::Object)]
 pub struct CoreSavedHistory {
     pub(super) lease: Lease,
+    pub(super) account: Arc<super::CoreAccount>,
     history: Arc<History>,
     reader: Arc<Reader>,
     pub(super) turns: Arc<Turns>,
@@ -238,6 +239,7 @@ fn message_files(message: &SavedMessage) -> Vec<SavedAttachment> {
 impl CoreSavedHistory {
     pub(crate) fn new(
         lease: Lease,
+        account_owner: Arc<super::CoreAccount>,
         mut account: tokio::sync::watch::Receiver<AccountUpdate>,
         listener: Arc<dyn SavedHistoryListener>,
     ) -> Arc<Self> {
@@ -250,6 +252,7 @@ impl CoreSavedHistory {
         let mut messages = reader.watch();
         let this = Arc::new(Self {
             lease: lease.clone(),
+            account: account_owner,
             history: history.clone(),
             reader: reader.clone(),
             turns: turns.clone(),

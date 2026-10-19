@@ -11,7 +11,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
@@ -24,6 +23,7 @@ import uniffi.openagents_core.CoreAndroidSessions
 import uniffi.openagents_core.CoreChatHomes
 import uniffi.openagents_core.CoreContinuationDraft
 import uniffi.openagents_core.CoreSavedHistory
+import uniffi.openagents_core.ContinuationDraftAction
 
 internal fun dispatchChatHomeAction(
     action: ChatHomeAction,
@@ -64,6 +64,7 @@ class AndroidChatHomesHost(
     private var choices: SemanticViewAdapter? = null
     private var parts: SemanticViewAdapter? = null
     private var activeDraft: CoreContinuationDraft? = null
+    private var draftRenderer: SemanticViewAdapter? = null
 
     /** Opens a live or saved row. Indexed rows have no continuation contract. */
     fun open(key: DrawerKey) {
@@ -163,24 +164,82 @@ class AndroidChatHomesHost(
     private fun continueOnSelected(draft: CoreContinuationDraft, stamp: Long) {
         activeDraft?.close()
         activeDraft = draft
+        choices?.dispose()
+        choices = null
+        parts?.dispose()
+        parts = null
+        homes?.close()
+        homes = null
         tasks.launch {
             try {
-                continueDraftOnSelected(draft, sessions::continueOnSelected) { action ->
-                    if (!closed && generation == stamp) {
-                        dismiss()
-                        route(action)
-                    } else action.destroy()
+                val bytes = withContext(Dispatchers.IO) { draft.view() }
+                withContext(Dispatchers.Main.immediate) {
+                    if (closed || generation != stamp || activeDraft !== draft) {
+                        draft.close()
+                        return@withContext
+                    }
+                    parent.removeAllViews()
+                    val renderer = SemanticViewAdapter(
+                        parent.context,
+                        { instance, revision, key -> activateDraft(draft, instance, revision, key, stamp) },
+                        { _, _, _, _ -> },
+                        { instance, revision -> draft.acknowledge(instance, revision.toULong()) },
+                    )
+                    renderer.mount(parent, bytes)
+                    draftRenderer = renderer
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 withContext(Dispatchers.Main.immediate) {
+                    if (activeDraft === draft) {
+                        draft.close()
+                        activeDraft = null
+                    }
                     if (!closed && generation == stamp) failure(error)
                 }
-            } finally {
-                draft.close()
-                withContext(NonCancellable + Dispatchers.Main.immediate) {
-                    if (activeDraft === draft) activeDraft = null
+            }
+        }
+    }
+
+    private fun activateDraft(
+        draft: CoreContinuationDraft,
+        instance: String,
+        revision: Long,
+        key: String,
+        stamp: Long,
+    ) {
+        tasks.launch {
+            try {
+                val action = requests.withLock {
+                    withContext(Dispatchers.IO) {
+                        draft.activate(instance, revision.toULong(), key)
+                    }
+                }
+                if (action == ContinuationDraftAction.Updated) {
+                    val bytes = withContext(Dispatchers.IO) { draft.view() }
+                    withContext(Dispatchers.Main.immediate) {
+                        if (!closed && generation == stamp && activeDraft === draft) {
+                            draftRenderer?.mount(parent, bytes)
+                        }
+                    }
+                } else {
+                    continueDraftOnSelected(draft, sessions::continueOnSelected) { result ->
+                        if (!closed && generation == stamp && activeDraft === draft) {
+                            draftRenderer?.dispose()
+                            draftRenderer = null
+                            activeDraft = null
+                            dismiss()
+                            route(result)
+                        } else result.destroy()
+                    }
+                    draft.close()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main.immediate) {
+                    if (!closed && generation == stamp && activeDraft === draft) failure(error)
                 }
             }
         }
@@ -195,6 +254,8 @@ class AndroidChatHomesHost(
         job.cancelChildren()
         activeDraft?.close()
         activeDraft = null
+        draftRenderer?.dispose()
+        draftRenderer = null
         clearMenus()
         job.cancel()
         dismiss()
@@ -205,6 +266,8 @@ class AndroidChatHomesHost(
         job.cancelChildren()
         activeDraft?.close()
         activeDraft = null
+        draftRenderer?.dispose()
+        draftRenderer = null
         clearMenus()
         return generation
     }
@@ -216,6 +279,8 @@ class AndroidChatHomesHost(
         parts = null
         homes?.close()
         homes = null
+        draftRenderer?.dispose()
+        draftRenderer = null
         parent.removeAllViews()
     }
 

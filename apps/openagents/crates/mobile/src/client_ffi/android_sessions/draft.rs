@@ -251,6 +251,81 @@ mod tests {
         );
     }
     #[test]
+    fn continuation_config_is_independent_and_a_new_target_gets_a_fresh_draft() {
+        let configured = |generation, device: &str, model_id: &str| {
+            let mut draft = Draft::new(generation);
+            draft.computer(device.into());
+            draft
+                .catalog(
+                    generation,
+                    draft.token,
+                    device,
+                    "codex".into(),
+                    vec![harness()],
+                    vec![model(model_id, &[])],
+                )
+                .unwrap();
+            draft.model = Some(model_id.into());
+            draft
+        };
+
+        let new_chat = configured(9, "new-chat-host", "new-chat-model");
+        let continuation = configured(9, "selected-target", "target-model");
+        let new_chat_session = new_chat.session().unwrap();
+        let continued_session = continuation.session().unwrap();
+        assert!(matches!(
+            new_chat_session.target,
+            SessionTarget::Projectless { device_id } if device_id == "new-chat-host"
+        ));
+        assert!(matches!(
+            continued_session.target,
+            SessionTarget::Projectless { device_id } if device_id == "selected-target"
+        ));
+        assert_eq!(new_chat.selected().unwrap().id, "new-chat-model");
+
+        let replacement = configured(9, "different-target", "different-model");
+        assert!(matches!(
+            replacement.session().unwrap().target,
+            SessionTarget::Projectless { device_id } if device_id == "different-target"
+        ));
+        assert!(matches!(
+            continuation.session().unwrap().target,
+            SessionTarget::Projectless { device_id } if device_id == "selected-target"
+        ));
+
+        let mut stale = configured(9, "selected-target", "target-model");
+        assert!(
+            stale
+                .catalog(
+                    10,
+                    stale.token,
+                    "selected-target",
+                    "codex".into(),
+                    vec![harness()],
+                    vec![model("late-account-model", &[])],
+                )
+                .is_err()
+        );
+        let mut mismatched = configured(9, "selected-target", "target-model");
+        mismatched.project = Some(ProjectView {
+            id: "other-target-project".into(),
+            name: "Other computer project".into(),
+            path: "/synthetic/project".into(),
+            color_index: 0,
+            device_id: "different-target".into(),
+            device_name: None,
+            device_online: true,
+            git_detected: false,
+            created_at_ms: 0,
+            group_key: "synthetic-group".into(),
+            group_name: "Synthetic group".into(),
+            indicator: ChatIndicator::Idle,
+            unseen_count: 0,
+            sessions: vec![],
+        });
+        assert!(mismatched.session().is_err());
+    }
+    #[test]
     fn missing_catalog_cannot_make_a_default_model_choice() {
         let mut d = Draft::new(1);
         d.computer("host".into());
