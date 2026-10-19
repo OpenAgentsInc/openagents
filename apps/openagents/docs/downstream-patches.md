@@ -1157,3 +1157,11 @@ links remain readable. Upstream fixes now require manual ports.
   confirmation; Android borrows the form and disposes its modal mount. Synthetic
   limits, stale-action, duplicate, retirement, and retained-draft fixtures are
   authored but unrun.
+
+- #12100 source handoff: cloud lines and indexed transcript copies expose only
+  role/text, with no authorized attachment reference. Their image path remains
+  unavailable until the owning Rust/SDK payload supplies that capability; live
+  device IDs and legacy saved-reader IDs are not substitutes. Source checkpoint
+  `545b51a4` includes the central host compile fixes, but its later Lab and image
+  changes still require matching focused checks, production ABI/bindings, and
+  Kotlin validation. Existing device/store checks remain after-close work.
