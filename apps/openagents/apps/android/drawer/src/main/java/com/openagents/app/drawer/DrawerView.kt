@@ -20,6 +20,7 @@ import android.widget.TextView
 class DrawerView(context: Context) : LinearLayout(context) {
     var onRequest: (DrawerRequest) -> Unit = {}
     var onIntent: (DrawerIntent) -> Unit = {}
+    var onContinue: (DrawerKey) -> Unit = {}
     private var request = DrawerRequest()
     private var binding = false
     private var scroll: android.os.Parcelable? = null
@@ -117,6 +118,11 @@ class DrawerView(context: Context) : LinearLayout(context) {
 
     private fun menu(anchor: View, row: DrawerRow) {
         PopupMenu(context, anchor).apply {
+            if (row.key.origin == DrawerOrigin.LIVE || row.key.origin == DrawerOrigin.SAVED) {
+                menu.add("Continue in another chat").setOnMenuItemClickListener {
+                    onContinue(row.key); true
+                }
+            }
             if (DrawerAction.PIN in row.actions) menu.add(if (row.pinned) "Unpin" else "Pin").setOnMenuItemClickListener {
                 onIntent(DrawerIntent.Pin(row.key, !row.pinned)); true
             }
