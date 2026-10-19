@@ -97,7 +97,9 @@ if [ -z "$target" ]; then
 fi
 mkdir -p "$target"
 export CARGO_TARGET_DIR=$target
-scratch=$(openagents scratch)
+# Machines without the openagents command (a bare benchmark VM) use the system temporary folder.
+scratch=$(openagents scratch 2>/dev/null || true)
+[ -n "$scratch" ] || scratch=${TMPDIR:-/tmp}
 run_dir=$(mktemp -d "$scratch/build-bench.XXXXXX")
 
 cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
