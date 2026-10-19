@@ -662,11 +662,14 @@ internal class AndroidRootPresentation(
             override fun onSettingsChanged() { activity.runOnUiThread { if (!closed) settings?.refresh() } }
         }
         val core = openSettings(account, next.client, SettingsCapabilities(
-            appearance = false, wallpaperPicker = false, pairing = false, cloud = next.client != null,
-            archive = false, projectSharing = true, notificationSettings = true, shareChooser = true,
+            appearance = AndroidSettingsActions.appearanceSupported, wallpaperPicker = false, pairing = false,
+            cloud = next.client != null, archive = false, projectSharing = true, wallet = true,
+            notificationSettings = true, shareChooser = true,
         ), BuildConfig.VERSION_NAME, callback)
-        val effects = AndroidSettingsActions(activity, 4101, {}, { _, _, _, _ -> }, null, null,
-            { guarded { owner.navigate(AndroidHostRoute.SHARING); panes.showSession() } })
+        val effects = AndroidSettingsActions(activity, 4101, { AndroidSettingsActions.applyAppearance(activity, it) },
+            { _, _, _, _ -> }, null, null,
+            { guarded { owner.navigate(AndroidHostRoute.SHARING); panes.showSession() } },
+            { guarded { owner.navigate(AndroidHostRoute.WALLET); panes.showSession() } })
         settingsActions = effects
         settings = SettingsHost(activity, routeContainer, RustSettingsPort(core), scope,
             effects::handle, ::showFailure, semantics(AndroidHostSurface.SETTINGS)).also { it.start() }

@@ -692,15 +692,14 @@ impl CoreAccount {
             bearer: lease.session().bearer_token().into(),
             expires_at: lease.session().expires_at(),
         };
-        let client = openagents_client::Client::new(
-            config.into(),
-            credentials,
-            Arc::new(ListenerBridge(listener)),
-        )?;
+        let bridge = Arc::new(ListenerBridge::new(listener));
+        let workspace_changes = bridge.1.clone();
+        let client = openagents_client::Client::new(config.into(), credentials, bridge)?;
         client.set_pairing_store(self.pairings.clone().unwrap_or_else(pairing_store));
         let core = Arc::new(CoreClient {
             client,
             composer_drafts: Arc::new(ComposerDraftStore::new(chosen_cache.clone(), &account_id)),
+            workspace_changes,
         });
         let mut clients = self.clients.lock().unwrap();
         if !self.controller.accepts(&lease) {

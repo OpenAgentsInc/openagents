@@ -1,11 +1,13 @@
 package com.openagents.app.settings
 
 import android.app.Activity
+import android.app.UiModeManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import android.provider.Settings
+import uniffi.openagents_core.SettingsAppearance
 import uniffi.openagents_core.SettingsEffect
 import uniffi.openagents_core.SettingsPreferences
 
@@ -20,6 +22,7 @@ class AndroidSettingsActions(
     private val openPairing: (() -> Unit)?,
     private val openArchive: (() -> Unit)?,
     private val openProjectSharing: (() -> Unit)?,
+    private val openWallet: (() -> Unit)? = null,
 ) : AutoCloseable {
     private var pickerTicket: String? = null
     private var live = true
@@ -31,6 +34,7 @@ class AndroidSettingsActions(
             SettingsEffect.OpenPairing -> requireNotNull(openPairing).invoke()
             SettingsEffect.OpenArchive -> requireNotNull(openArchive).invoke()
             SettingsEffect.OpenProjectSharing -> requireNotNull(openProjectSharing).invoke()
+            SettingsEffect.OpenWallet -> requireNotNull(openWallet).invoke()
             SettingsEffect.OpenNotificationSettings -> {
                 val intent = if (Build.VERSION.SDK_INT >= 26) {
                     Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
@@ -82,4 +86,20 @@ class AndroidSettingsActions(
     }
 
     override fun close() { live = false; pickerTicket = null }
+
+    companion object {
+        /** Android 12 and later keep a per-app night mode and redraw the app themselves. */
+        val appearanceSupported: Boolean get() = Build.VERSION.SDK_INT >= 31
+
+        /** Apply the Rust-saved appearance; the system keeps it across launches. */
+        fun applyAppearance(activity: Activity, preferences: SettingsPreferences) {
+            if (Build.VERSION.SDK_INT < 31) return
+            val mode = when (preferences.appearance) {
+                SettingsAppearance.SYSTEM -> UiModeManager.MODE_NIGHT_AUTO
+                SettingsAppearance.LIGHT -> UiModeManager.MODE_NIGHT_NO
+                SettingsAppearance.DARK -> UiModeManager.MODE_NIGHT_YES
+            }
+            activity.getSystemService(UiModeManager::class.java)?.setApplicationNightMode(mode)
+        }
+    }
 }

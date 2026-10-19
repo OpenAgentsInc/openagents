@@ -12,6 +12,7 @@ pub struct SettingsCapabilities {
     pub cloud: bool,
     pub archive: bool,
     pub project_sharing: bool,
+    pub wallet: bool,
     pub notification_settings: bool,
     pub share_chooser: bool,
 }
@@ -25,6 +26,8 @@ pub(super) struct Input {
     pub generation: u64,
     pub signed_in: bool,
     pub name: String,
+    /// The line under the name: the account's email when it has one.
+    pub detail: String,
     pub devices: Vec<Device>,
     pub cloud_running: Option<bool>,
     pub caps: SettingsCapabilities,
@@ -38,6 +41,7 @@ enum Intent {
     Pair,
     Archive,
     Sharing,
+    Wallet,
     Notifications,
     Appearance(SettingsAppearance),
     ChooseWallpaper,
@@ -68,6 +72,7 @@ pub(super) enum Action {
     Pair,
     Archive,
     Sharing,
+    Wallet,
     Notifications,
     ChooseWallpaper { ticket: String },
     ShareApp,
@@ -159,7 +164,26 @@ impl Model {
             text("heading", "Settings", true),
             text("account-name", &self.input.name, false),
         ];
+        if !self.input.detail.is_empty() {
+            children.push(text("account-detail", &self.input.detail, false));
+        }
+        // The same order as the iOS Settings: account, wallet, computers.
         if self.input.signed_in {
+            if self.input.caps.project_sharing {
+                children.push(button(
+                    "sharing",
+                    "Project sharing",
+                    enabled,
+                    Intent::Sharing,
+                ));
+            }
+            if self.input.caps.wallet {
+                children.push(text("wallet-title", "Wallet", true));
+                children.push(button("wallet", "Wallet", enabled, Intent::Wallet));
+            }
+            if self.input.caps.pairing || self.input.caps.cloud || !self.input.devices.is_empty() {
+                children.push(text("devices-title", "Devices", true));
+            }
             if self.input.caps.pairing {
                 children.push(button("pair", "Connect a computer", enabled, Intent::Pair));
             }
@@ -176,34 +200,28 @@ impl Model {
                     false,
                 ));
             }
+            // Shown before the first status read finishes, as on iOS: until
+            // then the cloud counts as stopped.
             if self.input.caps.cloud {
-                if let Some(running) = self.input.cloud_running {
-                    children.push(button(
-                        "cloud",
-                        if running {
-                            "Stop OpenAgents Cloud"
-                        } else {
-                            "Start OpenAgents Cloud"
-                        },
-                        enabled,
-                        Intent::Cloud(!running),
-                    ));
-                }
-            }
-            if self.input.caps.project_sharing {
+                let running = self.input.cloud_running == Some(true);
                 children.push(button(
-                    "sharing",
-                    "Project sharing",
+                    "cloud",
+                    if running {
+                        "Stop OpenAgents Cloud"
+                    } else {
+                        "Start OpenAgents Cloud"
+                    },
                     enabled,
-                    Intent::Sharing,
+                    Intent::Cloud(!running),
                 ));
-            }
-            if self.input.caps.archive {
-                children.push(button(
-                    "archive",
-                    "Archived sessions",
-                    enabled,
-                    Intent::Archive,
+                children.push(text(
+                    "cloud-detail",
+                    if running {
+                        "Running"
+                    } else {
+                        "Run sessions on OpenAgents Cloud, no desktop needed"
+                    },
+                    false,
                 ));
             }
         }
@@ -273,6 +291,15 @@ impl Model {
                     Intent::RemoveWallpaper,
                 ));
             }
+        }
+        if self.input.signed_in && self.input.caps.archive {
+            children.push(text("sessions-title", "Sessions", true));
+            children.push(button(
+                "archive",
+                "Archived sessions",
+                enabled,
+                Intent::Archive,
+            ));
         }
         if self.input.caps.notification_settings {
             children.push(button(
@@ -467,12 +494,13 @@ impl Model {
                 Action::ChooseWallpaper { ticket }
             }
             Intent::SignOut if self.input.signed_in => Action::SignOut,
-            Intent::Cloud(start) if self.input.signed_in && self.input.cloud_running.is_some() => {
+            Intent::Cloud(start) if self.input.signed_in && self.input.caps.cloud => {
                 Action::Cloud(start)
             }
             Intent::Pair => Action::Pair,
             Intent::Archive => Action::Archive,
             Intent::Sharing => Action::Sharing,
+            Intent::Wallet if self.input.caps.wallet => Action::Wallet,
             Intent::Notifications => Action::Notifications,
             Intent::ShareApp => Action::ShareApp,
             _ => return Err("Open Settings again to continue.".into()),
@@ -554,6 +582,17 @@ impl Model {
         true
     }
 }
+/// The account's name and the line under it, as the iOS Settings shows them.
+pub(super) fn account_lines(account: openagents_account::openagents::Account) -> (String, String) {
+    let email = account.email.filter(|email| !email.trim().is_empty());
+    let label = account.label.trim().to_owned();
+    match (label.is_empty(), email) {
+        (false, Some(email)) => (label, email),
+        (false, None) => (label, "OpenAgents account".into()),
+        (true, Some(email)) => (email, "OpenAgents account".into()),
+        (true, None) => ("Signed in".into(), "OpenAgents account".into()),
+    }
+}
 fn node(key: &str, element: Element<Intent>) -> Node<Intent> {
     Node {
         key: key.into(),
@@ -595,6 +634,7 @@ mod tests {
             generation: 7,
             signed_in: true,
             name: "Test account".into(),
+            detail: "OpenAgents account".into(),
             devices: vec![],
             cloud_running: None,
             caps: SettingsCapabilities {
@@ -741,9 +781,140 @@ mod tests {
         );
         assert!(model.prefs.wallpaper.is_none());
     }
+    fn labels(view: &serde_json::Value) -> Vec<String> {
+        fn walk(value: &serde_json::Value, out: &mut Vec<String>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (key, value) in map {
+                        if matches!(key.as_str(), "label" | "value") {
+                            if let Some(text) = value.as_str() {
+                                out.push(text.into());
+                            }
+                        }
+                        walk(value, out);
+                    }
+                }
+                serde_json::Value::Array(values) => values.iter().for_each(|v| walk(v, out)),
+                _ => {}
+            }
+        }
+        let mut out = vec![];
+        walk(view, &mut out);
+        out
+    }
+    fn account(label: &str, email: Option<&str>) -> openagents_account::openagents::Account {
+        serde_json::from_value(serde_json::json!({
+            "id": "acct_test", "label": label, "email": email,
+        }))
+        .unwrap()
+    }
+    #[test]
+    fn account_name_is_the_account_label_with_the_email_under_it_as_on_ios() {
+        assert_eq!(
+            account_lines(account("OpenAgents test account", None)),
+            (
+                "OpenAgents test account".into(),
+                "OpenAgents account".into()
+            )
+        );
+        assert_eq!(
+            account_lines(account("Ada", Some("ada@example.com"))),
+            ("Ada".into(), "ada@example.com".into())
+        );
+        assert_eq!(
+            account_lines(account(" ", Some("ada@example.com"))),
+            ("ada@example.com".into(), "OpenAgents account".into())
+        );
+        assert_eq!(account_lines(account("", None)).0, "Signed in");
+        let mut model = model();
+        let shown = labels(&shown(&mut model));
+        assert!(shown.iter().any(|label| label == "Test account"));
+        assert!(shown.iter().any(|label| label == "OpenAgents account"));
+    }
+    #[test]
+    fn computers_that_appear_or_change_status_show_on_the_next_redraw() {
+        let mut model = model();
+        assert!(!labels(&shown(&mut model)).iter().any(|l| l == "Desk"));
+        let mut next = input();
+        next.devices = vec![Device {
+            id: "dev-1".into(),
+            name: "Desk".into(),
+            online: false,
+        }];
+        model.update(next).unwrap();
+        let view = shown(&mut model);
+        let found = labels(&view);
+        assert!(found.iter().any(|l| l == "Devices"));
+        assert!(found.iter().any(|l| l == "Desk"));
+        assert!(found.iter().any(|l| l == "Offline"));
+        assert!(model.activate(event(&view, "device-0")).unwrap().is_none());
+        let mut next = input();
+        next.devices = vec![Device {
+            id: "dev-1".into(),
+            name: "Desk".into(),
+            online: true,
+        }];
+        model.update(next).unwrap();
+        let found = labels(&shown(&mut model));
+        assert!(found.iter().any(|l| l == "Online"));
+        assert!(!found.iter().any(|l| l == "Offline"));
+    }
+    #[test]
+    fn cloud_row_shows_before_the_status_read_and_follows_it() {
+        let mut with_cloud = input();
+        with_cloud.caps.cloud = true;
+        let mut model = Model::new(with_cloud, Default::default(), None);
+        let view = shown(&mut model);
+        assert!(labels(&view).iter().any(|l| l == "Start OpenAgents Cloud"));
+        let (operation, action) = model.activate(event(&view, "cloud")).unwrap().unwrap();
+        assert!(matches!(action, Action::Cloud(true)));
+        model.complete(&operation, Ok(None));
+        let mut running = input();
+        running.caps.cloud = true;
+        running.cloud_running = Some(true);
+        model.update(running).unwrap();
+        let view = shown(&mut model);
+        assert!(labels(&view).iter().any(|l| l == "Stop OpenAgents Cloud"));
+        let (_, action) = model.activate(event(&view, "cloud")).unwrap().unwrap();
+        assert!(matches!(action, Action::Cloud(false)));
+        let mut signed_out = input();
+        signed_out.caps.cloud = true;
+        signed_out.signed_in = false;
+        let mut model = Model::new(signed_out, Default::default(), None);
+        assert!(!shown(&mut model).to_string().contains("OpenAgents Cloud"));
+    }
+    #[test]
+    fn wallet_and_archive_rows_follow_their_capabilities() {
+        let mut model = model();
+        let view = shown(&mut model);
+        assert!(model.activate(event(&view, "wallet")).is_err());
+        let mut caps = input();
+        caps.caps.wallet = true;
+        caps.caps.archive = true;
+        let mut model = Model::new(caps, Default::default(), None);
+        let view = shown(&mut model);
+        let (operation, action) = model.activate(event(&view, "wallet")).unwrap().unwrap();
+        assert!(matches!(action, Action::Wallet));
+        model.complete(&operation, Ok(None));
+        let view = shown(&mut model);
+        let (_, action) = model.activate(event(&view, "archive")).unwrap().unwrap();
+        assert!(matches!(action, Action::Archive));
+    }
     #[test]
     fn settings_product_copy_passes_the_shared_guard() {
-        let mut model = model();
+        let mut input = input();
+        input.caps = SettingsCapabilities {
+            appearance: true,
+            pairing: true,
+            cloud: true,
+            archive: true,
+            project_sharing: true,
+            wallet: true,
+            notification_settings: true,
+            share_chooser: true,
+            ..Default::default()
+        };
+        let mut model = Model::new(input, Default::default(), None);
         let view = shown(&mut model);
         fn inspect(value: &serde_json::Value) {
             match value {
@@ -762,6 +933,9 @@ mod tests {
             }
         }
         inspect(&view);
+        for copy in labels(&view) {
+            assert!(oa_copy::violations(&copy, &[]).is_empty(), "{copy}");
+        }
         model.activate(event(&view, "about")).unwrap();
         inspect(&shown(&mut model));
         for copy in [

@@ -18,6 +18,7 @@ pub enum SettingsEffect {
     OpenPairing,
     OpenArchive,
     OpenProjectSharing,
+    OpenWallet,
     OpenNotificationSettings,
     ChooseWallpaper { ticket: String },
     PreferencesChanged { preferences: SettingsPreferences },
@@ -57,19 +58,21 @@ fn input(
     cloud_running: Option<bool>,
 ) -> Input {
     let snapshot = account.controller().snapshot();
-    let (signed_in, name) = match snapshot.phase {
-        Phase::SignedIn { account } => (true, account.label),
-        _ => (false, "Your account".into()),
+    let (signed_in, (name, detail)) = match snapshot.phase {
+        Phase::SignedIn { account } => (true, model::account_lines(account)),
+        _ => (false, ("Your account".into(), String::new())),
     };
     Input {
         generation: snapshot.generation,
         signed_in,
         name,
+        detail,
         devices: if signed_in {
             client
                 .map(|client| {
+                    // The computers that can run sessions, as iOS lists them.
                     client
-                        .devices()
+                        .execution_devices()
                         .into_iter()
                         .map(|device| Device {
                             id: device.id,
@@ -120,6 +123,11 @@ pub fn open_settings(
         listener,
     });
     let mut changes = this.account.controller().watch();
+    let mut workspace = this
+        .client
+        .as_ref()
+        .map(|client| client.workspace_changes());
+    let mut seen = this.listed_devices();
     let weak = Arc::downgrade(&this);
     let cancel = this.cancel.clone();
     openagents_client::runtime::shared().spawn(async move {
@@ -127,6 +135,27 @@ pub fn open_settings(
             tokio::select! {
                 biased;
                 _ = cancel.cancelled() => break,
+                // Computers come online, go offline, or get renamed while
+                // Settings is open; redraw from the client's current list.
+                changed = async {
+                    match workspace.as_mut() {
+                        Some(workspace) => workspace.changed().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if changed.is_err() {
+                        workspace = None;
+                        continue;
+                    }
+                    let Some(this) = weak.upgrade() else { break; };
+                    // Chats change far more often than computers do; redraw
+                    // only when the listed computers or their status moved.
+                    let now = this.listed_devices();
+                    if now != seen {
+                        seen = now;
+                        this.listener.on_settings_changed();
+                    }
+                }
                 changed = changes.changed() => {
                     let Some(this) = weak.upgrade() else { break; };
                     if changed.is_err() || this.current().is_err() {
@@ -142,6 +171,18 @@ pub fn open_settings(
     Ok(this)
 }
 impl CoreSettings {
+    fn listed_devices(&self) -> Vec<(String, String, bool)> {
+        self.client
+            .as_ref()
+            .map(|client| {
+                client
+                    .execution_devices()
+                    .into_iter()
+                    .map(|device| (device.id, device.name, device.online))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
     fn current(&self) -> CoreResult<()> {
         if self.cancel.is_cancelled()
             || self.account.controller().snapshot().generation != self.generation
@@ -269,6 +310,10 @@ impl CoreSettings {
             }
             Action::Sharing => {
                 effect = SettingsEffect::OpenProjectSharing;
+                Ok(None)
+            }
+            Action::Wallet => {
+                effect = SettingsEffect::OpenWallet;
                 Ok(None)
             }
             Action::Notifications => {
@@ -432,6 +477,28 @@ fn share_app() -> SettingsEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct Quiet;
+    impl super::super::ClientListener for Quiet {
+        fn on_event(&self, _event: super::super::ClientEvent) {}
+    }
+    #[test]
+    fn device_and_connectivity_events_wake_settings_but_chat_events_do_not() {
+        use openagents_client::ClientListener as _;
+        let bridge = super::super::ListenerBridge::new(Arc::new(Quiet));
+        let mut changes = bridge.1.subscribe();
+        bridge.on_event(openagents_client::ClientEvent::SessionChanged {
+            chat_id: "chat".into(),
+            revision: 1,
+        });
+        assert!(!changes.has_changed().unwrap());
+        bridge.on_event(openagents_client::ClientEvent::WorkspaceChanged { revision: 2 });
+        assert!(changes.has_changed().unwrap());
+        changes.mark_unchanged();
+        bridge.on_event(openagents_client::ClientEvent::ConnectivityChanged(
+            Default::default(),
+        ));
+        assert!(changes.has_changed().unwrap());
+    }
     #[test]
     fn app_share_uses_only_rust_brand_values() {
         let SettingsEffect::ShareText { title, text } = share_app() else {

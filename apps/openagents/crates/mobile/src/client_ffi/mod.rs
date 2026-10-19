@@ -109,10 +109,24 @@ pub trait ClientListener: Send + Sync {
     fn on_event(&self, event: ClientEvent);
 }
 
-struct ListenerBridge(Arc<dyn ClientListener>);
+/// Forwards events to the platform and counts workspace and connectivity
+/// changes for Rust surfaces, such as Settings, that redraw on them.
+struct ListenerBridge(Arc<dyn ClientListener>, tokio::sync::watch::Sender<u64>);
+
+impl ListenerBridge {
+    fn new(listener: Arc<dyn ClientListener>) -> Self {
+        Self(listener, tokio::sync::watch::channel(0).0)
+    }
+}
 
 impl zc::ClientListener for ListenerBridge {
     fn on_event(&self, event: zc::ClientEvent) {
+        if matches!(
+            event,
+            zc::ClientEvent::WorkspaceChanged { .. } | zc::ClientEvent::ConnectivityChanged(_)
+        ) {
+            self.1.send_modify(|count| *count = count.wrapping_add(1));
+        }
         self.0.on_event(event.into());
     }
 }
@@ -137,6 +151,7 @@ where
 pub struct CoreClient {
     pub(crate) client: zc::Client,
     composer_drafts: Arc<composer_drafts::ComposerDraftStore>,
+    workspace_changes: tokio::sync::watch::Sender<u64>,
 }
 
 #[allow(dead_code)] // consumed in Rust by the layout engine
@@ -152,6 +167,11 @@ impl CoreClient {
     pub fn session_handle(&self, chat_id: &str) -> Option<zc::SessionHandle> {
         self.client.open_session(chat_id).ok()
     }
+
+    /// Ticks whenever the workspace (devices included) or connectivity changes.
+    pub(crate) fn workspace_changes(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.workspace_changes.subscribe()
+    }
 }
 
 #[uniffi::export]
@@ -166,11 +186,9 @@ impl CoreClient {
     ) -> CoreResult<Arc<Self>> {
         let data_dir = std::path::PathBuf::from(&config.data_dir);
         crate::android_bootstrap::ensure_initialized()?;
-        let client = zc::Client::new(
-            config.into(),
-            credentials.into(),
-            Arc::new(ListenerBridge(listener)),
-        )?;
+        let bridge = Arc::new(ListenerBridge::new(listener));
+        let workspace_changes = bridge.1.clone();
+        let client = zc::Client::new(config.into(), credentials.into(), bridge)?;
         let account_id = client.user_id();
         let composer_drafts = Arc::new(composer_drafts::ComposerDraftStore::new(
             data_dir,
@@ -179,6 +197,7 @@ impl CoreClient {
         Ok(Arc::new(Self {
             client,
             composer_drafts,
+            workspace_changes,
         }))
     }
 
