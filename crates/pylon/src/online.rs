@@ -1230,8 +1230,22 @@ pub async fn up(json_out: bool, words: &[String], relay: &str) -> Result<(), Str
         machine,
         Options::foreground(),
         Arc::new(|line| eprintln!("pylon: {line}")),
+        // Stop on Ctrl-C or SIGTERM alike, so `kill` or a service manager
+        // still stops the engines and publishes the offline beacon.
         async {
-            let _ = tokio::signal::ctrl_c().await;
+            #[cfg(unix)]
+            {
+                let mut term =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).ok();
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    () = async { match term.as_mut() { Some(t) => { t.recv().await; } None => std::future::pending().await } } => {}
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = tokio::signal::ctrl_c().await;
+            }
         },
     )
     .await;
