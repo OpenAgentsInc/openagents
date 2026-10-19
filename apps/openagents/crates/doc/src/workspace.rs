@@ -626,6 +626,8 @@ pub(crate) struct RawDevice {
     cursor_sdk_engine_version: Option<String>,
     #[serde(default)]
     capabilities: Vec<String>,
+    #[serde(default)]
+    origin: openagents_proto::DeviceOrigin,
 }
 
 impl From<RawDevice> for Device {
@@ -642,6 +644,7 @@ impl From<RawDevice> for Device {
             version: raw.version,
             cursor_sdk_version: sdk_version,
             capabilities: raw.capabilities,
+            origin: raw.origin,
         }
     }
 }
@@ -828,6 +831,7 @@ mod tests {
             version: Some("0.1.0".into()),
             cursor_sdk_version: None,
             capabilities: Vec::new(),
+            origin: openagents_proto::DeviceOrigin::Unknown,
         }
     }
 
@@ -836,6 +840,9 @@ mod tests {
         let local = WorkspaceDoc::new();
         let mut row = device("remote", "remote engine");
         row.cursor_sdk_version = Some("1.0.31".into());
+        row.origin = openagents_proto::DeviceOrigin::ManagedCloud {
+            computer_id: "cmp_0123456789abcdefabcd".into(),
+        };
         local.upsert_device(&row).unwrap();
         let remote = WorkspaceDoc::new();
         remote
@@ -848,6 +855,7 @@ mod tests {
                 .as_deref(),
             Some("1.0.31")
         );
+        assert_eq!(remote.read_devices().unwrap()[0].origin, row.origin);
         // Simulate an older writer that only knows the app-version field.
         remote
             .row("devices", "remote")
@@ -859,6 +867,29 @@ mod tests {
         row.cursor_sdk_version = None;
         remote.upsert_device(&row).unwrap();
         assert_eq!(remote.read_devices().unwrap()[0].cursor_sdk_version, None);
+        assert_eq!(remote.read_devices().unwrap()[0].origin, row.origin);
+        remote
+            .row("devices", "remote")
+            .unwrap()
+            .insert("name", "old writer rename")
+            .unwrap();
+        remote.doc().commit();
+        assert_eq!(remote.read_devices().unwrap()[0].origin, row.origin);
+    }
+
+    #[test]
+    fn legacy_registry_device_without_origin_reads_as_unknown() {
+        let raw: RawDevice = serde_json::from_value(serde_json::json!({
+            "id": "legacy",
+            "name": "Legacy headless",
+            "platform": "linux",
+            "lastSeenAt": null
+        }))
+        .unwrap();
+        assert_eq!(
+            Device::from(raw).origin,
+            openagents_proto::DeviceOrigin::Unknown
+        );
     }
 
     fn chat(id: &str, device_id: &str) -> Chat {

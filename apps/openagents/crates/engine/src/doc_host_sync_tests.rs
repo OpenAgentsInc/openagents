@@ -265,6 +265,7 @@ fn workspace(store: Arc<DocsStore>) -> WorkspaceHost {
             device_id: "host".into(),
             device_name: "Test host".into(),
             platform: "linux".into(),
+            device_origin: crate::DeviceOrigin::Unknown,
             org_id: "test-org".into(),
             user_id: "test-user".into(),
             edge: None,

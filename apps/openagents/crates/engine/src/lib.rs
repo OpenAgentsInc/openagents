@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-pub use openagents_proto::{EngineInfo, HarnessId, WorkspaceScope};
+pub use openagents_proto::{DeviceOrigin, EngineInfo, HarnessId, WorkspaceScope};
 use openagents_rpc::{RpcError, RpcReply, RpcService, methods};
 
 use openagents_sync::DocsStore;
@@ -139,6 +139,9 @@ pub struct EngineConfig {
     pub ipc_port: u16,
     /// Harness for doc-command runs on chats without a workspace `config` row.
     pub default_harness: HarnessId,
+    /// Presentation origin supplied by an explicit producer. Generic headless
+    /// starts use Unknown.
+    pub device_origin: DeviceOrigin,
     /// Workspace-doc org (`ws/{orgId}` room). `None` = `$OPENAGENTS_ORG_ID` or the dev default.
     /// In WorkOS mode the signed-in session's org wins.
     pub org_id: Option<String>,
@@ -262,6 +265,7 @@ impl EngineCore {
                 device_id: device_id.clone(),
                 device_name: local_device_name(&device_id),
                 platform: std::env::consts::OS.to_string(),
+                device_origin: config.device_origin.clone(),
                 org_id: profile.org_id().to_string(),
                 user_id: profile.user_id().to_string(),
                 edge: edge.clone(),
@@ -1671,6 +1675,63 @@ fn env_or(key: &str, default: &str) -> String {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| default.to_string())
+}
+
+fn device_origin_from_values(
+    cloud_computer_id: Option<&str>,
+    producer: Option<&str>,
+) -> DeviceOrigin {
+    if let Some(id) = cloud_computer_id {
+        return if id.len() == 24
+            && id.starts_with("cmp_")
+            && id[4..].bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            DeviceOrigin::ManagedCloud {
+                computer_id: id.to_owned(),
+            }
+        } else {
+            DeviceOrigin::Unknown
+        };
+    }
+    if producer == Some("personal") {
+        DeviceOrigin::Personal
+    } else {
+        DeviceOrigin::Unknown
+    }
+}
+
+pub fn device_origin_from_env() -> DeviceOrigin {
+    let cloud_id = openagents_brand::env_var("OPENAGENTS_CLOUD_HOST_COMPUTER_ID").ok();
+    let producer = openagents_brand::env_var("OPENAGENTS_DEVICE_ORIGIN").ok();
+    device_origin_from_values(cloud_id.as_deref(), producer.as_deref())
+}
+
+#[cfg(test)]
+mod device_origin_tests {
+    use super::{DeviceOrigin, device_origin_from_values};
+
+    #[test]
+    fn only_explicit_producer_metadata_sets_an_origin() {
+        assert_eq!(device_origin_from_values(None, None), DeviceOrigin::Unknown);
+        assert_eq!(
+            device_origin_from_values(None, Some("headless")),
+            DeviceOrigin::Unknown
+        );
+        assert_eq!(
+            device_origin_from_values(None, Some("personal")),
+            DeviceOrigin::Personal
+        );
+        assert_eq!(
+            device_origin_from_values(Some("cmp_0123456789abcdefabcd"), Some("personal")),
+            DeviceOrigin::ManagedCloud {
+                computer_id: "cmp_0123456789abcdefabcd".into(),
+            }
+        );
+        assert_eq!(
+            device_origin_from_values(Some("not-a-cloud-id"), Some("personal")),
+            DeviceOrigin::Unknown
+        );
+    }
 }
 
 /// Stable per-installation device id, persisted at `{data_dir}/device-id`.

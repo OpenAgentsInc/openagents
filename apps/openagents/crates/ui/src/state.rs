@@ -313,6 +313,7 @@ impl EngineHandle {
             edge_token: config.edge_token,
             ipc_port: config.ipc_port,
             default_harness: config.default_harness,
+            device_origin: openagents_proto::DeviceOrigin::Personal,
             org_id: config.org_id,
             workos_client_id: config.workos_client_id,
         };
@@ -4279,6 +4280,7 @@ mod tests {
             version: None,
             cursor_sdk_version: None,
             capabilities: Vec::new(),
+            origin: openagents_proto::DeviceOrigin::Unknown,
         }
     }
 
@@ -5873,6 +5875,7 @@ mod tests {
             version: Some("0.2.12".into()),
             cursor_sdk_version: None,
             capabilities: Vec::new(),
+            origin: openagents_proto::DeviceOrigin::Unknown,
         }];
         assert!(s.device_version_at_least("d1", (0, 2, 12)));
         assert!(!s.device_version_at_least("d1", (0, 2, 13)));
@@ -5896,6 +5899,7 @@ mod tests {
                 version: Some("0.2.31".into()),
                 cursor_sdk_version: None,
                 capabilities: vec![openagents_proto::capabilities::MESSAGE_QUEUE_V1.into()],
+                origin: openagents_proto::DeviceOrigin::Unknown,
             },
             Device {
                 id: "upstream".into(),
@@ -5906,6 +5910,7 @@ mod tests {
                 version: Some("0.2.31".into()),
                 cursor_sdk_version: None,
                 capabilities: Vec::new(),
+                origin: openagents_proto::DeviceOrigin::Unknown,
             },
         ];
 
@@ -5937,6 +5942,7 @@ mod tests {
             version: None,
             cursor_sdk_version: None,
             capabilities: Vec::new(),
+            origin: openagents_proto::DeviceOrigin::Unknown,
         }];
         s.connectivity.state = ConnectivityState::Connected;
         s.connectivity.chats = vec![ChatConnectivity {

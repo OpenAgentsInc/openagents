@@ -226,6 +226,7 @@ async fn rows_dark_command_delivers_over_the_peer_relay_exactly_once() {
         version: Some("0.2.12".into()),
         cursor_sdk_version: None,
         capabilities: openagents_proto::capabilities::current(),
+        origin: openagents_proto::DeviceOrigin::Unknown,
     });
     let client_a = openagents_rpc::memory_client(core_a.rpc_service());
     client_a

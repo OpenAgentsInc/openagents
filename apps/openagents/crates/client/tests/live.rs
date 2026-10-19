@@ -49,6 +49,7 @@ fn host_rows(now: chrono::DateTime<Utc>) -> (Device, Space, Chat) {
             .iter()
             .map(|c| (*c).to_owned())
             .collect(),
+        origin: openagents_proto::DeviceOrigin::Personal,
     };
     let space = Space {
         id: SPACE.into(),

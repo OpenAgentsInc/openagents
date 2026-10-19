@@ -28,7 +28,9 @@ use tokio::sync::watch;
 
 use openagents_doc::{DeletedSpace, REGISTRY_DOC_ID, RegistryDoc, WorkspaceDoc};
 use openagents_proto::projectless;
-use openagents_proto::{Chat, ChatConfig, Device, Session, SidebarPreferencesState, Space};
+use openagents_proto::{
+    Chat, ChatConfig, Device, DeviceOrigin, Session, SidebarPreferencesState, Space,
+};
 use openagents_sync::{DocsStore, RegistryClient, RegistryTuning};
 
 use crate::doc_host::EdgeConfig;
@@ -162,6 +164,9 @@ pub struct WorkspaceHostConfig {
     pub device_name: String,
     /// `std::env::consts::OS`-style platform string.
     pub platform: String,
+    /// Explicit producer classification for presentation. Unknown is safe for
+    /// legacy and generic headless engines.
+    pub device_origin: DeviceOrigin,
     pub org_id: String,
     /// The signed-in user — registries are per-user (`reg1/{orgId}/{userId}`):
     /// spaces/sessions are private to their owner, never org-visible.
@@ -289,6 +294,14 @@ impl WorkspaceHost {
             .read_devices()?
             .into_iter()
             .find(|d| d.id == config.device_id);
+        let device_origin = if config.device_origin.is_unknown() {
+            existing
+                .as_ref()
+                .map(|device| device.origin.clone())
+                .unwrap_or_default()
+        } else {
+            config.device_origin.clone()
+        };
         doc.upsert_device(&Device {
             id: config.device_id.clone(),
             name: device_name_on_boot(
@@ -305,6 +318,7 @@ impl WorkspaceHost {
             version: Some(env!("CARGO_PKG_VERSION").to_string()),
             cursor_sdk_version: Some(openagents_harness::CursorHarness::sdk_version().into()),
             capabilities: openagents_proto::capabilities::current(),
+            origin: device_origin,
         })?;
 
         let state = doc.read_all()?;
@@ -1836,6 +1850,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn device_origin_is_stamped_and_unknown_restart_preserves_known_origin() {
+        use super::*;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(DocsStore::open(dir.path()).unwrap());
+        let managed = DeviceOrigin::ManagedCloud {
+            computer_id: "cmp_0123456789abcdefabcd".into(),
+        };
+        let config = |device_origin| WorkspaceHostConfig {
+            device_id: "engine-device-id".into(),
+            device_name: "Our cloud".into(),
+            platform: "linux".into(),
+            device_origin,
+            org_id: "test-org".into(),
+            user_id: "test-user".into(),
+            edge: None,
+            local_only: true,
+        };
+        let host = WorkspaceHost::open(store.clone(), config(managed.clone())).unwrap();
+        assert_eq!(host.read_devices().unwrap()[0].origin, managed);
+        host.shutdown();
+
+        let restarted = WorkspaceHost::open(store, config(DeviceOrigin::Unknown)).unwrap();
+        assert_eq!(
+            restarted.read_devices().unwrap()[0].origin,
+            DeviceOrigin::ManagedCloud {
+                computer_id: "cmp_0123456789abcdefabcd".into(),
+            }
+        );
+        restarted.shutdown();
+    }
+
+    #[tokio::test]
     async fn presence_publish_keeps_unchanged_lists_quiet_and_late_subscribers_current() {
         use super::*;
 
@@ -1846,6 +1893,7 @@ mod tests {
                 device_id: "test-device".into(),
                 device_name: "Test device".into(),
                 platform: "macos".into(),
+                device_origin: DeviceOrigin::Unknown,
                 org_id: "test-org".into(),
                 user_id: "test-user".into(),
                 edge: None,
@@ -1903,6 +1951,7 @@ mod tests {
                 device_id: "test-device".into(),
                 device_name: "Test device".into(),
                 platform: "macos".into(),
+                device_origin: DeviceOrigin::Unknown,
                 org_id: "test-org".into(),
                 user_id: "test-user".into(),
                 edge: None,
@@ -2013,6 +2062,7 @@ mod tests {
                 device_id: "test-device".into(),
                 device_name: "Test device".into(),
                 platform: "macos".into(),
+                device_origin: DeviceOrigin::Unknown,
                 org_id: "test-org".into(),
                 user_id: "test-user".into(),
                 edge: None,
@@ -2052,6 +2102,7 @@ mod tests {
                 device_id: "test-device".into(),
                 device_name: "Test device".into(),
                 platform: "macos".into(),
+                device_origin: DeviceOrigin::Unknown,
                 org_id: "test-org".into(),
                 user_id: "test-user".into(),
                 // Unreachable edge: writes queue (and retry) without acks.
@@ -2120,6 +2171,7 @@ mod tests {
                 device_id: "test-device".into(),
                 device_name: "Test device".into(),
                 platform: "macos".into(),
+                device_origin: DeviceOrigin::Unknown,
                 org_id: "test-org".into(),
                 user_id: "test-user".into(),
                 edge: None,

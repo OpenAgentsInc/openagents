@@ -174,9 +174,8 @@ impl Engine {
     }
 }
 
-/// The command that runs the engine. Fixed text: no account data, so its
-/// digest binds only the engine build.
-pub(crate) fn command(engine: &Engine) -> String {
+/// Return the engine command with the provisioned computer ID in its environment.
+pub(crate) fn command(engine: &Engine, computer_id: &str) -> String {
     let dir = &engine.sha256[..16];
     format!(
         r#"set -eu
@@ -202,6 +201,7 @@ OPENCODE
 mkdir -p "$HOME/workspace" "$d/data"
 export OPENAGENTS_DATA_DIR="$d/data" ZERON_DATA_DIR="$d/data"
 export OPENAGENTS_DEVICE_NAME='{name}' ZERON_DEVICE_NAME='{name}'
+export OPENAGENTS_CLOUD_HOST_COMPUTER_ID={computer_id}
 export BROWSER=/usr/bin/true NO_OPEN_BROWSER=1
 cd "$HOME/workspace"
 echo 'OpenAgents engine starting'
@@ -210,10 +210,15 @@ exec timeout -k 30 {seconds} "$b" headless
         url = engine.url,
         sha = engine.sha256,
         name = DEVICE_NAME,
+        computer_id = shell_quote(computer_id),
         seconds = ENGINE_SECONDS,
         opencode = OPENCODE_VERSION,
         config = opencode_config(),
     )
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 /// The Claude Code credential names the engine's harness reads.
@@ -550,7 +555,7 @@ async fn start(State(app): State<App>, headers: HeaderMap) -> Response {
             return r;
         }
     };
-    let text = command(&engine);
+    let text = command(&engine, &computer_id);
     let request = match openagents_sdk::computers::RequestKey::generate() {
         Ok(k) => format!("cloud-host-{}", k.as_str()),
         Err(_) => return unavailable(),
@@ -673,11 +678,12 @@ mod tests {
 
     #[test]
     fn command_holds_no_credential_and_checks_the_download() {
-        let text = command(&engine());
+        let text = command(&engine(), "cmp_0123456789abcdefabcd");
         assert!(text.contains("sha256sum -c"));
         assert!(text.contains(&"ab".repeat(32)));
         assert!(text.contains("headless"));
         assert!(text.contains("Our cloud"));
+        assert!(text.contains("OPENAGENTS_CLOUD_HOST_COMPUTER_ID='cmp_0123456789abcdefabcd'"));
         assert!(text.contains("opencode-ai@1.19.3"));
         assert!(text.contains("{env:OPENAGENTS_API_KEY}"));
         for secret in [
@@ -690,7 +696,11 @@ mod tests {
         }
         // The engine ends before the command limit, so its key is not left running.
         assert!(ENGINE_SECONDS < RUN_SECONDS);
-        assert_eq!(text, command(&engine()), "the digest must be stable");
+        assert_eq!(
+            text,
+            command(&engine(), "cmp_0123456789abcdefabcd"),
+            "the digest must be stable"
+        );
     }
 
     #[test]

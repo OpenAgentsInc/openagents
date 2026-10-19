@@ -319,6 +319,7 @@ pub(crate) fn devices(self_id: &str, self_name: &str, now: i64) -> Vec<Device> {
             } else {
                 Vec::new()
             },
+            origin: openagents_proto::DeviceOrigin::Unknown,
         };
     vec![
         device(

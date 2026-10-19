@@ -1447,6 +1447,7 @@ mod tests {
             edge_token: None,
             ipc_port: 0,
             default_harness: HarnessId::Mock,
+            device_origin: crate::DeviceOrigin::Unknown,
             org_id: None,
             workos_client_id: None,
         })

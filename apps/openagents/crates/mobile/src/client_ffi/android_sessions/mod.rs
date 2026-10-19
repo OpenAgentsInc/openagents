@@ -111,6 +111,18 @@ fn text(key: &str, value: impl Into<String>, role: TextRole) -> Node<Intent> {
         },
     )
 }
+
+fn own_personal_computer_count(devices: &[zc::DeviceView]) -> u32 {
+    devices
+        .iter()
+        .filter(|device| {
+            device.is_execution_host
+                && !device.is_self
+                && matches!(&device.origin, openagents_proto::DeviceOrigin::Personal)
+        })
+        .count() as u32
+}
+
 impl CoreAndroidSessions {
     fn current(&self, s: &mut State) -> Result<(), CoreError> {
         if s.closed {
@@ -420,8 +432,12 @@ impl CoreAndroidSessions {
                     true,
                     Intent::CloudStop,
                 ));
-                // DeviceView does not identify cloud-managed computers. Do not mark the offer done by guessing from names.
-                if s.devices.is_empty() && self.offer.shows(self.cloud.clone(), 0) {
+                let own_computers = s
+                    .client
+                    .as_ref()
+                    .map(|client| own_personal_computer_count(&client.client().workspace().devices))
+                    .unwrap_or_default();
+                if self.offer.shows(self.cloud.clone(), own_computers) {
                     let card = self.offer.card();
                     body.push(text("own-title", card.title, TextRole::Heading));
                     body.push(text("own-body", card.body, TextRole::Body));
@@ -969,6 +985,71 @@ mod tests {
         );
         CoreAndroidSessions::new(account, Arc::new(CloudEvents))
     }
+
+    #[test]
+    fn own_computer_count_requires_personal_execution_host_and_excludes_self() {
+        let device = |id: &str,
+                      platform: &str,
+                      is_execution_host: bool,
+                      is_self: bool,
+                      origin: openagents_proto::DeviceOrigin|
+         -> zc::DeviceView {
+            zc::DeviceView {
+                id: id.into(),
+                name: id.into(),
+                platform: platform.into(),
+                online: true,
+                last_seen_ms: None,
+                version: None,
+                capabilities: Vec::new(),
+                origin,
+                is_execution_host,
+                is_self,
+                session_count: 0,
+            }
+        };
+        let devices = vec![
+            device(
+                "phone",
+                "android",
+                false,
+                true,
+                openagents_proto::DeviceOrigin::Unknown,
+            ),
+            device(
+                "self",
+                "linux",
+                true,
+                true,
+                openagents_proto::DeviceOrigin::Personal,
+            ),
+            device(
+                "cloud",
+                "linux",
+                true,
+                false,
+                openagents_proto::DeviceOrigin::ManagedCloud {
+                    computer_id: "cmp_0123456789abcdefabcd".into(),
+                },
+            ),
+            device(
+                "legacy",
+                "linux",
+                true,
+                false,
+                openagents_proto::DeviceOrigin::Unknown,
+            ),
+            device(
+                "personal",
+                "macos",
+                true,
+                false,
+                openagents_proto::DeviceOrigin::Personal,
+            ),
+        ];
+        assert_eq!(own_personal_computer_count(&devices), 1);
+    }
+
     #[tokio::test]
     async fn onboarding_resume_and_picker_open_return_the_same_cloud_owner_without_a_computer() {
         let dir = tempfile::tempdir().unwrap();

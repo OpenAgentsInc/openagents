@@ -27,6 +27,7 @@ fn config(
         edge_token: edge_token.map(str::to_string),
         ipc_port: 0,
         default_harness: HarnessId::Mock,
+        device_origin: openagents_engine::DeviceOrigin::Unknown,
         org_id: None,
         workos_client_id: workos_client_id.map(str::to_string),
     }

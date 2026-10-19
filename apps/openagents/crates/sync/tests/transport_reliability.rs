@@ -135,6 +135,7 @@ async fn delayed_registry_survives_blackout_and_reset_without_losing_writes() {
                 version: None,
                 cursor_sdk_version: None,
                 capabilities: Vec::new(),
+                origin: openagents_proto::DeviceOrigin::Unknown,
             })
             .unwrap();
         }

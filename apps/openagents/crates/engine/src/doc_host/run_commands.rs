@@ -301,6 +301,7 @@ mod tests {
                 device_id: HOST.into(),
                 device_name: "Fixture".into(),
                 platform: "fixture".into(),
+                device_origin: crate::DeviceOrigin::Unknown,
                 org_id: "fixture".into(),
                 user_id: "fixture".into(),
                 edge: None,
