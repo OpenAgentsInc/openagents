@@ -1106,3 +1106,8 @@ links remain readable. Upstream fixes now require manual ports.
   request/chat verification and bounded hydration retries. Mark the exact note
   read only after its authorized transcript paints. Tap binding and denied-token
   fixtures are authored but unrun; Firebase/provider/device checks remain pending.
+
+- #12100: Mount the existing account-leased Rust project-sharing form from the
+  Android sessions drawer and settings. Rust supplies the view and authorizes
+  actions; Android copies only an explicit Rust copy result and disposes the
+  mount on route, account, or lifecycle changes. Integrated checks are unrun.

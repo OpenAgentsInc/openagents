@@ -62,6 +62,7 @@ internal class AndroidRootPresentation(
     private var attachments: AndroidComposerAttachmentResults? = null
     private var sessions: AndroidSessionsHost? = null
     private var settings: SettingsHost? = null
+    private var sharing: AndroidSharingMount? = null
     private var recovery: RecoveryHost? = null
     private var wallet: RecoveryHost? = null
     private var voiceSettings: AndroidVoiceSettingsMount? = null
@@ -187,6 +188,7 @@ internal class AndroidRootPresentation(
             owner.refreshTranscript(requireNotNull(layout), next.generation, next.contentRevision)
         }
         if (next.route != AndroidHostRoute.CHAT) closeMedia()
+        if (next.route != AndroidHostRoute.SHARING) { sharing?.close(); sharing = null }
         if (next.route != AndroidHostRoute.VOICE_SETTINGS) { voiceSettings?.close(); voiceSettings = null }
         if (next.route != AndroidHostRoute.WALLET) { wallet?.close(); wallet = null }
         if (next.route != AndroidHostRoute.LINK_REVIEW) { linkReview?.close(); linkReview = null }
@@ -223,6 +225,18 @@ internal class AndroidRootPresentation(
                         { semantics(AndroidHostSurface.RECOVERY) },
                     ).also { it.start(android.os.Build.MODEL) }
                 }
+            }
+            AndroidHostRoute.SHARING -> {
+                recovery?.close(); recovery = null
+                sessions?.close(); sessions = null
+                settings?.close(); settings = null
+                settingsActions?.close(); settingsActions = null
+                chatContainer.visibility = View.GONE; routeContainer.visibility = View.VISIBLE
+                if (sharing == null) {
+                    routeContainer.removeAllViews()
+                    sharing = AndroidSharingMount(activity, routeContainer, owner.sharing(), application.presentationWork,
+                        semantics(AndroidHostSurface.SHARING), ::showFailure)
+                } else sharing?.render()
             }
             AndroidHostRoute.VOICE_SETTINGS -> {
                 recovery?.close(); recovery = null
@@ -536,9 +550,10 @@ internal class AndroidRootPresentation(
         }
         val core = openSettings(account, next.client, SettingsCapabilities(
             appearance = false, wallpaperPicker = false, pairing = false, cloud = next.client != null,
-            archive = false, projectSharing = false, notificationSettings = true, shareChooser = true,
+            archive = false, projectSharing = true, notificationSettings = true, shareChooser = true,
         ), BuildConfig.VERSION_NAME, callback)
-        val effects = AndroidSettingsActions(activity, 4101, {}, { _, _, _, _ -> }, null, null, null)
+        val effects = AndroidSettingsActions(activity, 4101, {}, { _, _, _, _ -> }, null, null,
+            { guarded { owner.navigate(AndroidHostRoute.SHARING); panes.showSession() } })
         settingsActions = effects
         settings = SettingsHost(activity, routeContainer, RustSettingsPort(core), scope,
             effects::handle, ::showFailure, semantics(AndroidHostSurface.SETTINGS)).also { it.start() }
@@ -553,7 +568,7 @@ internal class AndroidRootPresentation(
                 is AndroidSessionAction.Clipboard -> (activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                     .setPrimaryClip(ClipData.newPlainText("OpenAgents", action.text))
                 AndroidSessionAction.Updated -> sessions?.showPicker()
-                AndroidSessionAction.Sharing -> showFailure()
+                AndroidSessionAction.Sharing -> { owner.navigate(AndroidHostRoute.SHARING); panes.showSession() }
             }
         }
     }
@@ -596,6 +611,7 @@ internal class AndroidRootPresentation(
         microphoneRequest?.close(); microphoneRequest = null
         snapshot?.linkReview?.let { runCatching { owner.dismissLinkReview(it) } }
         linkReview?.close(); linkReview = null
+        sharing?.close(); sharing = null
         voiceSettings?.close(); voiceSettings = null
         wallet?.background()
         recovery?.background()
@@ -631,6 +647,7 @@ internal class AndroidRootPresentation(
     }
     private fun showFailure() { notice.text = "Couldn't open this screen. Try again."; notice.visibility = View.VISIBLE }
     private fun closeRoutes() {
+        sharing?.close(); sharing = null
         voiceSettings?.close(); voiceSettings = null
         wallet?.close(); wallet = null
         linkReview?.close(); linkReview = null

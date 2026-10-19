@@ -34,6 +34,11 @@ impl ClientListener for Events {
         self.0.on_android_host_changed();
     }
 }
+impl SharingListener for Events {
+    fn on_sharing_changed(&self) {
+        self.0.on_android_host_changed();
+    }
+}
 impl VoiceAgentListener for Events {
     fn on_voice_agent_changed(&self) {
         self.0.on_android_host_changed();
@@ -64,6 +69,7 @@ pub enum AndroidHostSurface {
     VoiceScreen,
     VoiceAgent,
     VoiceUsage,
+    Sharing,
     LinkReview,
     Composer,
 }
@@ -78,6 +84,7 @@ impl AndroidHostSurface {
             Self::VoiceScreen => "android:voice-screen",
             Self::VoiceAgent => "android:voice-agent",
             Self::VoiceUsage => "android:voice-usage",
+            Self::Sharing => "android:sharing",
             Self::LinkReview => "android:link-review",
             Self::Composer => "android:composer",
         }
@@ -93,6 +100,7 @@ pub enum AndroidHostRoute {
     LinkReview,
     Wallet,
     VoiceSettings,
+    Sharing,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -700,6 +708,14 @@ impl CoreAndroidHost {
         Ok(AndroidNotificationOpen {
             retry_after_ms: None,
         })
+    }
+    pub fn sharing(&self) -> CoreResult<Arc<CoreSharing>> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        self.account
+            .as_ref()
+            .ok_or(CoreError::Closed)?
+            .project_sharing(self.events.clone())
     }
     pub fn voice_settings(&self) -> CoreResult<AndroidVoiceSettings> {
         let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
