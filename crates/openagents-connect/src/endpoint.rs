@@ -6,9 +6,10 @@
 //! NIP-REACH hints. There is no n0 relay, n0 DNS, PKARR, or DHT.
 
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use iroh::address_lookup::MemoryLookup;
-use iroh::endpoint::{BindError, presets};
+use iroh::endpoint::{BindError, QuicTransportConfig, presets};
 use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl, SecretKey};
 
 use crate::{Code, ENROLL_ALPN, Error, REACH_ALPN, RELAY_URL, Result};
@@ -108,6 +109,19 @@ impl ConnectEndpoint {
         let mut builder = Endpoint::builder(presets::Minimal)
             .secret_key(secret)
             .relay_mode(config.relay.mode())
+            // iroh otherwise keeps a silent direct path for 15s, preferring
+            // it over the working relay even when UDP sends fail (#12170).
+            // Only authenticated inbound traffic renews the path lease after
+            // the first send. Keep backup paths probed so healthy idle LAN
+            // connections survive; iroh gives relay paths their own, longer
+            // lease. noq still applies its 3-PTO floor for high-latency links.
+            // Abandonment retransmits pending stream bytes on the relay.
+            .transport_config(
+                QuicTransportConfig::builder()
+                    .default_path_max_idle_timeout(Duration::from_millis(500))
+                    .default_path_keep_alive_interval(Duration::from_millis(200))
+                    .build(),
+            )
             .alpns(config.alpns)
             .address_lookup(lookup.clone());
         if !config.bind.is_empty() {
