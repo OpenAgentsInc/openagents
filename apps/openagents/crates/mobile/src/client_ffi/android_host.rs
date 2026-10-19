@@ -5,6 +5,7 @@ mod notifications;
 pub use notifications::AndroidNotificationOpen;
 use notifications::PendingTap;
 mod wallet;
+use super::labs::CoreLabActions;
 use super::*;
 pub use links::CoreAndroidLinkReview;
 use openagents_account::openagents::Deployment;
