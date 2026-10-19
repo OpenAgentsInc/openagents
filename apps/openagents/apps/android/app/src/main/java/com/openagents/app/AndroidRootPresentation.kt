@@ -11,8 +11,10 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 import com.openagents.app.adaptive.*
 import com.openagents.app.accessibility.*
@@ -73,8 +75,10 @@ internal class AndroidRootPresentation(
     private var recovery: RecoveryHost? = null
     private var wallet: RecoveryHost? = null
     private var voiceSettings: AndroidVoiceSettingsMount? = null
-    private lateinit var voiceSettingsButton: Button
-    private lateinit var walletButton: Button
+    private var voiceSettingsShown = false
+    private var yourIdShown = false
+    private lateinit var walletButton: View
+    private lateinit var moreButton: View
     private var linkReview: AndroidLinkReviewMount? = null
     private var microphoneRequest: AutoCloseable? = null
     private var voiceCapsule: SemanticViewAdapter? = null
@@ -82,7 +86,9 @@ internal class AndroidRootPresentation(
     private var voiceOrb: AndroidVoiceOrbSurface? = null
     private var voiceResources: AndroidActiveVoice? = null
     private var voiceCall: VoiceCall? = null
-    private lateinit var voiceButton: Button
+    private lateinit var voiceButton: View
+    private val topBar = FrameLayout(activity)
+    private val title = TextView(activity)
     private val voiceCapsuleContainer = FrameLayout(activity)
     private var settingsActions: AndroidSettingsActions? = null
     private var drawer: DrawerPresenter? = null
@@ -111,25 +117,53 @@ internal class AndroidRootPresentation(
     private lateinit var panes: AdaptivePaneHost<CoreAndroidHost, CoreAndroidHost, AndroidTranscriptAnchor>
     private val observation: AndroidHostObservation
     private val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+    /** The top bar belongs to the session pane; the sidebar has its own heading, as on iOS. */
+    private val chromeSync = android.view.ViewTreeObserver.OnGlobalLayoutListener {
+        val sessionShown = content.visibility == View.VISIBLE
+        val bar = if (sessionShown) View.VISIBLE else View.GONE
+        if (topBar.visibility != bar) topBar.visibility = bar
+        val heading = if (snapshot?.route == AndroidHostRoute.CHAT) "OpenAgents" else ""
+        if (title.text.toString() != heading) title.text = heading
+    }
 
     init {
-        val buttons = LinearLayout(activity)
-        fun action(label: String, run: () -> Unit) = Button(activity).apply {
-            text = label
-            setOnClickListener { guarded(run) }
+        fun dp(value: Int) = OaStyle.dp(activity, value)
+        fun go(route: AndroidHostRoute) = guarded { owner.navigate(route); panes.showSession() }
+        val chrome = activity.getColor(R.color.oa_chrome)
+        val chromeBorder = activity.getColor(R.color.oa_chrome_border)
+        // The iOS sidebar's floating toolbar: common destinations, rarer ones under More, and New chat.
+        val tools = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+            background = OaStyle.rounded(activity, chrome, 28f, chromeBorder)
+            elevation = dp(3).toFloat()
         }
-        buttons.addView(action("Chat") { owner.selectDefaultChat(); panes.showSession() })
-        buttons.addView(action("New chat") { owner.navigate(AndroidHostRoute.SESSIONS); panes.showSession() })
-        buttons.addView(action("Settings") { owner.navigate(AndroidHostRoute.SETTINGS); panes.showSession() })
-        if (owner.account() != null) buttons.addView(action("Your ID") { owner.navigate(AndroidHostRoute.RECOVERY); panes.showSession() })
-        walletButton = action("Wallet") { owner.navigate(AndroidHostRoute.WALLET); panes.showSession() }
-        buttons.addView(walletButton)
-        voiceButton = action("Call") { requestVoice() }
-        buttons.addView(voiceButton)
-        voiceSettingsButton = action("Voice") { owner.navigate(AndroidHostRoute.VOICE_SETTINGS); panes.showSession() }
-        buttons.addView(voiceSettingsButton)
-        navigationContent.addView(buttons)
+        fun tool(icon: Int, label: String, run: () -> Unit) = OaStyle.iconButton(activity, icon, label, 48).apply {
+            setOnClickListener { run() }
+            tools.addView(this, LinearLayout.LayoutParams(dp(52), dp(48)))
+        }
+        tool(R.drawable.oa_ic_chat, "Chat") { panes.showSession(); guarded { owner.selectDefaultChat() } }
+        walletButton = tool(R.drawable.oa_ic_wallet, "Wallet") { go(AndroidHostRoute.WALLET) }
+        tool(R.drawable.oa_ic_settings, "Settings") { go(AndroidHostRoute.SETTINGS) }
+        moreButton = tool(R.drawable.oa_ic_more, "More") { showMore(moreButton) }
+        yourIdShown = owner.account() != null
+        val newChat = OaStyle.iconButton(activity, R.drawable.oa_ic_plus, "New chat", 56,
+            fill = activity.getColor(R.color.oa_accent), tint = activity.getColor(R.color.oa_on_accent)).apply {
+            elevation = dp(3).toFloat()
+            setOnClickListener { go(AndroidHostRoute.SESSIONS) }
+        }
+        val toolbar = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(8), dp(16), dp(12))
+            clipToPadding = false
+            addView(tools, LinearLayout.LayoutParams(-2, -2))
+            addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
+            addView(newChat, LinearLayout.LayoutParams(dp(56), dp(56)))
+        }
         navigationContent.addView(drawerView, LinearLayout.LayoutParams(-1, 0, 1f))
+        navigationContent.addView(toolbar, LinearLayout.LayoutParams(-1, -2))
         navigation.addView(navigationContent, FrameLayout.LayoutParams(-1, -1))
         navigation.addView(drawerContinuationContainer, FrameLayout.LayoutParams(-1, -1))
         content.addView(chatContainer, FrameLayout.LayoutParams(-1, -1))
@@ -144,30 +178,76 @@ internal class AndroidRootPresentation(
         }, {
             AdaptiveRetainedState(snapshot?.selectedChat, null, owner, owner, snapshot?.anchor)
         })
-        val toolbar = LinearLayout(activity)
-        toolbar.addView(action("Chats") { panes.showNavigation() })
-        toolbar.addView(notice, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(toolbar)
-        root.addView(ownerNoteBanner)
+        // The iOS top bar: a round menu button, a centered title, and the voice button.
+        val menu = OaStyle.iconButton(activity, R.drawable.oa_ic_menu, "Chats", 44, fill = chrome, stroke = chromeBorder).apply {
+            setOnClickListener { if (content.visibility == View.VISIBLE) panes.showNavigation() else panes.showSession() }
+        }
+        voiceButton = OaStyle.iconButton(activity, R.drawable.oa_ic_voice, "Call", 44, fill = chrome, stroke = chromeBorder).apply {
+            setOnClickListener { guarded { requestVoice() } }
+        }
+        OaStyle.text(title, 17f, OaStyle.Weight.SEMIBOLD)
+        title.gravity = android.view.Gravity.CENTER
+        title.maxLines = 1
+        title.ellipsize = android.text.TextUtils.TruncateAt.END
+        topBar.setPadding(dp(16), dp(6), dp(16), dp(6))
+        topBar.addView(title, FrameLayout.LayoutParams(-1, dp(44), android.view.Gravity.CENTER).apply {
+            marginStart = dp(56); marginEnd = dp(56)
+        })
+        topBar.addView(menu, FrameLayout.LayoutParams(dp(44), dp(44), android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL))
+        topBar.addView(voiceButton, FrameLayout.LayoutParams(dp(44), dp(44), android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
+        OaStyle.text(notice, 14f, colorResource = R.color.oa_secondary)
+        notice.gravity = android.view.Gravity.CENTER
+        notice.setPadding(dp(24), 0, dp(24), dp(8))
+        OaStyle.text(ownerNote, 15f)
+        ownerNoteBanner.setPadding(dp(16), dp(10), dp(8), dp(10))
+        ownerNoteBanner.gravity = android.view.Gravity.CENTER_VERTICAL
+        ownerNoteBanner.background = OaStyle.rounded(activity, activity.getColor(R.color.oa_fill), 16f)
+        root.addView(topBar, LinearLayout.LayoutParams(-1, -2))
+        root.addView(notice, LinearLayout.LayoutParams(-1, -2))
+        root.addView(ownerNoteBanner, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(12), 0, dp(12), dp(8)) })
         root.addView(labActionsContainer)
         root.addView(voiceCapsuleContainer)
         root.addView(panes.view, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.setBackgroundColor(activity.getColor(R.color.oa_background))
+        root.viewTreeObserver.addOnGlobalLayoutListener(chromeSync)
         observation = application.observeAndroidHost(::refresh)
-        // The whole root, toolbar included, sits inside the system bars and above the keyboard.
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+        // The whole root sits inside the system bars and above the keyboard. Children get the
+        // insets consumed, so nothing below pads for the keyboard a second time.
+        fun pad(insets: WindowInsetsCompat) {
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
-            imeBottom = keyboard.bottom
-            view.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
-            panes.refresh()
-            insets
+            root.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, keyboard.bottom))
         }
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            pad(insets)
+            panes.refresh()
+            WindowInsetsCompat.CONSUMED
+        }
+        ViewCompat.setWindowInsetsAnimationCallback(root, object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_STOP) {
+            override fun onProgress(insets: WindowInsetsCompat, running: MutableList<WindowInsetsAnimationCompat>): WindowInsetsCompat {
+                pad(insets)
+                return insets
+            }
+        })
         refresh()
     }
     // These callbacks run only after the pane's constructor has assigned its view.
     private fun panesViewWidth() = panes.view.width.takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
     private fun panesViewHeight() = panes.view.height.takeIf { it > 0 } ?: activity.resources.displayMetrics.heightPixels
     fun view(): View = root
+
+    private fun showMore(anchor: View) {
+        PopupMenu(activity, anchor).apply {
+            if (yourIdShown) menu.add("Your ID").setOnMenuItemClickListener {
+                guarded { owner.navigate(AndroidHostRoute.RECOVERY); panes.showSession() }; true
+            }
+            if (voiceSettingsShown) menu.add("Voice").setOnMenuItemClickListener {
+                guarded { owner.navigate(AndroidHostRoute.VOICE_SETTINGS); panes.showSession() }; true
+            }
+            show()
+        }
+    }
 
     fun refresh() {
         ui()
@@ -223,7 +303,8 @@ internal class AndroidRootPresentation(
         }
         resolveNotification(next)
         walletButton.visibility = if (next.account != null && next.signedIn) View.VISIBLE else View.GONE
-        voiceSettingsButton.visibility = if (next.account != null && next.client != null) View.VISIBLE else View.GONE
+        voiceSettingsShown = next.account != null && next.client != null
+        moreButton.visibility = if (yourIdShown || voiceSettingsShown) View.VISIBLE else View.GONE
         mountVoice(next)
         if (contentRevision != next.contentRevision) {
             closeChat()
@@ -718,6 +799,8 @@ internal class AndroidRootPresentation(
     fun handleBack(): Boolean {
         ui()
         if (snapshot?.route != AndroidHostRoute.CHAT) { guarded { owner.navigate(AndroidHostRoute.CHAT) }; return true }
+        // Back closes the full-screen sidebar, as dismissing the iOS drawer does.
+        if (content.visibility != View.VISIBLE) { panes.showSession(); return true }
         return panes.handleBack()
     }
     fun background() {
@@ -849,6 +932,9 @@ internal class AndroidRootPresentation(
         drawer?.detach(); drawer = null
         drawerView.onRequest = {}; drawerView.onIntent = {}; drawerView.onContinue = {}
         ViewCompat.setOnApplyWindowInsetsListener(panes.view, null)
+        ViewCompat.setOnApplyWindowInsetsListener(root, null)
+        ViewCompat.setWindowInsetsAnimationCallback(root, null)
+        root.viewTreeObserver.removeOnGlobalLayoutListener(chromeSync)
         panes.close()
         semanticMounts.values.forEach { it.close() }; semanticMounts.clear()
     }

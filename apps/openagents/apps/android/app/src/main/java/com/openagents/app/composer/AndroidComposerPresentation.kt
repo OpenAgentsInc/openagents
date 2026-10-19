@@ -2,8 +2,6 @@ package com.openagents.app.composer
 
 import android.content.Context
 import android.net.Uri
-import android.graphics.Typeface
-import android.os.Build
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -11,19 +9,20 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsets
-import android.view.WindowInsetsAnimation
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.core.view.OnReceiveContentListener
 import androidx.core.view.ViewCompat
+import com.openagents.app.OaStyle
+import com.openagents.app.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -201,30 +200,34 @@ class AndroidComposerPresentation(
         contentDescription = text
         setPadding(dp(8), dp(4), dp(8), dp(4))
     }
+    // The iOS composer: one rounded card holding the attachment button, the editor, and a round send button.
     private val inputRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.BOTTOM
+        setPadding(dp(6), dp(6), dp(6), dp(6))
+        background = OaStyle.rounded(context, context.getColor(R.color.oa_chrome), 26f, context.getColor(R.color.oa_chrome_border))
+        elevation = dp(2).toFloat()
     }
-    private val attachmentButton = Button(context).apply {
-        text = "＋"
-        contentDescription = "Add attachment"
-        minimumWidth = dp(48)
-        minimumHeight = dp(48)
-    }
+    private val attachmentButton = OaStyle.iconButton(context, R.drawable.oa_ic_plus, "Add attachment", 40,
+        fill = context.getColor(R.color.oa_fill))
     private val input = EditText(context).apply {
-        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         isSingleLine = false
         minLines = 1
         maxLines = 6
         imeOptions = EditorInfo.IME_ACTION_SEND or EditorInfo.IME_FLAG_NO_EXTRACT_UI
         setHorizontallyScrolling(false)
-        typeface = Typeface.DEFAULT
+        OaStyle.text(this, 17f)
+        setHintTextColor(context.getColor(R.color.oa_secondary))
+        background = null
+        minHeight = dp(40)
+        gravity = Gravity.CENTER_VERTICAL or Gravity.START
         contentDescription = "Message"
-        setPadding(dp(12), dp(10), dp(12), dp(10))
+        setPadding(dp(12), dp(8), dp(8), dp(8))
     }
-    private val sendButton = Button(context).apply {
-        minimumWidth = dp(48)
-        minimumHeight = dp(48)
+    private val sendButton = ImageButton(context).apply {
+        scaleType = android.widget.ImageView.ScaleType.CENTER
+        setPadding(0, 0, 0, 0)
     }
     private var frame: ComposerFrame? = null
     private var editorStamp: ComposerEditorStamp? = null
@@ -238,7 +241,6 @@ class AndroidComposerPresentation(
     private var mentionSearch: Job? = null
     private var activeMention: ActiveComposerMentionQuery? = null
     private var mentionGeneration = 0L
-    private val baseBottomPadding = root.paddingBottom
 
     private val textWatcher = object : TextWatcher {
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -264,7 +266,23 @@ class AndroidComposerPresentation(
             editorStamp = ack.stamp
             applyAck(ack)
             refreshMentionQuery()
+            refreshSendButton()
         }
+    }
+
+    /** Rust decides whether sending is possible; an empty draft only dims the button, as on iOS. */
+    private fun refreshSendButton() {
+        val current = frame ?: return
+        val primary = if (current.busy) current.stopAction else null
+        val ready = if (current.busy) primary?.enabled == true
+        else current.enabled && (input.text.isNotBlank() || pendingAttachments.isNotEmpty())
+        sendButton.isEnabled = if (current.busy) primary?.enabled == true else current.enabled
+        sendButton.setImageResource(if (current.busy) R.drawable.oa_ic_stop else R.drawable.oa_ic_arrow_up)
+        sendButton.imageTintList = android.content.res.ColorStateList.valueOf(context.getColor(
+            if (ready) R.color.oa_on_accent else R.color.oa_secondary))
+        sendButton.background = OaStyle.pressable(context,
+            OaStyle.circle(context.getColor(if (ready) R.color.oa_accent else R.color.oa_send_idle)),
+            OaStyle.circle(0xFF000000.toInt()))
     }
 
     init {
@@ -273,10 +291,11 @@ class AndroidComposerPresentation(
         root.addView(attachmentScroll, matchWrap())
         root.addView(mentionRow, matchWrap())
         root.addView(sendError, matchWrap())
-        inputRow.addView(attachmentButton, wrapWrap())
+        inputRow.addView(attachmentButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         inputRow.addView(input, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        inputRow.addView(sendButton, wrapWrap())
-        root.addView(inputRow, matchWrap())
+        inputRow.addView(sendButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+        root.addView(inputRow, matchWrap().apply { setMargins(dp(12), dp(6), dp(12), dp(10)) })
+        OaStyle.text(sendError, 14f, colorResource = R.color.oa_danger)
         input.addTextChangedListener(textWatcher)
         ViewCompat.setOnReceiveContentListener(input, arrayOf("image/*"), OnReceiveContentListener { _, payload ->
             val partitioned = payload.partition { item ->
@@ -322,7 +341,6 @@ class AndroidComposerPresentation(
             showChoices(sendButton)
             frame?.sendChoices?.isNotEmpty() == true
         }
-        installInsets()
     }
 
     /** Returns the root Android View to attach to the chat screen. */
@@ -375,9 +393,9 @@ class AndroidComposerPresentation(
         }
 
         val primary = if (next.busy) next.stopAction else null
-        sendButton.text = primary?.label ?: next.primaryLabel
-        sendButton.contentDescription = sendButton.text
-        sendButton.isEnabled = if (next.busy) primary?.enabled == true else next.enabled
+        sendButton.contentDescription = primary?.label ?: next.primaryLabel
+        sendButton.tooltipText = sendButton.contentDescription
+        refreshSendButton()
         attachmentButton.isEnabled = next.enabled && next.attachmentActions.isNotEmpty()
         attachmentButton.visibility = if (next.attachmentActions.isEmpty()) View.GONE else View.VISIBLE
 
@@ -404,10 +422,6 @@ class AndroidComposerPresentation(
         attachmentButton.setOnClickListener(null)
         sendButton.setOnClickListener(null)
         sendButton.setOnLongClickListener(null)
-        root.setOnApplyWindowInsetsListener(null)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            root.setWindowInsetsAnimationCallback(null)
-        }
         root.removeAllViews()
         pendingAttachments.clear()
         attachmentPickerListener = null
@@ -551,6 +565,8 @@ class AndroidComposerPresentation(
                 text = chip.label
                 contentDescription = chip.label
                 setPadding(dp(10), dp(4), dp(10), dp(4))
+                OaStyle.text(this, 13f, colorResource = R.color.oa_secondary)
+                background = OaStyle.rounded(context, context.getColor(R.color.oa_fill), 12f)
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             }, wrapWrap())
         }
@@ -608,6 +624,7 @@ class AndroidComposerPresentation(
             attachmentRow.addView(row, wrapWrap())
         }
         attachmentScroll.visibility = if (attachments.isEmpty() && pendingAttachments.isEmpty()) View.GONE else View.VISIBLE
+        refreshSendButton()
     }
 
     private fun renderMentions(actions: List<ComposerAction>) {
@@ -795,38 +812,6 @@ class AndroidComposerPresentation(
         }
         next.sendChoices.forEach { require(validId(it.token) && byteBound(it.label)) }
         require((next.sharedCardsJson?.toByteArray(StandardCharsets.UTF_8)?.size ?: 0) <= MAX_VIEW_BYTES)
-    }
-
-    private fun installInsets() {
-        root.setOnApplyWindowInsetsListener { view, insets ->
-            val ime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                insets.getInsets(WindowInsets.Type.ime()).bottom
-            } else insets.systemWindowInsetBottom
-            val bars = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                insets.getInsets(WindowInsets.Type.systemBars()).bottom
-            } else 0
-            setBottomInset(view, max(ime, bars))
-            insets
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            root.setWindowInsetsAnimationCallback(object : WindowInsetsAnimation.Callback(
-                WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE,
-            ) {
-                override fun onProgress(
-                    insets: WindowInsets,
-                    runningAnimations: MutableList<WindowInsetsAnimation>,
-                ): WindowInsets {
-                    val ime = insets.getInsets(WindowInsets.Type.ime()).bottom
-                    val bars = insets.getInsets(WindowInsets.Type.systemBars()).bottom
-                    setBottomInset(root, max(ime, bars))
-                    return insets
-                }
-            })
-        }
-    }
-
-    private fun setBottomInset(view: View, inset: Int) {
-        view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, baseBottomPadding + inset)
     }
 
     private fun checkMainThread() {
