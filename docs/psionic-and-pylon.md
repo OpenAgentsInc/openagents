@@ -6,6 +6,12 @@ does not gain their fleet, wallet, or earn behavior by retaining the survey.
 Use the [master roadmap](roadmap.md) and [agent labor plan](agents/market-infrastructure.md)
 for current integration priorities.
 
+Since 2026-10-07 this repository does hold both: Psionic in
+[`crates/psionic`](../crates/psionic/README.md) and the current Pylon in
+`crates/pylon` (`openagents pylon`). See [the Pylon guide](compute/pylon.md)
+and [the Pylon 1.0 spec](compute/pylon-1.0.md); the sections below that say
+this checkout holds no Pylon or Psionic source describe 2026-09-19.
+
 A map of the Psionic machine-learning stack and the Pylon node product: what
 each one is, which repository owns it, and where the files live. Surveyed
 2026-09-19 across `~/work/psionic`, `~/work/openagents`, and `~/work/coder`.

@@ -8,6 +8,10 @@ with an encrypted result (`26900`). The buyer then publishes a service
 receipt (`3201`), and an aggregator can count a pool's beacons and receipts
 into a pool aggregate (`30201`) that any reader can recompute.
 
+What Pylon 1.0 adds on top of this (one-command `up`, the agent
+contract, the MCP server, paid decisions) is specified in
+[pylon-1.0.md](pylon-1.0.md).
+
 This covers phases P1 to P3 of [Compute in the Verse](verse-compute.md#phased-plan):
 free jobs, checks, and [paid jobs](#paid-jobs-p3-test-sats) on test sats. A
 free job's receipt has a null `payment`.
@@ -118,16 +122,13 @@ idea comes from REAX's miner kit; see
 ### Answer decisions (Clef)
 
 OpenAgents decisions (the chat router, Coder's judges, file relevance, the
-Verse's questions) ask Jev (TypeSafe's API) first-class; connected pylons
-are the fallback and the shadow until they pass the router gate (#11225;
-NIP-DEC, "The OpenAgents decision API"). The owner decided this on
-2026-10-10 after the pylon judge measured 4.7–6 s with confidence 0.27–0.35
-on the router's main question set and missed prepared answers. A caller
-with a Jev key falls back to `POST /v1/systemone` on our API with the
-pylons first, and one Jev answer in twenty is asked again at the pylons
-for agreement; a caller without a key asks our API, which asks Jev under
-its house key, then the pylons, then Vertex. A pylon answers decisions with
-a local Psionic Clef server:
+Verse's questions) go to our own `POST /v1/systemone`, which asks our
+hosted Clef first, then connected pylons, then Jev under its house key as a
+backup, then Gemini on Vertex (owner, 2026-10-12; `INVARIANTS.md`, "The
+OpenAgents decision API"). `X-Decision-Order: pylon`, or asking for
+`clef-flash` or `openagents/pylon`, asks the pylons first; Jev first is a
+choice (`OPENAGENTS_DECISIONS=jev`). A pylon answers decisions with a
+local Psionic Clef server:
 
 ```sh
 # The Clef server (crates/psionic, CUDA on a 4080):
