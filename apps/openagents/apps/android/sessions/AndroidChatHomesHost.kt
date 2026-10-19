@@ -141,22 +141,35 @@ class AndroidChatHomesHost(
 
     private fun activate(owner: CoreChatHomes, instance: String, revision: Long, key: String, stamp: Long) {
         tasks.launch {
+            var unownedDraft: CoreContinuationDraft? = null
             try {
                 val action = requests.withLock {
-                    withContext(Dispatchers.IO) { owner.activate(instance, revision.toULong(), key) }
+                    withContext(Dispatchers.IO) {
+                        owner.activate(instance, revision.toULong(), key)
+                    }.also { result ->
+                        if (result is ChatHomeAction.Draft) unownedDraft = result.draft
+                    }
                 }
                 withContext(Dispatchers.Main.immediate) {
                     if (closed || generation != stamp) return@withContext
                     dispatchChatHomeAction(action, { navigation ->
                         dismiss()
                         onAction(navigation)
-                    }) { draft -> continueOnSelected(draft, stamp) }
+                    }) { draft ->
+                        continueOnSelected(draft, stamp)
+                        if (unownedDraft === draft) unownedDraft = null
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 withContext(Dispatchers.Main.immediate) {
                     if (!closed && generation == stamp) failure(error)
+                }
+            } finally {
+                withContext(NonCancellable + Dispatchers.Main.immediate) {
+                    unownedDraft?.let(::retireDraft)
+                    unownedDraft = null
                 }
             }
         }
