@@ -2,6 +2,9 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12100: bind cloud sends to the captured account lease and saved
+  submit, retry, and stop actions to their expected chat before admission.
+
 - [OpenAgents #12127](https://github.com/OpenAgentsInc/openagents/issues/12127):
   The desktop transcript rail caches prompt ticks between changes, limits
   long prompt previews before attachment parsing, and builds reply previews
