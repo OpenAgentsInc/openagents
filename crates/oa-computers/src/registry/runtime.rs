@@ -57,6 +57,7 @@ impl Driver for RuntimeDriver {
         create(request:&CreateRequest)->Outcome<String>;
         observe(computer:&str)->Outcome<Observation>;
         exec(computer:&str,exec:&Exec)->Outcome<ExecOutput>;
+        cancel_exec(computer:&str)->Outcome<()>;
         start_command(computer:&str,spec:&CommandSpec)->Outcome<String>;
         read_command(computer:&str,id:&str,cursor:CommandCursor,max_bytes:u64)->Outcome<CommandRead>;
         stop_command(computer:&str,id:&str)->Outcome<String>;

@@ -286,6 +286,7 @@ impl<D: Driver> Driver for BoundDriver<D> {
 
         observe(computer:&str)->Outcome<Observation>;
         exec(computer:&str,exec:&Exec)->Outcome<ExecOutput>;
+        cancel_exec(computer:&str)->Outcome<()>;
         read_command(computer:&str,id:&str,cursor:CommandCursor,max_bytes:u64)->Outcome<CommandRead>;
         stop_command(computer:&str,id:&str)->Outcome<String>;
         read_workspace_file(computer:&str,path:&str)->Result<Vec<u8>,computer_files::FileError>;
