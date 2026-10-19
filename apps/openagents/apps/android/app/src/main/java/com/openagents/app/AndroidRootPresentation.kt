@@ -512,13 +512,18 @@ internal class AndroidRootPresentation(
     }
 
     private fun openMedia(next: AndroidHostSnapshot, frameRevision: ULong, target: TranscriptHitTarget.Widget) {
-        val history = next.history ?: return showFailure()
+        val history = next.history
+        val engine = layout ?: return showFailure()
         closeMedia()
         val request = mediaRequest
         mediaLoad = scope.launch {
             var bytes: ByteArray? = null
             try {
-                withContext(Dispatchers.IO) { bytes = TranscriptMediaLoader(history).image(target) }
+                withContext(Dispatchers.IO) {
+                    bytes = if (target.kind is WidgetKind.Image) owner.transcriptImage(engine,
+                        next.generation, next.contentRevision, frameRevision, target.rowKey, target.widgetId)
+                    else history?.let { TranscriptMediaLoader(it).image(target) }
+                }
                 val payload = bytes ?: return@launch showFailure()
                 if (closed || !foreground || request != mediaRequest || snapshot?.route != AndroidHostRoute.CHAT ||
                     mountedIdentity != (next.generation to next.contentRevision) ||

@@ -1140,3 +1140,11 @@ links remain readable. Upstream fixes now require manual ports.
   frame closure and on route, account, background, and Activity changes. Inline
   registration fixtures are authored but unrun; native lifecycle, touch, and
   integrated rendering checks remain pending.
+
+- #12100: Read inline and zoomed image bytes through a current-frame Rust host
+  API. Live images use the exact indexed execution device; saved images require
+  the exact selected reader chat. Recheck account, content, frame, row, widget,
+  and source after loading; text-only cloud/indexed sources never fall through
+  to the saved reader. Android decodes only returned bytes, caps ordinary image
+  bitmaps at 2 MiB each, and clears bytes/bitmaps on cancellation and retirement.
+  Source-fence fixtures are authored but unrun.

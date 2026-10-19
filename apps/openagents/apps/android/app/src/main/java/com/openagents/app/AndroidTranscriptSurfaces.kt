@@ -60,7 +60,7 @@ internal class AndroidTranscriptSurfaces(
             val display = frame.display(row.index) ?: continue
             for (widget in display.widgets.take(256)) {
                 if (visible.size >= 16) break
-                if (widget.kind !is WidgetKind.Visual && widget.kind !is WidgetKind.LabMedia) continue
+                if (widget.kind !is WidgetKind.Visual && widget.kind !is WidgetKind.LabMedia && widget.kind !is WidgetKind.Image) continue
                 if (!listOf(widget.x, widget.y, widget.w, widget.h).all(Float::isFinite)
                     || widget.w <= 0f || widget.h !in 1f..8192f || widget.w > 16384f) continue
                 val scroller = widget.scroller?.let { display.scrollers.getOrNull(it.toInt()) ?: return@let null }
@@ -102,6 +102,12 @@ internal class AndroidTranscriptSurfaces(
         failed.retainAll(visible)
     }
     private fun create(widget: Widget, row: ULong, revision: ULong): Mount? = when (widget.kind) {
+        is WidgetKind.Image -> {
+            val image = AndroidTranscriptImage(context, scope) {
+                owner.transcriptImage(transcript, generation, contentRevision, revision, row, widget.id)
+            }
+            Mount(image.view, image::close)
+        }
         is WidgetKind.Visual -> {
             val session = owner.transcriptVisual(transcript, generation, contentRevision, revision, row, widget.id)
             if (session == null) null else {

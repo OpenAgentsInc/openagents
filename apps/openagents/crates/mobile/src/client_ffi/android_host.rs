@@ -1,4 +1,5 @@
 //! Retained Android account, navigation, and chat ownership. Activities borrow these handles.
+mod images;
 mod links;
 mod notifications;
 pub use notifications::AndroidNotificationOpen;
@@ -972,6 +973,27 @@ impl CoreAndroidHost {
             }
             _ => AndroidTranscriptEffect::Unavailable,
         })
+    }
+    /// Read an image from this exact frame's live or saved content source.
+    pub async fn transcript_image(
+        &self,
+        view: Arc<crate::layout::TranscriptView>,
+        generation: u64,
+        content_revision: u64,
+        frame_revision: u64,
+        row: u64,
+        widget: u32,
+    ) -> CoreResult<Option<Vec<u8>>> {
+        images::load(
+            self,
+            view,
+            generation,
+            content_revision,
+            frame_revision,
+            row,
+            widget,
+        )
+        .await
     }
     /// Borrow only the visual named by a widget in the current account's frame.
     pub fn transcript_visual(
