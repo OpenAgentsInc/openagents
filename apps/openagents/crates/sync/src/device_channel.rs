@@ -83,7 +83,10 @@ impl DeviceChannel {
         self.link
             .proof_headers(intent, account)
             .await
-            .map_err(|_| Failure::Unavailable)
+            .map_err(|error| {
+                tracing::warn!(%error, "the computer didn't vouch for this device");
+                Failure::Unavailable
+            })
     }
 
     /// `link` comes from `Connector::link` for this paired computer.
@@ -109,6 +112,9 @@ impl DeviceChannel {
         let request = Request { method, params };
         request.validate().map_err(|e| Failure::Refused(e.code))?;
         let result = self.link.app_call(request.clone()).await;
+        if let Err(error) = &result {
+            tracing::warn!(?method, %error, "a call to the computer failed");
+        }
         match result {
             Ok(answer) if answer.answers(&request) && answer.validate().is_ok() => {
                 Ok(Some(answer.value))
@@ -129,6 +135,11 @@ impl DeviceChannel {
                 Err(Failure::Refused(error.code))
             }
             _ if method.reads_only() => Err(Failure::Unavailable),
+            // Account linking carries no command to check on: its answer is
+            // asked for again with a new code.
+            _ if matches!(method, Method::LinkAccount | Method::AccountLinked) => {
+                Err(Failure::Unavailable)
+            }
             _ => Err(Failure::Uncertain {
                 command_id: if method == Method::RunCommand {
                     request.params["request_id"].as_str().unwrap().into()
@@ -209,6 +220,23 @@ mod tests {
             })
         );
         assert_eq!(link.calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn an_unanswered_account_link_is_unavailable_not_a_crash() {
+        // These carry no command id; reading one panicked the call.
+        let (link_channel, _) = channel(Code::Unavailable, true, true);
+        let link = json!({"url": "https://api.openagents.com/v1/device/keys", "challenge": "c"});
+        assert_eq!(
+            link_channel.call("LinkAccount", link).await,
+            Err(Failure::Unavailable)
+        );
+        assert_eq!(
+            link_channel
+                .call("AccountLinked", json!({"pubkey": "a".repeat(64)}))
+                .await,
+            Err(Failure::Unavailable)
+        );
     }
 
     #[tokio::test]

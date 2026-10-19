@@ -1845,6 +1845,14 @@ fn sidebar_account_identity(
     }
 }
 
+/// Whether a newly offered switch to the synced workspace starts without the
+/// dialog: only on a computer with no local chats or projects.
+fn switches_without_asking(previous: SyncFlow, next: SyncFlow, local: (usize, usize)) -> bool {
+    matches!(next, SyncFlow::SwitchOffer { notice_open: true })
+        && !matches!(previous, SyncFlow::SwitchOffer { .. })
+        && local_work_phrase(local.0, local.1).is_none()
+}
+
 fn sync_flow_after_auth(
     flow: SyncFlow,
     scope: Option<WorkspaceScope>,
@@ -2261,6 +2269,9 @@ pub struct Shell {
     /// Dev/testing knobs (`OPENAGENTS_OPEN_DIALOG`, `OPENAGENTS_FORCE_GATE`,
     /// `OPENAGENTS_DEMO_UPLOAD`) — see [`Shell::new`].
     debug_dialog: Option<String>,
+    /// The account generation a sign-in the engine didn't see already
+    /// switched the workspace for, so it switches once.
+    joined_switch: Option<u64>,
     debug_gate: Option<GatePhase>,
     debug_upload: Option<String>,
     sidebar_tween: Option<WidthTween>,
@@ -2742,6 +2753,7 @@ impl Shell {
             resort_epoch: 0,
             was_window_active: false,
             debug_dialog,
+            joined_switch: None,
             debug_gate,
             debug_upload,
             sidebar_tween: None,
@@ -2881,6 +2893,7 @@ impl Shell {
             self.next_sync_flow(state.workspace_scope, state.auth.as_ref(), cx)
         };
         if next_sync_flow != self.sync_flow {
+            let previous = self.sync_flow;
             self.sync_flow = next_sync_flow;
             if matches!(
                 self.sync_flow,
@@ -2888,6 +2901,7 @@ impl Shell {
             ) {
                 self.org = None;
             }
+            self.switch_empty_computer(previous, cx);
         }
         // The in-place local→synced switch: once the replacement runtime is
         // attached and Ready, kick the import (or finish) from here.
@@ -6446,6 +6460,47 @@ impl Shell {
             settings::sync_switch_later_until_ms(cx),
             unix_now_ms(),
         )
+    }
+
+    /// A computer with no chats or projects of its own has nothing to bring
+    /// or keep, so signing in (a phone linking it, or Start here) switches
+    /// it to the account's synced chats at once instead of asking.
+    fn switch_empty_computer(&mut self, previous: SyncFlow, cx: &mut Context<Self>) {
+        if !switches_without_asking(previous, self.sync_flow, {
+            let state = self.state.read(cx);
+            (state.chats.len(), state.spaces.len())
+        }) {
+            return;
+        }
+        self.start_synced_switch(false, cx);
+    }
+
+    /// A phone linked this computer to its account (or Start here made
+    /// one) while the engine runs in its own process: that engine signed
+    /// in at its start and doesn't see the new sign-in. With nothing local
+    /// to keep, restart it on the account's synced chats now, once per
+    /// sign-in, instead of leaving the computer local until a relaunch.
+    fn switch_after_joining(&mut self, cx: &mut Context<Self>) {
+        let Some(account) = crate::openagents_account::AppAccount::global(cx) else {
+            return;
+        };
+        let snapshot = &account.read(cx).snapshot;
+        if !matches!(snapshot.phase, openagents_account::Phase::SignedIn { .. }) {
+            return;
+        }
+        let generation = snapshot.generation;
+        let state = self.state.read(cx);
+        let ready = self.joined_switch != Some(generation)
+            && self.runtime_change_task.is_none()
+            && self.sync_flow == SyncFlow::Idle
+            && state.workspace_scope == Some(WorkspaceScope::Local)
+            && matches!(state.auth, Some(AuthState::SignedOut))
+            && local_work_phrase(state.chats.len(), state.spaces.len()).is_none();
+        if !ready {
+            return;
+        }
+        self.joined_switch = Some(generation);
+        self.start_synced_switch(false, cx);
     }
 
     fn postpone_sync_restart(&mut self, cx: &mut Context<Self>) {
@@ -13176,6 +13231,7 @@ fn header_icon_button_with(
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.switch_after_joining(cx);
         // Test knob: `OPENAGENTS_OPEN_DIALOG=connect-phone` picks Connect your
         // phone in the welcome, as a click would, so a check can pair a phone
         // without synthetic input.
@@ -13281,7 +13337,9 @@ impl Render for Shell {
             let state = self.state.read(cx);
             (state.workspace_scope, state.auth.clone())
         };
+        let previous = self.sync_flow;
         self.sync_flow = self.next_sync_flow(workspace_scope, auth.as_ref(), cx);
+        self.switch_empty_computer(previous, cx);
         let restart_required = self.sync_flow == SyncFlow::SignedOutRestartRequired;
         let gate = self
             .debug_gate
@@ -14546,6 +14604,17 @@ mod tests {
     fn only_visible_sync_steps_block_escape() {
         assert!(!SyncFlow::Idle.has_visible_overlay());
         assert!(!SyncFlow::SwitchOffer { notice_open: false }.has_visible_overlay());
+        // A computer with nothing local switches at once; one with work asks.
+        let offer = SyncFlow::SwitchOffer { notice_open: true };
+        assert!(switches_without_asking(SyncFlow::Idle, offer, (0, 0)));
+        assert!(!switches_without_asking(SyncFlow::Idle, offer, (2, 0)));
+        assert!(!switches_without_asking(SyncFlow::Idle, offer, (0, 1)));
+        assert!(!switches_without_asking(offer, offer, (0, 0)));
+        assert!(!switches_without_asking(
+            SyncFlow::Idle,
+            SyncFlow::SwitchOffer { notice_open: false },
+            (0, 0)
+        ));
         assert!(SyncFlow::SwitchOffer { notice_open: true }.has_visible_overlay());
         assert!(SyncFlow::Importing { done: 1, total: 3 }.has_visible_overlay());
         assert!(SyncFlow::SignOutConfirm.has_visible_overlay());

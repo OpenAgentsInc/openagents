@@ -13,6 +13,7 @@
 
 mod android_host;
 pub use android_host::*;
+mod android_log;
 mod android_sessions;
 pub use android_sessions::*;
 mod android_recovery;

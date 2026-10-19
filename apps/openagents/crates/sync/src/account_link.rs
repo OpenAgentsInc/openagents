@@ -20,7 +20,7 @@ use crate::device_channel::{Code, DeviceChannel, Failure};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use nostr::domain::{Event, RelaySigner, Tag};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -102,9 +102,14 @@ pub async fn request(
     own: Option<&str>,
     now: u64,
 ) -> Result<Proof, LinkError> {
-    let answer = channel
-        .call(METHOD, json!({"url": url, "challenge": challenge}))
-        .await
+    let params = json!({"url": url, "challenge": challenge});
+    let mut answer = channel.call(METHOD, params.clone()).await;
+    // The computer answers the same request again with the same proof: ask
+    // once more when the first answer didn't arrive.
+    if matches!(answer, Err(Failure::Unavailable)) {
+        answer = channel.call(METHOD, params).await;
+    }
+    let answer = answer
         .map_err(|error| match error {
             Failure::Refused(_) => LinkError::NotOffered,
             _ => LinkError::Unavailable,
@@ -172,8 +177,9 @@ pub struct Signer {
     secret: secp256k1::SecretKey,
     urls: Vec<String>,
     ready: AtomicBool,
-    /// Grants a proof was signed for.
-    used: Mutex<HashSet<String>>,
+    /// Grants a proof was signed for, with the address and challenge it
+    /// answered and the proof, so a lost answer can be asked for again.
+    used: Mutex<HashMap<String, (String, String, Value)>>,
     /// Grants that said the link landed.
     confirmed: Mutex<HashSet<String>>,
 }
@@ -199,7 +205,7 @@ impl Signer {
             secret,
             urls,
             ready: AtomicBool::new(true),
-            used: Mutex::new(HashSet::new()),
+            used: Mutex::new(HashMap::new()),
             confirmed: Mutex::new(HashSet::new()),
         }
     }
@@ -236,7 +242,7 @@ impl Signer {
             .used
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .contains(grant);
+            .contains_key(grant);
         let mut confirmed = self
             .confirmed
             .lock()
@@ -306,18 +312,22 @@ impl Signer {
         if now < issued.saturating_sub(60) || now > issued.saturating_add(LINK_WINDOW) {
             return Err(Code::Forbidden);
         }
-        {
-            let mut used = self
-                .used
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if used.contains(grant) || grant.is_empty() {
-                return Err(Code::Forbidden);
-            }
-            if used.len() >= MAX_USED {
-                used.clear();
-            }
-            used.insert(grant.to_owned());
+        if grant.is_empty() {
+            return Err(Code::Forbidden);
+        }
+        let mut used = self
+            .used
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // One proof per grant. The same request again gets the same proof,
+        // so a phone whose answer was lost on the way can ask once more;
+        // any other request from that grant is refused.
+        if let Some((signed_url, signed_challenge, answer)) = used.get(grant) {
+            return if signed_url == url && signed_challenge == challenge {
+                Ok(answer.clone())
+            } else {
+                Err(Code::Forbidden)
+            };
         }
         let signer = RelaySigner::from_secret_hex(&self.secret.display_secret().to_string())
             .map_err(|_| Code::Unavailable)?;
@@ -331,7 +341,15 @@ impl Signer {
             ],
             String::new(),
         );
-        Ok(json!({ "event": event }))
+        let answer = json!({ "event": event });
+        if used.len() >= MAX_USED {
+            used.clear();
+        }
+        used.insert(
+            grant.to_owned(),
+            (url.to_owned(), challenge.to_owned(), answer.clone()),
+        );
+        Ok(answer)
     }
 }
 
@@ -371,9 +389,15 @@ mod tests {
         let answer = signer.sign("grant-a", fresh(120), &params, NOW).unwrap();
         let proof = check(&answer, url, "v1.1.abc.def", None, NOW).unwrap();
         assert_eq!(proof.key, signer.key());
-        // Once per grant.
+        // One proof per grant: the same request again gets the same proof
+        // (its first answer may have been lost), and any other is refused.
         assert_eq!(
-            signer.sign("grant-a", fresh(120), &params, NOW),
+            signer.sign("grant-a", fresh(120), &params, NOW + 5),
+            Ok(answer)
+        );
+        let other = json!({"url": url, "challenge": "v1.1.other"});
+        assert_eq!(
+            signer.sign("grant-a", fresh(120), &other, NOW),
             Err(Code::Forbidden)
         );
         // An old grant, or one that isn't a 30-day connect-code grant.

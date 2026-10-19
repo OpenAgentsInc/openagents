@@ -48,7 +48,7 @@ for abi in arm64-v8a x86_64; do
   fi
   while IFS= read -r library; do
     case "$library" in
-      libandroid.so|libdl.so|libm.so|libc.so|libc++_shared.so) ;;
+      libandroid.so|libdl.so|liblog.so|libm.so|libc.so|libc++_shared.so) ;;
       *)
         echo "unsupported Android runtime dependency for $abi: $library" >&2
         exit 1

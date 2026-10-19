@@ -446,6 +446,7 @@ impl CoreAndroidHost {
         storage: Arc<dyn AndroidSecretStorage>,
         listener: Arc<dyn AndroidHostListener>,
     ) -> CoreResult<Arc<Self>> {
+        super::android_log::install();
         let events = Arc::new(Events(listener));
         let deployment = Deployment::production();
         let account = CoreAccount::new_with_secure_storage(

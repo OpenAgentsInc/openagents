@@ -400,7 +400,7 @@ pub async fn pair_scanned(
         iroh: route,
     };
     let (channel, device_id) = open(&computer, policy).await.map_err(|error| {
-        tracing::debug!(%error, "paired computer didn't connect");
+        tracing::warn!(%error, "paired computer didn't connect");
         PairError::new(UNREACHABLE)
     })?;
     computer.device_id = device_id;

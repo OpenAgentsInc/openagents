@@ -73,6 +73,7 @@ breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.26.0", 
 bitcoin-amount = { path = "../../../../crates/bitcoin-amount" }
 
 [target.'cfg(target_os = "android")'.dependencies]
+tracing-subscriber.workspace = true
 jni = "0.22.4"
 ndk-context = "0.1.1"
 rustls-platform-verifier = "0.7.1"

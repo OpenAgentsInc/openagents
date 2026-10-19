@@ -511,7 +511,10 @@ impl Handler for AppRpc {
         if request.method != coder_access::app_rpc::Method::AuthorizeSync {
             return self.call(request_id, device, grant, request);
         }
-        let issuer = self.sync.as_ref().ok_or(Code::Unsupported)?;
+        let Some(issuer) = self.sync.as_ref() else {
+            tracing::warn!("a phone asked for a sync proof before sync was set up here");
+            return Err(Code::Unsupported);
+        };
         if coder_access::Rights::pairing()
             .first_missing(admission.rights)
             .is_some()
@@ -522,6 +525,7 @@ impl Handler for AppRpc {
             serde_json::from_value(request.params.clone()).map_err(|_| Code::Malformed)?;
         intent.validate().map_err(|e| e.code)?;
         if !intent.has_origin(&issuer.origin) {
+            tracing::warn!(origin = %issuer.origin, "a phone asked for a sync proof for another server");
             return Err(Code::Forbidden);
         }
         let now = coder_access::unix_time().map_err(|e| e.code)?;
