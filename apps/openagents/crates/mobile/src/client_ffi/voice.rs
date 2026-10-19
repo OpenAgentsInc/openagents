@@ -3,6 +3,7 @@
 //! platform renders typed snapshots exactly as the desktop reads them.
 use super::*;
 use crate::orb::VoiceOrb;
+use crate::voice_ui::{self, VoiceIntent, VoiceUiAction};
 use openagents_proto::voice::{
     VoiceChatContext, VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp,
 };
@@ -12,6 +13,47 @@ use std::sync::{
     Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
+
+static NEXT_VOICE_VIEW_INSTANCE: AtomicU64 = AtomicU64::new(1);
+
+struct CallPresentation {
+    instance: String,
+    revision: u64,
+    state: VoiceCallState,
+    closed: bool,
+    capsule: Option<rust_native::ValidatedView<VoiceIntent>>,
+    screen: Option<rust_native::ValidatedView<VoiceIntent>>,
+}
+
+fn new_call_presentation() -> Arc<Mutex<CallPresentation>> {
+    let id = NEXT_VOICE_VIEW_INSTANCE.fetch_add(1, Ordering::Relaxed);
+    Arc::new(Mutex::new(CallPresentation {
+        instance: format!("voice-call-{id}"),
+        revision: 0,
+        state: call_state(&VoiceView::new()),
+        closed: false,
+        capsule: None,
+        screen: None,
+    }))
+}
+
+fn publish_call_state(presentation: &Mutex<CallPresentation>, state: VoiceCallState) -> bool {
+    let mut current = presentation.lock().unwrap();
+    if current.closed {
+        return false;
+    }
+    current.state = state;
+    current.capsule = None;
+    current.screen = None;
+    true
+}
+
+fn close_call_presentation(presentation: &Mutex<CallPresentation>) {
+    let mut current = presentation.lock().unwrap();
+    current.closed = true;
+    current.capsule = None;
+    current.screen = None;
+}
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
@@ -260,10 +302,13 @@ impl VoiceMediaEndpoint for PlatformMedia {
         Ok((r.microphone, r.speaker))
     }
     fn close(&self) {
-        if self.closed.swap(true, Ordering::AcqRel) {
-            return;
-        }
-        let pending = std::mem::take(&mut *self.pending.lock().unwrap());
+        let pending = {
+            let mut pending = self.pending.lock().unwrap();
+            if self.closed.swap(true, Ordering::AcqRel) {
+                return;
+            }
+            std::mem::take(&mut *pending)
+        };
         for (_, tx) in pending {
             let _ = tx.send(Err(VoiceRejection::InvalidLease));
         }
@@ -283,9 +328,11 @@ pub struct VoiceCall {
     cancel: CancellationToken,
     muted: watch::Sender<bool>,
     context: watch::Sender<Option<VoiceChatContext>>,
+    presentation: Arc<Mutex<CallPresentation>>,
 }
 impl Drop for VoiceCall {
     fn drop(&mut self) {
+        close_call_presentation(&self.presentation);
         self.media.close();
         self.cancel.cancel();
     }
@@ -310,11 +357,117 @@ impl VoiceCall {
     pub fn set_muted(&self, muted: bool) {
         if !self.cancel.is_cancelled() {
             self.muted.send_replace(muted);
+            let mut presentation = self.presentation.lock().unwrap();
+            if !presentation.closed {
+                presentation.state.muted = muted;
+                presentation.capsule = None;
+                presentation.screen = None;
+            }
         }
     }
     pub fn stop(&self) {
+        close_call_presentation(&self.presentation);
         self.media.close();
         self.cancel.cancel();
+    }
+
+    /// Current Rust-owned compact call view. A new revision replaces its prior activation tree.
+    pub fn capsule_view(&self) -> Result<String, CoreError> {
+        let mut current = self.presentation.lock().unwrap();
+        if current.closed || self.cancel.is_cancelled() {
+            return Err(CoreError::Closed);
+        }
+        current.revision =
+            current
+                .revision
+                .checked_add(1)
+                .ok_or_else(|| CoreError::InvalidArgument {
+                    message: "Couldn't refresh the call controls.".into(),
+                })?;
+        let view = voice_ui::call_capsule(&current.instance, current.revision, &current.state)
+            .map_err(|_| CoreError::InvalidArgument {
+                message: "Couldn't open the call controls.".into(),
+            })?;
+        let json = serde_json::to_string(view.view()).map_err(|_| CoreError::InvalidArgument {
+            message: "Couldn't open the call controls.".into(),
+        })?;
+        current.capsule = Some(view);
+        Ok(json)
+    }
+
+    /// Current Rust-owned full call view. A new revision replaces its prior activation tree.
+    pub fn screen_view(&self) -> Result<String, CoreError> {
+        let mut current = self.presentation.lock().unwrap();
+        if current.closed || self.cancel.is_cancelled() {
+            return Err(CoreError::Closed);
+        }
+        current.revision =
+            current
+                .revision
+                .checked_add(1)
+                .ok_or_else(|| CoreError::InvalidArgument {
+                    message: "Couldn't refresh the call screen.".into(),
+                })?;
+        let view = voice_ui::call_screen(&current.instance, current.revision, &current.state)
+            .map_err(|_| CoreError::InvalidArgument {
+                message: "Couldn't open the call screen.".into(),
+            })?;
+        let json = serde_json::to_string(view.view()).map_err(|_| CoreError::InvalidArgument {
+            message: "Couldn't open the call screen.".into(),
+        })?;
+        current.screen = Some(view);
+        Ok(json)
+    }
+
+    /// Resolve only the current Rust Native tree. No action payload crosses this boundary.
+    pub fn activate_view(
+        &self,
+        instance: String,
+        revision: u64,
+        node: String,
+    ) -> Result<VoiceUiAction, CoreError> {
+        let (should_end, next_muted, action) = {
+            let current = self.presentation.lock().unwrap();
+            if current.closed || self.cancel.is_cancelled() {
+                return Err(CoreError::Closed);
+            }
+            let activation = rust_native::Activation {
+                instance,
+                revision,
+                node,
+            };
+            let intent = current
+                .capsule
+                .as_ref()
+                .and_then(|view| view.activate(&activation).ok())
+                .or_else(|| {
+                    current
+                        .screen
+                        .as_ref()
+                        .and_then(|view| view.activate(&activation).ok())
+                })
+                .ok_or_else(|| CoreError::InvalidArgument {
+                    message: "Those call controls are out of date.".into(),
+                })?;
+            match intent {
+                VoiceIntent::ToggleMute => {
+                    (false, Some(!current.state.muted), VoiceUiAction::Handled)
+                }
+                VoiceIntent::EndCall => (true, None, VoiceUiAction::Handled),
+                VoiceIntent::OpenCall => return Ok(VoiceUiAction::OpenCall),
+                VoiceIntent::RefreshUsage => {
+                    return Err(CoreError::InvalidArgument {
+                        message: "That control is not available in a call.".into(),
+                    });
+                }
+            }
+        };
+        if should_end {
+            self.stop();
+        } else if let Some(muted) = next_muted {
+            self.set_muted(muted);
+        }
+        Ok(action)
     }
     /// Late native callbacks simply miss the retired request. No resume is possible.
     pub fn complete_media(
@@ -325,10 +478,14 @@ impl VoiceCall {
         microphone: u16,
         speaker: u16,
     ) {
-        if self.media.closed.load(Ordering::Acquire) {
-            return;
-        }
-        if let Some(tx) = self.media.pending.lock().unwrap().remove(&request_id) {
+        let tx = {
+            let mut pending = self.media.pending.lock().unwrap();
+            if self.media.closed.load(Ordering::Acquire) {
+                return;
+            }
+            pending.remove(&request_id)
+        };
+        if let Some(tx) = tx {
             let reply = match failure {
                 Some(VoiceMediaFailure::PermissionDenied) => {
                     Err(VoiceRejection::MicrophonePermissionDenied)
@@ -353,9 +510,13 @@ async fn present(
     listener: Arc<dyn VoiceSessionListener>,
     mut events: mpsc::Receiver<openagents_proto::voice::VoiceEvent>,
     muted: watch::Receiver<bool>,
+    presentation: Arc<Mutex<CallPresentation>>,
 ) {
     let mut view = VoiceView::new();
-    listener.on_voice_state(call_state(&view));
+    let initial = call_state(&view);
+    if publish_call_state(&presentation, initial.clone()) {
+        listener.on_voice_state(initial);
+    }
     let mut muted = Some(muted);
     loop {
         let changed = tokio::select! {
@@ -378,7 +539,10 @@ async fn present(
             }
         };
         if changed {
-            listener.on_voice_state(call_state(&view));
+            let state = call_state(&view);
+            if publish_call_state(&presentation, state.clone()) {
+                listener.on_voice_state(state);
+            }
         }
     }
 }
@@ -404,17 +568,24 @@ impl CoreClient {
         let (muted, rx) = watch::channel(false);
         let (context, context_rx) = watch::channel(None);
         let presented_mute = rx.clone();
+        let presentation = new_call_presentation();
         let handle = Arc::new(VoiceCall {
             host_device_id: host_device_id.clone(),
             media: platform.clone(),
             cancel: cancel.clone(),
             muted,
             context,
+            presentation: presentation.clone(),
         });
         let client = self.client.clone();
         zc::runtime::handle().spawn(async move {
             let (events, receiver) = mpsc::channel(32);
-            let forward = tokio::spawn(present(listener.clone(), receiver, presented_mute));
+            let forward = tokio::spawn(present(
+                listener.clone(),
+                receiver,
+                presented_mute,
+                presentation.clone(),
+            ));
             let operation = async {
                 let control = client
                     .voice_transport(&host_device_id)
@@ -443,6 +614,7 @@ impl CoreClient {
             platform.close();
             // Every sender is gone: the presenter drains what was queued.
             let _ = forward.await;
+            close_call_presentation(&presentation);
             listener.on_voice_closed(result.err().map(VoiceEndReason::from));
         });
         handle
@@ -453,6 +625,79 @@ impl CoreClient {
 mod tests {
     use super::*;
     use openagents_proto::voice::{VoiceEvent, VoiceSnapshot};
+
+    fn test_call() -> VoiceCall {
+        VoiceCall {
+            host_device_id: "host".into(),
+            media: media(Arc::new(Listener(Mutex::new(vec![])))),
+            cancel: CancellationToken::new(),
+            muted: watch::channel(false).0,
+            context: watch::channel(None).0,
+            presentation: new_call_presentation(),
+        }
+    }
+
+    fn activation(view: &str, node: &str) -> (String, u64, String) {
+        let view: serde_json::Value = serde_json::from_str(view).unwrap();
+        (
+            view["instance"].as_str().unwrap().to_owned(),
+            view["revision"].as_u64().unwrap(),
+            node.to_owned(),
+        )
+    }
+
+    #[test]
+    fn call_view_rejects_stale_and_wrong_view_activations() {
+        let call = test_call();
+        let old = call.screen_view().unwrap();
+        let (instance, revision, _) = activation(&old, "end-call");
+        assert!(
+            call.activate_view(format!("{instance}-other"), revision, "end-call".into())
+                .is_err()
+        );
+        let mut updated = call.presentation.lock().unwrap().state.clone();
+        updated.speaking = true;
+        assert!(publish_call_state(&call.presentation, updated));
+        assert!(
+            call.activate_view(instance.clone(), revision, "end-call".into())
+                .is_err()
+        );
+
+        let current = call.screen_view().unwrap();
+        let (instance, revision, _) = activation(&current, "voice-title");
+        assert!(
+            call.activate_view(instance, revision, "voice-title".into())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn call_view_rejects_activation_after_call_closes() {
+        let call = test_call();
+        let current = call.screen_view().unwrap();
+        let (instance, revision, _) = activation(&current, "end-call");
+        call.stop();
+        assert!(matches!(
+            call.activate_view(instance, revision, "end-call".into()),
+            Err(CoreError::Closed)
+        ));
+    }
+
+    #[test]
+    fn current_call_view_runs_mute_in_rust() {
+        let call = test_call();
+        let mut state = call.presentation.lock().unwrap().state.clone();
+        state.phase = VoiceCallPhase::Active;
+        assert!(publish_call_state(&call.presentation, state));
+        let current = call.screen_view().unwrap();
+        let (instance, revision, _) = activation(&current, "toggle-mute");
+        assert_eq!(
+            call.activate_view(instance, revision, "toggle-mute".into()),
+            Ok(VoiceUiAction::Handled)
+        );
+        assert!(call.presentation.lock().unwrap().state.muted);
+    }
+
     #[tokio::test]
     async fn voice_context_changes_only_on_the_active_call() {
         let listener = Arc::new(Listener(Mutex::new(vec![])));
@@ -463,6 +708,7 @@ mod tests {
             cancel: CancellationToken::new(),
             muted: watch::channel(false).0,
             context,
+            presentation: new_call_presentation(),
         };
         call.update_context(Some("chat-x".into()), Some("Chat X".into()));
         assert_eq!(rx.borrow().as_ref().unwrap().chat_id, "chat-x");
@@ -488,12 +734,6 @@ mod tests {
     async fn close_releases_pending_callbacks_and_rejects_late_replies() {
         let listener = Arc::new(Listener(Mutex::new(vec![])));
         let media = media(listener.clone());
-        let clone = media.clone();
-        let task = tokio::spawn(async move { clone.offer().await });
-        tokio::task::yield_now().await;
-        media.close();
-        assert!(task.await.unwrap().is_err());
-        assert!(media.pending.lock().unwrap().is_empty());
         let (muted, _) = watch::channel(false);
         let call = VoiceCall {
             host_device_id: "host".into(),
@@ -501,9 +741,19 @@ mod tests {
             cancel: CancellationToken::new(),
             muted,
             context: watch::channel(None).0,
+            presentation: new_call_presentation(),
         };
+        let clone = media.clone();
+        let task = tokio::spawn(async move { clone.offer().await });
+        tokio::task::yield_now().await;
+        call.stop();
+        assert!(task.await.unwrap().is_err());
+        assert!(media.pending.lock().unwrap().is_empty());
+        assert!(call.cancel.is_cancelled());
+        call.stop();
         call.complete_media(1, None, Some("late SDP".into()), 0, 0);
         assert!(media.offer().await.is_err());
+        drop(call);
         assert_eq!(
             listener
                 .0
@@ -527,6 +777,7 @@ mod tests {
             cancel: CancellationToken::new(),
             muted,
             context: watch::channel(None).0,
+            presentation: new_call_presentation(),
         };
         let clone = media.clone();
         let task = tokio::spawn(async move { clone.prepare().await });
@@ -554,7 +805,8 @@ mod tests {
         let states = Arc::new(States(Mutex::new(vec![])));
         let (events, receiver) = mpsc::channel(8);
         let (mute, muted) = watch::channel(false);
-        let task = tokio::spawn(present(states.clone(), receiver, muted));
+        let presentation = new_call_presentation();
+        let task = tokio::spawn(present(states.clone(), receiver, muted, presentation));
         events
             .send(VoiceEvent::Snapshot {
                 snapshot: VoiceSnapshot {

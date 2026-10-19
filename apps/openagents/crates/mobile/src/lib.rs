@@ -20,6 +20,7 @@ pub mod layout;
 pub mod orb;
 mod push;
 pub mod visual;
+pub mod voice_ui;
 pub mod wallet;
 pub mod wallpaper;
 

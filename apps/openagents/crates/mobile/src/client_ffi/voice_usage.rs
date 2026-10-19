@@ -1,7 +1,9 @@
 //! Read-only account usage for the computer handling a voice call.
-use super::{CoreClient, VoiceCall};
+use super::{CoreClient, CoreError, CoreResult, VoiceCall};
+use crate::voice_ui::{self, VoiceIntent};
 use openagents_client::{Client, ClientError, DeviceView};
 use openagents_proto::{AgentAccountsSnapshot, HarnessId};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -171,7 +173,12 @@ struct State {
     ticket: u64,
     target: Option<Target>,
     snapshot: VoiceUsageSnapshot,
+    view_instance: String,
+    view_revision: u64,
+    current_view: Option<rust_native::ValidatedView<VoiceIntent>>,
 }
+
+static NEXT_USAGE_VIEW: AtomicU64 = AtomicU64::new(1);
 impl State {
     fn retarget(&mut self, next: Option<Target>) -> bool {
         if next == self.target {
@@ -188,6 +195,7 @@ impl State {
             self.snapshot = initial;
         }
         self.target = next;
+        self.current_view = None;
         true
     }
 
@@ -196,6 +204,7 @@ impl State {
             return false;
         }
         update(&mut self.snapshot);
+        self.current_view = None;
         true
     }
 }
@@ -247,8 +256,71 @@ impl CoreVoiceUsage {
 
     pub fn refresh(&self) {
         let mut state = lock(&self.state);
+        state.current_view = None;
         state.ticket += 1;
         self.changed.send_replace(state.ticket);
+    }
+
+    /// Build and retain the current usage view so activations resolve in Rust.
+    pub fn view_json(&self) -> CoreResult<String> {
+        if self.cancel.is_cancelled() {
+            return Err(CoreError::Closed);
+        }
+        let mut state = lock(&self.state);
+        if self.cancel.is_cancelled() {
+            return Err(CoreError::Closed);
+        }
+        state.view_revision =
+            state
+                .view_revision
+                .checked_add(1)
+                .ok_or_else(|| CoreError::InvalidArgument {
+                    message: "Couldn't refresh voice usage.".into(),
+                })?;
+        let view =
+            voice_ui::voice_usage_view(&state.view_instance, state.view_revision, &state.snapshot)
+                .map_err(|_| CoreError::InvalidArgument {
+                    message: "Couldn't open voice usage.".into(),
+                })?;
+        let json = serde_json::to_string(view.view()).map_err(|_| CoreError::InvalidArgument {
+            message: "Couldn't open voice usage.".into(),
+        })?;
+        state.current_view = Some(view);
+        Ok(json)
+    }
+
+    /// Resolve and run refresh from the current Rust Native tree by identity only.
+    pub fn activate_view(&self, instance: String, revision: u64, node: String) -> CoreResult<()> {
+        if self.cancel.is_cancelled() {
+            return Err(CoreError::Closed);
+        }
+        let mut state = lock(&self.state);
+        if self.cancel.is_cancelled() {
+            return Err(CoreError::Closed);
+        }
+        let activation = rust_native::Activation {
+            instance,
+            revision,
+            node,
+        };
+        let intent = state
+            .current_view
+            .as_ref()
+            .and_then(|view| view.activate(&activation).ok().cloned())
+            .ok_or_else(|| CoreError::InvalidArgument {
+                message: "Those voice controls are out of date.".into(),
+            })?;
+        match intent {
+            VoiceIntent::RefreshUsage => {
+                state.current_view = None;
+                drop(state);
+                self.refresh();
+                Ok(())
+            }
+            _ => Err(CoreError::InvalidArgument {
+                message: "That control is not available here.".into(),
+            }),
+        }
     }
 }
 
@@ -260,6 +332,12 @@ impl CoreClient {
             ticket: 0,
             target: None,
             snapshot: VoiceUsageSnapshot::initial(None),
+            view_instance: format!(
+                "voice-usage-{}",
+                NEXT_USAGE_VIEW.fetch_add(1, Ordering::Relaxed)
+            ),
+            view_revision: 0,
+            current_view: None,
         }));
         let cancel = self.client.voice_cancellation();
         let usage = Arc::new(CoreVoiceUsage {
@@ -429,6 +507,9 @@ mod tests {
             ticket: 1,
             snapshot: VoiceUsageSnapshot::initial(None),
             target: None,
+            view_instance: "test-view".into(),
+            view_revision: 0,
+            current_view: None,
         };
         assert!(state.retarget(Some(b)));
         assert!(!state.apply(1, |s| s.apply_accounts(accounts(
@@ -453,6 +534,9 @@ mod tests {
             ticket: 0,
             target: None,
             snapshot: VoiceUsageSnapshot::initial(None),
+            view_instance: "test-view".into(),
+            view_revision: 0,
+            current_view: None,
         };
         assert!(state.retarget(Some(a.clone())));
         state
