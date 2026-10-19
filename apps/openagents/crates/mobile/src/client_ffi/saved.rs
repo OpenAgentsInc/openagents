@@ -236,6 +236,8 @@ fn message_files(message: &SavedMessage) -> Vec<SavedAttachment> {
         })
         .collect()
 }
+/// How often the chat list reads its newest page again while the app is in front.
+const LIST_REFRESH: std::time::Duration = std::time::Duration::from_secs(20);
 impl CoreSavedHistory {
     pub(crate) fn new(
         lease: Lease,
@@ -269,6 +271,14 @@ impl CoreSavedHistory {
             listener.on_saved_history_changed();
             let mut timer = tokio::time::interval(std::time::Duration::from_secs(2));
             timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            // Chats made or changed on another device, the website, or this
+            // phone's cloud chat join the list while the app is in front,
+            // as the desktop's list does, without dropping loaded pages.
+            let mut lists_timer = tokio::time::interval_at(
+                tokio::time::Instant::now() + LIST_REFRESH,
+                LIST_REFRESH,
+            );
+            lists_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tokio::select! {
                     biased;
@@ -284,6 +294,15 @@ impl CoreSavedHistory {
                         reader.poll().await;
                         if weak.upgrade().is_some_and(|s|s.visible.load(Ordering::SeqCst) && s.foreground.load(Ordering::SeqCst)) {
                             openagents_client::runtime::shared().spawn(turns.follow());
+                        }
+                    },
+                    _ = lists_timer.tick() => {
+                        if weak.upgrade().is_some_and(|s| s.current() && s.foreground.load(Ordering::SeqCst)) {
+                            let runtime = openagents_client::runtime::shared();
+                            runtime.spawn(history.refresh_recent());
+                            if history.refresh_projects().is_ok() {
+                                runtime.spawn(history.more_projects());
+                            }
                         }
                     },
                     changed = turn_updates.changed() => {
