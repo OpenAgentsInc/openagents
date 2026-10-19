@@ -91,10 +91,86 @@ impl Machine for Dedicated {
     }
 }
 
+/// How often [`Paused`] re-reads the settings file and the sensors: at
+/// most once in this long.
+pub const PAUSE_POLL: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// A machine that also pauses for the user's own choices
+/// ([`crate::settings`]): on battery or hot, when the user turned that on.
+/// It drains the pylon through the same path as the owner's work: the
+/// beacon says `draining`, admitted jobs finish, new ones are refused.
+pub struct Paused {
+    inner: std::sync::Arc<dyn Machine>,
+    home: std::path::PathBuf,
+    sensors: Box<dyn crate::settings::Sensors>,
+    poll: std::time::Duration,
+    last: std::sync::Mutex<Option<(std::time::Instant, Option<crate::settings::Pause>)>>,
+}
+
+impl Paused {
+    /// `inner`, also paused by the settings in `home` read through this
+    /// computer's sensors.
+    #[must_use]
+    pub fn new(inner: std::sync::Arc<dyn Machine>, home: &std::path::Path) -> Self {
+        Self::with(inner, home, Box::new(crate::settings::System), PAUSE_POLL)
+    }
+
+    /// As [`Paused::new`] with `sensors` read at most once per `poll`.
+    #[must_use]
+    pub fn with(
+        inner: std::sync::Arc<dyn Machine>,
+        home: &std::path::Path,
+        sensors: Box<dyn crate::settings::Sensors>,
+        poll: std::time::Duration,
+    ) -> Self {
+        Self {
+            inner,
+            home: home.to_path_buf(),
+            sensors,
+            poll,
+            last: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// Why the user's settings pause the pylon now, if they do. Settings
+    /// that cannot be read pause nothing (both are off by default).
+    #[must_use]
+    pub fn reason(&self) -> Option<crate::settings::Pause> {
+        let mut last = self
+            .last
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((at, reason)) = *last
+            && at.elapsed() < self.poll
+        {
+            return reason;
+        }
+        let settings = crate::settings::Settings::load(&self.home).unwrap_or_default();
+        let reason = crate::settings::pause(settings, self.sensors.as_ref());
+        *last = Some((std::time::Instant::now(), reason));
+        reason
+    }
+}
+
+impl Machine for Paused {
+    fn take(&self) -> Result<Box<dyn Send>, String> {
+        if let Some(reason) = self.reason() {
+            return Err(reason.words().into());
+        }
+        self.inner.take()
+    }
+
+    fn owner_busy(&self) -> bool {
+        self.reason().is_some() || self.inner.owner_busy()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
 
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
     use coder_lease::Limits;
@@ -165,5 +241,103 @@ mod tests {
         assert!(machine.owner_busy());
         drop(quiet);
         assert!(machine.take().is_ok());
+    }
+
+    struct Battery(Arc<AtomicBool>);
+
+    impl crate::settings::Sensors for Battery {
+        fn on_battery(&self) -> Option<bool> {
+            Some(self.0.load(Ordering::SeqCst))
+        }
+        fn hot(&self) -> Option<bool> {
+            Some(false)
+        }
+    }
+
+    #[test]
+    fn the_users_battery_setting_drains_the_pylon() {
+        let dir = tempfile::tempdir().unwrap();
+        let unplugged = Arc::new(AtomicBool::new(true));
+        let machine = Paused::with(
+            Arc::new(Dedicated),
+            dir.path(),
+            Box::new(Battery(Arc::clone(&unplugged))),
+            Duration::ZERO,
+        );
+        // Off by default: on battery, the pylon still serves.
+        assert!(!machine.owner_busy());
+        assert!(machine.take().is_ok());
+        crate::settings::Settings {
+            pause_on_battery: true,
+            pause_when_hot: false,
+        }
+        .save(dir.path())
+        .unwrap();
+        assert!(machine.owner_busy());
+        assert_eq!(
+            machine.take().err().as_deref(),
+            Some("paused: on battery (your setting)")
+        );
+        unplugged.store(false, Ordering::SeqCst);
+        assert!(!machine.owner_busy());
+        assert!(machine.take().is_ok());
+    }
+
+    #[test]
+    fn pause_readings_are_polled_at_most_once_per_interval() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::settings::Settings {
+            pause_on_battery: true,
+            pause_when_hot: false,
+        }
+        .save(dir.path())
+        .unwrap();
+        let unplugged = Arc::new(AtomicBool::new(false));
+        let machine = Paused::with(
+            Arc::new(Dedicated),
+            dir.path(),
+            Box::new(Battery(Arc::clone(&unplugged))),
+            Duration::from_secs(3600),
+        );
+        assert!(!machine.owner_busy());
+        unplugged.store(true, Ordering::SeqCst);
+        // Within the interval the remembered reading stands.
+        assert!(!machine.owner_busy());
+    }
+
+    #[test]
+    fn a_paused_beacon_says_draining() {
+        use nostr::pylon::Status;
+        let dir = tempfile::tempdir().unwrap();
+        crate::settings::Settings {
+            pause_on_battery: true,
+            pause_when_hot: false,
+        }
+        .save(dir.path())
+        .unwrap();
+        let machine: Arc<dyn Machine> = Arc::new(Paused::with(
+            Arc::new(Dedicated),
+            dir.path(),
+            Box::new(Battery(Arc::new(AtomicBool::new(true)))),
+            Duration::ZERO,
+        ));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let status = runtime.block_on(async {
+            let config =
+                crate::provider::Config::new("ws://127.0.0.1:1", "paused", dir.path().join("home"));
+            let provider = crate::provider::Provider::on(
+                config,
+                crate::identity::Identity::generate(),
+                Arc::new(crate::engine::Echo),
+                machine,
+            )
+            .unwrap();
+            provider.refresh_machine().await;
+            provider.beacon(None).await.status
+        });
+        assert_eq!(status, Status::Draining);
     }
 }

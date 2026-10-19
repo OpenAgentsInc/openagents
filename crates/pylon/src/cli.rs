@@ -15,7 +15,7 @@ use crate::field::RelayField;
 use crate::identity::{
     Identity, check_owner, hex_pubkey, load_owner, mint_owner, npub, parse_owner, save_owner,
 };
-use crate::lease::{Dedicated, Leases, Machine};
+use crate::lease::{Dedicated, Leases, Machine, Paused};
 use crate::paid::{Grant, Granted, Network, Price, Wallet};
 use crate::pool;
 use crate::provider::{Config, Provider};
@@ -66,6 +66,39 @@ Commands:
       --decide URL          The local decision server (default
                             http://127.0.0.1:18096).
       --rehash              Re-hash the model instead of the remembered digest.
+      --allow-slow          Count a computer that would decide on the CPU (no
+                            Apple Silicon from 16 GB, no NVIDIA from 8 GB) as
+                            ready; it is refused by default because each
+                            decision takes seconds.
+  plan                      The ordered steps that get this computer serving,
+                            each marked agent (may run unattended) or owner
+                            (needs the owner: identity, payout, a slow
+                            machine), with download size, time, cost, and the
+                            command. Writes nothing.
+      --decide URL          The local decision server (default
+                            http://127.0.0.1:18096).
+  verify                    A pass/fail checklist for this running pylon: the
+                            engine answers /health, its beacon is visible on
+                            the relay from a fresh connection, the owner link
+                            verifies, the trusted checkers' latest verdicts,
+                            the clock is within 30 s of the relay's, and
+                            nothing answers on the engine ports beyond
+                            loopback.
+      --decide URL          The local decision server (default
+                            http://127.0.0.1:18096).
+  logs                      Recent log lines (the pylon home's run/ folder,
+                            the engine's log, the host service's pylon lines),
+                            secrets redacted, each line at most 400 characters,
+                            marked untrusted.
+      --lines N             Lines per log (default 100, at most 2000).
+  settings                  Show or change your own pause choices. Both are
+                            off by default; when on, the pylon finishes the
+                            jobs it took and takes no new ones while it holds.
+      --pause-on-battery on|off
+                            Pause while this computer runs on battery.
+      --pause-when-hot on|off
+                            Pause while this computer (or its NVIDIA GPU) is
+                            hot.
   setup                     Download the pinned decision model (Clef-Flash
                             Q4_K_M, 6.5 GB, sha256-checked), install this
                             release's Psionic engine for this platform in
@@ -93,6 +126,8 @@ Commands:
                             earnings to your OpenAgents wallet without asking,
                             when neither is set. On a terminal start asks;
                             without one and without --yes it changes nothing.
+      --allow-slow          Serve decisions on the CPU anyway (refused by
+                            default: each decision takes seconds).
   selfcheck                 Answer the shipped reference decisions on this
                             computer and compare them with the reference; serve
                             refuses decisions after a failed self-check.
@@ -386,6 +421,10 @@ fn dispatch(
             "start" => start(json_out, &mut args, &relay, wallet).await,
             "earnings" => earnings(json_out, &mut args, wallet).await,
             "payout" => payout(json_out, &mut args, wallet).await,
+            "plan" => plan(json_out, &mut args, &relay).await,
+            "verify" => verify(json_out, &mut args, &relay, &checkers).await,
+            "logs" => logs(json_out, &mut args),
+            "settings" => settings(json_out, &mut args),
             "spec" | "agent-rules" | "net-policy" | "version" => {
                 meta(json_out, command, &args, &relay)
             }
@@ -531,11 +570,13 @@ async fn serve(
     }
     let price_msat = args.number("--price-msat", 0)?;
     let net = network(args)?;
-    let machine: Arc<dyn Machine> = if args.flag("--dedicated") {
+    let inner: Arc<dyn Machine> = if args.flag("--dedicated") {
         Arc::new(Dedicated)
     } else {
         Arc::new(Leases::from_env()?)
     };
+    // The user's own pause choices (on battery, hot) drain it too.
+    let machine: Arc<dyn Machine> = Arc::new(Paused::new(inner, &home()));
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
     }
@@ -1574,12 +1615,16 @@ async fn doctor(
         .value("--decide")?
         .unwrap_or_else(|| DEFAULT_DECIDE.into());
     let rehash = args.flag("--rehash");
+    let allow_slow = args.flag("--allow-slow");
     if let Some(extra) = args.words.first() {
         return Err(crate::envelope::Outcome::Usage(format!(
             "unexpected argument `{extra}`"
         )));
     }
-    let report = crate::setup::doctor(relay, &decide, rehash).await;
+    let mut report = crate::setup::doctor(relay, &decide, rehash).await;
+    if allow_slow {
+        report = report.allowing_slow();
+    }
     emit(
         json_out,
         &serde_json::to_value(&report).map_err(|e| e.to_string())?,
@@ -1742,6 +1787,20 @@ async fn start(
         .map_err(|_| "--port takes a port number")?;
     let device = args.value("--device")?;
     let yes = args.flag("--yes");
+    let allow_slow = args.flag("--allow-slow");
+    let fit = crate::setup::fit(&crate::setup::host());
+    if device.as_deref() == Some("cpu") || (device.is_none() && !fit.useful) {
+        let cpu = crate::setup::Fit {
+            device: "cpu".into(),
+            useful: false,
+            note: if fit.useful {
+                "--device cpu decides on the CPU".into()
+            } else {
+                fit.note.clone()
+            },
+        };
+        crate::setup::may_serve_on(&cpu, allow_slow)?;
+    }
     let url = format!("http://127.0.0.1:{port}");
     let mut child = None;
     if crate::setup::serving(&url).await.is_none() {
@@ -1763,7 +1822,7 @@ async fn start(
         if !crate::setup::model_state(&model, crate::setup::CLEF_FLASH_MODEL_ID, false).verified {
             return Err("the decision model is missing or not the pinned model; run `openagents pylon setup`".into());
         }
-        let device = device.unwrap_or_else(|| crate::setup::fit(&crate::setup::host()).device);
+        let device = device.unwrap_or_else(|| fit.device.clone());
         let log = home().join("psionic-decide.log");
         std::fs::create_dir_all(home()).map_err(|e| e.to_string())?;
         let out = std::fs::File::create(&log).map_err(|e| e.to_string())?;
@@ -1901,5 +1960,210 @@ async fn payout(json_out: bool, args: &mut Args, wallet: &dyn Wallet) -> Result<
     let (value, text) =
         crate::earnings::payout_set(&api, &party, address.as_deref(), wallet.spark()).await?;
     emit(json_out, &value, &text);
+    Ok(())
+}
+
+/// `plan`: the ordered steps that get this computer serving.
+async fn plan(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+    let decide = args
+        .value("--decide")?
+        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let report = crate::setup::doctor(relay, &decide, false).await;
+    let facts = crate::plan::Facts {
+        linked: load_owner(&home())?.is_some(),
+        payout_set: None,
+    };
+    let steps = crate::plan::steps(&report, facts);
+    let mut text = String::new();
+    for (i, step) in steps.iter().enumerate() {
+        let who = match step.who {
+            crate::plan::Who::Agent => "agent",
+            crate::plan::Who::Owner => "owner",
+        };
+        let extra: Vec<&str> = [step.size.as_deref(), step.time.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect();
+        text.push_str(&format!(
+            "{}. [{}] {}{}{}{}\n",
+            i + 1,
+            if step.done { "done" } else { who },
+            step.does,
+            if extra.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", extra.join(", "))
+            },
+            if step.done { "" } else { "\n   " },
+            if step.done {
+                String::new()
+            } else {
+                step.command.clone().unwrap_or_default()
+            },
+        ));
+    }
+    emit(
+        json_out,
+        &json!({"ready": report.ready, "device": report.fit.device, "steps": steps}),
+        text.trim_end(),
+    );
+    Ok(())
+}
+
+/// `verify`: the running pylon's pass/fail checklist.
+async fn verify(
+    json_out: bool,
+    args: &mut Args,
+    relay: &str,
+    checkers: &BTreeSet<String>,
+) -> Result<(), String> {
+    let decide = args
+        .value("--decide")?
+        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let pylon = key("provider")?;
+    let owner = load_owner(&home())?;
+    let port = decide
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.trim_end_matches('/').parse::<u16>().ok())
+        .unwrap_or(crate::setup::DECIDE_PORT);
+    let mut ports = vec![port, crate::checkup::TEXT_PORT];
+    ports.dedup();
+    let list = crate::checkup::run(crate::checkup::Inputs {
+        relay,
+        engine: &decide,
+        pylon: &pylon,
+        owner: owner.as_ref(),
+        checkers,
+        ports,
+        addresses: None,
+        now: crate::now(),
+    })
+    .await;
+    let text = list
+        .items
+        .iter()
+        .map(|item| {
+            format!(
+                "{:<4} {:<10} {}{}",
+                match item.state {
+                    crate::checkup::State::Pass => "ok",
+                    crate::checkup::State::Fail => "FAIL",
+                    crate::checkup::State::Skip => "-",
+                },
+                item.id,
+                item.detail,
+                item.fix
+                    .as_deref()
+                    .filter(|_| item.state == crate::checkup::State::Fail)
+                    .map(|f| format!("\n                fix: {f}"))
+                    .unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    emit(
+        json_out,
+        &serde_json::to_value(&list).map_err(|e| e.to_string())?,
+        &text,
+    );
+    if list.pass {
+        Ok(())
+    } else {
+        Err("this pylon did not pass every check".into())
+    }
+}
+
+/// `logs`: recent log lines, redacted, capped, marked untrusted.
+fn logs(json_out: bool, args: &mut Args) -> Result<(), String> {
+    let lines = usize::try_from(args.number("--lines", crate::logs::DEFAULT_LINES as u64)?)
+        .unwrap_or(crate::logs::DEFAULT_LINES);
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let logs = crate::logs::read(&home(), crate::logs::host_log(), lines);
+    let mut text = format!("({})\n", crate::logs::NOTICE);
+    if logs.sources.is_empty() {
+        text.push_str(&format!("no pylon logs yet under {}", home().display()));
+    }
+    for source in &logs.sources {
+        text.push_str(&format!("\n== {}\n", source.path.display()));
+        for line in &source.lines {
+            text.push_str(line);
+            text.push('\n');
+        }
+    }
+    emit(
+        json_out,
+        &serde_json::to_value(&logs).map_err(|e| e.to_string())?,
+        text.trim_end(),
+    );
+    Ok(())
+}
+
+/// `settings`: show or change the user's own pause choices.
+fn settings(json_out: bool, args: &mut Args) -> Result<(), String> {
+    let switch = |value: Option<String>, name: &str| -> Result<Option<bool>, String> {
+        match value.as_deref() {
+            None => Ok(None),
+            Some("on") => Ok(Some(true)),
+            Some("off") => Ok(Some(false)),
+            Some(other) => Err(format!("{name} takes on or off, not `{other}`")),
+        }
+    };
+    let battery = switch(args.value("--pause-on-battery")?, "--pause-on-battery")?;
+    let hot = switch(args.value("--pause-when-hot")?, "--pause-when-hot")?;
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let home = home();
+    let mut settings = crate::settings::Settings::load(&home)?;
+    let changed = battery.is_some() || hot.is_some();
+    if let Some(on) = battery {
+        settings.pause_on_battery = on;
+    }
+    if let Some(on) = hot {
+        settings.pause_when_hot = on;
+    }
+    if changed {
+        settings.save(&home)?;
+    }
+    let sensors = crate::settings::System;
+    let on_battery = crate::settings::Sensors::on_battery(&sensors);
+    let is_hot = crate::settings::Sensors::hot(&sensors);
+    let paused = crate::settings::pause(settings, &sensors);
+    let word = |on: bool| if on { "on" } else { "off" };
+    let reading = |v: Option<bool>, yes: &str, no: &str| match v {
+        Some(true) => yes.to_string(),
+        Some(false) => no.to_string(),
+        None => "unknown here".to_string(),
+    };
+    emit(
+        json_out,
+        &json!({
+            "pause_on_battery": settings.pause_on_battery,
+            "pause_when_hot": settings.pause_when_hot,
+            "changed": changed,
+            "path": crate::settings::Settings::path(&home),
+            "now": {"on_battery": on_battery, "hot": is_hot, "paused": paused},
+        }),
+        &format!(
+            "pause on battery  {} (now {})\npause when hot    {} (now {})\n{}",
+            word(settings.pause_on_battery),
+            reading(on_battery, "on battery", "plugged in"),
+            word(settings.pause_when_hot),
+            reading(is_hot, "hot", "not hot"),
+            paused.map_or_else(
+                || "the pylon is not paused by these settings".to_string(),
+                |p| p.words().to_string()
+            ),
+        ),
+    );
     Ok(())
 }

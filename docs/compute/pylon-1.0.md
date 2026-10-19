@@ -175,8 +175,8 @@ taking no new ones, while any of these holds:
 | Condition | Source |
 | --- | --- |
 | The owner holds a `quiet` or `owner` lease | **Built** (`coder-lease`) |
-| On battery, when the user turned on `--pause-on-battery` (off by default) | New: `pmset -g batt` on macOS, `/sys/class/power_supply` on Linux |
-| Hot, when the user turned on `--pause-when-hot` (off by default) | New: macOS thermal pressure above `nominal`; NVIDIA `temperature.gpu` above the card's slowdown threshold less 5 °C |
+| On battery, when the user turned on `--pause-on-battery` (off by default) | **Built** (#12194): `pmset -g batt` on macOS, `/sys/class/power_supply` on Linux |
+| Hot, when the user turned on `--pause-when-hot` (off by default) | **Built** (#12194): macOS thermal pressure above `nominal`; NVIDIA `temperature.gpu` above the card's slowdown threshold less 5 °C |
 | The engine stops answering | **Built** |
 | The latest self-check for this model failed, or three strikes in 24 h | Partly built (self-check); strikes new |
 
@@ -223,10 +223,10 @@ New in 1.0:
 | Machine | Decisions | Text | Notes |
 | --- | --- | --- | --- |
 | Apple Silicon, 24 GB+ | Metal, resident f16 trunk | Yes | Built |
-| Apple Silicon, 16–23 GB | Metal, packed feed-forward weights (`q4k-on-demand`, automatic since #11636): about 15 % slower on short requests, same answers | Only when the decision server leaves room | New floor: today `doctor` says 24 GB; lower it to 16 GB once a 16 GB Mac passes self-check on the acceptance run |
+| Apple Silicon, 16–23 GB | Metal, packed feed-forward weights (`q4k-on-demand`, automatic since #11636): about 15 % slower on short requests, same answers | Only when the decision server leaves room | **Built** (#12194): `doctor` admits 16 GB; the self-check on the machine still gates serving, and the acceptance run confirms a 16 GB Mac |
 | NVIDIA, 12 GB+ | CUDA | Yes | Built |
-| NVIDIA, 8–11 GB | CUDA, if Clef-Flash (about 6.5 GB) fits with headroom | No | New; gated on a self-check on an 8 GB card |
-| CPU only | Seconds per decision: refused by default (`--allow-slow` to serve) | Small models | A CPU pylon is honest about being slow; gateway deadlines will skip it |
+| NVIDIA, 8–11 GB | CUDA, if Clef-Flash (about 6.5 GB) fits with headroom | No | **Built** (#12194): admitted with 1 GiB free after the model per `nvidia-smi`; the self-check gates serving |
+| CPU only | Seconds per decision: refused by default (`--allow-slow` to serve) | Small models | **Built** (#12194); a CPU pylon is honest about being slow; gateway deadlines will skip it |
 | AMD, Intel GPUs | No | CPU path | Named as unsupported, with the reason |
 
 **The engine.** Psionic is the only engine. A pylon never substitutes
@@ -462,11 +462,11 @@ syntax.
 | `status` | This pylon | New meaning; `status --field` keeps today's |
 | `id` | Pylon identity (`whoami` stays) | New |
 | `doctor`, `setup`, `update`, `selfcheck`, `start`, `serve` | As today | **Built** |
-| `plan` | Ordered steps with `who: agent\|owner`, size, time, cost | New |
-| `verify` | Pass/fail checklist: engine healthy, beacon visible on the relay from outside, owner link verifies, last checker verdicts, clock skew, nothing listening beyond loopback | New |
-| `logs [--lines N]` | Redacted, capped, untrusted-marked | New |
+| `plan` | Ordered steps with `who: agent\|owner`, size, time, cost | **Built** (#12194) |
+| `verify` | Pass/fail checklist: engine healthy, beacon visible on the relay from outside, owner link verifies, last checker verdicts, clock skew, nothing listening beyond loopback | **Built** (#12194) |
+| `logs [--lines N]` | Redacted, capped, untrusted-marked | **Built** (#12194) |
 | `earnings` | Statement for this pylon's party | New over a built route |
-| `settings [--pause-on-battery on\|off] [--pause-when-hot on\|off]` | The user's own pause choices, off by default | New |
+| `settings [--pause-on-battery on\|off] [--pause-when-hot on\|off]` | The user's own pause choices, off by default | **Built** (#12194) |
 | `payout set [ADDRESS]` | Set the payout destination; this computer's Spark wallet when no address is given | New over a built route |
 | `link`, `route`, `ask`, `check …`, `league`, `pool …`, `calibrate …` | As today | **Built** |
 | `mcp [--control]` | MCP server | New |

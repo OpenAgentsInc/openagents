@@ -91,10 +91,15 @@ pub struct Host {
     pub arch: String,
     pub cpus: usize,
     pub memory_gb: Option<f64>,
-    /// `apple` (Metal), `nvidia` (CUDA), or `none`.
+    /// `apple` (Metal), `nvidia` (CUDA), `amd` or `intel` (unsupported:
+    /// the CPU path), or `none`.
     pub gpu: String,
     pub gpu_name: Option<String>,
     pub gpu_memory_gb: Option<f64>,
+    /// Free GPU memory per `nvidia-smi` (NVIDIA only), read before the
+    /// engine starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu_memory_free_gb: Option<f64>,
     pub driver: Option<String>,
     pub disk_free_gb: Option<f64>,
 }
@@ -137,7 +142,7 @@ pub fn host() -> Host {
         && let Some(text) = out(
             "nvidia-smi",
             &[
-                "--query-gpu=name,memory.total,driver_version",
+                "--query-gpu=name,memory.total,driver_version,memory.free",
                 "--format=csv,noheader,nounits",
             ],
         )
@@ -146,7 +151,19 @@ pub fn host() -> Host {
         host.gpu = "nvidia".into();
         host.gpu_name = Some(name);
         host.gpu_memory_gb = Some(mib / 1024.0);
+        host.gpu_memory_free_gb = parse_nvidia_free(&text).map(|mib| mib / 1024.0);
         host.driver = Some(driver);
+    }
+    if host.gpu == "none"
+        && host.os == "linux"
+        && let Some(vendor) = linux_gpu_vendor(Path::new("/sys/class/drm"))
+    {
+        host.gpu = vendor.into();
+    }
+    if host.gpu == "none" && host.os == "macos" && host.arch == "x86_64" {
+        // An Intel Mac: its AMD or Intel GPU has no Metal lane for Clef.
+        host.gpu = "intel".into();
+        host.gpu_name = out("sysctl", &["-n", "machdep.cpu.brand_string"]);
     }
     let dir = models_dir();
     let probe = if dir.exists() {
@@ -178,6 +195,37 @@ pub fn parse_nvidia_smi(text: &str) -> Option<(String, f64, String)> {
     Some((name, mib, driver))
 }
 
+/// The first GPU's free MiB: the fourth field of `nvidia-smi
+/// --query-gpu=name,memory.total,driver_version,memory.free`.
+#[must_use]
+pub fn parse_nvidia_free(text: &str) -> Option<f64> {
+    text.lines().next()?.split(',').nth(3)?.trim().parse().ok()
+}
+
+/// An AMD (`0x1002`) or Intel (`0x8086`) display adapter under
+/// `/sys/class/drm/card*/device/vendor`, named `amd` or `intel`.
+#[must_use]
+pub fn linux_gpu_vendor(drm: &Path) -> Option<&'static str> {
+    let mut found = None;
+    for entry in std::fs::read_dir(drm).ok()?.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("card") || name.contains('-') {
+            continue;
+        }
+        match std::fs::read_to_string(entry.path().join("device").join("vendor"))
+            .ok()
+            .as_deref()
+            .map(str::trim)
+        {
+            Some("0x1002") => return Some("amd"),
+            Some("0x8086") => found = Some("intel"),
+            _ => {}
+        }
+    }
+    found
+}
+
 /// Free space from `df -k PATH`, in GB.
 #[must_use]
 pub fn parse_df(text: &str) -> Option<f64> {
@@ -192,62 +240,121 @@ pub fn parse_df(text: &str) -> Option<f64> {
 pub struct Fit {
     /// `metal`, `cuda`, or `cpu`.
     pub device: String,
-    /// Whether it can serve at a useful speed.
+    /// Whether it can serve at a useful speed. A machine that is not
+    /// useful serves decisions on the CPU, taking seconds each: refused by
+    /// default, served with `--allow-slow`.
     pub useful: bool,
     pub note: String,
 }
 
-/// Clef-Flash on Metal keeps its weights resident as f16 (about 14 GB);
-/// on CUDA it was measured on a 16 GB RTX 4080; on the CPU a decision
-/// takes seconds.
+/// The Apple Silicon floor: from 16 GB Psionic keeps Clef-Flash's
+/// feed-forward weights packed (`q4k-on-demand`, picked automatically
+/// under the GPU working set).
+pub const APPLE_FLOOR_GB: f64 = 16.0;
+/// From 24 GB the whole trunk stays resident as f16.
+pub const APPLE_RESIDENT_GB: f64 = 24.0;
+/// The NVIDIA floor: from 8 GB, when the model fits with headroom.
+pub const NVIDIA_FLOOR_GB: f64 = 8.0;
+/// From 12 GB a card always fits Clef-Flash.
+pub const NVIDIA_ROOMY_GB: f64 = 12.0;
+/// Free GPU memory left over once Clef-Flash is loaded, on an 8 to 11 GB
+/// card.
+pub const NVIDIA_HEADROOM_GIB: f64 = 1.0;
+
+/// The command that serves on the CPU anyway.
+pub const ALLOW_SLOW: &str = "openagents pylon start --allow-slow --allow-any";
+
+/// Where Clef-Flash runs on `host`. Apple Silicon from 16 GB (packed
+/// weights below 24 GB, a little slower); NVIDIA from 12 GB, or from 8 GB
+/// when the model (about 6.5 GB) fits with 1 GiB free; otherwise the CPU,
+/// which takes seconds a decision. AMD and Intel GPUs are named as
+/// unsupported. The self-check still gates every machine, so a lower
+/// floor cannot serve wrong answers. Memory sizes are compared as sold:
+/// an 8 GB card that reports 8188 MiB is an 8 GB card.
 #[must_use]
 pub fn fit(host: &Host) -> Fit {
+    let cpu = |note: String| Fit {
+        device: "cpu".into(),
+        useful: false,
+        note,
+    };
+    let model_gib = CLEF_FLASH_BYTES as f64 / GIB;
     match host.gpu.as_str() {
         "apple" => {
-            let gb = host.memory_gb.unwrap_or(0.0);
-            if gb >= 24.0 {
+            let gb = host.memory_gb.unwrap_or(0.0).round();
+            if gb >= APPLE_RESIDENT_GB {
                 Fit {
                     device: "metal".into(),
                     useful: true,
                     note: format!("Apple Silicon with {gb:.0} GB: Metal, about 0.3 s a decision"),
                 }
-            } else {
+            } else if gb >= APPLE_FLOOR_GB {
                 Fit {
-                    device: "cpu".into(),
-                    useful: false,
+                    device: "metal".into(),
+                    useful: true,
                     note: format!(
-                        "Apple Silicon with {gb:.0} GB: Metal needs 24 GB or more for Clef-Flash's resident weights; the CPU works but takes seconds a decision"
+                        "Apple Silicon with {gb:.0} GB: Metal with packed weights, a little slower on this Mac (same answers)"
                     ),
                 }
+            } else {
+                cpu(format!(
+                    "Apple Silicon with {gb:.0} GB: Metal needs 16 GB or more for Clef-Flash; the CPU works but takes seconds a decision"
+                ))
             }
         }
         "nvidia" => {
-            let gb = host.gpu_memory_gb.unwrap_or(0.0);
-            if gb >= 12.0 {
+            let name = host.gpu_name.as_deref().unwrap_or("NVIDIA GPU");
+            let total = host.gpu_memory_gb.unwrap_or(0.0);
+            let gb = total.round();
+            // Free memory when measured; else the card's whole memory.
+            let free = host.gpu_memory_free_gb.unwrap_or(total);
+            let left = free - model_gib;
+            if gb >= NVIDIA_ROOMY_GB {
+                Fit {
+                    device: "cuda".into(),
+                    useful: true,
+                    note: format!("{name} with {gb:.0} GB: CUDA"),
+                }
+            } else if gb >= NVIDIA_FLOOR_GB && left >= NVIDIA_HEADROOM_GIB {
                 Fit {
                     device: "cuda".into(),
                     useful: true,
                     note: format!(
-                        "{} with {gb:.0} GB: CUDA",
-                        host.gpu_name.as_deref().unwrap_or("NVIDIA GPU")
+                        "{name} with {gb:.0} GB: CUDA, decisions only ({left:.1} GB left after the model)"
                     ),
                 }
+            } else if gb >= NVIDIA_FLOOR_GB {
+                cpu(format!(
+                    "{name} has {free:.1} GB free; Clef-Flash needs {model_gib:.1} GB plus 1 GB to spare, so this would run on the CPU (close what uses the GPU and run doctor again)"
+                ))
             } else {
-                Fit {
-                    device: "cpu".into(),
-                    useful: false,
-                    note: format!(
-                        "{} has {gb:.0} GB; Clef-Flash on CUDA was measured on 16 GB, so this would run on the CPU",
-                        host.gpu_name.as_deref().unwrap_or("this GPU")
-                    ),
-                }
+                cpu(format!(
+                    "{name} has {gb:.0} GB; CUDA needs 8 GB or more for Clef-Flash, so this would run on the CPU"
+                ))
             }
         }
-        _ => Fit {
-            device: "cpu".into(),
-            useful: false,
-            note: "no Apple or NVIDIA GPU: the CPU works but takes seconds a decision".into(),
-        },
+        "amd" | "intel" => cpu(format!(
+            "{} GPUs are not supported: Psionic serves Clef-Flash on Apple Silicon (Metal) and NVIDIA (CUDA); the CPU works but takes seconds a decision",
+            if host.gpu == "amd" { "AMD" } else { "Intel" }
+        )),
+        _ => cpu("no Apple or NVIDIA GPU: the CPU works but takes seconds a decision".into()),
+    }
+}
+
+/// Whether decisions may be served on `fit`: refused on the CPU unless
+/// `allow_slow`.
+///
+/// # Errors
+///
+/// The honest reason, with the flag that serves anyway.
+pub fn may_serve_on(fit: &Fit, allow_slow: bool) -> Result<(), String> {
+    if fit.useful || allow_slow {
+        Ok(())
+    } else {
+        Err(format!(
+            "{}; callers would wait seconds for each decision, so a slow pylon is off by default (serve anyway with --allow-slow)",
+            fit.note
+        ))
     }
 }
 
@@ -564,10 +671,18 @@ pub fn report_with_engine(
     relay: &str,
     relay_reachable: bool,
 ) -> Report {
-    let fit = fit(&host);
+    // A running engine already holds its GPU memory, so free memory then
+    // says nothing about whether the model fits.
+    let fit = if serving.is_some() {
+        fit(&Host {
+            gpu_memory_free_gb: None,
+            ..host.clone()
+        })
+    } else {
+        fit(&host)
+    };
     let mut blocks = Vec::new();
     let mut warnings = Vec::new();
-    let mut next = Vec::new();
     if !relay_reachable {
         blocks.push(Block {
             what: format!("the relay {relay} cannot be reached"),
@@ -610,7 +725,10 @@ pub fn report_with_engine(
         _ => {}
     }
     if !fit.useful {
-        warnings.push(fit.note.clone());
+        blocks.push(Block {
+            what: format!("{}; serving on the CPU is off by default", fit.note),
+            fix: ALLOW_SLOW.into(),
+        });
     }
     match &selfcheck {
         Some(check) if check.model_id == CLEF_FLASH_MODEL_ID => {
@@ -626,13 +744,56 @@ pub fn report_with_engine(
         }
         _ => warnings.push("no self-check yet; `openagents pylon start` runs one".into()),
     }
+    conclude(Report {
+        ready: false,
+        summary: String::new(),
+        host,
+        fit,
+        model,
+        server,
+        engine,
+        serving,
+        selfcheck,
+        relay: relay.into(),
+        relay_reachable,
+        inbound_ports: Vec::new(),
+        blocks,
+        warnings,
+        next: Vec::new(),
+    })
+}
+
+impl Report {
+    /// The report for someone who chose to serve on the CPU anyway
+    /// (`--allow-slow`): the slow-machine block becomes a note.
+    #[must_use]
+    pub fn allowing_slow(mut self) -> Self {
+        if !self.fit.useful {
+            self.blocks.retain(|b| b.fix != ALLOW_SLOW);
+            let note = format!("{} (serving anyway: --allow-slow)", self.fit.note);
+            if !self.warnings.contains(&note) {
+                self.warnings.push(note);
+            }
+        }
+        conclude(self)
+    }
+}
+
+/// Fill in `ready`, `summary`, and `next` from the blocks.
+fn conclude(mut report: Report) -> Report {
+    let (blocks, fit, serving) = (&report.blocks, &report.fit, &report.serving);
+    let mut next = Vec::new();
     let ready = blocks.is_empty();
     if ready {
         if serving.is_none() {
-            next.push("openagents pylon start --allow-any".into());
+            next.push(if fit.useful {
+                "openagents pylon start --allow-any".into()
+            } else {
+                ALLOW_SLOW.into()
+            });
         }
     } else {
-        for block in &blocks {
+        for block in blocks {
             if !next.contains(&block.fix) {
                 next.push(block.fix.clone());
             }
@@ -657,23 +818,10 @@ pub fn report_with_engine(
                 .join("; ")
         )
     };
-    Report {
-        ready,
-        summary,
-        host,
-        fit,
-        model,
-        server,
-        engine,
-        serving,
-        selfcheck,
-        relay: relay.into(),
-        relay_reachable,
-        inbound_ports: Vec::new(),
-        blocks,
-        warnings,
-        next,
-    }
+    report.ready = ready;
+    report.summary = summary;
+    report.next = next;
+    report
 }
 
 /// The decision server answering at `url`, if one is: its model entry,
@@ -784,10 +932,10 @@ fn file_note(model: &ModelState) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn mac(gb: f64) -> Host {
+    pub(crate) fn mac(gb: f64) -> Host {
         Host {
             os: "macos".into(),
             arch: "aarch64".into(),
@@ -796,12 +944,13 @@ mod tests {
             gpu: "apple".into(),
             gpu_name: Some("Apple M5 Max".into()),
             gpu_memory_gb: Some(gb),
+            gpu_memory_free_gb: None,
             driver: None,
             disk_free_gb: Some(100.0),
         }
     }
 
-    fn verified() -> ModelState {
+    pub(crate) fn verified() -> ModelState {
         ModelState {
             path: PathBuf::from("/m/Clef-Flash-Q4_K_M.gguf"),
             present: true,
@@ -827,18 +976,155 @@ mod tests {
         assert!((parse_meminfo(meminfo).unwrap() - 62.5).abs() < 1e-6);
     }
 
+    pub(crate) fn passing() -> crate::calibrate::SelfCheck {
+        crate::calibrate::SelfCheck {
+            at: 1,
+            model: "clef-flash".into(),
+            model_id: CLEF_FLASH_MODEL_ID.into(),
+            artifact_digest: format!("sha256:{CLEF_FLASH_SHA256}"),
+            backend: Some("metal".into()),
+            items: 64,
+            unusable: 0,
+            median: 0.0,
+            p99: 0.0,
+            max: 0.0,
+            top_agree: 1.0,
+            round_pass: 1.0,
+            round_strike: 0.0,
+            decisions_per_second: 3.0,
+            pass: true,
+        }
+    }
+
+    fn nvidia(total_mib: f64, free_mib: Option<f64>) -> Host {
+        Host {
+            os: "linux".into(),
+            gpu: "nvidia".into(),
+            gpu_name: Some("RTX".into()),
+            gpu_memory_gb: Some(total_mib / 1024.0),
+            gpu_memory_free_gb: free_mib.map(|m| m / 1024.0),
+            ..Host::default()
+        }
+    }
+
     #[test]
     fn device_fit_follows_memory() {
         assert_eq!(fit(&mac(128.0)).device, "metal");
-        assert!(!fit(&mac(16.0)).useful);
-        let nvidia = Host {
-            gpu: "nvidia".into(),
-            gpu_name: Some("RTX 4080".into()),
-            gpu_memory_gb: Some(16.0),
-            ..Host::default()
-        };
-        assert_eq!(fit(&nvidia).device, "cuda");
+        assert_eq!(fit(&nvidia(16376.0, None)).device, "cuda");
         assert_eq!(fit(&Host::default()).device, "cpu");
+    }
+
+    #[test]
+    fn apple_silicon_floor_is_16_gb_with_packed_weights_below_24() {
+        let below = fit(&mac(15.0));
+        assert_eq!((below.device.as_str(), below.useful), ("cpu", false));
+        let floor = fit(&mac(16.0));
+        assert_eq!((floor.device.as_str(), floor.useful), ("metal", true));
+        assert!(
+            floor.note.contains("a little slower on this Mac"),
+            "{}",
+            floor.note
+        );
+        let packed = fit(&mac(23.0));
+        assert!(packed.useful && packed.note.contains("packed"));
+        let resident = fit(&mac(24.0));
+        assert!(resident.useful && !resident.note.contains("packed"));
+    }
+
+    #[test]
+    fn nvidia_floor_is_8_gb_with_a_gib_of_headroom() {
+        // A 6 GB card is below the floor.
+        assert!(!fit(&nvidia(6144.0, Some(6000.0))).useful);
+        // An 8 GB card reports 8188 MiB; with the model loaded about 1.9
+        // GiB stays free.
+        let eight = fit(&nvidia(8188.0, Some(8000.0)));
+        assert_eq!((eight.device.as_str(), eight.useful), ("cuda", true));
+        // Just enough: model plus exactly 1 GiB free.
+        let need = CLEF_FLASH_BYTES as f64 / 1_048_576.0 + 1024.0;
+        assert!(fit(&nvidia(8188.0, Some(need))).useful);
+        // Short of headroom: something else holds the GPU.
+        let busy = fit(&nvidia(8188.0, Some(need - 64.0)));
+        assert_eq!((busy.device.as_str(), busy.useful), ("cpu", false));
+        assert!(busy.note.contains("1 GB to spare"), "{}", busy.note);
+        // From 12 GB a card always fits.
+        assert!(fit(&nvidia(12282.0, Some(4000.0))).useful);
+    }
+
+    #[test]
+    fn cpu_and_unsupported_gpus_are_refused_unless_allowed_slow() {
+        for gpu in ["none", "amd", "intel"] {
+            let host = Host {
+                gpu: gpu.into(),
+                ..Host::default()
+            };
+            let f = fit(&host);
+            assert_eq!(f.device, "cpu");
+            assert!(may_serve_on(&f, false).is_err());
+            assert!(may_serve_on(&f, true).is_ok());
+        }
+        assert!(
+            fit(&Host {
+                gpu: "amd".into(),
+                ..Host::default()
+            })
+            .note
+            .contains("AMD GPUs are not supported")
+        );
+        assert!(may_serve_on(&fit(&mac(64.0)), false).is_ok());
+        let r = report(
+            Host {
+                gpu: "none".into(),
+                disk_free_gb: Some(100.0),
+                ..Host::default()
+            },
+            verified(),
+            Some(PathBuf::from("/b/psionic-openai-server")),
+            None,
+            Some(passing()),
+            "wss://relay.openagents.com",
+            true,
+        );
+        assert!(!r.ready);
+        assert_eq!(r.next, vec![ALLOW_SLOW.to_string()]);
+        let allowed = r.allowing_slow();
+        assert!(allowed.ready, "{:?}", allowed.blocks);
+        assert_eq!(allowed.next, vec![ALLOW_SLOW.to_string()]);
+    }
+
+    #[test]
+    fn a_running_engine_does_not_fail_the_headroom_check() {
+        let r = report(
+            Host {
+                disk_free_gb: Some(100.0),
+                ..nvidia(8188.0, Some(1200.0))
+            },
+            verified(),
+            Some(PathBuf::from("/b/psionic-openai-server")),
+            Some(json!({"url": "http://127.0.0.1:18096"})),
+            Some(passing()),
+            "wss://relay.openagents.com",
+            true,
+        );
+        assert!(r.fit.useful, "{}", r.fit.note);
+    }
+
+    #[test]
+    fn linux_gpu_vendors() {
+        let dir = tempfile::tempdir().unwrap();
+        let card = |name: &str, vendor: &str| {
+            let d = dir.path().join(name).join("device");
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("vendor"), format!("{vendor}\n")).unwrap();
+        };
+        assert_eq!(linux_gpu_vendor(dir.path()), None);
+        card("card0", "0x8086");
+        assert_eq!(linux_gpu_vendor(dir.path()), Some("intel"));
+        card("card1", "0x1002");
+        assert_eq!(linux_gpu_vendor(dir.path()), Some("amd"));
+        assert_eq!(
+            parse_nvidia_free("NVIDIA GeForce RTX 4060, 8188, 580.82.07, 7900\n"),
+            Some(7900.0)
+        );
     }
 
     #[test]

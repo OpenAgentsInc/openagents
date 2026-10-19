@@ -410,5 +410,9 @@ pub async fn supervise(
 ///
 /// When the broker cannot be opened.
 pub fn host_machine() -> Result<Arc<dyn Machine>, String> {
-    Ok(Arc::new(Leases::from_env()?))
+    // The user's own pause choices (on battery, hot) drain it too.
+    Ok(Arc::new(crate::lease::Paused::new(
+        Arc::new(Leases::from_env()?),
+        &crate::home(),
+    )))
 }

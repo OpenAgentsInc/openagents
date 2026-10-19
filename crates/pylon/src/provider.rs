@@ -351,6 +351,19 @@ impl Provider {
         self.state.lock().await.counters
     }
 
+    /// Re-read whether this pylon must yield the machine: the owner's work
+    /// needs it, or the user's own pause settings hold (on battery, hot;
+    /// see [`crate::lease::Paused`]). While it yields the beacon says
+    /// `draining` and new jobs are refused. The beacon loop calls this
+    /// every few seconds.
+    pub async fn refresh_machine(&self) {
+        let machine = Arc::clone(&self.machine);
+        let yielding = tokio::task::spawn_blocking(move || machine.owner_busy())
+            .await
+            .unwrap_or(true);
+        self.state.lock().await.yielding = yielding;
+    }
+
     /// The beacon as of now.
     pub async fn beacon(&self, status: Option<Status>) -> Beacon {
         let state = self.state.lock().await;
@@ -500,11 +513,7 @@ impl Provider {
                 self.state.lock().await.healthy = healthy;
                 checked = Instant::now();
             }
-            let machine = Arc::clone(&self.machine);
-            let yielding = tokio::task::spawn_blocking(move || machine.owner_busy())
-                .await
-                .unwrap_or(true);
-            self.state.lock().await.yielding = yielding;
+            self.refresh_machine().await;
             let beacon = self.beacon(None).await;
             let key = (beacon.status, beacon.slots.free);
             let due = match last {
