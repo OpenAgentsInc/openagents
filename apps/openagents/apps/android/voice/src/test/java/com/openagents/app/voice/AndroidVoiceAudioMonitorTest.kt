@@ -73,6 +73,21 @@ class AndroidVoiceAudioMonitorTest {
     }
 
     @Test
+    fun failedLegacyScoFallsBackToSpeaker() {
+        val routes = FakeRoutePort(apiLevel = Build.VERSION_CODES.R).apply {
+            hasBluetoothOutput = true
+            hasEarpiece = true
+        }
+        val controller = VoiceCommunicationRouteController(routes) { true }
+
+        controller.select(nearEar = false)
+        controller.legacyScoFailed()
+
+        assertTrue(routes.speaker)
+        assertEquals(VoiceAudioRoute.SPEAKER, controller.activeRoute())
+    }
+
+    @Test
     fun closeRemovesApi31RouteListenerAndClearsSelection() {
         val routes = FakeRoutePort(apiLevel = Build.VERSION_CODES.S).apply {
             devices = listOf(device(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE))
