@@ -2,7 +2,9 @@ package com.openagents.app.sessions
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.fail
 import org.junit.Test
 import uniffi.openagents_core.AndroidSessionAction
 import uniffi.openagents_core.ChatHomeAction
@@ -23,8 +25,8 @@ class AndroidChatHomesHostTest {
         assertEquals(emptyList<CoreContinuationDraft>(), drafts)
     }
 
-    @Test fun draftWaitsForExplicitContinueAndRoutesRustResult() = runBlocking {
-        val draft = CoreContinuationDraft(NoHandle())
+    @Test fun rustDraftContinuationRoutesTheTypedRustResult() = runBlocking {
+        val draft = CoreContinuationDraft(NoHandle)
         var continued: CoreContinuationDraft? = null
         var routed: AndroidSessionAction? = null
 
@@ -38,5 +40,21 @@ class AndroidChatHomesHostTest {
 
         assertSame(draft, continued)
         assertSame(AndroidSessionAction.Updated, routed)
+    }
+
+    @Test fun refusedDraftContinuationDoesNotRouteAnAction() = runBlocking {
+        val draft = CoreContinuationDraft(NoHandle)
+        var routed = false
+
+        try {
+            continueDraftOnSelected(draft, {
+                throw IllegalStateException("Rust refused continuation")
+            }) { routed = true }
+            fail("Rust refusal must be propagated")
+        } catch (error: IllegalStateException) {
+            assertEquals("Rust refused continuation", error.message)
+        }
+
+        assertFalse(routed)
     }
 }

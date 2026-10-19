@@ -1,6 +1,5 @@
 package com.openagents.app.sessions
 
-import android.app.AlertDialog
 import android.os.Looper
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -12,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
@@ -63,7 +63,7 @@ class AndroidChatHomesHost(
     private var homes: CoreChatHomes? = null
     private var choices: SemanticViewAdapter? = null
     private var parts: SemanticViewAdapter? = null
-    private var draftDialog: AlertDialog? = null
+    private var activeDraft: CoreContinuationDraft? = null
 
     /** Opens a live or saved row. Indexed rows have no continuation contract. */
     fun open(key: DrawerKey) {
@@ -148,7 +148,7 @@ class AndroidChatHomesHost(
                     dispatchChatHomeAction(action, { navigation ->
                         dismiss()
                         onAction(navigation)
-                    }) { draft -> confirmContinue(draft, stamp) }
+                    }) { draft -> continueOnSelected(draft, stamp) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -160,17 +160,9 @@ class AndroidChatHomesHost(
         }
     }
 
-    private fun confirmContinue(draft: CoreContinuationDraft, stamp: Long) {
-        draftDialog?.dismiss()
-        draftDialog = AlertDialog.Builder(parent.context)
-            .setMessage("Continue this chat on the selected computer?")
-            .setNegativeButton("Cancel") { _, _ -> draft.close() }
-            .setPositiveButton("Continue") { _, _ -> continueOnSelected(draft, stamp) }
-            .setOnCancelListener { draft.close() }
-            .show()
-    }
-
     private fun continueOnSelected(draft: CoreContinuationDraft, stamp: Long) {
+        activeDraft?.close()
+        activeDraft = draft
         tasks.launch {
             try {
                 continueDraftOnSelected(draft, sessions::continueOnSelected) { action ->
@@ -179,30 +171,30 @@ class AndroidChatHomesHost(
                         route(action)
                     } else action.destroy()
                 }
-                withContext(Dispatchers.Main.immediate) {
-                    draft.close()
-                }
             } catch (cancelled: CancellationException) {
-                draft.close()
                 throw cancelled
             } catch (error: Exception) {
-                draft.close()
                 withContext(Dispatchers.Main.immediate) {
                     if (!closed && generation == stamp) failure(error)
+                }
+            } finally {
+                draft.close()
+                withContext(NonCancellable + Dispatchers.Main.immediate) {
+                    if (activeDraft === draft) activeDraft = null
                 }
             }
         }
     }
 
     /** Retires only this overlay and its Rust menu handles; sessions and history stay account-owned. */
-    fun close() {
+    override fun close() {
         ui()
         if (closed) return
         closed = true
         generation++
         job.cancelChildren()
-        draftDialog?.dismiss()
-        draftDialog = null
+        activeDraft?.close()
+        activeDraft = null
         clearMenus()
         job.cancel()
         dismiss()
@@ -211,8 +203,8 @@ class AndroidChatHomesHost(
     private fun replaceMenus(): Long {
         generation++
         job.cancelChildren()
-        draftDialog?.dismiss()
-        draftDialog = null
+        activeDraft?.close()
+        activeDraft = null
         clearMenus()
         return generation
     }
