@@ -446,19 +446,37 @@ every payout, as any other ledger loss does. A book takes receipts of one networ
 on `bitcoin` a sweep needs the owner's grant (`paid::Grant`), with every
 payout under its per-payment and daily ceilings.
 
-**A real wallet.** `openagents pylon serve --price-msat N` sells from this
-computer's Lightning node (`openagents x402 node`, the receiver `x402
-native-serve` uses), and `openagents pylon ask --max-msat N` pays through
-`openagents x402`'s payer, under its policy's ceilings, allowlist, and
-daily cap, recording each payment in its ledger
-(`crates/openagents-cli/src/pylon_wallet.rs`). Both default to `testnet`.
-On `bitcoin` both refuse before any wallet opens unless the owner's
-standing grant is in `grant.json` in the pylon home (`{"per_payment_msat":
-N, "daily_msat": N}`, written by the owner; no command writes it). A
-priced pylon's price must be under its per-payment ceiling, and
-`paid::Granted` journals every mainnet payment before it is attempted and
-refuses one over either ceiling. The standalone `pylon` binary has no
-wallet and refuses both.
+**A real wallet.** Pylon payments use the person's Spark wallet
+(`openagents wallet`, the same wallet and balance as the phone) wherever it
+can take them; this computer's Lightning node (`openagents x402 node`) is
+the alternative (`crates/openagents-cli/src/pylon_wallet.rs`).
+
+- **Buying.** `openagents pylon ask --max-msat N` pays through `openagents
+  x402`'s payer, under its policy's ceilings, allowlist, and daily cap,
+  recording each payment in its ledger. On `bitcoin` it pays from the Spark
+  wallet, unless this computer has only a Lightning node; the Spark wallet
+  takes Bitcoin payments only, so on `testnet` it pays from the node.
+  `--pay-with wallet|node` chooses. A payment from the Spark wallet is
+  labelled "Pylon job" in `openagents wallet history` on this computer (the
+  label is kept here, in `labels.json` beside the wallet; the phone shows
+  the payment without it).
+- **Selling.** `openagents pylon serve --price-msat N` still issues invoices
+  from this computer's Lightning node (the receiver `x402 native-serve`
+  uses). NIP-X402's `exact` Lightning invoice must carry the request's hash
+  as its description hash, and the Spark wallet's SDK (Breez
+  `breez-sdk-spark` 0.26, and its `main` on 2026-10-19) issues only invoices
+  with a written description, so the wallet cannot sell a job until the SDK
+  can issue a request-bound invoice.
+- **Payouts.** Earnings sweeps already pay Spark addresses
+  (`Broker::sweep`, `pay_spark`).
+
+Both commands default to `testnet`. On `bitcoin` both refuse before any
+wallet opens unless the owner's standing grant is in `grant.json` in the
+pylon home (`{"per_payment_msat": N, "daily_msat": N}`, written by the
+owner; no command writes it). A priced pylon's price must be under its
+per-payment ceiling, and `paid::Granted` journals every mainnet payment
+before it is attempted and refuses one over either ceiling. The standalone
+`pylon` binary has no wallet and refuses both.
 
 `pylon::paid::TestLightning` (feature `fixture`) is an in-memory testnet
 for fixtures that signs real BOLT11 invoices, so its proofs pass the x402

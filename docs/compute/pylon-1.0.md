@@ -406,8 +406,8 @@ land in the one balance they already have and every Pylon payment shows in
 | Payment | Default | Alternative | Status |
 | --- | --- | --- | --- |
 | Earnings sweeps (brokered jobs, paid decisions) | This computer's Spark address, set by `payout set` with no address or offered by `up` | A Lightning address (`payout set ADDRESS`) | Sweeps to Spark **built** (`pay_spark`); the default is new |
-| Selling a priced job directly (`serve --price-msat`) | Invoices from the Spark wallet, settlement looked up in it | This computer's LDK node (`--receive-with node`) | New (today the node only) |
-| Buying a paid job (`ask --max-msat`) | The Spark wallet (`x402::computer_payer`) | The node (`--pay-with node`) | **Built** |
+| Selling a priced job directly (`serve --price-msat`) | Invoices from the Spark wallet, settlement looked up in it | This computer's LDK node (`--receive-with node`) | **Blocked** (today the node only): NIP-X402 `exact` needs an invoice whose description hash is the request's hash, and Breez 0.26 issues only written-description invoices |
+| Buying a paid job (`ask --max-msat`) | The Spark wallet on `bitcoin` (`x402::computer_payer`), labelled "Pylon job" in `openagents wallet history` | The node (`--pay-with node`; the default on `testnet`) | **Built** |
 
 The Spark wallet takes Bitcoin mainnet payments only, so test-network
 sales use the node; mainnet stays behind the owner's `grant.json` either

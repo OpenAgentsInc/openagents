@@ -3,6 +3,13 @@
 //! same wallet as the phone's, so "one balance on every device" holds when
 //! an agent buys. This computer's Lightning node (`openagents x402 node`)
 //! pays only with `--pay-with node`.
+//!
+//! A payment made for a known purpose (a Pylon job) is labelled on this
+//! computer (`labels.json` in the wallet's home, by payment id), and
+//! `openagents wallet history` shows the label beside it.
+
+use std::collections::BTreeMap;
+use std::path::Path;
 
 use openagents_spark::computer;
 use openagents_spark::model::{AgentPayFailure, InvoicePayment, Node};
@@ -13,6 +20,16 @@ use sha2::{Digest, Sha256};
 /// once. The proof carries the invoice's own payment hash and the preimage
 /// the payee released, checked against that hash.
 pub(crate) fn pay(bolt11: &str, network: &str, max_fee_msat: u64) -> Result<Proof, String> {
+    pay_labelled(bolt11, network, max_fee_msat, None)
+}
+
+/// [`pay`], and label the payment in this computer's wallet history.
+pub(crate) fn pay_labelled(
+    bolt11: &str,
+    network: &str,
+    max_fee_msat: u64,
+    label: Option<&str>,
+) -> Result<Proof, String> {
     if network != nostr::x402::MAINNET {
         return Err(format!(
             "the invoice is on {network}, and your wallet pays Bitcoin invoices only; nothing was paid. Pay from this computer's Lightning node instead with --pay-with node"
@@ -20,7 +37,8 @@ pub(crate) fn pay(bolt11: &str, network: &str, max_fee_msat: u64) -> Result<Proo
     }
     let invoice = nostr::x402::decode_invoice(bolt11)
         .map_err(|_| "the invoice can't be read; nothing was paid".to_string())?;
-    let wallet = computer::open(&computer::home())?;
+    let home = computer::home();
+    let wallet = computer::open(&home)?;
     wallet
         .sync()
         .map_err(|_| "Your wallet could not be read right now; nothing was paid.".to_string())?;
@@ -29,7 +47,51 @@ pub(crate) fn pay(bolt11: &str, network: &str, max_fee_msat: u64) -> Result<Proo
     let paid = wallet
         .pay_invoice(bolt11, max_fee_sats, &key)
         .map_err(|failure| refused(&failure, max_fee_sats))?;
+    if let Some(label) = label
+        && paid.row.status != "failed"
+        && let Err(error) = save_label(&home, &paid.row.id, label)
+    {
+        eprintln!("wallet: {error}");
+    }
     proof(invoice.payment_hash(), invoice.amount_msat(), bolt11, paid)
+}
+
+/// The label a Pylon job's payment carries in `openagents wallet history`.
+pub(crate) const PYLON_LABEL: &str = "Pylon job";
+const LABELS_FILE: &str = "labels.json";
+
+/// The labels kept for payments under `home`, by payment id. A missing or
+/// unreadable file has none: labels only name payments, they never change
+/// one.
+pub(crate) fn labels(home: &Path) -> BTreeMap<String, String> {
+    std::fs::read_to_string(home.join(LABELS_FILE))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// Label the payment `id` under `home`: a 0600 file, written whole.
+fn save_label(home: &Path, id: &str, label: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut held = labels(home);
+    held.insert(id.to_owned(), label.to_owned());
+    let path = home.join(LABELS_FILE);
+    let temporary = home.join(format!("{LABELS_FILE}.{}.tmp", std::process::id()));
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(home)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary)?;
+        file.write_all(serde_json::to_string(&held)?.as_bytes())?;
+        file.sync_all()?;
+        std::fs::rename(&temporary, &path)
+    };
+    write().map_err(|_| "the payment was made, but its label could not be saved".to_string())
 }
 
 /// Why the wallet did not pay, in plain words.
@@ -194,6 +256,30 @@ mod tests {
         assert_ne!(key, invoice_key("lnbc50n1abd"));
         let parsed = uuid::Uuid::parse_str(&key).expect("a UUID");
         assert_eq!(parsed.get_version_num(), 4);
+    }
+
+    #[test]
+    fn a_label_is_kept_privately_by_payment_id() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let home = dir.path().join("spark");
+        assert!(labels(&home).is_empty());
+        save_label(&home, "p1", PYLON_LABEL).expect("saved");
+        save_label(&home, "p2", PYLON_LABEL).expect("saved");
+        let held = labels(&home);
+        assert_eq!(held.get("p1").map(String::as_str), Some("Pylon job"));
+        assert_eq!(held.len(), 2);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(home.join(LABELS_FILE))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        // A damaged file names nothing rather than failing the history.
+        std::fs::write(home.join(LABELS_FILE), "not json").unwrap();
+        assert!(labels(&home).is_empty());
     }
 
     #[test]

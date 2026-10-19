@@ -141,7 +141,12 @@ Commands:
       --no-receipt          Do not publish a receipt.
       --max-msat N          Pay a priced pylon up to N msat for the job,
                             from this computer's wallet (see `openagents
-                            x402`); its policy's ceilings also apply.
+                            x402`); its policy's ceilings also apply. On
+                            bitcoin it pays from your wallet (`openagents
+                            wallet`, labelled \"Pylon job\" in its history),
+                            on testnet from this computer's Lightning node.
+      --pay-with wallet|node
+                            Choose who pays (`openagents pylon` only).
       --network NAME        The wallet's network: testnet (default) or
                             bitcoin, which needs the owner's grant.json.
   check canary --pylon NPUB Send the pylon its class's pinned Gym suite of

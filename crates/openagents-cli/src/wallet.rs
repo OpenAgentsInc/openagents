@@ -483,6 +483,8 @@ fn history(args: &Args, format: Format, note: bool) -> Result<(Value, Render), F
     let rows = opened(note)?
         .payments(limit)
         .map_err(|_| Failure::Plain(UNREADABLE.into()))?;
+    let labels = crate::x402_spark::labels(&computer::home());
+    let label = |row: &PaymentRow| labels.get(&row.id).cloned();
     let value = json!({
         "payments": rows.iter().map(|row| json!({
             "id": row.id,
@@ -491,13 +493,17 @@ fn history(args: &Args, format: Format, note: bool) -> Result<(Value, Render), F
             "fee_sats": row.fee_sats,
             "status": row.status,
             "at": row.at,
+            "label": label(row),
         })).collect::<Vec<_>>(),
     });
     let text = if rows.is_empty() {
         "No payments yet.".to_owned()
     } else {
         rows.iter()
-            .map(|row| payment_line(row, format))
+            .map(|row| match label(row) {
+                Some(label) => format!("{}  {label}", payment_line(row, format)),
+                None => payment_line(row, format),
+            })
             .collect::<Vec<_>>()
             .join("\n")
     };
