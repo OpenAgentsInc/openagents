@@ -113,6 +113,11 @@ const PYLON: &[Declared] = &[
     Declared::computer("calibrate compare", Effect::ReadOnly),
     Declared::computer("calibrate reference", Effect::LocalWrite),
     Declared::computer("whoami", Effect::LocalWrite),
+    // The agent contract and this release's pins (#12195): print only.
+    Declared::computer("spec", Effect::ReadOnly),
+    Declared::computer("agent-rules", Effect::ReadOnly),
+    Declared::computer("net-policy", Effect::ReadOnly),
+    Declared::computer("version", Effect::ReadOnly),
     Declared::computer("serve", Effect::LongRunning),
     Declared::computer("link", Effect::LocalWrite),
     Declared::computer("route on", Effect::LocalWrite),

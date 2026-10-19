@@ -13,6 +13,9 @@ NIP-44 encrypted) on a local Psionic model server, and leaves receipts
 | `pool` | Compute, publish, and verify a pool aggregate. |
 | `engine` | `Psionic` (OpenAI-compatible loopback HTTP) and the `Echo` test engine. |
 | `job`, `relay`, `identity` | The CJ wire, relay plumbing over `nostr-transport`, and `0600` key files. |
+| `envelope` | The agent contract: one `openagents.pylon/1` result per command with `--json`, typed outcomes, and the group's exit codes; `spec`, `agent-rules`, `net-policy`. |
+| `release` | The `pylon-release.v1` descriptor compiled into the binary: model pins, floors, self-check reference digest, limits, Psionic pins per platform (`release/psionic_pins.rs`). |
+| `harden` | The scrubbed environment every child process gets and atomic `0600` secret writes that refuse symbolic links. |
 
 The record types and every check live in `nostr::pylon`.
 

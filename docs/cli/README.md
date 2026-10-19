@@ -23,6 +23,12 @@ delegation. `work --help` lists signed-bundle commands and optional LAB mounting
   document (or one document per line for streaming commands) on stdout.
   Without it, output is a short table or sentence.
 - Exit codes: `0` success, `1` refused or failed, `64` invalid usage.
+  The `openagents pylon` group extends them: `10` blocked (this computer
+  lacks something; the result names each fix), `11` needs the owner, `13`
+  network or download failure, `20` verification failed (the self-check).
+  With `--json`, every `pylon` command prints one result object
+  (`openagents.pylon/1`: `status`, `summary`, `data`, `warnings`,
+  `needs_owner`, `next`); `openagents pylon spec` prints the contract.
 - `openagents doctor` prints the identities, stores, and relays the command
   uses and whether each exists. `openagents COMMAND --help` prints each
   group's syntax.

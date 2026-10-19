@@ -26,22 +26,21 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-/// The pinned decision model's file name.
-pub const CLEF_FLASH_FILE: &str = "Clef-Flash-Q4_K_M.gguf";
+/// The pinned decision model's file name. The model pins live in the
+/// release descriptor ([`crate::release::CLEF_FLASH`]); these read them.
+pub const CLEF_FLASH_FILE: &str = crate::release::CLEF_FLASH.file;
 /// Where it comes from: `ggml-org/Clef-Flash-GGUF` at a pinned revision
 /// (Apache-2.0).
-pub const CLEF_FLASH_URL: &str = "https://huggingface.co/ggml-org/Clef-Flash-GGUF/resolve/6b4fe4c59098479652d94f0fe11a40facbebd1ec/Clef-Flash-Q4_K_M.gguf";
+pub const CLEF_FLASH_URL: &str = crate::release::CLEF_FLASH.url;
 /// The downloaded file's sha256: what `fetch` checks the download
 /// against. Not the model's identity (see [`CLEF_FLASH_MODEL_ID`]).
-pub const CLEF_FLASH_SHA256: &str =
-    "3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2";
+pub const CLEF_FLASH_SHA256: &str = crate::release::CLEF_FLASH.file_sha256;
 /// The model's identity: [`crate::model_id`]'s digest of its tensors,
 /// the same for every file with these weights whatever its header says
 /// (coderos-4080's copy hashes to `fd3e9060…` and has this id).
-pub const CLEF_FLASH_MODEL_ID: &str =
-    "gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3";
+pub const CLEF_FLASH_MODEL_ID: &str = crate::release::CLEF_FLASH.model_id;
 /// Its size in bytes.
-pub const CLEF_FLASH_BYTES: u64 = 6_486_448_288;
+pub const CLEF_FLASH_BYTES: u64 = crate::release::CLEF_FLASH.bytes;
 /// The Psionic server program.
 pub const SERVER: &str = "psionic-openai-server";
 /// The loopback port `start` runs Psionic's decision lane on.
@@ -111,7 +110,10 @@ pub fn host() -> Host {
         ..Host::default()
     };
     let out = |cmd: &str, args: &[&str]| -> Option<String> {
-        let output = std::process::Command::new(cmd).args(args).output().ok()?;
+        let output = crate::harden::scrub(&mut std::process::Command::new(cmd))
+            .args(args)
+            .output()
+            .ok()?;
         output
             .status
             .success()

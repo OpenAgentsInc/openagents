@@ -87,7 +87,7 @@ pub async fn connect(
     Connection::connect(url, identity.secret(), lifetime)
         .await
         .map(|c| c.with_frame_budget(4096))
-        .map_err(|e| format!("relay {url}: {e}"))
+        .map_err(|e| crate::envelope::network(format!("relay {url}: {e}")))
 }
 
 /// Publish `event` and wait for the relay's `OK`.

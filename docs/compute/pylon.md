@@ -119,6 +119,49 @@ refuses to start after a failed self-check for the same model id. The
 idea comes from REAX's miner kit; see
 `docs/research/decisionmodels/reax.md`.
 
+### Drive a pylon from an agent
+
+With `--json`, every `openagents pylon` command prints one result object,
+so an agent can run a pylon without reading prose:
+
+```json
+{"schema": "openagents.pylon/1", "command": "doctor", "ok": false,
+ "status": "blocked", "summary": "not ready: the decision model is not downloaded",
+ "data": {"blocks": [{"what": "the decision model is not downloaded", "fix": "openagents pylon setup"}]},
+ "warnings": [], "needs_owner": null,
+ "next": [{"command": "openagents pylon setup", "why": "the decision model is not downloaded"}],
+ "exit_code": 10}
+```
+
+`status` is `ok`, `needs_owner` (a step only the owner can take, with what,
+why, the steps, and a link), `blocked` (something this computer lacks;
+`data.blocks` names each with its fix), or `error`. The exit codes follow:
+0 ok, 1 refused or failed, 10 blocked, 11 needs the owner, 13 the relay or a
+download could not be reached, 20 the self-check failed, 64 invalid usage.
+`serve` and `start` print the object once when they start serving, then one
+JSON event per line (`{"event": "stopped"}` when they stop).
+
+```sh
+openagents --json pylon spec          # the contract: fields, statuses, exit codes, rules
+openagents pylon agent-rules          # what an agent running a pylon must never do
+openagents pylon net-policy           # every place a pylon connects to
+openagents --json pylon version       # pylon/1, the CLI version, this release's pins
+```
+
+`net-policy` lists the relay, Hugging Face for the one pinned model, the CLI
+release bucket for the Psionic engine, and the OpenAgents API for earnings
+and payout setup; nothing else. `version` prints the release descriptor
+(`pylon-release.v1`) built into the CLI: the model's repository, revision,
+file sha256 and model id, the smallest machines it runs on, the self-check
+reference set's digest and the checkers' limits, the Psionic engine's
+digest per platform, and the default relay and pool.
+
+Programs a pylon starts (the Psionic server, `nvidia-smi`) see only the
+path, home and temporary folders, the locale, proxy settings, `OPENAGENTS_*`
+and `PSIONIC_*` settings, and GPU selectors; nothing named like a token,
+key, secret, password, or seed phrase passes. Keys are written `0600`, all
+at once, and never through a symbolic link.
+
 ### Answer decisions (Clef)
 
 OpenAgents decisions (the chat router, Coder's judges, file relevance, the

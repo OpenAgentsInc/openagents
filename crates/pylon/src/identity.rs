@@ -1,8 +1,8 @@
 //! Keys a pylon or a buyer holds: one secp256k1 secret per role, stored as
-//! 64 hex characters in a `0600` file that the process creates on first use.
+//! 64 hex characters in a `0600` file that the process creates on first use,
+//! by an atomic write that refuses a symbolic link ([`crate::harden`]).
 
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 
 use nostr::domain::{MintedOwnerAttestation, RelaySigner};
@@ -74,20 +74,15 @@ impl Identity {
             }
             Err(error) if create && error.kind() == std::io::ErrorKind::NotFound => {
                 let identity = Self::generate();
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                let line = format!("{}\n", identity.secret.display_secret());
+                match crate::harden::write_secret(path, line.as_bytes(), false) {
+                    Ok(()) => Ok(identity),
+                    // Another process made the key first: use theirs.
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                        Self::load(path, false)
+                    }
+                    Err(e) => Err(e.to_string()),
                 }
-                let mut options = fs::OpenOptions::new();
-                options.write(true).create_new(true);
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::OpenOptionsExt;
-                    options.mode(0o600);
-                }
-                let mut file = options.open(path).map_err(|e| e.to_string())?;
-                writeln!(file, "{}", identity.secret.display_secret())
-                    .map_err(|e| e.to_string())?;
-                Ok(identity)
             }
             Err(error) => Err(error.to_string()),
         }

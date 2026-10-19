@@ -74,6 +74,12 @@ Commands:
   calibrate reference RUN --measured-on TEXT --out FILE
                             Make a self-check reference set from a run.
   whoami                    Print this computer's pylon, buyer, and aggregator keys.
+  spec                      Print the agent contract: the --json result object,
+                            its statuses, the exit codes, and the rules.
+  agent-rules               Print the safety rules for an agent running a pylon.
+  net-policy                Print every destination a pylon may contact.
+  version                   Print pylon/1, the CLI version, and this release's
+                            pins (pylon-release.v1).
   serve                     Publish beacons and answer jobs from a local Psionic server.
       --engine URL          The Psionic server (default http://127.0.0.1:18080).
       --model NAME          The served model (default qwen3.5-0.8b-q8_0).
@@ -192,7 +198,12 @@ Common options:
   --checker NPUB            Trust this checker's verdicts; repeat. This
                             computer's own checker key and
                             OPENAGENTS_PYLON_CHECKERS are always trusted.
-  --json                    One JSON document on standard output.
+  --json                    One result object on standard output (see `spec`);
+                            serve and start print it when they start serving,
+                            then one JSON event per line.
+
+Exit codes: 0 ok, 1 refused or failed, 10 blocked, 11 needs the owner,
+13 network or download failure, 20 verification failed, 64 invalid usage.
 
 Keys live in ~/.openagents/compute (OPENAGENTS_PYLON_HOME overrides). On
 bitcoin, nothing sells or pays without the owner's standing grant in
@@ -237,6 +248,9 @@ impl Args {
 }
 
 fn emit(json_out: bool, value: &Value, text: &str) {
+    if crate::envelope::take(value) {
+        return;
+    }
     if json_out {
         println!("{value}");
     } else {
@@ -252,25 +266,31 @@ pub fn run(json_out: bool, words: &[String]) -> u8 {
 }
 
 /// Run a command with `wallet` behind priced serving and paid asking.
+/// Every command runs under the agent contract (`crate::envelope`): one
+/// result object with `--json`, and the pylon group's exit codes.
 pub fn run_with(json_out: bool, words: &[String], wallet: &dyn Wallet) -> u8 {
+    let command = words.first().map_or("", String::as_str);
+    crate::envelope::run(command, json_out, || dispatch(json_out, words, wallet))
+}
+
+fn dispatch(
+    json_out: bool,
+    words: &[String],
+    wallet: &dyn Wallet,
+) -> Result<(), crate::envelope::Outcome> {
+    use crate::envelope::Outcome;
     let Some((command, rest)) = words.split_first() else {
-        println!("{USAGE}");
-        return 2;
+        emit(json_out, &json!({"usage": USAGE}), USAGE);
+        return Err(Outcome::Usage("name a command".into()));
     };
     if command == "--help" || command == "help" {
-        println!("{USAGE}");
-        return 0;
+        emit(json_out, &json!({"usage": USAGE}), USAGE);
+        return Ok(());
     }
-    let runtime = match tokio::runtime::Builder::new_multi_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-    {
-        Ok(runtime) => runtime,
-        Err(e) => {
-            eprintln!("pylon: {e}");
-            return 1;
-        }
-    };
+        .map_err(|e| e.to_string())?;
     let mut args = Args {
         words: rest.to_vec(),
     };
@@ -282,7 +302,7 @@ pub fn run_with(json_out: bool, words: &[String], wallet: &dyn Wallet) -> u8 {
         for value in args.values("--checker")? {
             checkers.insert(hex_pubkey(&value).ok_or_else(|| format!("`{value}` is not a key"))?);
         }
-        match command.as_str() {
+        let plain: Result<(), String> = match command.as_str() {
             "whoami" => whoami(json_out),
             "link" => link(json_out, &mut args),
             "route" => crate::route::command(&args.words, &home()).map(|(value, text)| {
@@ -295,27 +315,39 @@ pub fn run_with(json_out: bool, words: &[String], wallet: &dyn Wallet) -> u8 {
             "check" => check(json_out, &mut args, &relay).await,
             "league" => league(json_out, &relay, checkers).await,
             "calibrate" => calibrate(json_out, &mut args).await,
-            "selfcheck" => selfcheck(json_out, &mut args).await,
-            "doctor" => doctor(json_out, &mut args, &relay).await,
+            "selfcheck" => return selfcheck(json_out, &mut args).await,
+            "doctor" => return doctor(json_out, &mut args, &relay).await,
             "setup" => setup(json_out, &mut args, false).await,
             "update" => setup(json_out, &mut args, true).await,
             "start" => start(json_out, &mut args, &relay, wallet).await,
-            other => Err(format!(
-                "unknown command `{other}`; see `openagents pylon --help`"
-            )),
-        }
-    });
-    match result {
-        Ok(()) => 0,
-        Err(e) => {
-            if json_out {
-                println!("{}", json!({"ok": false, "error": e}));
-            } else {
-                eprintln!("pylon: {e}");
+            "spec" | "agent-rules" | "net-policy" | "version" => {
+                meta(json_out, command, &args, &relay)
             }
-            1
-        }
+            other => {
+                return Err(Outcome::Usage(format!(
+                    "unknown command `{other}`; see `openagents pylon --help`"
+                )));
+            }
+        };
+        plain.map_err(Outcome::from)
+    });
+    result
+}
+
+/// `spec`, `agent-rules`, `net-policy`, `version`: the agent contract,
+/// its rules, the destinations, and this release's pins. Write nothing.
+fn meta(json_out: bool, command: &str, args: &Args, relay: &str) -> Result<(), String> {
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
     }
+    let (value, text) = match command {
+        "spec" => crate::envelope::spec(),
+        "agent-rules" => crate::envelope::agent_rules(),
+        "net-policy" => crate::envelope::net_policy(relay),
+        _ => crate::release::version(),
+    };
+    emit(json_out, &value, &text);
+    Ok(())
 }
 
 fn key(name: &str) -> Result<Identity, String> {
@@ -683,6 +715,7 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
     eprintln!("pylon: attested endpoint key {}", identity.pubkey());
     attested::fetch_weights(&weights_url, &weights_sha256, &weights).await?;
     let mut psionic_command = std::process::Command::new(&psionic);
+    crate::harden::scrub(&mut psionic_command);
     psionic_command.args(["-m"]).arg(&weights).args([
         "--host",
         "127.0.0.1",
@@ -1404,14 +1437,16 @@ async fn calibrate(json_out: bool, args: &mut Args) -> Result<(), String> {
 
 /// `selfcheck`: answer the shipped reference set on this computer's
 /// decision server and keep the result; `serve --decide` reads it.
-async fn selfcheck(json_out: bool, args: &mut Args) -> Result<(), String> {
+async fn selfcheck(json_out: bool, args: &mut Args) -> Result<(), crate::envelope::Outcome> {
     let url = args
         .value("--decide")?
         .unwrap_or_else(|| DEFAULT_DECIDE.into());
     let limit = usize::try_from(args.number("--items", 64)?.clamp(8, 10_000)).unwrap_or(64);
     let model_file = args.value("--model-file")?.map(PathBuf::from);
     if let Some(extra) = args.words.first() {
-        return Err(format!("unexpected argument `{extra}`"));
+        return Err(crate::envelope::Outcome::Usage(format!(
+            "unexpected argument `{extra}`"
+        )));
     }
     let check = run_selfcheck(&url, limit, json_out, model_file.as_deref()).await?;
     let text = format!(
@@ -1434,7 +1469,9 @@ async fn selfcheck(json_out: bool, args: &mut Args) -> Result<(), String> {
     if check.pass {
         Ok(())
     } else {
-        Err("this computer's answers differ from the reference; it should not serve decisions until the self-check passes".into())
+        Err(crate::envelope::Outcome::VerificationFailed(
+            "this computer's answers differ from the reference; it should not serve decisions until the self-check passes".into(),
+        ))
     }
 }
 
@@ -1486,13 +1523,19 @@ pub(crate) async fn run_selfcheck(
 }
 
 /// `doctor`: what this computer has and what blocks serving decisions.
-async fn doctor(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+async fn doctor(
+    json_out: bool,
+    args: &mut Args,
+    relay: &str,
+) -> Result<(), crate::envelope::Outcome> {
     let decide = args
         .value("--decide")?
         .unwrap_or_else(|| DEFAULT_DECIDE.into());
     let rehash = args.flag("--rehash");
     if let Some(extra) = args.words.first() {
-        return Err(format!("unexpected argument `{extra}`"));
+        return Err(crate::envelope::Outcome::Usage(format!(
+            "unexpected argument `{extra}`"
+        )));
     }
     let report = crate::setup::doctor(relay, &decide, rehash).await;
     emit(
@@ -1500,7 +1543,13 @@ async fn doctor(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Stri
         &serde_json::to_value(&report).map_err(|e| e.to_string())?,
         &crate::setup::render(&report),
     );
-    Ok(())
+    if report.blocks.is_empty() {
+        Ok(())
+    } else {
+        Err(crate::envelope::Outcome::Blocked {
+            blocks: report.blocks,
+        })
+    }
 }
 
 /// `setup` and `update`: fetch the pinned model when it is missing or not
@@ -1540,7 +1589,8 @@ async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), Stri
                 }
             },
         )
-        .await?;
+        .await
+        .map_err(crate::envelope::network)?;
         state = crate::setup::model_state(&path, crate::setup::CLEF_FLASH_MODEL_ID, false);
         if !state.verified {
             return Err(format!(
@@ -1629,7 +1679,7 @@ async fn start(
             "pylon: starting Psionic on {device} at {url} (log {})",
             log.display()
         );
-        let spawned = tokio::process::Command::new(&server)
+        let spawned = crate::harden::scrub_async(&mut tokio::process::Command::new(&server))
             .arg("-m")
             .arg(&model)
             .args(["--host", "127.0.0.1", "--port", &port.to_string()])
