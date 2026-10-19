@@ -36,6 +36,46 @@ Select affected consumers with `--crates` and record any coverage deferred to
 release. Select feature, PostgreSQL, or infrastructure phases only when relevant
 to the change. Documentation-only work needs link and artifact checks instead.
 
+The default and release checks include the `hakari` phase, which checks generated
+dependency features and dependency lines in both the root and
+`apps/openagents` workspaces. Install the pinned generator once:
+
+```sh
+cargo install cargo-hakari --version 0.9.39 --locked
+```
+
+After changing a dependency or workspace member, regenerate both workspaces
+and restrict the generated dependency lines to the workspace's targets. The
+target helper requires Python 3.11 or newer:
+
+```sh
+cargo hakari generate
+cargo hakari manage-deps
+(cd apps/openagents && cargo hakari generate && cargo hakari manage-deps)
+python3 scripts/dev/workspace-hack-targets.py
+./scripts/dev/check-workspace-hack.sh
+```
+
+Each workspace has its own hack crate and lockfile. Regenerate after rebasing;
+don't merge generated dependency sections by hand. The check compiles nothing.
+The root and app workspaces each patch `openagents-workspace-hack` to their
+own generated crate. Shared domain crates therefore use the consuming
+workspace's versions, including its SQLite version. Wasm builds skip the hack.
+The small `oa-tokens` build dependency is excluded so a build script does not
+compile the application graph. Optional Candle, GPUI, and wallet test features
+remain outside the union. Shared host/target dependencies use the same features.
+Standalone consumers must patch this unpublished package to
+`support/workspace-hack`, the empty stub used by `layertree-tee-lab`.
+
+The check rejects outdated lockfiles before running `cargo hakari generate --diff` and
+`cargo hakari manage-deps --dry-run`, verifies feature unification with
+`cargo hakari verify`, and checks dependency targets. The root
+hack applies on macOS, Linux, and Windows; the app hack also covers iOS and
+Android. WebAssembly uses neither, and root mobile builds keep their own
+feature sets. Hakari preserves these target-specific lines when updating
+dependencies. Run only this phase with
+`./scripts/verify-rust.sh --phases hakari`.
+
 Before a full release, explicitly request the full manual matrix:
 
 ```sh

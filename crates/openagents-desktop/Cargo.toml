@@ -166,3 +166,6 @@ workspace = true
 name = "openagents-desktop"
 path = "src/main.rs"
 required-features = ["app"]
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

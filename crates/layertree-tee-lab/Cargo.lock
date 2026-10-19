@@ -38,6 +38,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-contract"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+ "serde",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -81,6 +89,17 @@ name = "bech32"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
+
+[[package]]
+name = "bip39"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90dbd31c98227229239363921e60fcf5e558e43ec69094d46fc4996f08d1d5bc"
+dependencies = [
+ "bitcoin_hashes",
+ "serde",
+ "unicode-normalization",
+]
 
 [[package]]
 name = "bitcoin"
@@ -785,6 +804,10 @@ dependencies = [
 name = "nostr"
 version = "1.0.0"
 dependencies = [
+ "agent-contract",
+ "bip39",
+ "getrandom 0.3.4",
+ "openagents-workspace-hack",
  "ryu-js",
  "secp256k1 0.31.1",
  "serde",
@@ -798,6 +821,7 @@ version = "1.0.0"
 dependencies = [
  "futures-util",
  "nostr",
+ "openagents-workspace-hack",
  "rustls",
  "secp256k1 0.31.1",
  "serde_json",
@@ -826,6 +850,10 @@ name = "opaque-debug"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
+
+[[package]]
+name = "openagents-workspace-hack"
+version = "0.1.0"
 
 [[package]]
 name = "percent-encoding"
@@ -1563,6 +1591,15 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75cd3fb03d5288b3ba9a1ee103ac7e9cbb59f0b03d64f8ddfcc04dd42758a85d"
+dependencies = [
+ "tinyvec",
+]
 
 [[package]]
 name = "universal-hash"

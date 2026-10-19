@@ -14,6 +14,7 @@ COPY --from=cargo-cache /app/deploy/coder-sync/target/ /app/deploy/coder-sync/ta
 COPY Cargo.toml /app/Cargo.toml
 # deploy.py exports only the local dependency trees needed by this workspace.
 COPY crates/ /app/crates/
+COPY support/workspace-hack/ /app/support/workspace-hack/
 COPY nips/openagents/schemas/ /app/nips/openagents/schemas/
 # jev embeds its decision questions from the repository root.
 COPY questions/ /app/questions/

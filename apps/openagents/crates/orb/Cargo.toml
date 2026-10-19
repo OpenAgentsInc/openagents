@@ -8,3 +8,6 @@ publish.workspace = true
 # The thinking-orb animation engine without a renderer: desktop paints its
 # frames through GPUI, mobile through Core Graphics, from identical geometry.
 [dependencies]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

@@ -22,3 +22,6 @@ tempfile.workspace = true
 [target."cfg(windows)".dependencies]
 tempfile.workspace = true
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Threading"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

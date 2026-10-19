@@ -1200,3 +1200,7 @@ links remain readable. Upstream fixes now require manual ports.
 - [OpenAgents #12125](https://github.com/OpenAgentsInc/openagents/issues/12125):
   mark desktop and iOS build targets before building so Spotlight skips them
   on macOS.
+
+- [OpenAgents #12185](https://github.com/OpenAgentsInc/openagents/issues/12185):
+  unify native dependency features with this workspace's own cargo-hakari crate;
+  shared domain crates use the app's version through a workspace-local patch.

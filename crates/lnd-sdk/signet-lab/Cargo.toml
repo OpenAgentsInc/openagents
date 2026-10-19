@@ -31,3 +31,7 @@ path = "src/bin/recovery.rs"
 [[bin]]
 name = "lnd-signet-assets"
 path = "src/bin/assets.rs"
+
+# Use the empty feature-unification crate outside the managed workspaces.
+[patch.crates-io]
+openagents-workspace-hack = { path = "../../../support/workspace-hack" }

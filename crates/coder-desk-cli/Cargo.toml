@@ -34,3 +34,6 @@ serde_json = "1"
 # memory, answers the protocol on a socket of its own, and records every
 # request.
 coder-desk = { path = "../coder-desk", features = ["test-support"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

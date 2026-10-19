@@ -17,3 +17,6 @@ image = { version = "0.25.10", default-features = false, features = ["png", "jpe
 thiserror.workspace = true
 # Images embedded in glTF models as data URIs.
 base64 = "0.22"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

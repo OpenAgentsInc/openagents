@@ -46,3 +46,6 @@ tempfile.workspace = true
 
 [build-dependencies]
 embed-resource = "3.0.11"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

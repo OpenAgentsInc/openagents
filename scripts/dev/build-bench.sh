@@ -29,6 +29,7 @@
 #                        lld        link with lld
 #                      Several names join with "+", e.g. lt+mold.
 #   --jobs N           CARGO_BUILD_JOBS (default: half the cores)
+#   --profile NAME     override Cargo's default build/test profile
 #   --no-wrapper       bypass the compile cache wrapper (kache or sccache),
 #                      to time the compiler itself
 #   --only build|test  run one of the two commands
@@ -51,6 +52,7 @@ manifest=
 target=${CARGO_TARGET_DIR:-}
 variant=baseline
 jobs=
+profile=
 wrapper=1
 only=
 timings=0
@@ -64,6 +66,7 @@ while [ $# -gt 0 ]; do
     --target-dir) target=$2; shift 2 ;;
     --variant) variant=$2; shift 2 ;;
     --jobs) jobs=$2; shift 2 ;;
+    --profile) profile=$2; shift 2 ;;
     --no-wrapper) wrapper=0; shift ;;
     --only) only=$2; shift 2 ;;
     --timings) timings=1; shift ;;
@@ -83,12 +86,16 @@ if [ -z "$target" ]; then
 fi
 mkdir -p "$target"
 export CARGO_TARGET_DIR=$target
+scratch=$(openagents scratch)
+run_dir=$(mktemp -d "$scratch/build-bench.XXXXXX")
 
 cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
 export CARGO_BUILD_JOBS=${jobs:-$(( cores / 2 > 0 ? cores / 2 : 1 ))}
 
 cargo_args=()
 [ -n "$manifest" ] && cargo_args+=(--manifest-path "$manifest")
+profile_args=()
+[ -n "$profile" ] && profile_args+=(--profile "$profile")
 
 # The build settings every agent build uses.
 (
@@ -96,10 +103,10 @@ cargo_args=()
   [ -n "$manifest" ] && cd "$(dirname "$manifest")"
   oa_build_manifest=
   . "$root/scripts/dev/cargo-build-env.sh"
-  env | grep -E '^(RUSTC|CARGO_BUILD_BUILD_DIR|CARGO_INCREMENTAL)=' > "$target/.bench-env"
+  env | grep -E '^(RUSTC|CARGO_BUILD_BUILD_DIR|CARGO_INCREMENTAL)=' > "$run_dir/env"
 )
 unset CARGO_INCREMENTAL
-set -a; . "$target/.bench-env"; set +a
+set -a; . "$run_dir/env"; set +a
 
 if [ "$wrapper" = 0 ]; then
   export RUSTC_WRAPPER= CARGO_BUILD_RUSTC_WRAPPER= OA_SCCACHE=0
@@ -148,7 +155,8 @@ sys.exit(1)' "$1"
 }
 
 edited=()
-backup_dir=$(mktemp -d)
+backup_dir=$run_dir/backups
+mkdir -p "$backup_dir"
 restore() {
   local i=0 f
   for f in "${edited[@]:-}"; do
@@ -163,12 +171,12 @@ now() { python3 -c 'import time; print(time.time())'; }
 timed() {
   local start end status=0
   start=$(now)
-  "$@" > "$target/.bench-last.log" 2>&1 || status=$?
+  "$@" > "$run_dir/last.log" 2>&1 || status=$?
   end=$(now)
   python3 -c "print(f'{$end - $start:.1f}')"
   if [ $status -ne 0 ]; then
-    echo "  failed: $* (see $target/.bench-last.log)" >&2
-    tail -20 "$target/.bench-last.log" >&2
+    echo "  failed: $* (see $run_dir/last.log)" >&2
+    tail -20 "$run_dir/last.log" >&2
     return $status
   fi
 }
@@ -197,16 +205,17 @@ row() {
 if [ "$cold" = 1 ]; then
   all=()
   for pkg in "${packages[@]}"; do all+=(-p "$pkg"); done
-  row '(all)' cold "$(timed cargo build -q "${cargo_args[@]}" "${all[@]}" --timings)" - -
+  cold_time=$(timed cargo build -q "${cargo_args[@]}" "${profile_args[@]}" "${all[@]}" --timings)
+  row '(all)' cold "$cold_time" - -
 fi
 for pkg in "${packages[@]}"; do
   file=$(src_of "$pkg") || { echo "No package named $pkg" >&2; exit 2; }
   for cmd in build test; do
     [ -n "$only" ] && [ "$only" != "$cmd" ] && continue
     if [ "$cmd" = build ]; then
-      argv=(cargo build -q "${cargo_args[@]}" -p "$pkg")
+      argv=(cargo build -q "${cargo_args[@]}" "${profile_args[@]}" -p "$pkg")
     else
-      argv=(cargo test -q "${cargo_args[@]}" -p "$pkg" --no-run)
+      argv=(cargo test -q "${cargo_args[@]}" "${profile_args[@]}" -p "$pkg" --no-run)
     fi
     prep_argv=("${argv[@]}")
     [ "$timings" = 1 ] && [ "$cmd" = build ] && prep_argv+=(--timings)

@@ -21,7 +21,7 @@ output=$(cd "$output" && pwd)
 [[ ! -e $output/build.json && ! -e $output/image.oci.tar ]] || { echo 'Use an empty output directory.' >&2; exit 2; }
 context=$output/context
 mkdir "$context"
-git -C "$root" archive "$commit" crates/layertree-tee-lab "$recipe" | tar -x -C "$context"
+git -C "$root" archive "$commit" crates/layertree-tee-lab support/workspace-hack "$recipe" | tar -x -C "$context"
 # Buildx's Docker client also works with the builder's older Docker daemon.
 export DOCKER_API_VERSION=${DOCKER_API_VERSION:-$(docker version --format '{{.Server.APIVersion}}')}
 builder=${LAYERTREE_BUILDER:-oa-layertree-repro-agent2}

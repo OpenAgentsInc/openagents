@@ -76,3 +76,6 @@ zip.workspace = true
 tokio-tungstenite.workspace = true
 # In-process registry server for the two-engine workspace integration tests.
 openagents-sync = { workspace = true, features = ["mock-server"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

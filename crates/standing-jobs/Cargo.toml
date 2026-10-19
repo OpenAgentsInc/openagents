@@ -9,3 +9,6 @@ description = "Shared finite scheduling and conservative allowance admission."
 workspace = true
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

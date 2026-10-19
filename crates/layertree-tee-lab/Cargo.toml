@@ -79,3 +79,7 @@ required-features = ["stage-attacks"]
 name = "layertree-export-stage"
 path = "src/bin/layertree-export-stage.rs"
 required-features = ["events"]
+
+# Root domain crates do not bring the native workspace feature union here.
+[patch.crates-io]
+openagents-workspace-hack = { path = "../../support/workspace-hack" }

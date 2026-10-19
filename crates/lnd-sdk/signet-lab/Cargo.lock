@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "agent-contract"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+ "serde",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -144,6 +152,17 @@ name = "bech32"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
+
+[[package]]
+name = "bip39"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90dbd31c98227229239363921e60fcf5e558e43ec69094d46fc4996f08d1d5bc"
+dependencies = [
+ "bitcoin_hashes",
+ "serde",
+ "unicode-normalization",
+]
 
 [[package]]
 name = "bitcoin"
@@ -884,6 +903,7 @@ dependencies = [
  "http",
  "httpdate",
  "indexmap 2.14.2",
+ "openagents-workspace-hack",
  "rand 0.9.5",
  "receipts",
  "reqwest",
@@ -961,6 +981,7 @@ dependencies = [
  "lightning-invoice",
  "nostr",
  "openagents-wallet",
+ "openagents-workspace-hack",
  "pay-ledger",
  "prost",
  "reqwest",
@@ -1048,6 +1069,7 @@ version = "1.0.0"
 dependencies = [
  "getrandom 0.3.4",
  "jev",
+ "openagents-workspace-hack",
  "paper-mono",
  "serde",
  "serde_json",
@@ -1059,6 +1081,10 @@ dependencies = [
 name = "nostr"
 version = "1.0.0"
 dependencies = [
+ "agent-contract",
+ "bip39",
+ "getrandom 0.3.4",
+ "openagents-workspace-hack",
  "ryu-js",
  "secp256k1 0.31.1",
  "serde",
@@ -1088,6 +1114,7 @@ dependencies = [
  "hex",
  "hmac",
  "libc",
+ "openagents-workspace-hack",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1095,6 +1122,10 @@ dependencies = [
  "thiserror",
  "user-home",
 ]
+
+[[package]]
+name = "openagents-workspace-hack"
+version = "0.1.0"
 
 [[package]]
 name = "openagents-x402"
@@ -1105,6 +1136,7 @@ dependencies = [
  "libc",
  "model-access",
  "nostr",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -1114,6 +1146,9 @@ dependencies = [
 [[package]]
 name = "paper-mono"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "pay-ledger"
@@ -1123,6 +1158,7 @@ dependencies = [
  "hex",
  "libc",
  "nostr",
+ "openagents-workspace-hack",
  "receipts",
  "rusqlite",
  "serde",
@@ -1386,6 +1422,7 @@ dependencies = [
 name = "receipts"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1716,6 +1753,7 @@ name = "supervise"
 version = "1.0.0"
 dependencies = [
  "libc",
+ "openagents-workspace-hack",
  "tokio",
  "windows-sys 0.61.2",
 ]
@@ -2047,6 +2085,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
+name = "unicode-normalization"
+version = "0.1.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75cd3fb03d5288b3ba9a1ee103ac7e9cbb59f0b03d64f8ddfcc04dd42758a85d"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
 name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2067,6 +2114,9 @@ dependencies = [
 [[package]]
 name = "user-home"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "utf8_iter"

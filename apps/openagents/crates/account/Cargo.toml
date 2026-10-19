@@ -35,3 +35,6 @@ oa-copy = { path = "../../../../crates/oa-copy" }
 axum = "0.8"
 tempfile.workspace = true
 base64 = "0.22"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

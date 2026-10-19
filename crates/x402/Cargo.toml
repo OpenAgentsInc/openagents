@@ -27,3 +27,6 @@ libc = "0.2"
 pay-ledger = { path = "../pay-ledger" }
 nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

@@ -12,7 +12,7 @@ out=$(cd "$out" && pwd)
 target=$(cd "$CARGO_TARGET_DIR" && pwd)
 [[ ! -e $out/source && ! -e $out/build.json ]] || { echo 'Choose a new output directory.' >&2; exit 2; }
 mkdir "$out/source"
-git -C "$root" archive "$commit" Cargo.toml rust-toolchain.toml crates/layertree-tee-lab crates/nostr crates/nostr-transport nips/openagents/schemas scripts/layertree/followers.py | tar -x -C "$out/source"
+git -C "$root" archive "$commit" Cargo.toml rust-toolchain.toml crates/layertree-tee-lab crates/nostr crates/nostr-transport nips/openagents/schemas scripts/layertree/followers.py support/workspace-hack | tar -x -C "$out/source"
 # Path dependencies inherit only these package/lint fields. Keep an isolated
 # parent workspace so unrelated packages and vendor patches are not required.
 python3 - "$out/source/Cargo.toml" <<'PY'

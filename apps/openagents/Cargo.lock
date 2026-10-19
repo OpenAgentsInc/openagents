@@ -124,6 +124,7 @@ version = "1.0.0"
 dependencies = [
  "coder-lease",
  "libc",
+ "openagents-workspace-hack",
  "program-launch",
  "secret-screen",
  "serde",
@@ -223,6 +224,7 @@ dependencies = [
 name = "agent-contract"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
 ]
 
@@ -232,6 +234,7 @@ version = "1.0.0"
 dependencies = [
  "agent-contract",
  "lab-kit",
+ "openagents-workspace-hack",
  "rust-native",
  "serde",
  "serde_json",
@@ -878,6 +881,7 @@ dependencies = [
  "bytes",
  "chrono",
  "futures-util",
+ "openagents-workspace-hack",
  "percent-encoding",
  "quick-xml 0.38.4",
  "rand 0.9.5",
@@ -1547,6 +1551,7 @@ dependencies = [
 name = "atif"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1862,6 +1867,7 @@ dependencies = [
  "coder-lease",
  "flate2",
  "libc",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2098,6 +2104,9 @@ dependencies = [
 [[package]]
 name = "bitcoin-amount"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "bitcoin-consensus-encoding"
@@ -2296,6 +2305,7 @@ dependencies = [
  "base64 0.22.1",
  "computer-files",
  "hmac 0.12.1",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2810,6 +2820,7 @@ dependencies = [
 name = "chat-home"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "rust-native",
  "secret-screen",
  "serde",
@@ -2936,6 +2947,7 @@ dependencies = [
  "async-trait",
  "futures",
  "libc",
+ "openagents-workspace-hack",
  "program-launch",
  "serde",
  "serde_json",
@@ -3029,6 +3041,7 @@ dependencies = [
  "coder-connect",
  "nostr",
  "nostr-transport",
+ "openagents-workspace-hack",
  "private-fs",
  "robot-lab",
  "secp256k1 0.31.1",
@@ -3043,6 +3056,9 @@ dependencies = [
 [[package]]
 name = "coder-binds"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "coder-boundary"
@@ -3050,6 +3066,7 @@ version = "1.0.0"
 dependencies = [
  "errno",
  "libc",
+ "openagents-workspace-hack",
  "serde",
  "sha2 0.10.9",
  "tempfile",
@@ -3072,6 +3089,7 @@ dependencies = [
  "libc",
  "microcoder-loop",
  "openagents-sdk",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "secret-screen",
  "serde",
@@ -3092,6 +3110,7 @@ dependencies = [
  "nostr",
  "nostr-transport",
  "notify 8.2.0",
+ "openagents-workspace-hack",
  "paper-mono",
  "private-fs",
  "qrcodegen",
@@ -3120,6 +3139,7 @@ dependencies = [
  "knowledge",
  "openagents-harness",
  "openagents-proto",
+ "openagents-workspace-hack",
  "plugin",
  "regex",
  "reqwest 0.12.28",
@@ -3138,6 +3158,7 @@ name = "coder-desk"
 version = "1.0.0"
 dependencies = [
  "coder-binds",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "tokio",
@@ -3148,6 +3169,7 @@ dependencies = [
 name = "coder-engine-status"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
 ]
@@ -3159,6 +3181,7 @@ dependencies = [
  "atif",
  "boat",
  "computer-driver",
+ "openagents-workspace-hack",
  "secret-screen",
  "serde",
  "serde_json",
@@ -3171,6 +3194,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "libc",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -3201,6 +3225,7 @@ dependencies = [
  "nostr-transport",
  "openagents-chat",
  "openagents-connect",
+ "openagents-workspace-hack",
  "private-fs",
  "pylon",
  "reqwest 0.12.28",
@@ -3227,6 +3252,7 @@ dependencies = [
  "coder-pty",
  "coder-reach",
  "nostr",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
 ]
@@ -3236,6 +3262,7 @@ name = "coder-lease"
 version = "1.0.0"
 dependencies = [
  "libc",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3245,6 +3272,9 @@ dependencies = [
 [[package]]
 name = "coder-link"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "coder-pty"
@@ -3254,6 +3284,7 @@ dependencies = [
  "coder-boundary",
  "coder-engine-status",
  "libc",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3271,6 +3302,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "nostr",
+ "openagents-workspace-hack",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -3295,6 +3327,7 @@ dependencies = [
  "getrandom 0.3.4",
  "hook-log",
  "jev",
+ "openagents-workspace-hack",
  "plugin",
  "reqwest 0.12.28",
  "route-contract",
@@ -3310,6 +3343,7 @@ name = "coder-service"
 version = "1.0.0"
 dependencies = [
  "libc",
+ "openagents-workspace-hack",
  "private-fs",
  "secp256k1 0.31.1",
  "serde",
@@ -3331,6 +3365,7 @@ dependencies = [
  "computer-files",
  "fs2",
  "libc",
+ "openagents-workspace-hack",
  "rust-native",
  "secp256k1 0.31.1",
  "serde",
@@ -3345,6 +3380,7 @@ dependencies = [
  "atif",
  "nostr",
  "oa-tokens",
+ "openagents-workspace-hack",
  "pulldown-cmark 0.13.4",
  "rust-native",
  "serde",
@@ -3362,6 +3398,7 @@ name = "coder-vt"
 version = "1.0.0"
 dependencies = [
  "coder-pty",
+ "openagents-workspace-hack",
  "serde_json",
  "unicode-width",
  "vte",
@@ -3384,6 +3421,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "libc",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3462,6 +3500,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "computer-files",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "tokio",
@@ -3477,6 +3516,7 @@ dependencies = [
  "coder-host",
  "computer-driver",
  "computer-files",
+ "openagents-workspace-hack",
  "serde_json",
  "tokio",
 ]
@@ -3486,6 +3526,7 @@ name = "computer-files"
 version = "1.0.0"
 dependencies = [
  "libc",
+ "openagents-workspace-hack",
  "serde",
  "sha2 0.10.9",
 ]
@@ -6202,6 +6243,7 @@ dependencies = [
 name = "github-actions"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
 ]
@@ -7238,6 +7280,7 @@ dependencies = [
 name = "hook-log"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "user-home",
@@ -7731,6 +7774,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
+ "openagents-workspace-hack",
  "openrouter",
  "reqwest 0.12.28",
  "ring",
@@ -8187,6 +8231,7 @@ dependencies = [
  "http",
  "httpdate",
  "indexmap 2.14.0",
+ "openagents-workspace-hack",
  "rand 0.9.5",
  "receipts",
  "reqwest 0.12.28",
@@ -8207,6 +8252,7 @@ dependencies = [
  "model-access",
  "nostr",
  "nostr-transport",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "secp256k1 0.31.1",
  "serde_json",
@@ -8469,6 +8515,7 @@ dependencies = [
  "inference",
  "model-access",
  "nostr",
+ "openagents-workspace-hack",
  "openrouter",
  "openui-lang",
  "private-fs",
@@ -8532,6 +8579,7 @@ dependencies = [
 name = "lab-kit"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -8543,6 +8591,7 @@ name = "lab-ui"
 version = "1.0.0"
 dependencies = [
  "lab-kit",
+ "openagents-workspace-hack",
  "rust-native",
  "serde",
  "serde_json",
@@ -9220,6 +9269,7 @@ dependencies = [
 name = "markdown-stream"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "pulldown-cmark 0.13.4",
 ]
 
@@ -9395,6 +9445,7 @@ dependencies = [
  "jev",
  "knowledge",
  "nostr",
+ "openagents-workspace-hack",
  "openrouter",
  "private-fs",
  "reqwest 0.12.28",
@@ -9491,6 +9542,7 @@ version = "1.0.0"
 dependencies = [
  "getrandom 0.3.4",
  "jev",
+ "openagents-workspace-hack",
  "paper-mono",
  "serde",
  "serde_json",
@@ -10042,6 +10094,7 @@ dependencies = [
  "agent-contract",
  "bip39",
  "getrandom 0.3.4",
+ "openagents-workspace-hack",
  "ryu-js",
  "secp256k1 0.31.1",
  "serde",
@@ -10055,6 +10108,7 @@ version = "1.0.0"
 dependencies = [
  "futures-util",
  "nostr",
+ "openagents-workspace-hack",
  "rustls",
  "secp256k1 0.31.1",
  "serde_json",
@@ -10327,6 +10381,9 @@ dependencies = [
 [[package]]
 name = "oa-copy"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "oa-tokens"
@@ -10991,6 +11048,7 @@ dependencies = [
  "openagents-rpc",
  "openagents-ui",
  "openagents-update",
+ "openagents-workspace-hack",
  "serde_json",
  "tempfile",
  "tokio",
@@ -11016,6 +11074,7 @@ dependencies = [
  "openagents-doc",
  "openagents-proto",
  "openagents-sdk",
+ "openagents-workspace-hack",
  "rust-native",
  "secp256k1 0.31.1",
  "security-framework",
@@ -11036,6 +11095,7 @@ dependencies = [
  "cpal 0.18.2",
  "crossbeam-queue",
  "openagents-proto",
+ "openagents-workspace-hack",
  "thiserror 2.0.20",
  "webrtc-audio-processing",
 ]
@@ -11046,12 +11106,16 @@ version = "1.0.0"
 dependencies = [
  "openagents-brand",
  "openagents-proto",
+ "openagents-workspace-hack",
  "tempfile",
 ]
 
 [[package]]
 name = "openagents-brand"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "openagents-chat"
@@ -11063,6 +11127,7 @@ dependencies = [
  "model-access",
  "nostr",
  "nostr-transport",
+ "openagents-workspace-hack",
  "playtest",
  "route-contract",
  "rust-native",
@@ -11092,6 +11157,7 @@ dependencies = [
  "openagents-sync",
  "openagents-visual",
  "openagents-voice-session",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -11118,6 +11184,7 @@ dependencies = [
  "iroh-mdns-address-lookup",
  "nostr",
  "openagents-chat",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -11129,6 +11196,7 @@ dependencies = [
 name = "openagents-dashboard"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -11142,6 +11210,7 @@ dependencies = [
  "chrono",
  "loro",
  "openagents-proto",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "similar",
@@ -11189,6 +11258,7 @@ dependencies = [
  "openagents-sync",
  "openagents-update",
  "openagents-visual",
+ "openagents-workspace-hack",
  "portable-pty",
  "reqwest 0.12.28",
  "rusqlite",
@@ -11219,6 +11289,7 @@ dependencies = [
  "gpui_platform",
  "gpui_wgpu",
  "image",
+ "openagents-workspace-hack",
 ]
 
 [[package]]
@@ -11236,6 +11307,7 @@ dependencies = [
  "openagents-proto",
  "openagents-sdk",
  "openagents-voice-media",
+ "openagents-workspace-hack",
  "portable-pty",
  "reqwest 0.12.28",
  "semver 1.0.28",
@@ -11260,6 +11332,7 @@ version = "1.0.0"
 dependencies = [
  "coder-lease",
  "libc",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "tempfile",
@@ -11269,6 +11342,7 @@ dependencies = [
 name = "openagents-login"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -11279,6 +11353,7 @@ dependencies = [
 name = "openagents-markdown"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "pulldown-cmark 0.12.2",
 ]
 
@@ -11302,6 +11377,7 @@ dependencies = [
  "openagents-rpc",
  "openagents-sdk",
  "openagents-visual",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -11345,6 +11421,7 @@ dependencies = [
  "openagents-visual",
  "openagents-visual-gpu",
  "openagents-voice-session",
+ "openagents-workspace-hack",
  "push-gateway",
  "reqwest 0.12.28",
  "rust-native",
@@ -11367,6 +11444,9 @@ dependencies = [
 [[package]]
 name = "openagents-orb"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "openagents-preview"
@@ -11383,6 +11463,7 @@ dependencies = [
  "libc",
  "openagents-brand",
  "openagents-proto",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -11404,6 +11485,7 @@ dependencies = [
  "chat-home",
  "chrono",
  "openagents-brand",
+ "openagents-workspace-hack",
  "pulldown-cmark 0.12.2",
  "serde",
  "serde_json",
@@ -11421,6 +11503,7 @@ dependencies = [
  "openagents-doc",
  "openagents-proto",
  "openagents-sync",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -11444,6 +11527,7 @@ dependencies = [
  "oa-copy",
  "openagents-dashboard",
  "openagents-login",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -11463,6 +11547,7 @@ dependencies = [
  "breez-sdk-spark",
  "getrandom 0.3.4",
  "nostr",
+ "openagents-workspace-hack",
  "rustls",
  "secp256k1 0.31.1",
  "serde",
@@ -11493,6 +11578,7 @@ dependencies = [
  "openagents-brand",
  "openagents-doc",
  "openagents-proto",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "rusqlite",
  "secp256k1 0.31.1",
@@ -11511,6 +11597,7 @@ dependencies = [
 name = "openagents-syntax"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "thiserror 2.0.20",
  "tree-sitter",
  "tree-sitter-bash",
@@ -11553,6 +11640,7 @@ dependencies = [
  "icu_properties",
  "icu_segmenter",
  "openagents-brand",
+ "openagents-workspace-hack",
  "rustc-hash 2.1.3",
  "rustybuzz",
  "unicode-bidi",
@@ -11566,6 +11654,7 @@ dependencies = [
  "anyhow",
  "clap",
  "json5 0.4.1",
+ "openagents-workspace-hack",
  "plist",
  "serde",
  "serde_json",
@@ -11640,6 +11729,7 @@ dependencies = [
  "openagents-voice",
  "openagents-voice-media",
  "openagents-voice-session",
+ "openagents-workspace-hack",
  "png 0.18.1",
  "pulldown-cmark 0.12.2",
  "qrcodegen",
@@ -11679,6 +11769,7 @@ dependencies = [
  "anyhow",
  "futures",
  "openagents-brand",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -11692,6 +11783,9 @@ dependencies = [
 [[package]]
 name = "openagents-veil"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "openagents-visual"
@@ -11702,6 +11796,7 @@ dependencies = [
  "image",
  "mlua",
  "naga",
+ "openagents-workspace-hack",
  "thiserror 2.0.20",
 ]
 
@@ -11712,6 +11807,7 @@ dependencies = [
  "image",
  "openagents-brand",
  "openagents-visual",
+ "openagents-workspace-hack",
  "pollster 0.4.0",
  "tracing",
  "wgpu",
@@ -11724,6 +11820,7 @@ dependencies = [
  "anyhow",
  "cpal 0.17.3",
  "hound",
+ "openagents-workspace-hack",
  "parakeet-rs",
  "reqwest 0.12.28",
  "rubato",
@@ -11742,6 +11839,7 @@ dependencies = [
  "openagents-brand",
  "openagents-proto",
  "openagents-voice-session",
+ "openagents-workspace-hack",
  "semver 1.0.28",
  "serde_json",
  "sha2 0.10.9",
@@ -11759,11 +11857,177 @@ dependencies = [
  "openagents-orb",
  "openagents-proto",
  "openagents-rpc",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "openagents-workspace-hack"
+version = "0.1.0"
+dependencies = [
+ "aead",
+ "aes-gcm",
+ "ahash",
+ "aho-corasick",
+ "anyhow",
+ "arrayvec",
+ "base64 0.23.1",
+ "bip39",
+ "bitflags 2.13.1",
+ "block2 0.6.2",
+ "bytemuck",
+ "byteorder",
+ "camino",
+ "cc",
+ "cipher 0.4.4",
+ "clap",
+ "clap_builder",
+ "codespan-reporting",
+ "concurrent-queue",
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
+ "core-graphics 0.24.0",
+ "cranelift-bitset",
+ "crossbeam-utils",
+ "crypto-common 0.1.7",
+ "crypto-common 0.2.2",
+ "data-encoding",
+ "der 0.8.2",
+ "digest 0.10.7",
+ "digest 0.11.3",
+ "dispatch2",
+ "displaydoc",
+ "either",
+ "errno",
+ "fastrand",
+ "flate2",
+ "fnv",
+ "fontdb",
+ "futures-channel",
+ "futures-core",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+ "generic-array",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "getrandom 0.4.3",
+ "half",
+ "hashbrown 0.15.5",
+ "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
+ "hmac 0.12.1",
+ "http",
+ "httparse",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "icu_locale_core",
+ "icu_properties",
+ "icu_provider",
+ "image",
+ "indexmap 2.14.0",
+ "inout 0.1.4",
+ "libc",
+ "linux-raw-sys 0.12.1",
+ "litemap",
+ "lock_api",
+ "log",
+ "memchr",
+ "miniz_oxide",
+ "mio",
+ "naga",
+ "ndk-sys",
+ "nom 7.1.3",
+ "num-bigint",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "objc2 0.6.4",
+ "objc2-avf-audio",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "objc2-security",
+ "once_cell",
+ "parking_lot",
+ "percent-encoding",
+ "portable-atomic",
+ "postcard",
+ "potential_utf",
+ "proc-macro2",
+ "profiling",
+ "pulley-interpreter",
+ "quote",
+ "rand 0.8.7",
+ "rand 0.9.5",
+ "rand_core 0.6.4",
+ "regex",
+ "regex-automata",
+ "regex-syntax",
+ "reqwest 0.12.28",
+ "rustix 1.1.4",
+ "rustls",
+ "rustls-pki-types",
+ "secp256k1 0.31.1",
+ "security-framework-sys",
+ "semver 1.0.28",
+ "serde",
+ "serde_core",
+ "serde_json",
+ "simd-adler32",
+ "simdutf8",
+ "slab",
+ "smallvec",
+ "stable_deref_trait",
+ "subtle",
+ "syn 2.0.119",
+ "syn 3.0.3",
+ "thiserror 2.0.20",
+ "time",
+ "tinystr",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_parser",
+ "tower 0.5.3",
+ "tracing",
+ "tracing-core",
+ "ttf-parser",
+ "typenum",
+ "ucd-trie",
+ "unicode-bidi",
+ "uniffi",
+ "url",
+ "vte",
+ "wasm-encoder 0.254.2",
+ "wasmparser 0.254.2",
+ "wasmtime-internal-core",
+ "wgpu",
+ "wgpu-core",
+ "winapi",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
+ "windows-result 0.4.1",
+ "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
+ "winnow 0.7.15",
+ "winnow 1.0.4",
+ "writeable",
+ "xxhash-rust",
+ "yoke",
+ "zbus",
+ "zerocopy",
+ "zerofrom",
+ "zeroize",
+ "zerotrie",
+ "zerovec",
 ]
 
 [[package]]
@@ -11775,6 +12039,7 @@ dependencies = [
  "libc",
  "model-access",
  "nostr",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -11785,6 +12050,7 @@ dependencies = [
 name = "openrouter"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -11839,6 +12105,7 @@ dependencies = [
 name = "openui-lang"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
 ]
 
@@ -11972,6 +12239,9 @@ dependencies = [
 [[package]]
 name = "paper-mono"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "parakeet-rs"
@@ -12097,6 +12367,7 @@ dependencies = [
  "hex",
  "libc",
  "nostr",
+ "openagents-workspace-hack",
  "receipts",
  "rusqlite",
  "serde",
@@ -12459,6 +12730,7 @@ name = "playtest"
 version = "1.0.0"
 dependencies = [
  "nostr",
+ "openagents-workspace-hack",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
@@ -12511,6 +12783,7 @@ name = "plugin"
 version = "1.0.0"
 dependencies = [
  "nostr",
+ "openagents-workspace-hack",
  "serde_json",
  "sha2 0.11.1",
  "user-home",
@@ -12791,6 +13064,7 @@ dependencies = [
 name = "private-fs"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "windows-sys 0.61.2",
 ]
 
@@ -12921,6 +13195,9 @@ dependencies = [
 [[package]]
 name = "program-launch"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "proptest"
@@ -13166,6 +13443,7 @@ version = "1.0.0"
 dependencies = [
  "nostr",
  "nostr-transport",
+ "openagents-workspace-hack",
  "reqwest 0.12.28",
  "secp256k1 0.31.1",
  "serde",
@@ -13188,6 +13466,7 @@ dependencies = [
  "coder-lease",
  "nostr",
  "nostr-transport",
+ "openagents-workspace-hack",
  "openagents-x402",
  "pay-ledger",
  "receipts",
@@ -13667,6 +13946,7 @@ checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 name = "receipts"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -13982,6 +14262,7 @@ name = "robot-description"
 version = "1.0.0"
 dependencies = [
  "glam",
+ "openagents-workspace-hack",
  "roxmltree 0.21.1",
  "serde",
  "serde_json",
@@ -13996,6 +14277,7 @@ dependencies = [
  "fs2",
  "glam",
  "lab-kit",
+ "openagents-workspace-hack",
  "robot-description",
  "roxmltree 0.21.1",
  "schemars 1.2.2",
@@ -14019,6 +14301,7 @@ dependencies = [
 name = "route-contract"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -14426,6 +14709,7 @@ name = "rust-native"
 version = "1.0.0"
 dependencies = [
  "markdown-stream",
+ "openagents-workspace-hack",
  "openui-lang",
  "pulldown-cmark 0.13.4",
  "serde",
@@ -14895,6 +15179,7 @@ dependencies = [
 name = "secret-screen"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "regex",
  "serde_json",
 ]
@@ -15977,6 +16262,7 @@ name = "supervise"
 version = "1.0.0"
 dependencies = [
  "libc",
+ "openagents-workspace-hack",
  "tokio",
  "windows-sys 0.61.2",
 ]
@@ -16372,6 +16658,7 @@ version = "1.0.0"
 dependencies = [
  "coder-pty",
  "coder-vt",
+ "openagents-workspace-hack",
  "route-contract",
  "serde",
  "serde_json",
@@ -17907,6 +18194,9 @@ checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 [[package]]
 name = "user-home"
 version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
 
 [[package]]
 name = "usvg"
@@ -18074,6 +18364,7 @@ dependencies = [
  "ab_glyph",
  "base64 0.22.1",
  "lab-kit",
+ "openagents-workspace-hack",
  "png 0.18.1",
  "serde",
  "serde_json",
@@ -19868,6 +20159,7 @@ dependencies = [
 name = "workbench"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
 ]
@@ -20138,6 +20430,7 @@ name = "xp-ledger"
 version = "1.0.0"
 dependencies = [
  "nostr",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",

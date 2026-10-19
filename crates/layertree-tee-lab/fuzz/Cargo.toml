@@ -68,3 +68,7 @@ path = "fuzz_targets/gcp_token_verify.rs"
 test = false
 doc = false
 bench = false
+
+# Use the empty feature-unification crate outside the managed workspaces.
+[patch.crates-io]
+openagents-workspace-hack = { path = "../../../support/workspace-hack" }

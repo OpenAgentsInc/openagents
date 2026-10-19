@@ -17,3 +17,6 @@ crossbeam-queue = "0.3"
 cpal = { version = "=0.18.2", optional = true }
 webrtc-audio-processing = { version = "~2.1.0", features = ["bundled"], optional = true }
 thiserror.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

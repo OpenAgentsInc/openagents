@@ -35,3 +35,6 @@ microcoder-loop = { path = "../../../../crates/microcoder-loop" }
 tempfile.workspace = true
 openagents-visual.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

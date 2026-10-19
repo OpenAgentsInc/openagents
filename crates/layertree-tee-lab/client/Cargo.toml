@@ -20,3 +20,7 @@ reqwest = { version = "=0.12.28", default-features = false, features = ["blockin
 time = { version = "=0.3.55", default-features = false, features = ["parsing"] }
 base64 = "=0.22.1"
 tungstenite = { version = "=0.28.0", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+
+# Use the empty feature-unification crate outside the managed workspaces.
+[patch.crates-io]
+openagents-workspace-hack = { path = "../../../support/workspace-hack" }

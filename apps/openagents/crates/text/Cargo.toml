@@ -29,3 +29,6 @@ harness = false
 core-text = "21"
 core-foundation = "0.10"
 core-graphics = "0.24"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

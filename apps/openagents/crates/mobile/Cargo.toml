@@ -81,3 +81,6 @@ rustls-platform-verifier = "0.7.1"
 [dev-dependencies]
 oa-copy = { path = "../../../../crates/oa-copy" }
 tempfile.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

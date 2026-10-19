@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "agent-contract"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+ "serde",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -66,6 +74,7 @@ dependencies = [
  "base64 0.22.1",
  "nostr",
  "oa-att",
+ "openagents-workspace-hack",
  "p256",
  "p384",
  "rsa",
@@ -81,6 +90,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "nostr",
+ "openagents-workspace-hack",
  "p256",
  "secp256k1 0.31.1",
  "serde",
@@ -132,6 +142,17 @@ name = "bech32"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
+
+[[package]]
+name = "bip39"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90dbd31c98227229239363921e60fcf5e558e43ec69094d46fc4996f08d1d5bc"
+dependencies = [
+ "bitcoin_hashes",
+ "serde",
+ "unicode-normalization",
+]
 
 [[package]]
 name = "bit-vec"
@@ -1041,6 +1062,10 @@ dependencies = [
 name = "nostr"
 version = "1.0.0"
 dependencies = [
+ "agent-contract",
+ "bip39",
+ "getrandom 0.3.4",
+ "openagents-workspace-hack",
  "ryu-js",
  "secp256k1 0.31.1",
  "serde",
@@ -1115,6 +1140,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "nostr",
+ "openagents-workspace-hack",
  "receipts",
  "rsa",
  "secp256k1 0.31.1",
@@ -1138,6 +1164,10 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "openagents-workspace-hack"
+version = "0.1.0"
 
 [[package]]
 name = "p256"
@@ -1426,6 +1456,7 @@ dependencies = [
 name = "receipts"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2037,6 +2068,15 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75cd3fb03d5288b3ba9a1ee103ac7e9cbb59f0b03d64f8ddfcc04dd42758a85d"
+dependencies = [
+ "tinyvec",
+]
 
 [[package]]
 name = "untrusted"

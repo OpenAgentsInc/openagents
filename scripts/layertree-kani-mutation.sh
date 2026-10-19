@@ -19,6 +19,10 @@ target = pathlib.Path(sys.argv[1])
 shutil.copytree(source / 'src', target / 'src')
 for name in ('Cargo.toml', 'Cargo.lock'):
     shutil.copy2(source / name, target / name)
+shutil.copytree(pathlib.Path('support/workspace-hack'), target / 'workspace-hack')
+manifest = target / 'Cargo.toml'
+manifest.write_text(manifest.read_text().replace(
+    'path = "../../support/workspace-hack"', 'path = "workspace-hack"'))
 p = target / 'src/predicate.rs'
 s = p.read_text()
 needle = 'amount: leaf.amount,'

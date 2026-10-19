@@ -8,6 +8,21 @@ from pathlib import Path
 PIN = "de87b436c35dac056564bdd5b2a113c9046e189b"
 
 
+def standalone_manifest(text):
+    """Replace workspace fields and omit the workspace's generated feature union."""
+    replacements = {
+        "version.workspace = true": 'version = "1.0.0"',
+        "edition.workspace = true": 'edition = "2024"',
+        "rust-version.workspace = true": 'rust-version = "1.97"',
+        "publish.workspace = true": "publish = false",
+    }
+    hack_dependency = 'openagents-workspace-hack = { version = "0.1" }'
+    return "\n".join(
+        replacements.get(line, line) for line in text.splitlines()
+        if line.strip() != hack_dependency
+    ) + "\n"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
@@ -24,14 +39,7 @@ def main():
         raise SystemExit("The adapter destination already exists.")
     shutil.copytree(repository / "crates/computer-credentials", destination)
     manifest = destination / "Cargo.toml"
-    replacements = {
-        "version.workspace = true": 'version = "1.0.0"',
-        "edition.workspace = true": 'edition = "2024"',
-        "rust-version.workspace = true": 'rust-version = "1.97"',
-        "publish.workspace = true": "publish = false",
-    }
-    contents = "\n".join(replacements.get(line, line) for line in manifest.read_text().splitlines()) + "\n"
-    manifest.write_text(contents)
+    manifest.write_text(standalone_manifest(manifest.read_text()))
     workspace = source / "Cargo.toml"
     contents = workspace.read_text()
     if contents.count("members = [") != 1:

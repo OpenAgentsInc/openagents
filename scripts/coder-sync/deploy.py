@@ -106,7 +106,7 @@ def revision():
 # The Dockerfile copies these exported source trees. Include the shared host
 # client's dependencies as well as the server and app sync clients.
 # questions/: jev embeds its decision questions (crates/jev include_str!).
-BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "nips/openagents/schemas", "questions", "deploy/coder-sync", "apps/openagents/Cargo.toml"] + [
+BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "nips/openagents/schemas", "questions", "deploy/coder-sync", "apps/openagents/Cargo.toml", "support/workspace-hack"] + [
     f"crates/{name}" for name in (
         'agent-contract',
         'agent-lab',

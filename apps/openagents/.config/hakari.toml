@@ -1,0 +1,32 @@
+# Managed with cargo-hakari 0.9.39. Regenerate after dependency changes.
+hakari-package = "openagents-workspace-hack"
+resolver = "2"
+dep-format-version = "4"
+# Unify shared build-script dependencies without adding target-only dependencies to the host.
+unify-target-host = "unify-if-both"
+# Each consuming workspace selects its own generated crate with [patch.crates-io].
+workspace-hack-line-style = "version-only"
+platforms = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-ios",
+    "aarch64-apple-ios-sim",
+    "aarch64-linux-android",
+    "x86_64-linux-android",
+]
+
+[traversal-excludes]
+# These optional backends must remain opt-in on supported platforms.
+third-party = [
+    # Desktop presentation and test-support must not enter the phone core.
+    { name = "gpui", git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" },
+    { name = "gpui_platform", git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" },
+    { name = "gpui-base", git = "https://github.com/zeronsh/gpui-component", rev = "701ca97af7983bf85343d2d1d404ab528b18ec96" },
+    # Wallet test helpers must not become normal dependencies.
+    { name = "breez-sdk-spark", git = "https://github.com/breez/spark-sdk", tag = "0.26.0" },
+    { name = "spark", git = "https://github.com/breez/spark-sdk", tag = "0.26.0" },
+    { name = "spark-wallet", git = "https://github.com/breez/spark-sdk", tag = "0.26.0" },
+]

@@ -12,3 +12,7 @@ path = "main.rs"
 [dependencies]
 gym = { path = "../../../../crates/gym" }
 serde_json = "1"
+
+# Use the empty feature-unification crate outside the managed workspaces.
+[patch.crates-io]
+openagents-workspace-hack = { path = "../../../../support/workspace-hack" }

@@ -25,7 +25,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ALL_SLUGS="preflight gate-tooling psionic-fixtures artifacts delegation backup fmt clippy clippy-features tests tests-features nested dependents deps postgres metal-clippy metal-tests soak"
+ALL_SLUGS="preflight hakari gate-tooling psionic-fixtures artifacts delegation backup fmt clippy clippy-features tests tests-features nested dependents deps postgres metal-clippy metal-tests soak"
 CARGO_SCOPED="fmt clippy clippy-features tests tests-features"
 features='kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http'
 
@@ -66,6 +66,7 @@ EOF
 list_phases() {
   cat <<'EOF'
 preflight        Environment preflight: descriptors, tools, toolchains, disk
+hakari           Workspace dependency features and workspace-hack dependencies
 gate-tooling     Gate tooling tests (verify-changed, gate-record)
 psionic-fixtures Psionic fixture existence (ratcheted allowlist)
 artifacts        Artifact acquisition tests
@@ -115,7 +116,7 @@ done
 # Keep ordinary issue work targeted. Explicit phases may add relevant coverage,
 # but a bare invocation must not launch the release matrix.
 if (( ! release )); then
-  [[ -n $WANTED ]] || WANTED="preflight psionic-fixtures fmt clippy tests nested dependents"
+  [[ -n $WANTED ]] || WANTED="preflight hakari psionic-fixtures fmt clippy tests nested dependents"
   if (( ! CRATES_SET )) && [[ -z $CHANGED ]]; then
     CHANGED="origin/main"
   fi
@@ -389,6 +390,8 @@ else
   record_skip preflight "not in --phases"
 fi
 
+run_phase hakari "Workspace dependency features" \
+  bash scripts/dev/check-workspace-hack.sh
 run_phase gate-tooling "Gate tooling tests" \
   bash -c 'python3 -B -m unittest discover -s scripts/tests -p "test_gate_*.py" \
     && python3 -B -m unittest discover -s scripts -p "test_verification_phase.py"'

@@ -21,3 +21,6 @@ workspace = true
 private-fs = { path = "../private-fs" }
 tokio = { version = "1", features = ["rt", "net", "io-util", "time", "macros", "sync"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

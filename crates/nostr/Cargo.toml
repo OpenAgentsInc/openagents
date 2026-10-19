@@ -43,3 +43,6 @@ hkdf = "0.13.0"
 hmac = "0.13.0"
 proptest = "1.11.0"
 subtle = "2.6.1"
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

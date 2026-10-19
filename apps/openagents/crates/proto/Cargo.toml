@@ -13,3 +13,6 @@ serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 pulldown-cmark.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

@@ -13,6 +13,7 @@ ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
     RUSTFLAGS="--remap-path-prefix=/build=/src --remap-path-prefix=/usr/local/cargo=/cargo -C link-arg=-Wl,--build-id=none"
 WORKDIR /build
 COPY crates/layertree-tee-lab/ .
+COPY support/workspace-hack/ /support/workspace-hack/
 RUN --mount=type=cache,id=layertree-repro-cargo,target=/usr/local/cargo/registry \
     --mount=type=cache,id=layertree-repro-target,target=/build/target \
     cargo build --locked --release --features "$PROBE_FEATURES" --example "$PROBE_EXAMPLE" \
