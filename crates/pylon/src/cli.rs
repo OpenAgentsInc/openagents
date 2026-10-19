@@ -475,9 +475,21 @@ fn key(name: &str) -> Result<Identity, String> {
 /// This computer's name as a beacon slug.
 #[must_use]
 pub fn host_slug() -> String {
+    // macOS exports no HOSTNAME and has no /etc/hostname, so ask
+    // `hostname -s` before falling back to "pylon" (every Mac was "pylon").
     let raw = std::env::var("HOSTNAME")
         .ok()
+        .filter(|h| !h.trim().is_empty())
         .or_else(|| std::fs::read_to_string("/etc/hostname").ok())
+        .filter(|h| !h.trim().is_empty())
+        .or_else(|| {
+            std::process::Command::new("hostname")
+                .arg("-s")
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+        })
         .unwrap_or_else(|| "pylon".into());
     let slug: String = raw
         .trim()
