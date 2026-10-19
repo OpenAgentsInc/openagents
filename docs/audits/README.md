@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-10-19-rust-compile-times.md](2026-10-19-rust-compile-times.md) | Rust compile times: the edit loop, land-queue checks and deploy builds measured, incremental leaf crates and line tables (edits 81 to 82% faster), ranked options, and why not to rewrite |
 | [2026-10-17-spark-wallet.md](2026-10-17-spark-wallet.md) | Spark wallet: what the Breez SDK offers at `fc7ae22`, what the phone, CLI, and x402 payer use, the ranked gaps for a full wallet, x402 fit, custody with one seed, and a phased plan |
 | [2026-10-16-coder-desktop-monorepo-merge.md](2026-10-16-coder-desktop-monorepo-merge.md) | Merging the Coder Desktop (Zeron) fork into the monorepo as the OpenAgents desktop and mobile apps: size, conflicts, identity, plan |
 | [2026-10-14-computers-for-chats-audit.md](2026-10-14-computers-for-chats-audit.md) | Computers for chats: your own computers, cloud computers, environments, GPU, Claude setup tokens and Code Graph, against "type in the web app, a computer starts, the work shows on the web" |
