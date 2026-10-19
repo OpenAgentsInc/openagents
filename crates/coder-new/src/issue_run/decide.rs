@@ -415,10 +415,11 @@ fn subq_config(key: String) -> jev::Config {
 }
 
 /// Our decision API (#11225): connected Pylons first, then Gemini on
-/// Vertex, keyless.
+/// Vertex, keyless, on the community lane (these are our own non-personal
+/// decisions, #12190).
 fn ours_door() -> Option<Door> {
     let env = |name: &str| std::env::var(name).ok();
-    let resolved = jev_hosted::ours(
+    let resolved = jev_hosted::ours_community(
         &env,
         &jev_hosted::Door {
             url: jev_hosted::OPENAGENTS,
@@ -439,6 +440,19 @@ fn ours_door() -> Option<Door> {
 /// `X-Decision-Order: hosted`, answered with Clef-Flash by the H100 and
 /// A100 pool. Keyless; the payload never leaves our machines.
 fn gateway_door() -> Option<Door> {
+    gateway_door_on(false)
+}
+
+/// [`gateway_door`] on the community lane (`X-Decision-Lane: community`,
+/// #12190): the router's, judges', and file-relevance questions are our
+/// own non-personal decisions, so checked contributor pylons are asked
+/// first and our hosted Clef after them. The default door
+/// ([`Decider::Auto`]); `--decider gateway` keeps the hosted pool alone.
+fn community_door() -> Option<Door> {
+    gateway_door_on(true)
+}
+
+fn gateway_door_on(community: bool) -> Option<Door> {
     let url = std::env::var(jev_hosted::DECISIONS_URL_VAR)
         .ok()
         .filter(|url| !url.trim().is_empty())
@@ -446,9 +460,12 @@ fn gateway_door() -> Option<Door> {
             || jev_hosted::OPENAGENTS.to_string(),
             |url| url.trim_end_matches('/').to_string(),
         );
-    let exchange = jev_hosted::OpenAgentsExchange::new(&url)
+    let mut exchange = jev_hosted::OpenAgentsExchange::new(&url)
         .ok()?
         .hosted_only();
+    if community {
+        exchange = exchange.community();
+    }
     let config = jev::Config::new()
         .timeout(std::time::Duration::from_secs(30))
         .exchange(std::sync::Arc::new(exchange))
@@ -525,7 +542,7 @@ fn doors(decider: Decider) -> (Doors, Doors) {
             Decider::Gateway => gateway_door().into_iter().collect(),
             Decider::HaikuArm => haiku_arm_door().into_iter().collect(),
             Decider::Subq => subq_door().into_iter().collect(),
-            Decider::Auto => gateway_door()
+            Decider::Auto => community_door()
                 .into_iter()
                 .chain(jev_door())
                 .chain(ours_door())

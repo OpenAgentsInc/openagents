@@ -26,6 +26,7 @@ pub mod attested;
 #[cfg(feature = "broker")]
 pub mod broker;
 pub mod calibrate;
+pub mod canary;
 pub mod check;
 pub mod check_decide;
 pub mod checkup;

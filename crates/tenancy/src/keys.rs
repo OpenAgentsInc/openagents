@@ -60,6 +60,11 @@ pub struct Key {
     /// the lineage stays auditable like a rotation's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copied_from: Option<String>,
+    /// Whether the key's decisions may go to checked contributor pylons
+    /// (the gateway's community decision lane, #12190). Off unless the
+    /// key's holder opts in; a rotation or a copy keeps it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub community: bool,
 }
 
 /// What a scoped key may do.
@@ -214,6 +219,8 @@ pub struct Authenticated {
     /// the door and action it is about to take against these; an
     /// unscoped key passes `None` and the tenant's binding bounds it.
     pub scopes: Option<Scopes>,
+    /// The key's community decision opt-in ([`Key::community`]).
+    pub community: bool,
 }
 
 /// Why a presented credential was refused.
@@ -480,6 +487,7 @@ pub fn issue_scoped(
         name: name.map(str::to_string),
         scopes,
         copied_from: None,
+        community: false,
     };
     store.keys.insert(id.to_string(), key.clone());
     save(dir, &store)?;
@@ -513,6 +521,7 @@ pub fn copy(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
         name: source.name.clone(),
         scopes: source.scopes.clone(),
         copied_from: Some(source.id.clone()),
+        community: source.community,
     };
     store.keys.insert(id.to_string(), key.clone());
     save(dir, &store)?;
@@ -579,6 +588,7 @@ pub fn rotate(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
         name: old.name.clone(),
         scopes: old.scopes.clone(),
         copied_from: None,
+        community: old.community,
     };
     store.keys.insert(id.to_string(), key.clone());
     store.keys.get_mut(key_id).unwrap().status = Status::Revoked;
@@ -587,6 +597,22 @@ pub fn rotate(dir: &Path, key_id: &str) -> Result<Issued, KeyTrouble> {
         key,
         token: format!("{PREFIX}_{id}.{secret}"),
     })
+}
+
+/// Turn a key's community decision opt-in on or off ([`Key::community`]).
+/// A revoked key keeps its record unchanged.
+pub fn set_community(dir: &Path, key_id: &str, on: bool) -> Result<(), KeyTrouble> {
+    let _lock = KeyLock::acquire(dir)?;
+    let mut store = load(dir)?;
+    let key = store
+        .keys
+        .get_mut(key_id)
+        .ok_or_else(|| KeyTrouble::UnknownKey(key_id.to_string()))?;
+    if key.status == Status::Revoked {
+        return Err(KeyTrouble::Invalid(format!("key `{key_id}` is revoked")));
+    }
+    key.community = on;
+    save(dir, &store)
 }
 
 /// Revoke a key. The record stays — a revoked key must still be
@@ -637,6 +663,7 @@ pub fn authenticate(
         tenant: key.tenant.clone(),
         key_id: key.id.clone(),
         scopes: key.scopes.clone(),
+        community: key.community,
     })
 }
 
@@ -694,6 +721,37 @@ mod tests {
         let text = std::fs::read_to_string(dir.path().join(KEYS)).unwrap();
         assert!(!text.contains(&issued.token[5..]), "{text}");
         assert!(text.contains(&issued.key.digest));
+    }
+
+    #[test]
+    fn the_community_opt_in_is_off_until_set_and_survives_rotation() {
+        let (dir, manifest) = installed();
+        let issued = issue(dir.path(), &manifest, "acme").unwrap();
+        assert!(!issued.key.community);
+        assert!(
+            !authenticate(dir.path(), &manifest, &issued.token)
+                .unwrap()
+                .community
+        );
+        // A store written before the setting existed reads as off.
+        let text = std::fs::read_to_string(dir.path().join(KEYS)).unwrap();
+        assert!(!text.contains("community"), "{text}");
+        set_community(dir.path(), &issued.key.id, true).unwrap();
+        assert!(
+            authenticate(dir.path(), &manifest, &issued.token)
+                .unwrap()
+                .community
+        );
+        let rotated = rotate(dir.path(), &issued.key.id).unwrap();
+        assert!(rotated.key.community);
+        // The old key is revoked; its record does not change.
+        assert!(set_community(dir.path(), &issued.key.id, false).is_err());
+        set_community(dir.path(), &rotated.key.id, false).unwrap();
+        assert!(
+            !authenticate(dir.path(), &manifest, &rotated.token)
+                .unwrap()
+                .community
+        );
     }
 
     #[test]

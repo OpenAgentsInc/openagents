@@ -54,6 +54,13 @@
 //! after the answer is sent, and the agreement goes to
 //! `<registry>/decisions/shadow-YYYY-MM-DD.jsonl`.
 //!
+//! The Pylons above are the operator pylons (`pylons`). With trusted
+//! checkers configured (`checkers`), checked contributor pylons answer
+//! decisions on the community lane (`X-Decision-Lane: community`, or a key
+//! that opted in), ahead of the order; their answers are sampled against a
+//! reference, mixed with hidden canaries, and struck when wrong
+//! ([`crate::decision_community`]).
+//!
 //! The work is free: no payment is asked of the caller or made to a pylon
 //! (payments are not V1).
 
@@ -67,13 +74,17 @@ use std::time::{Duration, Instant};
 use axum::body::Bytes;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use nostr::pylon::{BeaconBook, Freshness, Lane, Status};
+use nostr::pylon::{BeaconBook, Freshness, Status};
 use secp256k1::SecretKey;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use tokio::sync::Mutex;
 
 use jev::exchange::{Call, Exchange, Failure};
+
+use crate::decision_community::{
+    self as community, Admission, Checks, Fairness, Lane, Mismatch, Scored, Strike, Strikes, Window,
+};
 
 /// The gateway's own name in `service.version`.
 const VERSION: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
@@ -150,6 +161,33 @@ pub struct Decisions {
     /// The whole decision's deadline, in milliseconds.
     #[serde(default = "default_deadline_ms")]
     pub deadline_ms: u64,
+    /// Trusted checker keys (hex or npub) whose NIP-32 verdicts admit
+    /// contributor pylons ([`crate::decision_community`]). Empty (the
+    /// default) keeps contributors off: then `pylons` alone says which
+    /// pylons count, as before. Non-empty makes `pylons` the operator
+    /// pylons and every other checked pylon serving the pinned Clef-Flash a
+    /// contributor, asked only on the community lane.
+    #[serde(default)]
+    pub checkers: Vec<String>,
+    /// The reference Clef-Flash (a Psionic `/v1/systemone` base URL on the
+    /// pinned artifact) that sampled contributor answers are recomputed
+    /// on. Unset turns sampling off.
+    #[serde(default)]
+    pub reference: Option<String>,
+    /// The share of contributor answers recomputed at `reference`.
+    #[serde(default = "default_sample")]
+    pub sample: f64,
+    /// A checker-private canary pool (`openagents pylon canary make`).
+    #[serde(default)]
+    pub canaries: Option<PathBuf>,
+    /// The share of contributor dispatches followed by a hidden canary to
+    /// the same pylon.
+    #[serde(default = "default_canary_rate")]
+    pub canary_rate: f64,
+    /// The most of the community-lane decisions in flight one owner's
+    /// contributor pylons may hold (at least one).
+    #[serde(default = "default_owner_share")]
+    pub owner_share: f64,
 }
 
 /// The Vertex door's settings.
@@ -198,6 +236,15 @@ fn default_shadow() -> f64 {
 fn default_deadline_ms() -> u64 {
     25_000
 }
+fn default_sample() -> f64 {
+    0.05
+}
+fn default_canary_rate() -> f64 {
+    0.02
+}
+fn default_owner_share() -> f64 {
+    0.4
+}
 
 impl Default for Decisions {
     fn default() -> Self {
@@ -217,6 +264,12 @@ impl Default for Decisions {
             jev_ms: default_jev_ms(),
             shadow: default_shadow(),
             deadline_ms: default_deadline_ms(),
+            checkers: Vec::new(),
+            reference: None,
+            sample: default_sample(),
+            canaries: None,
+            canary_rate: default_canary_rate(),
+            owner_share: default_owner_share(),
         }
     }
 }
@@ -237,6 +290,8 @@ struct Book {
     fetched: Option<Instant>,
     beacons: BeaconBook,
     standing: HashMap<String, Standing>,
+    /// Trusted checkers' newest verdicts per pylon key (contributors only).
+    checks: HashMap<String, Checks>,
 }
 
 /// One pylon a decision may go to.
@@ -246,6 +301,10 @@ struct Candidate {
     slug: String,
     /// The advertised served identity, `clef-flash@sha256:…`.
     identity: String,
+    /// The beacon's decision capability (`<key>:pylon/decision`).
+    capability: String,
+    /// Its verified NIP-OA owner, else the pylon key.
+    owner: String,
 }
 
 impl Candidate {
@@ -513,9 +572,38 @@ pub enum Decided {
     Refused { status: u16, body: Value },
 }
 
+/// The community lane's state ([`crate::decision_community`]), present when
+/// `decisions.checkers` names a trusted checker.
+struct Community {
+    checkers: BTreeSet<String>,
+    canaries: Vec<pylon::canary::Canary>,
+    strikes: Strikes,
+    fairness: Fairness,
+    windows: std::sync::Mutex<HashMap<String, Window>>,
+    /// The gateway's own checker key, when `<registry>/decisions/checker.key`
+    /// exists: it labels struck jobs `check-fail`.
+    checker: Option<pylon::identity::Identity>,
+    /// Contributor answers so far, for the sample and canary shares.
+    answered: AtomicU64,
+}
+
+/// What the gateway knows of one contributor job, for its receipt.
+#[derive(Debug, Clone)]
+struct JobFacts {
+    request: String,
+    request_digest: String,
+    result_digest: String,
+    started: u64,
+    finished: u64,
+}
+
 /// The dispatcher behind `POST /v1/systemone`.
 pub struct Dispatch {
     config: Decisions,
+    /// The registry directory (`dir`'s parent): the key store the
+    /// community opt-in is read from.
+    registry: PathBuf,
+    community: Option<Community>,
     /// Our hosted Clef pools by served name (`clef-flash`, `clef`).
     clef_pools: std::collections::BTreeMap<&'static str, Pool>,
     dir: PathBuf,
@@ -608,6 +696,7 @@ impl Dispatch {
                 .map(|(door, ..)| format!(" → Vertex {}", door.model))
                 .unwrap_or_default(),
         );
+        let community = Self::open_community(&config, &dir)?;
         let mut clef_pools = std::collections::BTreeMap::new();
         for (served, spec) in [
             (
@@ -627,6 +716,8 @@ impl Dispatch {
         }
         Ok(Arc::new(Self {
             config,
+            registry: registry.to_path_buf(),
+            community,
             clef_pools,
             dir,
             secret,
@@ -642,6 +733,97 @@ impl Dispatch {
             jev_key: tokio::sync::OnceCell::new(),
             count: AtomicU64::new(0),
         }))
+    }
+
+    /// The community lane's state, when `checkers` names any.
+    fn open_community(
+        config: &Decisions,
+        dir: &std::path::Path,
+    ) -> Result<Option<Community>, Trouble> {
+        if config.checkers.is_empty() {
+            return Ok(None);
+        }
+        let checkers = config
+            .checkers
+            .iter()
+            .map(|key| {
+                pylon::identity::hex_pubkey(key.trim())
+                    .ok_or_else(|| format!("decisions.checkers: `{key}` is not a key"))
+            })
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        let canaries = match &config.canaries {
+            Some(path) => pylon::canary::load(path)?,
+            None => Vec::new(),
+        };
+        let checker_path = dir.join("checker.key");
+        let checker = checker_path
+            .exists()
+            .then(|| pylon::identity::Identity::load_existing(&checker_path))
+            .transpose()?;
+        eprintln!(
+            "decisions: contributor pylons on the community lane, admitted by {} trusted checker(s); {}; {} canaries{}; owners hold at most {:.0} % of the lane",
+            checkers.len(),
+            match &config.reference {
+                Some(url) if config.sample > 0.0 => format!(
+                    "{:.0} % of their answers recomputed at {url}",
+                    config.sample.min(1.0) * 100.0
+                ),
+                _ => "sampling is off (no decisions.reference)".to_owned(),
+            },
+            canaries.len(),
+            if checker.is_some() {
+                "; strikes are labeled check-fail with this gateway's checker key"
+            } else {
+                ""
+            },
+            config.owner_share.clamp(0.0, 1.0) * 100.0,
+        );
+        Ok(Some(Community {
+            checkers,
+            canaries,
+            strikes: Strikes::open(dir),
+            fairness: Fairness::default(),
+            windows: std::sync::Mutex::new(HashMap::new()),
+            checker,
+            answered: AtomicU64::new(0),
+        }))
+    }
+
+    /// The lane a request is on: `X-Decision-Lane`, else the caller key's
+    /// community opt-in. Always the default lane without contributors.
+    fn lane(&self, headers: &HeaderMap) -> Lane {
+        if self.community.is_none() {
+            return Lane::Default;
+        }
+        if let Some(lane) = Lane::from_header(headers) {
+            return lane;
+        }
+        let token = headers
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .filter(|token| token.starts_with("oak_"));
+        let Some(token) = token else {
+            return Lane::Default;
+        };
+        let opted = tenancy::Registry::open(&self.registry)
+            .ok()
+            .and_then(|registry| {
+                tenancy::keys::authenticate(&self.registry, registry.manifest(), token).ok()
+            })
+            .is_some_and(|key| key.community);
+        if opted {
+            Lane::Community
+        } else {
+            Lane::Default
+        }
+    }
+
+    /// Forget the beacons and verdicts held, so the next decision reads
+    /// the relay again (tests, and an operator's reload).
+    #[doc(hidden)]
+    pub async fn forget_book(&self) {
+        self.book.lock().await.fetched = None;
     }
 
     /// The house Jev key: the environment's, else the Secret Manager
@@ -809,8 +991,16 @@ impl Dispatch {
             .map_or_else(random_id, str::to_owned);
         let started = Instant::now();
         let deadline = started + Duration::from_millis(self.config.deadline_ms);
+        let lane = self.lane(headers);
+        let _in_lane = self
+            .community
+            .as_ref()
+            .filter(|_| lane == Lane::Community)
+            .map(|community| community.fairness.enter());
         let (answer, attempts) = self
-            .chain(&model, &state, &questions, &request, deadline, None, order)
+            .chain(
+                &model, &state, &questions, &request, deadline, None, order, lane,
+            )
             .await;
         let total_ms = millis(started.elapsed());
         match &answer {
@@ -849,6 +1039,7 @@ impl Dispatch {
                     Some((*kind, door, &response)),
                     &attempts,
                     total_ms,
+                    lane,
                 );
                 // A shadow second opinion a client sent is not shadowed
                 // again, and a hosted-only decision never leaves our
@@ -880,7 +1071,7 @@ impl Dispatch {
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
-                self.record(&model, &questions, &state, None, &attempts, total_ms);
+                self.record(&model, &questions, &state, None, &attempts, total_ms, lane);
                 let code = attempts
                     .iter()
                     .find(|a| a.outcome == "refused")
@@ -921,10 +1112,11 @@ impl Dispatch {
     }
 
     /// Ask each door in `order` until one answers. `skip` leaves one door
-    /// out (the shadow's second opinion).
+    /// out (the shadow's second opinion). On the community lane the
+    /// admitted contributor pylons go first (never for the TPU-only lane).
     #[allow(clippy::too_many_arguments)]
     async fn chain(
-        &self,
+        self: &Arc<Self>,
         model: &str,
         state: &Value,
         questions: &Map<String, Value>,
@@ -932,8 +1124,17 @@ impl Dispatch {
         deadline: Instant,
         skip: Option<&str>,
         order: Order,
+        lane: Lane,
     ) -> (Option<(Kind, String, Value)>, Vec<Attempt>) {
         let mut attempts = Vec::new();
+        if lane == Lane::Community
+            && order != Order::TpuOnly
+            && let Some(found) = self
+                .try_contributors(model, state, questions, request, deadline, &mut attempts)
+                .await
+        {
+            return (Some(found), attempts);
+        }
         for step in order.steps() {
             let found = match step {
                 Step::Jev => {
@@ -1068,7 +1269,7 @@ impl Dispatch {
         skip: Option<&str>,
         attempts: &mut Vec<Attempt>,
     ) -> Option<(Kind, String, Value)> {
-        let candidates = self.candidates(skip).await;
+        let candidates = self.candidates(skip, false).await;
         let mut tries = 0;
         let mut queue: std::collections::VecDeque<(Candidate, u32)> =
             candidates.into_iter().map(|c| (c, 0)).collect();
@@ -1143,6 +1344,417 @@ impl Dispatch {
         None
     }
 
+    /// The admitted contributor pylons, best first, until one answers with
+    /// an answer that agrees with its own probabilities. An answer that
+    /// does not is a strike, and the next pylon is asked.
+    async fn try_contributors(
+        self: &Arc<Self>,
+        model: &str,
+        state: &Value,
+        questions: &Map<String, Value>,
+        request: &str,
+        deadline: Instant,
+        attempts: &mut Vec<Attempt>,
+    ) -> Option<(Kind, String, Value)> {
+        let community = self.community.as_ref()?;
+        let mut tries = 0;
+        for candidate in self.candidates(None, true).await {
+            if tries >= self.config.pylon_tries.max(1) {
+                break;
+            }
+            // One owner never holds more than its share of the lane.
+            let Some(_held) = community
+                .fairness
+                .try_owner(&candidate.owner, self.config.owner_share)
+            else {
+                continue;
+            };
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left < Duration::from_millis(500) {
+                break;
+            }
+            tries += 1;
+            let budget = left.min(Duration::from_millis(self.config.pylon_ms));
+            let door = format!("pylon:{}", candidate.slug);
+            let (t, started) = (Instant::now(), unix_now());
+            let result = self
+                .ask_pylon(&candidate, model, state, questions, request, budget)
+                .await;
+            let ms = millis(t.elapsed());
+            let facts = |response: &Value| {
+                let job = community::job(model, state, questions, request, &candidate.provider);
+                JobFacts {
+                    request_digest: nostr::pylon::sha256_hex(
+                        format!("{}\n{}", job.request, job.body).as_bytes(),
+                    ),
+                    request: job.request,
+                    result_digest: nostr::pylon::sha256_hex(
+                        response["answers"].to_string().as_bytes(),
+                    ),
+                    started,
+                    finished: unix_now().max(started),
+                }
+            };
+            match result {
+                Ok(response) => {
+                    if let Err(why) = community::consistent(questions, &response) {
+                        attempts.push(Attempt {
+                            door,
+                            pylon: Some(candidate.provider.clone()),
+                            backend: None,
+                            outcome: "invalid",
+                            code: Some("inconsistent".into()),
+                            ms,
+                        });
+                        eprintln!(
+                            "decisions: contributor {} ({}) answered inconsistently: {why}",
+                            candidate.slug,
+                            &candidate.provider[..12]
+                        );
+                        self.strike(&candidate, "inconsistent", None, Some(facts(&response)))
+                            .await;
+                        continue;
+                    }
+                    self.standing(&candidate, Some(ms)).await;
+                    attempts.push(Attempt {
+                        door: door.clone(),
+                        pylon: Some(candidate.provider.clone()),
+                        backend: None,
+                        outcome: "answered",
+                        code: None,
+                        ms,
+                    });
+                    let mut response = response;
+                    response["service"]["lane"] = json!("community");
+                    self.follow_up(
+                        &candidate,
+                        model,
+                        state,
+                        questions,
+                        &response,
+                        facts(&response),
+                    );
+                    return Some((Kind::Pylon, door, response));
+                }
+                Err((outcome, code)) => {
+                    if !matches!(code.as_str(), "busy" | "rate_limited") {
+                        self.standing(&candidate, None).await;
+                    }
+                    attempts.push(Attempt {
+                        door,
+                        pylon: Some(candidate.provider.clone()),
+                        backend: None,
+                        outcome,
+                        code: Some(code),
+                        ms,
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// After a contributor answered a caller: its share of sampled
+    /// recomputes and of hidden canaries, off the caller's path.
+    fn follow_up(
+        self: &Arc<Self>,
+        candidate: &Candidate,
+        model: &str,
+        state: &Value,
+        questions: &Map<String, Value>,
+        response: &Value,
+        facts: JobFacts,
+    ) {
+        let Some(community) = &self.community else {
+            return;
+        };
+        let n = community.answered.fetch_add(1, Ordering::Relaxed);
+        if self.config.reference.is_some() && due(self.config.sample, n) {
+            let this = Arc::clone(self);
+            let (candidate, state, questions, response) = (
+                candidate.clone(),
+                state.clone(),
+                questions.clone(),
+                response.clone(),
+            );
+            tokio::spawn(async move {
+                this.recompute(&candidate, &state, &questions, &response, facts)
+                    .await;
+            });
+        }
+        if !community.canaries.is_empty() && due(self.config.canary_rate, n) {
+            let this = Arc::clone(self);
+            let (candidate, model) = (candidate.clone(), model.to_owned());
+            tokio::spawn(async move {
+                this.canary(&candidate, &model).await;
+            });
+        }
+    }
+
+    /// Ask the reference the same decision and score the pylon's answer.
+    /// A reference that fails is never a strike.
+    async fn recompute(
+        &self,
+        candidate: &Candidate,
+        state: &Value,
+        questions: &Map<String, Value>,
+        response: &Value,
+        facts: JobFacts,
+    ) {
+        let Some(reference) = &self.config.reference else {
+            return;
+        };
+        let budget = Duration::from_millis(self.config.deadline_ms);
+        let answer = self
+            .ask_http(reference, None, "clef-flash", state, questions, budget)
+            .await;
+        let scored = match answer {
+            Ok(answer) => community::distances(questions, response, &answer),
+            Err((outcome, code)) => Err(Mismatch::Reference(format!("{outcome}: {code}"))),
+        };
+        match scored {
+            Ok(distances) => {
+                self.score(candidate, &distances, "sampled", Some(facts))
+                    .await
+            }
+            Err(Mismatch::Inconsistent(why)) => {
+                eprintln!(
+                    "decisions: sampled answer from {} is inconsistent: {why}",
+                    candidate.slug
+                );
+                self.strike(candidate, "sampled_inconsistent", None, Some(facts))
+                    .await;
+            }
+            Err(Mismatch::Reference(why)) => {
+                eprintln!(
+                    "decisions: the reference could not recompute a sample ({why}); no strike"
+                );
+                self.append(
+                    &format!("{}.jsonl", day()),
+                    &json!({"at": unix_now(), "event": "sample_skipped", "pylon": candidate.provider}),
+                );
+            }
+        }
+    }
+
+    /// Send one hidden canary to `candidate` as an ordinary job and score
+    /// its answer against the stored reference. Its answer goes to no
+    /// caller.
+    async fn canary(&self, candidate: &Candidate, model: &str) {
+        let Some(community) = &self.community else {
+            return;
+        };
+        let matching: Vec<&pylon::canary::Canary> = community
+            .canaries
+            .iter()
+            .filter(|c| c.identity == candidate.identity)
+            .collect();
+        if matching.is_empty() {
+            return;
+        }
+        let pick = secp256k1::rand::random::<u64>() % matching.len() as u64;
+        let canary = matching[usize::try_from(pick).unwrap_or(0)];
+        let request = random_id();
+        let started = unix_now();
+        let budget = Duration::from_millis(self.config.pylon_ms);
+        let Ok(response) = self
+            .ask_pylon(
+                candidate,
+                model,
+                &canary.state,
+                &canary.questions,
+                &request,
+                budget,
+            )
+            .await
+        else {
+            return;
+        };
+        let job = community::job(
+            model,
+            &canary.state,
+            &canary.questions,
+            &request,
+            &candidate.provider,
+        );
+        let facts = JobFacts {
+            request_digest: nostr::pylon::sha256_hex(
+                format!("{}\n{}", job.request, job.body).as_bytes(),
+            ),
+            request: job.request,
+            result_digest: nostr::pylon::sha256_hex(response["answers"].to_string().as_bytes()),
+            started,
+            finished: unix_now().max(started),
+        };
+        match pylon::canary::distances(canary, &response) {
+            Ok(distances) => {
+                self.score(candidate, &distances, "canary", Some(facts))
+                    .await
+            }
+            Err(why) => {
+                eprintln!(
+                    "decisions: canary answer from {} is inconsistent: {why}",
+                    candidate.slug
+                );
+                self.strike(candidate, "canary_inconsistent", None, Some(facts))
+                    .await;
+            }
+        }
+    }
+
+    /// Add a checked answer's distances to the pylon's window: a strike,
+    /// a logged miss, or nothing.
+    async fn score(
+        &self,
+        candidate: &Candidate,
+        distances: &[f64],
+        source: &str,
+        facts: Option<JobFacts>,
+    ) {
+        let Some(community) = &self.community else {
+            return;
+        };
+        let scored = community
+            .windows
+            .lock()
+            .map(|mut windows| {
+                windows
+                    .entry(candidate.provider.clone())
+                    .or_default()
+                    .score(distances, &pylon::verify::CLEF_FLASH)
+            })
+            .unwrap_or(Scored::Fine { mean: None });
+        let worst = distances.iter().copied().fold(0.0, f64::max);
+        let outcome = match scored {
+            Scored::Fine { .. } => "pass",
+            Scored::Miss { .. } => "miss",
+            Scored::Strike { .. } => "strike",
+        };
+        self.append(
+            &format!("{}.jsonl", day()),
+            &json!({"at": unix_now(), "event": source, "pylon": candidate.provider,
+                    "items": distances.len(), "max": finite(worst), "outcome": outcome,
+                    "mean": match scored { Scored::Fine { mean } => mean.map(finite), Scored::Miss { mean } => Some(finite(mean)), Scored::Strike { .. } => None }}),
+        );
+        match scored {
+            Scored::Strike { reason, value } => {
+                self.strike(candidate, &format!("{source}_{reason}"), Some(value), facts)
+                    .await;
+            }
+            Scored::Miss { mean } => eprintln!(
+                "decisions: contributor {} missed: mean distance {mean:.4} over its last sampled answers",
+                candidate.slug
+            ),
+            Scored::Fine { .. } => {}
+        }
+    }
+
+    /// Record a strike: kept on disk (the strikes feed), logged without
+    /// question text, the pylon benched until a newer trusted check-pass,
+    /// and the job labeled `check-fail` when this gateway holds a checker
+    /// key.
+    async fn strike(
+        &self,
+        candidate: &Candidate,
+        reason: &str,
+        value: Option<f64>,
+        facts: Option<JobFacts>,
+    ) {
+        let Some(community) = &self.community else {
+            return;
+        };
+        let strike = Strike {
+            at: unix_now(),
+            pylon: candidate.provider.clone(),
+            address: candidate.address(),
+            owner: candidate.owner.clone(),
+            reason: reason.to_owned(),
+            value: value.map(finite),
+            request: facts.as_ref().map(|f| f.request.clone()),
+        };
+        community.strikes.record(&strike);
+        if let Ok(mut windows) = community.windows.lock() {
+            windows.remove(&candidate.provider);
+        }
+        eprintln!(
+            "decisions: strike against contributor {} ({}): {reason}{}",
+            candidate.slug,
+            &candidate.provider[..12],
+            value.map(|v| format!(" {v:.4}")).unwrap_or_default()
+        );
+        let mut line = serde_json::to_value(&strike).unwrap_or_default();
+        line["event"] = json!("strike");
+        self.append(&format!("{}.jsonl", day()), &line);
+        if let (Some(checker), Some(facts)) = (&community.checker, facts) {
+            match self.label_fail(checker, candidate, reason, &facts).await {
+                Ok(label) => eprintln!("decisions: labeled the struck job check-fail ({label})"),
+                Err(why) => eprintln!("decisions: could not label the struck job: {why}"),
+            }
+        }
+    }
+
+    /// Publish the struck job's `3201` receipt (bought by the dispatch key)
+    /// and a `check-fail` label on it signed by the gateway's checker key.
+    async fn label_fail(
+        &self,
+        checker: &pylon::identity::Identity,
+        candidate: &Candidate,
+        reason: &str,
+        facts: &JobFacts,
+    ) -> Result<String, String> {
+        let buyer = pylon::identity::Identity::from_secret(self.secret)?;
+        let receipt = nostr::pylon::Receipt {
+            v: nostr::pylon::RECEIPT_V.into(),
+            requires: Vec::new(),
+            meta: None,
+            buyer: self.pubkey.clone(),
+            provider: candidate.provider.clone(),
+            pylon: candidate.slug.clone(),
+            lane: nostr::pylon::Lane::CjDecision,
+            capability: candidate.capability.clone(),
+            request: nostr::pylon::sha256_hex(facts.request.as_bytes()),
+            request_digest: facts.request_digest.clone(),
+            result_digest: Some(facts.result_digest.clone()),
+            started_at: facts.started,
+            finished_at: facts.finished,
+            units: nostr::pylon::Units {
+                kind: nostr::pylon::UnitKind::Jobs,
+                count: 1,
+            },
+            outcome: nostr::pylon::Outcome::Rejected,
+            payment: None,
+        };
+        let event = nostr::pylon::receipt_event(buyer.signer(), &receipt, unix_now())?;
+        let method = format!("decision-recompute {} strike:{reason}", candidate.identity)
+            .chars()
+            .take(512)
+            .collect::<String>();
+        let label = nostr::pylon::check_event(
+            checker.signer(),
+            nostr::pylon::Verdict::Fail,
+            &event,
+            &nostr::pylon::sha256_hex(reason.as_bytes()),
+            &method,
+            unix_now(),
+        )?;
+        let publish = async {
+            let mut conn =
+                pylon::relay::connect(&self.relay, &buyer, Duration::from_secs(10)).await?;
+            let sent = pylon::relay::publish(&mut conn, &event).await;
+            let _ = conn.close().await;
+            sent?;
+            let mut conn =
+                pylon::relay::connect(&self.relay, checker, Duration::from_secs(10)).await?;
+            let sent = pylon::relay::publish(&mut conn, &label).await;
+            let _ = conn.close().await;
+            sent
+        };
+        tokio::time::timeout(Duration::from_secs(10), publish)
+            .await
+            .map_err(|_| "the relay did not answer".to_owned())??;
+        Ok(label.id)
+    }
+
     /// Check an HTTP door's answer and add it to the attempts.
     fn settle(
         &self,
@@ -1209,8 +1821,9 @@ impl Dispatch {
         }
     }
 
-    /// The pylons a decision may go to now, best first.
-    async fn candidates(&self, skip: Option<&str>) -> Vec<Candidate> {
+    /// The pylons a decision may go to now, best first: the operator
+    /// pylons, or (`contributors`) the admitted contributor pylons.
+    async fn candidates(&self, skip: Option<&str>, contributors: bool) -> Vec<Candidate> {
         self.refresh_book().await;
         let book = self.book.lock().await;
         let now = unix_now();
@@ -1218,24 +1831,50 @@ impl Dispatch {
         let mut found: Vec<(Candidate, Standing, u32)> = book
             .beacons
             .iter()
-            .filter_map(|(_, beacon)| {
+            .filter_map(|(event, beacon)| {
+                let listed = allowed.contains(beacon.provider.as_str());
+                // Without contributors, an empty list counts every pylon
+                // (as before); with them, only the listed are operators.
+                let operator = listed || (allowed.is_empty() && self.community.is_none());
                 if nostr::pylon::freshness(beacon, now) != Freshness::Fresh
                     || beacon.status != Status::Online
                     || beacon.slots.free == 0
-                    || (!allowed.is_empty() && !allowed.contains(beacon.provider.as_str()))
+                    || operator == contributors
                 {
                     return None;
                 }
-                let service = beacon.serves(Lane::CjDecision)?;
+                let service = beacon.serves(nostr::pylon::Lane::CjDecision)?;
                 let candidate = Candidate {
                     provider: beacon.provider.clone(),
                     slug: beacon.pylon.clone(),
                     identity: service.model.clone(),
+                    capability: service.capability.clone(),
+                    owner: nostr::pylon::beacon_owner(event)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| beacon.provider.clone()),
                 };
                 if !self.identity_admitted(&candidate.identity)
                     || skip.is_some_and(|skip| skip == format!("pylon:{}", candidate.slug))
                 {
                     return None;
+                }
+                if contributors {
+                    let community = self.community.as_ref()?;
+                    let checks = book
+                        .checks
+                        .get(&candidate.provider)
+                        .copied()
+                        .unwrap_or_default();
+                    if !community::pinned_identity(&candidate.identity)
+                        || community::admission(
+                            checks,
+                            &community.strikes.times(&candidate.provider),
+                            now,
+                        ) != Admission::Admitted
+                    {
+                        return None;
+                    }
                 }
                 let standing = book
                     .standing
@@ -1281,16 +1920,41 @@ impl Dispatch {
         let fetched = async {
             let me = pylon::identity::Identity::from_secret(self.secret)?;
             let mut conn = pylon::relay::connect(&self.relay, &me, Duration::from_secs(10)).await?;
-            let authors = (!self.config.pylons.is_empty()).then_some(self.config.pylons.as_slice());
+            // Contributors are any pylon: read every beacon then.
+            let authors = (!self.config.pylons.is_empty() && self.community.is_none())
+                .then_some(self.config.pylons.as_slice());
             let book = pylon::client::beacons(&mut conn, authors).await;
+            let checks = match (&book, &self.community) {
+                (Ok(_), Some(community)) => {
+                    let since = unix_now().saturating_sub(community::DAY);
+                    pylon::check::fetch(&mut conn, &community.checkers, since)
+                        .await
+                        .map(|(labels, receipts)| {
+                            Some(community::checks(&pylon::check::Verdicts::new(
+                                &labels,
+                                &receipts,
+                                &community.checkers,
+                            )))
+                        })
+                }
+                _ => Ok(None),
+            };
             let _ = conn.close().await;
-            book
+            book.map(|book| (book, checks))
         };
         match tokio::time::timeout(Duration::from_secs(4), fetched).await {
-            Ok(Ok(beacons)) => {
+            Ok(Ok((beacons, checks))) => {
                 let mut book = self.book.lock().await;
                 book.beacons = beacons;
                 book.fetched = Some(Instant::now());
+                match checks {
+                    Ok(Some(checks)) => book.checks = checks,
+                    Ok(None) => {}
+                    // Keep the last verdicts read; a pass ages out by itself.
+                    Err(why) => {
+                        eprintln!("decisions: reading check verdicts on {}: {why}", self.relay)
+                    }
+                }
             }
             Ok(Err(why)) => eprintln!("decisions: reading beacons on {}: {why}", self.relay),
             Err(_) => eprintln!("decisions: reading beacons on {} timed out", self.relay),
@@ -1331,12 +1995,14 @@ impl Dispatch {
         let exchange =
             jev_hosted::RelayExchange::new(&self.relay, &candidate.provider, self.secret)
                 .map_err(|why| ("failed", why))?;
-        let body = json!({"model": model, "state": state, "questions": questions});
+        // Only the decision and an opaque request id reach a pylon.
+        let job = community::job(model, state, questions, request, &candidate.provider);
+        community::carries_no_identity(&job).map_err(|why| ("refused", why))?;
         let call = Call {
             method: "POST".into(),
             path: "/v1/systemone".into(),
-            body: Some(serde_json::to_vec(&body).unwrap_or_default()),
-            idempotency_key: Some(format!("{request}-{}", &candidate.provider[..8])),
+            body: Some(serde_json::to_vec(&job.body).unwrap_or_default()),
+            idempotency_key: Some(job.request),
             attempt: 1,
             timeout: budget,
         };
@@ -1519,7 +2185,7 @@ impl Dispatch {
     /// Ask the same decision at a second door and record how far the two
     /// answers agree.
     async fn shadow(
-        &self,
+        self: &Arc<Self>,
         model: &str,
         state: &Value,
         questions: &Map<String, Value>,
@@ -1541,6 +2207,7 @@ impl Dispatch {
                 deadline,
                 Some(&skip),
                 Order::JevFirst,
+                Lane::Default,
             )
             .await;
         let Some((_, second_door, second)) = second else {
@@ -1562,6 +2229,7 @@ impl Dispatch {
     }
 
     /// One evidence line per decision.
+    #[allow(clippy::too_many_arguments)]
     fn record(
         &self,
         model: &str,
@@ -1570,8 +2238,9 @@ impl Dispatch {
         answer: Option<(Kind, &String, &Value)>,
         attempts: &[Attempt],
         total_ms: u64,
+        lane: Lane,
     ) {
-        let line = json!({
+        let mut line = json!({
             "at": unix_now(),
             "model_asked": model,
             "outcome": if answer.is_some() { "answered" } else { "unavailable" },
@@ -1586,6 +2255,9 @@ impl Dispatch {
             "state_bytes": state.to_string().len(),
             "attempts": attempts,
         });
+        if lane == Lane::Community {
+            line["lane"] = json!("community");
+        }
         self.append(&format!("{}.jsonl", day()), &line);
     }
 
@@ -1884,6 +2556,21 @@ fn refused(code: &str, message: &str, attempts: &[Attempt]) -> Decided {
         body["error"]["attempts"] = json!(attempts);
     }
     Decided::Refused { status, body }
+}
+
+/// Whether the `n`-th event (from 0) is one of a `share` of them: every
+/// `1 / share`-th, starting with the first.
+fn due(share: f64, n: u64) -> bool {
+    if !(share > 0.0) {
+        return false;
+    }
+    let every = (1.0 / share.min(1.0)).round().max(1.0) as u64;
+    n % every == 0
+}
+
+/// A distance as JSON can hold it (infinite as a large number).
+fn finite(x: f64) -> f64 {
+    if x.is_finite() { x } else { 1e9 }
 }
 
 fn random_id() -> String {

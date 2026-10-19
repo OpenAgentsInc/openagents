@@ -133,6 +133,8 @@ const PYLON: &[Declared] = &[
     Declared::computer("status", Effect::LocalWrite),
     Declared::computer("pool", Effect::Publishes),
     Declared::computer("pool verify", Effect::LocalWrite),
+    // Writes a checker-private canary pool to a file (#12190).
+    Declared::computer("canary make", Effect::LocalWrite),
 ];
 
 /// Keep Pylon's command rows ahead of its introductory prose for the shared

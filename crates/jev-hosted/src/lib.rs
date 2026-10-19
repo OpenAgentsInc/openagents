@@ -677,12 +677,40 @@ pub fn ours(
     door: &Door<'_>,
     tune: &dyn Fn(jev::Config) -> jev::Config,
 ) -> Result<Resolved, String> {
+    ours_on(env, door, tune, false)
+}
+
+/// [`ours`] for our own non-personal decisions (the chat router, Coder's
+/// judges, file relevance): its calls are on the community lane
+/// (`X-Decision-Lane: community`), so the gateway may ask checked
+/// contributor pylons first.
+///
+/// # Errors
+///
+/// The client cannot be built.
+pub fn ours_community(
+    env: &dyn Fn(&str) -> Option<String>,
+    door: &Door<'_>,
+    tune: &dyn Fn(jev::Config) -> jev::Config,
+) -> Result<Resolved, String> {
+    ours_on(env, door, tune, true)
+}
+
+fn ours_on(
+    env: &dyn Fn(&str) -> Option<String>,
+    door: &Door<'_>,
+    tune: &dyn Fn(jev::Config) -> jev::Config,
+    community: bool,
+) -> Result<Resolved, String> {
     let url = present(env(DECISIONS_URL_VAR))
         .map(|url| url.trim_end_matches('/').to_string())
         .unwrap_or_else(|| OPENAGENTS.to_string());
     let mut exchange = OpenAgentsExchange::new(&url)?;
     if env(DECISIONS_VAR).is_some_and(|value| value.trim() == "pylon") {
         exchange = exchange.pylon_first();
+    }
+    if community {
+        exchange = exchange.community();
     }
     let client = jev::Client::new(
         tune(jev::Config::new().timeout(OURS_TIMEOUT))
@@ -711,6 +739,9 @@ pub struct OpenAgentsExchange {
     /// A second opinion the gateway does not shadow again
     /// (`X-Decision-Shadow: 1`).
     shadow: bool,
+    /// Our own non-personal decisions, which may go to checked contributor
+    /// pylons first (`X-Decision-Lane: community`, #12190).
+    community: bool,
 }
 
 impl std::fmt::Debug for OpenAgentsExchange {
@@ -738,6 +769,7 @@ impl OpenAgentsExchange {
             pylon_first: false,
             hosted_only: false,
             shadow: false,
+            community: false,
         })
     }
 
@@ -756,6 +788,34 @@ impl OpenAgentsExchange {
         self
     }
 
+    /// The same exchange putting its calls on the community lane: checked
+    /// contributor pylons first, then the order it asks for. For our own
+    /// non-personal decisions only (the chat router, Coder's judges, file
+    /// relevance).
+    #[must_use]
+    pub fn community(mut self) -> Self {
+        self.community = true;
+        self
+    }
+
+    /// The headers this exchange adds to every call.
+    #[must_use]
+    pub fn headers(&self) -> Vec<(&'static str, &'static str)> {
+        let mut out = Vec::new();
+        if self.hosted_only {
+            out.push(("x-decision-order", "hosted"));
+        } else if self.pylon_first {
+            out.push(("x-decision-order", "pylon"));
+        }
+        if self.shadow {
+            out.push(("x-decision-shadow", "1"));
+        }
+        if self.community {
+            out.push(("x-decision-lane", "community"));
+        }
+        out
+    }
+
     /// The same exchange marking its calls as shadow second opinions.
     #[must_use]
     pub fn shadow(mut self) -> Self {
@@ -771,13 +831,8 @@ impl OpenAgentsExchange {
         .timeout(call.timeout)
         .header("content-type", "application/json")
         .header("x-attempt", call.attempt.to_string());
-        if self.hosted_only {
-            request = request.header("x-decision-order", "hosted");
-        } else if self.pylon_first {
-            request = request.header("x-decision-order", "pylon");
-        }
-        if self.shadow {
-            request = request.header("x-decision-shadow", "1");
+        for (name, value) in self.headers() {
+            request = request.header(name, value);
         }
         if let Some(key) = &call.idempotency_key {
             request = request.header("idempotency-key", key);
@@ -1507,6 +1562,25 @@ fn unix_now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_our_non_personal_decisions_ask_for_the_community_lane() {
+        let plain = OpenAgentsExchange::new(OPENAGENTS).unwrap();
+        assert!(plain.headers().is_empty());
+        let lane = ("x-decision-lane", "community");
+        let exchange = OpenAgentsExchange::new(OPENAGENTS)
+            .unwrap()
+            .hosted_only()
+            .community();
+        assert_eq!(exchange.headers(), [("x-decision-order", "hosted"), lane]);
+        let env = |_: &str| None;
+        let door = Door {
+            url: OPENAGENTS,
+            model: "jev-latest",
+        };
+        assert!(ours(&env, &door, &|c| c).is_ok());
+        assert!(ours_community(&env, &door, &|c| c).is_ok());
+    }
 
     #[test]
     fn shadow_diagnostics_do_not_write_to_the_terminal() {

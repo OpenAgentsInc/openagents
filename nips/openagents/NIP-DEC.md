@@ -256,6 +256,29 @@ door after it is sent (a Clef answer at Jev), and the agreement goes to
 `decisions/shadow-YYYY-MM-DD.jsonl`; a request marked
 `X-Decision-Shadow: 1` is not shadowed again.
 
+**The community lane.** The Pylons above are the gateway's operator
+pylons (`decisions.pylons`). A gateway that names trusted checkers
+(`decisions.checkers`) also admits contributor pylons: any other fresh
+beacon on the `cj-decision` lane serving the pinned Clef-Flash identity
+whose newest trusted `check-pass` (NIP-32, `openagents.pylon`, on a
+`cj-decision` receipt) is under 24 hours old and newer than any trusted
+`check-fail` and any strike the gateway recorded. Contributors are asked
+only for a request on the community lane, `X-Decision-Lane: community`, or
+from an `oak_` key whose holder opted in; there they are asked first, then
+the request's own order (`hosted` included; never the TPU-only lane).
+`X-Decision-Lane: default` keeps an opted-in key's request off them. A
+contributor answer names `service.lane: "community"`. Every pylon, operator
+or contributor, receives only `model`, `state`, `questions`, and an opaque
+request id; never an account, key, or caller identity. A contributor answer
+whose choice or score disagrees with its own probabilities is a strike; a
+share of contributor answers (`decisions.sample`, one in twenty) is
+recomputed at a reference Clef-Flash (`decisions.reference`) and scored by
+the centred-log distance of [NIP-PYLON's checker rounds](NIP-PYLON.md)
+(an item above 0.5, or a mean above 0.15 over a pylon's last eight sampled
+answers, strikes); hidden canaries (`decisions.canaries`) are scored the
+same way. A strike benches the contributor until a newer trusted
+`check-pass`, and three strikes in 24 hours need one newer than the third.
+
 Clients find it through `jev_hosted::resolve` (below): every caller asks
 our API, with or without a Jev key of its own (a person who runs model
 calls on their own keys keeps them). `OPENAGENTS_DECISIONS=jev` gives a

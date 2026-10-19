@@ -160,7 +160,9 @@ answer without a second charge; a different body is `409`
 `idempotency_conflict`; the gateway keeps the last 4,096 answers in memory,
 so a gateway restart forgets them), `X-Attempt` on a deliberate retry, and
 `X-Decision-Order` (`pylon` or `hosted`, see
-[How a call is served](#how-a-call-is-served)).
+[How a call is served](#how-a-call-is-served)), and `X-Decision-Lane:
+community` to let checked community pylons answer (see
+[Community pylons](#community-pylons)).
 
 ## Question types
 
@@ -366,6 +368,24 @@ either route.
 Every call is one line in the decision record with each attempt's door,
 outcome, and time, and one answer in twenty (none for `clef-flash`, `clef`,
 or `hosted`) is asked again at another door to measure agreement.
+
+### Community pylons
+
+People who run `openagents pylon` on their own computers can answer
+decisions too, once our checker has checked them. Your decisions reach
+them only when you ask: send `X-Decision-Lane: community`, or turn on the
+community setting for your `oak_` key (off by default; an operator runs
+`tenant-keys community --registry DIR --key ID on`). On that lane checked
+community pylons are asked first, then the order above, `hosted`
+included, so a request that must stay on our machines should not ask for
+it. `X-Decision-Lane: default` keeps one request off the lane. A pylon
+receives only the model, the state, and the questions, never your account
+or key; an answer from one says `"lane": "community"` in its service
+details. We check community pylons as they work: a share of their answers
+is answered again on our own copy of the same model and compared, hidden
+known-answer questions are mixed in, and a pylon that answers wrong stops
+getting work until it passes a fresh check. Our own routing, judging, and
+file-relevance questions use this lane by default.
 
 ### Our GPUs
 

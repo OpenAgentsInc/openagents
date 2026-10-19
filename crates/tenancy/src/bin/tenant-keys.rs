@@ -9,6 +9,7 @@
 //! tenant-keys issue   --registry DIR --tenant NAME
 //! tenant-keys rotate  --registry DIR --key ID
 //! tenant-keys revoke  --registry DIR --key ID
+//! tenant-keys community --registry DIR --key ID on|off
 //! tenant-keys list    --registry DIR
 //! ```
 
@@ -22,6 +23,7 @@ fn usage() -> ! {
          tenant-keys issue  --registry DIR --tenant NAME\n  \
          tenant-keys rotate --registry DIR --key ID\n  \
          tenant-keys revoke --registry DIR --key ID\n  \
+         tenant-keys community --registry DIR --key ID on|off\n  \
          tenant-keys list   --registry DIR"
     );
     std::process::exit(2);
@@ -35,11 +37,13 @@ fn main() {
     let mut registry_dir = None;
     let mut tenant = None;
     let mut key = None;
+    let mut switch = None;
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--registry" => registry_dir = args.next(),
             "--tenant" => tenant = args.next(),
             "--key" => key = args.next(),
+            "on" | "off" if verb == "community" => switch = Some(flag == "on"),
             _ => usage(),
         }
     }
@@ -80,6 +84,17 @@ fn main() {
             let Some(key) = key else { usage() };
             keys::revoke(dir, &key)
                 .map(|()| println!("Revoked API key `{key}`; it no longer works."))
+        }
+        "community" => {
+            let (Some(key), Some(on)) = (key, switch) else {
+                usage()
+            };
+            keys::set_community(dir, &key, on).map(|()| {
+                println!(
+                    "API key `{key}`'s decisions {} go to checked community pylons.",
+                    if on { "may now" } else { "no longer" }
+                );
+            })
         }
         "list" => keys::load(dir).map(|store| {
             for record in store.keys.values() {

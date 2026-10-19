@@ -63,12 +63,15 @@ pub fn from_env() -> Result<Option<jev::Client>, String> {
 /// Jev first under its own house key, then the connected Pylons, then
 /// Gemini on Vertex, keyless (`jev_hosted::resolve`).
 /// `OPENAGENTS_DECISIONS=off` keeps the old absence (no classifier).
+/// These are our own non-personal decisions (the chat router, Coder's
+/// judges), so they ask for the community lane (`X-Decision-Lane:
+/// community`, #12190): checked contributor pylons first.
 fn ours_from_env() -> Result<Option<jev::Client>, String> {
     let env = |name: &str| std::env::var(name).ok();
     if env(jev_hosted::DECISIONS_VAR).is_some_and(|value| value.trim() == "off") {
         return Ok(None);
     }
-    jev_hosted::ours(
+    jev_hosted::ours_community(
         &env,
         &jev_hosted::Door {
             url: jev_hosted::OPENAGENTS,

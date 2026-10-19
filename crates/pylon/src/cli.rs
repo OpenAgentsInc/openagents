@@ -273,6 +273,16 @@ Commands:
       --poll SECS           Seconds between reads of the beacons (default 30).
       --pool SLUG           Only pylons asking to join this pool.
       --pylon NPUB          Only this pylon; repeat.
+  canary make               Make a checker-private pool of hidden decision canaries:
+                            items from the generator under a seed from a secret
+                            file, each with the reference server's probabilities,
+                            written as JSON lines (owner-only) for the gateway's
+                            decisions.canaries.
+      --seed-file FILE      The secret seed file (keep it private).
+      --reference URL       The reference decision server running the pinned
+                            model (default http://127.0.0.1:18096).
+      --count N             How many canaries (default 200).
+      --out FILE            Where to write the pool.
   league                    The pylon league: per class, pass rates on the
                             pinned suites, jobs, median time, and cost.
   pool                      Compute a pool aggregate over the last window.
@@ -414,6 +424,7 @@ fn dispatch(
             "check" => check(json_out, &mut args, &relay).await,
             "league" => league(json_out, &relay, checkers).await,
             "calibrate" => calibrate(json_out, &mut args).await,
+            "canary" => canary(json_out, &mut args).await,
             "selfcheck" => return selfcheck(json_out, &mut args).await,
             "doctor" => return doctor(json_out, &mut args, &relay).await,
             "setup" => setup(json_out, &mut args, false).await,
@@ -1401,6 +1412,53 @@ impl NoTerm {
 pub const DEFAULT_DECIDE: &str = "http://127.0.0.1:18096";
 
 /// `calibrate run|compare|reference`.
+/// `canary make`: a checker-private pool of decision canaries.
+async fn canary(json_out: bool, args: &mut Args) -> Result<(), String> {
+    let Some(sub) = (!args.words.is_empty()).then(|| args.words.remove(0)) else {
+        return Err("canary needs make".into());
+    };
+    if sub != "make" {
+        return Err(format!("unknown canary command `{sub}`; it takes make"));
+    }
+    let seed_file = args
+        .value("--seed-file")?
+        .map(PathBuf::from)
+        .ok_or("canary make needs --seed-file FILE")?;
+    let reference = args
+        .value("--reference")?
+        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let count = u32::try_from(args.number("--count", 200)?.clamp(1, 100_000)).unwrap_or(200);
+    let out = args
+        .value("--out")?
+        .map(PathBuf::from)
+        .ok_or("canary make needs --out FILE")?;
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let secret = std::fs::read(&seed_file).map_err(|e| format!("{}: {e}", seed_file.display()))?;
+    if secret.len() < 16 {
+        return Err(format!(
+            "{} holds {} bytes; a seed file needs at least 16 random bytes",
+            seed_file.display(),
+            secret.len()
+        ));
+    }
+    let server = crate::decide::Clef::new(&reference, None)?;
+    let pool = crate::canary::make(crate::canary::seed(&secret), &server, count).await?;
+    crate::canary::write(&out, &pool)?;
+    let identity = pool.first().map(|c| c.identity.clone()).unwrap_or_default();
+    emit(
+        json_out,
+        &json!({"ok": true, "canaries": pool.len(), "identity": identity, "out": out}),
+        &format!(
+            "Wrote {} canaries answered by {identity} to {}. Keep it and the seed file private.",
+            pool.len(),
+            out.display()
+        ),
+    );
+    Ok(())
+}
+
 async fn calibrate(json_out: bool, args: &mut Args) -> Result<(), String> {
     let Some(sub) = (!args.words.is_empty()).then(|| args.words.remove(0)) else {
         return Err("calibrate needs run, compare, or reference".into());

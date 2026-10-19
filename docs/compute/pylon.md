@@ -278,6 +278,37 @@ The gateway trusts only the pylon keys in its `DECISION_PYLONS` (default
 CoderOS-4080's), and logs its own dispatch key at start (`decisions: …
 (dispatch key …)`), which is the key to `--allow`.
 
+**Community pylons (#12190).** A gateway whose `decisions.checkers` names
+trusted checker keys also sends work to pylons that are not on that list,
+once a checker has checked them. Such a pylon must serve the pinned
+Clef-Flash (`clef-flash@sha256:<the pinned file>`), allow the gateway's
+dispatch key, and have a passing check (`openagents pylon check decide`,
+run by a trusted checker) from the last 24 hours with no failed check
+after it. It is asked only for decisions on the community lane: our own
+routing, judging, and file-relevance questions, and customers who chose
+that lane (`X-Decision-Lane: community`, or the key setting). The gateway
+keeps checking it while it works: an answer whose pick disagrees with its
+own probabilities, a sampled answer (one in twenty, `decisions.sample`)
+too far from the gateway's reference copy (`decisions.reference`), or a
+hidden canary answered wrong is a strike. A strike stops the work until a
+newer passing check, and three strikes in a day need a check newer than
+the third. Strikes are kept in `<registry>/decisions/strikes.jsonl` (one
+JSON line each: time, pylon key, address, owner, reason, distance, job id),
+which the earnings ledger reads to hold back unpaid shares. One owner's
+pylons hold at most `decisions.owner_share` (40 %) of the community
+decisions in flight. With no `decisions.checkers` nothing changes: only
+`DECISION_PYLONS` count.
+
+A checker makes the hidden canaries once, from a private seed file and a
+reference server running the pinned model, and gives the file to the
+gateway as `decisions.canaries`:
+
+```sh
+head -c 32 /dev/urandom > canary-seed      # keep it private
+openagents pylon canary make --seed-file canary-seed \
+  --reference http://127.0.0.1:18096 --count 200 --out canaries.jsonl
+```
+
 **CoderOS-4080, the first decision pylon (2026-10-10).** Two user units,
 started with `systemd-run --user` like the text pylon's:
 

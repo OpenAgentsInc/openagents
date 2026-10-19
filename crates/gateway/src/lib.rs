@@ -50,6 +50,7 @@ pub mod config;
 pub mod conversions;
 #[allow(clippy::result_large_err)]
 pub mod dashboard;
+pub mod decision_community;
 pub mod decision_dispatch;
 pub mod decision_offer;
 pub mod decision_usage;
