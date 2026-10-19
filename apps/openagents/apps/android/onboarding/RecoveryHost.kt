@@ -61,8 +61,9 @@ class RecoveryHost(
             try {
                 val frame = operation()
                 main.post { if (!closed && stamp == generation && foreground) mount(frame) }
-            } catch (_: Exception) {
-                // Do not log SDK/storage exceptions or values from secret operations.
+            } catch (error: Exception) {
+                // Log only the exception's kind: never SDK/storage messages or values from secret operations.
+                android.util.Log.w("OpenAgents", "Recovery screen failed: ${error.javaClass.simpleName}")
                 main.post { if (!closed && stamp == generation) background() }
             }
         }
@@ -97,7 +98,10 @@ class RecoveryHost(
                 if (authenticating == token) authHandle = handle else handle.close()
             }
             if (frame.openChat) openChat()
-        } catch (_: Exception) { background() }
+        } catch (error: Exception) {
+            android.util.Log.w("OpenAgents", "Recovery screen couldn't show: ${error.javaClass.simpleName}")
+            background()
+        }
     }
     private fun deliverAuthentication() {
         if (!foreground || closed) return

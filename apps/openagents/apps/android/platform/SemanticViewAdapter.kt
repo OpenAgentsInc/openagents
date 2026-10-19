@@ -58,6 +58,8 @@ class SemanticViewAdapter(
         val revision = view.getLong("revision")
         require(revision > 0)
         current?.let {
+            // A repeated snapshot of the view already on screen changes nothing.
+            if (it.getString("instance") == instance && revision == it.getLong("revision") && container === parent) return
             require(it.getString("instance") == instance && revision > it.getLong("revision"))
         }
         require(container == null || container === parent)
