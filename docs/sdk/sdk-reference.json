@@ -770,6 +770,28 @@
               ]
             },
             {
+              "name": "record_decision",
+              "doc": "Appends `entry` to the decision log of the agent `agent`. Sending the\nsame `request_id` again appends nothing, so a retry after a timeout is\nsafe. Only the account owner reads or writes the log.",
+              "declaration": "pub async fn record_decision(\n    &self,\n    agent: &str,\n    request_id: &str,\n    entry: &DecisionEntry,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/agent-definitions/*/decisions"
+                }
+              ]
+            },
+            {
+              "name": "decisions",
+              "doc": "Reads the decision log of the agent `agent`, oldest first, starting\nafter the cursor `after` (the whole log from the start when `None`).",
+              "declaration": "pub async fn decisions(\n    &self,\n    agent: &str,\n    after: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<DecisionPage, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/agent-definitions/*/decisions"
+                }
+              ]
+            },
+            {
               "name": "set_wakes",
               "doc": "Sets what the agent `id` wakes on, as a new revision of its\ndefinition's `autonomy`. Wakes are definition data, so a fork copies\nthem; grants never copy.",
               "declaration": "pub async fn set_wakes(\n    &self,\n    id: &str,\n    wakes: Wakes,\n    cancel: &CancellationToken,\n) -> Result<AgentDefinition, Error>",
@@ -873,6 +895,26 @@
         },
         {
           "kind": "struct",
+          "name": "DecisionEntry",
+          "doc": "One line of an agent's decision log (#12046). `kind` and `at` (Unix\nmilliseconds) are the only fields every entry has; the rest belongs to the\nhost that wrote it and is kept as written, so a new kind of entry needs no\nSDK release.",
+          "declaration": "pub struct DecisionEntry {\n    pub kind: String,\n    pub at: i64,\n    pub fields: serde_json::Map<String, serde_json::Value>,\n}",
+          "methods": [
+            {
+              "name": "validate",
+              "doc": "Whether the entry can be stored: a short word for `kind` and no more\nthan [`MAX_DECISION_BYTES`] of JSON.",
+              "declaration": "pub fn validate(&self) -> Result<(), Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "DecisionPage",
+          "doc": "One page of an agent's decision log, oldest first. `next` is the cursor to\npass as `after` for the following page; `None` means the log ends here.",
+          "declaration": "pub struct DecisionPage {\n    pub data: Vec<StoredDecision>,\n    pub next: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
           "name": "DeleteAgent",
           "doc": "The request body that deletes an agent definition at an expected revision.",
           "declaration": "pub struct DeleteAgent {\n    pub request_id: String,\n    pub expected_revision: u64,\n}"
@@ -897,6 +939,18 @@
         },
         {
           "kind": "struct",
+          "name": "RecordDecision",
+          "doc": "The request body that appends one entry to an agent's decision log. The\nsame `request_id` appends once, however often it is sent.",
+          "declaration": "pub struct RecordDecision {\n    pub request_id: String,\n    pub entry: DecisionEntry,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "StoredDecision",
+          "doc": "An entry as the account keeps it: `cursor` orders it in the log.",
+          "declaration": "pub struct StoredDecision {\n    pub cursor: String,\n    pub request_id: String,\n    pub entry: DecisionEntry,\n}"
+        },
+        {
+          "kind": "struct",
           "name": "UpdateAgent",
           "doc": "The request body that replaces an agent definition at an expected revision.",
           "declaration": "pub struct UpdateAgent {\n    pub request_id: String,\n    pub expected_revision: u64,\n    pub spec: AgentSpec,\n}"
@@ -913,6 +967,12 @@
           "doc": "Returns a new random request ID as 64 hexadecimal characters.",
           "declaration": "pub fn request_id() -> Result<String, Error>",
           "calls": []
+        },
+        {
+          "kind": "const",
+          "name": "MAX_DECISION_BYTES",
+          "doc": "The most JSON bytes one decision entry may take.",
+          "declaration": "pub const MAX_DECISION_BYTES: usize = 16 * 1024;"
         }
       ],
       "reexports": [
@@ -1408,6 +1468,13 @@
           "name": "set_pinned",
           "doc": "Pin the chat (`true`) or unpin it (`false`), as the web's sidebar does\n(`PATCH /v1/threads/{id}`). A new pin goes after every earlier one.\nRepeating the call changes nothing more.",
           "declaration": "pub async fn set_pinned(\n    client: &Client,\n    session: &Session,\n    chat: &ChatRef,\n    pinned: bool,\n    cancel: &CancellationToken,\n) -> Result<Filing, Error>",
+          "calls": []
+        },
+        {
+          "kind": "fn",
+          "name": "set_title",
+          "doc": "Rename an owned saved chat. The server applies the same title limits as the web.",
+          "declaration": "pub async fn set_title(\n    client: &Client,\n    session: &Session,\n    chat: &ChatRef,\n    title: &str,\n    cancel: &CancellationToken,\n) -> Result<Filing, Error>",
           "calls": []
         },
         {
@@ -2465,6 +2532,12 @@
           "declaration": "pub struct ChatReader(ListReader);",
           "methods": [
             {
+              "name": "with_query",
+              "doc": "Search titles across authorized history pages. Empty pages can still have\na next cursor; continue paging to search the rest of the account.",
+              "declaration": "pub fn with_query(mut self, query: &str) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
               "name": "with_page_size",
               "doc": "Sets how many chats each page holds, from 1 to 200.",
               "declaration": "pub fn with_page_size(mut self, limit: usize) -> Result<Self, Error>",
@@ -2656,6 +2729,26 @@
         },
         {
           "kind": "struct",
+          "name": "SavedPinOrder",
+          "doc": "Confirmed saved-pin order in one account and deployment.",
+          "declaration": "pub struct SavedPinOrder {}",
+          "methods": [
+            {
+              "name": "revision",
+              "doc": "The order's revision; a write names it to replace this order.",
+              "declaration": "pub fn revision(&self) -> u64",
+              "calls": []
+            },
+            {
+              "name": "ids",
+              "doc": "The pinned conversation ids, first to last.",
+              "declaration": "pub fn ids(&self) -> &[String]",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
           "name": "ToolDetail",
           "doc": "A tool call in a saved message: its name, status, input, and output.",
           "declaration": "pub struct ToolDetail {\n    pub name: String,\n    pub summary: String,\n    pub status: ToolStatus,\n    pub input: String,\n    pub output: String,\n}"
@@ -2720,7 +2813,7 @@
         {
           "kind": "struct",
           "name": "ClaimRequest",
-          "doc": "Options for taking an issue claim. A chat holds one issue or an explicit batch of at most three.",
+          "doc": "Options for taking an issue claim. A chat holds one issue or an explicit batch of at most sixteen.",
           "declaration": "pub struct ClaimRequest {\n    pub holder: String,\n    pub run: Option<String>,\n    pub batch: Vec<u64>,\n    pub force: bool,\n}",
           "methods": [
             {
@@ -3127,6 +3220,23 @@
               "doc": "Creates an empty history index for the signed-in account.",
               "declaration": "pub fn history_index(&self, session: &Session) -> Result<HistoryIndex, Error>",
               "calls": []
+            },
+            {
+              "name": "saved_pin_order",
+              "doc": "Read an owner-scoped order. No chat is pinned or created by this call.",
+              "declaration": "pub async fn saved_pin_order(\n    &self,\n    session: &Session,\n    cancel: &CancellationToken,\n) -> Result<SavedPinOrder, Error>",
+              "calls": []
+            },
+            {
+              "name": "move_saved_pin",
+              "doc": "Move an owned saved pin into an exact gap using one revisioned server CAS.",
+              "declaration": "pub async fn move_saved_pin(\n    &self,\n    session: &Session,\n    order: &SavedPinOrder,\n    chat: &ChatRef,\n    after: Option<&ChatRef>,\n    before: Option<&ChatRef>,\n    cancel: &CancellationToken,\n) -> Result<SavedPinOrder, Error>",
+              "calls": [
+                {
+                  "method": "PATCH",
+                  "path": "/v1/history/pins"
+                }
+              ]
             },
             {
               "name": "issues",
@@ -4392,7 +4502,15 @@
           "kind": "struct",
           "name": "SessionSummary",
           "doc": "One session row as the account lists it.",
-          "declaration": "pub struct SessionSummary {\n    pub id: String,\n    pub home: Home,\n    pub title: String,\n    pub computer: String,\n    pub project: Option<String>,\n    pub folder: Option<String>,\n    pub status: SessionStatus,\n    pub last_activity_unix: u64,\n    pub recap: String,\n    pub online: bool,\n    pub transcript: bool,\n    pub app_link: Option<String>,\n    pub continues: Option<PartRef>,\n    pub continued_by: Option<PartRef>,\n    pub home_transfer: bool,\n    pub agent: Option<String>,\n}"
+          "declaration": "pub struct SessionSummary {\n    pub record_key: Option<String>,\n    pub activity_revision: Option<String>,\n    pub unseen: Option<bool>,\n    pub id: String,\n    pub home: Home,\n    pub title: String,\n    pub computer: String,\n    pub project: Option<String>,\n    pub folder: Option<String>,\n    pub status: SessionStatus,\n    pub last_activity_unix: u64,\n    pub recap: String,\n    pub online: bool,\n    pub transcript: bool,\n    pub app_link: Option<String>,\n    pub continues: Option<PartRef>,\n    pub continued_by: Option<PartRef>,\n    pub home_transfer: bool,\n    pub agent: Option<String>,\n}",
+          "methods": [
+            {
+              "name": "navigation_key",
+              "doc": "Stable list identity. New services include the authorized record owner; old ones stay home-qualified.",
+              "declaration": "pub fn navigation_key(&self) -> String",
+              "calls": []
+            }
+          ]
         },
         {
           "kind": "fn",
@@ -4411,12 +4529,21 @@
           "name": "get",
           "doc": "One session, with its transcript copy when it is shared with the caller.",
           "declaration": "pub async fn get(\n    client: &Client,\n    session: &Session,\n    id: &str,\n    cancel: &CancellationToken,\n) -> Result<SessionDetail, Error>",
-          "calls": [
-            {
-              "method": "GET",
-              "path": "/v1/history/sessions/*"
-            }
-          ]
+          "calls": []
+        },
+        {
+          "kind": "fn",
+          "name": "get_in_project",
+          "doc": "Read a session in the same authorized shared-project scope as its list.",
+          "declaration": "pub async fn get_in_project(\n    client: &Client,\n    session: &Session,\n    id: &str,\n    project: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<SessionDetail, Error>",
+          "calls": []
+        },
+        {
+          "kind": "fn",
+          "name": "get_row",
+          "doc": "Read exactly the authorized indexed identity from the list, including shared-owner collisions.",
+          "declaration": "pub async fn get_row(\n    client: &Client,\n    session: &Session,\n    row: &SessionSummary,\n    project: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<SessionDetail, Error>",
+          "calls": []
         },
         {
           "kind": "fn",
@@ -4427,6 +4554,18 @@
             {
               "method": "GET",
               "path": "/v1/history/sessions"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "mark_seen",
+          "doc": "Acknowledge the authorized indexed row actually displayed, not a newer activity.",
+          "declaration": "pub async fn mark_seen(\n    client: &Client,\n    session: &Session,\n    row: &SessionSummary,\n    project: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+          "calls": [
+            {
+              "method": "PUT",
+              "path": "/v1/history/sessions/*/seen"
             }
           ]
         },
@@ -4489,6 +4628,12 @@
               "path": "/v1/history/sessions/*/messages"
             }
           ]
+        },
+        {
+          "kind": "const",
+          "name": "MAX_LISTED",
+          "doc": "Bound the combined authorized shared-project session list.",
+          "declaration": "pub const MAX_LISTED: usize = 4096;"
         },
         {
           "kind": "const",
@@ -4583,8 +4728,8 @@
         {
           "kind": "enum",
           "name": "LandMode",
-          "doc": "Where a verified change goes. Direct pushes to main are not an option.",
-          "declaration": "pub enum LandMode {\n    Queue,\n    Pr,\n    None,\n}"
+          "doc": "Where a verified change goes. `Direct` (the default, #12165) rebases\nonto main, replays the touched checks, and pushes to main; a conflict, a\nfailing check, or rewritten files send it to the landing queue instead.",
+          "declaration": "pub enum LandMode {\n    Direct,\n    Queue,\n    Pr,\n    None,\n}"
         },
         {
           "kind": "enum",
