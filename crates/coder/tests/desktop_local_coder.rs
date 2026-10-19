@@ -171,7 +171,7 @@ async fn desktop_creates_retries_reads_and_cancels_through_the_phone_clients() {
         let mut chat = task_chat::Session::new(openagents_chat::basic_chats::Spawned { host: summary.host.clone(), task: id.clone(), project: Some("checkout".into()), at: None }, std::time::Instant::now());
         let (ticket, query) = chat.tick(std::time::Instant::now()).unwrap();
         chat.outcome(ticket, Ok(client.task_chat(query).unwrap()));
-        let (ticket, queued) = chat.submit("Retained next turn  ", None, task_chat::unix_now()).unwrap();
+        let (ticket, queued) = chat.action(ChatAction::Queue, "Retained next turn  ", task_chat::unix_now()).unwrap();
         let task_chat::Request::Operation { operation: Operation::CommandTask { command }, .. } = &queued else { panic!("queued command") };
         let command_id = command.command.clone();
         let answer = client.task_chat(queued.clone()).unwrap();
