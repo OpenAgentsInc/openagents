@@ -220,6 +220,10 @@ CoderOS in `~/.openagents/scratch/process-417853/android-env-12079`. It
 confirmed the hostname and app chat, claimed the issue, and moved project
 22 to **In Progress**. No other Android issue was delegated.
 
+Retired on 2026-10-19 (#12179): the desktop app's own background engine
+now registers `coderos-4080`, so the service is stopped and disabled, its
+sign-in key is revoked, and its data folder is kept.
+
 To remove this native target, stop and disable
 `openagents-native-target.service`, then revoke its named sign-in key with
 `openagents keys revoke 'CoderOS native target (12078)' --kind signin`.
