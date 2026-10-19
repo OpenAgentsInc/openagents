@@ -1,4 +1,24 @@
-# OpenAgents 1.0.0 (1016)
+# OpenAgents 1.0.0 (1017)
+
+The 1.0.0 release candidate. Connecting this phone to the OpenAgents desktop
+app now works, and the connection holds up.
+
+- Scan the code the desktop app shows (Settings > Connect a computer) to
+  connect it. This failed on every phone before.
+- A computer that restarts reconnects to this phone by itself.
+- Requests to a connected computer no longer fail with "the host did not
+  answer in time" when several run at once.
+- When a direct connection to a computer stops answering, the phone moves to
+  the relay within a few seconds instead of waiting.
+- Everything in 1016: chats changed on another device open with all their
+  messages, and the chat list updates by itself.
+
+Check that scanning the desktop app's code connects this phone and its chats
+appear, that a message sent here shows on the desktop, and that the phone
+reconnects after you quit and reopen the desktop app. Check light and dark
+appearance.
+
+OpenAgents 1.0.0 (1016)
 
 The same account now stays in step across your phones and computers, and
 the OpenAgents app for Android ships beside this build.
