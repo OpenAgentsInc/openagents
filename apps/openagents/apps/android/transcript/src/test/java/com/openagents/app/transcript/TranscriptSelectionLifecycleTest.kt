@@ -35,6 +35,22 @@ class TranscriptSelectionLifecycleTest {
     }
     private fun frame(revision: ULong, vararg text: String) = Frame(revision, text.indices.map { it.toULong() + 20uL }, text.toList())
 
+    /** Throws once closed, as a destroyed Rust frame does. */
+    private class Closable(private val inner: TranscriptFrame) : TranscriptFrame by inner {
+        var closed = false
+        override val revision: ULong get() { check(!closed) { "destroyed" }; return inner.revision }
+    }
+    @Test fun aSameRevisionReplacementStillMovesOffTheFrameTheCanvasCloses() {
+        val controller = TranscriptSelectionController()
+        val first = Closable(frame(1uL, "hello"))
+        val same = frame(1uL, "hello")
+        assertTrue(controller.submit(first, "room"))
+        assertFalse(controller.submit(same, "room"))
+        first.closed = true
+        val next = frame(2uL, "hello", "world")
+        assertTrue(controller.submit(next, "room"))
+        assertSame(next, controller.currentFrame)
+    }
     @Test fun reversedDragKeepsItsAnchorAndProducesTheSameClipboardAndAccessibleText() {
         val controller = TranscriptSelectionController()
         val frame = frame(1uL, "hello world", "next row")

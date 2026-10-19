@@ -23,7 +23,12 @@ class TranscriptSelectionController(
     /** Call before Canvas takes ownership and closes its previous frame. */
     fun submit(next: TranscriptFrame, conversation: String): Boolean {
         if (closed || conversation.isEmpty() || conversation.length > 512) return false
-        if (this.conversation == conversation && frame != null && next.revision <= frame!!.revision) return false
+        if (this.conversation == conversation && frame != null && next.revision <= frame!!.revision) {
+            // The canvas still adopts `next` and closes the frame it replaces, so
+            // keep borrowing the canvas's frame; the selection stays as it was.
+            frame = next
+            return false
+        }
         if (this.conversation != conversation) {
             binding = bindings.incrementAndGet()
             state.clear()
