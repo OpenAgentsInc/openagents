@@ -1,7 +1,9 @@
 import json, sys, time
 S = sys.argv[1]; observed = int(sys.argv[2])
+# Optional: the evidence directory and trial tag of a rerun (default: the first run).
+E = sys.argv[3] if len(sys.argv) > 3 else 'evidence/space-qualification-2026-10-18'
+TAG = sys.argv[4] if len(sys.argv) > 4 else None
 identity = json.load(open(S + '/identity.json'))
-E = 'evidence/space-qualification-2026-10-18'
 statuses = {}
 import glob, os
 for f in glob.glob(os.path.expanduser('~/work/oa-wt-space-qual/docs/sdk/') + E + '/raw/cases/*.json'):
@@ -12,7 +14,9 @@ for case in ['public_sdk','web_task_and_followup','account_isolation','actual_bo
     if st == 'not_required': st = 'pending'
     cases[case] = {'status': st, 'source': f'{E}/raw/cases/{case}.json' if case in statuses and st in ('passed', 'failed') else None}
 # Packet trials are the post-#12144 series; the earlier series stay in raw/trials as diagnostics.
-trial_files = [f'{E}/raw/trials/{n}' for n in ['trials-fix-cold-warm-c1.jsonl','trials-fix-cold-warm-c2.jsonl','trials-snap-warm-c1.jsonl','trials-fix-wake-warm-c1.jsonl','trials-fix-wake-warm-c2.jsonl']]
+trial_files = [f'{E}/raw/trials/{n}' for n in (['trials-fix-cold-warm-c1.jsonl','trials-fix-cold-warm-c2.jsonl','trials-snap-warm-c1.jsonl','trials-fix-wake-warm-c1.jsonl','trials-fix-wake-warm-c2.jsonl'] if TAG is None else
+    # A rerun has no snapshot-create series: encrypted organizations boot creates cold (#12164).
+    [f'trials-{TAG}-{k}.jsonl' for k in ('cold-warm-c1', 'cold-warm-c2', 'wake-warm-c1', 'wake-warm-c2')])]
 spec = {'evidence_dir': E, 'identity': identity, 'observed_unix': observed,
   'advertised': {'fork': False, 'terminal': False, 'preview': False, 'cross_host_memory_restore': False},
   'accounts': ['account:f9b110d34613b1783bcac550f001f45c76f98fd84d76856b928f172a7ec42d75', 'account:352cd3cc4183ce192b8efac43c85a20d1750c133f125f3a74560e40957a7ee0d'],

@@ -14,7 +14,7 @@ HOST = 'oa-space-service-computers-ezxz4mgdsq-uc.a.run.app'
 NATIVE = 'oa-space-service-api-ezxz4mgdsq-uc.a.run.app'
 PREFIX = b'openagents.web.chat.account.v1\0'
 # Synthetic account ids: never a real account. The owner is the web's digest form.
-SYNTHETIC = {'a': 'acct_space_qual_11816_a', 'b': 'acct_space_qual_11816_b'}
+SYNTHETIC = {'a': 'acct_space_qual_11816_a', 'b': 'acct_space_qual_11816_b', 'c': 'acct_space_qual_11816_c'}
 def owner(name):
     return 'account:' + hashlib.sha256(PREFIX + SYNTHETIC[name].encode()).hexdigest()
 
