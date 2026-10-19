@@ -1813,11 +1813,16 @@ mod tests {
     /// started or resumed under, `s-1` when it was named none.
     // Like Claude Code with `--include-partial-messages`, it streams its
     // reply as `stream_event` deltas: the shared harness takes the main
-    // agent's text from those, not from the whole assistant message.
+    // agent's text from those, not from the whole assistant message. It
+    // reads the session from `--resume=ID` as the harness passes it.
     const WRITER: &str = r#"#!/bin/sh
 id=s-1
 while [ $# -gt 0 ]; do
-  case "$1" in --session-id|--resume) id=$2; shift ;; esac
+  case "$1" in
+    --session-id|--resume) id=$2; shift ;;
+    --session-id=*) id=${1#--session-id=} ;;
+    --resume=*) id=${1#--resume=} ;;
+  esac
   shift
 done
 cat > /dev/null
