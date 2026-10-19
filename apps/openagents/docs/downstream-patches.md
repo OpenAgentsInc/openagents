@@ -1131,3 +1131,10 @@ links remain readable. Upstream fixes now require manual ports.
   Android forwards view identities and field values through the generic composer
   port. Keep editor and form acknowledgments separate. Synthetic stale-request,
   approval, multiple-choice, and field-bound fixtures are authored but unrun.
+
+- OpenAgents #12085: preserve prepared text spans and Android's full-run
+  shaping while carrying reveal ages as absolute UTF-16 slices. Android paints
+  each original run once and keeps mixed-age or invalid coverage visible at the
+  most visible alpha. Synthetic append, relayout, range-validation, and Geist
+  shaping fixtures are authored but unrun; Cargo, Kotlin, API 26, and device
+  checks remain pending.

@@ -398,15 +398,15 @@ fn streaming_resume_keeps_settled_prefix_visible() {
         ..Default::default()
     };
     let settled = w.pass().display(0).unwrap();
-    assert!(reveal_run_for(&settled, "already visible").unwrap().reveal_ms.is_none());
+    assert_eq!(reveal_age_for(&settled, "already visible"), None);
 
     w.input = TranscriptInput {
         entries: vec![entry("already visible, resumed", MessageStatus::Streaming)],
         ..Default::default()
     };
     let resumed = w.pass().display(0).unwrap();
-    assert!(reveal_run_for(&resumed, "already visible").unwrap().reveal_ms.is_none());
-    assert!(reveal_run_for(&resumed, "resumed").unwrap().reveal_ms.is_some());
+    assert_eq!(reveal_age_for(&resumed, "already visible"), None);
+    assert!(reveal_age_for(&resumed, "resumed").is_some());
 }
 
 #[test]
@@ -430,31 +430,75 @@ fn streaming_reveal_walks_many_style_ranges_without_losing_ages() {
     w.input = TranscriptInput { entries: vec![entry(&original)], ..Default::default() };
     let before = w.pass().display(0).unwrap();
     assert!(before.runs.len() >= 128, "fixture should exercise many style ranges");
-    let first_age = reveal_run_for(&before, "plain0").unwrap().reveal_ms;
-    let last_age = reveal_run_for(&before, "bold127").unwrap().reveal_ms;
+    let first_age = reveal_age_for(&before, "plain0");
+    let last_age = reveal_age_for(&before, "bold127");
     assert!(first_age.is_some() && last_age.is_some());
 
     w.input = TranscriptInput { entries: vec![entry(&format!("{original}tail"))], ..Default::default() };
     let after = w.pass().display(0).unwrap();
-    assert_eq!(reveal_run_for(&after, "plain0").unwrap().reveal_ms, first_age);
-    assert_eq!(reveal_run_for(&after, "bold127").unwrap().reveal_ms, last_age);
-    assert!(reveal_run_for(&after, "tail").unwrap().reveal_ms.is_some());
+    assert_eq!(reveal_age_for(&after, "plain0"), first_age);
+    assert_eq!(reveal_age_for(&after, "bold127"), last_age);
+    assert!(reveal_age_for(&after, "tail").is_some());
+}
+
+#[test]
+fn streaming_append_keeps_full_shaping_geometry_and_absolute_reveal_slices() {
+    use openagents_doc::parts::{MessagePart, MessageStatus};
+    use openagents_doc::schema::{MessageRole, SessionMessageEntry};
+    let entry = |text: &str, status| {
+        Arc::new(SessionMessageEntry {
+            id: "shaping-append".into(),
+            role: MessageRole::Assistant,
+            parts: vec![MessagePart::Text { id: "body".into(), text: text.into() }],
+            created_at: 0,
+            device_id: String::new(),
+            status: Some(status),
+            continuation_of: None,
+            duration_ms: None,
+        })
+    };
+    for (prefix, final_text) in [("f", "ffi AV wrapped"), ("س", "سلام عربي"), ("e", "e\u{301} combining")] {
+        let mut streaming = worker(96.0);
+        streaming.input = TranscriptInput { entries: vec![entry(prefix, MessageStatus::Streaming)], ..Default::default() };
+        streaming.pass();
+        streaming.input = TranscriptInput { entries: vec![entry(final_text, MessageStatus::Streaming)], ..Default::default() };
+        let streamed = streaming.pass().display(0).unwrap();
+
+        let mut settled = worker(96.0);
+        settled.input = TranscriptInput { entries: vec![entry(final_text, MessageStatus::Complete)], ..Default::default() };
+        let complete = settled.pass().display(0).unwrap();
+        assert_eq!(streamed.text, complete.text);
+        assert_eq!(
+            streamed.runs.iter().map(|run| (run.start, run.len, run.x, run.baseline, run.width, run.style)).collect::<Vec<_>>(),
+            complete.runs.iter().map(|run| (run.start, run.len, run.x, run.baseline, run.width, run.style)).collect::<Vec<_>>(),
+            "streaming must not reshape or rewrap {final_text:?}",
+        );
+        for (run_index, run) in streamed.runs.iter().enumerate() {
+            let slices = streamed.reveal_slices.iter().filter(|slice| slice.run_index == run_index as u32).collect::<Vec<_>>();
+            assert!(!slices.is_empty(), "every shaped run has reveal coverage");
+            let mut cursor = run.start;
+            for slice in slices {
+                assert_eq!(slice.start, cursor);
+                assert!(slice.len > 0);
+                cursor += slice.len;
+            }
+            assert_eq!(cursor, run.start + run.len);
+        }
+    }
 }
 
 fn reveal_age_for(display: &super::display::RowDisplay, needle: &str) -> Option<u32> {
     let byte = display.text.find(needle)?;
     let start = display.text[..byte].encode_utf16().count() as u32;
-    display
+    let run_index = display
         .runs
         .iter()
-        .find(|run| run.start <= start && start < run.start + run.len)
-        .and_then(|run| run.reveal_ms)
-}
-
-fn reveal_run_for<'a>(display: &'a super::display::RowDisplay, needle: &str) -> Option<&'a super::display::TextRun> {
-    let byte = display.text.find(needle)?;
-    let start = display.text[..byte].encode_utf16().count() as u32;
-    display.runs.iter().find(|run| run.start <= start && start < run.start + run.len)
+        .position(|run| run.start <= start && start < run.start + run.len)? as u32;
+    display
+        .reveal_slices
+        .iter()
+        .find(|slice| slice.run_index == run_index && slice.start <= start && start < slice.start + slice.len)
+        .and_then(|slice| slice.reveal_ms)
 }
 
 fn thought_input(text: &str, streaming: bool) -> TranscriptInput {

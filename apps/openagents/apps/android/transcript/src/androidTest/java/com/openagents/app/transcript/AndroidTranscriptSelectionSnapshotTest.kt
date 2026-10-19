@@ -20,7 +20,7 @@ class AndroidTranscriptSelectionSnapshotTest : InstrumentationTestCase() {
         override fun indexAt(y: Float) = if (y in 0f..24f) 0u else null
         override fun rowsIn(top: Float, bottom: Float) = listOf(placement(0u)!!)
         override fun display(index: UInt) = if (index == 0u) RowDisplay(20uL, revision, width, 24f, "hello", emptyList(),
-            emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), revealAgeMs = null, copyText = "hello") else null
+            emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), revealAgeMs = null, copyText = "hello", revealSlices = emptyList()) else null
         override fun close() { onClose(); closed = true }
     }
     fun testSnapshotAndObserverRetireStampsBeforeAnyBorrowedFrameCloses() {

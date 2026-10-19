@@ -565,7 +565,7 @@ impl RowBuilder {
                 let mut content = prepare_block(ctx, &block.block, 0, false);
                 let reveal_age_ms = reveal_started
                     .map(|started| started.elapsed().as_millis().min(u32::MAX as u128) as u32);
-                apply_reveal_history(ctx, previous_block, &mut content, reveal_age_ms);
+                apply_reveal_history(previous_block, &mut content, reveal_age_ms);
                 Arc::new(RowCore {
                     key: row_key(&id),
                     version: next_version(),
@@ -777,12 +777,13 @@ fn prepare_user_text(ctx: &mut Ctx, body: &str, style: super::style::Resolved, l
             ..Default::default()
         },
     );
+    let reveal_ranges = super::markdown::initial_reveal_ranges(p.text());
     PText {
         p,
         lh,
         base: super::style::baseline(lh, style),
         paints,
-        reveal_ms: vec![None; spans.len()],
+        reveal_ranges,
         links,
         chip: ((lh - chip_h) / 2.0, chip_h),
         badges,
@@ -986,7 +987,7 @@ fn place_user(u: &UserBubble, px: Px, x: f32, y: f32, cw: f32, out: Option<&mut 
 /// Heap held by a row's prepared text (diagnostics; blocks recurse).
 pub(crate) fn content_heap_bytes(content: &Content) -> usize {
     fn text(t: &PText) -> usize {
-        t.p.heap_bytes() + t.reveal_ms.capacity() * std::mem::size_of::<Option<u32>>()
+        t.p.heap_bytes() + t.reveal_ranges.capacity() * std::mem::size_of::<super::markdown::TimedRevealRange>()
     }
     fn block(b: &PBlock) -> usize {
         match b {
