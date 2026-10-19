@@ -227,8 +227,9 @@ impl DocHost {
         Ok((harness, request))
     }
 
-    /// Record the resolved runtime on the chat. A change of runtime starts a
-    /// fresh provider session that is given the conversation, and the
+    /// Record the resolved runtime on the chat. A change of runtime resumes
+    /// that runtime's own last session in the chat, else starts a fresh
+    /// provider session that is given the conversation (#12205), and the
     /// conversation says which runtime runs and why.
     fn apply_runtime(
         &self,
@@ -258,7 +259,7 @@ impl DocHost {
             let writer = handle.writer();
             self.sessions()
                 .ok_or_else(|| error("This computer is not ready."))?
-                .start_fresh_runtime(&chat.id, &writer)?;
+                .switch_runtime(&chat.id, resolved.harness, &writer)?;
         }
         if let Some(text) = runtime::note(&spec.name, resolved, previous) {
             self.runtime_note(&chat.id, text)?;
