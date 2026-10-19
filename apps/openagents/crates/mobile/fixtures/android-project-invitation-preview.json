@@ -1,9 +1,11 @@
 {
+  "object": "project.invitation",
   "project": {
     "id": "prj_fixture_01",
     "name": "Synthetic project"
   },
   "role": "editor",
+  "invited_by": "Synthetic owner",
   "expires_at": "2030-01-01T00:00:00Z",
-  "member": false
+  "member": null
 }

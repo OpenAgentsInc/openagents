@@ -195,7 +195,15 @@ fn invitation_preview(body: &serde_json::Value) -> CoreResult<ProjectInvitationP
         .as_str()
         .filter(|expiry| !expiry.trim().is_empty())
         .ok_or_else(invalid)?;
-    let already_member = body["member"].as_bool().ok_or_else(invalid)?;
+    // The service sends the person's role when they already belong to the
+    // project ("owner", "editor", "viewer") and null when they don't; older
+    // replies sent a boolean.
+    let already_member = match &body["member"] {
+        serde_json::Value::Null => false,
+        serde_json::Value::Bool(member) => *member,
+        serde_json::Value::String(role) if !role.trim().is_empty() => true,
+        _ => return Err(invalid()),
+    };
     Ok(ProjectInvitationPreview {
         project_name,
         role,
@@ -1209,6 +1217,42 @@ mod project_invitation_tests {
             assert_eq!(request.authorization, "Bearer synthetic-account-token");
             assert_eq!(request.body["code"], "prjinv_fixture-token_01");
         }
+    }
+
+    #[test]
+    fn invitation_previews_read_the_member_role_the_service_sends() {
+        let body = |member: serde_json::Value| {
+            serde_json::json!({
+                "object": "project.invitation",
+                "project": {"id": "prj_fixture_01", "name": "Synthetic project"},
+                "role": "editor",
+                "invited_by": "Synthetic owner",
+                "expires_at": "2030-01-01T00:00:00Z",
+                "member": member,
+            })
+        };
+        assert!(
+            !invitation_preview(&body(serde_json::Value::Null))
+                .unwrap()
+                .already_member
+        );
+        assert!(
+            invitation_preview(&body(serde_json::json!("owner")))
+                .unwrap()
+                .already_member
+        );
+        assert!(
+            invitation_preview(&body(serde_json::json!("viewer")))
+                .unwrap()
+                .already_member
+        );
+        assert!(
+            !invitation_preview(&body(serde_json::json!(false)))
+                .unwrap()
+                .already_member
+        );
+        assert!(invitation_preview(&body(serde_json::json!(7))).is_err());
+        assert!(invitation_preview(&body(serde_json::json!(""))).is_err());
     }
 
     #[tokio::test]
