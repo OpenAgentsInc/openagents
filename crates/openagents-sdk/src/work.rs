@@ -31,6 +31,7 @@ pub const POOL_DOWN: &str = "pool.down";
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LandMode {
+    /// Rebase onto main, replay the touched checks, and push to main.
     #[default]
     Direct,
     Queue,
