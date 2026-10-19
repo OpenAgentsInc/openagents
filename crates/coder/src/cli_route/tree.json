@@ -10037,16 +10037,16 @@
               },
               {
                 "kind": "option",
-                "name": "limit",
-                "value": "N",
+                "name": "reason",
+                "value": "TEXT",
                 "open": true,
                 "optional": true,
                 "repeated": true
               },
               {
                 "kind": "option",
-                "name": "reason",
-                "value": "TEXT",
+                "name": "limit",
+                "value": "N",
                 "open": true,
                 "optional": true,
                 "repeated": true
@@ -10277,7 +10277,7 @@
                     ]
                   }
                 ],
-                "summary": "Let the agent AGENT, a chat ID or a session such as claude-code:ID, use machine actions: build.prune, process.stop, or host.upgrade, comma separated. Never ends without --for. Asks you to confirm on this terminal, and refuses when an agent runs the command.",
+                "summary": "Let the agent AGENT, a chat ID or a session such as claude-code:ID, use machine actions: build.prune, process.stop, or host.upgrade, comma separated. delegate lets a coordinator grant those three to other chats on any of your computers; it reaches the chat's own computer, so run it once anywhere. Never ends without --for. Asks you to confirm on this terminal, and refuses when an agent runs the command.",
                 "effect": "grants",
                 "runs_on": "connected_computer"
               }
@@ -10346,12 +10346,95 @@
                     ]
                   }
                 ],
-                "summary": "End AGENT's machine grant.",
+                "summary": "End AGENT's machine grant and, on every computer that answers, every grant AGENT issued under delegate.",
                 "effect": "grants",
                 "runs_on": "connected_computer"
               }
             }
           ]
+        },
+        {
+          "name": "subgrant",
+          "leaf": {
+            "path": [
+              "lease",
+              "subgrant"
+            ],
+            "usage": [
+              "subgrant CHAT --scope SCOPES --reason TEXT [--for DURATION]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "subgrant"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "CHAT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "scope",
+                    "value": "SCOPES",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reason",
+                    "value": "TEXT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "for",
+                    "value": "DURATION",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "For an agent holding delegate: grant CHAT build.prune, process.stop, or host.upgrade on its own computer. Logged.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "subrevoke",
+          "leaf": {
+            "path": [
+              "lease",
+              "subrevoke"
+            ],
+            "usage": [
+              "subrevoke CHAT --reason TEXT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "subrevoke"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "CHAT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "reason",
+                    "value": "TEXT",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "For an agent holding delegate: end its grant to CHAT.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
         },
         {
           "name": "actions",
@@ -10535,16 +10618,16 @@
         },
         {
           "kind": "option",
-          "name": "limit",
-          "value": "N",
+          "name": "reason",
+          "value": "TEXT",
           "open": true,
           "optional": true,
           "repeated": true
         },
         {
           "kind": "option",
-          "name": "reason",
-          "value": "TEXT",
+          "name": "limit",
+          "value": "N",
           "open": true,
           "optional": true,
           "repeated": true
