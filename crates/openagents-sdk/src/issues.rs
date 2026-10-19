@@ -22,7 +22,7 @@ pub struct Claim {
     pub last_progress_at: Option<i64>,
 }
 
-/// Options for taking an issue claim. A chat holds one issue or an explicit batch of at most three.
+/// Options for taking an issue claim. A chat holds one issue or an explicit batch of at most sixteen.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClaimRequest {

@@ -629,3 +629,14 @@ fn claims_share_one_session_limit_and_closed_issues_free_the_slot() {
         .unwrap();
     }
 }
+
+#[test]
+fn hand_written_claim_and_release_forms_count() {
+    let said = |body: &str, at| Comment { body: body.into(), at };
+    for form in ["Claiming #7 now", "**Claimed** by agent", "- I'm claiming this", "Claim: working it"] {
+        assert!(active(&[said(form, 1)]).is_some(), "{form}");
+    }
+    let comments = [said("Claiming #7", 1), said("Released: stopping", 2)];
+    assert!(active(&comments).is_none());
+    assert!(active(&[said("Looks claimed elsewhere", 1)]).is_none());
+}
