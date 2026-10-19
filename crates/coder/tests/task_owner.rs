@@ -117,13 +117,15 @@ fn detached_owner_finishes_after_the_starting_client_exits() {
 }
 
 #[test]
-fn killing_owner_retains_unknown_and_does_not_repeat_a_persisted_effect() {
-    let (root, grant) = setup("printf one >> effects; sleep 1; printf late >> effects");
+fn killing_owner_recovers_without_repeating_a_persisted_effect() {
+    let (root, grant) = setup(
+        "printf one >> effects; while [ ! -e finish ]; do sleep 0.01; done; printf late >> effects",
+    );
     let launch = success(cli(
         root.path(),
         &["start", "--grant", grant.to_str().unwrap()],
     ));
-    wait_for(root.path(), |task| task["run"]["process_id"].is_u64());
+    let running = wait_for(root.path(), |task| task["run"]["process_id"].is_u64());
     let effect = root.path().join("checkout/effects");
     let deadline = Instant::now() + Duration::from_secs(5);
     while !effect.exists() {
@@ -140,20 +142,43 @@ fn killing_owner_retains_unknown_and_does_not_repeat_a_persisted_effect() {
     );
     std::thread::sleep(Duration::from_millis(50));
     let recovered = success(cli(root.path(), &["recover", "task-one"]));
-    assert_eq!(recovered["execution"], "unknown");
-    assert_eq!(recovered["run"]["epoch"], 2);
+    // Linux's boundary dies with its parent. Recovery can finish a run
+    // once its recorded group is gone; surviving descendants still make
+    // the execution unknown. Neither outcome permits replaying the effect.
+    match recovered["execution"].as_str() {
+        Some("failed") => {
+            assert_eq!(recovered["status"], "finished");
+            assert_eq!(recovered["run"]["epoch"], 1);
+            let result = &recovered["run"]["result"];
+            assert_eq!(result["ending"], coder::task::owner::OWNER_ENDED);
+            assert_eq!(result["group_clear"], true);
+            assert_eq!(result["exit_code"], Value::Null);
+            assert_eq!(result["output_incomplete"], true);
+            assert_eq!(result["cost_status"], "unknown");
+        }
+        Some("unknown") => {
+            assert_eq!(recovered["status"], "unknown");
+            assert_eq!(recovered["run"]["epoch"], 2);
+            assert_eq!(recovered["run"]["result"], Value::Null);
+        }
+        _ => panic!("unexpected recovery: {recovered}"),
+    }
+    assert_eq!(recovered["run"]["effect_id"], running["run"]["effect_id"]);
     assert!(
         !cli(root.path(), &["start", "--grant", grant.to_str().unwrap()])
             .status
             .success()
     );
+    // Release any survivor only after recovery and the refused restart.
+    std::fs::write(root.path().join("checkout/finish"), b"").unwrap();
     std::thread::sleep(Duration::from_millis(1200));
     let bytes = std::fs::read_to_string(effect).unwrap();
     assert_eq!(bytes.matches("one").count(), 1);
-    // A descendant may have survived SIGKILL. That is why recovery reports
-    // unknown rather than claiming quiescence or restarting the command.
+    if recovered["execution"] == "failed" {
+        assert_eq!(bytes, "one", "a cleared group cannot write the late effect");
+    }
     assert_eq!(
         success(cli(root.path(), &["show", "task-one"]))["execution"],
-        "unknown"
+        recovered["execution"]
     );
 }
