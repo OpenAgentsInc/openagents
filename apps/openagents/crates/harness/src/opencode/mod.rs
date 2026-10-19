@@ -232,7 +232,6 @@ fn free_localhost_port() -> Option<u16> {
 
 pub struct OpencodeHarness {
     executable: Option<PathBuf>,
-    #[cfg(unix)]
     launch_broker: Option<crate::process::LaunchBroker>,
     /// Test seam: an already-running server (no spawn, no auth unless given).
     base_url: Option<String>,
@@ -254,7 +253,6 @@ impl Default for OpencodeHarness {
     fn default() -> Self {
         Self {
             executable: None,
-            #[cfg(unix)]
             launch_broker: None,
             base_url: None,
             interrupt_grace: Duration::from_secs(2),
@@ -281,7 +279,6 @@ impl OpencodeHarness {
     }
 
     /// Ask the host to wrap each run command before its process starts.
-    #[cfg(unix)]
     pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
         self.launch_broker = Some(broker);
         self
@@ -324,7 +321,6 @@ impl OpencodeHarness {
             cwd,
             mcp,
             None,
-            #[cfg(unix)]
             None,
         )
         .await
@@ -335,7 +331,7 @@ impl OpencodeHarness {
         cwd: Option<&str>,
         mcp: Option<&openagents_proto::McpServer>,
         inline_agent: Option<(&str, &str)>,
-        #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
+        broker: Option<&crate::process::LaunchBroker>,
     ) -> Result<Server, HarnessError> {
         if let Some(base) = &self.base_url {
             if inline_agent.is_some() {
@@ -352,7 +348,6 @@ impl OpencodeHarness {
             self.startup_timeout,
             mcp,
             inline_agent,
-            #[cfg(unix)]
             broker,
         )
         .await
@@ -619,11 +614,11 @@ impl OpencodeHarness {
                 cwd.as_deref(),
                 request.mcp.as_ref(),
                 agent_name.as_deref().zip(instructions.as_deref()),
+                self.launch_broker.as_ref(),
             )
             .await?;
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
         tokio::spawn(run_session(Session {
-            #[cfg(unix)]
             broker: self.launch_broker.clone(),
             adopted,
             server,
@@ -855,7 +850,6 @@ impl Server {
             startup,
             mcp,
             None,
-            #[cfg(unix)]
             None,
         )
         .await
@@ -867,7 +861,7 @@ impl Server {
         startup: Duration,
         mcp: Option<&openagents_proto::McpServer>,
         inline_agent: Option<(&str, &str)>,
-        #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
+        broker: Option<&crate::process::LaunchBroker>,
     ) -> Result<Self, HarnessError> {
         Self::launch(
             exe,
@@ -875,7 +869,6 @@ impl Server {
             startup,
             mcp,
             inline_agent,
-            #[cfg(unix)]
             broker,
             #[cfg(unix)]
             false,
@@ -891,7 +884,7 @@ impl Server {
         startup: Duration,
         mcp: Option<&openagents_proto::McpServer>,
         inline_agent: Option<(&str, &str)>,
-        #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
+        broker: Option<&crate::process::LaunchBroker>,
         #[cfg(unix)] keep: bool,
     ) -> Result<Self, HarnessError> {
         let port = free_localhost_port().ok_or_else(|| {
@@ -912,7 +905,6 @@ impl Server {
         if mcp.is_some() || inline_agent.is_some() {
             match opencode_version(
                 exe,
-                #[cfg(unix)]
                 broker,
             )
             .await?
@@ -960,7 +952,6 @@ impl Server {
             Some(child) => child,
             None => crate::process::RuntimeChild::launch(
                 cmd,
-                #[cfg(unix)]
                 broker,
                 crate::process::RuntimePipes::Server,
             )
@@ -1648,7 +1639,6 @@ fn unwrap_data(value: Value) -> Value {
 // ---------------------------------------------------------------------------
 
 struct Session {
-    #[cfg(unix)]
     broker: Option<crate::process::LaunchBroker>,
     /// Picking up an earlier engine's run from its keeper: what that engine
     /// handed over of the turn.
@@ -1823,7 +1813,6 @@ impl TurnState {
 
 async fn run_session(session: Session) {
     let Session {
-        #[cfg(unix)]
         broker,
         adopted,
         mut server,
@@ -2675,7 +2664,6 @@ async fn run_session(session: Session) {
                         break 'main;
                     }
                     BusMsg::Event(event) => {
-                        #[cfg(unix)]
                         if let Some(broker) = &broker { broker.record_opencode(&event, &session_id); }
                         if interrupt_requested || stopping {
                             // Only the terminal idle/interrupt acknowledgement may
@@ -5194,14 +5182,11 @@ const COLD_VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// budget, and on success clear the cached failure for other callers.
 async fn opencode_version(
     exe: &std::path::Path,
-    #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
+    broker: Option<&crate::process::LaunchBroker>,
 ) -> Result<Option<semver::Version>, HarnessError> {
     // The shared cache can launch its own version probe. Brokered runs must
     // ask the host before even a version command executes.
-    #[cfg(unix)]
     let use_cache = broker.is_none();
-    #[cfg(not(unix))]
-    let use_cache = true;
     if use_cache {
         let cached_exe = exe.to_path_buf();
         let cached =
@@ -5218,7 +5203,6 @@ async fn opencode_version(
     crate::compose_child_path(&mut cmd, exe);
     let child = crate::process::RuntimeChild::launch(
         cmd,
-        #[cfg(unix)]
         broker,
         crate::process::RuntimePipes::Probe,
     )
@@ -5372,7 +5356,6 @@ mod saved_agent_tests {
                 None,
                 None,
                 Some(("saved-fixture", "Find defects")),
-                #[cfg(unix)]
                 None,
             )
             .await;

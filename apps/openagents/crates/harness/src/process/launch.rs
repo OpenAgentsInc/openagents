@@ -123,7 +123,9 @@ impl LaunchBroker {
         }
         let mut command = Command::from(command);
         // Tokio's kill-on-drop flag is not part of std::process::Command.
-        command.kill_on_drop(true).process_group(0);
+        command.kill_on_drop(true);
+        #[cfg(unix)]
+        command.process_group(0);
         Ok(command)
     }
 }
@@ -148,7 +150,7 @@ fn unavailable() -> io::Error {
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::cell::Cell;
     use std::process::Stdio;

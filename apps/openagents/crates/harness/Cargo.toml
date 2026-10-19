@@ -51,11 +51,12 @@ tracing.workspace = true
 sha2.workspace = true
 semver = "1"
 zip.workspace = true
+# Coder retains its supervisor around native protocol drivers.
+supervise = { path = "../../../../crates/supervise", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 # OpenAgents #11971: the build gate agent chats get on their PATH.
 coder-lease = { path = "../../../../crates/coder-lease" }
-supervise = { path = "../../../../crates/supervise", optional = true }
 libc.workspace = true
 portable-pty = { workspace = true, optional = true }
 

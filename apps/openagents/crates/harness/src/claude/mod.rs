@@ -144,7 +144,6 @@ fn option_is_on(options: &serde_json::Map<String, Value>, key: &str) -> bool {
 /// it at a fake CLI with [`ClaudeHarness::with_executable`].
 pub struct ClaudeHarness {
     executable: Option<PathBuf>,
-    #[cfg(unix)]
     launch_broker: Option<crate::process::LaunchBroker>,
     /// Grace between the interrupt control request and SIGTERM.
     interrupt_grace: Duration,
@@ -162,7 +161,6 @@ impl Default for ClaudeHarness {
     fn default() -> Self {
         Self {
             executable: None,
-            #[cfg(unix)]
             launch_broker: None,
             interrupt_grace: Duration::from_secs(2),
             kill_grace: Duration::from_secs(3),
@@ -186,7 +184,6 @@ impl ClaudeHarness {
     }
 
     /// Ask the host to wrap each run command before its process starts.
-    #[cfg(unix)]
     pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
         self.launch_broker = Some(broker);
         self
@@ -666,18 +663,14 @@ impl ClaudeHarness {
             // config with settings-sourced ones.
             cmd.args(["--mcp-config", &mcp_config_arg(mcp)]);
         }
-        #[cfg(unix)]
         if !title_only && let Some(broker) = &self.launch_broker {
             broker.options.claude_command(&mut cmd);
         }
         let normalizer = if let Some(session_id) = &request.resume {
-            #[cfg(unix)]
             let host_root = self
                 .launch_broker
                 .as_ref()
                 .and_then(|b| b.options.claude_config_root.clone());
-            #[cfg(not(unix))]
-            let host_root = None;
             let config = host_root.unwrap_or_else(|| {
                 crate::model_context::root(
                     "CLAUDE_CONFIG_DIR",
@@ -705,7 +698,6 @@ impl ClaudeHarness {
             Some(child) => child,
             None => crate::process::RuntimeChild::launch(
                 cmd,
-                #[cfg(unix)]
                 self.launch_broker.as_ref(),
                 crate::process::RuntimePipes::Interactive,
             )
@@ -769,7 +761,6 @@ impl ClaudeHarness {
         let events = child.events(&event_tx, event_rx);
         tokio::spawn(run_session(Session {
             normalizer,
-            #[cfg(unix)]
             broker: self.launch_broker.clone(),
             title_only,
             child,
@@ -896,7 +887,6 @@ async fn stdin_writer(
 }
 
 struct Session {
-    #[cfg(unix)]
     broker: Option<crate::process::LaunchBroker>,
     normalizer: Normalizer,
     title_only: bool,
@@ -922,7 +912,6 @@ struct Session {
 async fn run_session(session: Session) {
     let Session {
         normalizer: mut norm,
-        #[cfg(unix)]
         broker,
         title_only,
         mut child,
@@ -1002,7 +991,6 @@ async fn run_session(session: Session) {
                     if line.is_empty() {
                         continue;
                     }
-                    #[cfg(unix)]
                     if let Some(broker) = &broker { broker.record_claude(line); }
                     // The CLI is still producing: whatever it is doing is not
                     // the quiet end a held turn end's fallback waits for.

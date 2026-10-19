@@ -144,7 +144,6 @@ pub struct CodexHarness {
     models_cache: crate::catalog::Catalog,
     executable: Option<PathBuf>,
     voice_auth_home: Option<PathBuf>,
-    #[cfg(unix)]
     launch_broker: Option<crate::process::LaunchBroker>,
     /// Grace between `turn/interrupt` and SIGTERM.
     interrupt_grace: Duration,
@@ -161,7 +160,6 @@ impl Default for CodexHarness {
             models_cache: crate::catalog::Catalog::default(),
             executable: None,
             voice_auth_home: None,
-            #[cfg(unix)]
             launch_broker: None,
             interrupt_grace: Duration::from_secs(2),
             kill_grace: Duration::from_secs(3),
@@ -188,7 +186,6 @@ impl CodexHarness {
     }
 
     /// Ask the host to wrap each run command before its process starts.
-    #[cfg(unix)]
     pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
         self.launch_broker = Some(broker);
         self
@@ -856,7 +853,6 @@ impl CodexHarness {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        #[cfg(unix)]
         if !title_only
             && voice_profile.is_none()
             && let Some(broker) = &self.launch_broker
@@ -883,7 +879,6 @@ impl CodexHarness {
             Some(child) => child,
             None => crate::process::RuntimeChild::launch(
                 cmd,
-                #[cfg(unix)]
                 self.launch_broker.as_ref(),
                 crate::process::RuntimePipes::Interactive,
             )
@@ -917,12 +912,9 @@ impl CodexHarness {
             });
         }
 
-        #[cfg(unix)]
         let observer = self.launch_broker.clone().map(|broker| {
             Box::new(move |line: &str| broker.record_codex(line)) as Box<dyn Fn(&str) + Send>
         });
-        #[cfg(not(unix))]
-        let observer = None;
         let (client, incoming) = RpcClient::with_frame_observer(stdin, stdout, observer);
         #[cfg(unix)]
         let incoming = match child.keeper() {
@@ -933,7 +925,6 @@ impl CodexHarness {
         let events = child.events(&event_tx, event_rx);
         tokio::spawn(run_session(Session {
             voice_profile,
-            #[cfg(unix)]
             host_options: self.launch_broker.as_ref().map(|b| b.options.clone()),
             title_only,
             idle,
@@ -959,7 +950,6 @@ impl CodexHarness {
 
 struct Session {
     voice_profile: Option<voice_profile::Profile>,
-    #[cfg(unix)]
     host_options: Option<crate::host::NativeOptions>,
     executable: PathBuf,
     title_only: bool,
@@ -1161,7 +1151,6 @@ async fn start_turn(client: &RpcClient, params: Value) -> Result<String, Harness
 async fn run_session(session: Session) {
     let Session {
         voice_profile: _voice_profile,
-        #[cfg(unix)]
         host_options,
         executable,
         title_only,
@@ -1258,7 +1247,6 @@ async fn run_session(session: Session) {
                 |(name, value)| (format!("shell_environment_policy.set.{name}"), value.into()),
             ));
         }
-        #[cfg(unix)]
         if !title_only
             && _voice_profile.is_none()
             && let Some(options) = &host_options

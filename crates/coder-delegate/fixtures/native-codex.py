@@ -32,7 +32,12 @@ def turn(text, number):
             time.sleep(0.05)
     time.sleep(float(os.environ.get("STANDIN_DELAY", "0")))
     if os.environ.get("STANDIN_HANG") and what == "briefing":
-        subprocess.Popen(["/bin/sh", "-c", 'sleep 2; printf harmless > "$STANDIN_HANG"'], start_new_session=True)
+        if os.name == "nt":
+            # A new process group is the Windows escape attempt; the job holds it.
+            code = "import os, time; time.sleep(2); open(os.environ['STANDIN_HANG'], 'w').write('harmless')"
+            subprocess.Popen([sys.executable, "-c", code], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        else:
+            subprocess.Popen(["/bin/sh", "-c", 'sleep 2; printf harmless > "$STANDIN_HANG"'], start_new_session=True)
         notice("item/completed", {"item": {"type": "agentMessage", "id": "hang", "text": "hanging"}})
         threading.Event().wait()
     item = {"id": "c" + str(number), "type": "commandExecution", "command": "false", "status": "inProgress"}

@@ -263,13 +263,30 @@ fi
         std::fs::create_dir_all(dir).expect("stand-in directory");
         let path = dir.join(name);
         std::fs::write(&path, script).expect("stand-in script");
-        // The stand-ins are `/bin/sh` scripts, which only Unix runs.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
                 .expect("stand-in mode");
         }
+        // Windows runs a stand-in through a `.cmd` launcher, as npm installs
+        // the real CLIs: Git for Windows' `sh` for the shell scripts, and
+        // Python for the others.
+        #[cfg(windows)]
+        {
+            let interpreter = if script.starts_with("#!/bin/sh") {
+                let git = std::env::var_os("ProgramFiles")
+                    .map_or_else(|| PathBuf::from(r"C:\Program Files"), PathBuf::from);
+                format!("\"{}\"", git.join(r"Git\bin\sh.exe").display())
+            } else {
+                "python".to_string()
+            };
+            let launcher = dir.join(format!("{name}.cmd"));
+            std::fs::write(&launcher, format!("@{interpreter} \"%~dp0{name}\" %*\r\n"))
+                .expect("stand-in launcher");
+            return launcher;
+        }
+        #[cfg(not(windows))]
         path
     }
 }
@@ -529,7 +546,14 @@ mod tests {
                 ..controls()
             };
             let (driven, _) = run(&cli, &controls, false).await;
-            let stop = action(&driven, Capability::Stop).unwrap();
+            let stop = action(&driven, Capability::Stop).unwrap_or_else(|| {
+                panic!(
+                    "{}: no stop; claims: {:?}; report: {:?}",
+                    agent.word(),
+                    claims(&driven),
+                    driven.report
+                )
+            });
             assert_eq!(stop.outcome, "done", "{}: {stop:?}", agent.word());
             assert!(
                 stop.detail.contains("empty after cleanup"),

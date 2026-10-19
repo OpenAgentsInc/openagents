@@ -177,12 +177,10 @@ pub(crate) mod owned;
 mod agent;
 pub(crate) use agent::AgentProcess;
 
-#[cfg(unix)]
 mod launch;
-#[cfg(unix)]
 pub use launch::{LaunchBroker, LaunchRequest, LaunchRequests};
 
 mod runtime;
 pub(crate) use runtime::{RuntimeChild, RuntimeInput, RuntimeOutput, RuntimePipes};
-#[cfg(all(unix, feature = "supervised"))]
+#[cfg(feature = "supervised")]
 pub use runtime::{SupervisedEvent, Supervision};

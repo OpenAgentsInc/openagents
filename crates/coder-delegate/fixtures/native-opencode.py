@@ -37,7 +37,12 @@ def turn(text):
         publish("session.idle", {"sessionID": SESSION})
         return
     if os.environ.get("STANDIN_HANG") and what == "briefing":
-        subprocess.Popen(["/bin/sh", "-c", 'sleep 2; printf harmless > "$STANDIN_HANG"'], start_new_session=True)
+        if os.name == "nt":
+            # A new process group is the Windows escape attempt; the job holds it.
+            code = "import os, time; time.sleep(2); open(os.environ['STANDIN_HANG'], 'w').write('harmless')"
+            subprocess.Popen([sys.executable, "-c", code], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        else:
+            subprocess.Popen(["/bin/sh", "-c", 'sleep 2; printf harmless > "$STANDIN_HANG"'], start_new_session=True)
         publish("message.updated", {"info": {"id": "m0", "sessionID": SESSION, "role": "assistant"}})
         publish("message.part.updated", {"part": {"id": "hang", "messageID": "m0", "sessionID": SESSION, "type": "text", "text": "hanging"}})
         threading.Event().wait()

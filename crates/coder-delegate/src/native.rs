@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use futures_util::{StreamExt, stream::BoxStream};
+use futures_util::{FutureExt, StreamExt, stream::BoxStream};
 use openagents_harness::host::NativeOptions;
 use openagents_harness::process::{LaunchBroker, SupervisedEvent, Supervision};
 use openagents_harness::{
@@ -549,18 +549,32 @@ impl Session for CliSession<'_> {
         } else {
             return false;
         }
-        let until = tokio::time::Instant::now()
-            + Duration::from_millis(now_ms.saturating_sub(self.elapsed_ms()));
+        let wait = Duration::from_millis(now_ms.saturating_sub(self.elapsed_ms()));
+        let until = tokio::time::Instant::now() + wait;
         for _ in 0..1024 {
             let Some(stream) = self.runs.last_mut().and_then(|r| r.stream.as_mut()) else {
                 return false;
             };
-            tokio::select! {
-                event=stream.next()=>match event {
-                    Some(event)=>self.receive(event,now_ms),
-                    None=> { self.runs.last_mut().unwrap().stream=None; self.wait_cleanup().await; return false; }
-                },
-                _=tokio::time::sleep_until(until)=>break,
+            // With no time left, take only what is ready: a zero sleep still
+            // waits for a timer tick, about 15 ms on Windows.
+            let event = if wait.is_zero() {
+                match stream.next().now_or_never() {
+                    Some(event) => event,
+                    None => break,
+                }
+            } else {
+                tokio::select! {
+                    event = stream.next() => event,
+                    _ = tokio::time::sleep_until(until) => break,
+                }
+            };
+            match event {
+                Some(event) => self.receive(event, now_ms),
+                None => {
+                    self.runs.last_mut().unwrap().stream = None;
+                    self.wait_cleanup().await;
+                    return false;
+                }
             }
         }
         if self.cli.agent == Agent::Codex

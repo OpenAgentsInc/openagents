@@ -23,7 +23,7 @@ pub(crate) struct RuntimeChild {
     pub stdin: Option<RuntimeInput>,
     pub stdout: Option<RuntimeOutput>,
     pub stderr: Option<RuntimeOutput>,
-    #[cfg(all(unix, feature = "supervised"))]
+    #[cfg(feature = "supervised")]
     supervised: Option<SupervisedChild>,
     /// An agent under a keeper (#11930, `crate::keeper::kept`).
     #[cfg(unix)]
@@ -33,10 +33,9 @@ pub(crate) struct RuntimeChild {
 impl RuntimeChild {
     pub(crate) async fn launch(
         mut command: Command,
-        #[cfg(unix)] broker: Option<&super::LaunchBroker>,
+        broker: Option<&super::LaunchBroker>,
         pipes: RuntimePipes,
     ) -> io::Result<Self> {
-        #[cfg(unix)]
         if let Some(broker) = broker {
             command = broker.prepare(command).await?;
             #[cfg(feature = "supervised")]
@@ -63,7 +62,7 @@ impl RuntimeChild {
             stdout: child.stdout.take().map(|io| Box::new(io) as RuntimeOutput),
             stderr: child.stderr.take().map(|io| Box::new(io) as RuntimeOutput),
             native: Some(child),
-            #[cfg(all(unix, feature = "supervised"))]
+            #[cfg(feature = "supervised")]
             supervised: None,
             #[cfg(unix)]
             kept: None,
@@ -125,7 +124,7 @@ impl RuntimeChild {
         if let Some(kept) = &self.kept {
             return kept.id();
         }
-        #[cfg(all(unix, feature = "supervised"))]
+        #[cfg(feature = "supervised")]
         if let Some(child) = &self.supervised {
             return child
                 .ended
@@ -145,7 +144,7 @@ impl RuntimeChild {
         if let Some(kept) = &self.kept {
             return Ok(kept.try_wait());
         }
-        #[cfg(all(unix, feature = "supervised"))]
+        #[cfg(feature = "supervised")]
         if let Some(child) = &self.supervised {
             return Ok(child
                 .ended
@@ -164,7 +163,7 @@ impl RuntimeChild {
         if let Some(kept) = &self.kept {
             return kept.wait().await;
         }
-        #[cfg(all(unix, feature = "supervised"))]
+        #[cfg(feature = "supervised")]
         if let Some(child) = &mut self.supervised {
             loop {
                 if let Some(stopped) = child.ended.borrow().as_ref() {
@@ -234,16 +233,17 @@ impl RuntimeChild {
         if let Some(child) = &mut self.native {
             crate::shutdown_agent(child, earlier.clone(), grace).await;
         }
-        #[cfg(all(unix, feature = "supervised"))]
+        #[cfg(feature = "supervised")]
         if let Some(child) = &self.supervised {
             child.stop.cancel();
+            #[cfg(unix)]
             super::terminate_tree(&earlier, grace).await;
         }
         let _ = self.wait().await;
     }
 }
 
-#[cfg(all(unix, feature = "supervised"))]
+#[cfg(feature = "supervised")]
 #[derive(Clone)]
 pub struct Supervision {
     pub limits: supervise::Limits,
@@ -252,7 +252,7 @@ pub struct Supervision {
     pub observe: std::sync::Arc<dyn Fn(SupervisedEvent) + Send + Sync>,
 }
 
-#[cfg(all(unix, feature = "supervised"))]
+#[cfg(feature = "supervised")]
 pub enum SupervisedEvent {
     /// The process started; a matching stop follows after cleanup.
     Started,
@@ -260,14 +260,14 @@ pub enum SupervisedEvent {
     Stopped(supervise::Stopped),
 }
 
-#[cfg(all(unix, feature = "supervised"))]
+#[cfg(feature = "supervised")]
 struct SupervisedChild {
     pid: Option<u32>,
     stop: tokio_util::sync::CancellationToken,
     ended: tokio::sync::watch::Receiver<Option<std::sync::Arc<supervise::Stopped>>>,
 }
 
-#[cfg(all(unix, feature = "supervised"))]
+#[cfg(feature = "supervised")]
 impl Drop for SupervisedChild {
     fn drop(&mut self) {
         self.stop.cancel();
@@ -284,7 +284,19 @@ fn exit_status(ending: &supervise::Ending) -> ExitStatus {
     })
 }
 
-#[cfg(all(unix, feature = "supervised"))]
+#[cfg(all(windows, feature = "supervised"))]
+fn exit_status(ending: &supervise::Ending) -> ExitStatus {
+    use std::os::windows::process::ExitStatusExt;
+    // A stopped job reports 1, like `TerminateJobObject` with exit code 1.
+    ExitStatus::from_raw(match ending {
+        supervise::Ending::Exited(Some(code)) => *code as u32,
+        supervise::Ending::Exited(None)
+        | supervise::Ending::TimedOut
+        | supervise::Ending::Failed(_) => 1,
+    })
+}
+
+#[cfg(feature = "supervised")]
 impl RuntimeChild {
     fn supervised(
         command: Command,
@@ -323,12 +335,13 @@ impl RuntimeChild {
                 .then(|| Box::new(stdout) as RuntimeOutput),
             stderr: Some(Box::new(stderr)),
             supervised: Some(SupervisedChild { pid, stop, ended }),
+            #[cfg(unix)]
             kept: None,
         })
     }
 }
 
-#[cfg(all(unix, feature = "supervised"))]
+#[cfg(feature = "supervised")]
 async fn pump(
     live: supervise::Live,
     supervision: Supervision,
@@ -368,6 +381,9 @@ async fn pump(
             _ = tokio::time::sleep(Duration::from_millis(5)) => {}
         }
     }
+    // On Windows the job object holds every descendant, so stopping the job
+    // is the whole cleanup.
+    #[cfg(unix)]
     let descendants = if interrupted {
         match live.pid() {
             Some(pid) => super::descendants(pid).await,
@@ -381,6 +397,7 @@ async fn pump(
     } else {
         live.wait().await
     };
+    #[cfg(unix)]
     super::terminate_tree(&descendants, supervise::GRACE).await;
     if !stopped.rest.is_empty() {
         (supervision.observe)(SupervisedEvent::Output(stopped.rest.clone()));
@@ -547,5 +564,98 @@ mod tests {
         let output = child.wait_with_output().await.unwrap();
         assert!(output.status.success());
         assert_eq!(output.stdout.len(), 64 * 1024);
+    }
+}
+
+#[cfg(all(test, windows, feature = "supervised"))]
+mod windows_tests {
+    use std::sync::{Arc, Mutex};
+    use tokio::io::AsyncWriteExt;
+
+    use super::*;
+
+    async fn launch(
+        args: &[&str],
+        limits: supervise::Limits,
+    ) -> (RuntimeChild, Arc<Mutex<Option<supervise::Stopped>>>) {
+        let stopped = Arc::new(Mutex::new(None));
+        let observed = stopped.clone();
+        let (broker, mut requests) = super::super::LaunchBroker::channel();
+        let broker = broker.supervised(Supervision {
+            limits,
+            observe: Arc::new(move |event| {
+                if let SupervisedEvent::Stopped(result) = event {
+                    *observed.lock().unwrap() = Some(result);
+                }
+            }),
+        });
+        let mut command = Command::new("cmd.exe");
+        command.args(args);
+        let start = RuntimeChild::launch(command, Some(&broker), RuntimePipes::Interactive);
+        let wrap = async { requests.recv().await.unwrap().apply(&Ok) };
+        let (child, ()) = tokio::join!(start, wrap);
+        (child.unwrap(), stopped)
+    }
+
+    #[tokio::test]
+    async fn protocol_driver_owns_input_while_the_supervisor_holds_the_job() {
+        let (mut child, stopped) = launch(
+            &["/d", "/c", "sort"],
+            supervise::Limits::within(Duration::from_secs(10)),
+        )
+        .await;
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"hello\r\n").await.unwrap();
+        drop(stdin);
+        let output = child.wait_with_output().await.unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"hello\r\n");
+        assert!(stopped.lock().unwrap().as_ref().unwrap().group_clear);
+    }
+
+    #[tokio::test]
+    async fn deadline_stops_the_whole_tree_before_reporting() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("escaped");
+        // A grandchild that would write the marker after two seconds.
+        let late = format!(
+            "start /b cmd /d /c \"ping -n 3 127.0.0.1 >nul & echo escaped>\"{}\"\" & echo ready & ping -n 30 127.0.0.1 >nul",
+            marker.display()
+        );
+        let (child, stopped) = launch(
+            &["/d", "/s", "/c", &late],
+            supervise::Limits::within(Duration::from_millis(500)),
+        )
+        .await;
+        let output = child.wait_with_output().await.unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("ready"));
+        let stopped = stopped.lock().unwrap().clone().unwrap();
+        assert!(matches!(stopped.ending, supervise::Ending::TimedOut));
+        assert!(stopped.group_clear);
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        assert!(!marker.exists());
+    }
+
+    #[tokio::test]
+    async fn dropping_the_protocol_driver_ends_its_supervised_job() {
+        let (child, stopped) = launch(
+            &["/d", "/c", "ping", "-n", "60", "127.0.0.1"],
+            supervise::Limits::within(Duration::from_secs(30)),
+        )
+        .await;
+        drop(child);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !stopped
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|result| result.group_clear)
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
     }
 }

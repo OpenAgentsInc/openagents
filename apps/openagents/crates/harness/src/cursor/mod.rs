@@ -442,7 +442,6 @@ impl CursorHarness {
             Some(child) => child,
             None => RuntimeChild::launch(
                 cmd,
-                #[cfg(unix)]
                 None,
                 crate::process::RuntimePipes::Interactive,
             )

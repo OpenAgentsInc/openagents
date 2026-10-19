@@ -81,6 +81,11 @@ impl Command {
     pub(crate) fn as_std_mut(&mut self) -> &mut std::process::Command {
         &mut self.metadata
     }
+    /// The program, arguments, environment, and directory as a std command,
+    /// for a host wrapper or a supervisor that spawns it itself.
+    pub fn into_std(self) -> std::process::Command {
+        self.metadata
+    }
 
     pub(super) fn prepare(&self) -> io::Result<Prepared> {
         let program = self.metadata.get_program();
@@ -387,4 +392,17 @@ fn quote(arg: &OsStr, line: &mut Vec<u16>) -> io::Result<()> {
     line.extend(std::iter::repeat_n(b'\\' as u16, slashes * 2));
     line.push(b'"' as u16);
     Ok(())
+}
+
+impl From<std::process::Command> for Command {
+    /// A std command's own `env_clear` is not visible through its API, so a
+    /// wrapper that clears the environment should be spawned by a supervisor
+    /// (`into_std`) rather than by this launcher.
+    fn from(metadata: std::process::Command) -> Self {
+        Self {
+            metadata,
+            clear_env: false,
+            stdio: [Stdio::inherit(); 3],
+        }
+    }
 }
