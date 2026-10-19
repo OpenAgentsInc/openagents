@@ -48,6 +48,17 @@ internal fun transcriptRunRevealAlpha(
     return if (cursor == runEnd) maximum.coerceIn(0f, 1f) else 1f
 }
 
+/** Matches painter opacity so only rows that can still change schedule a frame. */
+internal fun transcriptNeedsRevealFrame(row: RowDisplay, elapsedSinceSampleMs: Long, reducedMotion: Boolean): Boolean {
+    if (reducedMotion) return false
+    for ((index, run) in row.runs.withIndex()) {
+        if (transcriptRunRevealAlpha(row, index.toUInt(), run, elapsedSinceSampleMs, TranscriptPainter.REVEAL_DURATION_MS) < 1f) {
+            return true
+        }
+    }
+    return false
+}
+
 private fun validRevealSlice(row: RowDisplay, slice: RevealSlice, cursor: Long, runStart: Long, runEnd: Long): Boolean {
     val start = slice.start.toLong()
     val end = start + slice.len.toLong()

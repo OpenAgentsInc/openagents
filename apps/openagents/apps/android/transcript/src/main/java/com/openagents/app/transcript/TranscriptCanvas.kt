@@ -120,9 +120,7 @@ class TranscriptCanvas(
             val sample = viewport.displaySample(row) ?: continue
             val display = sample.display
             val elapsed = (nowMs - sample.sampledAtMs).coerceIn(0L, UInt.MAX_VALUE.toLong())
-            if (!reducedMotion && display.runs.any {
-                transcriptRevealAlpha(display.revealAgeMs, it.revealMs, elapsed, TranscriptPainter.REVEAL_DURATION_MS) < 1f
-            }) revealing = true
+            if (transcriptNeedsRevealFrame(display, elapsed, reducedMotion)) revealing = true
             val rowSave = canvas.save()
             canvas.translate(0f, row.y - viewport.offset)
             painter.draw(canvas, display, density, elapsed, reducedMotion) { horizontal[ScrollerKey(row.key, it)] ?: 0f }
