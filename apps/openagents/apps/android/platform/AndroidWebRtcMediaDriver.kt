@@ -230,9 +230,7 @@ private class AndroidWebRtcVoiceRtcSession private constructor(
     }
 
     fun onIceGatheringComplete() {
-        val description = peer.localDescription()?.description
-        finishOffer(description?.let { Result.success(it) }
-            ?: Result.failure(IllegalStateException("Local offer is missing")))
+        finishOffer(localOfferResult())
     }
 
     fun onConnectionStateChanged(state: String) {
@@ -290,8 +288,7 @@ private class AndroidWebRtcVoiceRtcSession private constructor(
 
         override fun onSetSuccess() {
             if (peer.iceGatheringState() == PeerConnection.IceGatheringState.COMPLETE) {
-                finishOffer(peer.localDescription()?.description?.let { Result.success(it) }
-                    ?: Result.failure(IllegalStateException("Local offer is missing")))
+                finishOffer(localOfferResult())
             }
             if (answerCompletion != null) {
                 answerSet = true
@@ -332,10 +329,19 @@ private class AndroidWebRtcVoiceRtcSession private constructor(
         }
     }
 
+    private fun localOfferResult(): Result<String> {
+        val description: String? = peer.localDescription?.description
+        return if (description == null) {
+            Result.failure(IllegalStateException("Local offer is missing"))
+        } else {
+            Result.success(description)
+        }
+    }
+
     private fun Double.toUShortLevel(): UShort =
         (coerceIn(0.0, 1.0) * UShort.MAX_VALUE.toDouble()).toInt().toUShort()
 
-    private companion object {
+    companion object {
         const val MAX_SDP_LENGTH = 65_536
         private val initializeLock = Any()
         @Volatile private var initialized = false
