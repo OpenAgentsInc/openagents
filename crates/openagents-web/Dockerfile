@@ -93,7 +93,7 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && cargo build --release --locked --target $w -p att-web \
     && cargo build --locked --release --target $w -p sand-garden \
     && cargo build --release --locked --target $w -p layertree-web \
-    && cargo build --locked --profile wasm-tiny --target $w -p lander5-web'
+    && cargo build --locked --profile wasm-tiny --target $w -p lander5-web -p pylons-web'
 
 # The Everglade web build (#10524) that /everglade serves (#10525):
 # scripts/build-everglade-web.sh writes the JS glue and the wasm into the
@@ -195,6 +195,11 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && test -s /build/lander5/lander5_web.js \
     && test -s /build/lander5/lander5_web_bg.wasm
 
+# /pylons' Grid layer, found at /srv/pylons/layer without a flag.
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-pylons-web.sh /build/pylons-layer \
+    && test -s /build/pylons-layer/pylons_web.js \
+    && test -s /build/pylons-layer/pylons_web_bg.wasm.br
+
 # The CAD engine for the browser (crates/cad-wasm), which /cad loads
 # (#11649): its own stage, so it builds beside the others. wasm-opt
 # (binaryen) shrinks it; brotli and gzip copies ride beside each file.
@@ -278,7 +283,10 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/lander6/webgl/openagents_web_card_bg.wasm.br \
     && oa-kache run apps/openagents/scripts/build-web-graph-card.sh /build/lander7 \
     && test -s /build/lander7/webgpu/openagents_web_graph_card_bg.wasm.br \
-    && test -s /build/lander7/webgl/openagents_web_graph_card_bg.wasm.br
+    && test -s /build/lander7/webgl/openagents_web_graph_card_bg.wasm.br \
+    && oa-kache run apps/openagents/scripts/build-web-pylon-card.sh /build/pylons-card \
+    && test -s /build/pylons-card/webgpu/openagents_web_pylon_card_bg.wasm.br \
+    && test -s /build/pylons-card/webgl/openagents_web_pylon_card_bg.wasm.br
 
 # Every dependency layer, and nothing else: cloudbuild.yaml builds this
 # target first and exports it to the registry cache.
@@ -318,6 +326,8 @@ COPY --from=gpuiweb /build/agent-graph /srv/agent-graph
 COPY --from=gpuiweb /build/gpui-chat /srv/gpui-chat
 COPY --from=gpuiweb /build/lander6 /srv/lander6
 COPY --from=gpuiweb /build/lander7 /srv/lander7
+COPY --from=everglade /build/pylons-layer /srv/pylons/layer
+COPY --from=gpuiweb /build/pylons-card /srv/pylons/card
 
 USER 10001:10001
 EXPOSE 8080

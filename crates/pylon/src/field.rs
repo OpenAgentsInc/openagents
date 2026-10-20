@@ -208,11 +208,28 @@ pub struct Thread {
 /// A receipt as a live field remembers it.
 #[derive(Debug, Clone)]
 struct Counted {
+    started_at: u64,
     finished_at: u64,
     address: String,
     accepted: bool,
     /// A verified acknowledgment, still subject to this reader's trust policy.
     paid: Option<pylon::Payment>,
+}
+
+/// One pylon's receipts over the last day, as a live field counted them.
+/// Self-dealt receipts never count.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Activity {
+    /// Receipts of every outcome.
+    pub receipts: u64,
+    /// Of those, the accepted ones.
+    pub accepted: u64,
+    /// `finished_at − started_at` summed over the accepted ones, s. The
+    /// stamps are whole seconds, so the mean over many jobs is the useful
+    /// figure, not any one job's.
+    pub job_secs: u64,
+    /// The newest receipt's `finished_at`.
+    pub last_finished_at: Option<u64>,
 }
 
 /// The newest pool aggregate and whether it recomputed.
@@ -327,6 +344,7 @@ impl Live {
                 self.receipts.insert(
                     key,
                     Counted {
+                        started_at: receipt.started_at,
                         finished_at: receipt.finished_at,
                         address: receipt.address(),
                         accepted: receipt.outcome == Outcome::Accepted,
@@ -521,6 +539,44 @@ impl Live {
             })
             .collect();
         out.sort_by(|a, b| b.observed_at.cmp(&a.observed_at));
+        out
+    }
+
+    /// The verified beacon held for the pylon at `address`, fresh or not.
+    #[must_use]
+    pub fn beacon(&self, address: &str) -> Option<&pylon::Beacon> {
+        self.book.get(address).map(|(_, beacon)| beacon)
+    }
+
+    /// The verified NIP-OA owner of the pylon at `address`, when its
+    /// beacon names one.
+    #[must_use]
+    pub fn owner(&self, address: &str) -> Option<String> {
+        self.book
+            .get(address)
+            .and_then(|(event, _)| pylon::beacon_owner(event).ok().flatten())
+    }
+
+    /// Each pylon's receipts over the last day at `now`, by `30200`
+    /// address.
+    #[must_use]
+    pub fn activity(&self, now: u64) -> BTreeMap<String, Activity> {
+        let mut out: BTreeMap<String, Activity> = BTreeMap::new();
+        for ((buyer, _), counted) in &self.receipts {
+            if counted.finished_at + RECEIPT_WINDOW_SECS < now
+                || counted.finished_at > now + MAX_FUTURE_SKEW_SECS
+                || self.book.self_dealt(buyer, &counted.address)
+            {
+                continue;
+            }
+            let activity = out.entry(counted.address.clone()).or_default();
+            activity.receipts += 1;
+            if counted.accepted {
+                activity.accepted += 1;
+                activity.job_secs += counted.finished_at.saturating_sub(counted.started_at);
+            }
+            activity.last_finished_at = activity.last_finished_at.max(Some(counted.finished_at));
+        }
         out
     }
 

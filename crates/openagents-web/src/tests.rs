@@ -4812,3 +4812,56 @@ async fn the_snap_station_page_serves_the_game_build() {
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
     assert!(!policy.contains("script-src"), "{policy}");
 }
+
+/// `/pylons`: the still gray Grid with the list in the one response, the
+/// layer and the card's two builds served from `--pylons DIR`, and no live
+/// stream without a relay; nothing else is served.
+#[tokio::test]
+async fn the_pylons_page_lists_pylons_and_serves_its_builds() {
+    let root = tempfile::tempdir().unwrap();
+    let builds = root.path().join("pylons");
+    let layer = builds.join("layer");
+    std::fs::create_dir_all(&layer).unwrap();
+    std::fs::write(layer.join(pages::PYLONS_LAYER_GLUE), "export function start() {}").unwrap();
+    std::fs::write(layer.join(pages::PYLONS_LAYER_WASM), b"\0asm\x01\0\0\0").unwrap();
+    for variant in ["webgpu", "webgl"] {
+        let dir = builds.join("card").join(variant);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(pages::PYLONS_CARD_GLUE), "export function mount() {}").unwrap();
+        std::fs::write(dir.join(pages::PYLONS_CARD_WASM), b"\0asm\x01\0\0\0").unwrap();
+    }
+    std::fs::write(builds.join("secret.js"), "outside the builds").unwrap();
+    let mut config = config(root.path().join("tasks"));
+    config.pylons = Some(builds);
+
+    let (status, headers, html) = get_with(router(config.clone()), pages::PYLONS_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("id=\"pylons-list\""), "{html}");
+    assert!(html.contains("Live pylons can't be shown here right now."));
+    assert!(html.contains("id=\"pylon-card\" role=\"dialog\""));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"), "{policy}");
+    crate::copy_guard::assert_plain(pages::PYLONS_PATH, &html);
+    assert!(crate::upstream::owned(pages::PYLONS_PATH));
+    assert!(crate::upstream::owned(pages::PYLONS_LIVE_PATH));
+
+    let (status, headers, _) =
+        get_bytes(router(config.clone()), &format!("/pylons/layer/{}", pages::PYLONS_LAYER_WASM)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/wasm");
+    for variant in ["webgpu", "webgl"] {
+        let uri = format!("/pylons/card/{variant}/{}", pages::PYLONS_CARD_GLUE);
+        let (status, _, _) = get_bytes(router(config.clone()), &uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+    }
+    for uri in [
+        "/pylons/live",
+        "/pylons/layer/secret.js",
+        "/pylons/card/webgpu/secret.js",
+        "/pylons/card/other/openagents_web_pylon_card.js",
+        "/pylons/layer/../secret.js",
+    ] {
+        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+}

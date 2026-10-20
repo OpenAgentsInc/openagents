@@ -146,6 +146,8 @@ const ALLOW_IN: &[(&str, &[&str])] = &[
     ("pages/pricing.rs", &["cursor"]),
     // The CAD Lab card's stylesheet uses the CSS `cursor` property.
     ("cad_lab.rs", &["cursor"]),
+    // /pylons' stylesheet uses the CSS `cursor` property.
+    ("pages/pylons.rs", &["cursor"]),
 ];
 
 /// #11031: no string in this site's sources that reads like words, and no

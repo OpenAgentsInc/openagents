@@ -17,6 +17,7 @@ members = [
     "first-frame-capture",
     "card",
     "graph-card",
+    "pylon-card",
 ]
 
 [workspace.package]

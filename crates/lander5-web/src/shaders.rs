@@ -33,6 +33,10 @@ out vec4 shaderColor;
 pub const MAIN: &str =
     "\nvoid main() { mainImage(shaderColor, gl_FragCoord.xy); shaderColor.a = 1.0; }\n";
 
+/// [`MAIN`] in black and white: the pass's color as its luminance.
+pub const GRAY_MAIN: &str = "\nvoid main() { mainImage(shaderColor, gl_FragCoord.xy); \
+float l = dot(shaderColor.rgb, vec3(0.2126, 0.7152, 0.0722)); shaderColor = vec4(vec3(l), 1.0); }\n";
+
 /// The full-screen triangle every pass draws, with no vertex buffer.
 pub const VERTEX: &str = "#version 300 es
 void main() { vec2 p = vec2(gl_VertexID & 1, gl_VertexID >> 1) * 4.0 - 1.0; gl_Position = vec4(p, 0.0, 1.0); }
@@ -71,6 +75,14 @@ pub fn sky_source() -> String {
 #[must_use]
 pub fn grid_source() -> String {
     [PRELUDE, LIBRARY, SCENE, GRID, MAIN].concat()
+}
+
+/// The grid pass in black and white, with the camera held where it is at
+/// `camera_time` seconds (`/pylons` stands its pylons on a still floor).
+#[must_use]
+pub fn still_gray_grid_source(camera_time: f32) -> String {
+    let still = format!("#define CAMERA_TIME {camera_time:.1}\n");
+    [PRELUDE, &still, LIBRARY, SCENE, GRID, GRAY_MAIN].concat()
 }
 
 /// GLSL without comments, indentation, or blank lines. Every line break
@@ -120,6 +132,18 @@ mod tests {
     }
 
     #[test]
+    fn the_still_gray_pass_holds_the_camera_and_drops_color() {
+        let source = still_gray_grid_source(0.0);
+        assert!(source.starts_with("#version 300 es\n"));
+        assert!(source.contains("#define CAMERA_TIME 0.0\n"));
+        assert!(source.contains("float camTime = CAMERA_TIME;"));
+        assert!(source.contains("vec4(vec3(l), 1.0)"));
+        assert_eq!(source.matches("void main()").count(), 1);
+        // The moving pass still follows the clock.
+        assert!(grid_source().contains("#define CAMERA_TIME iTime"));
+    }
+
+    #[test]
     fn the_library_keeps_its_license_and_credit() {
         assert!(LIBRARY.contains("Copyright (c) 2026 gokayfem"));
         assert!(LIBRARY.contains("https://github.com/gokayfem/shader-skills"));
@@ -158,7 +182,11 @@ mod tests {
     /// skill uses, when it is installed (`brew install glslang`).
     #[test]
     fn the_minified_passes_compile_where_glslang_is_installed() {
-        for (name, source) in [("sky", sky_source()), ("grid", grid_source())] {
+        for (name, source) in [
+            ("sky", sky_source()),
+            ("grid", grid_source()),
+            ("still-gray-grid", still_gray_grid_source(0.0)),
+        ] {
             let path =
                 std::env::temp_dir().join(format!("lander5-{name}-{}.frag", std::process::id()));
             std::fs::write(&path, minify(&source)).unwrap();

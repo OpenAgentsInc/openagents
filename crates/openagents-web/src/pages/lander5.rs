@@ -199,6 +199,9 @@ pub(super) struct Addition {
     /// start promise is `ready` there.
     pub runner_tail: &'static str,
     pub main: Option<&'static str>,
+    /// The grid pass in place of `/lander5`'s (`/pylons` holds the camera
+    /// still and draws in black and white).
+    pub grid: Option<fn() -> String>,
 }
 
 /// The page, with the runner when a build is given.
@@ -211,15 +214,29 @@ pub(super) fn assemble_with(
     build: Option<(String, Vec<u8>)>,
     addition: Option<&Addition>,
 ) -> Document {
+    assemble_page(build, addition, None, (TITLE, DESCRIPTION))
+}
+
+/// [`assemble_with`], with `main` (markup made for this response) as the
+/// whole of `<main>` when given, and the page's title and description.
+pub(super) fn assemble_page(
+    build: Option<(String, Vec<u8>)>,
+    addition: Option<&Addition>,
+    main: Option<&str>,
+    (title, description): (&str, &str),
+) -> Document {
     let style = addition.map_or(STYLE, |addition| addition.style);
     let in_main = addition.map_or("", |addition| addition.in_main);
-    let main = match addition.and_then(|addition| addition.main) {
-        Some(main) => main.to_owned(),
-        None => format!("<h1>{TITLE}</h1><a href=\"{DOWNLOAD}\">Download</a>{in_main}"),
+    let main = match (main, addition.and_then(|addition| addition.main)) {
+        (Some(main), _) | (None, Some(main)) => main.to_owned(),
+        (None, None) => format!("<h1>{TITLE}</h1><a href=\"{DOWNLOAD}\">Download</a>{in_main}"),
     };
+    let grid_source = addition
+        .and_then(|addition| addition.grid)
+        .map_or_else(lander5_web::shaders::grid_source, |grid| grid());
     let scene = build.and_then(|(glue, wasm)| {
         let sky = lander5_web::shaders::minify(&lander5_web::shaders::sky_source());
-        let grid = lander5_web::shaders::minify(&lander5_web::shaders::grid_source());
+        let grid = lander5_web::shaders::minify(&grid_source);
         let script = match addition {
             None => format!(
                 "{}const s=atob(\"{}\"),b=new Uint8Array(s.length);\
@@ -243,8 +260,8 @@ for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);const ready=__wbg_init({{module_
     let mut html = format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">\
-<meta name=\"color-scheme\" content=\"dark\"><title>{TITLE}</title>\
-<meta name=\"description\" content=\"{DESCRIPTION}\">\
+<meta name=\"color-scheme\" content=\"dark\"><title>{title}</title>\
+<meta name=\"description\" content=\"{description}\">\
 <link rel=\"icon\" type=\"image/svg+xml\" href=\"{ICON}\">\
 <style>{style}</style></head><body>\
 <canvas id=\"{canvas}\" aria-hidden=\"true\"></canvas>\

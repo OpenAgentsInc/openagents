@@ -1,0 +1,40 @@
+[package]
+name = "pylons-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "/pylons' Grid layer: the live list and a glowing pillar per online pylon, placed on the still Grid, fed by the page's event stream."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pylons-view = { path = "../pylons-view" }
+
+# The camera and the placement build natively, for the site and the tests;
+# only the layer itself is browser-only.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The `wasm-bindgen` CLI that `scripts/build-pylons-web.sh` runs must be
+# the version Cargo.lock resolves here; the script checks.
+wasm-bindgen = "0.2.128"
+js-sys = "0.3"
+serde_json = "1"
+web-sys = { version = "0.3", features = [
+    "CssStyleDeclaration",
+    "Document",
+    "DomRect",
+    "DomTokenList",
+    "Element",
+    "Event",
+    "EventSource",
+    "EventTarget",
+    "HtmlElement",
+    "KeyboardEvent",
+    "MessageEvent",
+    "Node",
+    "Window",
+] }
+
+[lints]
+workspace = true

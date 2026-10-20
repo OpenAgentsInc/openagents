@@ -28,6 +28,8 @@ mod lander5;
 pub(crate) mod lander4;
 mod lander6;
 mod lander7;
+mod pylons;
+mod pylons_field;
 mod landing;
 mod layertree;
 pub(crate) mod live;
@@ -73,6 +75,12 @@ pub(crate) use lander5::{LANDER5_GLUE, LANDER5_PATH, LANDER5_WASM};
 pub(crate) use lander6::{LANDER6_GLUE, LANDER6_PATH, LANDER6_WASM};
 #[cfg(test)]
 pub(crate) use lander7::{LANDER7_GLUE, LANDER7_PATH, LANDER7_WASM};
+#[cfg(test)]
+pub(crate) use pylons::{
+    CARD_GLUE as PYLONS_CARD_GLUE, CARD_WASM as PYLONS_CARD_WASM, LAYER_GLUE as PYLONS_LAYER_GLUE,
+    LAYER_WASM as PYLONS_LAYER_WASM, PYLONS_LIVE_PATH, PYLONS_PATH,
+};
+pub(crate) use pylons_field::field as pylons_field;
 pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
 #[cfg(test)]
 pub(crate) use icecream::{
@@ -111,6 +119,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(lander4::routes())
         .merge(lander6::routes())
         .merge(lander7::routes())
+        .merge(pylons::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())
         .merge(gpui_chat::routes())

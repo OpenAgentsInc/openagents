@@ -27,6 +27,7 @@
 !/apps/openagents/scripts/build-web-chat.sh
 !/apps/openagents/scripts/build-web-card.sh
 !/apps/openagents/scripts/build-web-graph-card.sh
+!/apps/openagents/scripts/build-web-pylon-card.sh
 !/migrations/
 !/nips/
 !/tests/
@@ -43,6 +44,7 @@
 !/scripts/build-sand-garden.sh
 !/scripts/build-layertree-web.sh
 !/scripts/build-lander5-web.sh
+!/scripts/build-pylons-web.sh
 !/scripts/film/
 /scripts/film/*
 !/scripts/film/lab_words.json

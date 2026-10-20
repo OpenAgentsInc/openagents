@@ -1287,6 +1287,20 @@ copies it to `/srv/gpui-demo`, which the server uses without a flag.
 Build with `scripts/build-web-card.sh OUTDIR`; `openagents-web --lander6
 OUTDIR` serves both builds under `/lander6/card/`.
 
+## The pylon card (`/pylons`)
+
+- `web/pylon-card` (`openagents-web-pylon-card`) draws one pylon's details
+  with the shared chat views' theme in the page's `#gpui-mount` box: its
+  name, status, key (copied on a click), slots, and the rows
+  `crates/pylons-view` (a root-workspace crate, linked by path) gives for
+  the pylon the page hands it with `show(json)`. It draws nothing the
+  events don't carry. It bundles Geist and Geist Mono only.
+- `web/pylon-card/webgpu` is its WebGPU-only build, patched like
+  `web/card/webgpu`.
+
+Build with `scripts/build-web-pylon-card.sh DIR/card`; `openagents-web
+--pylons DIR` serves both builds under `/pylons/card/`.
+
 ## AgentGraph on the web (`/agent/foreman`)
 
 - `web/gpui-web` puts its canvas in the page's `#gpui-mount` element when

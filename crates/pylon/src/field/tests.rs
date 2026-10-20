@@ -225,3 +225,24 @@ fn a_live_field_holds_a_bounded_number_of_pylons() {
     }
     assert_eq!(live.pylons(NOW).len(), MAX_LIVE_PYLONS);
 }
+
+#[test]
+fn activity_counts_each_pylons_receipts_and_their_time() {
+    let provider = signer(1);
+    let buyer = signer(3);
+    let mut live = Live::new(None);
+    let event = beacon_event(&provider, &beacon(&provider, NOW, 2)).unwrap();
+    let address = beacon(&provider, NOW, 2).address();
+    assert!(live.offer(event, NOW));
+    assert_eq!(live.beacon(&address).unwrap().label, "studio-4080");
+    assert!(live.owner(&address).is_none());
+    assert!(live.activity(NOW).is_empty());
+    live.offer(receipt(&buyer, &provider, &"aa".repeat(32), NOW - 10), NOW);
+    live.offer(receipt(&buyer, &provider, &"bb".repeat(32), NOW - 4), NOW);
+    let activity = live.activity(NOW)[&address];
+    assert_eq!(activity.receipts, 2);
+    assert_eq!(activity.accepted, 2);
+    assert_eq!(activity.job_secs, 4);
+    assert_eq!(activity.last_finished_at, Some(NOW - 4));
+    assert!(live.activity(NOW + RECEIPT_WINDOW_SECS + 1).is_empty());
+}

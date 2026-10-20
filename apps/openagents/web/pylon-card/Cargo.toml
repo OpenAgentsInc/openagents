@@ -1,0 +1,39 @@
+# The pylon card on openagents.com/pylons: one pylon's details (name, key,
+# status, hardware, models, slots, uptime, jobs, checks, pool, and price),
+# drawn with the shared GPUI chat views' styles in the page's card box.
+# The page hands it the pylon (`show`) each time it changes. Built twice by
+# `scripts/build-web-pylon-card.sh`: WebGPU-only (the `webgpu/` workspace
+# beside this crate) and with wgpu's WebGL2 fallback (this workspace).
+[package]
+name = "openagents-web-pylon-card"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["export"]
+# Exports `mount` and `show` to the page. The WebGPU-only build (`webgpu/`)
+# links this crate without it and exports its own.
+export = []
+
+[dependencies]
+gpui.workspace = true
+openagents-web-chat-view.workspace = true
+# The page's view of a pylon and the rows it shows (the root workspace's).
+pylons-view = { path = "../../../../crates/pylons-view" }
+serde_json = "1"
+web-time.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+openagents-gpui-web.workspace = true
+wasm-bindgen.workspace = true
+console_error_panic_hook = "0.1.7"
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+uuid.workspace = true
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Document", "Element", "Event", "EventTarget", "Window"] }

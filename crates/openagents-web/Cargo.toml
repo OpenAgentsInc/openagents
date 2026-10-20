@@ -89,6 +89,12 @@ inference = { path = "../inference" }
 libc = "0.2"
 # An account's npub on a shared chat's preview picture (NIP-19).
 nostr = { path = "../nostr" }
+# /pylons' live field: NIP-PYLON beacons and receipts from the relay,
+# verified and projected (pylon::field). No broker: it links SQLite.
+pylon = { path = "../pylon", default-features = false }
+pylons-view = { path = "../pylons-view" }
+# Where /pylons' Grid layer holds the camera (its native half only).
+pylons-web = { path = "../pylons-web" }
 # A shared chat's preview picture, drawn from SVG with the Geist fonts
 # (static/fonts/geist, OFL) and measured to wrap its lines.
 resvg = { version = "0.48.1", default-features = false, features = ["text"] }

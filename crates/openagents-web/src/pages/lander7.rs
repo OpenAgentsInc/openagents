@@ -150,6 +150,7 @@ const ADDITION: Addition = Addition {
     script: LOADER,
     runner_tail: super::lander6::RUNNER_TAIL,
     main: Some(MAIN),
+    grid: None,
 };
 
 /// The last document made, and the background build it came from.

@@ -169,6 +169,7 @@ const ADDITION: Addition = Addition {
     script: LOADER,
     runner_tail: RUNNER_TAIL,
     main: None,
+    grid: None,
 };
 
 /// The last document made, and the background build it came from.

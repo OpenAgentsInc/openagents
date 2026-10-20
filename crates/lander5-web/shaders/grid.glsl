@@ -7,6 +7,9 @@
 // Units are meters; the atmosphere works in kilometers.
 
 #define DEBUG_MODE 0   // 0 final | 1 plane distance | 2 reflection direction | 3 cell ids | 4 filter footprint | 5 masks (lines, glow, pulses) | 6 light terms (emission, reflection, haze)
+#ifndef CAMERA_TIME
+#define CAMERA_TIME iTime
+#endif
 
 // ---- art controls ----
 const float CELL = 4.0;              // minor line spacing, m
@@ -93,9 +96,11 @@ vec3 render(vec2 fragCoord) {
     vec2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;
 
     // camera: low over the floor, drifting forward with a slow sway
-    float z = -mod(iTime * CAMERA_SPEED, CELL * MAJOR * 128.0);
-    vec3 ro = vec3(9.0 + 3.0 * sin(iTime * 0.045), CAMERA_HEIGHT, z);
-    vec3 ta = ro + vec3(0.12 * sin(iTime * 0.03), -HORIZON_UV / FOCAL, -1.0);
+    // (CAMERA_TIME holds it still where a page defines it)
+    float camTime = CAMERA_TIME;
+    float z = -mod(camTime * CAMERA_SPEED, CELL * MAJOR * 128.0);
+    vec3 ro = vec3(9.0 + 3.0 * sin(camTime * 0.045), CAMERA_HEIGHT, z);
+    vec3 ta = ro + vec3(0.12 * sin(camTime * 0.03), -HORIZON_UV / FOCAL, -1.0);
     mat3 cam = cameraMatrix(ro, ta, 0.0);
     vec3 rd = cameraRay(cam, uv, FOCAL);
     float pixelAngle = 2.0 / (iResolution.y * FOCAL);

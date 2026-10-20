@@ -447,6 +447,15 @@ pub struct Config {
     /// when it exists): its WebGPU-only and WebGL2 builds, served under
     /// `/lander7/graph/`. Without it, `/lander7` is the Grid and the name.
     pub lander7: Option<PathBuf>,
+    /// `/pylons`' builds (`--pylons DIR`, default `/srv/pylons` when it
+    /// exists): the Grid layer under `layer/` and the GPUI card's two
+    /// builds under `card/`. Without it, `/pylons` is the Grid and the list.
+    pub pylons: Option<PathBuf>,
+    /// The relay `/pylons` reads beacons and receipts from
+    /// (`--pylons-relay URL`; the binary's default is
+    /// `wss://relay.openagents.com`, and `off` turns it off). `None`
+    /// connects to nothing, and `/pylons/live` answers 404.
+    pub pylons_relay: Option<String>,
     /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
     /// it exists), served under `/games/snap-station/`. Without it, the
     /// game's page says it can't be played here.
@@ -580,6 +589,8 @@ impl Config {
             lander5: None,
             lander6: None,
             lander7: None,
+            pylons: None,
+            pylons_relay: None,
             snap: None,
             att: None,
             cad: None,
@@ -1221,6 +1232,12 @@ async fn ui_catalog(headers: axum::http::HeaderMap) -> Response {
         HeaderValue::from_static(UI_POLICY),
     );
     response
+}
+
+/// Starts `/pylons`' relay subscription now rather than on the first
+/// visit, so the first page already lists the pylons online.
+pub fn start_pylons_field(relay: &str) {
+    let _ = pages::pylons_field(relay);
 }
 
 pub(crate) async fn not_found() -> Response {
