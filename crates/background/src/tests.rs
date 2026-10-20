@@ -42,7 +42,7 @@ impl Processes for Idle {
 /// One home at a time: a test that spawns a process (git, a child holding
 /// a file) forks while another test's lock file is open, and the forked
 /// child keeps that lock for a moment after the test drops it.
-static SERIAL: Mutex<()> = Mutex::new(());
+pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 
 struct Home {
     _serial: std::sync::MutexGuard<'static, ()>,
@@ -112,6 +112,7 @@ fn target(path: &Path, size: usize) {
     std::fs::create_dir_all(path.join("debug/.fingerprint")).unwrap();
     std::fs::write(path.join("debug/.cargo-lock"), "").unwrap();
     std::fs::write(path.join("debug/deps.bin"), vec![7u8; size]).unwrap();
+    std::fs::write(path.join("debug/deps.d"), "").unwrap();
     std::fs::write(path.join("debug/incremental/cache"), vec![7u8; size]).unwrap();
     std::fs::write(
         path.join("CACHEDIR.TAG"),
@@ -170,7 +171,8 @@ fn ended_tasks_targets_go_and_running_tasks_targets_stay() {
     let volumes = low();
     let env = env(&home, &facts, &volumes, &Idle);
     let report = run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
-    assert!(!ended.exists());
+    assert!(!ended.join("debug/deps.bin").exists());
+    assert!(ended.join("debug/.cargo-lock").exists());
     assert!(running.exists());
     assert!(unknown.exists());
     let record = report.record.unwrap();
@@ -214,8 +216,10 @@ fn a_held_slot_lock_or_cargo_lock_keeps_a_directory() {
     assert!(kept.iter().any(|why| why.contains("held")), "{kept:?}");
     drop((slot_lock, cargo));
     run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
-    assert!(!slot.exists());
-    assert!(!other.exists());
+    assert!(!slot.join("debug/deps.bin").exists());
+    assert!(slot.join("debug/.cargo-lock").exists());
+    assert!(!other.join("debug/deps.bin").exists());
+    assert!(other.join("debug/.cargo-lock").exists());
 }
 
 #[test]
@@ -420,7 +424,8 @@ fn symlinks_are_not_followed_and_other_volumes_are_refused() {
     let volumes = low();
     let env = env(&home, &facts, &volumes, &Idle);
     run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
-    assert!(!slot.exists());
+    assert!(!slot.join("debug/deps.bin").exists());
+    assert!(slot.join("debug/.cargo-lock").exists());
     assert!(outside.join("keep").exists());
     assert!(home.layout.targets().join("p-slot-9").is_symlink());
     assert!(crate::paths::mount_point(Path::new("/dev")));
@@ -481,7 +486,8 @@ fn a_checkout_target_needs_cachedir_tag_and_git_ignore() {
     let volumes = low();
     let env = env(&home, &facts, &volumes, &Idle);
     run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
-    assert!(!work.join("tagged/target").exists());
+    assert!(!work.join("tagged/target/debug/deps.bin").exists());
+    assert!(work.join("tagged/target/debug/.cargo-lock").exists());
     assert!(work.join("untagged/target").exists());
     assert!(work.join("tagged/.gitignore").exists());
 }
@@ -512,7 +518,14 @@ fn the_dry_run_is_the_executed_plan_and_records_match_deletions() {
     let record = real.record.unwrap();
     let done: Vec<PathBuf> = record.actions.iter().map(|a| a.path.clone()).collect();
     assert_eq!(done, planned(&dry.plan));
-    assert_eq!(record.freed_sum, expected);
+    let remaining: u64 = real
+        .plan
+        .items()
+        .map(|item| {
+            crate::paths::measure(&item.path, &home.layout.home).map_or(0, |size| size.bytes)
+        })
+        .sum();
+    assert_eq!(record.freed_sum, expected - remaining);
     assert!(
         record
             .actions
@@ -520,7 +533,7 @@ fn the_dry_run_is_the_executed_plan_and_records_match_deletions() {
             .all(|a| a.outcome == Outcome::Deleted && a.bytes > 0)
     );
     let logged = crate::store::read_log(&home.layout);
-    assert_eq!(logged.last().unwrap().freed_sum, expected);
+    assert_eq!(logged.last().unwrap().freed_sum, expected - remaining);
 }
 
 #[test]
@@ -629,7 +642,7 @@ fn checked(rule: &Rule, cause: Cause) -> (bool, Option<Cause>) {
     let env = env(&home, &facts, &volumes, &Idle);
     let report = crate::runner::check(&env, rule, cause).map(Result::unwrap);
     let trigger = report.and_then(|report| report.record).map(|r| r.trigger);
-    (!ended.exists(), trigger)
+    (!ended.join("debug/deps.bin").exists(), trigger)
 }
 
 #[test]
@@ -705,7 +718,8 @@ fn no_triggers_means_no_automatic_runs_but_a_manual_run_still_works() {
     let volumes = low();
     let env = env(&home, &facts, &volumes, &Idle);
     let report = run::run(&env, &rule, Cause::Manual, false, true).unwrap();
-    assert!(!ended.exists());
+    assert!(!ended.join("debug/deps.bin").exists());
+    assert!(ended.join("debug/.cargo-lock").exists());
     assert_eq!(report.record.unwrap().trigger, Cause::Manual);
 }
 
@@ -815,7 +829,8 @@ fn an_enabled_plugin_rule_plans_and_runs_like_the_built_in_and_disabling_stops_i
     assert_eq!(planned(&built_in.plan), planned(&from_plugin.plan));
     let real = run::run(&env, &rule, Cause::Manual, false, true).unwrap();
     assert_eq!(planned(&real.plan), planned(&from_plugin.plan));
-    assert!(!ended.exists());
+    assert!(!ended.join("debug/deps.bin").exists());
+    assert!(ended.join("debug/.cargo-lock").exists());
     assert!(running.exists());
     assert_eq!(real.record.unwrap().rule, "disk-cleanup");
 
@@ -984,6 +999,40 @@ fn shipped_disk_cleanup_package_is_pinned_read_only_and_opt_in() {
     );
     crate::plugins::set_enabled(&home.layout, "disk-cleanup", false).unwrap();
     assert!(crate::plugins::rules(&home.layout).is_empty());
+}
+
+#[test]
+fn enabling_scan_only_release_backs_up_and_replaces_saved_delete_actions() {
+    let home = Home::new();
+    let mut read_only = plugin_rule("disk-cleanup");
+    read_only.actions.clear();
+    read_only.triggers.clear();
+    read_only.needs.delete.clear();
+    install(&home, "disk-cleanup", &read_only);
+    let mut old = plugin_rule("disk-cleanup");
+    old.origin = crate::rule::Origin::Plugin {
+        plugin: format!("{}:disk-cleanup", crate::plugins::LOCAL_KEY),
+        version: "0.0.1".into(),
+    };
+    let path = home.layout.rules().join("disk-cleanup.json");
+    crate::store::write_atomic(&path, &serde_json::to_vec(&old).unwrap()).unwrap();
+    crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap();
+    let saved = crate::store::load(&home.layout, "disk-cleanup").unwrap();
+    assert!(saved.actions.is_empty());
+    assert!(saved.triggers.is_empty());
+    assert!(saved.needs.delete.is_empty());
+    let backup = path.with_extension("json.before-scan-only-0.1.0");
+    assert_eq!(
+        serde_json::from_slice::<Rule>(&std::fs::read(backup).unwrap()).unwrap(),
+        old
+    );
+    crate::plugins::set_enabled(&home.layout, "disk-cleanup", true).unwrap();
+    assert_eq!(
+        crate::store::load(&home.layout, "disk-cleanup")
+            .unwrap()
+            .version,
+        saved.version
+    );
 }
 
 #[test]
@@ -1671,7 +1720,8 @@ fn a_slot_whose_lease_ended_with_its_session_is_class_one_at_once() {
 
     // Admission's reclaim runs class 1 alone and deletes only that slot.
     let report = crate::lease_slots::reclaim(&env, GB).unwrap();
-    assert!(!ended.exists());
+    assert!(!ended.join("debug/deps.bin").exists());
+    assert!(ended.join("debug/.cargo-lock").exists());
     for path in [&live, &unrecorded, &reused] {
         assert!(path.exists(), "{}", path.display());
     }

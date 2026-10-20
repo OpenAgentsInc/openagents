@@ -81,6 +81,8 @@ pub mod machine;
 pub mod machine_status;
 pub mod observe;
 pub mod placement;
+#[cfg(target_os = "linux")]
+pub mod process_paths;
 mod resource;
 mod root;
 pub mod runs;

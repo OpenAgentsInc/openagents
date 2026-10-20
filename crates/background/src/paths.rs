@@ -199,7 +199,25 @@ pub fn touched(path: &Path) -> u64 {
             }));
         }
     }
-    times.into_iter().flatten().max().unwrap_or(0)
+    // A new write inside source-keyed state does not update the target's
+    // parent directories. Check every artifact before calling a target idle.
+    let mut stack = vec![path.to_owned()];
+    while let Some(next) = stack.pop() {
+        let Ok(meta) = std::fs::symlink_metadata(&next) else {
+            return now();
+        };
+        times.push(meta.modified().ok().map(unix));
+        if meta.is_dir() && !meta.file_type().is_symlink() {
+            let Ok(entries) = std::fs::read_dir(&next) else {
+                return now();
+            };
+            for entry in entries {
+                let Ok(entry) = entry else { return now() };
+                stack.push(entry.path());
+            }
+        }
+    }
+    times.into_iter().flatten().max().unwrap_or_else(now)
 }
 
 /// When a worktree was last used: the newest of the directory, its `.git`

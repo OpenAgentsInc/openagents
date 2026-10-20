@@ -31,6 +31,18 @@ impl Fixture {
             fs::create_dir_all(directory).unwrap();
         }
         fs::create_dir_all(root.join("scripts/ios")).unwrap();
+        // The iOS script deliberately resets PATH for Cargo. Make the fixture's
+        // cat available there on NixOS too.
+        let cat = Command::new("sh")
+            .args(["-c", "command -v cat"])
+            .output()
+            .unwrap();
+        assert!(cat.status.success());
+        std::os::unix::fs::symlink(
+            String::from_utf8(cat.stdout).unwrap().trim(),
+            home.join(".cargo/bin/cat"),
+        )
+        .unwrap();
         fs::write(
             root.join("Cargo.toml"),
             "[package]\nname = \"fixture\"\nversion = \"0.0.0\"\n",
@@ -63,6 +75,7 @@ impl Fixture {
                 std::env::join_paths([
                     self.bin.as_path(),
                     self.home.join(".cargo/bin").as_path(),
+                    Path::new("/run/current-system/sw/bin"),
                     Path::new("/usr/bin"),
                     Path::new("/bin"),
                 ])
@@ -142,7 +155,7 @@ esac
         );
         let script = self.root.join(relative_script);
         fs::write(&script, source).unwrap();
-        let mut command = self.command("/bin/bash");
+        let mut command = self.command("bash");
         command.arg(script).current_dir(caller);
         if let Some(custom_target) = custom_target {
             command.env("CARGO_TARGET_DIR", custom_target);

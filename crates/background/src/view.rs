@@ -337,6 +337,11 @@ mod tests {
     fn watchers_are_the_rules_on_while_a_runner_holds_its_lock() {
         let home = tempfile::tempdir().unwrap();
         let layout = Layout::new(home.path(), None).unwrap();
+        for id in crate::rule::BUILT_IN {
+            let mut rule = crate::rule::built_in(id).unwrap();
+            rule.enabled = false;
+            crate::store::save(&layout, &rule).unwrap();
+        }
         // No runner: nothing runs the rules.
         assert!(super::watchers(&layout).is_empty());
         std::fs::create_dir_all(layout.background()).unwrap();

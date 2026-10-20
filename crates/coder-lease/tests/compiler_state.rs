@@ -63,7 +63,7 @@ fn dependencies_use_the_workspace_compiler_and_state() {
             .env(
                 "PATH",
                 format!(
-                    "{}:/usr/bin:/bin",
+                    "{}:/run/current-system/sw/bin:/usr/bin:/bin",
                     Path::new(&rustup).parent().unwrap().display()
                 ),
             )

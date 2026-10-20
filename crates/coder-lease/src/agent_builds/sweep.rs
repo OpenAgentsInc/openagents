@@ -493,27 +493,45 @@ pub struct System;
 
 impl Host for System {
     fn processes(&self) -> Result<Vec<Proc>, String> {
-        let run = |program: &str, args: &[&str]| -> Result<String, String> {
-            bounded_output(program, args, Duration::from_secs(10))
-        };
-        let plain = run("ps", &["-axww", "-o", "pid=,command="])?;
-        if plain.trim().is_empty() {
-            return Err("ps listed nothing".into());
+        #[cfg(target_os = "linux")]
+        return crate::process_paths::snapshot().map(|processes| {
+            processes
+                .into_iter()
+                .filter(|process| is_builder(&process.name))
+                .map(|process| Proc {
+                    pid: process.pid,
+                    name: process.name,
+                    args: process.args,
+                    target_dir: process.target_dir,
+                    build_dir: process.build_dir,
+                    cwd: Some(process.cwd),
+                })
+                .collect()
+        });
+        #[cfg(not(target_os = "linux"))]
+        {
+            let run = |program: &str, args: &[&str]| -> Result<String, String> {
+                bounded_output(program, args, Duration::from_secs(10))
+            };
+            let plain = run("ps", &["-axww", "-o", "pid=,command="])?;
+            if plain.trim().is_empty() {
+                return Err("ps listed nothing".into());
+            }
+            let with_env = run("ps", &["-axww", "-E", "-o", "pid=,command="])?;
+            let mut procs = parse_ps(&plain, &with_env);
+            if !procs.is_empty() {
+                let pids: Vec<String> = procs.iter().map(|proc| proc.pid.to_string()).collect();
+                // `-a` ANDs the filters: only these processes' working
+                // directories. Without it lsof ORs them.
+                let lsof = run("lsof", &["-a", "-d", "cwd", "-p", &pids.join(","), "-Fpn"])?;
+                add_cwds(&mut procs, &lsof);
+                // lsof returns 1 when one of the short-lived rustc processes has
+                // already exited. Keep valid cwd rows and discard only dead PIDs;
+                // a live process with an unreadable cwd still protects all targets.
+                finish_processes(&mut procs, process_alive)?;
+            }
+            Ok(procs)
         }
-        let with_env = run("ps", &["-axww", "-E", "-o", "pid=,command="])?;
-        let mut procs = parse_ps(&plain, &with_env);
-        if !procs.is_empty() {
-            let pids: Vec<String> = procs.iter().map(|proc| proc.pid.to_string()).collect();
-            // `-a` ANDs the filters: only these processes' working
-            // directories. Without it lsof ORs them.
-            let lsof = run("lsof", &["-a", "-d", "cwd", "-p", &pids.join(","), "-Fpn"])?;
-            add_cwds(&mut procs, &lsof);
-            // lsof returns 1 when one of the short-lived rustc processes has
-            // already exited. Keep valid cwd rows and discard only dead PIDs;
-            // a live process with an unreadable cwd still protects all targets.
-            finish_processes(&mut procs, process_alive)?;
-        }
-        Ok(procs)
     }
 
     fn free(&self, path: &Path) -> std::io::Result<u64> {
@@ -542,6 +560,7 @@ impl Host for System {
     }
 }
 
+#[cfg(any(not(target_os = "linux"), test))]
 fn finish_processes(procs: &mut Vec<Proc>, alive: impl Fn(u32) -> bool) -> Result<(), String> {
     procs.retain(|process| process.cwd.is_some() || alive(process.pid));
     if procs.iter().any(|process| process.cwd.is_none()) {
@@ -550,7 +569,7 @@ fn finish_processes(procs: &mut Vec<Proc>, alive: impl Fn(u32) -> bool) -> Resul
     Ok(())
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "linux")))]
 fn process_alive(pid: u32) -> bool {
     let Ok(pid) = libc::pid_t::try_from(pid) else {
         return true;
@@ -565,6 +584,7 @@ fn process_alive(_: u32) -> bool {
     true
 }
 
+#[cfg(any(not(target_os = "linux"), test))]
 fn bounded_output(program: &str, args: &[&str], timeout: Duration) -> Result<String, String> {
     use std::io::Read as _;
     let mut child = std::process::Command::new(program)

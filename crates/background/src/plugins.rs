@@ -85,7 +85,8 @@ pub fn set_enabled_exact(
     }
     if on {
         for id in &plugin.background {
-            load_rule(&plugin, id)?;
+            let rule = load_rule(&plugin, id)?;
+            migrate_scan_only(layout, &plugin, &rule)?;
         }
     }
     if on && !plugin.classes.is_empty() {
@@ -104,6 +105,53 @@ pub fn set_enabled_exact(
         enabled: on,
         ..plugin
     })
+}
+
+/// A scan-only release must not retain a previous release's delete actions.
+/// Keep the old local rule beside it before replacing that override.
+fn migrate_scan_only(layout: &Layout, plugin: &Installed, rule: &Rule) -> Result<(), String> {
+    if !rule.actions.is_empty() || !rule.triggers.is_empty() || !rule.needs.delete.is_empty() {
+        return Ok(());
+    }
+    let path = layout.rules().join(format!("{}.json", rule.id));
+    let Ok(meta) = std::fs::symlink_metadata(&path) else {
+        return Ok(());
+    };
+    if !meta.is_file() {
+        return Err("The saved plugin rule is not a regular file.".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let old: Rule = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    if !matches!(&old.origin, Origin::Plugin { plugin: id, .. } if id == &plugin.id) {
+        return Err("The saved rule belongs to another source.".into());
+    }
+    if old.actions.is_empty() && old.triggers.is_empty() && old.needs.delete.is_empty() {
+        return Ok(());
+    }
+    let backup = path.with_extension(format!("json.before-scan-only-{}", plugin.version));
+    if backup.exists() {
+        if std::fs::symlink_metadata(&backup)
+            .map_err(|e| e.to_string())?
+            .file_type()
+            .is_symlink()
+            || serde_json::from_slice::<Rule>(&std::fs::read(&backup).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?
+                != old
+        {
+            return Err("A different plugin rule backup already exists.".into());
+        }
+    } else {
+        crate::cleanup::save(&backup, &old)?;
+    }
+    let mut replacement = rule.clone();
+    replacement.enabled = old.enabled;
+    replacement.paused_until = old.paused_until;
+    replacement.version = old.version.saturating_add(1);
+    write_atomic(
+        &path,
+        &serde_json::to_vec_pretty(&replacement).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Every background rule of every enabled plugin, admitted, or why not

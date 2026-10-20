@@ -87,30 +87,11 @@ fn lsof_snapshot() -> Result<Snapshot, String> {
 }
 
 fn proc_snapshot() -> Result<Snapshot, String> {
-    let own = std::process::id().to_string();
-    let mut paths = Vec::new();
-    let entries = std::fs::read_dir("/proc").map_err(|error| format!("/proc: {error}"))?;
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if !name.bytes().all(|byte| byte.is_ascii_digit()) || name == own {
-            continue;
-        }
-        let dir = entry.path();
-        if let Ok(target) = std::fs::read_link(dir.join("cwd")) {
-            paths.push(target);
-        }
-        if let Ok(fds) = std::fs::read_dir(dir.join("fd")) {
-            for fd in fds.flatten() {
-                if let Ok(target) = std::fs::read_link(fd.path())
-                    && target.is_absolute()
-                {
-                    paths.push(target);
-                }
-            }
-        }
-    }
-    Ok(Snapshot::new(paths))
+    #[cfg(target_os = "linux")]
+    return coder_lease::process_paths::snapshot()
+        .map(|processes| Snapshot::new(processes.into_iter().flat_map(|process| process.paths)));
+    #[cfg(not(target_os = "linux"))]
+    Err("Linux process paths are unavailable.".into())
 }
 
 /// The advisory locks that mark a Cargo target directory busy: a slot's
@@ -119,11 +100,40 @@ fn proc_snapshot() -> Result<Snapshot, String> {
 pub fn locks_of(dir: &Path) -> Vec<PathBuf> {
     let mut slot = dir.as_os_str().to_owned();
     slot.push(".lock");
-    vec![
-        PathBuf::from(slot),
-        dir.join("debug/.cargo-lock"),
-        dir.join("release/.cargo-lock"),
-    ]
+    let mut locks = vec![PathBuf::from(slot)];
+    if let Some(profile) = dir.ancestors().find(|path| {
+        path.file_name()
+            .is_some_and(|name| name == "debug" || name == "release")
+    }) {
+        for name in [".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock"] {
+            locks.push(profile.join(name));
+        }
+    }
+    let mut pending = vec![(dir.to_owned(), 0)];
+    while let Some((path, depth)) = pending.pop() {
+        if path
+            .file_name()
+            .is_some_and(|name| name == "debug" || name == "release")
+        {
+            for name in [".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock"] {
+                locks.push(path.join(name));
+            }
+            continue;
+        }
+        if depth >= 10 {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    pending.push((entry.path(), depth + 1));
+                }
+            }
+        }
+    }
+    locks.sort();
+    locks.dedup();
+    locks
 }
 
 /// Locks taken for the length of a deletion, so a build cannot start

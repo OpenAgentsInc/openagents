@@ -52,7 +52,7 @@ impl Machine {
 
     fn cargo(&self, cwd: &Path, args: &[&str], extra: &[(&str, &str)]) -> Output {
         let path = OsString::from(format!(
-            "{}:/usr/bin:/bin",
+            "{}:/run/current-system/sw/bin:/usr/bin:/bin",
             self.root().join("real").display()
         ));
         let mut command = Command::new(self.gate.shims.join("cargo"));

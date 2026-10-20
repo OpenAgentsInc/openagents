@@ -184,7 +184,10 @@ fn two_worktrees_link_their_own_source_in_one_target() {
         bin: Some(tools.join("openagents")),
     };
     gate.install().unwrap();
-    let path = OsString::from(format!("{}:/usr/bin:/bin", tools.display()));
+    let path = OsString::from(format!(
+        "{}:/run/current-system/sw/bin:/usr/bin:/bin",
+        tools.display()
+    ));
     for (workspace, expected_targets) in [("", 1), ("app", 2)] {
         for (index, (tree, expected)) in [(&repo, "1"), (&other, "2"), (&repo, "1"), (&other, "2")]
             .into_iter()

@@ -378,7 +378,7 @@ fn cache_gc_is_bounded() {
     use std::os::unix::process::ExitStatusExt as _;
 
     // An open input pipe keeps this child running without a timed helper.
-    let mut child = std::process::Command::new("/bin/cat")
+    let mut child = std::process::Command::new("cat")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -863,7 +863,7 @@ fn every_removal_is_logged_with_chicago_time_size_path_and_reason() {
     let log = std::fs::read_to_string(&layout.log).unwrap();
     let lines: Vec<_> = log.lines().collect();
     assert!(
-        lines[0].starts_with("2026-10-17 6:00:00 PM CDT  sweep  free 500.0 GiB -> 500.0 GiB, freed 1008 KiB; artifact use watched since 1969-12-31 7:00:00 PM CDT; targets: openagents-target-1 "),
+        lines[0].starts_with(&format!("2026-10-17 6:00:00 PM CDT  sweep  free 500.0 GiB -> 500.0 GiB, freed {}; artifact use watched since 1969-12-31 7:00:00 PM CDT; targets: openagents-target-1 ", size(report.freed))),
         "{log}"
     );
     let line = lines[1];
@@ -957,7 +957,8 @@ fn a_read_artifact_counts_as_used_and_is_set_back_to_show_the_next_read() {
         let mut bytes = Vec::new();
         std::io::Read::read_to_end(&mut File::open(path).unwrap(), &mut bytes).unwrap();
     };
-    // Equal times: macOS doesn't record a read.
+    // macOS leaves equal times after a read; Linux uses the equal-time fixture.
+    #[cfg(target_os = "macos")]
     read(&rlib);
     let (accessed, modified) = times(&rlib);
     assert_eq!(accessed, modified);

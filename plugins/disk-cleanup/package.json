@@ -2,8 +2,8 @@
   "v": 1,
   "slug": "disk-cleanup",
   "name": "Disk cleanup",
-  "summary": "Read-only full scan of disk use: every candidate with its size, age, and reason. Deletes nothing.",
-  "version": "0.4.0",
+  "summary": "Review old build outputs and merged worktrees, then apply only a saved cleanup plan.",
+  "version": "0.5.0",
   "publisher": "",
   "provenance": "local file",
   "background": [
