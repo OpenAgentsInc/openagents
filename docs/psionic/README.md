@@ -70,6 +70,16 @@ roadmap records completed Linux CPU/CUDA latency and throughput comparisons,
 HTTP results, package inventories, and retained intermediate misses. Apple and mobile
 device qualification remains in `NEEDS_OWNER.md`.
 
+## Framework comparisons
+
+The [DeepInfer review](deepinfer-lessons.md) compares its released inference
+engine with Psionic's serving paths and recommends focused work on device
+batching, reproducibility, structured outputs, and speculative verification.
+
+The [Mesh-LLM review](mesh-llm-lessons.md) compares distributed placement,
+stage packages, activation transport, readiness, and cache-aware routing with
+Psionic's cluster and serving contracts.
+
 ## History
 
 An earlier, narrower import (`crates/psionic-gguf`: GGUF parsing, a
