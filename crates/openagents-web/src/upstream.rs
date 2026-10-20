@@ -193,7 +193,7 @@ pub(crate) const REMOVED: [&str; 8] = [
 #[must_use]
 pub fn owned(path: &str) -> bool {
     path == "/api/stats"
-        || path == crate::pages::foreman::PATH
+        || crate::pages::foreman::owns(path)
         || path == "/labs/agent"
         || path.starts_with("/labs/agent/")
         // A Lab document's page and its file player (crate::lab_card_view).

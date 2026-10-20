@@ -416,6 +416,10 @@ pub struct Config {
     /// The desktop chat UI's web build (`--gpui-demo DIR`, default
     /// `/srv/gpui-demo` when it exists), served under `/demo/gpui/`. Without it, the demo's page says it isn't available.
     pub gpui_demo: Option<PathBuf>,
+    /// The AgentGraph web build (`--agent-graph DIR`, default
+    /// `/srv/agent-graph` when it exists), served under `/agent-graph/`.
+    /// Without it, agent pages show the server's map alone.
+    pub agent_graph: Option<PathBuf>,
     /// The Ice Cream Man web build (`--icecream DIR`, default
     /// `/srv/icecream` when it exists), served under
     /// `/games/the-ice-cream-man/`. Without it, the game's page says it
@@ -551,6 +555,7 @@ impl Config {
             everglade: None,
             bunny: None,
             gpui_demo: None,
+            agent_graph: None,
             icecream: None,
             layertree: None,
             snap: None,

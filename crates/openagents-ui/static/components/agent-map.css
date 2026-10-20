@@ -310,3 +310,30 @@
 .oa-agent-map .oa-agent-map-lesson-list {
   columns: 2 16rem;
 }
+
+/*
+ * AgentGraph (`apps/openagents/web/agent-graph`): once its module starts,
+ * the start script marks the box live and GPUI draws the graph in a canvas
+ * inside it, in place of the map. Without the module the map stays.
+ */
+.oa-agent-graph.is-live {
+  position: relative;
+  height: min(82vh, 860px);
+  min-height: 520px;
+  margin: calc(var(--spacing) * 6) 0 calc(var(--spacing) * 8);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #070707;
+}
+
+.oa-agent-graph.is-live > figure {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .oa-agent-graph.is-live {
+    height: 72vh;
+    min-height: 440px;
+  }
+}

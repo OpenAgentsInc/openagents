@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--api-host HOST] [--studio-host HOST]... [--upstream http://HOST:PORT] \
-[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads] \
@@ -80,6 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--sand-build" => config.sand_build = PathBuf::from(value),
             "--bunny" => config.bunny = Some(PathBuf::from(value)),
             "--gpui-demo" => config.gpui_demo = Some(PathBuf::from(value)),
+            "--agent-graph" => config.agent_graph = Some(PathBuf::from(value)),
             "--icecream" => config.icecream = Some(PathBuf::from(value)),
             "--snap" => config.snap = Some(PathBuf::from(value)),
             "--layertree" => config.layertree = Some(PathBuf::from(value)),
@@ -181,6 +182,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The desktop chat UI's web build ships at /srv/gpui-demo in the image.
     if config.gpui_demo.is_none() && std::path::Path::new("/srv/gpui-demo/start.js").is_file() {
         config.gpui_demo = Some(PathBuf::from("/srv/gpui-demo"));
+    }
+    // The AgentGraph web build ships at /srv/agent-graph in the image.
+    if config.agent_graph.is_none() && std::path::Path::new("/srv/agent-graph/start.js").is_file() {
+        config.agent_graph = Some(PathBuf::from("/srv/agent-graph"));
     }
     // Snap Station's build ships at /srv/snap in the image.
     if config.snap.is_none() && std::path::Path::new("/srv/snap/start.js").is_file() {

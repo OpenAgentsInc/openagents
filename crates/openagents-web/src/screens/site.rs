@@ -349,7 +349,7 @@ fn efficiency(headers: &HeaderMap) -> Response {
 }
 
 fn foreman(headers: &HeaderMap) -> Response {
-    crate::pages::foreman::page(headers)
+    crate::pages::foreman::page(headers, false)
 }
 
 fn connecting_google(headers: &HeaderMap) -> Response {

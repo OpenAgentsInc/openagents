@@ -15,13 +15,19 @@
 //! no controls.
 
 use axum::Router;
-use axum::http::HeaderMap;
-use axum::response::Response;
+use axum::extract::{Path as UrlPath, State};
+use axum::http::{HeaderMap, HeaderValue, header};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
-use maud::{Markup, Render, html};
+use maud::{Markup, PreEscaped, Render, html};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
 
-use agent_contract::{GrantScope, NEVER_GRANTED_REFUSAL, WakeEvent};
+use agent_contract::{GrantScope, NEVER_GRANTED_REFUSAL};
+use agent_graph::catalog::{self, MACHINE_SCOPES, named, plain};
+use agent_graph::foreman::{LESSONS, PART_LESSONS, lesson_title, replay_lessons, scenario_title};
+use agent_graph::lab::{
+    DEFAULT_WAKES, HOST_STALL_MINUTES, grant_words as grant, minutes, wake_words as wake,
+};
 use agent_lab::{Check, Experiment, replay, templates};
 
 use crate::App;
@@ -31,72 +37,249 @@ pub(crate) const PATH: &str = "/agent/foreman";
 
 const REPO: &str = "https://github.com/OpenAgentsInc/openagents";
 
-/// The stall window a computer uses when a definition sets none. It is
-/// `DEFAULT_STALL_MINUTES` in the app's `agent_wakes`, which this
-/// workspace doesn't link.
-const HOST_STALL_MINUTES: u32 = 20;
+/// The AgentGraph web build (`apps/openagents/scripts/build-web-demo.sh
+/// --app agent-graph`), read from `--agent-graph DIR`: the glue, the module,
+/// and the start script, served under [`GRAPH_ASSETS`].
+pub(crate) const GRAPH_GLUE: &str = "openagents_web_agent_graph.js";
+pub(crate) const GRAPH_WASM: &str = "openagents_web_agent_graph_bg.wasm";
+pub(crate) const GRAPH_START: &str = "start.js";
+pub(crate) const GRAPH_ASSETS: &str = "/agent-graph";
+
+/// An agent page with the graph: the site's policy, plus scripts and the
+/// module from this site and compiling WebAssembly. GPUI styles its canvas
+/// through the CSSOM, which `style-src` doesn't govern.
+pub(crate) const GRAPH_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
+img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; \
+base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 pub(crate) fn routes() -> Router<App> {
-    Router::new().route(PATH, get(foreman_page))
+    Router::new()
+        .route(PATH, get(foreman_page))
+        .route("/agent/{id}", get(agent_page))
+        .route("/agent/{id}/graph.json", get(graph_json))
+        .route("/agent-graph/{file}", get(graph_file))
 }
 
-async fn foreman_page(headers: HeaderMap) -> Response {
-    page(&headers)
+/// Whether this site answers `path`: Foreman's page, a template's page or
+/// graph, or the graph's build files. Other `/agent/` paths go upstream.
+pub(crate) fn owns(path: &str) -> bool {
+    if path == PATH || path.starts_with("/agent-graph/") {
+        return true;
+    }
+    let Some(rest) = path.strip_prefix("/agent/") else {
+        return false;
+    };
+    let id = rest.strip_suffix("/graph.json").unwrap_or(rest);
+    !id.contains('/') && (id == "foreman" || template(id).is_some())
 }
 
-pub(crate) fn page(headers: &HeaderMap) -> Response {
-    UiPage::new("Foreman")
-        .path(PATH)
-        .description(
-            "Foreman, the agent that keeps the whole picture of OpenAgents work, \
-             as Agent Lab defines it.",
-        )
-        .scriptless()
-        .content(body())
-        .respond(headers)
+/// The build directory, when it holds the glue, the module and the start
+/// script.
+fn graph_build(app: &App) -> Option<&std::path::Path> {
+    let directory = app.config.agent_graph.as_deref()?;
+    [GRAPH_GLUE, GRAPH_WASM, GRAPH_START]
+        .iter()
+        .all(|file| directory.join(file).is_file())
+        .then_some(directory)
+}
+
+async fn foreman_page(State(app): State<App>, headers: HeaderMap) -> Response {
+    page(&headers, graph_build(&app).is_some())
+}
+
+/// The page, with the GPUI graph over the server map when `live`.
+pub(crate) fn page(headers: &HeaderMap, live: bool) -> Response {
+    let ui = UiPage::new("Foreman").path(PATH).description(
+        "Foreman, the agent that keeps the whole picture of OpenAgents work, \
+         as Agent Lab defines it.",
+    );
+    if !live {
+        return ui.scriptless().content(body(None)).respond(headers);
+    }
+    let graph = agent_graph::foreman::graph();
+    let mut response = ui
+        .head(graph_script())
+        .content(body(Some(&graph)))
+        .respond(headers);
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(GRAPH_POLICY),
+    );
+    response
+}
+
+/// The start script, which loads the module and hands it the graph.
+fn graph_script() -> Markup {
+    html! { script type="module" src=(format!("{GRAPH_ASSETS}/{GRAPH_START}")) {} }
+}
+
+/// A graph's JSON, safe inside a `<script type="application/json">`: every
+/// `<`, `>` and `&` is a JSON escape, so no text can close the element.
+fn graph_data(graph: &agent_graph::GraphSpec) -> Markup {
+    let json = serde_json::to_string(graph)
+        .unwrap_or_default()
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026");
+    html! { script type="application/json" id="agent-graph-spec" { (PreEscaped(json)) } }
+}
+
+/// The box the graph draws in, holding the server's own view until it does.
+fn graph_box(graph: Option<&agent_graph::GraphSpec>, fallback: Markup) -> Markup {
+    match graph {
+        None => fallback,
+        Some(graph) => html! {
+            div.oa-agent-graph id="gpui-mount" role="img"
+                aria-label=(format!("{} as a graph of its parts. Every part is described below.", graph.title)) {
+                (fallback)
+            }
+            (graph_data(graph))
+        },
+    }
+}
+
+/// An Agent Lab template by its published ID or its name.
+fn template(id: &str) -> Option<(&'static str, Experiment)> {
+    templates::offered()
+        .into_iter()
+        .find(|(published, experiment)| *published == id || slug(&experiment.title) == id)
+}
+
+fn slug(title: &str) -> String {
+    title.to_lowercase().replace(' ', "-")
+}
+
+/// The graph of a template, Foreman's with its notes.
+fn template_graph(published: &str, experiment: &Experiment) -> agent_graph::GraphSpec {
+    if published == templates::FOREMAN_ID {
+        agent_graph::foreman::graph()
+    } else {
+        agent_graph::lab::of(experiment, published, &agent_graph::lab::Notes::default())
+    }
+}
+
+/// `/agent/{id}`: any other Agent Lab template, as its graph over a plain
+/// list of its parts. Foreman has its own page.
+async fn agent_page(
+    State(app): State<App>,
+    UrlPath(id): UrlPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    let Some((published, experiment)) = template(&id) else {
+        return crate::not_found().await;
+    };
+    if published == templates::FOREMAN_ID {
+        return Redirect::permanent(PATH).into_response();
+    }
+    let graph = template_graph(published, &experiment);
+    let path = format!("/agent/{id}");
+    let ui = UiPage::new(graph.title.clone())
+        .path(path)
+        .description(graph.description.clone());
+    let live = graph_build(&app).is_some();
+    let content = generic_body(&graph, live);
+    if !live {
+        return ui.scriptless().content(content).respond(&headers);
+    }
+    let mut response = ui.head(graph_script()).content(content).respond(&headers);
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(GRAPH_POLICY),
+    );
+    response
+}
+
+/// Any graph as a page: its parts and what each one does, in order.
+fn generic_body(graph: &agent_graph::GraphSpec, live: bool) -> Markup {
+    let parts = html! {
+        div.oa-agent-map-cards {
+            @for unit in graph.children(None) {
+                article.oa-agent-map-card id=(format!("part-{}", unit.id)) data-accent=(accent(unit.accent)) {
+                    h3 { (unit.title) }
+                    (MarkdownRoot::new(html! {
+                        @if !unit.line.is_empty() { p.oa-page-meta { (unit.line) } }
+                        @for detail in &unit.details { (detail_markup(detail)) }
+                        @let inside: Vec<_> = graph.children(Some(&unit.id)).collect();
+                        @if !inside.is_empty() {
+                            ul.oa-agent-map-list {
+                                @for child in inside { li { strong { (child.title) } " " (child.line) } }
+                            }
+                        }
+                    }))
+                }
+            }
+        }
+    };
+    PageColumn::new(html! {
+        section.oa-agent-map aria-labelledby="agent-title" {
+            (MarkdownRoot::new(html! {
+                p.oa-page-eyebrow { "Agent Lab" }
+                h1 id="agent-title" { (graph.title) }
+                p.oa-page-lead { (graph.description) }
+            }))
+            (graph_box(live.then_some(graph), html! {}))
+            (parts)
+        }
+    })
+    .wide()
+    .render()
+}
+
+fn accent(accent: agent_graph::Accent) -> &'static str {
+    match accent {
+        agent_graph::Accent::Core | agent_graph::Accent::Info => "info",
+        agent_graph::Accent::Discovery => "discovery",
+        agent_graph::Accent::Warning => "warning",
+        agent_graph::Accent::Success => "success",
+        agent_graph::Accent::Danger => "danger",
+    }
+}
+
+fn detail_markup(detail: &agent_graph::Detail) -> Markup {
+    use agent_graph::Detail;
+    match detail {
+        Detail::Text { text } => html! { p { (text) } },
+        Detail::Quote { text } => html! { p.oa-agent-map-quote { (text) } },
+        Detail::Fact { label, value } => html! {
+            dl.oa-agent-map-facts { div { dt { (label) } dd { (value) } } }
+        },
+        Detail::Chips { label, items } => html! {
+            @if let Some(label) = label { h4 { (label) } }
+            ul.oa-agent-map-chips { @for item in items { li { (item) } } }
+        },
+        Detail::List { label, items } => html! {
+            @if let Some(label) = label { h4 { (label) } }
+            ul.oa-agent-map-list { @for item in items { li { (item) } } }
+        },
+    }
+}
+
+/// `/agent/{id}/graph.json`: a template's graph (`openagents.agent-graph.v1`).
+async fn graph_json(UrlPath(id): UrlPath<String>) -> Response {
+    let found = template(&id)
+        .or_else(|| (id == "foreman").then(|| (templates::FOREMAN_ID, templates::foreman())));
+    let Some((published, experiment)) = found else {
+        return crate::not_found().await;
+    };
+    axum::Json(template_graph(published, &experiment)).into_response()
+}
+
+async fn graph_file(
+    State(app): State<App>,
+    UrlPath(file): UrlPath<String>,
+    request: HeaderMap,
+) -> Response {
+    let (Some(directory), Some(content_type)) =
+        (graph_build(&app), super::everglade::build_type(&file))
+    else {
+        return crate::not_found().await;
+    };
+    super::everglade::serve_build(directory, &file, content_type, &request).await
 }
 
 /// All of Foreman's own text: its instructions and every playbook skill.
 fn foreman_text() -> String {
-    let mut text = templates::FOREMAN_INSTRUCTIONS.to_owned();
-    for (_, skill) in templates::FOREMAN_SKILLS {
-        text.push('\n');
-        text.push_str(skill);
-    }
-    text
-}
-
-/// Whether Foreman's text names `name` in code formatting.
-fn named(text: &str, name: &str) -> bool {
-    text.contains(&format!("`{name}`")) || text.contains(&format!("`{name} "))
-}
-
-/// A playbook skill's name in plain words.
-fn plain(name: &str) -> String {
-    const WORDS: [(&str, &str); 1] = [("dispatching", "handing out")];
-    name.split(' ')
-        .enumerate()
-        .map(|(at, word)| {
-            let lower = word.to_lowercase();
-            let swap = WORDS
-                .iter()
-                .find(|(from, _)| *from == lower)
-                .map(|(_, to)| (*to).to_owned());
-            match (swap, at) {
-                (Some(to), 0) => capitalized(&to),
-                (Some(to), _) => to,
-                (None, _) => word.to_owned(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn capitalized(text: &str) -> String {
-    let mut chars = text.chars();
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(chars).collect()
-    })
+    agent_graph::lab::text(&templates::foreman())
 }
 
 /// A line of Foreman's Markdown as markup: `code` spans kept, `**` dropped.
@@ -106,127 +289,6 @@ fn inline(text: &str) -> Markup {
         @for (at, part) in text.split('`').enumerate() {
             @if at % 2 == 1 { code { (part) } } @else { (part) }
         }
-    }
-}
-
-/// The tools Foreman's app gives it, grouped, in the order a check-in uses
-/// them. Each is shown only while Foreman's text names it.
-const TOOLS: [(&str, &[&str]); 4] = [
-    (
-        "Chats",
-        &[
-            "list_devices",
-            "list_chats",
-            "read_chat",
-            "get_chat",
-            "changed_paths",
-            "send_message",
-            "interrupt_chat",
-            "create_chat",
-            "create_chats",
-            "wait_for_turn",
-        ],
-    ),
-    ("Issue work", &["work_issues", "land_status", "list_runs"]),
-    (
-        "This computer",
-        &["machine_status", "machine_action", "upgrade_host"],
-    ),
-    ("Memory", &["record_decision"]),
-];
-
-/// The commands Foreman runs itself, each shown while its text names it.
-const COMMANDS: [&str; 5] = [
-    "gh",
-    "openagents land submit",
-    "openagents issue release",
-    "openagents agents revise",
-    "openagents agents bind",
-];
-
-/// The machine scopes `machine_action` and `upgrade_host` run under.
-const MACHINE_SCOPES: [&str; 3] = ["build.prune", "process.stop", "host.upgrade"];
-
-/// Where Foreman looks, with the tools or commands that read each place.
-const SOURCES: [(&str, &str, &[&str]); 5] = [
-    (
-        "GitHub",
-        "Open and recently closed issues, claim comments, blockers, commits, and the two boards.",
-        &["gh"],
-    ),
-    (
-        "The app",
-        "Every device and chat: its status, last activity, and what it changed.",
-        &["list_devices", "list_chats", "read_chat", "changed_paths"],
-    ),
-    (
-        "The landing queue",
-        "Finished changes waiting to land on main, and the ones that bounced.",
-        &["land_status"],
-    ),
-    (
-        "The cloud pool",
-        "Issue work running on cloud computers, its events, and what it spends.",
-        &["work_issues"],
-    ),
-    (
-        "This computer",
-        "Disk, capacity, the landing queue's health, and what waits on the owner.",
-        &["machine_status"],
-    ),
-];
-
-/// Foreman's lessons (`docs/foreman/lessons-learned.md`), by number.
-const LESSONS: [(&str, &str); 13] = [
-    ("L1", "Coordination ran where no one could see it"),
-    ("L2", "Foreman's own turn hung"),
-    ("L3", "The stall rule only watched"),
-    ("L4", "Check-ins were never switched on"),
-    ("L5", "Foreman's watch died with its process"),
-    ("L6", "Agents handed off code that never compiled"),
-    ("L7", "Branches were merged one at a time by hand"),
-    ("L8", "Builds ran on the owner's Mac"),
-    ("L9", "A red main was compared by hand"),
-    ("L10", "Hand-written rules were wrong"),
-    ("L11", "Probes changed production"),
-    ("L12", "Actions without a record"),
-    ("L13", "Nothing measured Foreman"),
-];
-
-fn wake(event: WakeEvent) -> &'static str {
-    match event {
-        WakeEvent::ChatFinished => "a chat finishes",
-        WakeEvent::ChatErrored => "a chat errors",
-        WakeEvent::ChatNeedsAnswer => "a chat needs an answer",
-        WakeEvent::IssueOpened => "an issue opens",
-        WakeEvent::IssueClosed => "an issue closes",
-        WakeEvent::ClaimStale => "a claim goes stale",
-        WakeEvent::ChatStalled => "a chat stalls",
-        WakeEvent::ClaimNoProgress => "a claim makes no progress",
-        WakeEvent::Other => "something newer",
-    }
-}
-
-const WAKES: [WakeEvent; 8] = [
-    WakeEvent::ChatFinished,
-    WakeEvent::ChatErrored,
-    WakeEvent::ChatNeedsAnswer,
-    WakeEvent::IssueOpened,
-    WakeEvent::IssueClosed,
-    WakeEvent::ClaimStale,
-    WakeEvent::ChatStalled,
-    WakeEvent::ClaimNoProgress,
-];
-
-fn grant(scope: GrantScope) -> &'static str {
-    match scope {
-        GrantScope::ChatMessage => "Message a chat",
-        GrantScope::ChatStart => "Start a chat",
-        GrantScope::ChatSteer => "Steer a chat",
-        GrantScope::ChatStop => "Stop a chat",
-        GrantScope::LandSubmit => "Send a change to the landing queue",
-        GrantScope::WorkDispatch => "Start issue work on the pool",
-        GrantScope::LogWrite => "Keep its decision log",
     }
 }
 
@@ -242,33 +304,14 @@ struct Part {
     card: Markup,
 }
 
-fn lessons(numbers: &[&str]) -> Vec<String> {
-    numbers.iter().map(|n| (*n).to_owned()).collect()
-}
-
-fn lesson_title(number: &str) -> &'static str {
-    LESSONS
+/// The lessons a part answers (`agent_graph::foreman::PART_LESSONS`), so the
+/// map and the graph tag the same parts.
+fn lessons(part: &str) -> Vec<String> {
+    PART_LESSONS
         .iter()
-        .find(|(n, _)| *n == number)
-        .map_or("", |(_, title)| title)
-}
-
-fn minutes(seconds: u64) -> String {
-    if seconds % 60 == 0 {
-        format!("{} minutes", seconds / 60)
-    } else {
-        format!("{seconds} seconds")
-    }
-}
-
-/// A replay scenario's title without its roadmap items: "Item 1: a hung
-/// tool call is caught (2:11 PM)" reads "A hung tool call is caught (2:11 PM)".
-fn scenario_title(title: &str) -> String {
-    let short = title
-        .split_once(": ")
-        .filter(|(head, _)| head.starts_with("Item"))
-        .map_or(title, |(_, rest)| rest);
-    capitalized(short)
+        .find(|(id, _)| *id == part)
+        .map(|(_, numbers)| numbers.iter().map(|n| (*n).to_owned()).collect())
+        .unwrap_or_default()
 }
 
 fn parts(foreman: &Experiment) -> Vec<Part> {
@@ -301,31 +344,15 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
         .unwrap_or("");
     let words = text.split_whitespace().count();
 
-    let tools: Vec<(&str, Vec<&str>)> = TOOLS
-        .iter()
-        .map(|(group, names)| {
-            (
-                *group,
-                names.iter().copied().filter(|n| named(&text, n)).collect(),
-            )
-        })
-        .filter(|(_, names): &(&str, Vec<&str>)| !names.is_empty())
-        .collect();
+    let tools = catalog::tools(&text);
     let tool_count: usize = tools.iter().map(|(_, names)| names.len()).sum();
-    let commands: Vec<&str> = COMMANDS
-        .iter()
-        .copied()
-        .filter(|c| named(&text, c))
-        .collect();
+    let commands = catalog::commands(&text);
     let scopes: Vec<&str> = MACHINE_SCOPES
         .iter()
         .copied()
         .filter(|s| text.contains(s))
         .collect();
-    let sources: Vec<_> = SOURCES
-        .iter()
-        .filter(|(_, _, via)| via.iter().any(|v| named(&text, v)))
-        .collect();
+    let sources = catalog::sources(&text);
 
     let skill = |name: &str| {
         templates::FOREMAN_SKILLS
@@ -351,13 +378,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
         .collect();
 
     let day = replay::day();
-    let mut replay_lessons: Vec<String> = day
-        .scenarios
-        .iter()
-        .flat_map(|s| s.lessons.iter().cloned())
-        .collect();
-    replay_lessons.sort_by_key(|l| l.trim_start_matches('L').parse::<u32>().unwrap_or(0));
-    replay_lessons.dedup();
+    let replay_lessons = replay_lessons();
     let automatic = foreman
         .suite
         .cases
@@ -371,7 +392,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
             title: "Runtime and model",
             line: model.clone(),
             accent: "info",
-            lessons: lessons(&["L1", "L2"]),
+            lessons: lessons("runtime"),
             card: html! {
                 dl.oa-agent-map-facts {
                     div { dt { "Runtime" } dd { code { (spec.runtime) } } }
@@ -403,7 +424,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
             title: "Instructions",
             line: format!("{} skills", templates::FOREMAN_SKILLS.len()),
             accent: "discovery",
-            lessons: lessons(&["L6", "L7", "L8"]),
+            lessons: lessons("instructions"),
             card: html! {
                 p.oa-agent-map-quote { (inline(identity)) }
                 @if !rule.is_empty() { p { strong { (rule) } } }
@@ -425,7 +446,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
             title: "Tools",
             line: format!("{tool_count} app tools"),
             accent: "warning",
-            lessons: lessons(&["L10"]),
+            lessons: lessons("tools"),
             card: html! {
                 @for (group, names) in &tools {
                     h4 { (group) }
@@ -446,7 +467,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
             title: "Where I look",
             line: format!("{} places", sources.len()),
             accent: "success",
-            lessons: lessons(&["L11"]),
+            lessons: lessons("sources"),
             card: html! {
                 ul.oa-agent-map-list {
                     @for (place, what, via) in &sources {
@@ -474,7 +495,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
                 .every_minutes
                 .map_or_else(|| "when asked".to_owned(), |m| format!("every {m} minutes")),
             accent: "info",
-            lessons: lessons(&["L4", "L5"]),
+            lessons: lessons("check-ins"),
             card: html! {
                 dl.oa-agent-map-facts {
                     div {
@@ -495,7 +516,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
                 p { "It also wakes when:" }
                 ul.oa-agent-map-chips {
                     @if autonomy.wakes.is_empty() {
-                        @for w in WAKES { li { (wake(w)) } }
+                        @for w in DEFAULT_WAKES { li { (wake(w)) } }
                     } @else {
                         @for w in &autonomy.wakes { li { (wake(*w)) } }
                     }
@@ -511,7 +532,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
             title: "Authority",
             line: format!("{} grants", GrantScope::ALL.len()),
             accent: "danger",
-            lessons: lessons(&["L3"]),
+            lessons: lessons("authority"),
             card: html! {
                 p {
                     @if autonomy.authority {
@@ -544,7 +565,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
             title: "Memory",
             line: "a decision log".to_owned(),
             accent: "discovery",
-            lessons: lessons(&["L12"]),
+            lessons: lessons("memory"),
             card: html! {
                 p {
                     "Every action that changes something gets its own "
@@ -560,7 +581,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
             title: "Stall ladder",
             line: format!("{} rungs", rungs.len()),
             accent: "warning",
-            lessons: lessons(&["L3"]),
+            lessons: lessons("stalls"),
             card: html! {
                 p {
                     "Work is stalled after " (stall)
@@ -617,7 +638,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
             title: "Measures",
             line: "time to close".to_owned(),
             accent: "danger",
-            lessons: lessons(&["L13"]),
+            lessons: lessons("measures"),
             card: html! {
                 dl.oa-agent-map-facts {
                     div { dt { "Code complete to close" } dd { "Minutes from the last push to a closed issue" } }
@@ -638,7 +659,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
     ]
 }
 
-fn body() -> Markup {
+fn body(graph: Option<&agent_graph::GraphSpec>) -> Markup {
     let foreman = templates::foreman();
     let parts = parts(&foreman);
     let spec = &foreman.draft.spec;
@@ -654,7 +675,7 @@ fn body() -> Markup {
                      it, what it reads, what it may do, and how we test it."
                 }
             }))
-            (map(&parts, &spec.runtime, spec.model.as_deref().unwrap_or("")))
+            (graph_box(graph, map(&parts, &spec.runtime, spec.model.as_deref().unwrap_or(""))))
             div.oa-agent-map-cards {
                 @for part in &parts {
                     article.oa-agent-map-card id=(format!("part-{}", part.id)) data-accent=(part.accent) {
@@ -789,15 +810,15 @@ mod tests {
     #[test]
     fn every_tool_and_command_is_named_in_foremans_text() {
         let text = foreman_text();
-        for (_, names) in TOOLS {
+        for (_, names) in catalog::TOOLS {
             for name in names {
                 assert!(named(&text, name), "Foreman no longer names {name}");
             }
         }
-        for command in COMMANDS {
+        for command in catalog::COMMANDS {
             assert!(named(&text, command), "Foreman no longer runs {command}");
         }
-        for (place, _, via) in SOURCES {
+        for (place, _, via) in catalog::SOURCES {
             assert!(via.iter().any(|v| named(&text, v)), "{place}");
         }
     }
@@ -813,7 +834,7 @@ mod tests {
 
     #[test]
     fn the_map_draws_every_part_from_the_definition() {
-        let html = body().into_string();
+        let html = body(None).into_string();
         assert!(html.contains("<svg viewBox=\"0 0 1100 1000\""));
         let foreman = templates::foreman();
         assert!(html.contains(&foreman.draft.spec.runtime));
@@ -829,6 +850,44 @@ mod tests {
         assert!(!html.contains("<button"));
         assert!(!html.contains("<script"));
         crate::copy_guard::assert_plain(PATH, &html);
+    }
+
+    #[test]
+    fn the_live_page_hands_the_graph_to_the_canvas_and_keeps_the_map() {
+        let graph = agent_graph::foreman::graph();
+        let html = body(Some(&graph)).into_string();
+        assert!(html.contains("id=\"gpui-mount\""));
+        assert!(html.contains("<svg viewBox=\"0 0 1100 1000\""));
+        let start =
+            html.find("id=\"agent-graph-spec\">").unwrap() + "id=\"agent-graph-spec\">".len();
+        let end = start + html[start..].find("</script>").unwrap();
+        let json = &html[start..end];
+        assert!(!json.contains('<') && !json.contains('&'));
+        let back: agent_graph::GraphSpec = serde_json::from_str(json).unwrap();
+        assert_eq!(back, graph);
+        let script = graph_script().into_string();
+        assert!(script.contains("src=\"/agent-graph/start.js\""));
+        assert!(GRAPH_POLICY.contains("script-src 'self' 'wasm-unsafe-eval';"));
+        assert!(!GRAPH_POLICY.contains("unsafe-inline"));
+        crate::copy_guard::assert_plain(PATH, &html);
+    }
+
+    #[test]
+    fn any_template_has_a_plain_graph_page() {
+        let mut experiment = templates::foreman();
+        experiment.draft.spec.name = "Helper".into();
+        let graph =
+            agent_graph::lab::of(&experiment, "helper", &agent_graph::lab::Notes::default());
+        let html = generic_body(&graph, true).into_string();
+        assert!(html.contains("id=\"gpui-mount\""));
+        assert!(html.contains("id=\"part-runtime\""));
+        crate::copy_guard::assert_plain("/agent/helper", &html);
+        assert_eq!(template("foreman").unwrap().0, templates::FOREMAN_ID);
+        assert!(template("nobody").is_none());
+        assert!(owns("/agent/foreman") && owns("/agent/foreman/graph.json"));
+        assert!(owns(&format!("/agent/{}", templates::FOREMAN_ID)));
+        assert!(owns("/agent-graph/start.js"));
+        assert!(!owns("/agent/nobody") && !owns("/agents"));
     }
 
     #[test]
