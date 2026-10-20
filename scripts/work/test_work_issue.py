@@ -514,6 +514,17 @@ class FinderIndexTests(unittest.TestCase):
         self.assertIsNone(self.briefing.ensure_index(self.tool, second, {}))
         self.assertEqual(len(self.builds()), 2, "a new commit refreshes it")
 
+    def test_files_the_issue_names_come_first(self):
+        lite = [{"path": "docs/cloud/gce-pool.md", "score": 8.0, "lines": [], "why": ["the issue names `docs/cloud/gce-pool.md`"]},
+                {"path": "crates/x/src/lib.rs", "score": 3.0, "lines": [], "why": ["has `pool`"]}]
+        found = [{"path": f"f{i}", "score": 0.1, "lines": [], "why": []} for i in range(8)]
+        files = self.briefing.named_first(lite, found, 8)
+        self.assertEqual([f["path"] for f in files][:2], ["docs/cloud/gce-pool.md", "f0"])
+        self.assertEqual(len(files), 8)
+        self.assertIsNone(files[0]["score"], "a named file is not a finder score")
+        self.assertEqual(self.briefing.named_first(lite, found[:1] + [lite[0]], 8)[1]["path"],
+                         "docs/cloud/gce-pool.md", "already listed: kept where the finder put it")
+
     def test_a_failed_build_says_why_and_is_tried_again(self):
         self.tool.write_text("import sys\nprint('no git history', file=sys.stderr)\nsys.exit(3)\n")
         why = self.briefing.ensure_index(self.tool, "HEAD", {})

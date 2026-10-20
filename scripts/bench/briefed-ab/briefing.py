@@ -270,7 +270,10 @@ def finder_files(task: dict, levers: dict, no_cards: bool = False) -> tuple[list
     elif tool is not None:
         proc = subprocess.run(
             [sys.executable, str(tool), "query", "--repo", str(REPO), "--rev", task["parent"],
-             "--issue", str(task["issue"]), "--k", str(int(levers["briefing_files"])), "--json"]
+             # The issue's text, as the briefing has it: a run that can't
+             # reach GitHub's API (`--issue-json`) briefs the same way.
+             "--text", f"{task['title']}\n{task.get('body') or ''}",
+             "--k", str(int(levers["briefing_files"])), "--json"]
             + (["--no-cards"] if no_cards else []),
             cwd=REPO, capture_output=True, text=True, errors="replace", timeout=600, env=env,
         )
@@ -279,14 +282,27 @@ def finder_files(task: dict, levers: dict, no_cards: bool = False) -> tuple[list
         except (json.JSONDecodeError, KeyError):
             found = None
         if found:
-            hits = {f["path"]: f["lines"] for f in lite_files(task, dict(levers, briefing_files=60))}
-            return [
+            lite = lite_files(task, dict(levers, briefing_files=60))
+            hits = {f["path"]: f["lines"] for f in lite}
+            files = [
                 {"path": f["path"], "score": f.get("confidence"), "lines": hits.get(f["path"], []),
                  "why": [f"finder confidence {f.get('confidence')}"] + list(f.get("reasons") or [])[:4]}
                 for f in found
-            ], "filefind (#11210)"
+            ]
+            return named_first(lite, files, int(levers["briefing_files"])), "filefind (#11210)"
         why = finder_failure(proc, env)
     return lite_files(task, levers), f"lite (finder unavailable: {why})"
+
+
+def named_first(lite: list[dict], files: list[dict], cap: int) -> list[dict]:
+    """The files the issue names by path, first, then the finder's. The
+    finder ranks by history and terms, and without embeddings it can miss
+    a file the issue spells out (#12314: `docs/cloud/gce-pool.md` wasn't in
+    its eight)."""
+    have = {f["path"] for f in files}
+    named = [dict(f, score=None) for f in lite
+             if f["path"] not in have and any(w.startswith("the issue names") for w in f.get("why") or [])]
+    return (named + files)[:max(cap, len(named))]
 
 
 def finder_failure(proc, env: dict) -> str:
