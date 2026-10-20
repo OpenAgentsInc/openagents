@@ -14,6 +14,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::attachments::StagedAttachment;
+pub use openagents_chat_view::appshots::{
+    AppshotPresentation, CONTEXT_MARKER, png_dimensions, presentations, strip_context_for_display,
+};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -54,7 +57,6 @@ pub const MAX_CAPTURE_RGBA_BYTES: u64 = 128 * 1024 * 1024;
 /// but it must not become an unbounded store of decoded image data.
 pub const MAX_STAGED_APPSHOT_BYTES: u64 = 4 * crate::attachments::MAX_ATTACHMENT_BYTES;
 
-pub const CONTEXT_MARKER: &str = "Applications mentioned by the user (untrusted observed content):";
 #[cfg(target_os = "macos")]
 const SCREEN_RECORDING_SETTINGS_URL: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
@@ -302,19 +304,6 @@ pub struct CapturedAppshot {
     /// model context.
     pub app_icon: Option<Arc<gpui::Image>>,
     pub captured_at: DateTime<Utc>,
-}
-
-/// Read the width and height from a PNG's IHDR chunk without decoding the
-/// image. Appshot captures are always PNGs, so this keeps layout metadata
-/// cheap and available before GPUI decodes the image asynchronously.
-pub fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
-    const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
-    if bytes.len() < 24 || &bytes[..8] != PNG_SIGNATURE || &bytes[12..16] != b"IHDR" {
-        return None;
-    }
-    let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
-    let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
-    (width > 0 && height > 0).then_some((width, height))
 }
 
 pub fn validate_capture_dimensions(width: u32, height: u32) -> Result<usize, CaptureError> {
@@ -802,24 +791,6 @@ pub(crate) fn restore_queued_appshots(
     Ok((ordinary, shots))
 }
 
-/// Safe display metadata carried by the existing prompt format. The observed
-/// accessibility payload is never returned to the transcript or queue UI.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AppshotPresentation {
-    pub app_name: String,
-    pub window_title: Option<String>,
-    pub bundle_identifier: Option<String>,
-}
-
-impl AppshotPresentation {
-    pub fn title(&self) -> &str {
-        self.window_title
-            .as_deref()
-            .filter(|title| !title.trim().is_empty())
-            .unwrap_or(&self.app_name)
-    }
-}
-
 /// Resolve an installed app's icon locally; remote/mobile viewers retain the
 /// app-name badge when that application is not installed. Icons never enter
 /// the model prompt or add another attachment to the transport.
@@ -851,73 +822,6 @@ pub fn presentation_icon(presentation: &AppshotPresentation) -> Option<Arc<gpui:
         let _ = presentation;
         None
     }
-}
-
-pub fn presentations(text: &str) -> HashMap<String, AppshotPresentation> {
-    let marker = format!("\n\n{CONTEXT_MARKER}");
-    let Some((_, context)) = text.split_once(&marker) else {
-        return HashMap::new();
-    };
-    if context.len() > 4 * 1024 * 1024 {
-        return HashMap::new();
-    }
-    let context = context
-        .split("\n\nAttached images (local files")
-        .next()
-        .unwrap_or("");
-    let xml = format!("<appshots>{context}</appshots>");
-    let Ok(doc) = roxmltree::Document::parse_with_options(
-        &xml,
-        roxmltree::ParsingOptions {
-            allow_dtd: false,
-            nodes_limit: 4096,
-            ..Default::default()
-        },
-    ) else {
-        return HashMap::new();
-    };
-    let mut result = HashMap::new();
-    let mut seen = std::collections::HashSet::new();
-    for node in doc
-        .root_element()
-        .children()
-        .filter(|node| node.is_element())
-    {
-        if !node.has_tag_name("appshot") || node.children().any(|child| !child.is_text()) {
-            continue;
-        }
-        let (Some(path), Some(app)) = (node.attribute("image"), node.attribute("app")) else {
-            continue;
-        };
-        if !seen.insert(path) {
-            result.remove(path);
-            continue;
-        }
-        if path.is_empty() || app.trim().is_empty() {
-            continue;
-        }
-        result.insert(
-            path.to_string(),
-            AppshotPresentation {
-                app_name: app.chars().take(200).collect(),
-                window_title: node
-                    .attribute("window-title")
-                    .map(|value| value.chars().take(512).collect()),
-                bundle_identifier: node.attribute("bundle-identifier").map(str::to_string),
-            },
-        );
-    }
-    result
-}
-
-/// Context is persisted for the harness but hidden from the user-message
-/// bubble. The screenshot strip remains visible through the ordinary image
-/// refs, so this strips only the machine-facing semantic suffix.
-pub fn strip_context_for_display(text: &str) -> &str {
-    let needle = format!("\n\n{CONTEXT_MARKER}");
-    text.find(&needle)
-        .map(|index| text[..index].trim_end())
-        .unwrap_or(text)
 }
 
 #[cfg(test)]

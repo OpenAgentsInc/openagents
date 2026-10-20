@@ -11161,9 +11161,11 @@ dependencies = [
 name = "openagents-chat-view"
 version = "1.0.0"
 dependencies = [
+ "chrono",
  "futures",
  "gpui",
  "gpui-base",
+ "oa-copy",
  "openagents-brand",
  "openagents-doc",
  "openagents-gpui-test",
@@ -11174,13 +11176,16 @@ dependencies = [
  "openagents-veil",
  "openagents-workspace-hack",
  "pulldown-cmark",
+ "roxmltree 0.21.1",
  "rust-embed",
  "rust-native",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "unicode-segmentation",
  "url",
+ "uuid",
  "web-sys",
  "web-time",
  "windows-sys 0.61.2",

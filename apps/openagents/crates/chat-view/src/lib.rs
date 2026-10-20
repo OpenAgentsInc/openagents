@@ -12,6 +12,10 @@
 //! changes, and on the web [`icons::set_web_painter`] for icons.
 //! `docs/audits/2026-10-19-gpui-web-chat.md` is the plan.
 
+pub mod appshots;
+pub mod attachments;
+pub mod badges;
+pub mod comments;
 pub mod composer_markdown;
 pub mod composer_tokens;
 pub mod composer_wizard;
@@ -22,11 +26,17 @@ pub mod icons;
 pub mod loaders;
 pub mod markdown;
 pub mod motion;
+pub mod notice;
+pub mod overscroll;
 pub mod popover;
 pub mod prefs;
+pub mod roll_text;
 pub mod rpc;
 pub mod rust_native_gpui;
+pub mod syntax_cache;
 pub mod theme;
+pub mod tool_progress;
+pub mod tooltip;
 pub mod typography;
 pub mod web_address;
 pub mod workspace_links;

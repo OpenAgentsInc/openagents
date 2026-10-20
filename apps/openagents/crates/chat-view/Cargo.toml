@@ -22,8 +22,9 @@ openagents-theme.workspace = true
 openagents-syntax = { path = "../syntax", default-features = false }
 openagents-brand.workspace = true
 openagents-proto.workspace = true
-# The chat entries the question wizard reads (`composer_wizard`).
+# The chat entries the question wizard and the transcript read.
 openagents-doc.workspace = true
+chrono.workspace = true
 web-time = "1.1.0"
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 openagents-markdown.workspace = true
@@ -32,6 +33,9 @@ pulldown-cmark.workspace = true
 openagents-veil.workspace = true
 unicode-segmentation.workspace = true
 serde_json.workspace = true
+roxmltree = "0.21.1"
+sha2.workspace = true
+uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 # The pulse loaders' high-resolution clock (motion/windows_pulse.rs).
@@ -44,6 +48,7 @@ openagents-gpui-test = { path = "../gpui-test" }
 # The markdown tests highlight code fences with the bundled grammars.
 openagents-syntax = { path = "../syntax" }
 tempfile.workspace = true
+oa-copy = { path = "../../../../crates/oa-copy" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }
