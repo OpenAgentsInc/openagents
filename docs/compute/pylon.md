@@ -120,6 +120,7 @@ python3 scripts/bench/pylon-models/run.py \
   --pylon-bin /path/to/pylon --psionic-bin /path/to/psionic-openai-server \
   --gpt-oss-bin /path/to/psionic-gpt-oss-server \
   --engine llama-cpp --llama-cpp-bin /path/to/llama-server \
+  --models qwen35-4b gemma4-e4b \
   --download --output /tmp/pylon-model-results
 ```
 
@@ -130,11 +131,51 @@ answers, startup times, CLI round trips, and a 128-token HTTP throughput
 probe are saved separately. Throughput includes prompt processing; the
 nine prompts are a small diagnostic sample, not a general accuracy score.
 Five cases have exact checks; prose and generated code require review.
+For the Nano Nemotron profiles, `--thinking off|on` selects greedy answers
+or reasoning with the profile's temperature and top-p. Use
+`--cases extract arithmetic percent grounding injection` to compare the
+same five prompts in both modes. The 2,048-token budget includes reasoning.
+Download first with `--download-only` to keep the normal service online.
+Downloads leave 30 GiB free by default; `--download-reserve-gib` can set a
+smaller reserve for a temporary RAM-backed cache.
 The [2026-10-20 results](../../scripts/bench/pylon-models/rtx4080-2026-10-20.json)
 retain all 72 answers: median CLI round trips ranged from 608 ms for
 Gemma to 1,602 ms for GPT-OSS. GPT-OSS passed all five exact checks and
 Gemma passed four; smaller models often failed arithmetic or the embedded
 instruction check. Clef was paused for these individual-model timings.
+
+The smaller **Nemotron Nano 4B, Nano 9B v2, and Nano 30B-A3B** profiles
+also work through Pylon's llama.cpp route. All 42 standard jobs completed;
+[answers and measurements](../../scripts/bench/pylon-models/nemotron-small-rtx4080-2026-10-20.json)
+compare reasoning off/on on the RTX 4080:
+
+| Model (Q4_K_M) | File size | Decode tokens/s, off/on | Median Pylon round trip, off/on | Exact checks, off/on |
+| --- | --- | --- | --- | --- |
+| Nano 4B | 2.9 GB | 172 / 145 | 0.99 / 1.64 s | 2/5 / 4/5 |
+| Nano 9B v2 | 6.5 GB | 83 / 86 | 0.94 / 4.10 s | 2/5 / 5/5 |
+| Nano 30B-A3B | 22.4 GB | 53 / 57 | 1.22 / 3.78 s | 4/5 / 4/5 |
+
+Medians use the same five exact-check prompts in both modes; each ran once.
+Decode rates count reasoning tokens too. Sampling also changes with reasoning,
+and competing builds continued without a quiet lease. These are diagnostic
+results, not a general model ranking. 9B reasoning gave the best exact-check
+result here; 4B reasoning used less time and GPU memory. 30B reasoning fixed
+the tax calculation but regressed on the embedded-instruction check. An extra
+30B reasoning follow-up corrected its earlier logic error in 5.07 s.
+Manual review found a whitespace-only-input bug in 4B's generated function;
+9B's function looked correct but added markdown, and 30B returned correct-looking
+code in the requested format. Generated code was inspected, not executed.
+
+4B and 9B used 3.0 and 6.3 GiB VRAM; 30B used 14.1 GiB VRAM with CPU/RAM
+offload. Clef was paused for timings. A separate supervised 4B check answered
+`READY` beside healthy Clef in 168 ms, then restored Gemma. Shared-GPU use of
+9B/30B was not checked in this run; leave room for Clef with the offload limit.
+Nano 9B needs the catalog's text-only chat template: its upstream reasoning
+controls are `/think` and `/no_think`, so the template maps `enable_thinking`
+to NVIDIA's chat format. Pass the downloaded `chat-template.jinja` with
+`up --text-chat-template FILE`. 4B and 30B use their embedded templates.
+The weights were tested from a temporary RAM-backed cache; this did not
+install permanent copies. The normal Gemma/Clef service was restored.
 
 The catalog also pins **Nemotron-4-340B-Instruct IQ2_XXS**, 92.3 GB,
 with checksummed byte parts and NVIDIA's documented chat format. It is
