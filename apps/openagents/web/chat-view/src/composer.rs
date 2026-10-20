@@ -375,13 +375,12 @@ impl TextInput {
     }
 
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-            let text = text.replace("\r\n", "\n").replace('\r', "\n");
-            if self.multiline {
-                self.insert(None, &text, cx);
-            } else {
-                self.replace_text_in_range(None, &text.replace('\n', " "), window, cx);
-            }
+        match cx.read_from_clipboard().and_then(|item| item.text()) {
+            Some(text) => self.replace_text_in_range(None, &text, window, cx),
+            // A browser hands over pasted text only in its own `paste` event,
+            // which arrives through the input handler; let the keystroke
+            // through so that event fires.
+            None => cx.propagate(),
         }
     }
 
@@ -557,7 +556,15 @@ impl EntityInputHandler for TextInput {
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16));
-        self.insert(range, new_text, cx);
+        // Pasted text keeps its line breaks in a multi-line field and
+        // becomes one line in a single-line one.
+        let text = new_text.replace("\r\n", "\n").replace('\r', "\n");
+        let text = if self.multiline {
+            text
+        } else {
+            text.replace('\n', " ")
+        };
+        self.insert(range, &text, cx);
     }
 
     fn replace_and_mark_text_in_range(

@@ -19,8 +19,17 @@ const FONTS = [
 
 // The module draws with WebGPU only: GPUI's renderer needs storage
 // buffers, which WebGL2 doesn't have (#12237).
+// A browser can name WebGPU and still have no adapter for it (a headless
+// or blocklisted GPU), so the check asks for one.
 function supported() {
-  return !!navigator.gpu;
+  if (!navigator.gpu) {
+    return Promise.resolve(false);
+  }
+  return navigator.gpu.requestAdapter().then(function (adapter) {
+    return !!adapter;
+  }, function () {
+    return false;
+  });
 }
 
 function say(text) {
@@ -47,9 +56,7 @@ function unsupported() {
   }
 }
 
-if (!supported()) {
-  unsupported();
-} else {
+function start() {
   var started = performance.now();
   // The site's shared font files when the page names them (preloads with
   // `data-gpui-font`, in FONTS order), else the build's own copies.
@@ -89,3 +96,11 @@ if (!supported()) {
       console.error(error);
     });
 }
+
+supported().then(function (ok) {
+  if (ok) {
+    start();
+  } else {
+    unsupported();
+  }
+});
