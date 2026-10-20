@@ -17,6 +17,8 @@
 //! app. `math.random` is seeded from the visual's id before every call, so a
 //! script's random data is the same on every render and every device.
 
+mod runtime;
+
 pub mod assets;
 mod draw;
 pub mod image;
@@ -29,9 +31,9 @@ mod style;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
-use mlua::{Function, Lua, LuaOptions, StdLib, Table, Value, VmState};
+use crate::runtime::{Function, Lua, RegistryKey, Table, Value};
 
 pub use assets::Assets;
 pub use draw::{DrawCmd, DrawText, Pointer};
@@ -68,18 +70,18 @@ impl VisualError {
     }
 }
 
-impl From<mlua::Error> for VisualError {
-    fn from(error: mlua::Error) -> Self {
+impl From<crate::runtime::Error> for VisualError {
+    fn from(error: crate::runtime::Error) -> Self {
         Self::script(describe(&error))
     }
 }
 
 /// The innermost message of a Lua error, without mlua's wrapping.
-fn describe(error: &mlua::Error) -> String {
+fn describe(error: &crate::runtime::Error) -> String {
     match error {
         // A Rust callback's error carries no position; take the script line
         // that called it from the traceback.
-        mlua::Error::CallbackError { cause, traceback } => {
+        crate::runtime::Error::CallbackError { cause, traceback } => {
             let message = describe(cause);
             match traceback
                 .lines()
@@ -91,12 +93,15 @@ fn describe(error: &mlua::Error) -> String {
                 None => message,
             }
         }
-        mlua::Error::RuntimeError(message) => message.clone(),
-        mlua::Error::SyntaxError { message, .. } => message.clone(),
-        mlua::Error::MemoryError(_) => {
+        crate::runtime::Error::RuntimeError(message) => message.clone(),
+        crate::runtime::Error::SyntaxError { message, .. } => message.clone(),
+        crate::runtime::Error::MemoryError(_) => {
             format!("the script used more than {} MB", MEMORY_LIMIT >> 20)
         }
-        mlua::Error::WithContext { context, cause } => format!("{context}: {}", describe(cause)),
+        #[cfg(not(any(target_family = "wasm", feature = "portable-runtime")))]
+        crate::runtime::Error::WithContext { context, cause } => {
+            format!("{context}: {}", describe(cause))
+        }
         other => node::short_error(other),
     }
 }
@@ -122,10 +127,10 @@ pub struct CanvasDrawing {
 /// One visual's live program.
 pub struct Visual {
     lua: Lua,
-    view: Function,
-    handlers: Vec<Function>,
-    randomseed: Function,
-    seed: i64,
+    view: RegistryKey,
+    handlers: Vec<RegistryKey>,
+    randomseed: RegistryKey,
+    seed: f64,
     deadline: Rc<Cell<Option<Instant>>>,
     logs: Rc<RefCell<Vec<String>>>,
     assets: Assets,
@@ -143,16 +148,13 @@ impl Visual {
                 MAX_SCRIPT_BYTES / 1024
             )));
         }
-        let lua = Lua::new_with(
-            StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::UTF8 | StdLib::BIT,
-            LuaOptions::default(),
-        )?;
-        lua.set_memory_limit(MEMORY_LIMIT)?;
+        let mut lua = runtime::new()?;
+        runtime::memory_limit(&lua, MEMORY_LIMIT)?;
 
         let deadline: Rc<Cell<Option<Instant>>> = Rc::default();
         let ticks = Cell::new(0u32);
         let watched = deadline.clone();
-        lua.set_interrupt(move |_| {
+        runtime::interrupt(&mut lua, move || {
             // Reading the clock on every safepoint is measurable; every 256th
             // is plenty to stop a runaway loop within a few milliseconds.
             let tick = ticks.get().wrapping_add(1);
@@ -161,21 +163,21 @@ impl Visual {
                 && let Some(deadline) = watched.get()
                 && Instant::now() > deadline
             {
-                return Err(mlua::Error::RuntimeError(
+                return Err(crate::runtime::Error::RuntimeError(
                     "the script ran past its time budget (an endless loop, or too much work \
                      per render; precompute data at the top level)"
                         .into(),
                 ));
             }
-            Ok(VmState::Continue)
+            Ok(())
         });
 
-        let globals = lua.globals();
+        let globals = runtime::globals(&lua)?;
         let logs: Rc<RefCell<Vec<String>>> = Rc::default();
         let sink = logs.clone();
         globals.set(
             "print",
-            lua.create_function(move |_, args: mlua::Variadic<Value>| {
+            runtime::function!(lua, move |_, args: runtime::Variadic<Value>| {
                 let mut logs = sink.borrow_mut();
                 if logs.len() < MAX_LOG_LINES {
                     let line: Vec<String> = args.iter().map(node::value_text).collect();
@@ -190,7 +192,7 @@ impl Visual {
             .eval()?;
         ui.set(
             "fmt",
-            lua.create_function(|_, (value, options): (f64, Option<Table>)| {
+            runtime::function!(lua, move |_, (value, options): (f64, Option<Table>)| {
                 let mut format = NumberFormat::default();
                 if let Some(o) = options {
                     format.prefix = o.get::<Option<String>>("prefix")?.unwrap_or_default();
@@ -204,7 +206,7 @@ impl Visual {
         )?;
         ui.set(
             "ticks",
-            lua.create_function(|_, (lo, hi, count): (f64, f64, Option<usize>)| {
+            runtime::function!(lua, move |_, (lo, hi, count): (f64, f64, Option<usize>)| {
                 Ok(nice_ticks(lo, hi, count.unwrap_or(5)))
             })?,
         )?;
@@ -213,19 +215,14 @@ impl Visual {
         let randomseed: Function = math.get("randomseed")?;
         lua.sandbox(true)?;
 
-        let seed = (seed & 0x7fff_ffff) as i64;
-        let visual_deadline = deadline.clone();
-        let call = |f: &dyn Fn() -> mlua::Result<Value>| {
-            visual_deadline.set(Some(Instant::now() + CALL_BUDGET));
-            let result = f();
-            visual_deadline.set(None);
-            result
-        };
+        let seed = (seed & 0x7fff_ffff) as f64;
         randomseed.call::<()>(seed)?;
-        let returned = call(&|| lua.load(source).set_name("=visual").eval::<Value>())?;
+        deadline.set(Some(Instant::now() + CALL_BUDGET));
+        let returned = lua.load(source).set_name("=visual").eval::<Value>();
+        deadline.set(None);
+        let returned = returned?;
         let view = match returned {
-            Value::Function(view) => view,
-            Value::Table(tree) => lua.create_function(move |_, ()| Ok(tree.clone()))?,
+            view @ (Value::Function(_) | Value::Table(_)) => lua.create_registry_value(view)?,
             Value::Nil => {
                 return Err(VisualError::script(
                     "the script must end with `return function() return ui.column { ... } end` \
@@ -239,6 +236,9 @@ impl Visual {
                 )));
             }
         };
+        let randomseed = lua.create_registry_value(randomseed)?;
+        drop(math);
+        drop(globals);
         Ok(Self {
             lua,
             view,
@@ -264,9 +264,11 @@ impl Visual {
     fn budgeted<R>(
         &self,
         budget: Duration,
-        f: impl FnOnce() -> mlua::Result<R>,
+        f: impl FnOnce() -> crate::runtime::Result<R>,
     ) -> Result<R, VisualError> {
-        self.randomseed.call::<()>(self.seed)?;
+        self.lua
+            .registry_value::<Function>(&self.randomseed)?
+            .call::<()>(self.seed)?;
         self.deadline.set(Some(Instant::now() + budget));
         let result = f();
         self.deadline.set(None);
@@ -276,26 +278,41 @@ impl Visual {
     /// Run the view and parse its tree. Handler ids in the tree stay valid
     /// until the next render.
     pub fn render(&mut self) -> Result<Node, VisualError> {
-        let value = self.budgeted(CALL_BUDGET, || self.view.call::<Value>(()))?;
+        let value = self.budgeted(CALL_BUDGET, || {
+            match self.lua.registry_value::<Value>(&self.view)? {
+                Value::Function(view) => view.call::<Value>(()),
+                tree => Ok(tree),
+            }
+        })?;
         let mut parser = node::Parser::new();
         let deadline = Instant::now() + CALL_BUDGET;
         self.deadline.set(Some(deadline));
         let tree = parser.root(value);
         self.deadline.set(None);
         let tree = tree?;
-        self.handlers = parser.handlers;
+        let handlers = parser
+            .handlers
+            .into_iter()
+            .map(|f| self.lua.create_registry_value(f))
+            .collect::<runtime::Result<Vec<_>>>()?;
+        for key in std::mem::replace(&mut self.handlers, handlers) {
+            self.lua.remove_registry_value(key)?;
+        }
+        self.lua.expire_registry_values();
         Ok(tree)
     }
 
-    fn handler(&self, id: HandlerId) -> Result<&Function, VisualError> {
-        self.handlers
+    fn handler(&self, id: HandlerId) -> Result<Function<'_>, VisualError> {
+        let key = self
+            .handlers
             .get(id.0 as usize)
-            .ok_or_else(|| VisualError::script("stale handler"))
+            .ok_or_else(|| VisualError::script("stale handler"))?;
+        Ok(self.lua.registry_value(key)?)
     }
 
     /// Call an event handler. The caller renders again afterwards.
     pub fn call(&mut self, id: HandlerId, arg: HandlerArg) -> Result<(), VisualError> {
-        let handler = self.handler(id)?.clone();
+        let handler = self.handler(id)?;
         self.budgeted(CALL_BUDGET, || match arg {
             HandlerArg::None => handler.call::<()>(()),
             HandlerArg::Text(text) => handler.call::<()>(text),
@@ -329,7 +346,7 @@ impl Visual {
         time: f64,
         pointer: Option<Pointer>,
     ) -> Result<CanvasDrawing, VisualError> {
-        let draw = self.handler(id)?.clone();
+        let draw = self.handler(id)?;
         let graphics = self
             .lua
             .create_userdata(draw::Graphics::new(width, height, time, pointer))?;
@@ -345,7 +362,7 @@ impl Visual {
 
     /// Run a scene's draw function.
     pub fn draw_scene(&mut self, id: HandlerId, time: f64) -> Result<Scene, VisualError> {
-        let draw = self.handler(id)?.clone();
+        let draw = self.handler(id)?;
         let scene = self
             .lua
             .create_userdata(Scene::with_assets(time, self.assets.clone()))?;

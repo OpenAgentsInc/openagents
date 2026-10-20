@@ -1,7 +1,7 @@
 //! Real project process discovery → RPC → native browser → stable proxy / HMR.
 use gpui::{AppContext, AsyncApp, Bounds, WindowBounds, WindowOptions, px, size};
-use std::{path::PathBuf, sync::Arc, time::Duration};
 use openagents_ui::*;
+use std::{path::PathBuf, sync::Arc, time::Duration};
 async fn pause(cx: &mut AsyncApp, ms: u64) {
     cx.background_executor()
         .timer(Duration::from_millis(ms))

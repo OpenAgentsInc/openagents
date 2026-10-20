@@ -1015,7 +1015,8 @@ impl Pickers {
                 } else {
                     this.harnesses = Loadable::Idle;
                 }
-                this.models.retain(|_, slot| matches!(slot, Loadable::Ready(_)));
+                this.models
+                    .retain(|_, slot| matches!(slot, Loadable::Ready(_)));
                 this.stale_models = this.models.keys().copied().collect();
                 this.revalidating.clear();
                 this.model_refresh_errors.clear();
@@ -1033,7 +1034,10 @@ impl Pickers {
         // Dev/testing knob: `OPENAGENTS_OPEN_PICKER=model|traits|repo|branch` boots
         // with that popover open — synthetic input can't reach the app on
         // headless compositors, so captures need a data-side path.
-        let boot_open = match openagents_brand::env_var("OPENAGENTS_OPEN_PICKER").ok().as_deref() {
+        let boot_open = match openagents_brand::env_var("OPENAGENTS_OPEN_PICKER")
+            .ok()
+            .as_deref()
+        {
             _ if title.is_some() => None,
             Some("model") => Some(PickerKind::HarnessModel),
             Some("traits") => Some(PickerKind::HarnessModel),
@@ -1172,7 +1176,8 @@ impl Pickers {
     fn offered(&self, list: &[HarnessDescriptor]) -> Vec<HarnessDescriptor> {
         let mut offered = offered_harnesses(list);
         if self.title.is_some() {
-            offered.retain(|d| openagents_harness::supports_titles(d.id) && d.id != HarnessId::Mock);
+            offered
+                .retain(|d| openagents_harness::supports_titles(d.id) && d.id != HarnessId::Mock);
         }
         offered
     }
@@ -1314,8 +1319,8 @@ impl Pickers {
             return ModelName::Named(label.into());
         }
         // A list still from the previous device is loading for this one.
-        let catalog_loading = self.harnesses_stale
-            || matches!(self.harnesses, Loadable::Idle | Loadable::Loading);
+        let catalog_loading =
+            self.harnesses_stale || matches!(self.harnesses, Loadable::Idle | Loadable::Loading);
         let models_loading = self.effective_harness(cx).is_some_and(|harness| {
             !matches!(
                 self.models.get(&harness),
@@ -1401,7 +1406,8 @@ impl Pickers {
                 list.iter().find(|h| h.id == selected)
             })
             .is_some_and(|h| {
-                h.supports_steering && h.steering_mode == openagents_proto::SteeringMode::StepBoundary
+                h.supports_steering
+                    && h.steering_mode == openagents_proto::SteeringMode::StepBoundary
             })
     }
 
@@ -6100,7 +6106,8 @@ fn offered_harnesses_impl(list: &[HarnessDescriptor], allow_mock: bool) -> Vec<H
     visible_harnesses_impl(list, allow_mock)
         .into_iter()
         .filter(|d| {
-            d.id != HarnessId::Sdk && d.installed
+            d.id != HarnessId::Sdk
+                && d.installed
                 && (openagents_engine::registry::descriptor_enabled(d)
                     || (allow_mock && d.id == HarnessId::Mock))
         })
@@ -6345,8 +6352,8 @@ impl Render for Pickers {
             }
         };
         // A list still from the previous device is loading for this one.
-        let catalog_loading = self.harnesses_stale
-            || matches!(self.harnesses, Loadable::Idle | Loadable::Loading);
+        let catalog_loading =
+            self.harnesses_stale || matches!(self.harnesses, Loadable::Idle | Loadable::Loading);
         // Harness unknown while the catalog resolves: the pixel-glyph loader
         // instead of guessing a brand mark.
         let chip_icon_loading = self.title.is_none()
@@ -7325,7 +7332,9 @@ mod tests {
                 Loadable::Ready(vec![bare_model("gpt", "GPT")]),
                 cx,
             );
-            pickers.models.insert(HarnessId::ClaudeCode, Loadable::Loading);
+            pickers
+                .models
+                .insert(HarnessId::ClaudeCode, Loadable::Loading);
         });
         state.update(cx, |state, cx| state.select_space(Some("b".into()), cx));
         cx.run_until_parked();
@@ -8816,7 +8825,10 @@ mod tests {
                 assert_eq!(picker.resolved(cx).model.as_deref(), Some("claude"));
                 picker.show_compact_models(cx);
                 assert_eq!(picker.model_rows_len(cx), 2);
-                assert_eq!(picker.model_rows(cx)[picker.active].harness, HarnessId::ClaudeCode);
+                assert_eq!(
+                    picker.model_rows(cx)[picker.active].harness,
+                    HarnessId::ClaudeCode
+                );
             })
             .unwrap();
     }
@@ -8930,7 +8942,10 @@ mod tests {
                 picker.show_compact_models(cx);
                 assert_eq!(
                     picker.compact_groups(cx),
-                    vec![(Some(HarnessId::Codex), 0), (Some(HarnessId::ClaudeCode), 2)]
+                    vec![
+                        (Some(HarnessId::Codex), 0),
+                        (Some(HarnessId::ClaudeCode), 2)
+                    ]
                 );
                 picker.toggle_model_favorite(HarnessId::Codex, "gpt-a", cx);
                 assert_eq!(
@@ -8991,7 +9006,9 @@ mod tests {
                 assert_eq!(picker.model_rows(cx)[0].harness, HarnessId::Codex);
                 assert_eq!(picker.model_rows(cx)[1].harness, HarnessId::ClaudeCode);
                 // Searching must also find another provider's model.
-                picker.search.update(cx, |input, cx| input.set_text("Claude", cx));
+                picker
+                    .search
+                    .update(cx, |input, cx| input.set_text("Claude", cx));
                 assert_eq!(picker.model_rows_len(cx), 1);
                 assert_eq!(picker.model_rows(cx)[0].harness, HarnessId::ClaudeCode);
                 picker.activate_model_index(0, cx);
@@ -9021,14 +9038,13 @@ mod tests {
                 picker.show_compact_models(cx);
                 assert_eq!(picker.model_rows_len(cx), 1);
                 assert_eq!(picker.rail_descriptors(cx)[0].id, HarnessId::Codex);
-                picker.search.update(cx, |input, cx| input.set_text("Claude", cx));
+                picker
+                    .search
+                    .update(cx, |input, cx| input.set_text("Claude", cx));
                 assert_eq!(picker.model_rows_len(cx), 0);
                 picker.search.update(cx, |input, cx| input.set_text("", cx));
                 // A chat's provider is fixed: one tab, its own.
-                assert_eq!(
-                    picker.compact_groups(cx),
-                    vec![(Some(HarnessId::Codex), 0)]
-                );
+                assert_eq!(picker.compact_groups(cx), vec![(Some(HarnessId::Codex), 0)]);
                 picker.compact_model_list = false;
                 picker.focus_on_mount = true;
             })
@@ -9375,7 +9391,10 @@ mod tests {
         assert_eq!(parent_path(r"D:\"), None);
         assert_eq!(parent_path("D:"), None);
         assert_eq!(child_path(r"D:\", "Random"), r"D:\Random");
-        assert_eq!(child_path(r"D:\Random", "openagents"), r"D:\Random\openagents");
+        assert_eq!(
+            child_path(r"D:\Random", "openagents"),
+            r"D:\Random\openagents"
+        );
         let crumbs = breadcrumbs(r"D:\Random\openagents");
         let labels: Vec<&str> = crumbs.iter().map(|(l, _)| l.as_str()).collect();
         assert_eq!(labels, [r"D:\", "Random", "openagents"]);

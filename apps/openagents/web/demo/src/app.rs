@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Entity, FocusHandle, Focusable, FontWeight,
-    Hsla, Image, ImageFormat, IntoElement, ParentElement, Render,
-    SharedString, Styled, Window, div, prelude::*, px,
+    AnyElement, App, ClickEvent, Context, Entity, FocusHandle, Focusable, FontWeight, Hsla, Image,
+    ImageFormat, IntoElement, ParentElement, Render, SharedString, Styled, Window, div, prelude::*,
+    px,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_proto::{
@@ -27,8 +27,8 @@ use openagents_web_chat_view::markdown::{self, Veil};
 use openagents_web_chat_view::svg;
 use openagents_web_chat_view::theme;
 use openagents_web_chat_view::transcript::{
-    CONTENT_WIDTH, SIDEBAR_WIDTH, ago, chip, choice_mark, footer_text,
-    model_label, reasoning_label, truncate,
+    CONTENT_WIDTH, SIDEBAR_WIDTH, ago, chip, choice_mark, footer_text, model_label,
+    reasoning_label, truncate,
 };
 
 use crate::approval::{self, Approval};
@@ -135,7 +135,12 @@ impl ChatApp {
         let shared = cx.new(|_| WebTranscript::default());
         let view = desktop_transcript::new(&shared, images, cx);
         // The header sits above the list; no titlebar to clear.
-        view.update(cx, |view, cx| view.set_top_inset(Some(16.), cx));
+        view.update(cx, |view, cx| {
+            view.media.visual_reader = Some(Rc::new(|path| {
+                Box::pin(async move { crate::demo::visuals::read(&path) })
+            }));
+            view.set_top_inset(Some(16.), cx);
+        });
         let mut this = Self {
             chats: load_chats(),
             current: 0,
@@ -303,28 +308,34 @@ impl ChatApp {
     /// a new entry or part, more text, a status, or a second of work.
     fn publish(&mut self, cx: &mut Context<Self>) {
         let chat = &self.chats[self.current];
-        let shape: Vec<(usize, usize, u8)> = chat
-            .entries
-            .iter()
-            .map(|entry| {
-                let text: usize = entry
-                    .parts
-                    .iter()
-                    .map(|part| match part {
-                        MessagePart::Text { text, .. } | MessagePart::Reasoning { text, .. } => {
-                            text.len()
-                        }
-                        MessagePart::Tool {
-                            resolved, output, ..
-                        } => usize::from(*resolved) + output.as_ref().map_or(0, String::len),
-                        MessagePart::Input { resolved, .. } => usize::from(*resolved),
-                        _ => 1,
-                    })
-                    .sum();
-                (entry.parts.len(), text, entry.status.map_or(0, |s| s as u8 + 1))
-            })
-            .collect();
-        let stream = self.stream.as_ref().filter(|stream| stream.chat == self.current);
+        let shape: Vec<(usize, usize, u8)> =
+            chat.entries
+                .iter()
+                .map(|entry| {
+                    let text: usize = entry
+                        .parts
+                        .iter()
+                        .map(|part| match part {
+                            MessagePart::Text { text, .. }
+                            | MessagePart::Reasoning { text, .. } => text.len(),
+                            MessagePart::Tool {
+                                resolved, output, ..
+                            } => usize::from(*resolved) + output.as_ref().map_or(0, String::len),
+                            MessagePart::Input { resolved, .. } => usize::from(*resolved),
+                            _ => 1,
+                        })
+                        .sum();
+                    (
+                        entry.parts.len(),
+                        text,
+                        entry.status.map_or(0, |s| s as u8 + 1),
+                    )
+                })
+                .collect();
+        let stream = self
+            .stream
+            .as_ref()
+            .filter(|stream| stream.chat == self.current);
         let elapsed = stream.map_or(-1, |stream| stream.started.elapsed().as_secs() as i64);
         let fingerprint = (chat.id.clone(), shape, elapsed);
         if self.published.as_ref() == Some(&fingerprint) {
@@ -1074,16 +1085,23 @@ impl Render for ChatApp {
             // A question the reply is waiting on, and the working chat's
             // approval, sit between the transcript and the composer.
             let chat_id = chat.id.clone();
-            let pending = chat.entries.iter().enumerate().rev().find_map(|(entry_ix, entry)| {
-                entry.parts.iter().enumerate().rev().find_map(|(part_ix, part)| match part {
-                    MessagePart::Input {
-                        questions,
-                        resolved: false,
-                        ..
-                    } => Some((entry_ix, part_ix, questions.clone())),
-                    _ => None,
-                })
-            });
+            let pending =
+                chat.entries
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find_map(|(entry_ix, entry)| {
+                        entry.parts.iter().enumerate().rev().find_map(
+                            |(part_ix, part)| match part {
+                                MessagePart::Input {
+                                    questions,
+                                    resolved: false,
+                                    ..
+                                } => Some((entry_ix, part_ix, questions.clone())),
+                                _ => None,
+                            },
+                        )
+                    });
             let approval = (chat.id == approval::CHAT).then(|| self.render_approval(cx));
             let questions = pending.map(|(entry_ix, part_ix, questions)| {
                 self.render_questions(&chat_id, entry_ix, part_ix, &questions, false, cx)

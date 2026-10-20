@@ -91,7 +91,11 @@ impl Shell {
             true
         } else {
             if !self.state.read(cx).sidebar_preferences.can_edit() {
-                self.show_notice(crate::toast::ToastKind::Error, "Sidebar is still syncing. Try again shortly.", cx);
+                self.show_notice(
+                    crate::toast::ToastKind::Error,
+                    "Sidebar is still syncing. Try again shortly.",
+                    cx,
+                );
                 cx.notify();
                 return false;
             }
@@ -938,8 +942,9 @@ mod tests {
         let _guard = runtime.enter();
         let (out, mut requests) = tokio::sync::mpsc::channel(16);
         let (replies, inbound) = tokio::sync::mpsc::channel(16);
-        let engine =
-            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound));
+        let engine = crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(
+            out, inbound,
+        ));
         let dir = tempfile::tempdir().unwrap();
         let window = test_shell(cx, dir.path());
         window
@@ -1005,8 +1010,9 @@ mod tests {
         let _guard = runtime.enter();
         let (out, _requests) = tokio::sync::mpsc::channel(16);
         let (_replies, inbound) = tokio::sync::mpsc::channel(16);
-        let engine =
-            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound));
+        let engine = crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(
+            out, inbound,
+        ));
         let dir = tempfile::tempdir().unwrap();
         let window = test_shell(cx, dir.path());
         window
@@ -1141,8 +1147,9 @@ mod tests {
         let _guard = runtime.enter();
         let (out, _requests) = tokio::sync::mpsc::channel(16);
         let (_replies, inbound) = tokio::sync::mpsc::channel(16);
-        let engine =
-            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound));
+        let engine = crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(
+            out, inbound,
+        ));
         let dir = tempfile::tempdir().unwrap();
         let window = test_shell(cx, dir.path());
         window

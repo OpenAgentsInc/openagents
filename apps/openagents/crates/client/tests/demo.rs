@@ -109,8 +109,14 @@ fn front_page_mirrors_the_desktop_sidebar() {
     assert_eq!(clone.group_name, "openagents");
     assert_eq!(clone.color_index, openagents.color_index);
     let cjk = ws.session("chat-cjk").unwrap();
-    assert_eq!(cjk.project.as_ref().unwrap().color_index, openagents.color_index);
-    assert_ne!(ws.project("space-edge").unwrap().group_key, openagents.group_key);
+    assert_eq!(
+        cjk.project.as_ref().unwrap().color_index,
+        openagents.color_index
+    );
+    assert_ne!(
+        ws.project("space-edge").unwrap().group_key,
+        openagents.group_key
+    );
     assert_eq!(ids(&ws.projectless), ["chat-visuals", "chat-home"]);
     assert!(ws.devices.iter().any(|d| d.is_self && d.id == "ios-test"));
     assert!(!ws.device("dev-studio").unwrap().online);
@@ -421,7 +427,10 @@ fn warm_sessions_are_capped_and_preload_follows_the_front_page() {
         client.close_session(id);
     }
     let open = client.open_session_ids();
-    assert!(open.len() <= openagents_client::WARM_SESSION_CAP + 2, "{open:?}");
+    assert!(
+        open.len() <= openagents_client::WARM_SESSION_CAP + 2,
+        "{open:?}"
+    );
     assert!(
         open.iter().any(|o| o == "chat-home"),
         "attached sessions stay"
@@ -447,7 +456,10 @@ fn offline_sends_queue_durably_and_deliver_on_recovery() {
     };
     std::thread::sleep(Duration::from_millis(400));
     let composer = session.composer();
-    assert_eq!(composer.send_state, Some(openagents_client::SendState::Queued));
+    assert_eq!(
+        composer.send_state,
+        Some(openagents_client::SendState::Queued)
+    );
     assert!(composer.delivery_degraded);
     assert_eq!(
         client

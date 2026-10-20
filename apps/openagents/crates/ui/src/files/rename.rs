@@ -309,9 +309,9 @@ impl FilesSurface {
             .paths
             .iter()
             .filter(|path| {
-                self.tree
-                    .node(path)
-                    .is_some_and(|n| n.entry.kind == openagents_proto::WorkspaceEntryKind::Directory)
+                self.tree.node(path).is_some_and(|n| {
+                    n.entry.kind == openagents_proto::WorkspaceEntryKind::Directory
+                })
             })
             .count();
         let copy = format!(
@@ -486,8 +486,10 @@ mod tests {
             files.begin_tree_rename("a.txt".into(), window, cx);
             let input = files.tree_rename.as_ref().unwrap().input.clone();
             input.update(cx, |input, cx| input.set_value("renamed.txt", window, cx));
-            let mut entry =
-                super::super::test_support::entry("a.txt", openagents_proto::WorkspaceEntryKind::File);
+            let mut entry = super::super::test_support::entry(
+                "a.txt",
+                openagents_proto::WorkspaceEntryKind::File,
+            );
             entry.mutation_revision = Some("external-edit".into());
             files.tree.apply_page(
                 openagents_proto::WorkspaceDirectoryPage {
