@@ -27,6 +27,12 @@ html.stage body{display:block}
 .glade canvas{display:block;width:100%;height:100%;outline:none;touch-action:none}
 .glade-status{position:absolute;inset:auto 0 0 0;margin:0;padding:.5rem .75rem calc(.5rem + env(safe-area-inset-bottom));color:var(--noir-content);background:var(--noir-surface)}
 .glade-status:empty{display:none}
+.glade-hands{position:absolute;top:calc(.75rem + env(safe-area-inset-top));right:.75rem;display:flex;flex-direction:column;align-items:flex-end;gap:.5rem;max-width:22rem}
+.glade-hands button{font:inherit;color:var(--noir-content);background:var(--noir-surface);border:1px solid var(--noir-content);padding:.35rem .75rem;cursor:pointer}
+.glade-hands button[aria-pressed=true]{background:var(--noir-content);color:var(--noir-canvas)}
+.glade-hands p{margin:0;padding:.35rem .6rem;color:var(--noir-content);background:var(--noir-surface);display:none}
+.glade-hands p.show{display:block}
+#hand-video{display:none}
 .glade-leave{position:absolute;top:0;left:0;margin:0;padding:calc(.5rem + env(safe-area-inset-top)) .75rem .5rem;background:var(--noir-surface)}
 
 @media (max-width:640px){

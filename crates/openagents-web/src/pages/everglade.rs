@@ -147,12 +147,18 @@ const VERSE: Stage = Stage {
     path: "/verse",
     label: "The Grid, where people, agents, and pylons meet",
     loading: "the Grid",
-    policy: GRID_POLICY,
+    policy: VERSE_POLICY,
 };
+
+/// `/verse`'s policy: the Grid's, plus the hand landmarker's worker.
+pub(crate) const VERSE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
+img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; \
+connect-src 'self' wss://relay.openagents.com; \
+base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// The page is the canvas, filling the window, with the status line over its
 /// foot. The heading is for screen readers only.
-fn body(stage: &Stage, wasm_bytes: u64, name: Option<&str>) -> String {
+fn body(stage: &Stage, wasm_bytes: u64, name: Option<&str>, hands: bool) -> String {
     let Stage {
         title,
         label,
@@ -166,7 +172,8 @@ data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PA
 <canvas id=\"{CANVAS_ID}\" tabindex=\"0\" aria-label=\"{label}\"></canvas>\
 <p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading {loading}…</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to open {loading}.</p></noscript></div>\
-<script type=\"module\" src=\"/static/everglade.js\"></script>",
+{hand_bar}<script type=\"module\" src=\"/static/everglade.js\"></script>",
+        hand_bar = if hands { HAND_BAR } else { "" },
         name = name
             .map(|n| format!(" data-name=\"{}\"", crate::layout::escape(n)))
             .unwrap_or_default(),
@@ -236,12 +243,38 @@ async fn stage(app: &App, stage: &Stage, headers: &HeaderMap) -> Response {
     } else {
         None
     };
-    let mut response = fullscreen(stage.title, &body(stage, wasm_bytes, name.as_deref()));
+    let hands = stage.path == VERSE.path && hand_files(app);
+    let mut response = fullscreen(
+        stage.title,
+        &body(stage, wasm_bytes, name.as_deref(), hands),
+    );
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(stage.policy),
     );
     response
+}
+
+/// `/verse`'s opt-in hand input (#12309): the button, the note, and the
+/// camera's `<video>`, which `everglade.js` drives with `/lander9`'s hand
+/// landmarker. Nothing loads until the button is pressed.
+const HAND_BAR: &str = "<div class=\"glade-hands\"><button type=\"button\" id=\"hand-toggle\" \
+aria-pressed=\"false\" aria-label=\"Turn on hand tracking\">Hands</button>\
+<p id=\"hand-note\" role=\"status\" aria-live=\"polite\">Pinch and move to look, point to walk. \
+Hand tracking runs on this device. Your camera's picture is never uploaded.</p></div>\
+<video id=\"hand-video\" muted playsinline aria-hidden=\"true\"></video>";
+
+/// Whether this server has `/lander9`'s hand landmarker to serve.
+fn hand_files(app: &App) -> bool {
+    app.config.lander9.as_deref().is_some_and(|root| {
+        let hands = root.join("hands");
+        super::lander9::LANDER9_HAND_FILES
+            .iter()
+            .all(|(file, _)| hands.join(file).is_file())
+            && super::lander9::LANDER9_HAND_WASM
+                .iter()
+                .all(|(file, _)| hands.join("wasm").join(file).is_file())
+    })
 }
 
 /// The signed-in viewer's profile name: their kind 0's shown name, else

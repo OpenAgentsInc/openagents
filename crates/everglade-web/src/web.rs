@@ -31,6 +31,51 @@ const MAX_SIDE: u32 = 4096;
 /// The longest frame step; a hidden tab resumes without a jump.
 const MAX_STEP: f32 = 0.1;
 
+thread_local! {
+    /// Opt-in hand input on /verse (#12309).
+    static HANDS: RefCell<crate::hand_input::HandInput> = RefCell::default();
+}
+
+/// The page turned hand input on or off.
+#[wasm_bindgen]
+pub fn verse_hands_on(on: bool) {
+    HANDS.with(|h| h.borrow_mut().set_on(on));
+}
+
+/// One frame of the hand landmarker's points, packed as floats, at `t`
+/// milliseconds, on a `width` by `height` CSS-pixel page.
+#[wasm_bindgen]
+pub fn verse_hand_frame(data: &[f32], t: f64, width: f32, height: f32) {
+    HANDS.with(|h| h.borrow_mut().frame(data, t / 1000.0, (width, height)));
+}
+
+/// Made-up hands, for checking without a camera: `pose` at page fractions
+/// (`x`, `y`), and a second when `pose2` isn't empty.
+#[wasm_bindgen]
+pub fn verse_hand_synth(
+    pose: &str,
+    x: f32,
+    y: f32,
+    pose2: &str,
+    x2: f32,
+    y2: f32,
+    t: f64,
+    width: f32,
+    height: f32,
+) -> bool {
+    let mut hands = vec![(pose, x, y)];
+    if !pose2.is_empty() {
+        hands.push((pose2, x2, y2));
+    }
+    HANDS.with(|h| h.borrow_mut().synth(&hands, t / 1000.0, (width, height)))
+}
+
+/// Moves the hands made since they came on.
+#[wasm_bindgen]
+pub fn verse_hand_moves() -> u32 {
+    HANDS.with(|h| h.borrow().moves)
+}
+
 /// Starts Everglade when the module's `init` finishes.
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -973,7 +1018,15 @@ impl Page {
         if super::terminal::active() {
             self.input = super::input::Input::default();
         }
-        let input = self.input.take();
+        let mut input = self.input.take();
+        let (moves, walking) = HANDS.with(|h| h.borrow_mut().take());
+        for hand in moves {
+            let _ = self.runtime.apply(match hand {
+                crate::hand_input::Move::Look { dx, dy } => Action::Look { dx, dy },
+                crate::hand_input::Move::Zoom(scale) => Action::PinchZoom { scale },
+            });
+        }
+        input.forward |= walking;
         let dt = self
             .runtime
             .tick_with_mode(&input, dt, self.input.orbit, true);

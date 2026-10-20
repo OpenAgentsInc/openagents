@@ -6629,6 +6629,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "log",
+ "openagents-web-hands",
  "openagents-workspace-hack",
  "raw-window-handle",
  "secp256k1 0.31.1",
@@ -13282,6 +13283,13 @@ dependencies = [
  "workbench",
  "xp-ledger",
  "zip 3.0.0",
+]
+
+[[package]]
+name = "openagents-web-hands"
+version = "1.0.0"
+dependencies = [
+ "coder-hands",
 ]
 
 [[package]]

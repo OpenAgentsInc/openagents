@@ -5173,3 +5173,46 @@ async fn the_front_door_is_lander10_only_when_turned_on() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(classic, home);
 }
+
+/// #12309: /verse offers hand input only when the hand landmarker is
+/// served, under a policy that admits its worker; /grid never does.
+#[tokio::test]
+async fn verse_offers_hands_only_with_the_landmarker() {
+    let root = tempfile::tempdir().unwrap();
+    let build = root.path().join("everglade");
+    std::fs::create_dir(&build).unwrap();
+    for file in ["everglade_web.js", "everglade_web_bg.wasm"] {
+        std::fs::write(build.join(file), "").unwrap();
+    }
+    let mut config = crate::Config::development(root.path().join("tasks"));
+    config.everglade = Some(build.clone());
+    let (_, _, without) = get_with(crate::router(config), "/verse", LOCAL).await;
+    assert!(!without.contains("hand-toggle"));
+
+    let lander9 = root.path().join("lander9");
+    std::fs::create_dir_all(lander9.join("hands/wasm")).unwrap();
+    for file in [
+        "hands/vision_bundle.mjs",
+        "hands/hand_landmarker.task",
+        "hands/wasm/vision_wasm_internal.js",
+        "hands/wasm/vision_wasm_internal.wasm",
+    ] {
+        std::fs::write(lander9.join(file), "").unwrap();
+    }
+    let mut config = crate::Config::development(root.path().join("tasks"));
+    config.everglade = Some(build);
+    config.lander9 = Some(lander9);
+    let site = crate::router(config);
+    let (status, headers, verse) = get_with(site.clone(), "/verse", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(verse.contains("id=\"hand-toggle\""));
+    assert!(verse.contains("never uploaded"));
+    assert!(
+        headers[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .contains("worker-src blob:")
+    );
+    let (_, _, grid) = get_with(site, "/grid", LOCAL).await;
+    assert!(!grid.contains("hand-toggle"));
+}

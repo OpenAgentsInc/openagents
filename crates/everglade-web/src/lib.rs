@@ -21,6 +21,8 @@ mod grid;
 #[cfg(target_arch = "wasm32")]
 mod input;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod hand_input;
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod presence_ui;
 #[cfg(target_arch = "wasm32")]
 mod web;
