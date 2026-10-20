@@ -940,6 +940,8 @@ pub struct Up {
     pub text_model: Option<PathBuf>,
     pub device: Option<String>,
     pub port: Option<u16>,
+    /// `--text-port`: the text engine's loopback port.
+    pub text_port: Option<u16>,
     pub dedicated: bool,
     /// `--allow-slow`: serve decisions on the CPU anyway.
     pub allow_slow: bool,
@@ -978,6 +980,9 @@ impl Up {
         let port = share::take_number(&mut words, "--port")?
             .map(|p| u16::try_from(p).map_err(|_| "--port takes a port number".to_string()))
             .transpose()?;
+        let text_port = share::take_number(&mut words, "--text-port")?
+            .map(|p| u16::try_from(p).map_err(|_| "--text-port takes a port number".to_string()))
+            .transpose()?;
         Ok(Self {
             yes,
             foreground,
@@ -985,6 +990,7 @@ impl Up {
             text_model,
             device,
             port,
+            text_port,
             dedicated,
             allow_slow,
             serve: words,
@@ -1071,11 +1077,17 @@ pub fn settings_for_up(
             notes.push(why);
             None
         } else {
-            let text_port = if port == TEXT_PORT {
+            let held = settings.text.as_ref().map(|t| t.port);
+            let text_port = up.text_port.or(held).unwrap_or(if port == TEXT_PORT {
                 TEXT_PORT + 1
             } else {
                 TEXT_PORT
-            };
+            });
+            if text_port == port {
+                return Err(format!(
+                    "the text engine and the decision engine cannot share port {port}; choose another with --text-port"
+                ));
+            }
             let model = if file.file_name().and_then(|n| n.to_str()) == Some(TEXT_MODEL_FILE) {
                 TEXT_MODEL.to_string()
             } else {

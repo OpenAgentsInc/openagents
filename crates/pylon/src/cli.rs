@@ -46,6 +46,8 @@ Commands:
                             ~/.openagents/models/Qwen3.5-0.8B-Q8_0.gguf).
       --device NAME         metal, cuda, or cpu (default: what doctor picks).
       --port N              The decision engine's loopback port (default 18096).
+      --text-port N         The text engine's loopback port (default 18097),
+                            for a second pylon on one computer.
       --dedicated           Ignore this computer's lease table.
       --allow-slow          Serve decisions on the CPU anyway (refused by
                             default: seconds a decision).

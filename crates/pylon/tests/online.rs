@@ -418,6 +418,24 @@ fn up_choices_and_old_settings() {
     assert_eq!(settings.allow.as_ref().unwrap().len(), 1);
     assert_eq!(settings.pylon, "box");
     assert!(Up::parse(&["--device".into(), "rocm".into()]).is_err());
+
+    // A second pylon on one computer picks its own text port.
+    let dir2 = tempfile::tempdir().unwrap();
+    let text_file = dir2.path().join("t.gguf");
+    std::fs::write(&text_file, b"gguf").unwrap();
+    let mut second = Up::parse(&[
+        "--port".into(),
+        "18196".into(),
+        "--text-port".into(),
+        "18197".into(),
+    ])
+    .unwrap();
+    second.text_model = Some(text_file);
+    let (settings, _) =
+        online::settings_for_up(None, "box", "wss://r", &second, "metal", Ok(())).unwrap();
+    assert_eq!(settings.text.as_ref().unwrap().port, 18_197);
+    second.text_port = Some(18_196);
+    assert!(online::settings_for_up(None, "box", "wss://r", &second, "metal", Ok(())).is_err());
     let slow = Up::parse(&["--allow-slow".into()]).unwrap();
     assert!(slow.allow_slow && slow.serve.is_empty());
     assert!(Up::parse(&["--text".into(), "maybe".into()]).is_err());
