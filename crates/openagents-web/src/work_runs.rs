@@ -83,7 +83,7 @@ pub(crate) const PREFIX: &str = "/v1/work";
 /// The work hosts' routes.
 pub(crate) const HOSTS: &str = "/v1/work-hosts";
 /// The pages.
-pub(crate) const PAGE: &str = "/work";
+pub const PAGE: &str = "/work";
 /// The runs waiting and running, for every account.
 const QUEUE_KEY: &str = "work-runs/queue.json";
 const PUBLIC_QUEUE_KEY: &str = "work-runs/public-computers/queue.json";
@@ -436,7 +436,7 @@ fn dollars(value: &Value) -> Option<f64> {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct WorkRun {
+pub struct WorkRun {
     schema: String,
     pub id: String,
     pub owner: String,
@@ -1496,7 +1496,7 @@ pub(crate) async fn web_requester(app: &App, headers: &HeaderMap) -> Option<Requ
 /// The runs as items on the boards (`GET /v1/agents`), so the phone and
 /// the web show them with the account's other agents: the ones going and
 /// those that ended in the last day.
-pub(crate) async fn board_items(store: &Store, owner: &str) -> Vec<(String, Item)> {
+pub async fn board_items(store: &Store, owner: &str) -> Vec<(String, Item)> {
     let Ok(runs) = list(store, owner).await else {
         return Vec::new();
     };
@@ -2533,7 +2533,7 @@ fn page(
 
 /// A work page in the shell for `account`; `refresh` reloads it while a
 /// run is going.
-pub(crate) fn framed(
+pub fn framed(
     headers: &HeaderMap,
     account: Account,
     title: &str,
@@ -2638,7 +2638,7 @@ async fn list_page(
 }
 
 /// The work list page: the form for a new run, then every run.
-pub(crate) fn list_body(
+pub fn list_body(
     runs: &[WorkRun],
     saved: bool,
     repo: &str,
@@ -2722,7 +2722,7 @@ fn problem(status: StatusCode, text: &str) -> Response {
 }
 
 /// A refused work request, for `headers`.
-pub(crate) fn problem_page(headers: &HeaderMap, status: StatusCode, text: &str) -> Response {
+pub fn problem_page(headers: &HeaderMap, status: StatusCode, text: &str) -> Response {
     protect(crate::ui_page::problem(
         headers,
         status,
@@ -2862,7 +2862,7 @@ async fn run_page(
 
 /// One run's page body: its state, Stop while it runs, the change, and
 /// its progress.
-pub(crate) fn run_body(run: &WorkRun, now: u64, csrf: &str) -> Markup {
+pub fn run_body(run: &WorkRun, now: u64, csrf: &str) -> Markup {
     let issue_url = format!("https://github.com/{}/issues/{}", run.repo, run.issue);
     let stop = format!("{PAGE}/{}/stop", run.id);
     html! {

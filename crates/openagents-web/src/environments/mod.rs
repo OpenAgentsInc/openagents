@@ -30,7 +30,7 @@ pub(crate) mod api;
 pub(crate) mod board;
 pub(crate) mod computers;
 pub(crate) mod push;
-pub(crate) mod view;
+pub mod view;
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -297,7 +297,7 @@ async fn index(State(app): State<App>, headers: HeaderMap, RawQuery(raw): RawQue
     index_page(&headers, &rows)
 }
 
-pub(crate) fn index_page(
+pub fn index_page(
     headers: &HeaderMap,
     rows: &[coder_environment_operator::studio::Summary],
 ) -> Response {
@@ -356,12 +356,7 @@ async fn new(State(app): State<App>, headers: HeaderMap, Query(q): Query<NewQuer
 
 /// The repository step, answered at once: `list` loads the person's
 /// repositories after the page shows ([`repositories`]).
-pub(crate) fn pick_page(
-    list: bool,
-    headers: &HeaderMap,
-    repo: &str,
-    error: Option<&str>,
-) -> Response {
+pub fn pick_page(list: bool, headers: &HeaderMap, repo: &str, error: Option<&str>) -> Response {
     let content = view::pick(&view::Pick { list, repo, error });
     protect(
         UiPage::new("New environment")
@@ -447,7 +442,7 @@ async fn repositories(
     protect(response)
 }
 
-pub(crate) fn branch_page(
+pub fn branch_page(
     headers: &HeaderMap,
     repo: &str,
     branches: &[String],
@@ -573,7 +568,7 @@ async fn page(
 }
 
 /// An environment's page.
-pub(crate) fn detail_page(
+pub fn detail_page(
     headers: &HeaderMap,
     id: &str,
     v: &coder_environment_operator::studio::View,
@@ -845,7 +840,7 @@ async fn run_page(
 
 /// A Claude Code run's page.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn run_view_page(
+pub fn run_view_page(
     headers: &HeaderMap,
     id: &str,
     run: &str,
@@ -1129,7 +1124,7 @@ fn sign_in_answer(
 }
 
 /// The Sign in to Claude page around `panel`.
-pub(crate) fn sign_in_page_for(
+pub fn sign_in_page_for(
     headers: &HeaderMap,
     id: &str,
     repository: String,

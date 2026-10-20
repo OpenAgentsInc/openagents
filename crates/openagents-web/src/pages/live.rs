@@ -38,7 +38,7 @@ script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
 frame-ancestors 'none'";
 
 /// What the page shows before the feed's script fills it in.
-pub(crate) struct Moment<'a> {
+pub struct Moment<'a> {
     pub status: &'a str,
     pub received: &'a str,
     pub paid: &'a str,
@@ -47,7 +47,7 @@ pub(crate) struct Moment<'a> {
 }
 
 /// The page as it first arrives, before the feed connects.
-pub(crate) const WAITING: Moment<'static> = Moment {
+pub const WAITING: Moment<'static> = Moment {
     status: "Connecting to the live feed.",
     received: "\u{2014}",
     paid: "\u{2014}",
@@ -111,7 +111,7 @@ async fn live(headers: HeaderMap) -> Response {
 }
 
 /// The page showing `moment`, for `headers`.
-pub(crate) fn live_page(headers: &HeaderMap, moment: &Moment<'_>) -> Response {
+pub fn live_page(headers: &HeaderMap, moment: &Moment<'_>) -> Response {
     let mut response = UiPage::new("Live")
         .path("/live")
         .scriptless()

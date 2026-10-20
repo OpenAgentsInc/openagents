@@ -14,7 +14,7 @@ use super::{CloudSession, SESSION_COOKIE, SessionError, session_token, value};
 
 /// Why a repository call didn't complete.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RepoCallError {
+pub enum RepoCallError {
     /// Signing in, the session, or the account service.
     Session(SessionError),
     /// What the account service said about GitHub or the request.
@@ -165,7 +165,7 @@ impl CloudSession {
     /// [`Self::github_token`] under a signed-in app's own token, so a chat
     /// an app starts in a project reads its repository as the web's does
     /// (#11542).
-    pub(crate) async fn github_token_as(&self, token: &str) -> Result<String> {
+    pub async fn github_token_as(&self, token: &str) -> Result<String> {
         let body = self
             .account_call_as(token, Method::POST, "/v1/account/github/token", None, None)
             .await?;

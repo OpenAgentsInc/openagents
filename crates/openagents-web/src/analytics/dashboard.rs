@@ -62,12 +62,7 @@ pub(crate) async fn allowed(app: &App, headers: &HeaderMap) -> bool {
 }
 
 /// The dashboard as a signed-in admin sees it, over `counts`.
-pub(crate) fn report_page(
-    headers: &HeaderMap,
-    counts: &Counts,
-    hour: u64,
-    stored: bool,
-) -> Response {
+pub fn report_page(headers: &HeaderMap, counts: &Counts, hour: u64, stored: bool) -> Response {
     guarded(page(headers, StatusCode::OK, report(counts, hour, stored)))
 }
 

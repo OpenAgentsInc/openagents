@@ -102,7 +102,7 @@ fn words(status: task::Status, execution: task::Execution) -> &'static str {
 }
 
 /// The task list page over `list`.
-pub(crate) fn list_page(headers: &HeaderMap, list: &[task::Task]) -> Response {
+pub fn list_page(headers: &HeaderMap, list: &[task::Task]) -> Response {
     let mut body = String::from(
         "<h1>Your tasks</h1>\
 <p class=\"oa-page-meta\">The tasks on this computer. Open one to see how it went and what it made. \
@@ -172,7 +172,7 @@ async fn task(
 }
 
 /// One task's page.
-pub(crate) fn task_page(headers: &HeaderMap, view: &task::view::View) -> Response {
+pub fn task_page(headers: &HeaderMap, view: &task::view::View) -> Response {
     let task = &view.task;
     let mut body = format!(
         "<p class=\"oa-page-meta\"><a href=\"/app\">All tasks</a> / {}</p><h1>{}</h1>\

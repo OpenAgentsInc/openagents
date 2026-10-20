@@ -403,7 +403,7 @@ pub(crate) async fn answer(
 }
 
 /// The jobs as items on their Macs' boards, from both stores.
-pub(crate) async fn board_items(app: &App, account: &str) -> Vec<(String, Item)> {
+pub async fn board_items(app: &App, account: &str) -> Vec<(String, Item)> {
     match all(app, account).await {
         Ok(jobs) => mac_jobs::board_items_of(&jobs),
         Err(_) => Vec::new(),

@@ -469,7 +469,7 @@ fn plain(text: &str) -> String {
     out.replace("**", "").replace('`', "")
 }
 
-pub(crate) fn doc_md(path: &str, source: &str, fallback: &str) -> Response {
+pub fn doc_md(path: &str, source: &str, fallback: &str) -> Response {
     let canonical = format!("{SITE}{path}");
     markdown_response(
         with_frontmatter(

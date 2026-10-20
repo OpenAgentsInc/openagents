@@ -26,7 +26,7 @@ cd "$repo" || exit 1
 watch=()
 while IFS= read -r dir; do
   case "$dir" in "$repo"/*) watch+=("$dir") ;; esac
-done < <(cargo tree -p openagents-web -e normal,build --prefix none 2>/dev/null \
+done < <(cargo tree -p openagents-web-site -e normal,build --prefix none 2>/dev/null \
   | sed -n 's/.*(\(\/[^)]*\)).*/\1/p' | sort -u)
 if [ "${#watch[@]}" -eq 0 ]; then
   for dir in "$repo"/crates/*/; do
@@ -64,7 +64,7 @@ build_and_start() {
   echo "web-dev: building openagents-web…"
   local started=$SECONDS
   # One build: rendered errors to the log, the built binary's path from JSON.
-  if ! cargo build -p openagents-web --bin openagents-web --message-format json-render-diagnostics \
+  if ! cargo build -p openagents-web-site --bin openagents-web --message-format json-render-diagnostics \
     >"$state/build.json" 2>"$state/build.log"; then
     grep -E -A12 '^error' "$state/build.log" | head -60
     echo "web-dev: the build failed; the last good server keeps running. Save again to retry."

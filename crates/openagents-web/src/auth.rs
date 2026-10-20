@@ -144,7 +144,7 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
 /// sign-in for accounts made with it before, and the terms line under it.
 /// GitHub sign-in is deprecated and makes no new accounts (#12005), so
 /// the two pages differ only in their heading.
-pub(crate) fn sign_in_page(
+pub fn sign_in_page(
     headers: &HeaderMap,
     signup: bool,
     invite_only: bool,
@@ -515,7 +515,7 @@ const LOCAL_SIGN_IN: &str = "cargo run -p openagents-web --example github_auth_f
 /// `/login` on a server that doesn't sign people in: the login card with
 /// the notice. On this computer's own address (`local`, never a public
 /// host) it adds how a developer runs sign-in locally.
-pub(crate) fn unavailable_page(headers: &HeaderMap, local: bool) -> Response {
+pub fn unavailable_page(headers: &HeaderMap, local: bool) -> Response {
     let card = auth_card(
         "Login isn't available",
         Some(html! { "This server doesn't log people in." }),
@@ -549,12 +549,7 @@ pub(crate) fn unavailable_page(headers: &HeaderMap, local: bool) -> Response {
 
 /// A sign-in that didn't finish: an empty state with Try again (back to
 /// `/login`) and Home, on its own page.
-pub(crate) fn try_again(
-    headers: &HeaderMap,
-    status: StatusCode,
-    title: &str,
-    text: &str,
-) -> Response {
+pub fn try_again(headers: &HeaderMap, status: StatusCode, title: &str, text: &str) -> Response {
     let actions = html! {
         (ButtonLink::new("Try again", "/login").variant(ButtonVariant::Solid))
         (action_link("Home", "/"))
@@ -564,7 +559,7 @@ pub(crate) fn try_again(
 
 /// A sign-in notice (not available here, invite-only): an empty state with
 /// a way home, on its own page.
-pub(crate) fn notice(headers: &HeaderMap, status: StatusCode, title: &str, text: &str) -> Response {
+pub fn notice(headers: &HeaderMap, status: StatusCode, title: &str, text: &str) -> Response {
     let actions = html! {
         (ButtonLink::new("Home", "/"))
         (action_link("Docs", crate::layout::DOCS))

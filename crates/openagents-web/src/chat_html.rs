@@ -14,7 +14,7 @@ pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self'; font-src 
 
 /// HTMX never stores private HTML, evaluates expressions, or runs fragment scripts.
 /// The chat and composer styles come from `openagents-ui` (`/static/ui.css`).
-pub(crate) fn head() -> Markup {
+pub fn head() -> Markup {
     html! {
         (fragment_head())
         script type="module" src="/static/chat-start.js" {}
@@ -63,7 +63,7 @@ pub(crate) fn main_only(headers: &axum::http::HeaderMap) -> bool {
         .is_some_and(|value| matches!(value, "main" | "prefetch"))
 }
 
-pub(crate) fn protect(mut response: Response) -> Response {
+pub fn protect(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_SECURITY_POLICY,

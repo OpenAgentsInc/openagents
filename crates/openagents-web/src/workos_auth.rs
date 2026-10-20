@@ -178,7 +178,7 @@ pub(crate) fn page(
 /// The login or sign-up page offering `methods`, with the form ticket
 /// `csrf` (the screens gallery draws it with a sample one).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn render_login(
+pub fn render_login(
     headers: &HeaderMap,
     signup: bool,
     return_to: &str,
@@ -869,7 +869,7 @@ fn code_form(app: &App, headers: &HeaderMap, notice: Option<&str>, status: Statu
 
 /// The page that asks for the code WorkOS emailed to `email`: to confirm
 /// the address (`verify`) or to log in.
-pub(crate) fn render_code(
+pub fn render_code(
     headers: &HeaderMap,
     email: &str,
     verify: bool,
@@ -1082,7 +1082,7 @@ fn forgot_form(app: &App, headers: &HeaderMap, return_to: &str, sent: Option<&st
 
 /// The page that asks where to send a password-reset link, or (with
 /// `sent`) says it was sent.
-pub(crate) fn render_forgot(
+pub fn render_forgot(
     headers: &HeaderMap,
     return_to: &str,
     sent: Option<&str>,
@@ -1204,7 +1204,7 @@ fn reset_form(
 }
 
 /// The page that sets a new password with the emailed `token`.
-pub(crate) fn render_reset(
+pub fn render_reset(
     headers: &HeaderMap,
     token: &str,
     notice: Option<&str>,

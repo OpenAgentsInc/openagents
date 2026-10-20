@@ -10,7 +10,7 @@ WORKDIR /build
 COPY . .
 ARG OPENAGENTS_COMMIT=unknown
 ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
-RUN cargo build --locked --release -p openagents-web --bin openagents-web \
+RUN cargo build --locked --release -p openagents-web-site --bin openagents-web -p openagents-web \
     && strip target/release/openagents-web
 
 FROM ${LIVE_WEB_IMAGE} AS site

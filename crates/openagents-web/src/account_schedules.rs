@@ -61,7 +61,7 @@ use crate::coder_sync::{answer, line, refused, stored, valid_session};
 use crate::settings::{page, viewer};
 use crate::ui_page::action_link;
 
-pub(crate) const PAGE: &str = "/settings/schedules";
+pub const PAGE: &str = "/settings/schedules";
 const SAVE: &str = "/settings/schedules/save";
 const PAUSE: &str = "/settings/schedules/pause";
 const DELETE: &str = "/settings/schedules/delete";
@@ -106,7 +106,7 @@ pub(crate) fn owns(path: &str) -> bool {
 /// One scheduled prompt, or the fact that one was deleted, as Coder's
 /// sync record has it (`coder-new` `schedule_sync::Record`).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Schedule {
+pub struct Schedule {
     pub id: String,
     pub computer: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -429,7 +429,7 @@ pub(crate) async fn exchange(
 
 /// One of the account's Coder chats, to post into.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub(crate) struct Chat {
+pub struct Chat {
     pub session: String,
     pub computer: String,
     pub title: String,
@@ -1202,7 +1202,7 @@ fn new_form(computers: &[String], chats: &[Chat], save: Ticket<'_>) -> Markup {
 
 /// The page: what scheduled prompts are, the person's prompts, and a form
 /// for a new one (when a computer can run it).
-pub(crate) fn schedules_content(
+pub fn schedules_content(
     schedules: &[Schedule],
     computers: &[String],
     chats: &[Chat],

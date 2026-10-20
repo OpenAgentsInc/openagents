@@ -30,14 +30,14 @@ enum Operation {
     Promote(String, Promote),
     Change(String, RunChange),
 }
-pub(crate) fn routes() -> Router<App> {
+pub fn routes() -> Router<App> {
     Router::new()
         .route("/labs/agent", get(page).post(submit))
         .route("/labs/agent/tasks/{id}", get(task))
         .route("/static/agent-lab.js", get(script))
         .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
 }
-pub(crate) async fn access(app: &App, headers: &HeaderMap) -> Result<(Client, Session), Response> {
+pub async fn access(app: &App, headers: &HeaderMap) -> Result<(Client, Session), Response> {
     let cloud = app
         .config
         .cloud

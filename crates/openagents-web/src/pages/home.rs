@@ -47,7 +47,7 @@ fn icon(id: &str) -> Icon {
 }
 
 /// The [`learn`] cards as a grid.
-pub(crate) fn learn_cards() -> LinkCards {
+pub fn learn_cards() -> LinkCards {
     LinkCards::new("Learn about OpenAgents").cards(
         learn()
             .iter()
@@ -147,7 +147,7 @@ async fn home_html(
 
 /// The new chat's page around `dock`: the cards in the middle, the
 /// composer at the bottom.
-pub(crate) fn stage(dock: Markup) -> UiPage {
+pub fn stage(dock: Markup) -> UiPage {
     // The page's one heading, for readers and agents; the cards and the
     // composer say the rest.
     let content = html! {

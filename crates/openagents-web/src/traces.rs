@@ -72,9 +72,9 @@ pub(crate) const API: &str = "/v1/traces";
 /// The API's older path (#11158), still answered.
 pub(crate) const OLDER_API: &str = "/api/traces";
 /// The signed-in list; a trace's page is under it.
-pub(crate) const PAGE: &str = "/settings/traces";
+pub const PAGE: &str = "/settings/traces";
 /// Where a shared trace is public.
-pub(crate) const PUBLIC: &str = "/trace";
+pub const PUBLIC: &str = "/trace";
 /// The largest trace a request may send.
 pub(crate) const MAX_BODY: usize = 8 * 1024 * 1024;
 /// The most traces one account keeps.
@@ -131,7 +131,7 @@ pub(crate) fn routes() -> Router<App> {
 /// One saved trace, as the list keeps it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Summary {
+pub struct Summary {
     pub id: String,
     pub title: String,
     pub agent: String,
@@ -168,7 +168,7 @@ struct SharedRecord {
 
 /// What became of an upload.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Uploaded {
+pub enum Uploaded {
     Saved {
         trace: Summary,
         existing: bool,
@@ -257,7 +257,7 @@ fn steps(document: &Value) -> &[Value] {
 }
 
 /// The checked document and its summary (no id or time yet).
-pub(crate) fn check(body: &[u8]) -> Result<(Value, Summary), Uploaded> {
+pub fn check(body: &[u8]) -> Result<(Value, Summary), Uploaded> {
     if body.len() > MAX_BODY {
         return Err(Uploaded::Invalid("too_large".into()));
     }
@@ -579,7 +579,7 @@ pub(crate) async fn public(store: &Store, id: &str) -> Result<Option<(Summary, V
 /// spent, how much it did.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Stats {
+pub struct Stats {
     #[serde(default)]
     pub started_ms: Option<u64>,
     #[serde(default)]
@@ -597,7 +597,7 @@ pub(crate) struct Stats {
 impl Stats {
     /// From a trajectory: its steps' times, and its totals (or the sum of
     /// its steps' metrics when it has none).
-    pub(crate) fn of(document: &Value) -> Self {
+    pub fn of(document: &Value) -> Self {
         let steps = steps(document);
         let times: Vec<u64> = steps
             .iter()
@@ -648,7 +648,7 @@ impl Stats {
 /// One agent in a trace's tree.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Agent {
+pub struct Agent {
     pub id: String,
     /// The agent that started it; `None` for the trace's own conversation.
     #[serde(default)]
@@ -1305,7 +1305,7 @@ fn steps_label(count: usize) -> String {
 }
 
 /// The list page's content.
-pub(crate) fn list_content(traces: &[Summary]) -> Markup {
+pub fn list_content(traces: &[Summary]) -> Markup {
     html! {
         p { (action_link("Settings", crate::settings::PAGE)) }
         (MarkdownRoot::new(html! {
@@ -1601,7 +1601,7 @@ fn tree_node(nodes: &[TreeNode<'_>], index: usize, span: Option<(u64, u64)>) -> 
 
 /// A trace's page for its owner: what it is, Share and Delete, its agents,
 /// the steps.
-pub(crate) fn trace_content(
+pub fn trace_content(
     trace: &Summary,
     document: &Value,
     agents: &[Agent],
@@ -1658,12 +1658,7 @@ pub(crate) fn trace_content(
 }
 
 /// A shared trace's public page.
-pub(crate) fn public_content(
-    trace: &Summary,
-    document: &Value,
-    agents: &[Agent],
-    expand: bool,
-) -> Markup {
+pub fn public_content(trace: &Summary, document: &Value, agents: &[Agent], expand: bool) -> Markup {
     let base = format!("{PUBLIC}/{}", trace.id);
     html! {
         (MarkdownRoot::new(html! {
@@ -1679,7 +1674,7 @@ pub(crate) fn public_content(
 
 /// An agent's page: where it sits in the tree, then its steps. `base` is
 /// its trace's page, signed in or public.
-pub(crate) fn agent_content(
+pub fn agent_content(
     trace: &Summary,
     root_stats: &Stats,
     agents: &[Agent],
@@ -1858,12 +1853,7 @@ async fn agent_page(
     page(&headers, service, &viewer, &agent.title, &back, body)
 }
 
-pub(crate) fn public_response(
-    headers: &HeaderMap,
-    title: &str,
-    path: &str,
-    body: Markup,
-) -> Response {
+pub fn public_response(headers: &HeaderMap, title: &str, path: &str, body: Markup) -> Response {
     let mut response = UiPage::new(title.to_owned())
         .path(path)
         .description("An agent's work, step by step, shared from OpenAgents.")

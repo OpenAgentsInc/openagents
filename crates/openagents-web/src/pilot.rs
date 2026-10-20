@@ -260,7 +260,7 @@ fn failure(status: StatusCode, text: &str) -> Response {
 }
 
 /// A refused pilot request, for `headers`.
-pub(crate) fn failure_page(headers: &HeaderMap, status: StatusCode, text: &str) -> Response {
+pub fn failure_page(headers: &HeaderMap, status: StatusCode, text: &str) -> Response {
     private(crate::ui_page::problem(
         headers,
         status,
@@ -386,7 +386,7 @@ async fn submit(
 }
 
 /// The thanks page for the request filed as `reference`, for `headers`.
-pub(crate) fn received_page(headers: &HeaderMap, reference: &str) -> Response {
+pub fn received_page(headers: &HeaderMap, reference: &str) -> Response {
     private(
         UiPage::new("Pilot request received")
             .path("/")

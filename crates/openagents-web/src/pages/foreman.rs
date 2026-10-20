@@ -34,7 +34,7 @@ use super::first_frame::FirstFrame;
 use crate::App;
 use crate::ui_page::UiPage;
 
-pub(crate) const PATH: &str = "/agent/foreman";
+pub const PATH: &str = "/agent/foreman";
 
 const REPO: &str = "https://github.com/OpenAgentsInc/openagents";
 
@@ -154,7 +154,7 @@ async fn foreman_page(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 /// The page, with the GPUI graph over the server map when `live`.
-pub(crate) fn page(headers: &HeaderMap, live: bool) -> Response {
+pub fn page(headers: &HeaderMap, live: bool) -> Response {
     live_page_with(headers, live, None, None, None)
 }
 

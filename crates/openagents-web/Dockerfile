@@ -31,7 +31,7 @@ RUN oa-kache install
 WORKDIR /build
 COPY --from=skeleton /skeleton/ ./
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run \
-    cargo build --locked --release -p openagents-web --bin openagents-web --bin lab-cad-copy \
+    cargo build --locked --release -p openagents-web-site --bin openagents-web -p openagents-web --bin lab-cad-copy \
         -p cad-lab --bin cad-lab
 
 FROM builder-deps AS builder
@@ -46,7 +46,7 @@ ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
 # #11653). Every source file is touched first, so no stand-in the deps
 # stage compiled can look newer than the real crate.
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
-    && oa-kache run cargo build --locked --release -p openagents-web --bin openagents-web --bin lab-cad-copy \
+    && oa-kache run cargo build --locked --release -p openagents-web-site --bin openagents-web -p openagents-web --bin lab-cad-copy \
         -p cad-lab --bin cad-lab \
     && strip target/release/openagents-web target/release/cad-lab target/release/lab-cad-copy
 

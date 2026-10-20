@@ -11,13 +11,13 @@ use crate::account::Account;
 use crate::ui_page::UiPage;
 
 /// The sample person every signed-in state shows.
-pub(crate) const NAME: &str = "Christopher D.";
+pub const NAME: &str = "Christopher D.";
 /// The sample computer.
-pub(crate) const COMPUTER: &str = "Christopher's MacBook Pro";
+pub const COMPUTER: &str = "Christopher's MacBook Pro";
 const CSRF: &str = "sample-ticket";
 
 /// A signed-in account with a profile picture.
-pub(crate) fn signed_in() -> Account {
+pub fn signed_in() -> Account {
     Account::SignedIn {
         name: NAME.to_owned(),
         sign_out: Some(CSRF.to_owned()),
@@ -27,7 +27,7 @@ pub(crate) fn signed_in() -> Account {
 }
 
 /// A signed-in site admin (the account menu adds Analytics).
-pub(crate) fn admin() -> Account {
+pub fn admin() -> Account {
     Account::SignedIn {
         name: NAME.to_owned(),
         sign_out: Some(CSRF.to_owned()),
@@ -36,7 +36,7 @@ pub(crate) fn admin() -> Account {
     }
 }
 
-pub(crate) fn screens() -> Vec<Screen> {
+pub fn screens() -> Vec<Screen> {
     vec![
         Screen {
             id: "app-shell",

@@ -39,16 +39,16 @@ use crate::App;
 use crate::ui_page::UiPage;
 
 /// Where the gallery lives.
-pub(crate) const PAGE: &str = "/ui/screens";
+pub const PAGE: &str = "/ui/screens";
 
 /// A renderer for one state: the page as the live route would answer it,
 /// over fixture data, for a request with `headers`.
-pub(crate) type Render = fn(&HeaderMap) -> Response;
+pub type Render = fn(&HeaderMap) -> Response;
 
 /// Which layer of the design a screen belongs to. Atoms and molecules live
 /// in `/ui`; this gallery adds the two larger layers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Group {
+pub enum Group {
     /// A part of a page people use as one thing: the app shell, the
     /// composer, the chat list.
     Organism,
@@ -57,7 +57,7 @@ pub(crate) enum Group {
 }
 
 impl Group {
-    pub(crate) const fn title(self) -> &'static str {
+    pub const fn title(self) -> &'static str {
         match self {
             Self::Organism => "Organisms",
             Self::Page => "Pages",
@@ -66,23 +66,23 @@ impl Group {
 }
 
 /// One state of a screen.
-pub(crate) struct State {
-    pub(crate) id: &'static str,
-    pub(crate) label: &'static str,
-    pub(crate) render: Render,
+pub struct State {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub render: Render,
     /// What the strip on top says: [`SAMPLE_NOTE`] for made-up data, or
     /// what a recorded page really is.
-    pub(crate) strip: &'static str,
+    pub strip: &'static str,
 }
 
 /// One screen: a page or organism, its live routes, and its states.
-pub(crate) struct Screen {
-    pub(crate) id: &'static str,
-    pub(crate) title: &'static str,
-    pub(crate) group: Group,
+pub struct Screen {
+    pub id: &'static str,
+    pub title: &'static str,
+    pub group: Group,
     /// The live routes this screen stands for.
-    pub(crate) routes: &'static [&'static str],
-    pub(crate) states: Vec<State>,
+    pub routes: &'static [&'static str],
+    pub states: Vec<State>,
 }
 
 /// Live GET addresses that are not screens, with why: files, data for
@@ -90,7 +90,7 @@ pub(crate) struct Screen {
 /// worlds. A name ending in `*` covers every address under it. Every other
 /// GET address must belong to a screen (see the route test).
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
+pub const NOT_SCREENS: &[(&str, &str)] = &[
     (
         "/share/{token}/announce",
         "Post a shared chat on Nostr: its states need a share, a relay, and a browser extension, which its own tests drive",
@@ -369,7 +369,7 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ),
 ];
 
-pub(crate) const fn state(id: &'static str, label: &'static str, render: Render) -> State {
+pub const fn state(id: &'static str, label: &'static str, render: Render) -> State {
     State {
         id,
         label,
@@ -380,7 +380,7 @@ pub(crate) const fn state(id: &'static str, label: &'static str, render: Render)
 
 /// A state drawn from a real recording rather than made-up data: its strip
 /// says what it is (`strip`) instead of calling the data made up.
-pub(crate) const fn recorded(
+pub const fn recorded(
     id: &'static str,
     label: &'static str,
     render: Render,
@@ -406,11 +406,11 @@ fn areas() -> [(&'static str, Vec<Screen>); 5] {
 }
 
 /// Every screen, in gallery order. Each area module adds its own list.
-pub(crate) fn screens() -> Vec<Screen> {
+pub fn screens() -> Vec<Screen> {
     areas().into_iter().flat_map(|(_, list)| list).collect()
 }
 
-pub(crate) fn routes() -> Router<App> {
+pub fn routes() -> Router<App> {
     Router::new()
         .route(PAGE, get(index))
         .route("/ui/screens.json", get(list))
@@ -616,15 +616,14 @@ fn sample_note() -> Markup {
 }
 
 /// What the strip at the top of a made-up sample page says.
-pub(crate) const SAMPLE_NOTE: &str = "Sample page. Made-up data; buttons and forms do nothing.";
+pub const SAMPLE_NOTE: &str = "Sample page. Made-up data; buttons and forms do nothing.";
 
 /// Who may frame a sample: this site and pages on the viewer's own computer.
 /// A sample carries no session and can post or fetch nothing.
-pub(crate) const FRAME_ANCESTORS: &str =
-    "frame-ancestors 'self' http://127.0.0.1:* http://localhost:*";
+pub const FRAME_ANCESTORS: &str = "frame-ancestors 'self' http://127.0.0.1:* http://localhost:*";
 
 /// `policy` with no form posts and no requests, framable by this site.
-pub(crate) fn inert_policy(policy: Option<&str>) -> String {
+pub fn inert_policy(policy: Option<&str>) -> String {
     let mut directives: Vec<&str> = policy
         .unwrap_or("default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; script-src 'self'; base-uri 'none'")
         .split(';')
@@ -647,7 +646,7 @@ pub(crate) fn inert_policy(policy: Option<&str>) -> String {
 
 /// `state` as a page for `headers`, in `theme` when given: a sample that
 /// says so, can post nothing, and is framable by this site.
-pub(crate) async fn render(state: &State, headers: &HeaderMap, theme: Option<Theme>) -> Response {
+pub async fn render(state: &State, headers: &HeaderMap, theme: Option<Theme>) -> Response {
     let mut headers = headers.clone();
     // The person's own session never reaches a sample.
     headers.remove(header::COOKIE);

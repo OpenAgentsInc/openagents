@@ -47,7 +47,7 @@ pub const DESKTOP_DIR: &str = "desktop";
 /// The apps whose runs sit in a folder of their own: app and folder.
 const APP_DIRS: [(&str, &str); 2] = [(ANDROID, ANDROID_DIR), (DESKTOP, DESKTOP_DIR)];
 /// The Web board's live screens: the web app's screens gallery
-/// (`crates/openagents-web/src/screens/`), framed from a running server
+/// (`crates/openagents-web-site/src/screens/`), framed from a running server
 /// rather than captured. This is the address `scripts/web-dev.sh` serves.
 pub const WEB: &str = "web";
 pub const DEFAULT_WEB: &str = "http://127.0.0.1:4380";

@@ -31,7 +31,7 @@
 //! those records, and nothing there adds to these counts.
 
 mod classify;
-pub(crate) mod dashboard;
+pub mod dashboard;
 pub mod store;
 #[cfg(test)]
 mod tests;

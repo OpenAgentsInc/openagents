@@ -49,7 +49,7 @@ use crate::phone_api::{self, Acted, Command, Item};
 use crate::settings::viewer;
 use crate::ui_page::UiPage;
 
-pub(crate) const PAGE: &str = "/settings/agents";
+pub const PAGE: &str = "/settings/agents";
 const MESSAGE_PAGE: &str = "/settings/agents/message";
 const STOP: &str = "/settings/agents/stop";
 /// How often the list reads itself again while an agent works, in seconds.
@@ -63,7 +63,7 @@ pub(crate) fn routes() -> Router<App> {
 }
 
 /// One computer's agents as the list shows them.
-pub(crate) struct Machine {
+pub struct Machine {
     pub name: String,
     pub online: bool,
     pub updated_unix: u64,
@@ -181,7 +181,7 @@ fn ago(at: u64, now: u64) -> String {
 }
 
 /// What the list says after an action, by the code the action left.
-pub(crate) fn notice_words(code: &str) -> Option<&'static str> {
+pub fn notice_words(code: &str) -> Option<&'static str> {
     Some(match code {
         "stopping" => "Asked it to stop. It stops at its next step.",
         "sent" => "Sent. It reads your message at its next step.",
@@ -263,12 +263,7 @@ fn agent_row(machine: &Machine, item: &Item, csrf: &str, now: u64) -> Markup {
 
 /// The list: each computer's agents, with Stop and Message on the ones
 /// that work while their computer is online.
-pub(crate) fn list_markup(
-    machines: &[Machine],
-    csrf: &str,
-    now: u64,
-    notice: Option<&str>,
-) -> Markup {
+pub fn list_markup(machines: &[Machine], csrf: &str, now: u64, notice: Option<&str>) -> Markup {
     html! {
         div class="oa-settings" {
             p {
@@ -368,7 +363,7 @@ struct Target {
 }
 
 /// The message form for one agent.
-pub(crate) fn message_markup(item: &Item, computer: &str, csrf: &str) -> Markup {
+pub fn message_markup(item: &Item, computer: &str, csrf: &str) -> Markup {
     html! {
         div class="oa-settings" {
             p { a href=(PAGE) { "All agents" } }

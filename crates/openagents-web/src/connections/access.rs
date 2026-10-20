@@ -40,7 +40,7 @@ use crate::cloud::{protect, refused};
 use crate::coder_sync::{answer, refused as api_refused};
 
 /// The admin page.
-pub(crate) const PAGE: &str = "/admin/access/drive-connections";
+pub const PAGE: &str = "/admin/access/drive-connections";
 /// The admin API.
 pub(crate) const API: &str = "/v1/admin/access/drive-connections";
 const CSRF_SCOPE: &str = "drive-access";
@@ -366,7 +366,7 @@ async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 /// The admin page's body (separate from I/O for the screens gallery).
-pub(crate) fn view(access: &Access, csrf: &str) -> maud::Markup {
+pub fn view(access: &Access, csrf: &str) -> maud::Markup {
     html! {
         div class="oa-settings" {
             h1 class="oa-heading" data-level="1" { "Google Drive access" }

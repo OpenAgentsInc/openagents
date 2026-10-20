@@ -70,7 +70,7 @@ async fn confirm(State(app): State<App>, headers: HeaderMap) -> Response {
 
 /// The Delete all chats page: the question for `count` chats, or that
 /// there are none.
-pub(crate) fn confirm_page(
+pub fn confirm_page(
     headers: &HeaderMap,
     owner: Option<&str>,
     count: usize,

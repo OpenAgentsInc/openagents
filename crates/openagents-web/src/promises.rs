@@ -412,7 +412,7 @@ async fn promises_page(headers: HeaderMap) -> Response {
 }
 
 /// `/promises` for `headers`.
-pub(crate) fn promises_view(headers: &HeaderMap) -> Response {
+pub fn promises_view(headers: &HeaderMap) -> Response {
     page(
         "What works today",
         "/promises",
@@ -428,7 +428,7 @@ async fn roadmap_page(headers: HeaderMap) -> Response {
 }
 
 /// `/roadmap` for `headers`.
-pub(crate) fn roadmap_view(headers: &HeaderMap) -> Response {
+pub fn roadmap_view(headers: &HeaderMap) -> Response {
     page(
         "Roadmap",
         "/roadmap",

@@ -1373,17 +1373,17 @@ pub(crate) async fn gpui_text(app: &App, headers: &HeaderMap, chat: &Conversatio
 }
 
 /// What a chat's page is drawn from.
-pub(crate) struct Parts {
-    pub(crate) breadcrumb: Breadcrumb,
-    pub(crate) actions: Option<Markup>,
-    pub(crate) sidebar: Option<Markup>,
-    pub(crate) thread: Markup,
-    pub(crate) dock: Markup,
+pub struct Parts {
+    pub breadcrumb: Breadcrumb,
+    pub actions: Option<Markup>,
+    pub sidebar: Option<Markup>,
+    pub thread: Markup,
+    pub dock: Markup,
 }
 
 /// A chat's page from its parts, as its route and the screens gallery
 /// draw it.
-pub(crate) fn chat_page(headers: &HeaderMap, chat: &Conversation, parts: Parts) -> Response {
+pub fn chat_page(headers: &HeaderMap, chat: &Conversation, parts: Parts) -> Response {
     let mut page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{}", chat.id))
         .app()
@@ -1452,7 +1452,7 @@ async fn show_terminal(
 
 /// What a Coder chat shows where the composer would be when Coder on its
 /// computer isn't online.
-pub(crate) fn terminal_note(computer: &str) -> Markup {
+pub fn terminal_note(computer: &str) -> Markup {
     html! {
         p.oa-thread-notice #chat-terminal-note {
             "This chat runs in Coder on " (computer) ". To reply here, open Coder there and type "
@@ -1464,7 +1464,7 @@ pub(crate) fn terminal_note(computer: &str) -> Markup {
 /// The composer on a Coder chat while Coder on its computer is online: a
 /// reply waits for Coder there, which answers it with that computer's
 /// tools.
-pub(crate) fn terminal_composer(
+pub fn terminal_composer(
     chat: &Conversation,
     computer: &str,
     notice: Option<&Notice>,
@@ -1614,7 +1614,7 @@ async fn confirm_delete(
 }
 
 /// The page that asks before deleting `chat`.
-pub(crate) fn delete_page(
+pub fn delete_page(
     headers: &HeaderMap,
     chat: &Conversation,
     csrf: &str,
@@ -3238,12 +3238,7 @@ pub(crate) fn ticket_for(app: &App, chat: &Conversation, sender: &str, oob: bool
 /// The thread, its suggestion chips, and the scroll-to-bottom button over
 /// it. The title is the header row's breadcrumb, not part of the thread.
 /// `links` links task rows to their runs ([`work::links`]).
-pub(crate) fn content(
-    chat: &Conversation,
-    before: Option<usize>,
-    chips: Markup,
-    links: bool,
-) -> Markup {
+pub fn content(chat: &Conversation, before: Option<usize>, chips: Markup, links: bool) -> Markup {
     // The transcript sits in a Message Scroller (#11639): it opens at the
     // newest message, follows a reply while it streams as long as the
     // reader is at the bottom, stops following once they scroll up, and
@@ -3728,10 +3723,10 @@ struct Refused(String, Option<(&'static str, &'static str)>);
 
 /// A refused message shown in the composer: why, the text put back in
 /// the box, and the one link that fixes it when there is one.
-pub(crate) struct Notice {
-    pub(crate) text: String,
-    pub(crate) draft: String,
-    pub(crate) link: Option<(&'static str, &'static str)>,
+pub struct Notice {
+    pub text: String,
+    pub draft: String,
+    pub link: Option<(&'static str, &'static str)>,
 }
 
 /// The response header that marks an HTMX send's refusal: the shell
@@ -3864,13 +3859,13 @@ fn unavailable(error: Error) -> Response {
 /// form. The chat posts with HTMX and keeps the draft until the server
 /// accepts it; the homepage posts a plain form and follows the redirect to
 /// the new chat, with or without JavaScript.
-pub(crate) fn composer(action: &str, label: &str, row: Option<Markup>, after: Markup) -> Markup {
+pub fn composer(action: &str, label: &str, row: Option<Markup>, after: Markup) -> Markup {
     composer_with(action, label, row, after, None)
 }
 
 /// [`composer`] with a refused message's notice in its status region and
 /// the text back in the box.
-pub(crate) fn composer_with(
+pub fn composer_with(
     action: &str,
     label: &str,
     row: Option<Markup>,
@@ -4007,27 +4002,27 @@ mod uuid_tests {
 }
 
 #[path = "chat_sidebar.rs"]
-pub(crate) mod sidebar;
+pub mod sidebar;
 
 #[path = "chat_agents.rs"]
 mod agents;
 pub(crate) use agents::{choose_paused, paused_items};
 #[path = "chat_approval.rs"]
-pub(crate) mod approval;
+pub mod approval;
 #[path = "chat_computer.rs"]
 mod computer;
 #[path = "chat_continued.rs"]
-pub(crate) mod continued;
+pub mod continued;
 #[path = "chat_delete_all.rs"]
-pub(crate) mod delete_all;
+pub mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
 #[path = "chat_sessions.rs"]
 pub(crate) mod sessions;
 #[path = "chat_share.rs"]
-pub(crate) mod share;
+pub mod share;
 #[path = "chat_work.rs"]
-pub(crate) mod work;
+pub mod work;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

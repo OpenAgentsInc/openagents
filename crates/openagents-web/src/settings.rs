@@ -27,8 +27,8 @@ use crate::ui_page::{UiPage, action_link};
 pub(crate) mod link;
 pub(crate) mod subscription;
 
-pub(crate) const PAGE: &str = "/settings";
-pub(crate) const CLAUDE: &str = "/settings/claude";
+pub const PAGE: &str = "/settings";
+pub const CLAUDE: &str = "/settings/claude";
 const CLAUDE_REMOVE: &str = "/settings/claude/remove";
 
 pub(crate) fn routes() -> Router<App> {
@@ -108,7 +108,7 @@ pub(crate) fn page(
 }
 
 /// A Settings page for `account`.
-pub(crate) fn page_as(
+pub fn page_as(
     headers: &HeaderMap,
     account: Account,
     title: &str,
@@ -489,7 +489,7 @@ async fn extra_hours(
 /// The Settings page: profile, theme, plan, and (when this server keeps
 /// keys) the Claude credential row with its hint and whether Manage can
 /// work.
-pub(crate) fn settings_content(
+pub fn settings_content(
     name: &str,
     claude: Option<(String, bool)>,
     chats: Option<usize>,
@@ -840,7 +840,7 @@ const TOKEN_REFUSED: &str = "Subscription tokens can't be saved here. Log in to 
 /// itself, and your own key with the Max and Team monthly API credits:
 /// what is saved (never the key itself), a remove button, and the form
 /// that adds or replaces it.
-pub(crate) fn claude_content(
+pub fn claude_content(
     saved: Option<(Material, &str)>,
     subscribe: Option<(&str, &str)>,
     add: (&str, &str),

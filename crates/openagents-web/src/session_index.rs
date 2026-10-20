@@ -112,7 +112,7 @@ impl Status {
 /// One session's summary. No transcript content.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Row {
+pub struct Row {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continues: Option<PartRef>,

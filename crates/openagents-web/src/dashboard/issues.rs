@@ -74,7 +74,7 @@ fn normalize_repositories(repositories: &mut Vec<String>) {
     repositories.sort_by_key(|r| r.to_ascii_lowercase());
     repositories.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
 }
-pub(super) fn query(filter: &IssueFilter, repositories: &[String], login: Option<&str>) -> String {
+pub fn query(filter: &IssueFilter, repositories: &[String], login: Option<&str>) -> String {
     let mut q = String::from("is:issue is:open");
     for r in repositories {
         q.push_str(&format!(" repo:{r}"));
@@ -87,7 +87,7 @@ pub(super) fn query(filter: &IssueFilter, repositories: &[String], login: Option
     }
     q
 }
-pub(super) async fn summary(
+pub async fn summary(
     State(app): State<App>,
     headers: HeaderMap,
     body: Result<Json<IssueFilter>, axum::extract::rejection::JsonRejection>,

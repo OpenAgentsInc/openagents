@@ -1017,7 +1017,7 @@ async fn sync_put(
 /// A question an item waits on.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Question {
+pub struct Question {
     pub id: String,
     pub text: String,
 }
@@ -1025,7 +1025,7 @@ pub(crate) struct Question {
 /// One piece of running work Coder reports for a computer.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Item {
+pub struct Item {
     pub id: String,
     pub kind: String,
     pub title: String,
@@ -1119,7 +1119,7 @@ fn checked_item(mut item: Item) -> Option<Item> {
 /// One computer's last report.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Board {
+pub struct Board {
     pub items: Vec<Item>,
     pub updated_unix: u64,
     pub digest: String,
@@ -1150,7 +1150,7 @@ pub(crate) struct Waiting {
 /// actions waiting for them.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Agents {
+pub struct Agents {
     #[serde(default)]
     pub schema: String,
     #[serde(default)]
@@ -1222,7 +1222,7 @@ pub(crate) async fn update_agents<T>(
 }
 
 /// The account's running work as stored; none is empty.
-pub(crate) async fn read_agents(store: &Store, owner: &str) -> Result<Agents, Error> {
+pub async fn read_agents(store: &Store, owner: &str) -> Result<Agents, Error> {
     update_agents(store, owner, |agents| (false, agents.clone())).await
 }
 
@@ -1430,7 +1430,7 @@ async fn app_viewer(app: &App, headers: &HeaderMap) -> Option<crate::cloud::sess
 /// The boards with each Mac job (#11223) as an item on its Mac's board,
 /// after what Coder reported there, so the phone and the web show a Mac's
 /// jobs with its other work.
-pub(crate) fn with_mac_jobs(
+pub fn with_mac_jobs(
     mut boards: BTreeMap<String, Board>,
     jobs: Vec<(String, Item)>,
 ) -> BTreeMap<String, Board> {

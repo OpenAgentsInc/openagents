@@ -59,7 +59,7 @@ async fn waiting(app: &App, chat: &Conversation) -> Option<Item> {
 
 /// The card for `item`'s question, or its empty place; both read
 /// themselves again while the page is open.
-pub(crate) fn card(token: &str, chat: &Conversation, item: Option<&Item>) -> Markup {
+pub fn card(token: &str, chat: &Conversation, item: Option<&Item>) -> Markup {
     let poll = format!("every {EVERY_SECONDS}s");
     let path = format!("/chat/{}/approval", chat.id);
     let Some((item, question)) = item.and_then(|item| Some((item, item.question.as_ref()?))) else {

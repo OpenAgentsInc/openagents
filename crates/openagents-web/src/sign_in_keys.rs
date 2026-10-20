@@ -44,7 +44,7 @@ use crate::coder_sync::refused;
 use crate::settings::{PAGE as SETTINGS, page, viewer};
 use crate::ui_page::action_link;
 
-pub(crate) const PAGE: &str = "/settings/sign-in-keys";
+pub const PAGE: &str = "/settings/sign-in-keys";
 pub(crate) const REVOKE: &str = "/settings/sign-in-keys/revoke";
 pub(crate) const API: &str = "/v1/keys";
 const API_ONE: &str = "/v1/keys/{id}";
@@ -107,8 +107,7 @@ fn problem(status: StatusCode, text: &str) -> Response {
     ))
 }
 
-pub(crate) const UNREACHABLE: &str =
-    "Your login keys can't be reached right now. Try again in a minute.";
+pub const UNREACHABLE: &str = "Your login keys can't be reached right now. Try again in a minute.";
 
 fn unreachable_service() -> Response {
     problem(StatusCode::BAD_GATEWAY, UNREACHABLE)
@@ -157,7 +156,7 @@ fn key_hint(key: &SignInKey) -> String {
 }
 
 /// The page: what a key is, the keys, the form that makes one.
-pub(crate) fn keys_content(keys: &[SignInKey], make: (&str, &str), revoke: (&str, &str)) -> Markup {
+pub fn keys_content(keys: &[SignInKey], make: (&str, &str), revoke: (&str, &str)) -> Markup {
     let name = Field::new("sign-in-key-name", "Name")
         .description("So you can tell your keys apart, such as \"build agent\".");
     let expires = Field::new("sign-in-key-expires", "Expires");
@@ -232,7 +231,7 @@ fn copy_line(text: &str) -> Markup {
 }
 
 /// The new key, shown once, with the line to use it.
-pub(crate) fn made_content(origin: &str, made: &MadeKey) -> Markup {
+pub fn made_content(origin: &str, made: &MadeKey) -> Markup {
     let save = if origin == "https://openagents.com" {
         "coder login --key".to_owned()
     } else {

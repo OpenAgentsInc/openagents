@@ -75,7 +75,7 @@ local)
     load OPENROUTER_API_KEY openrouter.env
     : "${TYPESAFE_API_KEY:?local needs TYPESAFE_API_KEY}"
     : "${AI_GATEWAY_API_KEY:?local needs AI_GATEWAY_API_KEY}"
-    (cd "$root" && cargo build -q -p coder --bin chat-goldens --bin coder-worker -p openagents-web --bin openagents-web)
+    (cd "$root" && cargo build -q -p coder --bin chat-goldens --bin coder-worker -p openagents-web-site --bin openagents-web)
     port=${CHAT_GOLDENS_PORT:-4399}
     work=$(mktemp -d "${TMPDIR:-/tmp}/chat-goldens.XXXXXX")
     (umask 077 && openssl rand -hex 32 > "$work/secret")

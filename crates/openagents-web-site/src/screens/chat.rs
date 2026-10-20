@@ -23,7 +23,7 @@ const PROJECT: &str = "prj_5a5a5a5a5a5a5a5a";
 const OTHER_PROJECT: &str = "prj_6b6b6b6b6b6b6b6b";
 const ENVIRONMENT: &str = "env_sample";
 
-pub(super) fn screens() -> Vec<Screen> {
+pub fn screens() -> Vec<Screen> {
     vec![
         Screen {
             id: "chat-new",

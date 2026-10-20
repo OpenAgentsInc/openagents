@@ -173,7 +173,7 @@ fn attach_form(project: &str, csrf: &str, id: &str, label: &str) -> Markup {
 }
 
 /// The sources page's body for `project`.
-pub(crate) fn view(
+pub fn view(
     project: &Project,
     csrf: &str,
     attached: &[Source],

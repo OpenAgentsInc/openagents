@@ -149,7 +149,7 @@ async fn finish(
     Err(Error::Conflict)
 }
 
-pub(crate) fn routes() -> Router<App> {
+pub fn routes() -> Router<App> {
     Router::new()
         .route("/v1/runs/{id}/commands", post(command))
         .layer(DefaultBodyLimit::max(20 * 1024))

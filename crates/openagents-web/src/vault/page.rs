@@ -147,7 +147,7 @@ pub(crate) async fn release(State(app): State<App>) -> Response {
 }
 
 /// The Settings row that opens the vault.
-pub(crate) fn settings_row() -> Markup {
+pub fn settings_row() -> Markup {
     html! {
         section class="oa-settings-group" aria-labelledby="settings-vault" {
             h2 #settings-vault { "Vault" }
@@ -290,7 +290,7 @@ fn primary(label: &str, id: &str) -> Button {
 }
 
 /// The page's markup: every state is here, hidden until the script shows it.
-pub(crate) fn content(
+pub fn content(
     csrf: &str,
     project: Option<(&str, &str)>,
     built: Option<(&str, &str)>,

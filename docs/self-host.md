@@ -171,7 +171,7 @@ separately or under your own service manager. In short:
 | Relay | `cargo build --release -p nostr-relay --bin nostr-relay` | `DATABASE_URL=... nostr-relay` |
 | Gateway | `cargo build --release -p gateway --bin gateway -p tenancy --example bootstrap_registry` | `bootstrap_registry` once to make the account registry and the worker's service key, then `gateway --config gateway.json` |
 | Chat worker | `cargo build --release -p coder --bin coder-worker` | `CODER_WORKER_SECRET=$(openssl rand -hex 32) CODER_RELAY=<relay> CODER_WORKER_OPEN=1 CODER_INFERENCE_URL=<gateway> CODER_INFERENCE_KEY=<service key> coder-worker`; it prints its public key on the `worker` line |
-| Website | `cargo build --release -p openagents-web --bin openagents-web` | `OPENAGENTS_WEB_CHAT_WORKER=<worker public key> OPENAGENTS_WEB_CHAT_RELAY=<relay> openagents-web --listen 127.0.0.1:4301 --chat-store <dir> --cloud-config cloud.json --github-oauth github-oauth.json` |
+| Website | `cargo build --release -p openagents-web-site --bin openagents-web` | `OPENAGENTS_WEB_CHAT_WORKER=<worker public key> OPENAGENTS_WEB_CHAT_RELAY=<relay> openagents-web --listen 127.0.0.1:4301 --chat-store <dir> --cloud-config cloud.json --github-oauth github-oauth.json` |
 
 What is optional:
 

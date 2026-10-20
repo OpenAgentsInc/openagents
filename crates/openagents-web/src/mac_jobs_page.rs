@@ -33,7 +33,7 @@ use crate::mac_jobs::{self, Answered, Job, JobState};
 use crate::settings::viewer;
 use crate::ui_page::UiPage;
 
-pub(crate) const PAGE: &str = "/settings/mac-jobs";
+pub const PAGE: &str = "/settings/mac-jobs";
 /// How often a page with a job going reads itself again, in seconds.
 const REFRESH_SECONDS: u32 = 5;
 /// The most log lines a job's page shows (the newest).
@@ -225,11 +225,7 @@ async fn list_page(
 }
 
 /// The Mac jobs list: the Macs that checked in, then every job.
-pub(crate) fn list_body(
-    found: &[(String, mac_jobs::Reported, bool)],
-    jobs: &[Job],
-    now: u64,
-) -> Markup {
+pub fn list_body(found: &[(String, mac_jobs::Reported, bool)], jobs: &[Job], now: u64) -> Markup {
     html! {
         div class="oa-settings" {
             p {
@@ -325,7 +321,7 @@ async fn job_page(
 }
 
 /// One job's page body.
-pub(crate) fn job_body(job: &Job, csrf: &str, now: u64) -> Markup {
+pub fn job_body(job: &Job, csrf: &str, now: u64) -> Markup {
     let shown = job.lines.len().saturating_sub(SHOWN_LINES);
     let stop = format!("{PAGE}/{}/stop", job.id);
     html! {

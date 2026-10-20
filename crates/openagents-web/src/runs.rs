@@ -215,14 +215,14 @@ async fn load(store: &Store, owner: &str) -> Result<(Book, Option<String>), Erro
 
 /// One account's run report and the server times that determine its presence.
 #[derive(Clone)]
-pub(crate) struct RunPresence {
-    pub(crate) beat: RunHeartbeat,
-    pub(crate) received_at: i64,
-    pub(crate) ended_at: Option<i64>,
+pub struct RunPresence {
+    pub beat: RunHeartbeat,
+    pub received_at: i64,
+    pub ended_at: Option<i64>,
 }
 
 impl RunPresence {
-    pub(crate) fn is_live(&self, at: i64) -> bool {
+    pub fn is_live(&self, at: i64) -> bool {
         self.ended_at.is_none() && at.saturating_sub(self.received_at) < LIVE_WINDOW_MS
     }
 }
@@ -245,7 +245,7 @@ pub(crate) async fn account_runs(store: &Store, owner: &str) -> Result<Vec<RunPr
 }
 
 /// A retained run at `at`. Callers authenticate before choosing `owner`.
-pub(crate) async fn lookup(
+pub async fn lookup(
     store: &Store,
     owner: &str,
     id: &str,
@@ -289,7 +289,7 @@ fn changed(result: Result<Result<(), Refusal>, Error>) -> Response {
         Err(e) => stored(&e),
     }
 }
-pub(crate) fn routes() -> Router<App> {
+pub fn routes() -> Router<App> {
     Router::new()
         .route("/v1/runs", get(list))
         .route("/v1/runs/{id}/heartbeat", put(heartbeat))

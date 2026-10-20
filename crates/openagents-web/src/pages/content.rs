@@ -28,7 +28,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 53] = [
+pub const DOCS: [(&str, &str); 53] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
@@ -324,7 +324,7 @@ async fn docs_index(headers: HeaderMap) -> Response {
 }
 
 /// The docs index for `headers`.
-pub(crate) fn docs_index_page(headers: &HeaderMap) -> Response {
+pub fn docs_index_page(headers: &HeaderMap) -> Response {
     let mut body = String::from(
         "<h1>Docs</h1><p class=\"oa-page-lead\">Guides to OpenAgents: the chat, the apps, custom \
 agents, Coder, plugins, and the Gym.</p>",
@@ -383,7 +383,7 @@ async fn doc(Path(slug): Path<String>, headers: HeaderMap) -> Response {
 }
 
 /// The guide `slug` for `headers`, or the not-found page.
-pub(crate) fn doc_page(headers: &HeaderMap, slug: &str) -> Response {
+pub fn doc_page(headers: &HeaderMap, slug: &str) -> Response {
     let Some(index) = DOCS.iter().position(|(name, _)| *name == slug) else {
         return problem(
             headers,
@@ -442,7 +442,7 @@ async fn terms(headers: HeaderMap) -> Response {
     terms_page(&headers)
 }
 
-pub(crate) fn terms_page(headers: &HeaderMap) -> Response {
+pub fn terms_page(headers: &HeaderMap) -> Response {
     article(
         markdown::title(TERMS, "Terms of Service"),
         "/terms",
@@ -455,7 +455,7 @@ async fn privacy(headers: HeaderMap) -> Response {
     privacy_page(&headers)
 }
 
-pub(crate) fn privacy_page(headers: &HeaderMap) -> Response {
+pub fn privacy_page(headers: &HeaderMap) -> Response {
     article(
         markdown::title(PRIVACY, "Privacy Policy"),
         "/privacy",

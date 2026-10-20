@@ -83,7 +83,7 @@ pub(crate) fn owns(path: &str) -> bool {
 /// The caller: the account service, their own token, and their account
 /// id; or the app API's refusal (`401 signed_out` when the token no
 /// longer signs in).
-pub(crate) async fn caller<'a>(
+pub async fn caller<'a>(
     app: &'a App,
     headers: &HeaderMap,
 ) -> Result<(&'a CloudSession, String, String), Response> {
@@ -115,7 +115,7 @@ fn signed_out() -> Response {
 }
 
 /// The app API's answer for a failed account-service call.
-pub(crate) fn failed(error: RepoCallError) -> Response {
+pub fn failed(error: RepoCallError) -> Response {
     match error {
         RepoCallError::Session(SessionError::Unauthenticated | SessionError::InvalidRequest) => {
             signed_out()
@@ -263,13 +263,13 @@ fn not_yours() -> Response {
 }
 
 /// The caller's projects, read with their own credential.
-pub(crate) async fn status(service: &CloudSession, token: &str) -> Result<Status, Response> {
+pub async fn status(service: &CloudSession, token: &str) -> Result<Status, Response> {
     service.github_status_as(token).await.map_err(failed)
 }
 
 /// The project `reference` names among `projects`: its id, or
 /// `name:NAME` (the exact name, when only one project has it).
-pub(crate) fn named<'a>(projects: &'a [Project], reference: &str) -> Result<&'a Project, Response> {
+pub fn named<'a>(projects: &'a [Project], reference: &str) -> Result<&'a Project, Response> {
     if let Some(name) = reference.strip_prefix("name:") {
         let found: Vec<&Project> = projects.iter().filter(|p| p.name == name).collect();
         return match found.as_slice() {

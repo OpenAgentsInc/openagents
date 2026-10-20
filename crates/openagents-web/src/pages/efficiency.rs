@@ -259,7 +259,7 @@ async fn efficiency_page(headers: HeaderMap) -> Response {
 }
 
 /// The page for `headers`.
-pub(crate) fn page(headers: &HeaderMap) -> Response {
+pub fn page(headers: &HeaderMap) -> Response {
     UiPage::new("Efficiency")
         .path("/efficiency")
         .scriptless()

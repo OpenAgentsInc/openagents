@@ -65,7 +65,7 @@ pub(crate) const DESKTOP_VERSION: &str = "1.0.0";
 /// `scripts/desktop/retire-prerelease.sh` moves aside; turn this on once the
 /// release run has published the real ones (`docs/desktop/release.md`,
 /// Release day). Until then the page shows no desktop downloads.
-pub(crate) const DESKTOP_RELEASED: bool = false;
+pub const DESKTOP_RELEASED: bool = false;
 
 /// Every download the page offers outside Coder. Coder's own files come
 /// from [`CODER_PLATFORMS`] and its installers.
@@ -195,7 +195,7 @@ async fn download(headers: HeaderMap) -> Response {
 }
 
 /// The page for `headers`; `desktop` shows the desktop downloads.
-pub(crate) fn download_page(headers: &HeaderMap, desktop: bool) -> Response {
+pub fn download_page(headers: &HeaderMap, desktop: bool) -> Response {
     let mut response = UiPage::new("Download OpenAgents")
         .section("/download")
         .path("/download")

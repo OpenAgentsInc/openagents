@@ -50,7 +50,7 @@ use crate::coder_sync::{answer, line, refused, stored};
 use crate::settings::{page, viewer};
 use crate::ui_page::action_link;
 
-pub(crate) const PAGE: &str = "/settings/memory";
+pub const PAGE: &str = "/settings/memory";
 const SAVE: &str = "/settings/memory/save";
 const DELETE: &str = "/settings/memory/delete";
 const API: &str = "/coder/memory";
@@ -86,7 +86,7 @@ const KINDS: [(&str, &str); 4] = [
 /// One note, or the fact that one was deleted, as Coder's sync record has
 /// it (`coder-new` `memory::SyncRecord`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Note {
+pub struct Note {
     pub id: String,
     pub scope: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -687,7 +687,7 @@ fn note_form(note: Option<&Note>, save: (&str, &str), prefix: &str) -> Markup {
 
 /// The page: what memory is, the notes by where they apply, and a form
 /// for a new note.
-pub(crate) fn memory_content(notes: &[&Note], save: (&str, &str), delete: (&str, &str)) -> Markup {
+pub fn memory_content(notes: &[&Note], save: (&str, &str), delete: (&str, &str)) -> Markup {
     let everywhere: Vec<&Note> = notes
         .iter()
         .copied()

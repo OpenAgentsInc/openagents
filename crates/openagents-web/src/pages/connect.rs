@@ -112,7 +112,7 @@ pub(crate) async fn connect(headers: HeaderMap) -> Response {
 }
 
 /// The page itself, for `headers`.
-pub(crate) fn connect_page(headers: &HeaderMap) -> Response {
+pub fn connect_page(headers: &HeaderMap) -> Response {
     let content = PageColumn::new(html! {
         article.oa-card id="connect" {
             (MarkdownRoot::new(html! {

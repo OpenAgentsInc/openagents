@@ -15,46 +15,55 @@
 pub mod account;
 mod account_delete;
 mod account_export;
-mod account_memory;
-mod account_schedules;
+#[doc(hidden)]
+pub mod account_memory;
+#[doc(hidden)]
+pub mod account_schedules;
 pub mod actors_host;
-mod agent_accounts;
+#[doc(hidden)]
+pub mod agent_accounts;
 mod agent_assignments;
 mod agent_assignments_openapi;
-mod agent_card_page;
 mod agent_lab;
 mod agent_lab_openapi;
-mod agent_lab_page;
-mod agent_ready;
+#[doc(hidden)]
+pub mod agent_ready;
 mod agent_work;
 mod agents_door;
-mod agents_page;
+#[doc(hidden)]
+pub mod agents_page;
 pub mod analytics;
 mod answer_ui;
 mod api_alias;
 mod api_host;
-mod api_keys;
+#[doc(hidden)]
+pub mod api_keys;
 pub mod app_openapi;
 pub mod ask;
 mod attention;
 mod attention_openapi;
 pub mod attribution;
-mod auth;
+#[doc(hidden)]
+pub mod auth;
 pub mod backend;
 mod chat_api;
 mod chat_api_openapi;
 mod chat_export;
 mod chat_files;
-mod chat_html;
+#[doc(hidden)]
+pub mod chat_html;
 mod chat_owner;
 pub mod chat_store;
 mod chat_vision;
 pub mod cloud;
 mod cloud_host;
-mod coder_sync;
-mod components;
+#[doc(hidden)]
+pub mod coder_sync;
+#[doc(hidden)]
+pub mod components;
 mod composer;
-mod composer_row;
+#[doc(hidden)]
+pub mod composer_row;
 pub mod compress;
 mod computer_runs;
 pub mod computers;
@@ -66,23 +75,29 @@ mod continuations_openapi;
 mod cookie_api;
 mod custom_agents;
 mod custom_agents_openapi;
-mod dashboard;
+#[doc(hidden)]
+pub mod dashboard;
 mod dashboard_openapi;
-mod demo;
-mod device;
+#[doc(hidden)]
+pub mod demo;
+#[doc(hidden)]
+pub mod device;
 mod device_nostr;
 mod docs_mcp;
 mod door_route;
-mod environments;
+#[doc(hidden)]
+pub mod environments;
 pub mod features;
 mod issue_claims;
 mod issue_claims_openapi;
 mod owner_notifications;
 mod profiles;
+#[doc(hidden)]
+pub mod promises;
 mod published_agents;
-mod run_commands;
 mod run_commands_openapi;
-mod runs;
+#[doc(hidden)]
+pub mod runs;
 mod runs_openapi;
 mod sand_gallery;
 mod session_index;
@@ -106,53 +121,69 @@ mod labs;
 pub mod labs_api;
 pub(crate) mod labs_kinds;
 pub mod landing;
-mod layout;
+#[doc(hidden)]
+pub mod layout;
 mod link_preview;
 pub mod mac_jobs;
-mod mac_jobs_actor;
-mod mac_jobs_page;
-mod markdown;
-mod oauth;
+#[doc(hidden)]
+pub mod mac_jobs_actor;
+#[doc(hidden)]
+pub mod mac_jobs_page;
+#[doc(hidden)]
+pub mod markdown;
+#[doc(hidden)]
+pub mod oauth;
 mod older_paths;
 pub mod own_runs;
-mod pages;
+#[doc(hidden)]
+pub mod pages;
 pub mod palette;
 mod payments;
-mod phone_api;
+#[doc(hidden)]
+pub mod phone_api;
 pub mod pilot;
 pub mod plan;
 mod project_openapi;
-mod projects;
-mod promises;
-mod purchases;
+#[doc(hidden)]
+pub mod projects;
+#[doc(hidden)]
+pub mod purchases;
 mod repo_snapshot;
 mod robot_lab;
 mod room_tokens;
 pub mod sales_remote;
-mod screens;
-mod settings;
+#[doc(hidden)]
+pub mod settings;
 mod ship_lab;
 pub mod shutdown;
-mod sign_in_keys;
-mod suggestions;
+#[doc(hidden)]
+pub mod sign_in_keys;
+#[doc(hidden)]
+pub mod suggestions;
 mod systemone_openapi;
-mod tasks;
-mod terminal_connect;
+#[doc(hidden)]
+pub mod tasks;
+#[doc(hidden)]
+pub mod terminal_connect;
 pub mod test_runs;
 pub mod theme;
 mod thread_openapi;
 mod trace_view;
-mod traces;
+#[doc(hidden)]
+pub mod traces;
 pub mod ui_page;
 pub mod upstream;
-mod vault;
+#[doc(hidden)]
+pub mod vault;
 mod verse_key;
 mod visitor_api;
 mod wallet_browser;
 mod web_sign_in;
 mod wellknown;
-mod work_runs;
-mod workos_auth;
+#[doc(hidden)]
+pub mod work_runs;
+#[doc(hidden)]
+pub mod workos_auth;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -686,9 +717,9 @@ impl Config {
 
 /// The router's shared state.
 #[derive(Clone)]
-pub(crate) struct App(Arc<Inner>);
+pub struct App(pub Arc<Inner>);
 
-pub(crate) struct Inner {
+pub struct Inner {
     pub config: Config,
 }
 
@@ -699,8 +730,15 @@ impl std::ops::Deref for App {
     }
 }
 
-/// The whole site.
-pub fn router(mut config: Config) -> Router {
+/// The whole site, without the routes `openagents-web-site` adds (the
+/// screens gallery and the pages only it serves, #12184).
+pub fn router(config: Config) -> Router {
+    router_with(config, |site| site)
+}
+
+/// The whole site, with `extend` adding routes before the site's layers
+/// and fallback apply to them: `openagents-web-site` adds its own.
+pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -> Router {
     config.chat_store = Arc::new(
         (*config.chat_store)
             .clone()
@@ -747,13 +785,11 @@ pub fn router(mut config: Config) -> Router {
         .route("/static/flow.js", get(flow_script))
         .route("/static/everglade.js", get(everglade_script))
         .route("/ui", get(ui_catalog))
-        .merge(screens::routes())
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
         .merge(sand_gallery::routes())
         .merge(purchases::routes())
-        .merge(components::routes())
         .merge(chat_html::routes())
         .merge(chat_files::routes())
         .merge(chat_export::routes())
@@ -761,7 +797,6 @@ pub fn router(mut config: Config) -> Router {
         .merge(composer::routes())
         // The fallback and GPUI Send with files share this selector row.
         .merge(composer_row::routes())
-        .merge(demo::routes())
         .merge(environments::routes(&app))
         .merge(cloud::routes())
         .merge(auth::routes())
@@ -777,7 +812,6 @@ pub fn router(mut config: Config) -> Router {
         .merge(runs::routes())
         .merge(attention::routes())
         .merge(issue_claims::routes())
-        .merge(run_commands::routes())
         .merge(labs_api::routes(&app))
         .merge(lab_card_view::routes())
         .merge(custom_agents::routes())
@@ -788,9 +822,10 @@ pub fn router(mut config: Config) -> Router {
         .merge(verse_key::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())
-        .merge(agent_lab_page::routes())
-        .merge(agent_card_page::routes())
         .merge(dashboard::routes())
+        .merge(components::routes())
+        .merge(demo::routes())
+        .merge(promises::routes())
         .merge(own_runs::routes())
         .merge(mac_jobs::routes())
         .merge(mac_jobs_page::routes())
@@ -818,7 +853,6 @@ pub fn router(mut config: Config) -> Router {
         .merge(cad_lab::routes())
         .merge(cad_web::routes())
         .merge(connections::routes())
-        .merge(promises::routes())
         .merge(pilot::routes())
         .merge(ask::routes())
         .merge(tasks::routes())
@@ -827,7 +861,8 @@ pub fn router(mut config: Config) -> Router {
         .merge(docs_mcp::routes())
         .merge(oauth::routes())
         .merge(analytics::routes())
-        .merge(attribution::routes())
+        .merge(attribution::routes());
+    let site = extend(site)
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
         .layer(middleware::from_fn_with_state(
@@ -1184,7 +1219,7 @@ fn legacy_css() -> String {
 }
 
 /// Prefix a web surface's rules with the shared system font stacks.
-pub(crate) fn with_fonts(rules: &str) -> String {
+pub fn with_fonts(rules: &str) -> String {
     format!("{}{rules}", include_str!("../static/fonts.css"))
 }
 
@@ -1342,7 +1377,7 @@ pub(crate) fn not_found_page() -> Response {
 }
 
 /// [`not_found_page`] in the theme `headers` choose.
-pub(crate) fn not_found_for(headers: &axum::http::HeaderMap) -> Response {
+pub fn not_found_for(headers: &axum::http::HeaderMap) -> Response {
     ui_page::problem(
         headers,
         StatusCode::NOT_FOUND,
@@ -1356,8 +1391,9 @@ pub(crate) fn not_found_for(headers: &axum::http::HeaderMap) -> Response {
 mod agent_ready_tests;
 #[cfg(test)]
 mod coder_commands_guard;
-#[cfg(test)]
-mod copy_guard;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod copy_guard;
 #[cfg(test)]
 mod route_owners_tests;
 #[cfg(test)]

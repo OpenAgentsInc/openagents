@@ -56,7 +56,7 @@ pub(crate) fn body() -> Markup {
 }
 
 /// The page for `headers`.
-pub(crate) fn page(headers: &HeaderMap) -> Response {
+pub fn page(headers: &HeaderMap) -> Response {
     UiPage::new("Affiliates")
         .path(AFFILIATES)
         .scriptless()

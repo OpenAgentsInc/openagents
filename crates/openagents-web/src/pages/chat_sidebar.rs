@@ -47,7 +47,7 @@ const MENU_PROJECTS: usize = 6;
 /// What the list shows: the open chat (rows then load with HTMX), the
 /// search text, and the chat just archived (its Undo notice).
 #[derive(Clone, Copy, Default)]
-pub(crate) struct View<'a> {
+pub struct View<'a> {
     pub current: Option<&'a str>,
     pub hx: bool,
     pub q: &'a str,
@@ -161,7 +161,7 @@ fn project_of<'a>(chat: &Conversation, view: View<'a>) -> Option<&'a oa_auth::re
 }
 
 /// The list from loaded rows (newest first, as the store sorts them).
-pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: View<'_>) -> ChatList {
+pub fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: View<'_>) -> ChatList {
     let q = view.q.trim();
     let shown: Vec<&Conversation> = rows
         .iter()
@@ -790,7 +790,7 @@ async fn rename_field(
 }
 
 /// The inline field that renames `chat`'s row, back on `current`'s page.
-pub(crate) fn rename_row(chat: &Conversation, current: &str, token: &str) -> RowRename {
+pub fn rename_row(chat: &Conversation, current: &str, token: &str) -> RowRename {
     let id = &chat.id;
     let back = if current.is_empty() {
         "/".to_owned()
@@ -812,7 +812,7 @@ pub(crate) fn rename_row(chat: &Conversation, current: &str, token: &str) -> Row
 }
 
 /// The Rename chat page, without JavaScript: the field, beside the list.
-pub(crate) fn rename_page(
+pub fn rename_page(
     headers: &HeaderMap,
     chat: &Conversation,
     field: RowRename,
@@ -929,7 +929,7 @@ async fn archived(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 /// The Archived chats page: `rows`, newest first, each with Restore.
-pub(crate) fn archived_page(
+pub fn archived_page(
     headers: &HeaderMap,
     rows: &[Conversation],
     token: &str,
@@ -1048,7 +1048,7 @@ async fn move_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
 
 /// The Move to project page for `chat`: one button per project, and No
 /// project.
-pub(crate) fn move_page_for(
+pub fn move_page_for(
     headers: &HeaderMap,
     chat: &Conversation,
     projects: &[oa_auth::repos::Project],

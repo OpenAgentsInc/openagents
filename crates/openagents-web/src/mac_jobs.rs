@@ -129,7 +129,7 @@ pub(crate) fn owns(path: &str) -> bool {
 // ------------------------------------------------------------------ records
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Reported {
+pub struct Reported {
     pub reported_unix: u64,
     pub capabilities: Capabilities,
 }
@@ -224,7 +224,7 @@ pub(crate) struct Artifact {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Job {
+pub struct Job {
     schema: String,
     pub id: String,
     pub computer: String,

@@ -1388,15 +1388,15 @@ pub(crate) async fn take_replies(
     Ok(taken)
 }
 
-pub(crate) fn answer(status: StatusCode, body: Value) -> Response {
+pub fn answer(status: StatusCode, body: Value) -> Response {
     protect((status, axum::Json(body)).into_response())
 }
 
-pub(crate) fn refused(status: StatusCode, code: &str, message: &str) -> Response {
+pub fn refused(status: StatusCode, code: &str, message: &str) -> Response {
     answer(status, json!({"error": {"code": code, "message": message}}))
 }
 
-pub(crate) fn stored(error: &Error) -> Response {
+pub fn stored(error: &Error) -> Response {
     eprintln!("openagents-web: coder sync: {error}");
     refused(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -1432,7 +1432,7 @@ fn respond(result: Result<Saved, Error>) -> Response {
 }
 
 /// The account a request's app token signs in, as its chat owner.
-pub(crate) async fn owner(app: &App, headers: &HeaderMap) -> Result<String, Response> {
+pub async fn owner(app: &App, headers: &HeaderMap) -> Result<String, Response> {
     account(app, headers)
         .await
         .map(|account| account_owner(&account))
@@ -1440,7 +1440,7 @@ pub(crate) async fn owner(app: &App, headers: &HeaderMap) -> Result<String, Resp
 
 /// The account id an app's own token (`Authorization: Bearer sess_…`)
 /// belongs to, checked as [`owner`] checks it.
-pub(crate) async fn account(app: &App, headers: &HeaderMap) -> Result<String, Response> {
+pub async fn account(app: &App, headers: &HeaderMap) -> Result<String, Response> {
     let Some(service) = app.config.cloud.as_deref() else {
         return Err(refused(
             StatusCode::SERVICE_UNAVAILABLE,

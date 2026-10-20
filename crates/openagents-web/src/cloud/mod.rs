@@ -79,7 +79,7 @@ pub(crate) fn service(app: &App) -> Result<&CloudSession, Response> {
 }
 
 /// The private headers every account page and answer carries.
-pub(crate) fn protect(mut response: Response) -> Response {
+pub fn protect(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert(
         header::CACHE_CONTROL,

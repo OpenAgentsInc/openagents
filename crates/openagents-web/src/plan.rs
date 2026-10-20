@@ -83,7 +83,7 @@ impl Plans {
 
     /// What Settings shows for `account` now. `returned`: the browser just
     /// came back from checkout.
-    pub(crate) fn view(&self, account: &str, now: i64, returned: bool) -> View {
+    pub fn view(&self, account: &str, now: i64, returned: bool) -> View {
         let summary = self.meter.as_ref().map(|meter| {
             meter
                 .lock()
@@ -128,7 +128,7 @@ pub(crate) fn on_pro(app: &crate::App, account: &str) -> bool {
 }
 
 /// One account's plan section.
-pub(crate) struct View {
+pub struct View {
     pub terms: EnvironmentPlan,
     /// `None`: no meter here. `Some(None)`: the meter can't be read.
     pub summary: Option<Option<Summary>>,
@@ -207,11 +207,7 @@ fn post_button(action: &str, label: &str, ticket: (&str, &str)) -> Markup {
 
 /// The Plan section. `csrf` is the extra-hours form's ticket and request;
 /// `checkout` is the Subscribe / Manage subscription forms' ticket.
-pub(crate) fn section(
-    view: &View,
-    csrf: Option<(&str, &str)>,
-    checkout: Option<(&str, &str)>,
-) -> Markup {
+pub fn section(view: &View, csrf: Option<(&str, &str)>, checkout: Option<(&str, &str)>) -> Markup {
     let t = &view.terms;
     let active = match &view.summary {
         Some(Some(s)) => match &s.standing {

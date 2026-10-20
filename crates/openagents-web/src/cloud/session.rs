@@ -256,7 +256,7 @@ impl Drop for CloudSession {
 impl CloudSession {
     /// Import the request's own browser session into the public client. The
     /// account is checked again by the public API; no service identity is used.
-    pub(crate) async fn computer_session(
+    pub async fn computer_session(
         &self,
         headers: &HeaderMap,
         client: &openagents_sdk::Client,
@@ -1348,7 +1348,7 @@ fn action(scope: &str, target: &str) -> Result<()> {
     }
     Ok(())
 }
-pub(crate) fn now() -> u64 {
+pub fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |value| value.as_secs())
@@ -1367,7 +1367,7 @@ pub(crate) fn standing_value(viewer: &Viewer) -> serde_json::Value {
 }
 
 pub mod device;
-pub(crate) mod github;
+pub mod github;
 mod lab_workers;
 mod nostr;
 pub(crate) mod oauth;

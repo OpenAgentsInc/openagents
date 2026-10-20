@@ -73,7 +73,7 @@ if [ -n "$build" ]; then
             && cargo build -q -p tenancy --example bootstrap_registry)
     else
         (cd "$root" && cargo build -q -p gateway --bin gateway -p coder --bin coder-worker \
-            -p openagents-web --bin openagents-web && cargo build -q -p tenancy --example bootstrap_registry)
+            -p openagents-web-site --bin openagents-web && cargo build -q -p tenancy --example bootstrap_registry)
     fi
 fi
 

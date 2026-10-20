@@ -2,12 +2,12 @@
 use super::*;
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Moderation {
+pub struct Moderation {
     request_id: String,
     expected_revision: u64,
     remove: bool,
 }
-pub(super) async fn moderate(
+pub async fn moderate(
     State(app): State<App>,
     headers: HeaderMap,
     Path(id): Path<String>,

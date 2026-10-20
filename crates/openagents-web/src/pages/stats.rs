@@ -135,7 +135,7 @@ pub(crate) struct SeriesPoint {
 
 /// The pay host's `/stats`.
 #[derive(Debug, Deserialize)]
-pub(crate) struct Stats {
+pub struct Stats {
     #[serde(default)]
     totals: Totals,
     #[serde(default)]
@@ -184,7 +184,7 @@ impl Event {
 
 /// The pay host's `/flow/snapshot`, the part this page reads.
 #[derive(Debug, Default, Deserialize)]
-pub(crate) struct Snapshot {
+pub struct Snapshot {
     #[serde(default)]
     events: Vec<Event>,
 }
@@ -221,7 +221,7 @@ async fn stats(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 /// The page for `headers` from what the pay host answered.
-pub(crate) fn stats_page(
+pub fn stats_page(
     headers: &HeaderMap,
     stats: Option<&Stats>,
     snapshot: Option<&Snapshot>,

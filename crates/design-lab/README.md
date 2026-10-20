@@ -51,7 +51,7 @@ cargo run -p design-lab -- spec m1                     # a mock's spec as Markdo
   `cargo check -p openagents-ui --example design-lab-tour --features account-fixture`
   from `apps/openagents`.
 - **The website, live.** **Web** shows every screen of the web app's
-  screens gallery (`crates/openagents-web/src/screens/`), in every state,
+  screens gallery (`crates/openagents-web-site/src/screens/`), in every state,
   as the live page: each frame is `/ui/screens/{screen}/{state}?theme=`
   from a running web server, not a picture. The board reads the list from
   that server's `/ui/screens.json`, so a screen added to the gallery shows

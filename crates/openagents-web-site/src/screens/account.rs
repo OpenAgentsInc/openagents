@@ -24,7 +24,7 @@ const REPO: &str = "sample-org/sample-app";
 const ENV: &str = "env-sample-1";
 const RUN: &str = "claude-env-sample-1-1";
 
-pub(crate) fn screens() -> Vec<Screen> {
+pub fn screens() -> Vec<Screen> {
     vec![
         Screen {
             id: "settings",

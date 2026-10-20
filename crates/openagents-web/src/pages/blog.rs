@@ -30,7 +30,7 @@ use crate::markdown;
 use crate::ui_page::{UiPage, action_link, problem, prose};
 
 /// The posts, by slug. [`posts`] sorts them newest first.
-pub(crate) const POSTS: [(&str, &str); 1] =
+pub const POSTS: [(&str, &str); 1] =
     [("coder-1-0", include_str!("../../content/blog/coder-1-0.md"))];
 
 /// What the blog is, in one line.
@@ -178,7 +178,7 @@ async fn index(headers: HeaderMap) -> Response {
 
 /// `/blog` for `headers`: every post, newest first, with its date and
 /// summary.
-pub(crate) fn index_page(headers: &HeaderMap) -> Response {
+pub fn index_page(headers: &HeaderMap) -> Response {
     let mut body = format!(
         "<h1>Blog</h1><p class=\"oa-page-lead\">{}</p>",
         escape(LEAD)
@@ -247,7 +247,7 @@ async fn page(Path(slug): Path<String>, headers: HeaderMap) -> Response {
 }
 
 /// The post `slug` for `headers`, or the not-found page.
-pub(crate) fn post_page(headers: &HeaderMap, slug: &str) -> Response {
+pub fn post_page(headers: &HeaderMap, slug: &str) -> Response {
     let Some(post) = post(slug) else {
         return problem(
             headers,

@@ -147,7 +147,7 @@ cargo_build() {
 build() {
     echo "Building into $target ..."
     if ! cargo_build -p gateway --bin gateway -p coder --bin coder-worker --bin chat-goldens \
-        -p openagents-web --bin openagents-web -p coder-new --bin coder-new \
+        -p openagents-web-site --bin openagents-web -p coder-new --bin coder-new \
         -p tenancy --example bootstrap_registry > "$logs/build.log" 2>&1; then
         tail -n 30 "$logs/build.log" >&2
         echo "The build failed; the whole output is in $logs/build.log" >&2

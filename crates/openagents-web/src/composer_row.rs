@@ -91,7 +91,7 @@ pub(crate) struct Wanted {
 
 /// Where a message runs.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Target {
+pub enum Target {
     /// Answered here.
     Chat,
     /// Claude Code in this saved environment (its id).
@@ -129,7 +129,7 @@ impl Target {
 
 /// A saved environment Claude Code can run in now.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Environment {
+pub struct Environment {
     pub id: String,
     pub repository: String,
     /// The branch the environment was set up on.
@@ -152,7 +152,7 @@ impl Environment {
 
 /// What this person can pick on this server, now.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Choices {
+pub struct Choices {
     pub projects: Vec<Project>,
     /// GitHub is connected (repositories can be added on `/projects`).
     pub connected: bool,
@@ -204,7 +204,7 @@ pub(crate) const CONNECT_KEY: &str = "/settings/claude#key";
 
 /// What the row shows and a message sent now uses.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Picked {
+pub struct Picked {
     pub project: Option<Project>,
     pub branch: Option<String>,
     pub target: Target,
@@ -498,7 +498,7 @@ fn href(path: &str, pairs: &[(&str, String)]) -> String {
 /// The row with `picked`: its three fields and the selectors this person
 /// can use (none at all without `choices`). `focus` names the dropdown
 /// that takes focus; `oob` replaces the page's row.
-pub(crate) fn row(
+pub fn row(
     choices: Option<&Choices>,
     picked: &Picked,
     chat: Option<&str>,
@@ -575,12 +575,7 @@ pub(crate) fn row(
 /// over the page (`hx-get`, appended to the body, outside this form) and,
 /// without script, opens the same steps as a page; it returns to `chat`.
 /// With `keys` (this server keeps people's own keys), Use a key.
-pub(crate) fn connect_card(
-    env: &str,
-    subscription: bool,
-    keys: bool,
-    chat: Option<&str>,
-) -> Markup {
+pub fn connect_card(env: &str, subscription: bool, keys: bool, chat: Option<&str>) -> Markup {
     use crate::settings::subscription::PATH;
     let back = chat.map_or_else(|| "/".to_owned(), |chat| format!("/chat/{chat}"));
     let page = href(PATH, &[("back", back.clone())]);
@@ -782,7 +777,7 @@ async fn choose(
 }
 
 /// The Project (`kind` "project") or Where it runs panel the row loads.
-pub(crate) fn panel(kind: &str, choices: &Choices, picked: &Picked, chat: Option<&str>) -> Markup {
+pub fn panel(kind: &str, choices: &Choices, picked: &Picked, chat: Option<&str>) -> Markup {
     let with = |change: &dyn Fn(&mut Picked), focus: &str| {
         let mut next = picked.clone();
         change(&mut next);

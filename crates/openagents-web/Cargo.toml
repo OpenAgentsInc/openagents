@@ -5,9 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 description = "The OpenAgents website: public pages, legal documents, the install and pairing pages, and the local read-only task browser."
-default-run = "openagents-web"
 
 [dependencies]
+# The machine-talk guard, under `test-support` (see [features]).
+oa-copy = { path = "../oa-copy", optional = true }
 cad = { path = "../cad" }
 async-trait = "0.1"
 lab-api = { path = "../lab-api" }
@@ -134,6 +135,11 @@ toml = "0.9"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 url = "2"
 workbench = { path = "../workbench" }
+
+[features]
+# The site's machine-talk guard for other crates' tests
+# (`openagents-web-site`, #12184).
+test-support = ["dep:oa-copy"]
 
 [dev-dependencies]
 nostr = { path = "../nostr", features = ["test-invoice"] }

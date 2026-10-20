@@ -550,7 +550,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bound = listener.local_addr()?;
     config.port = bound.port();
     println!("OpenAgents web is listening on http://{bound} (development backend)");
-    let router = openagents_web::router(config);
+    let router = openagents_web::router_with(config, openagents_web_site::routes);
     openagents_web::compress::warm();
     // SIGTERM (a Cloud Run rollout or scale-in) or ctrl-c: stop accepting,
     // end open event streams, let requests in flight finish within the

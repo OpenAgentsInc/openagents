@@ -322,7 +322,7 @@ fn respond(
 }
 
 /// Plain words for a code that can't be approved.
-pub(crate) fn problem_text(code: &str) -> &'static str {
+pub fn problem_text(code: &str) -> &'static str {
     match code {
         "expired_token" => "That code expired. Start login again on your computer.",
         "invalid_grant" => "That code isn't right, or it was already used. Check it and try again.",
@@ -333,7 +333,7 @@ pub(crate) fn problem_text(code: &str) -> &'static str {
 
 /// The form to type a code, with an optional problem above it: a card
 /// with the code field and Continue.
-pub(crate) fn code_form(typed: &str, problem: Option<&str>) -> Markup {
+pub fn code_form(typed: &str, problem: Option<&str>) -> Markup {
     let field = Field::new("device-code", "Code")
         .required(true)
         .error_opt(problem)
@@ -363,7 +363,7 @@ pub(crate) fn code_form(typed: &str, problem: Option<&str>) -> Markup {
 
 /// "Sign in to Coder on <computer>?": the code shown large, what's
 /// asking, and Deny and Approve.
-pub(crate) fn approve_form(code: &str, app: &str, computer: &str, csrf: &str) -> Markup {
+pub fn approve_form(code: &str, app: &str, computer: &str, csrf: &str) -> Markup {
     approve_form_returning(code, app, computer, csrf, false)
 }
 
@@ -630,16 +630,16 @@ pub(crate) async fn computers_section(
 }
 
 /// One signed-in computer in Settings.
-pub(crate) struct Row<'a> {
-    pub(crate) session: &'a crate::cloud::session::device::AppSession,
+pub struct Row<'a> {
+    pub session: &'a crate::cloud::session::device::AppSession,
     /// The Remove ticket.
-    pub(crate) csrf: String,
+    pub csrf: String,
     /// The choice forms' ticket.
-    pub(crate) sync: String,
-    pub(crate) choice: Option<crate::chat_store::SyncChoice>,
+    pub sync: String,
+    pub choice: Option<crate::chat_store::SyncChoice>,
 }
 
-pub(crate) fn computers_markup(rows: &[Row<'_>]) -> Markup {
+pub fn computers_markup(rows: &[Row<'_>]) -> Markup {
     html! {
         div class="oa-settings" {
             section class="oa-settings-group" aria-labelledby="settings-computers" {

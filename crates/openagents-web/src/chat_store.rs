@@ -27,7 +27,7 @@ const METADATA_TOKEN: &str =
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Conversation {
+pub struct Conversation {
     #[serde(default, flatten)]
     pub links: chat_home::Links,
     pub id: String,
@@ -276,7 +276,7 @@ pub(crate) const MAX_WEB_REPLY_BYTES: usize = 16 * 1024;
 /// small record beside the account's chats.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Computers {
+pub struct Computers {
     #[serde(default)]
     pub seen: BTreeMap<String, u64>,
     #[serde(default)]
@@ -291,7 +291,7 @@ pub(crate) struct Computers {
 /// Where a computer's chats live (#11089).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum SyncChoice {
+pub enum SyncChoice {
     /// Sync all my chats.
     All,
     /// Keep chats on this computer.
@@ -1196,7 +1196,7 @@ impl Store {
 
     /// The account's Coder computers and waiting replies (#11048). None
     /// saved is empty.
-    pub(crate) async fn computers(&self, owner: &str) -> Result<Computers, Error> {
+    pub async fn computers(&self, owner: &str) -> Result<Computers, Error> {
         validate_owner(owner)?;
         match self.0.as_ref() {
             Adapter::Disk(root) => {
@@ -1437,7 +1437,7 @@ impl Store {
     /// An account's own object key beside its chats: `rest` under the
     /// owner's folder (uploaded traces, `crate::traces`). Such objects are
     /// never listed as chats and never expire with them.
-    pub(crate) fn owner_key(owner: &str, rest: &str) -> Result<String, Error> {
+    pub fn owner_key(owner: &str, rest: &str) -> Result<String, Error> {
         validate_owner(owner)?;
         let key = format!("{}/{rest}", owner_digest(owner));
         valid_key(&key)?;
@@ -1446,7 +1446,7 @@ impl Store {
 
     /// The object at `key` ([`Self::owner_key`] or another fixed key) and
     /// its generation; `None` when there is none.
-    pub(crate) async fn read_key(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, Error> {
+    pub async fn read_key(&self, key: &str) -> Result<Option<(Vec<u8>, String)>, Error> {
         valid_key(key)?;
         match self.0.as_ref() {
             Adapter::Disk(root) => {
@@ -1460,7 +1460,7 @@ impl Store {
     /// Write `bytes` at `key` when it is still at `expected` (`None`: only
     /// when nothing is there). Returns the new generation; `Conflict` when
     /// it changed.
-    pub(crate) async fn write_key(
+    pub async fn write_key(
         &self,
         key: &str,
         bytes: Vec<u8>,
@@ -3057,7 +3057,7 @@ const ACCOUNT_OWNER: &str = "account:";
 /// The owner value for a signed-in account's chats: a digest of the account
 /// id, so storage never holds the id itself, in a shape no visitor cookie
 /// can take.
-pub(crate) fn account_owner(account_id: &str) -> String {
+pub fn account_owner(account_id: &str) -> String {
     let mut hash = Sha256::new();
     hash.update(b"openagents.web.chat.account.v1\0");
     hash.update(account_id.as_bytes());
@@ -3088,11 +3088,11 @@ fn owner_digest(owner: &str) -> String {
     format!("{:x}", hash.finalize())
 }
 
-pub(crate) fn digest(bytes: &[u8]) -> String {
+pub fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-pub(crate) fn now_unix() -> u64 {
+pub fn now_unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

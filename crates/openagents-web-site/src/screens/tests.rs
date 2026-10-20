@@ -329,9 +329,11 @@ fn live_get_routes() -> Vec<(String, String)> {
         out.push_str(rest);
         out
     }
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    // The site's routes live in this crate and in the library (#12184).
+    let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = Vec::new();
-    walk(&root, &mut files);
+    walk(&here.join("src"), &mut files);
+    walk(&here.join("../openagents-web/src"), &mut files);
     let mut routes = Vec::new();
     for file in files {
         let source = std::fs::read_to_string(&file).unwrap();
@@ -386,7 +388,12 @@ fn live_get_routes() -> Vec<(String, String)> {
                     .cloned()
                     .unwrap_or_else(|| format!("?{path}"))
             };
-            let file = file.strip_prefix(&root).unwrap().display().to_string();
+            let file = file
+                .strip_prefix(here.join("src"))
+                .or_else(|_| file.strip_prefix(here.join("../openagents-web/src")))
+                .unwrap()
+                .display()
+                .to_string();
             routes.push((route, file));
         }
     }

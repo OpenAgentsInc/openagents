@@ -51,7 +51,7 @@ fn false_privacy_claims(text: &str) -> Vec<&'static str> {
 
 /// Fails the test, naming the route, each term and its context, when the
 /// visible text of `html` has machine talk.
-pub(crate) fn assert_plain(route: &str, html: &str) {
+pub fn assert_plain(route: &str, html: &str) {
     assert_paragraphs_hold_only_text(route, html);
     let text = oa_copy::visible_text(&without_preformatted(html));
     let claims = false_privacy_claims(&text);
@@ -163,6 +163,14 @@ const ALLOW_IN: &[(&str, &[&str])] = &[
 fn site_sources_have_no_machine_talk() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut hits = oa_copy::scan_dir_allowing(&root.join("src"), SKIP, &[], ALLOW_IN);
+    // The pages split out into `openagents-web-site` (#12184) are this
+    // site's too.
+    hits.extend(oa_copy::scan_dir_allowing(
+        &root.join("../openagents-web-site/src"),
+        SKIP,
+        &[],
+        ALLOW_IN,
+    ));
     for script in [
         "chat.js",
         "chat-start.js",
@@ -218,7 +226,7 @@ fn site_copy_makes_no_false_privacy_claims() {
     }
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut hits = Vec::new();
-    for dir in ["src", "content", "static"] {
+    for dir in ["src", "content", "static", "../openagents-web-site/src"] {
         walk(&root.join(dir), &mut hits);
     }
     assert!(

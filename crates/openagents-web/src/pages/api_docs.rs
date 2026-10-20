@@ -28,7 +28,7 @@ use crate::markdown;
 use crate::ui_page::{UiPage, action_link, problem, prose};
 
 /// The guides, by slug, in reading order.
-pub(crate) const API_DOCS: [(&str, &str); 13] = [
+pub const API_DOCS: [(&str, &str); 13] = [
     (
         "quickstart",
         include_str!("../../content/docs/api/quickstart.md"),
@@ -352,7 +352,7 @@ async fn index(headers: HeaderMap) -> Response {
 }
 
 /// The API docs index for `headers`.
-pub(crate) fn index_page(headers: &HeaderMap) -> Response {
+pub fn index_page(headers: &HeaderMap) -> Response {
     let mut body = String::from(
         "<h1>API</h1><p class=\"oa-page-lead\">One API for many models: Open Responses and \
 Chat Completions at <code>https://api.openagents.com/v1</code>. Beta.</p>\
@@ -432,7 +432,7 @@ async fn guide(State(app): State<App>, Path(slug): Path<String>, headers: Header
 }
 
 /// The guide at `index` in [`API_DOCS`], drawn from `source`, for `headers`.
-pub(crate) fn guide_page(headers: &HeaderMap, index: usize, source: &str) -> Response {
+pub fn guide_page(headers: &HeaderMap, index: usize, source: &str) -> Response {
     let (name, stored) = API_DOCS[index];
     let previous = index.checked_sub(1).map(|i| API_DOCS[i]);
     let next = API_DOCS.get(index + 1).copied();

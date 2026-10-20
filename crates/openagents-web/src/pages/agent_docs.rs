@@ -26,7 +26,7 @@ use crate::markdown;
 use crate::ui_page::{UiPage, action_link, problem, prose};
 
 /// The pages, by slug, in reading order.
-pub(crate) const AGENT_DOCS: [(&str, &str); 16] = [
+pub const AGENT_DOCS: [(&str, &str); 16] = [
     (
         "start-here",
         include_str!("../../content/docs/agents/start-here.md"),
@@ -137,7 +137,7 @@ async fn index(headers: HeaderMap) -> Response {
 }
 
 /// The agent docs index for `headers`.
-pub(crate) fn index_page(headers: &HeaderMap) -> Response {
+pub fn index_page(headers: &HeaderMap) -> Response {
     let mut body = format!(
         "<h1>For agents</h1><p class=\"oa-page-lead\">{}</p>",
         escape(LEAD)
@@ -252,7 +252,7 @@ async fn page(State(app): State<App>, Path(slug): Path<String>, headers: HeaderM
 }
 
 /// The page at `index` in [`AGENT_DOCS`], drawn from `source`.
-pub(crate) fn page_view(headers: &HeaderMap, index: usize, source: &str) -> Response {
+pub fn page_view(headers: &HeaderMap, index: usize, source: &str) -> Response {
     let (name, stored) = AGENT_DOCS[index];
     let previous = index.checked_sub(1).map(|i| AGENT_DOCS[i]);
     let next = AGENT_DOCS.get(index + 1).copied();

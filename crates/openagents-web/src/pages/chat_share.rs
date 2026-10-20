@@ -738,7 +738,7 @@ async fn card_for(app: &App, chat: &Conversation, link: &Link) -> card::Card {
 }
 
 /// A share's preview: where it lives and its picture.
-pub(crate) struct Social<'a> {
+pub struct Social<'a> {
     origin: String,
     token: &'a str,
     card: &'a card::Card,
@@ -850,7 +850,7 @@ async fn card_image(
 /// A shared chat's page: the title and the messages, read-only, with
 /// the OpenAgents mark home. No sidebar, composer, or controls. `social`
 /// adds the preview tags (Open Graph and Twitter).
-pub(crate) fn shared_page(
+pub fn shared_page(
     headers: &HeaderMap,
     chat: &Conversation,
     social: Option<&Social<'_>>,

@@ -59,7 +59,7 @@ if [ "$build" = 1 ]; then
     # runs, so a recording never uses an old Coder or site.
     echo "Building the stack and Coder into $CARGO_TARGET_DIR ..."
     cargo build -q --manifest-path "$root/Cargo.toml" -p gateway --bin gateway -p coder --bin coder-worker \
-        -p openagents-web --bin openagents-web -p coder-new --bin coder-new \
+        -p openagents-web-site --bin openagents-web -p coder-new --bin coder-new \
         -p tenancy --example bootstrap_registry
     # A running stack started before these binaries were built is stale.
     if [ -f "$state/run/web.pid" ] && kill -0 "$(cat "$state/run/web.pid")" 2>/dev/null; then

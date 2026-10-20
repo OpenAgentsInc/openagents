@@ -296,7 +296,7 @@ fn sha256_hex(value: &str) -> String {
 
 /// A registered client: what the `client_id` carries.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Client {
+pub struct Client {
     #[serde(rename = "n")]
     pub name: String,
     #[serde(rename = "r")]
@@ -658,7 +658,7 @@ async fn register(State(app): State<App>, body: Bytes) -> Response {
 
 /// A checked authorization request.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Authorization {
+pub struct Authorization {
     pub client_id: String,
     pub client: Client,
     pub redirect_uri: String,
@@ -681,7 +681,7 @@ pub(crate) enum Stop {
     },
 }
 
-pub(crate) const BAD_LINK: &str = "This login link isn't valid. Start again in the app.";
+pub const BAD_LINK: &str = "This login link isn't valid. Start again in the app.";
 
 /// Whether `resource` (RFC 8707) is one this server protects.
 fn resource_allowed(origin: &str, resource: &str) -> bool {
@@ -889,7 +889,7 @@ async fn authorize(State(app): State<App>, headers: HeaderMap, uri: Uri) -> Resp
 
 /// "Let <app> use your OpenAgents account?": a card naming the app and
 /// where it goes back to, with Deny and Approve.
-pub(crate) fn consent_form(request: &Authorization, query: &str, csrf: &str) -> Markup {
+pub fn consent_form(request: &Authorization, query: &str, csrf: &str) -> Markup {
     let name = &request.client.name;
     let place = computer_label(&request.redirect_uri);
     auth_card(
@@ -961,7 +961,7 @@ fn consent_page(
 }
 
 /// The consent page for `account`.
-pub(crate) fn consent_page_as(
+pub fn consent_page_as(
     headers: &HeaderMap,
     account: Account,
     request: &Authorization,

@@ -510,6 +510,31 @@ traversal, so only the crates that render build them.
 The Docker native stage wasn't timed here either; it's in the master
 delegation's after-close checks.
 
+### Crate splits (#12184)
+
+Measured on 2026-10-20 on `coderos-4080` (Intel Core i7-14700K, Linux),
+with Rust 1.97.1, eight jobs, the repository's dev profiles, and no compiler
+cache wrapper. These are single samples on a shared machine. The baseline
+is `860fefb4b3`; the same worktree and target were used before and after.
+The web samples precede the later page-retirement rebase; the rebased
+split passes its targeted tests and binary build.
+`scripts/dev/build-bench.sh --jobs 8 --no-wrapper` warms each command,
+runs it without an edit, and then adds a private function to the edited
+package. The table reports that last pass, in seconds.
+
+| Area | Package before → after | Build before | Build after | Test-build before | Test-build after |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Web screens, agent pages, and run commands | `openagents-web` → `openagents-web-site` | 43.1 | **4.8** | 88.7 | **4.5** |
+
+The commands are `cargo build -p PACKAGE` and
+`cargo test -p PACKAGE --no-run`. `openagents-web-site` also owns the
+`openagents-web` binary, so these rows include that consumer. Its router
+extension is a function pointer: the core compiles router construction
+once, and the site adds its routes before the core applies its layers and
+fallback. Both packages retain the dev profile's incremental setting.
+Docker builds and local launchers select the new package; the executable's
+name stays the same.
+
 ## The extreme options
 
 The owner asked whether to rewrite, change language, or change patterns.

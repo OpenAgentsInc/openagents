@@ -14,7 +14,7 @@ const TICKET: (&str, &str) = ("sample-ticket", "sample-request");
 const NOW: u64 = 1_791_547_200;
 const MODEL: &str = "sample-model";
 
-pub(super) fn screens() -> Vec<Screen> {
+pub fn screens() -> Vec<Screen> {
     vec![Screen {
         id: "traces",
         title: "Traces",

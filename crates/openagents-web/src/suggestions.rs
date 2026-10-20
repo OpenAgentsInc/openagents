@@ -81,10 +81,7 @@ pub(crate) fn starters(app: &App, owner: &str, used: &[String]) -> Markup {
 
 /// The starter questions not in `used`, each sending `fields` for its
 /// message.
-pub(crate) fn starter_chips(
-    used: &[String],
-    fields: impl Fn(&str) -> Vec<(String, String)>,
-) -> Markup {
+pub fn starter_chips(used: &[String], fields: impl Fn(&str) -> Vec<(String, String)>) -> Markup {
     let chips = suggestions::suggestions(used).map(|suggestion| {
         SuggestionChip::send(suggestion.label, "/chat", fields(suggestion.message))
     });

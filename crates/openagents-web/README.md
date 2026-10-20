@@ -132,7 +132,7 @@ output directory:
 ```sh
 export CARGO_TARGET_DIR="$HOME/work/openagents-target-agent0"
 scripts/build-coder-components-web.sh "$(openagents scratch)/components-build"
-openagents lease build --keep-target-dir -- cargo build -p openagents-web
+openagents lease build --keep-target-dir -- cargo build -p openagents-web-site
 "$CARGO_TARGET_DIR/debug/openagents-web" --store "$(openagents scratch)/unused-tasks" \
   --components-build "$(openagents scratch)/components-build"
 ```
@@ -150,7 +150,7 @@ The build script requires the pinned `wasm32-unknown-unknown` target and the
 From the monorepo root:
 
 ```sh
-cargo run -p openagents-web -- --store "$HOME/.openagents/tasks"
+cargo run -p openagents-web-site -- --store "$HOME/.openagents/tasks"
 ```
 
 Open `http://127.0.0.1:4300`. The server binds to loopback and answers only
@@ -322,7 +322,7 @@ to omit bodies, cookies, and request queries before activating real intake.
 ## Tests
 
 ```sh
-cargo test -p openagents-web
+cargo test -p openagents-web -p openagents-web-site
 ```
 
 The tests check that every public page answers `200` on a development
@@ -355,7 +355,7 @@ S=$(mktemp -d); T=${CARGO_TARGET_DIR:-$PWD/target}
 bwrap --die-with-parent --ro-bind / / --dev /dev --proc /proc \
   --bind "$PWD" "$PWD" --bind "$T" "$T" --bind "$S" "$S" \
   --setenv TMPDIR "$S" --setenv CARGO_TARGET_DIR "$T" -- \
-  cargo test -p openagents-web
+  cargo test -p openagents-web -p openagents-web-site
 ```
 
 ## Blue Rush sand garden

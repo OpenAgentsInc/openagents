@@ -49,7 +49,7 @@ use crate::coder_sync::line;
 use crate::pages::download::{CODER_PS1, CODER_SH};
 use crate::ui_page::{UiPage, action_link};
 
-pub(crate) const PAGE: &str = "/settings/terminal";
+pub const PAGE: &str = "/settings/terminal";
 const LIVE: &str = "/settings/terminal/live";
 const APPROVE: &str = "/settings/terminal/approve";
 pub(crate) const SYNC: &str = "/settings/terminal/sync";
@@ -138,7 +138,7 @@ fn command(id: &str, text: &str) -> Markup {
 }
 
 /// Steps 1 and 2's commands, and the live part below them.
-pub(crate) fn page_body(headers: &HeaderMap, pair: &str, live: Markup) -> Markup {
+pub fn page_body(headers: &HeaderMap, pair: &str, live: Markup) -> Markup {
     let local = local_origin(headers);
     let [first, second] = install_commands(headers);
     html! {

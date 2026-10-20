@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 
 const CSRF: &str = "agent-card";
 
-pub(crate) fn routes() -> Router<App> {
+pub fn routes() -> Router<App> {
     Router::new().route("/labs/agent/{id}/card", get(page).post(submit))
 }
 

@@ -62,6 +62,8 @@ incremental = false
 
 [profile.dev.package.openagents-web]
 incremental = true
+[profile.dev.package.openagents-web-site]
+incremental = true
 [profile.dev.package.openagents-cli]
 incremental = true
 [profile.dev.package.coder-new]

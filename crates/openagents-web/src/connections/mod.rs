@@ -22,12 +22,12 @@
 //!   with Google connected can read mail and events, make drafts, and,
 //!   only on the person's confirm, send a draft or add an event.
 
-pub(crate) mod access;
+pub mod access;
 pub(crate) mod chat;
 pub(crate) mod mail;
 pub(crate) mod media;
 pub(crate) mod openapi;
-pub(crate) mod sources;
+pub mod sources;
 #[cfg(test)]
 mod tests;
 
@@ -191,7 +191,7 @@ pub(crate) async fn google(app: &App) -> Option<Arc<Google>> {
 
 /// Why a person's Google connection can't be used now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Unready {
+pub enum Unready {
     /// This server keeps no connections or has no Google client.
     Off,
     NotConnected,
@@ -733,7 +733,7 @@ async fn callback(headers: HeaderMap, Query(query): Query<CallbackQuery>) -> Res
 }
 
 /// The "Connecting Google" step that continues to `next`, for `headers`.
-pub(crate) fn connecting_page(headers: &HeaderMap, next: &str) -> Response {
+pub fn connecting_page(headers: &HeaderMap, next: &str) -> Response {
     let content = openagents_ui::content::PageColumn::new(html! {
         (MarkdownRoot::new(html! {
             h1 { "Connecting Google" }

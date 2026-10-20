@@ -177,7 +177,7 @@ pub(crate) fn render_one(item: &Summary) -> String {
     body
 }
 
-pub(crate) fn list_page(headers: &HeaderMap, list: &[Summary]) -> Response {
+pub fn list_page(headers: &HeaderMap, list: &[Summary]) -> Response {
     UiPage::new("Plugin purchases")
         .path("/app/purchases")
         .scriptless()
@@ -185,7 +185,7 @@ pub(crate) fn list_page(headers: &HeaderMap, list: &[Summary]) -> Response {
         .respond(headers)
 }
 
-pub(crate) fn one_page(headers: &HeaderMap, item: &Summary) -> Response {
+pub fn one_page(headers: &HeaderMap, item: &Summary) -> Response {
     UiPage::new("Plugin purchase")
         .path(format!(
             "/app/purchases/{}",

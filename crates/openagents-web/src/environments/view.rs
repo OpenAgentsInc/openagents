@@ -707,7 +707,7 @@ fn failed_card(id: &str, reason: &str) -> Markup {
 
 /// What the Claude Code card offers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Claude {
+pub enum Claude {
     /// A Claude key is available: the person's own, or this server's.
     Ready,
     /// The person signed in to Claude inside this environment (#11294).
@@ -1081,7 +1081,7 @@ pub(crate) const SIGN_IN_DIALOG: &str = "claude-sign-in";
 /// running Claude Code's own `claude auth login` on the environment's
 /// computer. `view` is the sign-in so far; `back` is the chat it came
 /// from, whose message is sent once signed in.
-pub(crate) fn sign_in_panel(id: &str, view: Option<&sign_in::View>, back: Option<&str>) -> Markup {
+pub fn sign_in_panel(id: &str, view: Option<&sign_in::View>, back: Option<&str>) -> Markup {
     let start_form = |label: &str| {
         html! {
             form method="post" action=(sign_in_url(id, "", back, None))
@@ -1141,7 +1141,7 @@ fn sign_in_url(id: &str, tail: &str, back: Option<&str>, part: Option<&str>) -> 
 
 /// The line the person types into the terminal: the code Anthropic shows,
 /// or Enter alone. It is sent straight to the computer and kept nowhere.
-pub(crate) fn sign_in_input(id: &str, back: Option<&str>, error: Option<&str>) -> Markup {
+pub fn sign_in_input(id: &str, back: Option<&str>, error: Option<&str>) -> Markup {
     let field = Field::new("claude-sign-in-text", "Type or paste here, then Send").error_opt(error);
     html! {
         form #claude-sign-in-input.oa-sign-in-input method="post"
@@ -1163,7 +1163,7 @@ pub(crate) fn sign_in_input(id: &str, back: Option<&str>, error: Option<&str>) -
 
 /// The terminal's screen, read again every two seconds while sign-in is
 /// open; once it ends, the whole panel comes back in its place.
-pub(crate) fn sign_in_screen(id: &str, view: Option<&sign_in::View>, back: Option<&str>) -> Markup {
+pub fn sign_in_screen(id: &str, view: Option<&sign_in::View>, back: Option<&str>) -> Markup {
     html! {
         div #claude-sign-in-screen hx-get=(sign_in_url(id, "/screen", back, None))
             hx-trigger="every 2s" hx-swap="outerHTML" {

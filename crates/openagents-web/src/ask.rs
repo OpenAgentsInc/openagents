@@ -113,7 +113,7 @@ async fn retired() -> Response {
 }
 
 /// What the retired `/ask` answers, for `headers`.
-pub(crate) fn retired_page(headers: &HeaderMap) -> Response {
+pub fn retired_page(headers: &HeaderMap) -> Response {
     let mut response = crate::chat_html::protect(crate::ui_page::problem(
         headers,
         StatusCode::GONE,

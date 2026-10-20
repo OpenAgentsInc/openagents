@@ -86,7 +86,7 @@ async fn profile(
 }
 
 /// A person's profile page.
-pub(crate) fn profile_page(
+pub fn profile_page(
     headers: &HeaderMap,
     path: String,
     profile: &crate::backend::Profile,
@@ -138,7 +138,7 @@ fn joined(stamp: &str) -> String {
     }
 }
 
-pub(crate) fn missing(headers: &HeaderMap) -> Response {
+pub fn missing(headers: &HeaderMap) -> Response {
     problem(
         headers,
         StatusCode::NOT_FOUND,

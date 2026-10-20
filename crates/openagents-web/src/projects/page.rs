@@ -455,7 +455,7 @@ fn respond(
 }
 
 /// The page body (separate from I/O for tests and the screens catalog).
-pub(crate) fn view(
+pub fn view(
     status: &Status,
     project: &Project,
     csrf: &str,

@@ -173,7 +173,7 @@ where
     }
     conflict()
 }
-pub(crate) fn routes() -> Router<App> {
+pub fn routes() -> Router<App> {
     Router::new()
         .route("/v1/home/projects", get(projects))
         .route("/v1/home/issues", post(issues::summary))

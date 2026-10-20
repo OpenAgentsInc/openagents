@@ -282,7 +282,7 @@ fn form(
 }
 
 /// The "Continue on a Cloud computer" page for `chat`.
-pub(crate) fn form_page(
+pub fn form_page(
     csrf: &str,
     headers: &HeaderMap,
     chat: &Conversation,

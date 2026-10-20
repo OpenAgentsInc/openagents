@@ -30,7 +30,7 @@ use crate::cloud::session::{SessionError, Viewer};
 use crate::settings::{PAGE as SETTINGS, page, viewer};
 use crate::ui_page::action_link;
 
-pub(crate) const PAGE: &str = "/settings/agent-accounts";
+pub const PAGE: &str = "/settings/agent-accounts";
 pub(crate) const REVOKE: &str = "/settings/agent-accounts/revoke";
 const CLAIM_SCOPE: &str = "agent-claim";
 const REVOKE_SCOPE: &str = "agent-revoke";
@@ -54,18 +54,17 @@ fn problem(status: StatusCode, text: &str) -> Response {
     ))
 }
 
-pub(crate) const UNREACHABLE: &str =
-    "Your agents can't be reached right now. Try again in a minute.";
+pub const UNREACHABLE: &str = "Your agents can't be reached right now. Try again in a minute.";
 
 /// One agent, as the lists show it.
-pub(crate) struct Row {
+pub struct Row {
     id: String,
     name: String,
     hint: String,
     revoked: bool,
 }
 
-pub(crate) fn rows(document: &Value) -> Vec<Row> {
+pub fn rows(document: &Value) -> Vec<Row> {
     document["agents"]
         .as_array()
         .map(|agents| {
@@ -135,7 +134,7 @@ fn list(title: &str, id: &str, empty: &str, rows: &[Row], revoke: (&str, &str)) 
 
 /// The page: what agents are, the claim form, the person's agents, and
 /// for a site admin every agent.
-pub(crate) fn content(
+pub fn content(
     mine: &[Row],
     all: Option<&[Row]>,
     claim: (&str, &str),

@@ -11,7 +11,7 @@ use crate::pages::stats::{Snapshot, Stats};
 /// A same-site address standing in for Google's return.
 const GOOGLE_NEXT: &str = "/auth/google/finish?state=sample-state&code=sample-code";
 
-pub(crate) fn screens() -> Vec<Screen> {
+pub fn screens() -> Vec<Screen> {
     vec![
         page(
             "download",

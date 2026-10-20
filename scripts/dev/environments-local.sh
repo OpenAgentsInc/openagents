@@ -108,7 +108,7 @@ chmod 600 "$config"
 
 cd "$root"
 echo "Environments: http://127.0.0.1:$port/environments"
-exec cargo run --release -p openagents-web --bin openagents-web -- \
+exec cargo run --release -p openagents-web-site --bin openagents-web -- \
   --listen "127.0.0.1:$port" \
   --chat-store "$state/web-chats" \
   --environments "$config"

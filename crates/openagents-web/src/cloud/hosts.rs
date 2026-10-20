@@ -146,7 +146,7 @@ impl Hosts {
     }
 
     /// A run command uses only an explicitly enabled binding for this account.
-    pub(crate) fn for_run(&self, account: &str, id: &str) -> Result<&Binding, SessionError> {
+    pub fn for_run(&self, account: &str, id: &str) -> Result<&Binding, SessionError> {
         self.config.check().map_err(|_| SessionError::Unavailable)?;
         let binding = self
             .bindings
@@ -309,11 +309,11 @@ impl Binding {
         Ok(())
     }
 
-    pub(crate) fn run_agent(&self) -> Option<&str> {
+    pub fn run_agent(&self) -> Option<&str> {
         self.run_agent.as_deref()
     }
 
-    pub(crate) fn prepare_run(
+    pub fn prepare_run(
         &self,
         account: &str,
         app: coder_access::app_rpc::Request,
@@ -325,7 +325,7 @@ impl Binding {
             .map_err(native_error)
     }
 
-    pub(crate) async fn send_run(
+    pub async fn send_run(
         &self,
         account: &str,
         pending: &coder_access::client::Pending,
@@ -364,7 +364,7 @@ impl Binding {
     pub(crate) fn generation(&self) -> u64 {
         self.generation
     }
-    pub(crate) fn identity(&self) -> &str {
+    pub fn identity(&self) -> &str {
         &self.identity
     }
 

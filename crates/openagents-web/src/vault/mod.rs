@@ -22,7 +22,7 @@
 //! `vault/index/{epoch}` (the sealed index) and `vault/objects/{id}`.
 
 mod api;
-pub(crate) mod page;
+pub mod page;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -32,14 +32,14 @@ use crate::App;
 use crate::chat_store::Store;
 
 pub(crate) use api::{held_objects, npub, object_size};
-pub(crate) use page::settings_row;
+pub use page::settings_row;
 
 /// The vault page in Settings.
-pub(crate) const PAGE: &str = "/settings/vault";
+pub const PAGE: &str = "/settings/vault";
 /// The page's script.
 pub(crate) const SCRIPT: &str = "/vault/vault.js";
 /// The page's styles.
-pub(crate) const STYLE: &str = "/vault/vault.css";
+pub const STYLE: &str = "/vault/vault.css";
 /// The digests of what the page runs.
 pub(crate) const RELEASE: &str = "/vault/release.json";
 const STATE: &str = "/vault/api/state";
@@ -63,7 +63,7 @@ pub(crate) const MAX_SLOTS: usize = 16;
 pub(crate) const MAX_INDEX_BYTES: usize = 2 * 1024 * 1024;
 
 /// A project's vault page.
-pub(crate) fn project_href(project: &str) -> String {
+pub fn project_href(project: &str) -> String {
     format!("/projects/{project}/vault")
 }
 

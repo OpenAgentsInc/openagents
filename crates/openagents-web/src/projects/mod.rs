@@ -46,7 +46,7 @@ use crate::cloud::session::{CloudSession, SessionError, Viewer};
 use crate::ui_page::UiPage;
 
 /// The projects page.
-pub(crate) const PAGE: &str = "/projects";
+pub const PAGE: &str = "/projects";
 /// Where connecting repositories starts (`?access=private|public`).
 pub(crate) const CONNECT: &str = "/auth/github/repos";
 /// The same-site step after GitHub's callback.
@@ -61,10 +61,10 @@ pub(crate) const RECONNECT: &str = "/auth/github/reconnect";
 const CLOSED_COOKIE: &str = "oa_project_groups";
 const CSRF_SCOPE: &str = "projects";
 /// The most repositories the page lists at once.
-pub(crate) mod api;
+pub mod api;
 pub(crate) mod files;
 pub(crate) mod members;
-pub(crate) mod page;
+pub mod page;
 pub(crate) mod pending;
 pub(crate) mod shared_chats;
 
@@ -89,7 +89,7 @@ pub(crate) fn routes() -> Router<App> {
 /// The signed-in person's projects for the left panel, and the groups they
 /// closed in this browser.
 #[derive(Clone, Debug)]
-pub(crate) struct Sidebar {
+pub struct Sidebar {
     pub status: Status,
     pub closed: BTreeSet<String>,
 }
@@ -313,7 +313,7 @@ async fn render_with(
 }
 
 /// The Projects page around `body`.
-pub(crate) fn page_for(headers: &HeaderMap, status: StatusCode, body: Markup) -> Response {
+pub fn page_for(headers: &HeaderMap, status: StatusCode, body: Markup) -> Response {
     protect(
         UiPage::new("Projects")
             .path(PAGE)
@@ -394,7 +394,7 @@ fn fragment(body: Markup) -> Response {
 /// next page in its place. With `project`, Add puts the repository in that
 /// project (those already in it are left out); without, Add starts a new
 /// project from it (a repository may be in any number of projects).
-pub(crate) fn repos_page(
+pub fn repos_page(
     listed: Result<Listing, RepoCallError>,
     csrf: &str,
     q: &str,
@@ -518,7 +518,7 @@ fn view(
 /// The page body with `list`, the repositories list, in place of the one
 /// that loads after the page shows.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn view_with(
+pub fn view_with(
     state: &Status,
     csrf: &str,
     q: &str,

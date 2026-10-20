@@ -542,6 +542,8 @@ async fn a_published_agent_gets_its_own_key_an_owner_and_a_page() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    // Give this addressable definition a later timestamp than the owner update.
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let runtime = serde_json::to_vec(&json!({"release": release.id})).unwrap();
     let (status, linked) = call(
         &world,

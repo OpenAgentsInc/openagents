@@ -1160,7 +1160,10 @@ mod tests {
     use super::*;
 
     fn export() -> Value {
-        serde_json::from_str(include_str!("screens/delegation.atif.json")).unwrap()
+        serde_json::from_str(include_str!(
+            "../../openagents-web-site/src/screens/delegation.atif.json"
+        ))
+        .unwrap()
     }
 
     #[test]
