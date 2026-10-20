@@ -6,7 +6,7 @@ description: >
   (NIP-44), the Block agent NIPs the relay serves, and the OpenAgents NIPs
   (NIP-CJ jobs, NIP-CAP capabilities, NIP-PRG programs) that carry a Coder
   turn to a worker. Read it before touching `crates/nostr`,
-  `crates/nostr-relay`, `crates/coder/src/relay.rs`, `coder-worker`, or any
+  `crates/nostr-relay`, `crates/coder-runtime/src/relay.rs`, `coder-worker`, or any
   file under `nips/`, and before debugging a relay handoff.
 ---
 
@@ -328,7 +328,7 @@ Decision and execution bodies use their named v1 schemas. Validate each family
 against its own complete contract; do not infer support from a version alone.
 
 Deadlines and failure words, on the terminal side
-(`crates/coder/src/relay.rs`): if nothing bound to the request arrives
+(`crates/coder-runtime/src/relay.rs`): if nothing bound to the request arrives
 within the contact deadline, the turn fails with cause `worker_absent`
 ("no worker answered"). If a worker was heard but no result arrives
 within the answer deadline, the cause names the worker as silent. A

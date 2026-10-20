@@ -9,6 +9,9 @@ publish.workspace = true
 autotests = false
 
 [dependencies]
+coder-runtime = { path = "../coder-runtime" }
+coder-router = { path = "../coder-router" }
+coder-task = { path = "../coder-task" }
 standing-jobs = { path = "../standing-jobs" }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 user-home = { path = "../user-home" }

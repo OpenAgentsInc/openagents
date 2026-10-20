@@ -15,14 +15,14 @@ author: openagents
 provenance:
   written_from: [reference]
   cites:
-    - crates/coder/src/builtin_plugins.rs
+    - crates/coder-runtime/src/builtin_plugins.rs
     - crates/coder-new/src/acp_discovery.rs
     - crates/coder-new/src/bundled_runtime.rs
     - crates/coder-new/src/delegation_events.rs
     - crates/coder-new/tests/bundled_plugins.rs
     - crates/coder-new/src/plugin_definition.rs
 evidence:
-  - "Generated from Coder's built-in plugins (crates/coder/src/builtin_plugins.rs) by crates/coder/tests/plugin_catalog.rs; PLUGIN_LIST_WRITE=1 rewrites it, and its version moves when its words do. The hosted runner's sample plugins are test fixtures and are not listed."
+  - "Generated from Coder's built-in plugins (crates/coder-runtime/src/builtin_plugins.rs) by crates/coder/tests/plugin_catalog.rs; PLUGIN_LIST_WRITE=1 rewrites it, and its version moves when its words do. The hosted runner's sample plugins are test fixtures and are not listed."
 ---
 
 ## Answer
@@ -39,7 +39,7 @@ Coder comes with five built-in plugins: Claude Code, Codex, Cursor, Grok Build, 
 
 ## Sources
 
-- `crates/coder/src/builtin_plugins.rs`
+- `crates/coder-runtime/src/builtin_plugins.rs`
 - `crates/coder-new/src/acp_discovery.rs`
 - `crates/coder-new/src/bundled_runtime.rs`
 - `crates/coder-new/src/delegation_events.rs`

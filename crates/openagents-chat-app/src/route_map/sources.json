@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@0fc444292c46",
-  "bank": "chat-answers-v1@ef65e3933b4a",
+  "bank": "chat-answers-v1@82f2d02946b3",
   "routes": [
     {
       "id": "meta",
@@ -291,8 +291,8 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/coder/src/generate.rs",
-        "crates/coder/src/router.rs",
+        "crates/coder-runtime/src/generate.rs",
+        "crates/coder-router/src/router.rs",
         "docs/deployment/chat-worker.md"
       ]
     },
@@ -307,7 +307,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/coder/src/router.rs",
+        "crates/coder-router/src/router.rs",
         "crates/jev/Cargo.toml"
       ]
     },
@@ -371,7 +371,7 @@
       "offer": null,
       "sources": [
         "crates/openagents-chat/src/basic_coder.rs",
-        "crates/coder/src/builtin_plugins.rs"
+        "crates/coder-runtime/src/builtin_plugins.rs"
       ]
     },
     {
@@ -415,7 +415,7 @@
       "offer": null,
       "sources": [
         "crates/openagents-chat/src/basic_coder.rs",
-        "crates/coder/src/builtin_plugins.rs",
+        "crates/coder-runtime/src/builtin_plugins.rs",
         "crates/openagents-web/src/pages/download.rs"
       ]
     },
@@ -474,7 +474,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/coder/src/generate.rs"
+        "crates/coder-runtime/src/generate.rs"
       ]
     },
     {
@@ -698,7 +698,7 @@
       "sources": [
         "README.md",
         "LICENSE",
-        "crates/coder/src/generate.rs"
+        "crates/coder-runtime/src/generate.rs"
       ]
     },
     {
@@ -730,7 +730,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/coder/src/generate.rs",
+        "crates/coder-runtime/src/generate.rs",
         "crates/coder/answers/chat-answers-v1.toml"
       ]
     },
@@ -864,7 +864,7 @@
         "label": "Run Coder"
       },
       "sources": [
-        "crates/coder/src/router/capability.rs",
+        "crates/coder-router/src/router/capability.rs",
         "crates/openagents-chat/src/basic_coder.rs"
       ]
     },
@@ -883,8 +883,8 @@
         "label": "Run Coder"
       },
       "sources": [
-        "crates/coder/src/router/judge.rs",
-        "crates/coder/src/task/local.rs"
+        "crates/coder-router/src/router/judge.rs",
+        "crates/coder-task/src/task/local.rs"
       ]
     },
     {
@@ -902,7 +902,7 @@
         "label": "Run Coder"
       },
       "sources": [
-        "crates/coder/src/router/judge.rs",
+        "crates/coder-router/src/router/judge.rs",
         "crates/openagents-chat/src/client.rs"
       ]
     },
@@ -936,7 +936,7 @@
       "offer": null,
       "sources": [
         "crates/openagents-chat/src/coder_events.rs",
-        "crates/coder/src/task/local.rs"
+        "crates/coder-task/src/task/local.rs"
       ]
     },
     {
@@ -1208,7 +1208,7 @@
       "records": false,
       "offer": null,
       "sources": [
-        "crates/coder/src/builtin_plugins.rs",
+        "crates/coder-runtime/src/builtin_plugins.rs",
         "crates/coder-new/README.md",
         "crates/coder-new/src/acp_discovery.rs",
         "knowledge/openagents/openagents.tools.md"
@@ -1288,7 +1288,7 @@
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "crates/coder/src/router/gym.rs"
+        "crates/coder-router/src/router/gym.rs"
       ]
     },
     {
@@ -1303,7 +1303,7 @@
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "crates/coder/src/router/gym.rs",
+        "crates/coder-router/src/router/gym.rs",
         "deploy/eval-runner/catalog"
       ]
     },
@@ -1319,7 +1319,7 @@
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "crates/coder/src/router/gym.rs"
+        "crates/coder-router/src/router/gym.rs"
       ]
     },
     {
@@ -1333,8 +1333,8 @@
       "records": true,
       "offer": null,
       "sources": [
-        "crates/coder/src/router/gym.rs",
-        "crates/coder/src/builtin_plugins.rs"
+        "crates/coder-router/src/router/gym.rs",
+        "crates/coder-runtime/src/builtin_plugins.rs"
       ]
     },
     {
@@ -1348,7 +1348,7 @@
       "records": true,
       "offer": null,
       "sources": [
-        "crates/coder/src/builtin_plugins.rs",
+        "crates/coder-runtime/src/builtin_plugins.rs",
         "docs/web/plugin-card.md"
       ]
     },
@@ -1364,7 +1364,7 @@
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "crates/coder/src/router/gym.rs"
+        "crates/coder-router/src/router/gym.rs"
       ]
     },
     {
@@ -1379,7 +1379,7 @@
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "crates/coder/src/router/gym.rs"
+        "crates/coder-router/src/router/gym.rs"
       ]
     },
     {
@@ -1394,7 +1394,7 @@
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "crates/coder/src/router/gym.rs"
+        "crates/coder-router/src/router/gym.rs"
       ]
     },
     {
@@ -1424,7 +1424,7 @@
       "offer": null,
       "sources": [
         "docs/extensions/evaluation.md",
-        "crates/coder/src/gym_kb.rs"
+        "crates/coder-router/src/gym_kb.rs"
       ]
     },
     {
@@ -1438,8 +1438,8 @@
       "records": true,
       "offer": null,
       "sources": [
-        "crates/coder/src/router/gym.rs",
-        "crates/coder/src/gym_kb.rs"
+        "crates/coder-router/src/router/gym.rs",
+        "crates/coder-router/src/gym_kb.rs"
       ]
     },
     {
@@ -1453,7 +1453,7 @@
       "records": true,
       "offer": null,
       "sources": [
-        "crates/coder/src/router/capability.rs",
+        "crates/coder-router/src/router/capability.rs",
         "docs/essays/2026-09-29-test-time-capabilities.md"
       ]
     },
@@ -1468,7 +1468,7 @@
       "records": true,
       "offer": null,
       "sources": [
-        "crates/coder/src/router/capability.rs",
+        "crates/coder-router/src/router/capability.rs",
         "docs/essays/2026-09-29-test-time-capabilities.md"
       ]
     },
@@ -3529,7 +3529,7 @@
       "kind": "knowledge",
       "reach": "chat",
       "route": "product.kb",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Answers how the OpenAgents app, its features, and its code work, from our documentation."
     },
     {
@@ -3538,7 +3538,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "work.dispatch",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Works on the user's code, repository, files, or machine: changes, fixes, builds, tests, and looks through code, on a computer the user connected."
     },
     {
@@ -3547,7 +3547,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "cli",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Runs an openagents command for the user's own account or devices after they confirm it: their computers, tasks, sessions, XP, quests, the knowledge base, and what is published on a relay."
     },
     {
@@ -3556,7 +3556,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "wallet",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Explains the user's OpenAgents wallet, bitcoin amounts, receiving, sending, and backups, and opens the wallet for them."
     },
     {
@@ -3565,7 +3565,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "account",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Explains and opens account settings: identity keys, connecting or removing computers, playtest sessions, and reporting a problem."
     },
     {
@@ -3574,7 +3574,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "eval.run",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Tests a plugin on Coder, makes a new one and its tests with the user, checks another trainer's result, and reports what their work earned."
     }
   ],

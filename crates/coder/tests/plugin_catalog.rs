@@ -62,7 +62,7 @@ fn count(n: usize) -> String {
 }
 
 const LIST_ID: &str = "openagents.plugin-list";
-const LIST_SOURCE: &str = "crates/coder/src/builtin_plugins.rs";
+const LIST_SOURCE: &str = "crates/coder-runtime/src/builtin_plugins.rs";
 
 fn list_path() -> PathBuf {
     root()
@@ -108,7 +108,7 @@ fn plugin_list(plugins: &[BuiltinPlugin], version: u64) -> String {
         out.push_str(&format!("    - {cite}\n"));
     }
     out.push_str(
-        "evidence:\n  - \"Generated from Coder's built-in plugins (crates/coder/src/builtin_plugins.rs) \
+        "evidence:\n  - \"Generated from Coder's built-in plugins (crates/coder-runtime/src/builtin_plugins.rs) \
          by crates/coder/tests/plugin_catalog.rs; PLUGIN_LIST_WRITE=1 rewrites it, and its version \
          moves when its words do. The hosted runner's sample plugins are test fixtures and are \
          not listed.\"\n---\n\n",

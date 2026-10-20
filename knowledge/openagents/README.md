@@ -4,7 +4,7 @@ Short, sourced entries about the OpenAgents product that the chat answers
 product questions from: the `product.kb` route of the
 [chat router](../../docs/coder/design/2026-09-28-chat-router.md#knowledge-routes-product-and-codebase).
 `crates/knowledge/src/product.rs` loads and checks them, and
-`crates/coder/src/product_kb.rs` retrieves them.
+`crates/coder-router/src/product_kb.rs` retrieves them.
 
 Each file is a knowledge entry of kind `product` with an id under
 `openagents.`, written from this repository's public documents:

@@ -60,8 +60,8 @@ const QUESTIONS: &[(&str, &str, &str)] = &[
         "30182",
     ),
     (
-        "What is the value of the ROUNDS_MAX constant in crates/coder/src/shell.rs?",
-        "crates/coder/src/shell.rs",
+        "What is the value of the ROUNDS_MAX constant in crates/coder-runtime/src/shell.rs?",
+        "crates/coder-runtime/src/shell.rs",
         "3",
     ),
 ];

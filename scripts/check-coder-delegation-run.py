@@ -28,7 +28,7 @@ import os
 from pathlib import Path
 import sys
 
-# The call names and `extra` schemas crates/coder/src/trace.rs writes.
+# The call names and `extra` schemas crates/coder-runtime/src/trace.rs writes.
 DELEGATE_CALL = 'delegate'
 DELEGATE_SCHEMA = 'openagents.delegate-call.v1'
 DECISION_SCHEMA = 'openagents.decision-call.v1'

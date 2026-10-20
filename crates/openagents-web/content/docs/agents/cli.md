@@ -9,7 +9,7 @@ openagents capabilities
 
 That prints the version and every command as JSON. The same tree is in
 the repository at
-[`crates/coder/src/cli_route/tree.json`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/coder/src/cli_route/tree.json)
+[`crates/coder-router/src/cli_route/tree.json`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/coder-router/src/cli_route/tree.json)
 (schema `openagents.cli-tree.v1`), checked against the command's own help
 by a test.
 

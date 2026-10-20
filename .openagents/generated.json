@@ -4,11 +4,11 @@
   "generated": [
     {
       "name": "cli-tree",
-      "files": ["crates/coder/src/cli_route/tree.json"],
+      "files": ["crates/coder-router/src/cli_route/tree.json"],
       "sources": [
         "crates/openagents-cli/src/",
-        "crates/coder/src/cli_route/",
-        "crates/coder/src/task/cli.rs",
+        "crates/coder-router/src/cli_route/",
+        "crates/coder-task/src/task/cli.rs",
         "crates/coder-host/src/cli.rs",
         "crates/coder-host/src/spend/cli.rs",
         "crates/coder-new/src/programmatic.rs"
@@ -45,7 +45,7 @@
     {
       "name": "route-map-sources",
       "files": ["crates/openagents-chat-app/src/route_map/sources.json"],
-      "sources": ["crates/coder/", "knowledge/", "packages/coder-defaults/", "plugins/"],
+      "sources": ["crates/coder/", "crates/coder-runtime/", "crates/coder-router/", "crates/coder-task/", "knowledge/", "packages/coder-defaults/", "plugins/"],
       "package": "coder",
       "check": "cargo test -p coder --test all route_map_sources::the_route_map_sources_match_the_router",
       "regenerate": "ROUTE_MAP_WRITE=1 cargo test -q -p coder --test all route_map_sources::the_route_map_sources_match_the_router"

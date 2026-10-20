@@ -4,7 +4,7 @@
 # a named delegate approves text changes (see the chat router design,
 # docs/coder/design/2026-09-28-chat-router.md, "The answer bank").
 #
-# Rules the lint in crates/coder/src/router/bank.rs enforces:
+# Rules the lint in crates/coder-router/src/router/bank.rs enforces:
 # - Plural voice: "we", "us", "our"; never "I", "me", or "my" in text,
 #   stem, or generic_end.
 # - No button or control is named: the app shows the action itself, and an
@@ -114,7 +114,7 @@ when = "The user asks what AI model or models power this chat, or whether we are
 examples = ["What models do you use?", "what model r u", "which models power this"]
 text = "There isn't one model. A fast router reads each message and sends it to whatever answers it best, from quick built-in answers to many models across providers, through our own gateway. The pool keeps growing, so the best fit can change from one message to the next."
 chip = "What models do you use?"
-sources = ["crates/coder/src/generate.rs", "crates/coder/src/router.rs", "docs/deployment/chat-worker.md"]
+sources = ["crates/coder-runtime/src/generate.rs", "crates/coder-router/src/router.rs", "docs/deployment/chat-worker.md"]
 followups = ["meta.jev", "meta.privacy", "meta.pricing"]
 
 [[answer]]
@@ -124,7 +124,7 @@ routes = ["meta"]
 when = "The user asks what Jev or TypeSafe is, or how we decide how to answer a message; not which model writes our chat replies"
 text = "Jev is a small, fast model from TypeSafe. It reads each message first and chooses how we reply: a prepared answer like this one, our chat model, or sending Coder to work. It writes none of the words you see."
 chip = "What is Jev?"
-sources = ["crates/coder/src/router.rs", "crates/jev/Cargo.toml"]
+sources = ["crates/coder-router/src/router.rs", "crates/jev/Cargo.toml"]
 followups = ["meta.model", "meta.privacy"]
 
 [[answer]]
@@ -173,7 +173,7 @@ not_for = "What a plugin is, what one named plugin does, or which products or ap
 examples = ["What tools do you have?", "what tools can you use", "do you have any tools", "what can you use to help me"]
 text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs on a computer you connect: it reads and edits your files, runs commands and tests, and shows you every change. Coder can also hand a task to Claude Code, Codex, Cursor, or Grok Build when you have them on that computer."
 chip = "What tools do you have?"
-sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder/src/builtin_plugins.rs"]
+sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder-runtime/src/builtin_plugins.rs"]
 followups = ["meta.coder", "gym.what_tool", "account.computers"]
 
 [[answer]]
@@ -209,7 +209,7 @@ not_for = "What a plugin is, what one named plugin does, or which products or ap
 examples = ["What tools do you have?", "what tools can you use", "do you have any tools", "what can you use to help me"]
 text = "Here in chat we answer questions, explain code and ideas, and help you plan and write. We can't run code, browse the web, or open your files from here. For real work on code, Coder, our coding agent, runs in your terminal on your own computer: it reads and edits your files, runs commands and tests, and shows you every change. Coder can also hand a task to Claude Code, Codex, Cursor, or Grok Build when you have them installed. Get Coder at https://openagents.com/download."
 chip = "What tools do you have?"
-sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder/src/builtin_plugins.rs","crates/openagents-web/src/pages/download.rs"]
+sources = ["crates/openagents-chat/src/basic_coder.rs", "crates/coder-runtime/src/builtin_plugins.rs","crates/openagents-web/src/pages/download.rs"]
 followups = ["meta.coder", "meta.plugins"]
 
 [[answer]]
@@ -254,7 +254,7 @@ routes = ["meta"]
 when = "The user asks whether we can browse or search the web, open a link, or know about recent news or events"
 text = "We can't browse the web or open links from this chat. We answer from what our chat model already knows, which can be out of date on recent events."
 chip = "Can you browse the web?"
-sources = ["crates/coder/src/generate.rs"]
+sources = ["crates/coder-runtime/src/generate.rs"]
 followups = ["meta.capabilities", "meta.model"]
 
 [[answer]]
@@ -446,7 +446,7 @@ examples = ["who built this", "which company is behind openagents"]
 text = "We're built by the OpenAgents team, in the open: all of our code is at github.com/OpenAgentsInc/openagents under the Apache 2.0 license. Our chat replies are written by {chat_model}."
 facts = { chat_model = "worker.lane.display" }
 chip = "Who built OpenAgents?"
-sources = ["README.md", "LICENSE", "crates/coder/src/generate.rs"]
+sources = ["README.md", "LICENSE", "crates/coder-runtime/src/generate.rs"]
 followups = ["meta.open_source", "meta.model"]
 
 [[answer]]
@@ -469,7 +469,7 @@ when = "The user asks whether we speak or understand a language other than Engli
 examples = ["what languages do you support", "Parlez-vous français ?"]
 text = "Yes. Write to us in your language and we'll answer in it. Our prepared replies, like this one, are in English for now."
 chip = "Can we chat in another language?"
-sources = ["crates/coder/src/generate.rs", "crates/coder/answers/chat-answers-v1.toml"]
+sources = ["crates/coder-runtime/src/generate.rs", "crates/coder/answers/chat-answers-v1.toml"]
 followups = ["meta.capabilities"]
 
 # ---------------------------------------------------------------------------
@@ -565,7 +565,7 @@ stem = "Using {capability} to"
 generic_end = " take this on."
 facts = { capability = "capability.name" }
 offer = { run_coder = true, label = "Run Coder" }
-sources = ["crates/coder/src/router/capability.rs", "crates/openagents-chat/src/basic_coder.rs"]
+sources = ["crates/coder-router/src/router/capability.rs", "crates/openagents-chat/src/basic_coder.rs"]
 
 [[answer]]
 id = "dispatch.engine_stem"
@@ -577,7 +577,7 @@ stem = "Starting {engine} on"
 generic_end = " this."
 facts = { engine = "engine.name" }
 offer = { run_coder = true, label = "Run Coder" }
-sources = ["crates/coder/src/router/judge.rs", "crates/coder/src/task/local.rs"]
+sources = ["crates/coder-router/src/router/judge.rs", "crates/coder-task/src/task/local.rs"]
 
 [[answer]]
 id = "dispatch.fan_out"
@@ -588,7 +588,7 @@ when = "Picked by code from the typed fanout reading: the user asks for the same
 text = "{doing} with {engines}."
 facts = { doing = "fanout.doing", engines = "fanout.engines" }
 offer = { run_coder = true, label = "Run Coder" }
-sources = ["crates/coder/src/router/judge.rs", "crates/openagents-chat/src/client.rs"]
+sources = ["crates/coder-router/src/router/judge.rs", "crates/openagents-chat/src/client.rs"]
 
 [[answer]]
 id = "dispatch.no_computer"
@@ -607,7 +607,7 @@ routes = ["work.dispatch"]
 place = "here"
 when = "The user wants work done on code or a repository on this computer, and no coding agent can take it here yet"
 text = "No coding agent is logged in on this computer yet, so Coder can't run here. Log in to one, then ask again: for Codex, run `codex login`; for Claude Code, run `claude` and log in."
-sources = ["crates/openagents-chat/src/coder_events.rs", "crates/coder/src/task/local.rs"]
+sources = ["crates/openagents-chat/src/coder_events.rs", "crates/coder-task/src/task/local.rs"]
 
 # ---------------------------------------------------------------------------
 # cli: the openagents command
@@ -761,7 +761,7 @@ sources = ["docs/game/playtesting.md"]
 # ---------------------------------------------------------------------------
 # The Gym and evals (#9936): definitions, credit, and the entries the Gym's
 # records pick. An entry with `records = true` says something about what
-# the Gym's verified records hold, so crates/coder/src/router/gym.rs picks
+# the Gym's verified records hold, so crates/coder-router/src/router/gym.rs picks
 # it from those records and the `answer` question never offers it; its
 # {tool} and {tests} slots are filled only from a verified record. The slot
 # and id names keep "tool"; the words people read say "plugin" (#10087).
@@ -799,7 +799,7 @@ not_for = "What one named plugin does, which our notes answer; how the Gym tests
 examples = ["What are plugins?", "whats a plugin", "what do plugins do", "what is a plugin", "What's a plugin?"]
 text = "A plugin adds an ability to Coder, our coding agent, and you turn each one on or off with `/plugins` in Coder. Its built-in plugins hand a task to Claude Code, Codex, Cursor, or Grok Build on your computer and show its progress as it works, and OpenRouter lets you use more models with your own key. You can make your own plugin too: instructions, small sandboxed programs, and tests that show whether it helps."
 chip = "What are plugins?"
-sources = ["crates/coder/src/builtin_plugins.rs", "crates/coder-new/README.md", "crates/coder-new/src/acp_discovery.rs", "knowledge/openagents/openagents.tools.md"]
+sources = ["crates/coder-runtime/src/builtin_plugins.rs", "crates/coder-new/README.md", "crates/coder-new/src/acp_discovery.rs", "knowledge/openagents/openagents.tools.md"]
 followups = ["meta.codebase", "meta.model"]
 
 [[answer]]
@@ -854,7 +854,7 @@ records = true
 when = "Picked from the Gym's records: the user wants to test a plugin that has a published test set"
 text = "We'd test {tool} with its published test set: {tests} tests, each run with {tool} and without it, so you can see whether Coder does better. Nothing runs until you start it."
 facts = { tool = "gym.tool", tests = "gym.tests" }
-sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+sources = ["docs/extensions/evaluation.md", "crates/coder-router/src/router/gym.rs"]
 
 [[answer]]
 id = "eval.run.choose"
@@ -864,7 +864,7 @@ records = true
 when = "Picked from the Gym's records: the user wants to test a plugin, or asks which plugins they can test, without naming one, and the default plugin has a published test set"
 text = "You can test {plugins} here. Each plugin's tests run with it and without it, so you can see whether Coder does better. We'd start with {tool}: {tests} tests. Nothing runs until you start it, or name another plugin to test it instead."
 facts = { plugins = "gym.plugins", tool = "gym.tool", tests = "gym.tests" }
-sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs", "deploy/eval-runner/catalog"]
+sources = ["docs/extensions/evaluation.md", "crates/coder-router/src/router/gym.rs", "deploy/eval-runner/catalog"]
 
 [[answer]]
 id = "eval.run.no_tests"
@@ -874,7 +874,7 @@ records = true
 when = "Picked from the Gym's records: the user wants to test a plugin that has no published test set yet"
 text = "{tool} doesn't have a published test set yet, so there's nothing to run. When one is added to the Gym, we'll offer to run it here."
 facts = { tool = "gym.tool" }
-sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+sources = ["docs/extensions/evaluation.md", "crates/coder-router/src/router/gym.rs"]
 followups = ["gym.what_test"]
 
 [[answer]]
@@ -884,13 +884,13 @@ routes = ["eval.run"]
 records = true
 when = "Picked from the Gym's records: the user wants to test a plugin, or asks which plugins they can test, and the Gym has no plugin to test"
 text = "There's no plugin to test in the Gym right now. Coder's built-in plugins hand a task to Claude Code, Codex, Cursor, or Grok Build on your computer and show its progress as it works."
-sources = ["crates/coder/src/router/gym.rs", "crates/coder/src/builtin_plugins.rs"]
+sources = ["crates/coder-router/src/router/gym.rs", "crates/coder-runtime/src/builtin_plugins.rs"]
 followups = ["gym.what_tool"]
 
 # The website can't run a plugin, so on openagents.com an eval.run turn
 # ("Which plugins are there?") gets this line with the built-in plugin
 # cards under it (`plugins = true`, docs/web/plugin-card.md). The cards name
-# the plugins from crates/coder/src/builtin_plugins.rs; the text never lists
+# the plugins from crates/coder-runtime/src/builtin_plugins.rs; the text never lists
 # them by hand.
 [[answer]]
 id = "plugins.web"
@@ -900,7 +900,7 @@ records = true
 plugins = true
 when = "Picked by code on the openagents.com website: the user wants to try or test one of our plugins, or asks which plugins there are or which to try; the built-in plugin cards show with it"
 text = "These plugins come built into Coder, our coding agent, and run with Coder on your computer. Coder hands a task to the coding agent you pick and shows its progress as it works."
-sources = ["crates/coder/src/builtin_plugins.rs", "docs/web/plugin-card.md"]
+sources = ["crates/coder-runtime/src/builtin_plugins.rs", "docs/web/plugin-card.md"]
 followups = ["gym.what_tool"]
 
 [[answer]]
@@ -910,7 +910,7 @@ routes = ["eval.check"]
 records = true
 when = "Picked from the Gym's records: a published result is waiting for checks"
 text = "Here's a result another trainer added to the Gym. Running the same tests again checks whether it holds up."
-sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+sources = ["docs/extensions/evaluation.md", "crates/coder-router/src/router/gym.rs"]
 
 [[answer]]
 id = "eval.check.none"
@@ -919,7 +919,7 @@ routes = ["eval.check"]
 records = true
 when = "Picked from the Gym's records: no published result is waiting for a check"
 text = "No published result is waiting for a check right now. When another trainer adds one to the Gym, we'll show it here so you can check it."
-sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+sources = ["docs/extensions/evaluation.md", "crates/coder-router/src/router/gym.rs"]
 followups = ["gym.what_test"]
 
 [[answer]]
@@ -930,7 +930,7 @@ records = true
 when = "Picked from the Gym's records: the latest published result for the plugin the user named"
 text = "Here's the latest published result for {tool}, from the Gym's records."
 facts = { tool = "gym.tool" }
-sources = ["docs/extensions/evaluation.md", "crates/coder/src/router/gym.rs"]
+sources = ["docs/extensions/evaluation.md", "crates/coder-router/src/router/gym.rs"]
 
 [[answer]]
 id = "eval.result.mine"
@@ -948,7 +948,7 @@ routes = ["gym.news"]
 records = true
 when = "Picked from the Gym's records: nothing in them is relevant to what the user asked about"
 text = "We don't have anything new in the Gym's records about that yet. Once trainers publish results and test sets, they'll show up here with their sources."
-sources = ["docs/extensions/evaluation.md", "crates/coder/src/gym_kb.rs"]
+sources = ["docs/extensions/evaluation.md", "crates/coder-router/src/gym_kb.rs"]
 followups = ["gym.what_test"]
 
 [[answer]]
@@ -958,7 +958,7 @@ routes = ["gym.news"]
 records = true
 when = "Picked from the Gym's records: the line a grounded news reply opens with, above the news card, when records relevant to what the user asked are found"
 text = "Here's what's new in the Gym."
-sources = ["crates/coder/src/router/gym.rs", "crates/coder/src/gym_kb.rs"]
+sources = ["crates/coder-router/src/router/gym.rs", "crates/coder-router/src/gym_kb.rs"]
 
 # ---------------------------------------------------------------------------
 # capability.missing (#9960): the user asked for something a plugin could
@@ -975,7 +975,7 @@ routes = ["capability.missing"]
 records = true
 when = "Picked by code: the user asks us to do or reach something that would take a plugin none of ours covers, and none is close"
 text = "There's no plugin for that yet. Want to make one? Anyone can make a plugin and test it in the Gym, so everyone can see whether it helps."
-sources = ["crates/coder/src/router/capability.rs", "docs/essays/2026-09-29-test-time-capabilities.md"]
+sources = ["crates/coder-router/src/router/capability.rs", "docs/essays/2026-09-29-test-time-capabilities.md"]
 followups = ["gym.what", "eval.credit.how"]
 
 [[answer]]
@@ -986,7 +986,7 @@ records = true
 when = "Picked by code: the user asks us to do or reach something that would take a plugin none of ours covers, and something we have is close to it"
 text = "There's no plugin for that yet. The closest thing we have is {capability}: {capability_line} Want to make one? Anyone can make a plugin and test it in the Gym, so everyone can see whether it helps."
 facts = { capability = "capability.name", capability_line = "capability.line" }
-sources = ["crates/coder/src/router/capability.rs", "docs/essays/2026-09-29-test-time-capabilities.md"]
+sources = ["crates/coder-router/src/router/capability.rs", "docs/essays/2026-09-29-test-time-capabilities.md"]
 followups = ["gym.what", "eval.credit.how"]
 
 # ---------------------------------------------------------------------------

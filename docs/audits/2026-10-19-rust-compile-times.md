@@ -525,6 +525,10 @@ package. The table reports that last pass, in seconds.
 | Area | Package before → after | Build before | Build after | Test-build before | Test-build after |
 | --- | --- | ---: | ---: | ---: | ---: |
 | Web screens, agent pages, and run commands | `openagents-web` → `openagents-web-site` | 43.1 | **4.8** | 88.7 | **4.5** |
+| Coder runtime and delegation | `coder` → `coder-runtime` | 65.0 | **14.0** | 86.6 | **11.4** |
+| Coder routing and knowledge | `coder` → `coder-router` | 65.0 | **7.5** | 86.6 | **11.5** |
+| Coder task orchestration | `coder` → `coder-task` | 65.0 | **22.0** | 86.6 | **31.3** |
+| Coder facade and binaries | `coder` → `coder` | 65.0 | **4.0** | 86.6 | **14.6** |
 
 The commands are `cargo build -p PACKAGE` and
 `cargo test -p PACKAGE --no-run`. `openagents-web-site` also owns the
@@ -534,6 +538,29 @@ once, and the site adds its routes before the core applies its layers and
 fallback. Both packages retain the dev profile's incremental setting.
 Docker builds and local launchers select the new package; the executable's
 name stays the same.
+
+Coder's existing imports and binaries stay in `coder`. The dependency
+order is `coder-runtime` → `coder-router` → `coder-task` → `coder`, with
+about 60k, 34k, 157k, and 12k Rust lines respectively. Runtime includes the
+delegate door; the shared capacity book and default task-store path live
+there so task orchestration does not create a dependency cycle. Build
+identity moves with its module. Source citations, the CLI tree generator,
+and the route-map generator follow the files. The new libraries retain
+the root profile's non-incremental default.
+
+The first table measures each package itself. These additional rows use
+`--edit-package LIBRARY coder` to include the dependent libraries and
+Coder's binaries, integration targets, and examples:
+
+| Edited library | Consumer | Build before | Build after | Test-build before | Test-build after |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `coder-runtime` | `coder` | 65.0 | 34.9 | 86.6 | 75.3 |
+| `coder-router` | `coder` | 65.0 | 63.0 | 86.6 | 78.8 |
+| `coder-task` | `coder` | 65.0 | 43.8 | 86.6 | 74.6 |
+
+Host load varied during these samples; the routing consumer's small build
+improvement should be read with that limitation. Warm-up is excluded from
+the table (the three consumer build warm-ups were 34.6, 142.4, and 54.0 s).
 
 ## The extreme options
 

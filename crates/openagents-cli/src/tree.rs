@@ -3,7 +3,7 @@
 //!
 //! [`help`] hands `coder::cli_route::tree::build` the top-level table and
 //! every group's `USAGE` with the effects its module declares beside it.
-//! The router reads the copy bundled in `crates/coder/src/cli_route/tree.json`;
+//! The router reads the copy bundled in `crates/coder-router/src/cli_route/tree.json`;
 //! the test here fails when that copy differs from what the live help
 //! builds. Run it with `OPENAGENTS_WRITE_CLI_TREE=1` to write the copy.
 
@@ -478,7 +478,7 @@ mod tests {
 
     const BUNDLED: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../coder/src/cli_route/tree.json"
+        "/../coder-router/src/cli_route/tree.json"
     );
 
     #[test]
@@ -506,7 +506,7 @@ mod tests {
         let bundled = std::fs::read_to_string(BUNDLED).expect("read the bundled tree");
         assert!(
             bundled == text,
-            "crates/coder/src/cli_route/tree.json is stale; run \
+            "crates/coder-router/src/cli_route/tree.json is stale; run \
              `OPENAGENTS_WRITE_CLI_TREE=1 cargo test -p openagents-cli --bin openagents tree::tests::the_bundled_tree` to regenerate it"
         );
     }

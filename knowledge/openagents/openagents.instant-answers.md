@@ -22,7 +22,7 @@ provenance:
   written_from: [reference]
   cites:
     - docs/deployment/chat-worker.md
-    - crates/coder/src/first.rs
+    - crates/coder-runtime/src/first.rs
     - docs/coder/design/2026-09-28-chat-router.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9923); the answer text awaits the owner's copy review."
@@ -40,5 +40,5 @@ A small, fast model, Jev from TypeSafe, reads each message first and chooses how
 ## Sources
 
 - `docs/deployment/chat-worker.md`
-- `crates/coder/src/first.rs`
+- `crates/coder-runtime/src/first.rs`
 - `docs/coder/design/2026-09-28-chat-router.md`

@@ -753,6 +753,7 @@ fn auto_delegates_to_an_opencode_target_named_by_its_login() {
         .env_remove("CODER_DELEGATE_MODEL")
         .env_remove("CODER_OPENCODE_MODEL")
         // The delegate door names OpenCode's binary with CODER_ONE_OPENCODE_BIN.
+        .env("XDG_DATA_HOME", home.join(".local/share"))
         .env("CODER_ONE_OPENCODE_BIN", &opencode)
         .env("CODER_SHELL", "off")
         .args(["-p", "--json", "what is here?", "--trace"])

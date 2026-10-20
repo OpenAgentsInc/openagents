@@ -424,7 +424,7 @@ The report is `openagents.eval-report.v1` with these profile rules:
 - A **decision-service record** (added 2026-09-29,
   [#9959](https://github.com/OpenAgentsInc/openagents/issues/9959)) is
   this report on a router or another decision service, the first being
-  the chat router (`crates/coder/src/router_claim.rs`, the Gym suite
+  the chat router (`crates/coder-router/src/router_claim.rs`, the Gym suite
   `chat-router-v2` under the `router-v1` gate). Its subject's
   `configuration` pins the question set and the answer bank as
   `name@digest`, the identities a NIP-CJ `judgment` carries in `set` and

@@ -13,7 +13,7 @@
 #   emulator with Coder as a child, so this script collects that process and
 #   every descendant and asks `coder activity --pid ...` about all of them.
 # - `coder activity` owns the rule for what counts as work in flight
-#   (crates/coder/src/activity.rs). This script only shows the sentence it
+#   (crates/coder-runtime/src/activity.rs). This script only shows the sentence it
 #   prints. It exits 0 while work runs and non-zero otherwise.
 # - A press that cannot ask still closes. A window with no process, a
 #   missing `coder`, and a `coder` that fails all close on the first press.

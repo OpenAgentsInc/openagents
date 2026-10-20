@@ -30,7 +30,7 @@ provenance:
     - docs/extensions/evaluation.md
     - docs/extensions/plugins.md
     - knowledge/openagents/openagents.plugin-list.md
-    - crates/coder/src/builtin_plugins.rs
+    - crates/coder-runtime/src/builtin_plugins.rs
     - crates/coder-new/README.md
 evidence:
   - "2026-09-28: written from the cited documents and checked against them (#9936); the answer text awaits the owner's copy review."
@@ -39,7 +39,7 @@ evidence:
   - "2026-10-01: version 4 (#10090) names no hand-kept list of plugins: `openagents.plugin-list`, generated from the hosted runner's catalog, lists them all."
   - "2026-10-08: version 5 (#11031) stops claiming 'what tools do you have' questions (meta.tools answers those plainly) and drops the internal 'we don't call it a tool' terminology note, which the chat repeated to users as a confusing explanation."
   - "2026-10-09: version 6 says where plugins run (with Coder on your computer), so an answer on the website never suggests running one there; the website answers 'which plugin should I try' with the catalog's plugin cards (docs/web/plugin-card.md)."
-  - "2026-10-09: version 7 names the plugins that work today, Coder's ACP delegation to Claude Code, Codex, Cursor, and Grok Build (crates/coder/src/builtin_plugins.rs), instead of the Gym's sample plugins, which are no longer shown."
+  - "2026-10-09: version 7 names the plugins that work today, Coder's ACP delegation to Claude Code, Codex, Cursor, and Grok Build (crates/coder-runtime/src/builtin_plugins.rs), instead of the Gym's sample plugins, which are no longer shown."
   - "2026-10-09: version 8 (#11095) answers the starter question 'What are plugins?' and matches the prepared answer meta.plugins: what a plugin does for Coder, `/plugins` to turn one on or off, the built-in plugins (Claude Code, Codex, Cursor, Grok Build, OpenRouter), and making your own."
 ---
 
@@ -61,5 +61,5 @@ A plugin adds an ability to Coder, our coding agent, and you turn each one on or
 - `docs/extensions/evaluation.md`
 - `docs/extensions/plugins.md`
 - `knowledge/openagents/openagents.plugin-list.md`
-- `crates/coder/src/builtin_plugins.rs`
+- `crates/coder-runtime/src/builtin_plugins.rs`
 - `crates/coder-new/README.md`
