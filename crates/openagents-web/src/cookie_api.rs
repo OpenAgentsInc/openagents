@@ -62,9 +62,6 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/notify",
     "/v1/land",
     "/v1/files",
-    // The running work Coder reports, and Approve, Deny, and Stop on it:
-    // the GPUI chat's approval and agents (#12316).
-    "/v1/agents",
     // The browser's phone-approved wallet requests (#12258).
     "/v1/wallet/browser",
     // The browser's Verse key and its owner tag (#12313).
@@ -78,7 +75,10 @@ pub(crate) const ACCOUNT: &[&str] = &[
 ];
 
 /// Account routes that take the cookie at that exact path only.
-const EXACT: &[&str] = &["/v1/account"];
+/// `/v1/agents` and its actions are the running work Coder reports and
+/// Approve, Deny, and Stop on it, for the GPUI chat (#12316); the gateway's
+/// agent sign-up routes under `/v1/agents/` stay out.
+const EXACT: &[&str] = &["/v1/account", "/v1/agents", "/v1/agents/actions"];
 
 /// `path` is `prefix` or a path under it.
 fn under(path: &str, prefix: &str) -> bool {
@@ -180,6 +180,14 @@ pub(crate) async fn layer(State(app): State<App>, mut request: Request, next: Ne
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_agents_routes_take_the_cookie_but_not_the_gateway_sign_up() {
+        assert!(covered("/v1/agents"));
+        assert!(covered("/v1/agents/actions"));
+        assert!(!covered("/v1/agents/signup"));
+        assert!(!covered("/v1/agentsx"));
+    }
 
     #[test]
     fn every_account_route_takes_the_cookie() {
