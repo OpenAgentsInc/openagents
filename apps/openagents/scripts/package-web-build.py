@@ -3,6 +3,7 @@
 import gzip
 import hashlib
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -12,6 +13,19 @@ import sys
 BUDGET = 1_500_000
 
 
+def commit():
+    """The build's commit: OPENAGENTS_COMMIT, else git's, else "unknown" (the
+    website image's build stage has neither git nor the repository)."""
+    named = os.environ.get("OPENAGENTS_COMMIT", "").strip()
+    if named:
+        return named
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
 def package(directory, name):
     directory = Path(directory)
     wasm = name + "_bg.wasm"
@@ -19,7 +33,7 @@ def package(directory, name):
     subprocess.run(["brotli", "-q", "11", "-f", str(directory / wasm)], check=True)
     size = (directory / (wasm + ".br")).stat().st_size
     report = {
-        "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+        "commit": commit(),
         "module": wasm,
         "raw_bytes": (directory / wasm).stat().st_size,
         "brotli_bytes": size,
