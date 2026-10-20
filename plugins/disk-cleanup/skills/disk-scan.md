@@ -1,32 +1,18 @@
-# Scan disk use
+# Review disk cleanup
 
-Run a full, read-only scan of this computer's disk use and present what it
-found. This skill deletes nothing.
+Use `openagents-disk-cleanup scan --age-hours 24 --plan FILE --json` for old
+Cargo outputs and linked Git worktrees. Choose a new plan filename in the
+session's scratch folder. Install the tool with
+`scripts/dev/install-disk-janitor.sh` if it is missing.
 
-Enable the plugin once (it can only scan), then run the scan with the host
-command:
+Report the candidate sizes and paths, then the largest kept folders and their
+reasons. Include uncovered target folders. Do not say anything was removed by
+a scan. Models, results, package caches, and unrelated scratch are outside this
+cleanup command.
 
-```sh
-openagents plugin enable disk-cleanup
-openagents --json background scan disk-cleanup
-```
-
-The scan reads the rule in this plugin (`disk-cleanup`) and every candidate
-class it names. It lists each candidate folder with its size, how long since it
-was last used, and why it qualifies. It lists each folder it keeps and why, and
-the folders it does not clean because they are not known caches. It writes no
-state and removes nothing.
-
-Present the result to the person in this order:
-
-1. The free space on each watched volume.
-2. Each class with its folder count and total reclaimable size, largest first.
-3. The biggest kept folders, with the reason each one stays.
-4. The folders that are not known caches, with their sizes.
-
-Name the reclaimable total and the number of folders. Do not say that anything
-was removed.
-
-Do not delete anything from this skill. A later step may remove folders the
-person chooses from the list; until that step exists, leave the folders as they
-are and say so.
+When the person authorizes removal, apply the reviewed plan with
+`openagents-disk-cleanup apply --plan FILE --receipt RECEIPT`. Use `--only`
+with entry numbers when they approved a subset. Do not broaden the saved scope
+or reduce its age. Read the receipt and scan again: changed or active entries
+may have stayed. Stop once the remaining entries match the expected keep
+reasons; do not force their removal.

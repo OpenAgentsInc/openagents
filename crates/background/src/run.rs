@@ -548,6 +548,14 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item, run: &str) -> Action {
             .and_then(|()| std::fs::rename(&item.path, to))
             .map(|()| Outcome::Trashed)
             .map_err(|error| error.to_string()),
+        (None, None)
+            if matches!(
+                item.class,
+                Class::StaleTargets | Class::EndedTargets | Class::GatePools
+            ) =>
+        {
+            crate::cleanup::clear_outputs(&item.path).map(|()| Outcome::Deleted)
+        }
         (None, None) => std::fs::remove_dir_all(&item.path)
             .map(|()| Outcome::Deleted)
             .map_err(|error| error.to_string()),
@@ -555,6 +563,14 @@ fn act(env: &Env<'_>, rule: &Rule, item: &Item, run: &str) -> Action {
     drop(held);
     match result {
         Ok(outcome) => {
+            if matches!(
+                item.class,
+                Class::StaleTargets | Class::EndedTargets | Class::GatePools
+            ) {
+                let remaining =
+                    paths::measure(&item.path, &env.layout.home).map_or(0, |size| size.bytes);
+                action.bytes = action.bytes.saturating_sub(remaining);
+            }
             action.outcome = outcome;
             action.undo = undo;
             if outcome == Outcome::Trashed {

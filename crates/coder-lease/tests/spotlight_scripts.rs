@@ -86,6 +86,7 @@ impl Fixture {
                 std::env::join_paths([
                     self.bin.as_path(),
                     self.home.join(".cargo/bin").as_path(),
+                    Path::new("/run/current-system/sw/bin"),
                     Path::new("/usr/bin"),
                     Path::new("/bin"),
                 ])

@@ -1065,7 +1065,8 @@ fn a_read_artifact_counts_as_used_and_is_set_back_to_show_the_next_read() {
         let mut bytes = Vec::new();
         std::io::Read::read_to_end(&mut File::open(path).unwrap(), &mut bytes).unwrap();
     };
-    // Equal times: macOS doesn't record a read.
+    // macOS leaves equal times after a read; Linux uses the equal-time fixture.
+    #[cfg(target_os = "macos")]
     read(&rlib);
     let (accessed, modified) = times(&rlib);
     #[cfg(target_os = "macos")]

@@ -92,4 +92,15 @@ printf '%s\n%s\n' "$RUSTC" "$oa_build_version" > "$CARGO_BUILD_BUILD_DIR/.compil
 mv -f "$CARGO_BUILD_BUILD_DIR/.compiler.$$.new" "$CARGO_BUILD_BUILD_DIR/.openagents-compiler" || return 1
 printf '%s\n' "$oa_build_manifest" > "$CARGO_BUILD_BUILD_DIR/.workspace.$$.new" || return 1
 mv -f "$CARGO_BUILD_BUILD_DIR/.workspace.$$.new" "$CARGO_BUILD_BUILD_DIR/.openagents-workspace" || return 1
+# Register custom targets so disk cleanup need not guess their folder names.
+oa_build_target_path=$(CDPATH= cd -- "$CARGO_TARGET_DIR" && pwd -P) || return 1
+if command -v shasum >/dev/null 2>&1; then
+  oa_build_target_id=$(printf '%s' "$oa_build_target_path" | shasum -a 256 | awk '{print $1}')
+else
+  oa_build_target_id=$(printf '%s' "$oa_build_target_path" | sha256sum | awk '{print $1}')
+fi
+mkdir -p "$HOME/.openagents/build-targets" || return 1
+printf '%s\n' "$oa_build_target_path" > "$HOME/.openagents/build-targets/.$oa_build_target_id.$$.new" || return 1
+mv -f "$HOME/.openagents/build-targets/.$oa_build_target_id.$$.new" "$HOME/.openagents/build-targets/$oa_build_target_id" || return 1
+unset oa_build_target_path oa_build_target_id
 unset oa_build_nightly oa_build_threads oa_build_manifest oa_build_parent oa_build_hash oa_build_rustc oa_build_rustup oa_build_version oa_build_kache oa_build_key

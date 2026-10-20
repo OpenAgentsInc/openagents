@@ -28,6 +28,8 @@
 #[cfg(unix)]
 pub mod builtins;
 #[cfg(unix)]
+pub mod cleanup;
+#[cfg(unix)]
 pub mod compile;
 #[cfg(unix)]
 pub mod engine;

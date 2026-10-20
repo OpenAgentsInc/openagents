@@ -275,6 +275,8 @@ fn every_built_in_is_valid_listed_and_off_but_host_defaults() {
                 rule.triggers,
                 vec![rule::Trigger::Daily { at: "03:30".into() }]
             );
+        } else if id == "calibration" {
+            assert_eq!(rule.enabled, crate::builtins::coder_host());
         } else {
             assert!(!rule.enabled, "{id} ships off");
         }

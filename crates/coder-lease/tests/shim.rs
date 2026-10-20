@@ -50,7 +50,7 @@ fn scratch() -> Scratch {
     let path = coder_lease::shim::path_with(
         &shims,
         Some(std::ffi::OsStr::new(&format!(
-            "{}:/usr/bin:/bin",
+            "{}:/run/current-system/sw/bin:/usr/bin:/bin",
             tools.display()
         ))),
     );
