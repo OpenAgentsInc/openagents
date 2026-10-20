@@ -1,0 +1,31 @@
+# AgentGraph: an agent's definition as a dataflow graph of units with typed
+# pins and the links between them, after Unit (samuelmtimbo/unit, MIT).
+# The spec and its layout are plain data with no renderer; the `lab` feature
+# derives a graph from an Agent Lab experiment. The web view in
+# apps/openagents/web/agent-graph links it with `default-features = false`.
+[package]
+name = "agent-graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[features]
+default = ["lab"]
+lab = ["dep:agent-lab", "dep:agent-contract"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+agent-lab = { path = "../agent-lab", optional = true }
+agent-contract = { path = "../agent-contract", optional = true }
+
+[dev-dependencies]
+serde_json = "1"
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }
