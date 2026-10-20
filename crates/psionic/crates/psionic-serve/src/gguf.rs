@@ -11229,11 +11229,11 @@ fn build_gemma4_cuda_layer_caches_from_host_cache(
                 }
                 state
                     .key_cache
-                    .write_f32(keys.as_slice())
+                    .write_f32_at_offset(0, keys.as_slice())
                     .map_err(ReferenceTextGenerationError::Runtime)?;
                 state
                     .value_cache
-                    .write_f32(values.as_slice())
+                    .write_f32_at_offset(0, values.as_slice())
                     .map_err(ReferenceTextGenerationError::Runtime)?;
                 state.len = cache.len();
             }
@@ -11685,7 +11685,10 @@ fn run_cuda_gemma4_generation_request(
     result
 }
 
-pub struct CudaGemma4TextGenerationService {
+/// Native dense CUDA execution shared by Gemma 4 and Qwen2 decoders.
+/// Projections and attention use Psionic CUDA kernels; normalization,
+/// rotary transforms, sampling, and token embedding lookup are host-stepped.
+pub struct CudaDenseGgufTextGenerationService {
     backend: CudaBackend,
     models: InMemoryGenerationModelRegistry<CudaGemma4GenerationModel>,
     sessions: InMemoryGenerationSessionStore,
@@ -11698,9 +11701,19 @@ pub struct CudaGemma4TextGenerationService {
     distributed_requests: BTreeMap<String, DistributedCudaGemma4RequestState>,
 }
 
-impl CudaGemma4TextGenerationService {
+/// Existing Gemma 4 API, backed by the shared dense CUDA executor.
+pub type CudaGemma4TextGenerationService = CudaDenseGgufTextGenerationService;
+
+impl CudaDenseGgufTextGenerationService {
     pub fn from_gguf_path(path: impl AsRef<Path>) -> Result<Self, ReferenceTextGenerationError> {
         let mut backend = CudaBackend::new();
+        if !backend.quantized_kernels_available() {
+            return Err(ReferenceTextGenerationError::Runtime(
+                crate::RuntimeError::Backend(
+                    "native dense CUDA kernels are unavailable in this build".into(),
+                ),
+            ));
+        }
         let adapters = Arc::new(Mutex::new(DenseAdapterRuntimeStore::default()));
         let model =
             CudaGemma4GenerationModel::from_gguf_path(path, &mut backend, Arc::clone(&adapters))?;
@@ -12043,7 +12056,7 @@ impl CudaGemma4TextGenerationService {
     }
 }
 
-impl TextGenerationExecutor for CudaGemma4TextGenerationService {
+impl TextGenerationExecutor for CudaDenseGgufTextGenerationService {
     type Error = ReferenceTextGenerationError;
 
     fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error> {
@@ -12059,7 +12072,7 @@ impl TextGenerationExecutor for CudaGemma4TextGenerationService {
     }
 }
 
-impl StreamingTextGenerationExecutor for CudaGemma4TextGenerationService {
+impl StreamingTextGenerationExecutor for CudaDenseGgufTextGenerationService {
     type Stream<'a> = Box<dyn GenerationEventStream + 'a>;
 
     fn generate_stream<'a>(
@@ -12071,7 +12084,7 @@ impl StreamingTextGenerationExecutor for CudaGemma4TextGenerationService {
     }
 }
 
-impl ManagedTextGenerationRuntime for CudaGemma4TextGenerationService {
+impl ManagedTextGenerationRuntime for CudaDenseGgufTextGenerationService {
     fn loaded_models(&mut self) -> LoadedModelsObservation {
         Self::loaded_models(self)
     }
@@ -12119,7 +12132,10 @@ impl CudaGemma4GenerationModel {
     ) -> Result<Self, ReferenceTextGenerationError> {
         let load_start = Instant::now();
         let adapter = GgufDecoderAdapterLoader.load_blob_artifact(&artifact)?;
-        if adapter.family_metadata().family != GgufDecoderFamily::Gemma4 {
+        if !matches!(
+            adapter.family_metadata().family,
+            GgufDecoderFamily::Gemma4 | GgufDecoderFamily::Qwen
+        ) {
             return Err(ModelLoadError::UnsupportedModel(
                 adapter.descriptor().model.model_id.clone(),
             )
@@ -12139,7 +12155,10 @@ impl CudaGemma4GenerationModel {
             .as_deref()
             .unwrap_or(adapter.tensor_layout().token_embedding.as_str());
         let output = CudaQuantizedProjectionMatrix::load(backend, &artifact, output_name)?;
-        let descriptor = adapter.descriptor().clone();
+        let mut descriptor = adapter.descriptor().clone();
+        if adapter.family_metadata().family == GgufDecoderFamily::Qwen {
+            descriptor.config.max_context = descriptor.config.max_context.min(4096);
+        }
         let gemma4_per_layer_inputs = CudaGemma4PerLayerInputs::load(backend, &artifact)?;
         let mut cache_offset = 0usize;
         let mut last_swa_cache_offset = None;
@@ -12297,7 +12316,7 @@ impl CudaGemma4GenerationModel {
     fn runtime_support(&self) -> GgufDecoderRuntimeSupport {
         let mut support = runtime_support_for_descriptor(
             &self.inner.descriptor,
-            GgufDecoderFamily::Gemma4,
+            self.inner.family_metadata.family,
             vec![String::from("cuda")],
             vec![String::from("cpu"), String::from("metal")],
             gemma_cuda_adapter_runtime_support(),
@@ -14832,7 +14851,11 @@ fn digest_gemma4_cuda_plan(
     hasher.update(descriptor.model.family.as_bytes());
     hasher.update(b"|");
     hasher.update(metadata.architecture.as_bytes());
-    hasher.update(b"|gemma4-native-cuda|v1");
+    hasher.update(if metadata.family == GgufDecoderFamily::Qwen {
+        b"|qwen2-native-cuda|v1".as_slice()
+    } else {
+        b"|gemma4-native-cuda|v1".as_slice()
+    });
     hex::encode(hasher.finalize())
 }
 
@@ -18443,6 +18466,183 @@ mod tests {
                 .unsupported_features
                 .contains(&String::from("mtp_non_greedy_decode"))
         );
+        Ok(())
+    }
+
+    // Nonzero Q4_K/Q6_K projections, distinct Q/K/V biases, two layers,
+    // and grouped attention exercise the R1 distill's actual decoder path.
+    fn qwen2_cuda_fixture(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        let mut metadata = dense_qwen_metadata("tiny qwen2 native cuda");
+        for (key, value) in &mut metadata {
+            *value = match key.as_str() {
+                "qwen2.embedding_length" | "qwen2.feed_forward_length" => {
+                    GgufMetadataValue::U32(256)
+                }
+                "qwen2.block_count" => GgufMetadataValue::U32(2),
+                "qwen2.attention.head_count" => GgufMetadataValue::U32(4),
+                "qwen2.attention.head_count_kv" => GgufMetadataValue::U32(2),
+                _ => value.clone(),
+            };
+        }
+        fn quant(name: &str, rows: usize, kind: GgufTensorType) -> TestGgufTensor {
+            let size = if kind == GgufTensorType::Q4K {
+                144
+            } else {
+                210
+            };
+            let mut bytes = Vec::with_capacity(rows * size);
+            for row in 0..rows {
+                let mut block: Vec<u8> = (0..size)
+                    .map(|i| ((i * 17 + row * 11) % 256) as u8)
+                    .collect();
+                if kind == GgufTensorType::Q4K {
+                    block[..2].copy_from_slice(&half::f16::from_f32(0.0001).to_le_bytes());
+                    block[2..4].copy_from_slice(&half::f16::from_f32(0.00005).to_le_bytes());
+                } else {
+                    block[208..].copy_from_slice(&half::f16::from_f32(0.00001).to_le_bytes());
+                }
+                bytes.extend(block);
+            }
+            TestGgufTensor::new(name, vec![rows, 256], kind, bytes)
+        }
+        let embedding = (0..6 * 256)
+            .map(|i| ((i * 13 % 61) as f32 - 30.0) / 31.0)
+            .collect();
+        let mut tensors = vec![
+            dense_tensor("token_embd.weight", vec![6, 256], embedding),
+            dense_tensor("output_norm.weight", vec![256], vec![1.0; 256]),
+            quant("output.weight", 6, GgufTensorType::Q6K),
+        ];
+        for layer in 0..2 {
+            for suffix in ["attn_norm.weight", "ffn_norm.weight"] {
+                tensors.push(dense_tensor(
+                    &format!("blk.{layer}.{suffix}"),
+                    vec![256],
+                    vec![1.0; 256],
+                ));
+            }
+            for (suffix, rows) in [
+                ("attn_q", 256),
+                ("attn_k", 128),
+                ("attn_v", 128),
+                ("attn_output", 256),
+                ("ffn_gate", 256),
+                ("ffn_up", 256),
+                ("ffn_down", 256),
+            ] {
+                tensors.push(quant(
+                    &format!("blk.{layer}.{suffix}.weight"),
+                    rows,
+                    GgufTensorType::Q4K,
+                ));
+            }
+            for (suffix, rows, scale) in [
+                ("attn_q", 256, 0.001),
+                ("attn_k", 128, -0.002),
+                ("attn_v", 128, 0.003),
+            ] {
+                tensors.push(dense_tensor(
+                    &format!("blk.{layer}.{suffix}.bias"),
+                    vec![rows],
+                    (0..rows).map(|i| (i as f32 % 7.0 - 3.0) * scale).collect(),
+                ));
+            }
+        }
+        write_test_gguf(path, &metadata, &tensors)
+    }
+
+    #[test]
+    fn qwen2_cuda_matches_cpu_logits_cache_and_generation_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut cuda_backend = CudaBackend::new();
+        if cuda_backend.selected_device().is_none() || !cuda_backend.quantized_kernels_available() {
+            if std::env::var_os("PSIONIC_REQUIRE_CUDA").is_some() {
+                return Err(
+                    "CUDA qualification requested but native kernels or device are unavailable"
+                        .into(),
+                );
+            }
+            return Ok(());
+        }
+        let temp = tempdir()?;
+        let path = temp.path().join("qwen2-parity.gguf");
+        qwen2_cuda_fixture(&path)?;
+        let adapters = std::sync::Arc::new(Mutex::new(super::DenseAdapterRuntimeStore::default()));
+        let cpu = super::CpuDenseGgufGenerationModel::from_gguf_path(&path, adapters.clone())?;
+        let cuda =
+            super::CudaGemma4GenerationModel::from_gguf_path(&path, &mut cuda_backend, adapters)?;
+        assert_eq!(cuda.runtime_support().family, GgufDecoderFamily::Qwen);
+        assert_eq!(cuda.runtime_support().supported_backends, vec!["cuda"]);
+        let mut cpu_backend = crate::CpuBackend::new();
+        let mut cpu_cache = InMemoryKvCache::new(32, cpu.cache_width());
+        let mut cuda_cache = InMemoryKvCache::new(32, cuda.cache_width());
+        let mut layer_caches = super::build_gemma4_cuda_layer_caches_from_host_cache(
+            &mut cuda_backend,
+            &cuda.inner,
+            &cuda_cache,
+            8,
+        )?;
+        let mut plan = cuda.inner.build_decode_step_plan(&mut cuda_backend)?;
+        for (position, token) in [TokenId(2), TokenId(3), TokenId(4)].into_iter().enumerate() {
+            let reference = cpu.execute_step(&mut cpu_backend, token, position, &cpu_cache)?;
+            let actual = cuda.inner.forward_step_with_layer_caches(
+                &mut cuda_backend,
+                token,
+                position,
+                &cuda_cache,
+                &mut layer_caches,
+                &mut plan,
+                0,
+                cuda.inner.layers.len(),
+                None,
+                None,
+                None,
+                true,
+            )?;
+            for (name, a, b) in [
+                (
+                    "logits",
+                    actual.logits.as_slice(),
+                    reference.logits.as_slice(),
+                ),
+                ("key", actual.key.as_slice(), reference.key.as_slice()),
+                ("value", actual.value.as_slice(), reference.value.as_slice()),
+            ] {
+                let error = a
+                    .iter()
+                    .zip(b)
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0_f32, f32::max);
+                assert_eq!(a.len(), b.len());
+                assert!(
+                    error < 0.01,
+                    "Qwen2 CUDA {name} error {error} at position {position}"
+                );
+            }
+            cpu_cache.append(token, reference.key, reference.value)?;
+            cuda_cache.append(token, actual.key, actual.value)?;
+        }
+        let mut cpu_service = CpuGgufTextGenerationService::from_gguf_path(&path)?;
+        let mut cuda_service = super::CudaDenseGgufTextGenerationService::from_gguf_path(&path)?;
+        let cpu_request = GenerationRequest::new_text(
+            "qwen2-cpu-parity",
+            cpu_service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(3),
+        );
+        let expected = cpu_service.generate(&cpu_request)?;
+        let request = GenerationRequest::new_text(
+            "qwen2-cuda-parity",
+            cuda_service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(3),
+        );
+        let first = cuda_service.generate(&request)?;
+        let repeated = cuda_service.generate(&request)?;
+        assert_eq!(first.output, expected.output);
+        assert_eq!(first.output, repeated.output);
         Ok(())
     }
 

@@ -47,7 +47,9 @@ Commands:
       --text-profile NAME   deepseek-r1-distill-qwen-1.5b: the pinned CUDA
                             text-only profile, with serial recovery and no
                             decision engine. `off` clears the saved profile.
-      --managed-llama FILE  llama-server for that profile (or set
+      --managed-psionic FILE
+                            Native server for the DeepSeek CUDA profile.
+      --managed-llama FILE  Select the llama.cpp fallback for that profile (or set
                             OPENAGENTS_LLAMA_CPP_BIN).
       --generation-seconds N
       --startup-seconds N

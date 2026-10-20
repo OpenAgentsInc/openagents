@@ -34,6 +34,8 @@ pub const SCHEMA_V1: &str = "openagents.pylon.share.v1";
 pub const SERIAL_SCHEMA: &str = "openagents.pylon.share.v3";
 /// Profile-aware hosts verify the pinned artifact before starting a worker.
 pub const PROFILE_SCHEMA: &str = "openagents.pylon.share.v4";
+/// Native profiles require a host that supervises native serial workers.
+pub const NATIVE_PROFILE_SCHEMA: &str = "openagents.pylon.share.v5";
 
 /// The decision lane: a Psionic server the supervisor runs on loopback for
 /// NIP-DEC decisions.
@@ -216,6 +218,7 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
                 && settings.schema != SCHEMA_V1
                 && settings.schema != SERIAL_SCHEMA
                 && settings.schema != PROFILE_SCHEMA
+                && settings.schema != NATIVE_PROFILE_SCHEMA
             {
                 return Err(format!(
                     "{} is a newer settings file ({}); update openagents",
@@ -227,7 +230,10 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
                 .text
                 .as_ref()
                 .is_some_and(|lane| lane.serial.is_some())
-                && !matches!(settings.schema.as_str(), SERIAL_SCHEMA | PROFILE_SCHEMA)
+                && !matches!(
+                    settings.schema.as_str(),
+                    SERIAL_SCHEMA | PROFILE_SCHEMA | NATIVE_PROFILE_SCHEMA
+                )
             {
                 return Err("managed serial recovery needs version 3 settings".into());
             }
@@ -235,9 +241,20 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
                 .text
                 .as_ref()
                 .is_some_and(|lane| lane.profile.is_some())
-                && settings.schema != PROFILE_SCHEMA
+                && !matches!(
+                    settings.schema.as_str(),
+                    PROFILE_SCHEMA | NATIVE_PROFILE_SCHEMA
+                )
             {
                 return Err("pinned text profiles need version 4 settings".into());
+            }
+            if settings
+                .text
+                .as_ref()
+                .is_some_and(|lane| lane.profile.is_some() && lane.engine == TextEngine::Openai)
+                && settings.schema != NATIVE_PROFILE_SCHEMA
+            {
+                return Err("native text profiles need version 5 settings".into());
             }
             settings.schema = settings_schema(&settings).into();
             Ok(Some(settings))
@@ -249,6 +266,9 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
 
 fn settings_schema(settings: &Settings) -> &'static str {
     match settings.text.as_ref() {
+        Some(lane) if lane.profile.is_some() && lane.engine == TextEngine::Openai => {
+            NATIVE_PROFILE_SCHEMA
+        }
         Some(lane) if lane.profile.is_some() => PROFILE_SCHEMA,
         Some(lane) if lane.serial.is_some() => SERIAL_SCHEMA,
         _ => SCHEMA,

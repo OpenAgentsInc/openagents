@@ -204,6 +204,9 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
             }
         }
     }
+    if lane.serial.is_some() {
+        command.arg("--single-generation");
+    }
     if lane.engine != TextEngine::GptOss {
         command.args(["--mesh-coordination", "disabled"]);
     }
@@ -754,10 +757,10 @@ async fn unit(
                 || settings
                     .text
                     .as_ref()
-                    .is_none_or(|t| t.engine != TextEngine::LlamaCpp)
+                    .is_none_or(|t| !matches!(t.engine, TextEngine::Openai | TextEngine::LlamaCpp))
             {
                 Err(
-                    "managed serial recovery needs a text-only llama.cpp pylon with exactly one slot"
+                    "managed serial recovery needs a text-only native Psionic or llama.cpp pylon with exactly one slot"
                         .to_string(),
                 )
             } else {
@@ -1237,6 +1240,7 @@ pub struct Up {
     /// An explicit profile, or `None` inside `Some` to clear it.
     pub text_profile: Option<Option<crate::serial::Profile>>,
     pub managed_llama: Option<PathBuf>,
+    pub managed_psionic: Option<PathBuf>,
     pub generation_seconds: Option<u64>,
     pub startup_seconds: Option<u64>,
     pub restart_limit: Option<u32>,
@@ -1287,6 +1291,9 @@ impl Up {
             })
             .transpose()?;
         let managed_llama = share::take_values(&mut words, "--managed-llama")?
+            .pop()
+            .map(PathBuf::from);
+        let managed_psionic = share::take_values(&mut words, "--managed-psionic")?
             .pop()
             .map(PathBuf::from);
         let generation_seconds =
@@ -1347,6 +1354,7 @@ impl Up {
         Ok(Self {
             text_profile,
             managed_llama,
+            managed_psionic,
             generation_seconds,
             startup_seconds,
             restart_limit,
@@ -1430,6 +1438,7 @@ pub fn settings_for_up(
         return profile_settings(settings, up, profile, relay);
     }
     if up.managed_llama.is_some()
+        || up.managed_psionic.is_some()
         || up.generation_seconds.is_some()
         || up.startup_seconds.is_some()
         || up.restart_limit.is_some()
@@ -1614,13 +1623,13 @@ fn profile_settings(
     }
     if up
         .text_engine
-        .is_some_and(|engine| engine != TextEngine::LlamaCpp)
+        .is_some_and(|engine| engine == TextEngine::GptOss)
         || up
             .text_device
             .as_deref()
             .is_some_and(|device| device != "cuda")
     {
-        return Err("the DeepSeek text profile needs llama-cpp on cuda".into());
+        return Err("the DeepSeek text profile needs native Psionic or llama-cpp on cuda".into());
     }
     if up.text_chat_template.is_some()
         || up.text_stop.is_some()
@@ -1654,17 +1663,45 @@ fn profile_settings(
     let file = file
         .canonicalize()
         .map_err(|e| format!("cannot open the DeepSeek model at {}: {e}", file.display()))?;
-    let server = up.managed_llama.clone()
-        .or_else(|| held.and_then(|lane| lane.serial.as_ref()).map(|config| config.server.clone()))
-        .or_else(crate::serial::find_server)
-        .ok_or("llama.cpp is missing; set OPENAGENTS_LLAMA_CPP_BIN or pass --managed-llama /path/to/llama-server")?;
+    if up.managed_llama.is_some() && up.managed_psionic.is_some() {
+        return Err("choose --managed-psionic or --managed-llama".into());
+    }
+    let engine = up
+        .text_engine
+        .or_else(|| {
+            if up.managed_psionic.is_some() {
+                Some(TextEngine::Openai)
+            } else if up.managed_llama.is_some() {
+                Some(TextEngine::LlamaCpp)
+            } else {
+                held.map(|lane| lane.engine)
+            }
+        })
+        .unwrap_or(TextEngine::LlamaCpp);
+    if (engine == TextEngine::Openai && up.managed_llama.is_some())
+        || (engine == TextEngine::LlamaCpp && up.managed_psionic.is_some())
+    {
+        return Err("the selected text engine does not match the managed executable option".into());
+    }
+    let server = if engine == TextEngine::Openai { up.managed_psionic.clone() } else { up.managed_llama.clone() }
+        .or_else(|| held.filter(|lane| lane.engine == engine).and_then(|lane| lane.serial.as_ref()).map(|config| config.server.clone()))
+        .or_else(|| if engine == TextEngine::Openai { crate::setup::find_server() } else { crate::serial::find_server() })
+        .ok_or("the model server is missing; pass --managed-psionic /path/to/psionic-openai-server, or select llama-cpp with --managed-llama")?;
     let server = server
         .canonicalize()
-        .map_err(|e| format!("cannot open llama.cpp at {}: {e}", server.display()))?;
+        .map_err(|e| format!("cannot open the model server at {}: {e}", server.display()))?;
     let held_config = held.and_then(|lane| lane.serial.as_ref());
     let config = Config {
         server,
-        sampling: crate::engine::Sampling::new(0.6, 0.95, 1)?,
+        sampling: crate::engine::Sampling::new(
+            if engine == TextEngine::Openai {
+                0.0
+            } else {
+                0.6
+            },
+            0.95,
+            1,
+        )?,
         generation_seconds: up
             .generation_seconds
             .or(held_config.map(|c| c.generation_seconds))
@@ -1694,7 +1731,7 @@ fn profile_settings(
         model: Profile::MODEL.into(),
         model_file: file,
         device: Some("cuda".into()),
-        engine: TextEngine::LlamaCpp,
+        engine,
         chat_template: None,
         stop: Vec::new(),
         metadata_overrides: Vec::new(),
@@ -1707,7 +1744,12 @@ fn profile_settings(
     settings.model = Profile::MODEL.into();
     settings.engine = format!("http://127.0.0.1:{port}");
     settings.dedicated |= up.dedicated;
-    settings.schema = share::PROFILE_SCHEMA.into();
+    settings.schema = if engine == TextEngine::Openai {
+        share::NATIVE_PROFILE_SCHEMA
+    } else {
+        share::PROFILE_SCHEMA
+    }
+    .into();
     settings.on = true;
     settings.changed_at = now();
     Ok((settings, Vec::new()))

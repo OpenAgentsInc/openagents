@@ -149,6 +149,26 @@ class DeepSeekQualificationTests(unittest.TestCase):
             self.assertTrue(report["qualified"])
             self.assertEqual(report["gpu_offload"]["offloaded_layers"], 29)
 
+    def test_native_cuda_requires_gpu_memory_without_llama_offload_logs(self):
+        row = next(row for row in json.loads(Path(__file__).with_name("models.json").read_text())
+                   if row["id"] == "deepseek-r1-distill-qwen-1.5b")
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(model_dir=Path(directory), max_tokens=2048, thinking="off", engine="psionic",
+                                   psionic_bin=Path("psionic"), native_backend="cuda", port=1, threads=8,
+                                   start_timeout=1, deepseek_sampling="recommended", direct_only=True)
+            engine = SimpleNamespace(pid=1, poll=lambda: None)
+            for memory, expected in [({}, False), ({"gpu_mib": 900}, True)]:
+                with patch.object(qualification.subprocess, "Popen", return_value=engine), \
+                     patch.object(qualification, "stop_process"), \
+                     patch.object(qualification, "read_json", return_value={"data": [{"id": "r1"}]}), \
+                     patch.object(qualification, "qualify_deepseek_runtime", return_value={"passed": True, "scope": "text_runtime_math"}), \
+                     patch.object(qualification, "engine_memory", return_value=memory):
+                    report = qualification.qualify(row, args, Path(directory))
+                self.assertEqual(report["qualified"], expected)
+                self.assertEqual(report["execution_backend"], "cuda")
+                self.assertNotIn("gpu_offload", report)
+                self.assertIn("--single-generation", report["server_command"])
+
 
 if __name__ == "__main__":
     unittest.main()

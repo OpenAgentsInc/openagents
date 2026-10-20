@@ -68,7 +68,7 @@ pub(crate) fn find_server() -> Option<PathBuf> {
         })
 }
 
-/// An explicitly owned llama.cpp worker and its bounded recovery policy.
+/// An explicitly owned model worker and its bounded recovery policy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     pub server: PathBuf,
@@ -93,7 +93,10 @@ impl Config {
             return Err("use generation limits of 1–75 seconds, startup limits of 1–900 seconds, stop limits of 1–5 seconds, and 1–10 restarts".into());
         }
         if !self.server.is_file() {
-            return Err(format!("llama.cpp is missing at {}", self.server.display()));
+            return Err(format!(
+                "the model server is missing at {}",
+                self.server.display()
+            ));
         }
         Ok(())
     }

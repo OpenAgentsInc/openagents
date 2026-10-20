@@ -50,8 +50,9 @@ psionic-openai-server -m qwen3.5-0.8b-q8_0.gguf --backend cuda \
 ```
 
 On Apple Silicon, use `--backend metal`. `--backend cpu` works anywhere.
-The CUDA and Metal lanes serve `qwen35`, `qwen38`, and `gemma4` GGUF
-decoders. [`docs/psionic/README.md`](../../docs/psionic/README.md) covers
+The CUDA lane also admits `qwen2` for the pinned DeepSeek R1 1.5B distill;
+CUDA and Metal serve `qwen35`, `qwen38`, and `gemma4` GGUF decoders.
+[`docs/psionic/README.md`](../../docs/psionic/README.md) covers
 what runs where.
 
 A Clef decision GGUF (`general.architecture = clef`, Cloudflare's

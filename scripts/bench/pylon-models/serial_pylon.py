@@ -250,8 +250,11 @@ def qualify_recovery(args, row, folder, cli, stop_process):
     home = folder / "pylon-home"
     result = {"scope": "automatic_serial_pylon_recovery", "model": row, "qualified": False, "checks": []}
     via_up = args.serial_pylon_up
+    native = getattr(args, "serial_managed_psionic_bin", None)
     if via_up:
-        result["scope"] = "managed_deepseek_pylon_up"
+        result["scope"] = "managed_deepseek_pylon_up_native_cuda" if native else "managed_deepseek_pylon_up"
+    result["sampling_profile"] = "greedy" if native else "recommended"
+    result["answer_format"] = "numeric_or_boxed_integer" if native else "boxed_integer"
     report = folder / "results.json"
     relay = provider = None
     logs = []
@@ -292,6 +295,9 @@ def qualify_recovery(args, row, folder, cli, stop_process):
         parent = int(re.search(r"^PPid:\s*(\d+)", status, re.MULTILINE)[1])
         if parent != provider.pid or os.getpgid(pid) != pid:
             raise RuntimeError("Refusing to signal a worker not owned by this provider")
+        children = Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
+        if native and children:
+            raise RuntimeError("The native Psionic worker unexpectedly launched a child process")
         gpu = subprocess.check_output(["nvidia-smi", "--query-compute-apps=pid,used_memory",
                                        "--format=csv,noheader,nounits"], text=True)
         memory = next((int(line.split(",")[1]) for line in gpu.splitlines()
@@ -299,12 +305,13 @@ def qualify_recovery(args, row, folder, cli, stop_process):
         return {"pid": pid, "parent": parent, "process_group": os.getpgid(pid),
                 "start_ticks": Path(f"/proc/{pid}/stat").read_text().split()[21],
                 "command": Path(f"/proc/{pid}/cmdline").read_bytes().decode().split("\0")[:-1],
-                "gpu_mib": memory}
+                "gpu_mib": memory, "children": children}
 
     def correct(answer, number):
         data = answer["response"].get("data", {})
         text = data.get("text") or ""
-        return (answer["exit_code"] == 0 and re.findall(r"\\boxed\{([+-]?\d+)\}", text) == [number]
+        return (answer["exit_code"] == 0 and (re.findall(r"\\boxed\{([+-]?\d+)\}", text) == [number]
+                or (native and text.strip() == number))
                 and not any(marker in text for marker in ("<think>", "</think>", "<｜end▁of▁sentence｜>"))
                 and data.get("receipt") and not data.get("receipt_error"))
 
@@ -329,10 +336,10 @@ def qualify_recovery(args, row, folder, cli, stop_process):
         if via_up:
             from urllib.parse import urlsplit
             command = [str(args.pylon_bin), "up", "--foreground", "--text-profile", row["id"],
-                       "--managed-llama", str(args.serial_managed_llama_bin),
+                       "--managed-psionic" if native else "--managed-llama", str(native or args.serial_managed_llama_bin),
                        "--text-model", str(args.model_dir / row["id"] / row["file"]),
                        "--text-port", str(urlsplit(args.serial_pylon_api).port), "--dedicated",
-                       "--generation-seconds", "10", "--startup-seconds", "120", "--restart-limit", "3",
+                       "--generation-seconds", "75" if native else "10", "--startup-seconds", "180", "--restart-limit", "3",
                        "--allow", identity["buyer"], "--rate", "600", "--relay", relay_url, "--json"]
         result["provider_command"] = command
         log = (folder / "provider.log").open("w")
@@ -342,19 +349,23 @@ def qualify_recovery(args, row, folder, cli, stop_process):
         started = time.perf_counter()
         state = ready()
         process = owned(state)
-        record("owned_gpu_ready", process["gpu_mib"] > 0, process=process, state=state,
+        record("owned_gpu_ready", process["gpu_mib"] > 0
+               and (not native or "--single-generation" in process["command"]), process=process, state=state,
                startup_ms=round((time.perf_counter() - started) * 1000, 3))
         if via_up:
             saved = json.loads((home / "share.json").read_text())
             record("saved_text_only_profile", saved["decide"] is None and saved["text"]["profile"] == row["id"]
+                   and saved["text"]["engine"] == ("openai" if native else "llama-cpp")
                    and saved["slots"] == 1 and saved["max_tokens"] == 2048
-                   and saved["text"]["serial"]["sampling"] == {"temperature": 0.6, "top_p": 0.95, "seed": 1}, settings=saved)
+                   and saved["text"]["serial"]["sampling"] == {"temperature": 0.0 if native else 0.6, "top_p": 0.95, "seed": 1}, settings=saved)
             status = cli(args.pylon_bin, home, ["status", "--relay", relay_url])
             data = status["response"].get("data", {})
             record("status_serving", status["exit_code"] == 0 and data.get("state") == "serving"
                    and data.get("model") == row["id"] and data.get("device") == "cuda"
                    and len(data.get("engines", [])) == 1, cli=status)
-        instruction = "Please reason step by step, and put your final answer within \\boxed{}."
+        # Use the same prompt as the qualified native CPU/CUDA greedy profile.
+        instruction = ("After thinking, reply with only the number." if native else
+                       "Please reason step by step, and put your final answer within \\boxed{}.")
         prompt = "What is 1 + 1? " + instruction
 
         def ask(text=prompt, history=None):
@@ -388,7 +399,7 @@ def qualify_recovery(args, row, folder, cli, stop_process):
                     raise RuntimeError("The worker changed before fault injection")
                 record(name + "_request_active", True, state=active, process=checked)
                 os.kill(checked["pid"], sig)
-                failed = pending.result(timeout=25)
+                failed = pending.result(timeout=90 if native else 25)
             record(name + "_job_failed", failed["exit_code"] != 0
                    and failed["response"].get("data", {}).get("text") is None
                    and failed["response"].get("data", {}).get("outcome") != "timeout", cli=failed)

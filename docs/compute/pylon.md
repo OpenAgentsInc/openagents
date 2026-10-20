@@ -76,8 +76,8 @@ cap. Pylon requires a completed final text answer (`finish_reason=stop`);
 truncated, reasoning-only, tool and malformed responses fail explicitly.
 The server keeps its generation slot while decoding continues after a
 caller timeout. For llama.cpp, the [managed serial mode](../psionic/deepseek-support-plan.md#automatic-serial-pylon-recovery-12364)
-adds automatic crash and stuck-generation recovery; native Psionic's hard
-recovery remains pending.
+adds automatic crash and stuck-generation recovery. The pinned DeepSeek
+profile also supports [native CUDA recovery](../psionic/deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368).
 
 ### Choose another text model
 
@@ -114,8 +114,9 @@ GPU route. These checks cover text conversations, not images or tools.
 The catalog also pins DeepSeek-R1-Distill-Qwen-1.5B Q4_K_M. Its separate
 [DS0 results](../psionic/deepseek-support-plan.md#ds0-full-model-qualification-2026-10-20)
 qualify the native CPU greedy reference and llama.cpp CUDA text profiles.
-Use the CUDA route for the measured serving configuration; sampled native
-CPU timed out in the development build. The DS0 runner's `--direct-only`
+The later [native CUDA qualification](../psionic/deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368)
+adds the short greedy workload and managed recovery. Sampled native
+CPU/CUDA remains unqualified; llama.cpp retains its qualified sampled profile. The DS0 runner's `--direct-only`
 mode checks the model over loopback HTTP without publishing a provider.
 The [serial Pylon GPU checks](../psionic/deepseek-support-plan.md#serial-pylon-gpu-qualification-12360)
 also pass through a private relay fixture, with one provider slot and one
@@ -137,12 +138,20 @@ pass after both a crash and a frozen worker. This option supports free
 text serving with one slot; it does not change `pylon up` defaults.
 For the pinned DeepSeek model, `pylon up --text-profile
 deepseek-r1-distill-qwen-1.5b --text-model /path/to/model.gguf
---managed-llama /path/to/llama-server --allow BUYER_NPUB` selects that
+--managed-psionic /path/to/psionic-openai-server --allow BUYER_NPUB` selects the native
 text-only CUDA setup directly. It verifies the pinned file and saves the
-tested sampling, one-slot admission, and recovery settings without
+greedy decoding, one-slot admission, and recovery settings without
 starting Clef. `status` reports the text model and CUDA device; `down`
 stops it, and `up` resumes the saved profile. Use a separate Pylon home
-and `--foreground` for an isolated run. See the [profile commands and GPU results](../psionic/deepseek-support-plan.md#deepseek-profile-through-pylon-up-12367).
+and `--foreground` for an isolated run. See the [native profile commands and GPU results](../psionic/deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368).
+Native [R1 CUDA execution](../psionic/deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368)
+uses Psionic's own decoder and `--single-generation` worker. Saved llama.cpp
+profiles retain their engine; reselect the profile with `--text-engine
+openai --managed-psionic /path/to/server` to switch, or use
+`--managed-llama` for the compatible engine. Profiles without an engine
+selection still choose llama.cpp. Native CUDA has longer latency and is
+qualified here for short greedy prompts; sampled decoding and the longer
+boxed prompt do not meet this profile's token/deadline bounds.
 GPT-OSS passed the full suite through llama.cpp; its native server
 returned no final answer for the summary prompt even with 4,096 output
 tokens, so use the compatible route for this workload.

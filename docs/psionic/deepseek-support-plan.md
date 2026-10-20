@@ -12,8 +12,9 @@ specific source implementations linked below. Four official checkpoint
 configurations and tokenizer configurations were downloaded at immutable
 revisions. The initial survey needed no model weights or device runs.
 The later [DS0 results](#ds0-full-model-qualification-2026-10-20) qualify
-the first pinned R1 distill on native CPU and llama.cpp CUDA. The remaining
-model support targets are proposed.
+the first pinned R1 distill on native CPU and llama.cpp CUDA. The later
+[native CUDA result](#native-psionic-cuda-for-the-r1-distill-12368) adds the
+short greedy workload and Pylon recovery. The remaining model targets are proposed.
 
 ## Personal serving first: one generation at a time
 
@@ -31,6 +32,8 @@ that returns a complete final answer. Begin with the existing
 Keep native CPU and explicitly selected llama.cpp GPU results separate.
 Native Qwen2 CUDA support is not implied by DS0 or by native Qwen3.5 support.
 Larger distills and a new native GPU decoder follow a working baseline.
+The later [native CUDA implementation](#native-psionic-cuda-for-the-r1-distill-12368)
+adds that decoder for the pinned 1.5B model.
 
 ### Work split and dependencies
 
@@ -139,11 +142,11 @@ selects managed serial recovery explicitly; ordinary `up` defaults stay unchange
 This completes the admission and completion-validation portion of S1,
 independently of DS0. The later [managed llama.cpp recovery](#automatic-serial-pylon-recovery-12364)
 adds an execution deadline and automatic process replacement for that route.
-Native Psionic's hard recovery and the cloud launch remain pending.
+The later [native CUDA checks](#native-psionic-cuda-for-the-r1-distill-12368) cover HTTP disconnects and managed recovery for this pinned distill; cloud launch remains pending.
 Without managed recovery, an active generation that does not finish stays busy.
 Worker/caller-cancellation fixtures and a tiny CPU model cover slot ownership,
-cross-endpoint refusal, error release and sequential reuse; a real HTTP
-disconnect/model-process recovery run belongs to the later S2 check.
+cross-endpoint refusal, error release, and sequential reuse. The native CUDA
+checks add a real HTTP disconnect and model-process recovery run.
 
 Validation: `cargo test -p pylon` passes 153 tests with one existing
 large-model test ignored. The two new serial-admission tests, two existing
@@ -626,9 +629,11 @@ All 155 Pylon tests pass, with one existing large-model test ignored;
 20 Python tests and changed-file formatting pass. These are bounded
 shared-host observations. The restart was a qualification-controller
 action; the later [automatic recovery checks](#automatic-serial-pylon-recovery-12364)
-qualify the shipped managed llama.cpp watchdog. Native Psionic's real HTTP-disconnect
-check and hard recovery, broader native serial selection,
-cloud deployment, long context, and broader model quality remain separate.
+qualify the shipped managed llama.cpp watchdog. The later
+[native CUDA result](#native-psionic-cuda-for-the-r1-distill-12368) covers
+HTTP disconnects and hard recovery for the pinned greedy profile. Broader
+native model selection, cloud deployment, long context, and model quality
+remain separate.
 
 ### Automatic serial Pylon recovery (#12364)
 
@@ -776,6 +781,106 @@ changes, schema downgrade refusal, incorrect size/hash, and a changed
 artifact pausing the supervisor before any worker starts. After rebasing
 onto the concurrent Pylon router change, all 182 package tests pass on
 `bbd5fc4f57`, with the same one ignored test.
+
+### Native Psionic CUDA for the R1 distill (#12368)
+
+The native CUDA route admits the `qwen2` GGUF architecture used by
+DeepSeek-R1-Distill-Qwen-1.5B. It extends the existing dense CUDA executor
+shared with Gemma 4 instead of launching llama.cpp. Q4_K/Q6_K projections,
+grouped attention, and the device KV cache use Psionic CUDA kernels.
+Rust performs embedding lookup, normalization, rotary transforms,
+feed-forward activation, sampling, tokenization, prompt rendering, and
+reasoning/final separation. This is a host-stepped native decoder, with
+host/device transfers between projections; it is not a fully captured GPU
+graph. The native Qwen2 context limit is 4,096 tokens.
+
+Select native Psionic explicitly for the pinned greedy profile:
+
+```sh
+export OPENAGENTS_PYLON_HOME="$(openagents scratch)/r1-native"
+pylon up --foreground --text-profile deepseek-r1-distill-qwen-1.5b \
+  --text-engine openai --managed-psionic /path/to/psionic-openai-server \
+  --text-model /path/to/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf \
+  --text-port 18436 --allow BUYER_NPUB
+```
+
+The existing native server discovery (`OPENAGENTS_PSIONIC_BIN` as a folder,
+then the installation folder and `PATH`) can replace `--managed-psionic`.
+Pylon starts the worker with `--backend cuda --single-generation`, uses
+one provider slot and greedy decoding (`temperature=0`, `top_p=0.95`,
+`seed=1`), and keeps the same
+75-second generation limit, startup/restart bounds, and process-group
+recovery. Native profile settings use `openagents.pylon.share.v5`; older
+hosts refuse them. Existing saved profiles and fresh profiles without an
+engine selection keep llama.cpp and its qualified `temperature=0.6`
+configuration. Native CUDA is an explicit choice while sampled decoding
+and longer reasoning remain unqualified for Pylon.
+There is no automatic fallback from a failed native generation to llama.cpp.
+
+The direct runner selects this route with `--engine psionic
+--native-backend cuda --direct-only --psionic-bin /path/to/server` and
+`--deepseek-sampling greedy|recommended`. Add `--native-serial-checks`
+to check real HTTP caller expiry, overlap refusal, completion after the
+disconnect, and the next answer. Managed recovery qualification
+uses `--engine psionic --serial-pylon-up
+--serial-managed-psionic-bin /path/to/server` together with the existing
+model, private-relay fixture, Pylon binary, and loopback-port arguments.
+The native runner verifies GPU allocation without looking for llama.cpp's
+layer-offload logs. The process check also refuses a native worker that
+launches a child process. Native managed checks use the same short greedy
+prompts as the CPU/direct CUDA reference, accepting a bare or boxed final
+integer. The earlier llama.cpp checks retain their sampled boxed prompts.
+
+The [retained native CUDA evidence](../../scripts/bench/pylon-models/deepseek-r1-native-cuda-2026-10-20.json)
+records the same pinned 1,117,321,312-byte Q4_K_M artifact, source and
+binary hashes, and both passing and failing runs. On the shared RTX 4080,
+all six direct runtime checks, four real HTTP disconnect/admission checks,
+and 20 managed Pylon checks pass. The worker launches no child process.
+Crash and frozen-worker jobs fail, the old process exits before the
+replacement starts, and subsequent answers succeed. Saved `down`/`up`
+resume and final shutdown pass; the production Pylon unit stays active.
+
+| Measurement | Native CUDA result |
+| --- | --- |
+| Direct startup | 0.911 s |
+| Direct answer / actual-history continuation | 4.653 s / 15.480 s; correct final `2` and `3` |
+| Pylon answer / continuation | 3.808 s / 15.113 s; receipts present |
+| Ten warm Pylon requests | 10/10; median 3.739 s, range 3.198–14.826 s |
+| Replacement ready after failed crash / frozen-worker job | 2.238 s / 2.031 s |
+| Disconnect work completes while overlap stays refused | 12.948 s; next answer succeeds |
+| GPU allocation / host resident memory | 1,272 MiB / 1,660,344 KiB after direct generation |
+
+Three warm requests include about 10.5 seconds waiting for a free-slot
+beacon; their model answer times are about 3.1–3.5 seconds. These are
+shared-host measurements from an `opt-level=1` development build.
+The forced GPU fixture compares CPU/CUDA logits and KV values within
+0.01 at three positions with nonzero quantized projections, Q/K/V biases,
+and grouped attention, then checks generated-token equality and repeated
+prefix reuse. It exposed and fixed a restored-prefix upload into a larger
+reserved KV buffer. The CUDA load plan advertises serial execution and a
+4,096-token context. This does not establish full-model logit parity with
+llama.cpp. Local checks pass: 184 Pylon tests (one existing ignored test),
+32 decoder tests, three CUDA routing tests, the R1 server test, 21 Python
+tests, and changed-file formatting; the GPU fixture also passes on the
+RTX 4080 with `PSIONIC_REQUIRE_CUDA=1`.
+
+The first native sampled probe (`temperature=0.6`, `top_p=0.95`, `seed=1`)
+produced 2,048 reasoning tokens without a final answer in 333.765 seconds.
+A separate greedy boxed-prompt probe completed correctly in 83.366 seconds
+with 1,012 output tokens, beyond the 75-second execution deadline; Pylon
+correctly failed and stopped that worker at its deadline. A sampled
+`seed=42` diagnostic also exhausted a 1,024-token cap without a final answer.
+These failures remain part of the evidence. The native route replaces
+llama.cpp for the qualified short greedy workload; it is not performance
+or sampled-quality parity with the existing llama.cpp CUDA profile. Keep
+llama.cpp for that qualified sampled configuration. Device-resident
+normalization/RoPE/activation, fewer synchronous transfers, faster decode,
+and broader sampled quality checks are the next work before changing the
+default or removing the compatible engine.
+
+This implementation targets the pinned dense Qwen distill. Full DeepSeek
+R1/V3 MLA/MoE execution, other distills, Metal, long context, tools, and
+broader quality qualification remain separate work.
 
 ## Further infrastructure lessons and what to defer
 

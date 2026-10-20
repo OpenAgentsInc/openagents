@@ -252,3 +252,51 @@ async fn a_replaced_profile_artifact_pauses_before_any_worker_starts() {
     stop.send(()).unwrap();
     task.await.unwrap();
 }
+
+#[test]
+fn native_profile_uses_the_serial_worker_and_survives_saved_resume() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut up = choice(dir.path());
+    up.managed_psionic = up.managed_llama.take();
+    let (settings, _) =
+        online::settings_for_up(None, "native", "ws://relay", &up, "cuda", Ok(())).unwrap();
+    let lane = settings.text.as_ref().unwrap();
+    assert_eq!(lane.engine, share::TextEngine::Openai);
+    assert_eq!(
+        serde_json::to_value(lane.serial.as_ref().unwrap().sampling).unwrap()["temperature"],
+        0.0
+    );
+    assert!(settings.decide.is_none());
+    share::save(dir.path(), &settings).unwrap();
+    let held = share::load(dir.path()).unwrap().unwrap();
+    assert_eq!(held.schema, share::NATIVE_PROFILE_SCHEMA);
+    let mut old = serde_json::to_value(&held).unwrap();
+    old["schema"] = share::PROFILE_SCHEMA.into();
+    std::fs::write(share::path(dir.path()), serde_json::to_vec(&old).unwrap()).unwrap();
+    assert!(share::load(dir.path()).is_err());
+    share::save(dir.path(), &held).unwrap();
+    let (resumed, _) = online::settings_for_up(
+        Some(held.clone()),
+        "native",
+        "ws://relay",
+        &Up::parse(&[]).unwrap(),
+        "cuda",
+        Ok(()),
+    )
+    .unwrap();
+    assert_eq!(resumed.text, held.text);
+    let lane = online::lanes(&resumed).pop().unwrap();
+    let command = online::psionic_command(&lane.serial.as_ref().unwrap().server, &lane);
+    let args: Vec<_> = command
+        .as_std()
+        .get_args()
+        .map(|a| a.to_string_lossy().to_string())
+        .collect();
+    assert!(args.contains(&"--single-generation".into()));
+    assert!(args.windows(2).any(|a| a == ["--backend", "cuda"]));
+    assert!(
+        !args
+            .iter()
+            .any(|arg| arg == "--jinja" || arg == "--n-gpu-layers")
+    );
+}

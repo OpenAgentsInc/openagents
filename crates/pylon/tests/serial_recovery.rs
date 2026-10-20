@@ -83,7 +83,11 @@ impl Rig {
             model: "fixture".into(),
             model_file: file,
             device: Some("cpu".into()),
-            engine: TextEngine::LlamaCpp,
+            engine: if flags.contains(&"native") {
+                TextEngine::Openai
+            } else {
+                TextEngine::LlamaCpp
+            },
             chat_template: None,
             stop: vec![],
             metadata_overrides: vec![],
@@ -332,5 +336,20 @@ async fn a_complete_truncation_response_does_not_restart_the_worker() {
     assert_eq!(request["request"]["temperature"], 0.6);
     assert_eq!(request["request"]["top_p"], 0.95);
     assert_eq!(request["request"]["seed"], 1);
+    rig.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn native_worker_crash_uses_the_same_reaping_and_recovery_contract() {
+    let rig = Rig::start(&["native"]).await;
+    let old = rig.ready(None).await;
+    rig.answer().await;
+    unsafe {
+        libc::kill(old as i32, libc::SIGKILL);
+    }
+    let new = rig.ready(Some(old)).await;
+    assert_ne!(old, new);
+    assert_eq!(unsafe { libc::kill(old as i32, 0) }, -1);
+    rig.answer().await;
     rig.close().await;
 }

@@ -21,7 +21,7 @@ the Mac, web, and phone builds, do not compile it.
 
 | Backend | Families | Where |
 | --- | --- | --- |
-| `cuda` | `qwen35`, `qwen38`, `gemma4` GGUF decoders | NVIDIA GPUs; kernels compile when `nvcc` is present |
+| `cuda` | `qwen2`, `qwen35`, `qwen38`, `gemma4` GGUF decoders | NVIDIA GPUs; kernels compile when `nvcc` is present |
 | `metal` | `qwen35`, `qwen38`, `gemma4` | Apple Silicon |
 | `cpu` | Every admitted GGUF decoder family | Anywhere |
 
@@ -33,7 +33,7 @@ about 0.2 seconds.
 For personal use, `--single-generation` rejects overlapping generations
 with HTTP 429 and keeps the worker busy if its caller stops waiting.
 `/health` reports that mode and its busy state. Pair it with one Pylon slot;
-see [serving progress and remaining recovery work](deepseek-support-plan.md#serving-implementation-progress-12358).
+see [native DeepSeek recovery checks](deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368).
 
 The pinned public text templates for Llama 3.2, Mistral v0.3, standard
 Qwen3, current Qwen3.5, and Gemma 4 are checked against 26 independent
@@ -43,7 +43,10 @@ adds pinned Qwen 1.5B tokenizer and prompt fixtures, reasoning separation,
 and qualification checks. [Full-model results](deepseek-support-plan.md#ds0-full-model-qualification-2026-10-20)
 pass six runtime checks on the native CPU greedy reference and on
 llama.cpp CUDA with greedy or recommended R1 sampling. Sampled native CPU
-remains unqualified after a timeout; the GPU is the measured serving route.
+remains unqualified after a timeout. The later
+[native CUDA route](deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368)
+adds short greedy execution and managed recovery; sampled native CUDA and
+longer reasoning remain outside the qualified Pylon workload.
 The [serial Pylon GPU flow](deepseek-support-plan.md#serial-pylon-gpu-qualification-12360)
 also passes 27 checks, including conversation replay, overlap refusal,
 buyer timeout, and explicitly controlled model-process restart.
@@ -52,8 +55,12 @@ also passes 13 real GPU checks: automatic crash and frozen-worker
 replacement, correct subsequent answers, and clean shutdown. It keeps
 one generation active and fails interrupted jobs without retrying them.
 The [DeepSeek `pylon up` profile](deepseek-support-plan.md#deepseek-profile-through-pylon-up-12367)
-selects that CUDA configuration, verifies the pinned artifact, skips Clef,
+originally selects that llama.cpp CUDA configuration, verifies the pinned artifact, skips Clef,
 and preserves recovery settings through `down` and `up`.
+The [native R1 CUDA implementation](deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368)
+uses Psionic's dense decoder for the pinned Qwen 1.5B distill. Select it
+with `--managed-psionic` for the qualified short greedy workload. Fresh
+profiles without that choice and saved llama.cpp profiles keep llama.cpp.
 Qwen3.5 CUDA accepts mixed dense/quantized projection groups and Q4_K/Q6_K
 embedding rows; Gemma 4 accepts dense per-layer projections on CUDA.
 Gemma's BPE tokenizer decodes SentencePiece spaces and literal UTF-8,

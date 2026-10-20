@@ -85,7 +85,7 @@ not an allocation or device qualification.
 
 | Milestone | Existing boundary | Completion evidence |
 | --- | --- | --- |
-| C0a: One reliable local generation (S0–S2) | Landed DS0 text profile plus pending model qualification; existing Psionic worker, Pylon client and supervisor | One active generation, no waiting generation queue, complete final answer, explicit truncation/failure, and demonstrated timeout/disconnect/restart recovery. Use one Pylon slot and qualify its deadline separately. |
+| C0a: One reliable local generation (S0–S2) | Qualified DS0 CPU/llama.cpp profiles and the [native CUDA greedy profile](deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368); existing Psionic worker, Pylon client, and supervisor | One active generation, no waiting generation queue, complete final answer, explicit truncation/failure, and demonstrated timeout/disconnect/restart recovery. Use one Pylon slot and qualify its deadline separately. |
 | C0b: The same worker on private GCE (S3) | Pinned runtime/model, existing launch/health patterns and authenticated SSH/IAP access | One independently budgeted worker passes the same cold/warm/recovery checks remotely. Keep model HTTP on loopback; record real latency, memory and cost. |
 | C0c: Shared hosted access, later | Gateway `Upstream`/Chat Completions transport, authentication, accounting and model registry | Explicit hosted identity and capability/cost/cancellation checks. Preserve opt-in `local/*` semantics. |
 | C1: Efficient replicas, later | R0/R1/R2, bounded admission, existing accounting and fallback | Real device batches, queue-inclusive latency, overload and spot-loss behavior, justified by actual shared load. |

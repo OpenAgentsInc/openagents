@@ -2014,6 +2014,7 @@ fn mesh_coordination_limit(limit: Option<usize>) -> usize {
 enum OpenAiCompatRuntimeKind {
     GgufDecoderCpu,
     GgufDecoderCudaGemma4,
+    GgufDecoderCudaQwen2,
     GgufDecoderCudaGemma4SparseDistributed,
     GgufDecoderCudaQwen35,
     GgufDecoderPendingTopologyRefusal,
@@ -3264,7 +3265,7 @@ fn qwen35_structured_output_unavailable_detail(execution_engine_label: &str) -> 
 
 enum OpenAiCompatGenerationService {
     Cpu(CpuGgufTextGenerationService),
-    Gemma4Cuda(CudaGemma4TextGenerationService),
+    DenseCuda(crate::CudaDenseGgufTextGenerationService),
     Gemma4Metal(MetalGemma4TextGenerationService),
     Gemma4DistributedFront(DistributedGemma4TextGenerationService),
     Gemma4SparseDistributed(Gemma4SparseDistributedTextGenerationService),
@@ -4005,14 +4006,14 @@ impl OpenAiCompatWorker {
                                 }
                             }
                         }
-                        OpenAiCompatRuntimeKind::GgufDecoderCudaGemma4 => {
-                            match CudaGemma4TextGenerationService::from_gguf_path(&load_plan.path) {
+                        OpenAiCompatRuntimeKind::GgufDecoderCudaGemma4 | OpenAiCompatRuntimeKind::GgufDecoderCudaQwen2 => {
+                            match crate::CudaDenseGgufTextGenerationService::from_gguf_path(&load_plan.path) {
                                 Ok(service) => {
                                     let model_key =
                                         service.model_descriptor().model.model_id.clone();
                                     generation_services.insert(
                                         model_key,
-                                        OpenAiCompatGenerationService::Gemma4Cuda(service),
+                                        OpenAiCompatGenerationService::DenseCuda(service),
                                     );
                                 }
                                 Err(error) => {
@@ -4244,7 +4245,7 @@ impl OpenAiCompatWorker {
                             reply,
                         } => {
                             let result = match generation_services.get_mut(model_key.as_str()) {
-                                Some(OpenAiCompatGenerationService::Gemma4Cuda(service)) => {
+                                Some(OpenAiCompatGenerationService::DenseCuda(service)) => {
                                     service.distributed_worker_step(&request)
                                 }
                                 Some(OpenAiCompatGenerationService::Gemma4SparseDistributed(
@@ -4268,7 +4269,7 @@ impl OpenAiCompatWorker {
                             reply,
                         } => {
                             let result = match generation_services.get_mut(model_key.as_str()) {
-                                Some(OpenAiCompatGenerationService::Gemma4Cuda(service)) => {
+                                Some(OpenAiCompatGenerationService::DenseCuda(service)) => {
                                     service.distributed_worker_reset(request.request_id.as_str());
                                     Ok(())
                                 }
@@ -4378,7 +4379,7 @@ impl OpenAiCompatWorker {
                         OpenAiCompatGenerationService::Cpu(service) => {
                             service.generate_continuous_batch(requests)
                         }
-                        OpenAiCompatGenerationService::Gemma4Cuda(service) => {
+                        OpenAiCompatGenerationService::DenseCuda(service) => {
                             service.generate_continuous_batch(requests)
                         }
                         OpenAiCompatGenerationService::Gemma4Metal(service) => {
@@ -11346,8 +11347,11 @@ fn load_generic_decoder_model(
     let inspection = GgufDecoderAdapterLoader
         .inspect_blob_artifact(&artifact)
         .map_err(|error| error.to_string())?;
-    let descriptor = inspection.descriptor().clone();
+    let mut descriptor = inspection.descriptor().clone();
     let family = inspection.family_metadata().family;
+    if backend == OpenAiCompatBackend::Cuda && family == GgufDecoderFamily::Qwen {
+        descriptor.config.max_context = descriptor.config.max_context.min(4096);
+    }
     let sparse_expert_topology = routed_sparse_expert_topology_from_inspection(&inspection);
     let single_node_sparse_gemma4 = generic_backend_supports_single_node_gemma4_sparse(
         backend,
@@ -11381,9 +11385,12 @@ fn load_generic_decoder_model(
             GgufDecoderFamily::Qwen35 | GgufDecoderFamily::Qwen38,
             false,
         ) => OpenAiCompatRuntimeKind::GgufDecoderCudaQwen35,
+        (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Qwen, false) => {
+            OpenAiCompatRuntimeKind::GgufDecoderCudaQwen2
+        }
         (OpenAiCompatBackend::Cuda, _, _) => {
             return Err(format!(
-                "generic OpenAI cuda backend currently supports only gemma4, qwen35, and qwen38 GGUF decoders; `{}` resolved to `{}`",
+                "generic OpenAI cuda backend currently supports only qwen2, gemma4, qwen35, and qwen38 GGUF decoders; `{}` resolved to `{}`",
                 model_path.display(),
                 decoder_family_label(family),
             ));
@@ -11538,6 +11545,7 @@ fn generic_decoder_serving_truth(
     if matches!(
         (backend, family),
         (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Gemma4)
+            | (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Qwen)
             | (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Qwen35)
             | (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Qwen38)
     ) {
@@ -11568,6 +11576,7 @@ fn generic_decoder_execution_profile(
     if matches!(
         (backend, family),
         (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Gemma4)
+            | (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Qwen)
             | (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Qwen35)
             | (OpenAiCompatBackend::Cuda, GgufDecoderFamily::Qwen38)
             | (OpenAiCompatBackend::Metal, GgufDecoderFamily::Gemma4)
@@ -15399,6 +15408,38 @@ mod tests {
             serde_json::json!("world")
         );
         assert_eq!(payload["usage"]["completion_tokens"], serde_json::json!(1));
+        Ok(())
+    }
+
+    #[test]
+    fn generic_cuda_qwen2_load_plan_selects_native_dense_execution()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-qwen2.gguf");
+        let mut metadata = dense_qwen_metadata("tiny native qwen2");
+        for (key, value) in &mut metadata {
+            if key == "qwen2.context_length" {
+                *value = GgufMetadataValue::U32(131072);
+            }
+        }
+        write_test_gguf(&path, &metadata, &dense_decoder_tensors(true, 2, 3))?;
+        let (loaded, _, plan) = load_generic_decoder_model(&path, 0, OpenAiCompatBackend::Cuda)?;
+        assert_eq!(
+            plan.runtime_kind,
+            OpenAiCompatRuntimeKind::GgufDecoderCudaQwen2
+        );
+        assert_eq!(loaded.backend_label(), "cuda");
+        assert_eq!(loaded.execution_mode_label(), "native");
+        assert_eq!(loaded.execution_engine_label(), "psionic");
+        assert_eq!(
+            loaded.execution_profile().batch_posture,
+            psionic_runtime::BatchExecutionPosture::SingleRequestOnly
+        );
+        assert_eq!(
+            loaded.decoder().map(|d| d.descriptor.config.max_context),
+            Some(4096)
+        );
+        assert!(load_generic_decoder_model(&path, 0, OpenAiCompatBackend::Metal).is_err());
         Ok(())
     }
 

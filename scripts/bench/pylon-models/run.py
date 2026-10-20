@@ -458,6 +458,43 @@ def download_model(row, path, reserve_bytes=30*1024**3):
         return digest
 
 
+def qualify_native_serial(api, model, max_tokens):
+    """Confirm that a timed-out native caller cannot release a running decoder."""
+    payload = {"model": model, "messages": [{"role": "user", "content":
+        "List the integers from 1 to 300 in your reasoning before computing their sum. Please reason step by step, and put your final answer within \\boxed{}."}],
+        "max_tokens": min(max_tokens, 256), "temperature": 0, "top_p": 0.95, "seed": 1,
+        "psionic_reasoning": {"parser": "deepseek_r1", "mode": "separate"}}
+    expired = False
+    started = time.perf_counter()
+    try:
+        read_json(api + "/v1/chat/completions", payload, timeout=0.3)
+    except OSError:
+        expired = True
+    health = read_json(api + "/health")
+    held = (expired and health.get("single_generation") and health.get("generation_busy")
+            and health.get("execution_profile", {}).get("batch_posture") == "single_request_only")
+    checks = [{"name": "caller_timeout_keeps_worker_busy", "passed": bool(held), "health": health}]
+    refused = False
+    try:
+        read_json(api + "/v1/chat/completions", dict(payload, max_tokens=1), timeout=2)
+    except RuntimeError as error:
+        refused = "HTTP 429" in str(error)
+    checks.append({"name": "overlap_refused", "passed": refused})
+    deadline = time.monotonic() + 85
+    while time.monotonic() < deadline:
+        health = read_json(api + "/health")
+        if not health.get("generation_busy"):
+            break
+        time.sleep(0.1)
+    checks.append({"name": "worker_finishes_after_disconnect", "passed": not health.get("generation_busy"),
+                   "wall_ms": round((time.perf_counter()-started)*1000, 3), "health": health})
+    payload["max_tokens"] = max_tokens
+    payload["messages"] = [{"role": "user", "content": "What is 1 + 1? After thinking, reply with only the number."}]
+    response = read_json(api + "/v1/chat/completions", payload, timeout=85)
+    checks.append({"name": "answer_after_disconnect", "passed": deepseek_boxed_response_check(response, "2"), "response": response})
+    return {"passed": all(check["passed"] for check in checks), "checks": checks}
+
+
 def qualify(row, args, output):
     folder = output / row["id"]
     folder.mkdir(exist_ok=True)
@@ -490,10 +527,13 @@ def qualify(row, args, output):
         execution_backend = row.get("execution_backend", "cuda")
     else:
         engine_binary = args.gpt_oss_bin if row["id"] == "gpt-oss-20b" else args.psionic_bin
-        command = [str(engine_binary), "-m", str(path), "--backend", row["backend"], "--host", "127.0.0.1", "--port", str(args.port)]
+        native_backend = getattr(args, "native_backend", None) or row["backend"]
+        command = [str(engine_binary), "-m", str(path), "--backend", native_backend, "--host", "127.0.0.1", "--port", str(args.port)]
         if row["id"] != "gpt-oss-20b":
             command += ["--mesh-coordination", "disabled"]
-        execution_backend = row["backend"]
+            if row.get("qualification") == "deepseek-r1":
+                command += ["--single-generation"]
+        execution_backend = native_backend
     result = {"model": row, "engine": args.engine, "execution_backend": execution_backend, "server_binary": str(engine_binary), "max_output_tokens": max_tokens, "thinking": thinking, "temperature": temperature if args.engine == "llama-cpp" else None, "top_p": top_p if args.engine == "llama-cpp" else None, "server_command": command, "qualified": False, "cases": []}
     engine = provider = None
     engine_log = (folder/"engine.log").open("w")
@@ -529,10 +569,15 @@ def qualify(row, args, output):
             if execution_backend == "cuda":
                 if not result["memory_after_generation"].get("gpu_mib", 0):
                     raise RuntimeError("CUDA qualification requires observed GPU memory for the model server")
-                offload = re.findall(r"offloaded (\d+)/(\d+) layers to GPU", (folder/"engine.log").read_text(errors="replace"))
-                if not offload or offload[-1] != ("29", "29"):
-                    raise RuntimeError("R1 CUDA qualification requires all 29 layers offloaded to GPU")
-                result["gpu_offload"] = {"offloaded_layers": 29, "total_layers": 29}
+                if args.engine == "llama-cpp":
+                    offload = re.findall(r"offloaded (\d+)/(\d+) layers to GPU", (folder/"engine.log").read_text(errors="replace"))
+                    if not offload or offload[-1] != ("29", "29"):
+                        raise RuntimeError("R1 CUDA qualification requires all 29 layers offloaded to GPU")
+                    result["gpu_offload"] = {"offloaded_layers": 29, "total_layers": 29}
+            if getattr(args, "native_serial_checks", False):
+                result["native_serial_checks"] = qualify_native_serial(api, model, max_tokens)
+                if not result["native_serial_checks"]["passed"]:
+                    raise RuntimeError("Native serial admission checks failed")
             if args.direct_only:
                 result["qualified"] = True
                 result["qualification_scope"] = result["deepseek_checks"]["scope"]
@@ -595,6 +640,8 @@ def main():
     parser.add_argument("--llama-cpp-bin",type=Path)
     parser.add_argument("--llama-cpp-device",help="Explicit llama.cpp device, such as CUDA0")
     parser.add_argument("--psionic-bin",type=Path)
+    parser.add_argument("--native-serial-checks", action="store_true", help="Check native caller timeout, overlap refusal, and sequential reuse")
+    parser.add_argument("--native-backend", choices=("cpu", "cuda", "metal"), help="Override the native model catalog reference backend")
     parser.add_argument("--gpt-oss-bin",type=Path)
     parser.add_argument("--model-dir",type=Path,default=Path.home()/".openagents/models")
     parser.add_argument("--output",type=Path,required=True)
@@ -614,23 +661,28 @@ def main():
     parser.add_argument("--fixture-relay-bin",type=Path,help="The qualification_relay example built with pylon's fixture feature")
     parser.add_argument("--serial-engine-control",type=Path,help="Optional isolated-engine helper, called with crash/start for restart qualification")
     parser.add_argument("--serial-managed-llama-bin",type=Path,help="Qualify automatic serial recovery; Pylon owns this llama.cpp executable")
+    parser.add_argument("--serial-managed-psionic-bin", type=Path, help="Qualify native Psionic CUDA through the managed DeepSeek up profile")
     parser.add_argument("--serial-pylon-up", action="store_true", help="Exercise pylon up/status/down and saved DeepSeek profile recovery")
     parser.add_argument("--deepseek-sampling",choices=("greedy", "recommended"),
                         help="Defaults to greedy for the native reference, recommended sampling for llama.cpp")
     parser.add_argument("--download-reserve-gib",type=int,default=30,help="Free space to leave after download (default 30 GiB; smaller RAM-backed caches may need less)")
     parser.add_argument("--pause-unit",help="Temporarily stop this systemd user unit and restore it on exit")
     args=parser.parse_args()
+    if args.native_serial_checks and (args.engine != "psionic" or args.native_backend != "cuda" or not args.direct_only):
+        parser.error("--native-serial-checks needs --engine psionic --native-backend cuda --direct-only")
     if args.serial_managed_llama_bin and (not args.serial_pylon_api or args.serial_engine_control):
         parser.error("--serial-managed-llama-bin needs --serial-pylon-api without --serial-engine-control")
-    if args.serial_pylon_up and not args.serial_managed_llama_bin:
-        parser.error("--serial-pylon-up needs --serial-managed-llama-bin")
+    if args.serial_managed_psionic_bin and (not args.serial_pylon_api or not args.serial_pylon_up or args.engine != "psionic" or args.serial_managed_llama_bin or args.serial_engine_control):
+        parser.error("--serial-managed-psionic-bin needs --serial-pylon-up --engine psionic without llama.cpp control options")
+    if args.serial_pylon_up and not (args.serial_managed_llama_bin or args.serial_managed_psionic_bin):
+        parser.error("--serial-pylon-up needs a managed llama.cpp or native Psionic executable")
     if args.serial_pylon_api:
         from urllib.parse import urlsplit
         api = urlsplit(args.serial_pylon_api)
         if api.scheme != "http" or api.hostname != "127.0.0.1" or api.username or api.password or api.path not in ("", "/") or api.query or api.fragment:
             parser.error("--serial-pylon-api must name a loopback HTTP server")
-        if args.engine != "llama-cpp" or args.direct_only or args.download_only:
-            parser.error("--serial-pylon-api needs --engine llama-cpp without --direct-only or --download-only")
+        if (args.engine != "llama-cpp" and not args.serial_managed_psionic_bin) or args.direct_only or args.download_only:
+            parser.error("serial Pylon mode needs llama-cpp or managed native Psionic, without --direct-only or --download-only")
         if args.fixture_relay_bin is None or args.pylon_bin is None:
             parser.error("serial Pylon qualification needs --fixture-relay-bin and --pylon-bin")
     args.deepseek_sampling = args.deepseek_sampling or ("greedy" if args.engine == "psionic" else "recommended")
@@ -653,7 +705,7 @@ def main():
             parser.error("--pylon-bin is required unless --direct-only is selected")
         if args.engine == "llama-cpp" and args.llama_cpp_bin is None and not args.serial_pylon_api:
             parser.error("--llama-cpp-bin is required for --engine llama-cpp")
-        if args.engine == "psionic":
+        if args.engine == "psionic" and not args.serial_managed_psionic_bin:
             if any(row["id"] != "gpt-oss-20b" for row in rows) and args.psionic_bin is None:
                 parser.error("--psionic-bin is required for native text models")
             if any(row["id"] == "gpt-oss-20b" for row in rows) and args.gpt_oss_bin is None:
@@ -679,7 +731,7 @@ def main():
         if len(rows) != 1 or rows[0].get("qualification") != "deepseek-r1":
             parser.error("serial Pylon qualification needs the pinned DeepSeek R1 model")
         import serial_pylon
-        if args.serial_managed_llama_bin:
+        if args.serial_managed_llama_bin or args.serial_managed_psionic_bin:
             result = serial_pylon.qualify_recovery(args, rows[0], args.output / rows[0]["id"], cli, stop_process)
         else:
             result = serial_pylon.qualify(args, rows[0], args.output / rows[0]["id"], cli,
