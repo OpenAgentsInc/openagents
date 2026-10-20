@@ -213,12 +213,14 @@ def finder_files(task: dict, levers: dict, no_cards: bool = False) -> tuple[list
     """The #11210 context finder at the base commit; `lite` if it fails.
     `no_cards` leaves out its card decision (the Haiku briefer's input)."""
     tool = finder_tool()
+    env = finder_env()
+    why = "filefind isn't on origin/main"
     if tool is not None:
         proc = subprocess.run(
             [sys.executable, str(tool), "query", "--repo", str(REPO), "--rev", task["parent"],
              "--issue", str(task["issue"]), "--k", str(int(levers["briefing_files"])), "--json"]
             + (["--no-cards"] if no_cards else []),
-            cwd=REPO, capture_output=True, text=True, errors="replace", timeout=600, env=finder_env(),
+            cwd=REPO, capture_output=True, text=True, errors="replace", timeout=600, env=env,
         )
         try:
             found = json.loads(proc.stdout)["files"]
@@ -231,7 +233,19 @@ def finder_files(task: dict, levers: dict, no_cards: bool = False) -> tuple[list
                  "why": [f"finder confidence {f.get('confidence')}"] + list(f.get("reasons") or [])[:4]}
                 for f in found
             ], "filefind (#11210)"
-    return lite_files(task, levers), "lite (finder unavailable)"
+        why = finder_failure(proc, env)
+    return lite_files(task, levers), f"lite (finder unavailable: {why})"
+
+
+def finder_failure(proc, env: dict) -> str:
+    """Why filefind gave no files, in a few words for the run's progress
+    line (#12250: every pool run said only "finder unavailable")."""
+    if not env.get("OPENROUTER_API_KEY"):
+        return "no OPENROUTER_API_KEY for its embeddings"
+    if proc.returncode == 0:
+        return "it found no files"
+    last = [row for row in (proc.stderr or "").splitlines() if row.strip()][-1:]
+    return f"exit {proc.returncode}" + (f": {last[0][:160]}" if last else "")
 
 
 def outline(rows: list[str], cap: int) -> list[int]:

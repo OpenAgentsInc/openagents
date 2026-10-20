@@ -86,6 +86,9 @@ const OPENAI_SECRET: &str = "coder-openai-api-key";
 /// (#12203): optional. With it the briefed agent can hand a failed Codex
 /// change to Claude Code, and `--engine briefed` runs there.
 const CLAUDE_SECRET: &str = "coder-pool-claude-token";
+/// The context finder's embeddings key (#12250): without it a run's
+/// briefing falls back to matching the issue's words.
+const OPENROUTER_SECRET: &str = "openagents-openrouter-api-key";
 /// The least time a ChatGPT access token must have left to go to a cloud
 /// run: a run can take an hour, and the copy it gets cannot be refreshed.
 const CODEX_MIN_LEFT_SECS: u64 = 2 * 3600;
@@ -467,6 +470,11 @@ pub(super) fn credentials(
     variables.insert("GH_TOKEN".to_owned(), token);
     if let Some(claude) = claude_token() {
         variables.insert("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), claude);
+    }
+    if let Some(key) = first_token(coder_cloud::archil_backend::openrouter_key(), || {
+        secret(OPENROUTER_SECRET)
+    }) {
+        variables.insert("OPENROUTER_API_KEY".to_owned(), key);
     }
     for (name, key) in [("OA_GIT_NAME", "user.name"), ("OA_GIT_EMAIL", "user.email")] {
         if let Some(value) = variable(name).or_else(|| git_config(key)) {

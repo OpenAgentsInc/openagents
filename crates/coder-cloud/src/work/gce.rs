@@ -307,29 +307,40 @@ unset OA_CODEX_AUTH
 # filled the host's disk (#12199's runs ended without an outcome).
 finish() {{ rc=$?; printf '%s' "$rc" > "$d/exit.writing"; mv "$d/exit.writing" "$d/exit"; rm -rf "$d/workspace" "/tmp/oa-coder-{id}"; touch "$HOME/.oa-pool/busy"; }}
 trap finish EXIT
+say() {{ printf '{{"event":"work","issue":{issue},"phase":"setup","text":"%s"}}\n' "$1" >>"$d/out"; }}
 expires=$(( $(date +%s) + {seconds} ))
 slot=''
+waited=''
 while [ -z "$slot" ]; do
  for i in $(seq 0 {last}); do
   exec 8>"$HOME/.oa-pool/slot-$i.lock"
   if flock -n 8; then slot=$i; break; fi
  done
  [ -n "$slot" ] && break
- [ "$(date +%s)" -lt "$expires" ] || exit 124
+ # A wait is said, not silent (#12240), and it doesn't use the run's time.
+ [ -n "$waited" ] || {{ say "waiting for a free slot on $(hostname)"; waited=1; }}
+ [ "$(date +%s)" -lt "$expires" ] || {{ say "no slot came free on $(hostname)"; exit 124; }}
  sleep 1
 done
+[ -z "$waited" ] || expires=$(( $(date +%s) + {seconds} ))
 touch "$HOME/.oa-pool/busy"
 gh auth setup-git >/dev/null 2>&1 || true
 if [ ! -d "$d/workspace/repo/.git" ]; then
- clone_limit=$(( expires - $(date +%s) ))
- [ "$clone_limit" -gt 0 ] || exit 124
- [ "$clone_limit" -le 120 ] || clone_limit=120
- timeout --kill-after=10s "$clone_limit" git clone -- {url} "$d/workspace/repo" >"$d/clone.out" 2>"$d/err" || exit $?
+ # Borrow the host's own clone's objects: a full clone of this repository
+ # took over the old 120 s limit and ended runs with 124 and no events
+ # (#12240). The fetch then brings only what the host's clone lacks.
+ say "getting the repository"
+ timeout --kill-after=10s 900 git clone --reference-if-able "$HOME/openagents" -- {url} "$d/workspace/repo" >"$d/clone.out" 2>"$d/err"
+ rc=$?
+ if [ "$rc" -ne 0 ]; then
+  say "getting the repository failed (exit $rc): $(tail -n 1 "$d/err" | tr -d '"\\' | cut -c1-200)"
+  exit "$rc"
+ fi
 fi
 cd "$d/workspace/repo" || exit 2
 remaining=$(( expires - $(date +%s) ))
 [ "$remaining" -gt 0 ] || exit 124
-timeout --kill-after=10s "$remaining" sh -c {command} >"$d/out" 2>"$d/err"
+timeout --kill-after=10s "$remaining" sh -c {command} >>"$d/out" 2>"$d/err"
 rc=$?
 python3 - "$d/out" "$rc" <<'PY'
 import json,sys
@@ -346,6 +357,7 @@ PY
 exit "$rc"
 "#,
         id = record.id,
+        issue = request.issue,
         last = slots.saturating_sub(1),
         seconds = cap.as_secs().max(1).min(12 * 3600)
     ))
@@ -385,6 +397,14 @@ fn credentials(engine: &str, fresh: bool) -> crate::Result<runtime::Credentials>
         .filter(|value| !value.is_empty())
     {
         values.insert(crate::claude::OAUTH_TOKEN.into(), token);
+    }
+    // The context finder's embeddings key, so the briefing finds files by
+    // meaning, not only the issue's words (#12250).
+    if let Some(key) = crate::archil_backend::openrouter_key()
+        .or_else(|| pool_secret("openagents-openrouter-api-key"))
+        .filter(|value| !value.is_empty())
+    {
+        values.insert("OPENROUTER_API_KEY".into(), key);
     }
     for key in ["OPENAGENTS_TOKEN", "OPENAGENTS_SITE", "OPENAGENTS_API_BASE"] {
         if let Ok(value) = std::env::var(key) {
@@ -471,7 +491,7 @@ mod tests {
         assert!(body.contains("OA_CLI=$HOME/.oa-pool/bin/openagents"));
         assert!(body.contains("slot-$i.lock") && body.contains("expires - $(date +%s)"));
         assert!(body.contains("timeout --kill-after=10s \"$remaining\" sh -c"));
-        assert!(body.contains("clone_limit=120") && body.contains("\"$clone_limit\" git clone"));
+        assert!(body.contains("git clone --reference-if-able \"$HOME/openagents\""));
         let script = runtime::wrap_launch(&gce_backend::directory(&record), &body);
         assert!(script.contains("owner.lock") && script.contains("pid-start"));
         let mut child = std::process::Command::new("/bin/sh")
@@ -536,6 +556,69 @@ mod tests {
             !dir.join("workspace").exists(),
             "the 6 GB clone stays behind"
         );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_clone_says_so_in_the_jobs_events() {
+        // #12240: runs ended with 124 and no events at all.
+        let request = request();
+        let record = Record::new(
+            "work-clone",
+            crate::Spec {
+                placement: crate::Placement::Gce,
+                mode: crate::Mode::Coder,
+                agent: request.agent.clone(),
+                task: serde_json::to_string(&request).unwrap(),
+                model: None,
+                reasoning: None,
+                cwd: "/fixture".into(),
+                timeout_seconds: 3600,
+                size: "default".into(),
+                template: None,
+                credential_names: vec![],
+            },
+        )
+        .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let dir = home.path().join("run");
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = home.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let git = bin.join("git");
+        std::fs::write(
+            &git,
+            "#!/bin/sh\necho 'fatal: unable to access github' >&2\nexit 128\n",
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::create_dir_all(home.path().join(".oa-pool")).unwrap();
+        let body = issue_body(&record, &request, 1, Duration::from_secs(60))
+            .unwrap()
+            .replace(&gce_backend::directory(&record), &dir.display().to_string());
+        let status = std::process::Command::new("/bin/sh")
+            .args(["-c", &body])
+            .env("HOME", home.path())
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .status()
+            .unwrap();
+        assert!(!status.success());
+        assert_eq!(std::fs::read_to_string(dir.join("exit")).unwrap(), "128");
+        let out = std::fs::read_to_string(dir.join("out")).unwrap();
+        let events: Vec<Value> = out
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(events[0]["text"], "getting the repository");
+        assert!(
+            events[1]["text"].as_str().unwrap().contains(
+                "getting the repository failed (exit 128): fatal: unable to access github"
+            )
+        );
+        assert_eq!(events[1]["event"], "work");
     }
     #[test]
     fn an_unlanded_request_never_falls_back_to_repository_policy() {

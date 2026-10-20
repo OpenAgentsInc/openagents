@@ -454,5 +454,18 @@ class SavedRunTests(unittest.TestCase):
         self.assertTrue(a["ok"])
 
 
+class FinderFailureTests(unittest.TestCase):
+    """The briefing says why the context finder gave no files (#12250)."""
+
+    def test_the_reason_is_named(self):
+        work.sys.path.insert(0, str(work.BENCH))
+        import briefing
+        failed = Mock(returncode=1, stderr="Traceback\nKeyError: 'data'\n")
+        self.assertEqual(briefing.finder_failure(failed, {}), "no OPENROUTER_API_KEY for its embeddings")
+        self.assertEqual(briefing.finder_failure(failed, {"OPENROUTER_API_KEY": "k"}), "exit 1: KeyError: 'data'")
+        self.assertEqual(briefing.finder_failure(Mock(returncode=0, stderr=""), {"OPENROUTER_API_KEY": "k"}),
+                         "it found no files")
+
+
 if __name__ == "__main__":
     unittest.main()
