@@ -16,6 +16,9 @@
 /apps/openagents/*
 !/apps/openagents/Cargo.toml
 !/apps/openagents/crates/
+# everglade-web, a root crate, takes the hand input crate from the app's
+# web workspace.
+!/apps/openagents/web/
 !/migrations/
 !/nips/
 !/tests/
