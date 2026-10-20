@@ -1429,10 +1429,11 @@ fn assert_key_response_schema(
     body: &serde_json::Value,
 ) {
     let document = crate::app_openapi::document();
-    let path = if path.split('?').next() == Some("/v1/keys") {
-        "/v1/keys"
-    } else {
-        "/v1/keys/{id}"
+    let path = match path.split('?').next().unwrap_or(path) {
+        "/v1/keys" => "/v1/keys",
+        "/v1/keys/own" => "/v1/keys/own",
+        path if path.starts_with("/v1/keys/own/") => "/v1/keys/own/{provider}",
+        _ => "/v1/keys/{id}",
     };
     let mut schema = document["paths"][path][method.to_ascii_lowercase()]["responses"]
         [status.as_u16().to_string()]["content"]["application/json"]["schema"]
@@ -1992,3 +1993,144 @@ async fn settings_leaves_out_hidden_features() {
 }
 
 mod workos;
+
+#[tokio::test]
+async fn api_key_settings_preserve_limits_permissions_and_private_provider_keys() {
+    use axum::{
+        Json,
+        extract::Path,
+        routing::{get, put},
+    };
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
+    let calls = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+    let fail_limit = Arc::new(AtomicBool::new(false));
+    let own = Arc::new(Mutex::new(None::<String>));
+    let issued = calls.clone();
+    let limited = calls.clone();
+    let revoked = calls.clone();
+    let fail = fail_limit.clone();
+    let read = own.clone();
+    let saved = own.clone();
+    let removed = own.clone();
+    let routes = Router::new()
+        .route("/v1/workspaces/{workspace}/keys", axum::routing::post(move |Path(workspace): Path<String>, Json(body): Json<serde_json::Value>| {
+            let calls = issued.clone(); async move {
+                calls.lock().unwrap().push(json!({"issue":body,"workspace":workspace}));
+                Json(json!({"key":{"id":"scratch-key","tenant":"fixture"},"key_token":"private fixture credential"}))
+            }
+        }))
+        .route("/v1/workspaces/{workspace}/keys/{key}/limits", put(move |Json(body): Json<serde_json::Value>| {
+            let calls=limited.clone(); let fail=fail.clone(); async move {
+                calls.lock().unwrap().push(json!({"limit":body}));
+                (if fail.load(Ordering::SeqCst) { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::OK }, Json(json!({})))
+            }
+        }))
+        .route("/v1/workspaces/{workspace}/keys/{key}", axum::routing::delete(move |Path((workspace,key)): Path<(String,String)>| {
+            let calls=revoked.clone(); async move { calls.lock().unwrap().push(json!({"revoke":key,"workspace":workspace})); Json(json!({"revoked":true})) }
+        }))
+        .route("/v1/workspaces/{workspace}/provider-keys", get(move || {
+            let own=read.clone(); async move { Json(json!({"keys":if own.lock().unwrap().is_some() {
+                vec![json!({"provider":"openrouter","fingerprint":"metadata only"})]
+            } else { vec![] }})) }
+        }))
+        .route("/v1/workspaces/{workspace}/provider-keys/{provider}", put(move |Json(body): Json<serde_json::Value>| {
+            let own=saved.clone(); async move { *own.lock().unwrap()=body["key"].as_str().map(str::to_owned); Json(json!({})) }
+        }).delete(move || { let own=removed.clone(); async move { *own.lock().unwrap()=None; Json(json!({})) } }));
+    let world = world_with_extra_routes(true, None, None, Some(routes)).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&world, "%2Fsettings", "login=octo-local")
+        .await;
+    let token = &browser.0["oa_cloud_session"];
+    let body = json!({"kind":"api","name":"limited scratch","actions":["usage:read"],"monthly_limit":"$7.5"});
+    let (status, _) = agent_call(&world, "POST", "/v1/keys", Some(body.clone()), token).await;
+    assert_eq!(status, StatusCode::OK);
+    {
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls[0]["issue"]["scopes"], json!(["usage:read"]));
+        assert_eq!(
+            calls[1],
+            json!({"limit":{"spend_cap":{"usd":"7.50","period":"month"}}})
+        );
+    }
+    for invalid in [
+        json!({"actions":[]}),
+        json!({"actions":["unavailable"]}),
+        json!({"actions":["keys","keys"]}),
+        json!({"monthly_limit":"0"}),
+    ] {
+        let mut body = body.clone();
+        body.as_object_mut()
+            .unwrap()
+            .extend(invalid.as_object().unwrap().clone());
+        assert_eq!(
+            agent_call(&world, "POST", "/v1/keys", Some(body), token)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        calls.lock().unwrap().len(),
+        2,
+        "invalid options must not issue a key"
+    );
+    fail_limit.store(true, Ordering::SeqCst);
+    let (status, answer) = agent_call(&world, "POST", "/v1/keys", Some(body), token).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(answer.get("token").is_none());
+    {
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 5);
+        assert_eq!(calls[4]["revoke"], "scratch-key");
+        assert_eq!(calls[0]["workspace"], calls[4]["workspace"]);
+    }
+    let (status, listed) = agent_call(&world, "GET", "/v1/keys/own", None, token).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed["providers"][0]["saved"], false);
+    let fixture = "provider credential stays private";
+    assert_eq!(
+        agent_call(
+            &world,
+            "PUT",
+            "/v1/keys/own/openrouter",
+            Some(json!({"key":fixture})),
+            token
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(own.lock().unwrap().as_deref(), Some(fixture));
+    let (_, listed) = agent_call(&world, "GET", "/v1/keys/own", None, token).await;
+    assert_eq!(listed["providers"][0]["saved"], true);
+    assert!(!listed.to_string().contains(fixture));
+    assert_eq!(
+        agent_call(
+            &world,
+            "PUT",
+            "/v1/keys/own/unknown",
+            Some(json!({"key":fixture})),
+            token
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        agent_call(&world, "DELETE", "/v1/keys/own/openrouter", None, token)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert!(own.lock().unwrap().is_none());
+    assert_eq!(
+        agent_call(&world, "GET", "/v1/keys/own", None, "invalid")
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+}

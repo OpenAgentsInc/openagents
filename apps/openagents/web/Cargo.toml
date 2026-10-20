@@ -35,6 +35,7 @@ members = [
     "cloud-settings",
     "claude",
     "data",
+    "keys",
     "demo",
     "agent-graph",
     "first-frame",

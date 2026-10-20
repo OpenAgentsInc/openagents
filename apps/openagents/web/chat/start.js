@@ -36,6 +36,12 @@ function say(text) {
 // If neither renderer starts, the HTML chat takes over: the page goes to
 // its address (the note's link), and shows the note if it can't.
 function unsupported() {
+  var params = new URLSearchParams(location.search);
+  var settingsPage = params.get("settings") || (params.get("page") || "").replace(/^keys\//, "");
+  if (isKeysPage(settingsPage)) {
+    location.replace("/settings/" + settingsPage + "?ui=html");
+    return;
+  }
   var status = document.getElementById("gpui-status");
   if (status) {
     status.remove();
@@ -83,6 +89,9 @@ function start() {
     window.__gpuiReadyAt = performance.now();
     window.__gpuiReadyMs = window.__gpuiReadyAt - started;
     document.documentElement.dataset.gpui = "ready";
+    if (!document.querySelector('meta[name="openagents-settings"]')) {
+      if (!openAddressedPage() && settingsSection()) openPage(settingsSection());
+    }
   }, { once: true });
   // Once the chats and the open chat have arrived (`gpui-ready`), keep
   // that frame in this browser, so the page can paint it before the module
@@ -132,8 +141,8 @@ function start() {
   }, { once: true });
   loadedFonts = fonts;
   if (document.querySelector('meta[name="openagents-settings"]')) {
-    var page = new URLSearchParams(location.search).get("page") || document.querySelector('meta[name="openagents-settings"]').content || "general";
-    if (PAGES[page.split("/")[0]]) {
+    var page = (new URLSearchParams(location.search).get("page") || document.querySelector('meta[name="openagents-settings"]').content || "general").replace(/^keys\//, "");
+    if (PAGES[page.split("/")[0]] && !isKeysPage(page)) {
       openPage(page);
     } else {
       openSettings({ detail: JSON.stringify({ page: page, shared: { signedIn: true } }) });
@@ -144,16 +153,9 @@ function start() {
     });
     return;
   }
-  var addressedPage = openAddressedPage();
   Promise.all([loadRenderer(new URL("./openagents_web_chat.js", import.meta.url), new URL("./openagents_web_chat_bg.wasm", import.meta.url), new URL("./openagents_web_chat_webgl.js", import.meta.url), new URL("./openagents_web_chat_webgl_bg.wasm", import.meta.url)), fonts])
     .then(function (loaded) {
       chatModule = loaded[0];
-      var section = settingsSection();
-      if (section && !addressedPage) {
-        document.addEventListener("gpui-ready", function () {
-          openPage(section);
-        }, { once: true });
-      }
       chatModule.launch(loaded[1]);
     })
     .catch(function (error) {
@@ -573,6 +575,13 @@ function openSettings(event) {
   var page = asked.page || "general";
   if (["connections", "vault", "terminal"].indexOf(page) !== -1) { openPage(page); return; }
   var shared = JSON.stringify(asked.shared || {});
+  settingsShared = asked.shared || settingsShared;
+  if (isKeysPage(page)) {
+    if (settingsBox) settingsBox.hidden = true;
+    openPage("keys/" + page);
+    return;
+  }
+  hideKeys();
   if (settingsBox) {
     settingsBox.hidden = false;
     if (settings) {
@@ -721,6 +730,7 @@ var PAGES = {
   "admin-drive-access": ["./openagents_web_admin_drive_access.js", "./openagents_web_admin_drive_access_bg.wasm", "./openagents_web_admin_drive_access_webgl.js", "./openagents_web_admin_drive_access_webgl_bg.wasm"],
   "admin-attribution": ["./openagents_web_admin_attribution.js", "./openagents_web_admin_attribution_bg.wasm", "./openagents_web_admin_attribution_webgl.js", "./openagents_web_admin_attribution_webgl_bg.wasm"],
   "admin-analytics": ["./openagents_web_admin_analytics.js", "./openagents_web_admin_analytics_bg.wasm", "./openagents_web_admin_analytics_webgl.js", "./openagents_web_admin_analytics_webgl_bg.wasm"],
+  keys: ["./openagents_web_keys.js", "./openagents_web_keys_bg.wasm", "./openagents_web_keys_webgl.js", "./openagents_web_keys_webgl_bg.wasm"],
   "claude": ["./openagents_web_claude.js", "./openagents_web_claude_bg.wasm", "./openagents_web_claude_webgl.js", "./openagents_web_claude_webgl_bg.wasm"],
   "data": ["./openagents_web_data.js", "./openagents_web_data_bg.wasm", "./openagents_web_data_webgl.js", "./openagents_web_data_webgl_bg.wasm"],
   "traces": ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm", "./openagents_web_traces_webgl.js", "./openagents_web_traces_webgl_bg.wasm"],
@@ -738,6 +748,7 @@ var PAGES = {
 var UNADDRESSED = { voice: true };
 var pageBoxes = {};
 var pageModules = {};
+var pageWanted = {};
 function pageParam(path) {
   var url = new URL(window.location.href);
   if (path) {
@@ -755,6 +766,12 @@ function openPage(path) {
   }
   var rest = path.slice(name.length + 1);
   if ((name === "claude" || name === "data") && settingsBox) { settingsBox.hidden = true; }
+  pageWanted[name] = rest;
+  if (name === "keys") {
+    var address = new URL(location.href);
+    address.searchParams.delete("settings");
+    history.replaceState(history.state, "", address.pathname + address.search);
+  }
   if (!UNADDRESSED[name]) {
     pageParam(path);
   }
@@ -763,7 +780,9 @@ function openPage(path) {
   Object.keys(pageBoxes).forEach(function (other) {
     if (other !== name && pageBoxes[other]) {
       pageBoxes[other].hidden = true;
-      if (pageModules[other] && pageModules[other].hide) pageModules[other].hide();
+      if (pageModules[other] && pageModules[other].hide) Promise.resolve().then(function () {
+        if (pageBoxes[other].hidden) pageModules[other].hide();
+      });
     }
   });
   if (pageBoxes[name]) {
@@ -777,24 +796,31 @@ function openPage(path) {
   box.id = box.dataset.box = "gpui-page-" + name;
   box.setAttribute("aria-label", name);
   box.style.cssText = "position:fixed;inset:0;z-index:7;";
-  if (document.querySelector('meta[name="openagents-settings"]')) { box.style.zIndex = "100"; }
+  if (name === "claude" || name === "data" || document.querySelector('meta[name="openagents-settings"]')) { box.style.zIndex = "100"; }
   document.body.appendChild(box);
   pageBoxes[name] = box;
   Promise.all([loadRenderer(new URL(files[0], import.meta.url), new URL(files[1], import.meta.url), new URL(files[2], import.meta.url), new URL(files[3], import.meta.url)), loadedFonts])
     .then(function (loaded) {
       var module = loaded[0];
       return Promise.resolve().then(function () {
+        if (name === "keys" && document.documentElement.dataset.gpuiRenderer === "webgl") {
+          var gl = document.createElement("canvas").getContext("webgl2");
+          if (!gl) throw new Error("WebGL2 is unavailable");
+          gl.getExtension("WEBGL_lose_context")?.loseContext();
+        }
         pageModules[name] = module;
         mountIn(box, function () {
-          module.mount(loaded[1], rest);
+          module.mount(loaded[1], pageWanted[name] || rest);
         });
+        if (box.hidden && module.hide) module.hide();
       });
     })
     .catch(function (error) {
       console.error("the page couldn't start", error);
       box.remove();
       delete pageBoxes[name];
-      if (settingsSection()) htmlSettings();
+      if (name === "keys") location.assign("/settings/" + (isKeysPage(rest) ? rest : "api-keys") + "?ui=html");
+      else if (settingsSection()) htmlSettings();
       else pageParam("");
     });
 }
@@ -805,19 +831,21 @@ window.addEventListener("oa-page-path", function (event) {
   pageParam(event.detail || "");
 });
 window.addEventListener("oa-page-close", function (event) {
-  var box = pageBoxes[event.detail || ""];
-  if (box) {
-    box.hidden = true;
-    var module = pageModules[event.detail || ""];
-    if (module && module.hide) module.hide();
-    closeVault();
-  }
-  if (!UNADDRESSED[event.detail || ""]) {
+  var name = event.detail || "";
+  var box = pageBoxes[name];
+  if (box) box.hidden = true;
+  pageWanted[name] = null;
+  if (pageModules[name] && pageModules[name].hide) Promise.resolve().then(function () {
+    if (box && box.hidden) pageModules[name].hide();
+  });
+  closeVault();
+  if (!UNADDRESSED[name]) {
     pageParam("");
   }
   if (document.querySelector('meta[name="openagents-settings"]')) {
     location.assign("/?ui=gpui");
   }
+  if (name === "keys") window.dispatchEvent(new Event("oa-settings-close"));
 });
 function openAddressedPage() {
   var params = new URL(window.location.href).searchParams;
@@ -868,5 +896,26 @@ window.addEventListener("keydown", function (event) {
   if (event.key === "Escape") closeVault();
 });
 window.addEventListener("oa-settings-hide", closeVault);
+
+// Settings routes open the credentials page through the shared page loader.
+var settingsShared = {};
+function isKeysPage(page) {
+  return ["api-keys", "sign-in-keys", "agent-accounts"].indexOf(page) !== -1;
+}
+function hideKeys() {
+  var box = pageBoxes.keys;
+  if (box) box.hidden = true;
+  pageWanted.keys = null;
+  if (pageModules.keys) Promise.resolve().then(function () {
+    if (box && box.hidden) pageModules.keys.hide();
+  });
+}
+window.addEventListener("oa-settings-page", function (event) {
+  if (isKeysPage(event.detail)) Promise.resolve().then(function () {
+    openSettings({detail: JSON.stringify({page: event.detail, shared: settingsShared})});
+  });
+});
+window.addEventListener("oa-settings-hide", hideKeys);
+window.addEventListener("pagehide", hideKeys);
 
 start();

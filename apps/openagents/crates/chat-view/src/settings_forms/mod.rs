@@ -22,6 +22,7 @@ pub mod cloud;
 pub mod connections;
 /// Earn on a paired computer (#12294).
 pub mod earn;
+pub mod keys;
 /// A Lab document (#12333).
 pub mod lab;
 pub mod memory;
@@ -63,12 +64,15 @@ pub enum Page {
     Earn,
     /// Your ID: the account's keys, sign out, and delete (#12290).
     Account,
+    ApiKeys,
+    SignInKeys,
+    AgentAccounts,
     Memory,
     Schedules,
 }
 
 impl Page {
-    pub const ALL: [Page; 16] = [
+    pub const ALL: [Page; 19] = [
         Page::General,
         Page::Providers,
         Page::Claude,
@@ -85,6 +89,9 @@ impl Page {
         Page::Account,
         Page::Memory,
         Page::Schedules,
+        Page::ApiKeys,
+        Page::SignInKeys,
+        Page::AgentAccounts,
     ];
 
     /// The desktop's nav label for the page.
@@ -106,6 +113,9 @@ impl Page {
             Page::Account => "Your ID",
             Page::Memory => "Memory",
             Page::Schedules => "Schedules",
+            Page::ApiKeys => "API keys",
+            Page::SignInKeys => "Sign-in keys",
+            Page::AgentAccounts => "Agent accounts",
         }
     }
 
@@ -129,6 +139,9 @@ impl Page {
             Page::Account => "account",
             Page::Memory => "memory",
             Page::Schedules => "schedules",
+            Page::ApiKeys => "api-keys",
+            Page::SignInKeys => "sign-in-keys",
+            Page::AgentAccounts => "agent-accounts",
         }
     }
 
@@ -339,6 +352,7 @@ pub enum Sound {
 #[serde(rename_all = "snake_case")]
 pub enum Intent {
     Open(Page),
+    Keys(keys::Action),
     SendWithModifier(bool),
     EscapeStopsAgent(bool),
     Sound(Sound, bool),
@@ -494,6 +508,7 @@ pub struct Remote {
     pub account: account::State,
     pub cloud: cloud::State,
     pub connections: connections::State,
+    pub keys: keys::State,
     /// Earn on the chosen computer (#12294).
     pub earn: earn::State,
     /// Providers: the chosen computer's agents and accounts (#12283).
@@ -530,6 +545,9 @@ pub fn page(page: Page, prefs: &Prefs, remote: &Remote, paints: &Paints) -> Node
         Page::Account => account::page(&remote.account, paints),
         Page::Claude => cloud::claude(&remote.cloud, paints),
         Page::Data => cloud::data(&remote.cloud, remote.account.signed_in, paints),
+        Page::ApiKeys | Page::SignInKeys | Page::AgentAccounts => {
+            keys::page(page, &remote.keys, paints)
+        }
         Page::Providers => providers::page(
             &remote.providers,
             &remote.computers,

@@ -127,6 +127,36 @@ pub fn page_as(
     )
 }
 
+/// Offer the credentials canvas while retaining HTML for browsers without a
+/// supported renderer or JavaScript.
+pub(crate) fn keys_page(
+    app: &App,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    service: &CloudSession,
+    viewer: &Viewer,
+    title: &str,
+    path: &str,
+    body: Markup,
+) -> Response {
+    let choice = crate::pages::gpui_chat::choice(app.config.features, headers, query);
+    let ready = choice.serves(app, headers)
+        && app
+            .config
+            .gpui_chat
+            .as_ref()
+            .is_some_and(|dir| dir.join("openagents_web_keys_bg.wasm").is_file());
+    let body = html! {
+        @if ready {
+            (gpui_bootstrap(app, &viewer.account_id, query, path.rsplit('/').next().unwrap_or("api-keys")))
+        }
+        (body)
+    };
+    let mut response = gpui_policy(page(headers, service, viewer, title, path, body));
+    choice.remember(app, &mut response);
+    response
+}
+
 /// Where the viewer's own Claude credential stands, for the Settings row.
 enum Standing {
     Saved(Material),
@@ -267,15 +297,15 @@ async fn affiliate_section(app: &App, service: &CloudSession, headers: &HeaderMa
     settings_section(&report, &days)
 }
 
-/// Leave HTML in place until WebGPU and the separate Settings module start.
+/// Leave HTML in place until a renderer and the separate Settings module start.
 fn gpui_bootstrap(app: &App, account_id: &str, query: Option<&str>, default_page: &str) -> Markup {
     if query.is_some_and(|q| q.split('&').any(|p| matches!(p, "ui=html" | "ui=off"))) {
         return html! {};
     }
-    let module = if default_page == "claude" {
-        "claude"
-    } else {
-        "settings"
+    let module = match default_page {
+        "claude" => "claude",
+        "api-keys" | "sign-in-keys" | "agent-accounts" => "keys",
+        _ => "settings",
     };
     let Some(directory) = app
         .config
@@ -1159,6 +1189,24 @@ mod tests {
         std::fs::write(root.path().join("openagents_web_claude.js"), "built").unwrap();
         let claude = gpui_bootstrap(&app, "acct_test", None, "claude").into_string();
         assert!(claude.contains("name=\"openagents-settings\" content=\"claude\""));
+        for page in ["api-keys", "sign-in-keys", "agent-accounts"] {
+            assert!(
+                gpui_bootstrap(&app, "acct_test", None, page)
+                    .into_string()
+                    .is_empty()
+            );
+        }
+        std::fs::write(root.path().join("openagents_web_keys.js"), "built").unwrap();
+        for page in ["api-keys", "sign-in-keys", "agent-accounts"] {
+            let html = gpui_bootstrap(&app, "acct_test", Some("ui=gpui"), page).into_string();
+            assert!(html.contains(&format!("name=\"openagents-settings\" content=\"{page}\"")));
+            assert!(!html.contains("openagents_web_chat_bg.wasm"));
+            assert!(
+                gpui_bootstrap(&app, "acct_test", Some("ui=html"), page)
+                    .into_string()
+                    .is_empty()
+            );
+        }
     }
 
     #[test]

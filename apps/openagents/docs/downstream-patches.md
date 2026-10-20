@@ -1497,6 +1497,10 @@ event in a median 1.39 s (1.13–1.80 s); server HTML painted first in every
 run. Pixel and cross-browser checks after deployment are tracked in the
 master delegation audit.
 
+## Account credentials in GPUI Settings (#12326)
+
+`chat-view::settings_forms::keys` shares the API key, sign-in key, and agent-account forms; `web/keys` loads separately through `start.js` and the shared `page-host`, uses the cookie API, and keeps a new key masked with a temporary copy control. API permissions and monthly limits use the existing server validation; provider-key paste, replacement, and confirmed removal keep key material out of prompts and view state. HTML key results stay masked too, with copy controls and an explicit save link when JavaScript is off.
+
 ## AgentGraph in the desktop's Agent Lab (#12231)
 
 - `crates/agent-graph-view` (`openagents-agent-graph-view`) holds the GPUI

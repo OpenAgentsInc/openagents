@@ -26,6 +26,8 @@
 #   openagents_web_cad.js         CAD designs, at `?page=cad` (#12334),
 #   openagents_web_lab.js         a Lab document, at `?page=labs` (#12333),
 #                                 each with its _bg.wasm module
+#   openagents_web_keys.js       account credentials, loaded on first use (#12326)
+#   openagents_web_keys_bg.wasm   the credentials module
 #   start.js                      the page's one script: checks, loads, launches
 #   fonts/*.ttf                   the Geist faces the chat draws, fetched apart
 #   *.gz, *.br                    gzip and brotli copies, sent when asked
@@ -108,7 +110,9 @@ compress() {
 # The first-frame painter: the page paints the frame this browser kept
 # from the last visit before the module loads (#12244).
 "$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
-WEB_BUILD_NAMES_DIR="$target_dir/$target/release" python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_chat_webgl openagents_web_files_webgl openagents_web_work_webgl openagents_web_settings_webgl openagents_web_agent_lab openagents_web_agent_lab_webgl openagents_web_traces openagents_web_traces_webgl openagents_web_agents openagents_web_agents_webgl openagents_web_projects openagents_web_projects_webgl openagents_web_lab openagents_web_lab_webgl openagents_web_voice openagents_web_voice_webgl openagents_web_cad openagents_web_cad_webgl openagents_web_claude openagents_web_claude_webgl openagents_web_data openagents_web_data_webgl openagents_web_admin_analytics openagents_web_admin_analytics_webgl openagents_web_admin_attribution openagents_web_admin_attribution_webgl openagents_web_admin_drive_access openagents_web_admin_drive_access_webgl openagents_web_transcript_extras openagents_web_transcript_extras_webgl openagents_web_connections openagents_web_connections_webgl openagents_web_vault openagents_web_vault_webgl openagents_web_terminal openagents_web_terminal_webgl
+# Account credentials use the same lazy renderer selection as Settings.
+build_renderers openagents-web-keys openagents_web_keys "$out"
+WEB_BUILD_NAMES_DIR="$target_dir/$target/release" python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_chat_webgl openagents_web_files_webgl openagents_web_work_webgl openagents_web_settings_webgl openagents_web_agent_lab openagents_web_agent_lab_webgl openagents_web_traces openagents_web_traces_webgl openagents_web_agents openagents_web_agents_webgl openagents_web_projects openagents_web_projects_webgl openagents_web_lab openagents_web_lab_webgl openagents_web_voice openagents_web_voice_webgl openagents_web_cad openagents_web_cad_webgl openagents_web_claude openagents_web_claude_webgl openagents_web_data openagents_web_data_webgl openagents_web_admin_analytics openagents_web_admin_analytics_webgl openagents_web_admin_attribution openagents_web_admin_attribution_webgl openagents_web_admin_drive_access openagents_web_admin_drive_access_webgl openagents_web_transcript_extras openagents_web_transcript_extras_webgl openagents_web_connections openagents_web_connections_webgl openagents_web_vault openagents_web_vault_webgl openagents_web_terminal openagents_web_terminal_webgl openagents_web_keys openagents_web_keys_webgl
 for font in $fonts; do
   compress "$out/fonts/$font"
 done

@@ -31,7 +31,7 @@ const OWN_SCOPE: &str = "api-key-own";
 
 /// The providers whose keys the API can use for `pay: "mine"`: the word
 /// the account service takes, and the name a person reads.
-const PROVIDERS: [(&str, &str); 2] = [
+pub(crate) const PROVIDERS: [(&str, &str); 2] = [
     ("openrouter", "OpenRouter"),
     ("vercel", "Vercel AI Gateway"),
 ];
@@ -90,7 +90,7 @@ pub struct Row {
 /// section 2.7): the form field, the scope, the words, and whether a new
 /// key has it unless the person unticks it. Only scopes a key can use
 /// today are offered.
-const SCOPE_CHOICES: [(&str, &str, &str, bool); 6] = [
+pub(crate) const SCOPE_CHOICES: [(&str, &str, &str, bool); 6] = [
     ("scope_responses", "responses", "Call models", true),
     (
         "scope_models",
@@ -131,7 +131,11 @@ fn scope_words(scopes: Option<&jev::KeyScopes>) -> String {
     }
 }
 
-pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response {
+pub(crate) async fn keys(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, KEYS).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -196,7 +200,16 @@ pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response
             (own_content(saved, (&tickets[2].0, &tickets[2].1)))
         }
     };
-    page(&headers, service, &viewer, "API keys", KEYS, body)
+    crate::settings::keys_page(
+        &app,
+        &headers,
+        query.as_deref(),
+        service,
+        &viewer,
+        "API keys",
+        KEYS,
+        body,
+    )
 }
 
 /// The page: how to use a key, the keys, the form that makes one.
@@ -375,18 +388,10 @@ pub(crate) async fn own_save(
         Ok(value) => value,
         Err(response) => return response,
     };
-    let key = jev::ApiKey::new(std::mem::take(&mut form.key).trim().to_owned());
-    if key.expose().is_empty() {
-        return problem(StatusCode::BAD_REQUEST, "Paste the key to save it.");
-    }
-    // Anthropic allows a subscription token only inside Claude Code, so the
-    // API never calls models with one (the gateway refuses it too).
-    if key
-        .expose()
-        .starts_with(coder_cloud::claude::SUBSCRIPTION_PREFIX)
-    {
-        return problem(StatusCode::BAD_REQUEST, SUBSCRIPTION_REFUSAL);
-    }
+    let key = match provider_key(&std::mem::take(&mut form.key)) {
+        Ok(key) => key,
+        Err(words) => return problem(StatusCode::BAD_REQUEST, words),
+    };
     match viewer
         .client()
         .account()
@@ -431,7 +436,9 @@ pub fn made_content(token: &str, name: &str) -> Markup {
         (MarkdownRoot::new(html! {
             h1 { "Your new key" }
             p { "Copy " strong { (name) } " now. It won't be shown again." }
-            pre { code { (token) } }
+        }))
+        (crate::sign_in_keys::key_copy(token))
+        (MarkdownRoot::new(html! {
             p { "Try it:" }
             pre { code {
                 "curl " (BASE_URL) "/responses \\\n  -H \"Authorization: Bearer $OPENAGENTS_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"model\": \"openagents/chat\", \"input\": \"Say hello\"}'"
@@ -485,7 +492,7 @@ impl MakeForm {
 
 /// Dollars typed in the form, as a decimal string the account service
 /// takes, or why not.
-fn limit_dollars(text: &str) -> Result<Option<String>, &'static str> {
+pub(crate) fn limit_dollars(text: &str) -> Result<Option<String>, &'static str> {
     let text = text.trim().trim_start_matches('$').trim();
     if text.is_empty() {
         return Ok(None);
@@ -557,26 +564,10 @@ pub(crate) async fn make(
             "Pick at least one thing the key may do.",
         );
     }
-    let account = viewer.client().account();
-    let grant = match account.issue_key_scoped(&workspace, &name, &scopes).await {
+    let grant = match issue(&viewer, &workspace, &name, &scopes, limit.as_deref()).await {
         Ok(grant) => grant,
-        Err(_) => return unreachable_service(),
+        Err(error) => return problem(StatusCode::BAD_GATEWAY, error.words()),
     };
-    if let Some(usd) = limit {
-        let limits = serde_json::json!({"spend_cap": {"usd": usd, "period": "month"}});
-        if account
-            .set_key_limits(&workspace, &grant.key.id, &limits)
-            .await
-            .is_err()
-        {
-            // A key without the limit the person asked for must not work.
-            let _ = account.revoke_key(&workspace, &grant.key.id).await;
-            return problem(
-                StatusCode::BAD_GATEWAY,
-                "The key's limit couldn't be saved, so the key was removed. Try again in a minute.",
-            );
-        }
-    }
     let body = made_content(grant.token.expose(), &name);
     let mut response = page(&headers, service, &viewer, "Your new key", KEYS, body);
     response.headers_mut().insert(
@@ -584,6 +575,61 @@ pub(crate) async fn make(
         axum::http::HeaderValue::from_static("no-store"),
     );
     response
+}
+
+pub(crate) enum IssueError {
+    Unavailable,
+    Limit,
+}
+
+impl IssueError {
+    pub(crate) fn words(&self) -> &'static str {
+        match self {
+            Self::Unavailable => UNREACHABLE,
+            Self::Limit => {
+                "The key's limit couldn't be saved, so the key was removed. Try again in a minute."
+            }
+        }
+    }
+}
+
+/// Both Settings hosts use the same create-and-limit operation. A failed limit
+/// must never leave a newly issued, unlimited key working.
+pub(crate) async fn issue(
+    viewer: &Viewer,
+    workspace: &str,
+    name: &str,
+    scopes: &[&str],
+    limit: Option<&str>,
+) -> Result<jev::KeyGrant, IssueError> {
+    let account = viewer.client().account();
+    let grant = account
+        .issue_key_scoped(workspace, name, scopes)
+        .await
+        .map_err(|_| IssueError::Unavailable)?;
+    if let Some(usd) = limit {
+        let limits = serde_json::json!({"spend_cap": {"usd": usd, "period": "month"}});
+        if account
+            .set_key_limits(workspace, &grant.key.id, &limits)
+            .await
+            .is_err()
+        {
+            let _ = account.revoke_key(workspace, &grant.key.id).await;
+            return Err(IssueError::Limit);
+        }
+    }
+    Ok(grant)
+}
+
+pub(crate) fn provider_key(text: &str) -> Result<jev::ApiKey, &'static str> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("Paste the key to save it.");
+    }
+    if text.starts_with(coder_cloud::claude::SUBSCRIPTION_PREFIX) {
+        return Err(SUBSCRIPTION_REFUSAL);
+    }
+    Ok(jev::ApiKey::new(text.to_owned()))
 }
 
 #[derive(Deserialize)]
@@ -678,6 +724,9 @@ mod tests {
         let made = made_content("oak_abc.def", "laptop").into_string();
         crate::copy_guard::assert_plain(KEYS, &made);
         assert!(made.contains("oak_abc.def"));
+        assert!(!oa_copy::visible_text(&made).contains("oak_abc.def"));
+        assert!(made.contains("data-oa-copy"));
+        assert!(made.contains("download=\"openagents-key.txt\""));
         assert!(made.contains("won't be shown again"));
     }
 }

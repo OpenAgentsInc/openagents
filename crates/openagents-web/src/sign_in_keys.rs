@@ -28,6 +28,7 @@ use axum::extract::{Form, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post};
+use base64::Engine as _;
 use maud::{Markup, html};
 use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color, CopyButton};
 use openagents_ui::content::MarkdownRoot;
@@ -68,6 +69,11 @@ pub(crate) fn routes() -> Router<App> {
         .route(REVOKE, post(settings_revoke))
         .route(API, get(api_list).post(api_create))
         .route(API_ONE, delete(api_revoke))
+        .route("/v1/keys/own", get(own_list))
+        .route(
+            "/v1/keys/own/{provider}",
+            axum::routing::put(own_save).delete(own_remove),
+        )
 }
 
 /// Whether `path` is one of these routes, so the site answers it itself.
@@ -113,7 +119,11 @@ fn unreachable_service() -> Response {
     problem(StatusCode::BAD_GATEWAY, UNREACHABLE)
 }
 
-async fn settings_page(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn settings_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -138,7 +148,16 @@ async fn settings_page(State(app): State<App>, headers: HeaderMap) -> Response {
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
-    page(&headers, service, &viewer, "Login keys", PAGE, body)
+    crate::settings::keys_page(
+        &app,
+        &headers,
+        query.as_deref(),
+        service,
+        &viewer,
+        "Sign-in keys",
+        PAGE,
+        body,
+    )
 }
 
 /// A key's dates in words.
@@ -217,16 +236,29 @@ pub fn keys_content(keys: &[SignInKey], make: (&str, &str), revoke: (&str, &str)
 }
 
 /// A line with its copy button.
-fn copy_line(text: &str) -> Markup {
+fn copy_line(text: &str, visible: &str) -> Markup {
     html! {
         div class="oa-terminal-command" {
-            pre { code { (text) } }
+            pre { code { (visible) } }
             (CopyButton::new(text)
                 .label("Copy")
                 .copied_label("Copied")
                 .variant(ButtonVariant::Soft)
                 .color(Color::Secondary))
         }
+    }
+}
+
+/// The result stays masked, including in the HTML fallback. With JavaScript
+/// off, an explicit save link lets the person keep it without revealing it.
+pub(crate) fn key_copy(token: &str) -> Markup {
+    let download = format!(
+        "data:text/plain;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(token)
+    );
+    html! {
+        (copy_line(token, "••••••••••••••••"))
+        noscript { a href=(download) download="openagents-key.txt" { "Save key" } }
     }
 }
 
@@ -243,15 +275,15 @@ pub fn made_content(origin: &str, made: &MadeKey) -> Markup {
             h1 { "Your new login key" }
             p { "Copy " strong { (made.key.name) } " now. It won't be shown again." }
         }))
-        (copy_line(&made.token))
+        (key_copy(&made.token))
         (MarkdownRoot::new(html! {
             p { "Give it to an agent with this line:" }
         }))
-        (copy_line(&use_line(origin, &made.token)))
+        (copy_line(&use_line(origin, &made.token), &use_line(origin, "YOUR_SIGN_IN_KEY")))
         (MarkdownRoot::new(html! {
             p { "Or save it on a computer, pasting the key when asked:" }
         }))
-        (copy_line(&save))
+        (copy_line(&save, &save))
     }
 }
 
@@ -478,12 +510,17 @@ async fn api_list(
                         .into_iter()
                         .filter(|key| key.status.as_deref() != Some("revoked"))
                         .map(|key| {
-                            json!({
+                            let mut row = json!({
                                 "id": key.id,
                                 "name": key.name,
                                 "created": key.created,
                                 "status": key.status.unwrap_or_else(|| "active".into()),
-                            })
+                            });
+                            if let Some(scopes) = key.scopes {
+                                row["scopes"] =
+                                    json!({"actions":scopes.actions,"models":scopes.models});
+                            }
+                            row
                         })
                         .collect(),
                 ),
@@ -505,6 +542,10 @@ async fn api_list(
 #[serde(deny_unknown_fields)]
 struct CreateBody {
     name: String,
+    #[serde(default)]
+    actions: Option<Vec<String>>,
+    #[serde(default)]
+    monthly_limit: Option<String>,
     #[serde(default)]
     expires_in_days: Option<u64>,
     #[serde(default)]
@@ -533,6 +574,13 @@ async fn api_create(
         Ok(kind) => kind,
         Err(response) => return response,
     };
+    if matches!(kind, Kind::Signin) && (body.actions.is_some() || body.monthly_limit.is_some()) {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Scopes and spending limits apply to API keys only.",
+        );
+    }
     let created = match kind {
         Kind::Signin => match service
             .create_sign_in_key(&token, &body.name, body.expires_in_days)
@@ -566,10 +614,32 @@ async fn api_create(
                 Ok(workspace) => workspace,
                 Err(response) => return response,
             };
-            match viewer
-                .client()
-                .account()
-                .issue_key_scoped(&workspace, &name, &API_KEY_SCOPES)
+            let actions = body
+                .actions
+                .unwrap_or_else(|| API_KEY_SCOPES.iter().map(|s| (*s).to_owned()).collect());
+            if actions.is_empty()
+                || actions.len() > crate::api_keys::SCOPE_CHOICES.len()
+                || actions.iter().enumerate().any(|(i, action)| {
+                    actions[..i].contains(action)
+                        || !crate::api_keys::SCOPE_CHOICES
+                            .iter()
+                            .any(|(_, scope, _, _)| action == scope)
+                })
+            {
+                return refused(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_scopes",
+                    "Pick at least one of the available permissions.",
+                );
+            }
+            let limit = match crate::api_keys::limit_dollars(
+                body.monthly_limit.as_deref().unwrap_or_default(),
+            ) {
+                Ok(limit) => limit,
+                Err(words) => return refused(StatusCode::BAD_REQUEST, "invalid_limit", words),
+            };
+            let scopes: Vec<_> = actions.iter().map(String::as_str).collect();
+            match crate::api_keys::issue(&viewer, &workspace, &name, &scopes, limit.as_deref())
                 .await
             {
                 Ok(grant) => json!({
@@ -577,7 +647,10 @@ async fn api_create(
                     "key": {"id": grant.key.id, "name": name, "status": "active"},
                     "token": grant.token.expose(),
                 }),
-                Err(_) => return unavailable(),
+                Err(crate::api_keys::IssueError::Unavailable) => return unavailable(),
+                Err(error) => {
+                    return refused(StatusCode::BAD_GATEWAY, "key_not_created", error.words());
+                }
             }
         }
     };
@@ -689,6 +762,8 @@ mod tests {
         assert!(html.contains(&format!("OPENAGENTS_TOKEN={} coder", made.token)));
         assert!(html.contains("coder login --key"));
         assert!(html.contains("data-oa-copy"), "a copy button");
+        assert!(!oa_copy::visible_text(&html).contains(&made.token));
+        assert!(html.contains("download=\"openagents-key.txt\""));
         let staging = made_content("https://staging.example", &made).into_string();
         assert!(staging.contains("OPENAGENTS_ORIGIN=https://staging.example OPENAGENTS_TOKEN="));
         assert!(!format!("{made:?}").contains("oa_sk_"));
@@ -699,5 +774,115 @@ mod tests {
         assert!(owns("/v1/keys"));
         assert!(owns("/v1/keys/abc"));
         assert!(!owns("/v1/keysmith"));
+    }
+}
+
+/// Only provider names and saved status leave this endpoint, never key material.
+async fn own_list(State(app): State<App>, headers: HeaderMap) -> Response {
+    let (viewer, workspace) = match own_viewer(&app, &headers).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let providers =
+        viewer
+            .client()
+            .account()
+            .provider_keys(&workspace)
+            .await
+            .ok()
+            .map(|saved| {
+                crate::api_keys::PROVIDERS.iter().map(|(id, name)| json!({
+            "id": id, "name": name, "saved": saved.iter().any(|key| key.provider == *id)
+        })).collect::<Vec<_>>()
+            });
+    crate::coder_sync::answer(StatusCode::OK, json!({"providers":providers}))
+}
+
+async fn own_viewer(app: &App, headers: &HeaderMap) -> Result<(Viewer, String), Response> {
+    let (service, token) = credential(app, headers)?;
+    let viewer = service.app_viewer(&token).await.map_err(session_failure)?;
+    let workspace = api_workspace(&viewer)?;
+    Ok((viewer, workspace))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OwnBody {
+    key: String,
+}
+
+async fn own_save(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(provider): Path<String>,
+    body: Result<axum::Json<OwnBody>, JsonRejection>,
+) -> Response {
+    let (viewer, workspace) = match own_viewer(&app, &headers).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if !crate::api_keys::PROVIDERS
+        .iter()
+        .any(|(id, _)| *id == provider)
+    {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_provider",
+            "Pick OpenRouter or Vercel AI Gateway.",
+        );
+    }
+    let Ok(axum::Json(body)) = body else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Paste a provider key.",
+        );
+    };
+    let key = match crate::api_keys::provider_key(&body.key) {
+        Ok(key) => key,
+        Err(words) => return refused(StatusCode::BAD_REQUEST, "invalid_provider_key", words),
+    };
+    match viewer
+        .client()
+        .account()
+        .set_provider_key(&workspace, &provider, &key)
+        .await
+    {
+        Ok(()) => crate::coder_sync::answer(StatusCode::OK, json!({"saved":true})),
+        Err(_) => refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_provider_key",
+            "The provider key couldn't be saved. Check the key and try again.",
+        ),
+    }
+}
+
+async fn own_remove(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(provider): Path<String>,
+) -> Response {
+    let (viewer, workspace) = match own_viewer(&app, &headers).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if !crate::api_keys::PROVIDERS
+        .iter()
+        .any(|(id, _)| *id == provider)
+    {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_provider",
+            "Pick OpenRouter or Vercel AI Gateway.",
+        );
+    }
+    match viewer
+        .client()
+        .account()
+        .remove_provider_key(&workspace, &provider)
+        .await
+    {
+        Ok(()) => crate::coder_sync::answer(StatusCode::OK, json!({"saved":false})),
+        Err(_) => unavailable(),
     }
 }

@@ -27,7 +27,7 @@ use crate::App;
 use crate::cloud::byo::fresh_request;
 use crate::cloud::protect;
 use crate::cloud::session::{SessionError, Viewer};
-use crate::settings::{PAGE as SETTINGS, page, viewer};
+use crate::settings::{PAGE as SETTINGS, viewer};
 use crate::ui_page::action_link;
 
 pub const PAGE: &str = "/settings/agent-accounts";
@@ -171,7 +171,11 @@ pub fn content(
     }
 }
 
-async fn show(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn show(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -200,7 +204,16 @@ async fn show(State(app): State<App>, headers: HeaderMap) -> Response {
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
-    page(&headers, service, &viewer, "Agents", PAGE, body)
+    crate::settings::keys_page(
+        &app,
+        &headers,
+        query.as_deref(),
+        service,
+        &viewer,
+        "Agent accounts",
+        PAGE,
+        body,
+    )
 }
 
 #[derive(Deserialize)]

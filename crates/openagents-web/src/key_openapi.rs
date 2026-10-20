@@ -17,7 +17,8 @@ pub(crate) fn extend(doc: &mut Value) {
             "expires_at":{"type":["integer","null"],"minimum":0},"current":{"type":"boolean"}
         }},
         "AppManagedKeyApiListed":{"type":"object","required":["id","name","created","status"],"properties":{
-            "id":{"type":"string"},"name":{"type":["string","null"]},"created":{"type":["string","null"]},"status":{"type":"string"}
+            "id":{"type":"string"},"name":{"type":["string","null"]},"created":{"type":["string","null"]},"status":{"type":"string"},
+            "scopes":{"type":"object","properties":{"actions":{"type":["array","null"],"items":{"type":"string"}},"models":{"type":["array","null"],"items":{"type":"string"}}}}
         }},
         "AppManagedKeyApiCreated":{"type":"object","required":["id","name","status"],"properties":{
             "id":{"type":"string"},"name":{"type":"string"},"status":{"const":"active"}
@@ -29,7 +30,9 @@ pub(crate) fn extend(doc: &mut Value) {
         "AppManagedKeyCreate":{"type":"object","additionalProperties":false,"required":["name"],"properties":{
             "name":{"type":"string","description":"Sign-in names are trimmed, 1–80 characters, with no control characters. API names are trimmed and truncated to 80 characters; an empty name is refused."},
             "kind":{"type":["string","null"],"enum":["signin","sign-in","api",null],"default":"signin"},
-            "expires_in_days":{"type":["integer","null"],"minimum":1,"maximum":oa_auth::sign_in_keys::MAX_DAYS,"description":"Sign-in keys only. Omitted or null means until revoked. Any non-null expiry with kind=api is refused."}
+            "expires_in_days":{"type":["integer","null"],"minimum":1,"maximum":oa_auth::sign_in_keys::MAX_DAYS,"description":"Sign-in keys only. Omitted or null means until revoked. Any non-null expiry with kind=api is refused."},
+            "actions":{"type":["array","null"],"minItems":1,"maxItems":6,"uniqueItems":true,"items":{"enum":["responses","models:read","usage:read","keys","billing","workspace"]},"description":"API keys only. Omitted or null uses responses, models:read, usage:read. Explicit values select the same permissions as Settings."},
+            "monthly_limit":{"type":["string","null"],"description":"API keys only. Monthly spending limit in dollars, such as 20 or 7.50. Omitted, null or empty means no limit. A failed limit write revokes the newly issued key before answering an error."}
         }},
         "AppManagedKeyCreated":{"oneOf":[
             {"type":"object","required":["kind","key","token"],"properties":{"kind":{"const":"signin"},"key":r("Signin"),"token":{"type":"string","x-sensitive":true}}},
@@ -45,7 +48,7 @@ pub(crate) fn extend(doc: &mut Value) {
         .extend(schemas.as_object().unwrap().clone());
     doc["components"]["securitySchemes"]["appKeyManagementBearer"] = json!({
         "type":"http","scheme":"bearer",
-        "description":"An account-service-issued live app session (sess_) or sign-in key (oa_sk_). The account service validates it on every request. Cookies and oak_ API keys cannot manage these keys. A sign-in key can create and revoke other sign-in keys for the same account, including itself."
+        "description":"An account-service-issued live app session (sess_) or sign-in key (oa_sk_). The account service validates it on every request. An oak_ API key cannot manage account keys. Browsers may use the same-origin cookie bridge with its CSRF header. A sign-in key can create and revoke other sign-in keys for the same account, including itself."
     });
     for (path, method, id, answer, description) in [
         (
@@ -60,7 +63,7 @@ pub(crate) fn extend(doc: &mut Value) {
             "post",
             "createAccountKey",
             "Created",
-            "Create a key and return its secret once. Repeating this request can create another key, even with the same `Idempotency-Key` header. Do not automatically retry an uncertain result. The sign-in limit is 50 working keys per account. API keys belong to the first workspace where the account is an owner (normally its personal workspace), do not expire, and receive only responses, models:read, usage:read scopes; this is not arbitrary workspace key administration.",
+            "Create a key and return its secret once. Repeating this request can create another key, even with the same `Idempotency-Key` header. Do not automatically retry an uncertain result. The sign-in limit is 50 working keys per account. API keys belong to the first workspace where the account is an owner (normally its personal workspace), do not expire, and default to responses, models:read, usage:read scopes. Optional actions and monthly_limit match Settings; they never select another workspace.",
         ),
         (
             "/v1/keys/{id}",
@@ -85,7 +88,7 @@ pub(crate) fn extend(doc: &mut Value) {
         for (status, codes) in [
             (
                 "400",
-                "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name",
+                "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name, invalid_scopes, invalid_limit",
             ),
             (
                 "401",
@@ -94,6 +97,10 @@ pub(crate) fn extend(doc: &mut Value) {
             (
                 "409",
                 "no_workspace: kind=api needs the account's first workspace where the account is an owner (normally its personal workspace)",
+            ),
+            (
+                "502",
+                "key_not_created: key creation or its requested spending limit failed",
             ),
             (
                 "503",
@@ -108,6 +115,54 @@ pub(crate) fn extend(doc: &mut Value) {
         }
         if method == "delete" {
             operation["responses"]["404"] = json!({"description":"unknown_key","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AppAccountError"}}}});
+        }
+        if doc["paths"][path].is_null() {
+            doc["paths"][path] = json!({});
+        }
+        doc["paths"][path][method] = operation;
+    }
+    for (path, method, id, schema) in [
+        (
+            "/v1/keys/own",
+            "get",
+            "listOwnProviderKeys",
+            json!({
+                "type":"object","required":["providers"],"properties":{"providers":{
+                    "type":["array","null"],"description":"Null when the service does not offer provider-key storage.",
+                    "items":{"type":"object","required":["id","name","saved"],"properties":{
+                        "id":{"enum":["openrouter","vercel"]},"name":{"type":"string"},"saved":{"type":"boolean"}
+                    }}
+                }}
+            }),
+        ),
+        (
+            "/v1/keys/own/{provider}",
+            "put",
+            "saveOwnProviderKey",
+            json!({"type":"object","required":["saved"],"properties":{"saved":{"const":true}}}),
+        ),
+        (
+            "/v1/keys/own/{provider}",
+            "delete",
+            "removeOwnProviderKey",
+            json!({"type":"object","required":["saved"],"properties":{"saved":{"const":false}}}),
+        ),
+    ] {
+        let mut operation = json!({"operationId":id,"tags":["Account keys"],
+            "security":[{"appKeyManagementBearer":[]}],
+            "description":"Manage the account's own provider keys in its first owned workspace. Reads expose saved status only; writes never return a key. Mutations are not automatically retried.",
+            "responses":{"200":{"description":"Provider-key status. Cache-Control: no-store, private.","content":{"application/json":{"schema":schema}}}}
+        });
+        for status in ["400", "401", "409", "503"] {
+            operation["responses"][status] = json!({"description":"The request was refused or the account service is unavailable.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AppAccountError"}}}});
+        }
+        if method != "get" {
+            operation["parameters"] = json!([{"name":"provider","in":"path","required":true,"schema":{"enum":["openrouter","vercel"]}}]);
+        }
+        if method == "put" {
+            operation["requestBody"] = json!({"required":true,"content":{"application/json":{"schema":{
+                "type":"object","additionalProperties":false,"required":["key"],"properties":{"key":{"type":"string","writeOnly":true,"x-sensitive":true}}
+            }}}});
         }
         if doc["paths"][path].is_null() {
             doc["paths"][path] = json!({});

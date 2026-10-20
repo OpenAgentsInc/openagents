@@ -17810,7 +17810,7 @@
             }
           },
           "400": {
-            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name",
+            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name, invalid_scopes, invalid_limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -17831,6 +17831,16 @@
           },
           "409": {
             "description": "no_workspace: kind=api needs the account's first workspace where the account is an owner (normally its personal workspace)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "key_not_created: key creation or its requested spending limit failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -17861,7 +17871,7 @@
             "appKeyManagementBearer": []
           }
         ],
-        "description": "Create a key and return its secret once. Repeating this request can create another key, even with the same `Idempotency-Key` header. Do not automatically retry an uncertain result. The sign-in limit is 50 working keys per account. API keys belong to the first workspace where the account is an owner (normally its personal workspace), do not expire, and receive only responses, models:read, usage:read scopes; this is not arbitrary workspace key administration.",
+        "description": "Create a key and return its secret once. Repeating this request can create another key, even with the same `Idempotency-Key` header. Do not automatically retry an uncertain result. The sign-in limit is 50 working keys per account. API keys belong to the first workspace where the account is an owner (normally its personal workspace), do not expire, and default to responses, models:read, usage:read scopes. Optional actions and monthly_limit match Settings; they never select another workspace.",
         "parameters": [],
         "responses": {
           "200": {
@@ -17882,7 +17892,7 @@
             }
           },
           "400": {
-            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name",
+            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name, invalid_scopes, invalid_limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -17903,6 +17913,16 @@
           },
           "409": {
             "description": "no_workspace: kind=api needs the account's first workspace where the account is an owner (normally its personal workspace)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "key_not_created: key creation or its requested spending limit failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -17989,7 +18009,7 @@
             }
           },
           "400": {
-            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name",
+            "description": "invalid_kind, invalid_request, invalid_key, invalid_expiry, invalid_name, invalid_scopes, invalid_limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -18010,6 +18030,16 @@
           },
           "409": {
             "description": "no_workspace: kind=api needs the account's first workspace where the account is an owner (normally its personal workspace)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "key_not_created: key creation or its requested spending limit failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -18039,6 +18069,299 @@
             }
           }
         }
+      }
+    },
+    "/v1/keys/own": {
+      "get": {
+        "operationId": "listOwnProviderKeys",
+        "tags": [
+          "Account keys"
+        ],
+        "security": [
+          {
+            "appKeyManagementBearer": []
+          }
+        ],
+        "description": "Manage the account's own provider keys in its first owned workspace. Reads expose saved status only; writes never return a key. Mutations are not automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Provider-key status. Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "providers"
+                  ],
+                  "properties": {
+                    "providers": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "description": "Null when the service does not offer provider-key storage.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "saved"
+                        ],
+                        "properties": {
+                          "id": {
+                            "enum": [
+                              "openrouter",
+                              "vercel"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "saved": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/keys/own/{provider}": {
+      "put": {
+        "operationId": "saveOwnProviderKey",
+        "tags": [
+          "Account keys"
+        ],
+        "security": [
+          {
+            "appKeyManagementBearer": []
+          }
+        ],
+        "description": "Manage the account's own provider keys in its first owned workspace. Reads expose saved status only; writes never return a key. Mutations are not automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Provider-key status. Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "saved"
+                  ],
+                  "properties": {
+                    "saved": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "openrouter",
+                "vercel"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "writeOnly": true,
+                    "x-sensitive": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeOwnProviderKey",
+        "tags": [
+          "Account keys"
+        ],
+        "security": [
+          {
+            "appKeyManagementBearer": []
+          }
+        ],
+        "description": "Manage the account's own provider keys in its first owned workspace. Reads expose saved status only; writes never return a key. Mutations are not automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Provider-key status. Cache-Control: no-store, private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "saved"
+                  ],
+                  "properties": {
+                    "saved": {
+                      "const": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The request was refused or the account service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "openrouter",
+                "vercel"
+              ]
+            }
+          }
+        ]
       }
     },
     "/v1/computers": {
@@ -27234,7 +27557,7 @@
       "appKeyManagementBearer": {
         "type": "http",
         "scheme": "bearer",
-        "description": "An account-service-issued live app session (sess_) or sign-in key (oa_sk_). The account service validates it on every request. Cookies and oak_ API keys cannot manage these keys. A sign-in key can create and revoke other sign-in keys for the same account, including itself."
+        "description": "An account-service-issued live app session (sess_) or sign-in key (oa_sk_). The account service validates it on every request. An oak_ API key cannot manage account keys. Browsers may use the same-origin cookie bridge with its CSRF header. A sign-in key can create and revoke other sign-in keys for the same account, including itself."
       },
       "projectManagementBearer": {
         "type": "http",
@@ -37579,6 +37902,29 @@
           },
           "status": {
             "type": "string"
+          },
+          "scopes": {
+            "type": "object",
+            "properties": {
+              "actions": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "models": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       },
@@ -37706,6 +38052,33 @@
             "minimum": 1,
             "maximum": 365,
             "description": "Sign-in keys only. Omitted or null means until revoked. Any non-null expiry with kind=api is refused."
+          },
+          "actions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "minItems": 1,
+            "maxItems": 6,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "responses",
+                "models:read",
+                "usage:read",
+                "keys",
+                "billing",
+                "workspace"
+              ]
+            },
+            "description": "API keys only. Omitted or null uses responses, models:read, usage:read. Explicit values select the same permissions as Settings."
+          },
+          "monthly_limit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API keys only. Monthly spending limit in dollars, such as 20 or 7.50. Omitted, null or empty means no limit. A failed limit write revokes the newly issued key before answering an error."
           }
         }
       },

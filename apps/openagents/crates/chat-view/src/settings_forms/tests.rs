@@ -78,6 +78,7 @@ fn full_remote() -> Remote {
         settings: Load::Ready(serde_json::json!({"pause_on_battery": true})),
         ..earn::State::default()
     };
+    remote.keys.signed_in = true;
     remote.account = account::State {
         signed_in: true,
         label: Some("pat@example.com".into()),
@@ -958,4 +959,138 @@ fn account_pages_mount_the_editable_forms_inside_settings() {
         assert!(intents(&root).contains(&save));
         View::new_v3("settings", 1, root).validate().unwrap();
     }
+}
+
+#[test]
+fn credentials_keep_secrets_out_of_the_shared_view_and_confirm_revocation() {
+    let entry: keys::Entry = serde_json::from_value(serde_json::json!({
+        "id": "scratch", "name": null, "current": true,
+        "token": "sensitive response field", "secret": "sensitive response field"
+    }))
+    .unwrap();
+    let mut remote = Remote::default();
+    remote.keys = keys::State {
+        signed_in: true,
+        entries: Load::Ready(vec![entry]),
+        copy_available: true,
+        ..Default::default()
+    };
+    for p in [Page::ApiKeys, Page::SignInKeys, Page::AgentAccounts] {
+        let root = page(p, &Prefs::default(), &remote, &Paints::default());
+        let checked = View::new_v3("keys", 1, root.clone()).validate().unwrap();
+        let encoded = serde_json::to_string(checked.view()).unwrap();
+        assert!(!encoded.contains("sensitive response field"));
+        assert!(encoded.contains("••••••••••••••••"));
+        assert_eq!(
+            intent_of(&root, "keys-copy"),
+            &Intent::Keys(keys::Action::Copy)
+        );
+        assert_eq!(
+            intent_of(&root, "keys-ask-scratch"),
+            &Intent::Keys(keys::Action::Confirm(Some("scratch".into())))
+        );
+        assert!(find(&root, "keys-revoke-scratch").is_none());
+    }
+    remote.keys.confirm = Some("scratch".into());
+    let root = page(
+        Page::SignInKeys,
+        &Prefs::default(),
+        &remote,
+        &Paints::default(),
+    );
+    assert_eq!(
+        intent_of(&root, "keys-revoke-scratch"),
+        &Intent::Keys(keys::Action::Revoke("scratch".into()))
+    );
+    remote.keys.copy_available = false;
+    let root = page(
+        Page::ApiKeys,
+        &Prefs::default(),
+        &remote,
+        &Paints::default(),
+    );
+    assert!(find(&root, "keys-copy").is_none());
+}
+
+#[test]
+fn api_key_settings_offer_scopes_limits_and_only_provider_status() {
+    let provider: keys::Provider = serde_json::from_value(serde_json::json!({
+        "id":"openrouter", "name":"OpenRouter", "saved":true, "key":"provider credential stays private"
+    })).unwrap();
+    let mut state = keys::State {
+        signed_in: true,
+        providers: Some(vec![provider]),
+        paste_available: true,
+        monthly_limit: "7.50".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        state.actions,
+        vec!["responses", "models:read", "usage:read"]
+    );
+    let root = keys::view(Page::ApiKeys, &state, &Paints::default());
+    let checked = View::new_v3("keys", 1, root.clone()).validate().unwrap();
+    assert!(
+        !serde_json::to_string(checked.view())
+            .unwrap()
+            .contains("provider credential stays private")
+    );
+    assert!(
+        find(&root, "keys-scope-4").is_none(),
+        "hidden billing has no control"
+    );
+    let found = oa_copy::violations(&plain_view(&root).join("\n"), &[]);
+    assert!(found.is_empty(), "{found:?}");
+    assert_eq!(
+        intent_of(&root, "keys-limit-edit"),
+        &Intent::Keys(keys::Action::Limit)
+    );
+    assert_eq!(
+        intent_of(&root, "keys-scope-3"),
+        &Intent::Keys(keys::Action::Scope("keys".into()))
+    );
+    assert_eq!(
+        intent_of(&root, "keys-own-paste-openrouter"),
+        &Intent::Keys(keys::Action::ProviderPaste("openrouter".into()))
+    );
+    assert!(find(&root, "keys-own-confirm-openrouter").is_none());
+    state.billing_enabled = true;
+    assert!(
+        find(
+            &keys::view(Page::ApiKeys, &state, &Paints::default()),
+            "keys-scope-4"
+        )
+        .is_some()
+    );
+    state.confirm = Some("provider:openrouter".into());
+    let root = keys::view(Page::ApiKeys, &state, &Paints::default());
+    assert_eq!(
+        intent_of(&root, "keys-own-confirm-openrouter"),
+        &Intent::Keys(keys::Action::ProviderRemove("openrouter".into()))
+    );
+    state.confirm = None;
+    state.paste_available = false;
+    assert!(
+        find(
+            &keys::view(Page::ApiKeys, &state, &Paints::default()),
+            "keys-own-paste-openrouter"
+        )
+        .is_none()
+    );
+    state.entries = Load::Ready(vec![keys::Entry {
+        id: "legacy".into(),
+        status: Some("paused".into()),
+        ..Default::default()
+    }]);
+    let out = plain_view(&keys::view(Page::ApiKeys, &state, &Paints::default()));
+    assert!(out.iter().any(|w| w == "Paused"));
+    assert!(!out.iter().any(|w| w == "Active · Paused"));
+    state.providers = None;
+    assert!(
+        find(
+            &keys::view(Page::ApiKeys, &state, &Paints::default()),
+            "keys-own"
+        )
+        .is_none()
+    );
 }
