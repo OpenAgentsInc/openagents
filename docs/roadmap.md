@@ -33,7 +33,7 @@ doing, and the owner decisions they wait on.
 [Enter the Verse](roadmap/2026-10-20-enter-the-verse.md) (2026-10-20, proposal)
 plans the Grid as the product: Pylon-served inference including native
 DeepSeek-V4.1-Flash, attested decisions, and the Agent Lab composing them with
-people's own harnesses. Its [proposed issues](roadmap/2026-10-20-enter-the-verse-issues.md)
+people's own harnesses, and [the Forge](forge/README.md) putting agents to work. Its [proposed issues](roadmap/2026-10-20-enter-the-verse-issues.md)
 aren't filed yet.
 
 The [launch roadmap](roadmap/2026-09-29-launch-roadmap.md) holds the OpenAgents
@@ -312,7 +312,7 @@ or possible group combinations do not establish that result.
 | Historical author revenue shares and developer bounties | Record an explicit disposition when terms are settled. Labor settlement is high priority; automatic royalties or historical payout completion are not claimed. |
 | Nostr markets and earlier swap infrastructure | Reuse bilateral negotiation, provider independence, exact obligations, and recovery. Swaps, liquidity markets, and financial risk products are not prerequisites for Coder or labor. |
 | GPUtopia, Pylon, Psionic, distributed inference, and broader compute markets | Optional infrastructure/research directions. Pull in only an admitted capability with demand and measurements; do not make the current coding milestone depend on them. |
-| Agent Forge/GetAfter and a GitHub replacement | Deferred product direction. Current collaboration stays on the repository's chosen issue/source host; durable evidence and open protocols can improve continuity independently. |
+| Agent Forge/GetAfter and a GitHub replacement | Deferred product direction. Current collaboration stays on the repository's chosen issue/source host; durable evidence and open protocols can improve continuity independently. The name Forge now means the software factory in [Enter the Verse](roadmap/2026-10-20-enter-the-verse.md), which hosts no repositories. |
 | General notes/calendar, forums/social products, experimental input, broad hardware markets, and optional compositor parity | Deferred unless a bounded component demonstrably serves the current task/client or labor path. Generic agent contracts permit later domains without promising their applications now. |
 
 The [historical roadmap](history/2026-09-25-transcript-roadmap.md),

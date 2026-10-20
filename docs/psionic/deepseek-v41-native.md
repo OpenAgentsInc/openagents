@@ -26,12 +26,14 @@ model across devices or machines if one GPU can't hold it.
 - Build V4.1 directly. Don't detour through V2-Lite: V4.1's attention, cache,
   residual, and Engram design differ enough that V2-Lite would mostly prove
   a different model. Share the MoE and FP8/FP4 primitives between them.
-- Split by pipeline stages (contiguous layers) first: within one machine
-  across its GPUs, then across machines as stage Pylons. Each token sends
-  only a small residual state across a boundary, so ordinary datacenter
-  networking is enough for one request at a time. Expert parallelism
-  (DeepEP-style all-to-all) is a later throughput optimization inside one
-  machine.
+- Fan out by pipeline stages (contiguous layers), one stage Pylon per GPU,
+  from the start (owner decision, 2026-10-20: fanning out across several
+  devices matters most, in different mixes). Eight GPUs in one machine are
+  eight stage Pylons over loopback; eight machines are the same Pylons over
+  the network. Each token sends a small residual state across a boundary, so
+  ordinary datacenter networking is enough for one request at a time.
+  Expert parallelism (DeepEP-style all-to-all) is a later throughput
+  optimization inside one machine.
 
 ## The checkpoint
 
@@ -85,7 +87,7 @@ about 314 GB.
 | Weight loading | Psionic's paged artifact readers and identity rules | A safetensors reader that keeps FP8/FP4 blocks and UE8M0 scales byte-exact; no conversion to GGUF |
 | GPU kernels | Psionic CUDA backend, existing quantized matrix-vector kernels and CUDA graphs | FP4 E2M1 and FP8 E4M3 block-scaled matrix-vector kernels, MQA attention with sink and window, the indexer, Sinkhorn mixing, the Engram gather |
 | Single-request serving | `--single-generation`, the R1 reasoning contract, managed Pylon recovery | A V4.1 template family and reasoning parser through DS1 |
-| Splitting the model | The Gemma 4 step/reset pipeline (`psionic-serve/src/gguf.rs` and `openai_http.rs`), Mesh-LLM lessons, `psionic-net` | Typed stage state for V4.1, stage packages, multi-GPU stages in one process, stage readiness |
+| Splitting the model | The Gemma 4 step/reset pipeline (`psionic-serve/src/gguf.rs` and `openai_http.rs`), Mesh-LLM lessons, `psionic-net` | Typed stage state for V4.1, stage packages, one stage Pylon per GPU, stage readiness, placement for mixed GPUs |
 | Load balancing experts (later) | [EPLB][EPLB] policy ideas | Real expert routing in `psionic-cluster`, which today derives routing from a hash ([Psionic gaps](#psionic-gaps-this-plan-must-close)) |
 
 Leave out of the serving path: DeepInfer, the PyTorch reference, FlashMLA,
@@ -107,9 +109,9 @@ passes.
 | V3: CPU components | Rust references for RMSNorm, hyper-connection mixing (Sinkhorn), the three attention variants, the indexer and candidate selection, Engram hashing and lookup, the gate, routed and shared experts, the head. | Each matches its golden slice within a stated tolerance; router ids match exactly. |
 | V4: CPU full model | Compose the 40 layers with a streamed or memory-mapped weight source. Greedy decode on the oracle prompts. | Logits match the oracle within tolerance for the first 32 generated tokens; the greedy text matches. Slow is fine. |
 | V5: CUDA kernels | FP4 and FP8 block-scaled matrix-vector kernels, attention, indexer, Sinkhorn, Engram gather; each with a CPU-parity test on the RTX 4080 using real tensors from one layer. | Per-kernel parity passes on SM89 and on the target GPU. |
-| V6: One machine, many GPUs | Layer stages across all GPUs of one VM in one Psionic process, with typed stage state (below). Serial decode only. | Full-model parity with V4 on the oracle prompts; DS0's six runtime checks pass; tokens per second, time to first token, and memory per GPU are recorded. |
-| V7: Pylon serving | Serve through `psionic-openai-server --single-generation` and a managed native worker in Pylon (generalizing #12364's llama.cpp recovery). | The serial Pylon and recovery checks pass against the native worker. |
-| V8: Stage Pylons | Run the stages as separate Pylons on separate machines, joined over the cloud network. | Same parity and checks across machines; a stage crash fails the request visibly and the group recovers. |
+| V6: Stage Pylons on one machine | One Psionic stage process per GPU, each a managed Pylon worker, joined over loopback with typed stage state (below). A front stage takes the NIP-CJ job. Serial decode only. | Full-model parity with V4 on the oracle prompts; DS0's six runtime checks pass; tokens per second, time to first token, and memory per GPU are recorded. |
+| V7: Group lifecycle | Stage packages, readiness before publication, group fencing, and managed recovery per stage (generalizing #12364's llama.cpp recovery to native workers). | The serial Pylon and recovery checks pass; killing any one stage fails the request visibly, and the group recovers. |
+| V8: Stage Pylons across machines | The same stages on separate machines in one zone, in at least two configurations (for example, eight single-GPU machines, and four two-GPU machines). | Same parity and checks in each configuration; per-hop latency and the stage state sent per token are recorded. |
 | V9: Throughput (later) | Batching, expert parallelism inside a machine, DSpark speculation, prefix reuse. | Measured against V6 by committed output tokens per second. |
 
 V0 and V1 can start now and in parallel. V2 and V3 can start against the
@@ -139,26 +141,39 @@ against the unsplit model, give each stage only its own weights, publish a
 stage only after it's loaded and checked, and fence a group so a restarted
 stage can't join a stale request.
 
-### Inside one machine first
+### One stage Pylon per GPU
 
-Psionic's CUDA backend tracks a device ordinal, but the server runs one
-device per process today. V6 adds several devices to one process, with
-stages copying residual state device to device. This is the simplest
-multi-GPU path and needs no collective library. Tensor and expert
-parallelism need all-to-all and all-reduce, which Psionic doesn't execute
-yet; leave them for V9.
+Every stage is its own Psionic process on one GPU, run as a managed Pylon
+worker. Psionic's CUDA backend already tracks a device ordinal, so a stage
+process only needs to pick its GPU. Each stage Pylon publishes a beacon with
+its stage role, its layer range and the model group's identity. A front stage
+takes the NIP-CJ job and calls the next stage over an authenticated private
+channel, as the Gemma 4 pipeline does with its peer. Over loopback on one
+machine and over the network across machines, the protocol is the same.
 
-### Then across machines
+This shape needs no collective library: stages pass state forward, one
+request at a time. Tensor and expert parallelism need all-to-all and
+all-reduce, which Psionic doesn't execute yet; leave them for V9.
 
-V8 makes each stage its own Pylon. Each stage Pylon publishes a beacon with
-its stage role and the model's group identity. A front stage takes the
-NIP-CJ job and calls the next stage over an authenticated private channel,
-as the Gemma 4 pipeline does with its peer. Run all stages of one group in
-one cloud zone. Ordinary home connections aren't a target for one group: the
-docs already rule out token-level expert traffic over wide-area links, and a
-pipeline over home links would be slow. Contributors' machines can still
-serve whole smaller models, or join as stages once the group protocol
-measures their latency.
+### Mixes and placement
+
+A group is described by a manifest: the model artifact, each stage's layer
+range, its GPU, and where the Engram tables live. Placement assigns layer
+ranges by each GPU's free memory, so mixed GPUs work. By our estimate, one
+layer's routed experts are about 7 GB at FP4, plus about 1 GB of other
+weights, so:
+
+- eight 96 GB GPUs hold five layers each with room to spare;
+- a 24 GB GPU can hold two layers;
+- the two Engram tables (about 98 GB each, for layers 1 and 14) sit in the
+  host memory of the machines running those layers, which must have the
+  RAM.
+
+Run all stages of one group in one cloud zone at first. Every stage hop adds
+latency to every token, so a group over home connections would be slow; the
+docs already rule out token-level expert traffic over wide-area links.
+Contributors' machines can serve whole smaller models today, and can join a
+group as stages once V8 measures what a hop costs.
 
 ## Hardware
 
@@ -168,10 +183,10 @@ or quota-limited; existing production GPUs aren't spare capacity.
 
 | Option | Memory | Fits | Price we have on record | Use |
 | --- | --- | --- | --- | --- |
-| `g4-standard-384`, 8× RTX PRO 6000 Blackwell, PCIe | 768 GB | Everything, with about 250 GB to spare | $36.04/h on demand ([Muse serving notes][Muse]) | Recommended first target: one machine, stages over PCIe, the same card a contributor could own. Spot quota is 16 GPUs per region. |
+| `g4-standard-384`, 8× RTX PRO 6000 Blackwell, PCIe | 768 GB | Everything, with about 250 GB to spare | $36.04/h on demand ([Muse serving notes][Muse]) | Recommended first target: eight stage Pylons over loopback on one machine, with the same card a contributor could own. Spot quota is 16 GPUs per region. |
 | `a4-highgpu-8g`, 8× B200, NVLink | about 1,440 GB usable | Everything | $39.63/h spot ([Muse serving notes][Muse]) | Throughput work (V9) and the oracle run. Spot only; quota 64 B200 per region. |
 | `a3-ultragpu-8g`, 8× H200 | 1,128 GB | Everything | $83.37/h on demand ([Muse serving notes][Muse]) | Fallback if G4 and A4 spot capacity is unavailable. |
-| 4× RTX PRO 6000 in one or more G4 VMs | 384 GB | Only with Engram in host memory | Not recorded | Stage-Pylon demo with fewer GPUs. |
+| Several single-GPU G4 machines, 1× RTX PRO 6000 each | 96 GB each | Eight machines hold everything, with Engram in host memory | Not recorded | Stage Pylons across machines (V8). Check each machine's host RAM for the Engram stages. |
 | RTX 4080 (coderos-4080) | 16 GB | One layer's tensors at a time | Owned | Kernel parity tests (V5). |
 
 Before renting, check the current spot price and capacity, and set a cost cap
@@ -190,7 +205,7 @@ host with enough RAM: a `g4-standard-384` host has 1,440 GiB and an A4 host abou
   `QuantizationMode` has MXFP4 and GGUF block formats. MXFP4 also uses E2M1
   values with E8M0 scales over 32 elements, so check whether its layout
   matches before reusing it.
-- **One device per process.** V6 adds multi-device stages.
+- **One device per process.** Kept on purpose: V6 runs one stage process per GPU.
 - **No collective execution.** Planning types exist in `psionic-collectives`
   and `psionic-cluster`, but nothing runs all-to-all or all-reduce, and the
   sparse expert "realization" derives routing from a SHA-256 of the request
