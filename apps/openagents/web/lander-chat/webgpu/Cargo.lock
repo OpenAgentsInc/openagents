@@ -3683,6 +3683,7 @@ dependencies = [
  "openagents-theme",
  "openagents-veil",
  "openagents-workspace-hack",
+ "pulldown-cmark",
  "roxmltree 0.21.1",
  "rust-embed",
  "rust-native",
@@ -3822,9 +3823,13 @@ name = "openagents-web-client"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "chat-home",
+ "chrono",
  "futures",
  "js-sys",
  "k256",
+ "log",
+ "openagents-doc",
  "openagents-proto",
  "openagents-sdk",
  "serde",
