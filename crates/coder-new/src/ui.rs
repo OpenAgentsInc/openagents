@@ -530,9 +530,6 @@ fn context_text(app: &App) -> String {
             crate::long_session::clock(until)
         ));
     }
-    if let Some(name) = &app.account {
-        parts.push(name.clone());
-    }
     if let Some(update) = &app.update_line {
         parts.push(update.clone());
     }
@@ -1573,16 +1570,17 @@ mod export_notice_tests {
     }
 
     #[test]
-    fn populated_footer_keeps_its_row_below_the_composer() {
+    fn signed_in_account_name_does_not_appear_under_the_composer() {
         let mut app = App::default();
         app.mode = Mode::Live;
-        app.account = Some("Signed in".into());
+        app.account = Some("Christopher David".into());
         let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
-        assert_eq!(buffer[(0, 18)].symbol(), "└");
+        assert_eq!(buffer[(0, 19)].symbol(), "└");
+        assert_eq!(buffer[(59, 19)].symbol(), "┘");
         let text: String = (0..60).map(|x| buffer[(x, 19)].symbol()).collect();
-        assert_eq!(text.trim(), "Signed in");
+        assert!(!text.contains("Christopher David"), "{text}");
     }
 
     #[test]
