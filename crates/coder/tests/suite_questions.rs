@@ -18,7 +18,7 @@
 //! To print the set for the generator:
 //!
 //! ```text
-//! cargo test -p coder --test suite_questions -- --ignored --nocapture
+//! cargo test -p coder --test all suite_questions:: -- --ignored --nocapture
 //! ```
 
 use std::collections::BTreeMap;

@@ -92,7 +92,7 @@ createdb -h "${socket_dir}" -U "${database_user}" nostr_relay_interop_test
 cargo build --locked -p nostr-relay --bin nostr-relay
 NOSTR_RELAY_TEST_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_interop_test" \
   NOSTR_RELAY_TEST_ALLOW_DESTRUCTIVE=1 \
-  cargo test --locked -p coder --test interop_processes -- --test-threads 1 --nocapture
+  cargo test --locked -p coder --test all -- interop_processes:: --test-threads 1 --nocapture
 
 createdb -h "${socket_dir}" -U "${database_user}" nostr_relay_block_lane_test
 NOSTR_RELAY_TEST_DATABASE_URL="host=${socket_dir} user=${database_user} dbname=nostr_relay_block_lane_test" \

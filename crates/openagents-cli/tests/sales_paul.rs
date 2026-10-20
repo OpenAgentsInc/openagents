@@ -1,8 +1,7 @@
 //! Installed Paul controls use a scratch owner, native file key, and private
 //! credentials. No provider, wallet, host service, or outbound call is made.
 #![cfg(unix)]
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use coder::task::{
     agent,
     agent_key::FileKeys,

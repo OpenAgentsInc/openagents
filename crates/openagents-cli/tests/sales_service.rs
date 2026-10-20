@@ -1,5 +1,4 @@
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use gym::{sales_evidence as evidence, sales_finance as finance};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;

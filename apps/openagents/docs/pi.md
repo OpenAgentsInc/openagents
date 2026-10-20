@@ -60,7 +60,7 @@ Validation:
 
 ```sh
 cargo test -p openagents-harness --features native-fixture
-cargo test -p openagents-engine --lib --test pi_resume --test acp_lifecycle --test message_queue --test e2e
+cargo test -p openagents-engine --lib --test all --test acp_lifecycle
 cargo test -p openagents-harness --test pi_live -- --ignored --nocapture
 cargo check -p openagents-ui --tests
 cargo build -p openagents-mobile --features bindgen

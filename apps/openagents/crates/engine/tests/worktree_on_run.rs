@@ -368,8 +368,10 @@ async fn check_worktree_setup_and_reuse(use_project_symlink: bool, test_setup: b
 
     assert_eq!(std::fs::read_dir(&next_root).unwrap().count(), 0);
     // The browser must be able to descend from the canonical saved location.
-    let nested =
-        openagents_proto::device_paths::child_folder(&next_root.to_string_lossy(), "Carpeta 日本語");
+    let nested = openagents_proto::device_paths::child_folder(
+        &next_root.to_string_lossy(),
+        "Carpeta 日本語",
+    );
     std::fs::create_dir(&nested).unwrap();
     assert!(std::path::Path::new(&nested).is_dir());
     let listing = core.repos.list_folders(Some(nested.clone())).await.unwrap();

@@ -34,9 +34,7 @@ use secp256k1::SecretKey;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-#[allow(dead_code)]
-mod relay;
+use crate::relay;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
 /// How long the studio may take to show what a step did.

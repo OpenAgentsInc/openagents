@@ -1,6 +1,5 @@
 //! Private sales operations through the shipped command, with scratch home/state.
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use serde_json::{Value, json};
 use std::fs;
 #[cfg(unix)]

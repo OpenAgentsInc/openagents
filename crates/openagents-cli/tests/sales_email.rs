@@ -1,7 +1,6 @@
 //! Installed owner-only email controls with private fixture credentials and no mailbox.
 #![cfg(unix)]
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use coder::task::{agent, agent_key::FileKeys, sales};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

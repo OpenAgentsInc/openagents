@@ -33,8 +33,7 @@ use coder_host::reach::{Refusal, new_id, pubkey};
 use secp256k1::SecretKey;
 use tokio::net::{TcpListener, TcpStream};
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
+use crate::relay;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
 const GENERATION: u64 = 7;

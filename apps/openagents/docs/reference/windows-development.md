@@ -109,7 +109,7 @@ on Linux and macOS. To run the engine and harness checks locally:
 ```powershell
 cargo test --locked -p openagents-engine -p openagents-harness --lib
 cargo test --locked -p openagents-harness --features native-fixture --test codex_availability --test windows_native
-cargo test --locked -p openagents-engine --test codex_catalog --test codex_login_resolution --test auth
+cargo test --locked -p openagents-engine --test all
 ```
 
 Fixtures use synthetic agents, so these tests do not establish authenticated

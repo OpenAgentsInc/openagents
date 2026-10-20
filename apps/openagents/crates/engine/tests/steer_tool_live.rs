@@ -3,17 +3,17 @@
 //! tool must still finish and its real result must reach the agent — then
 //! the steer is answered.
 //!
-//! OPENAGENTS_TEST_HARNESS=claude cargo test -p openagents-engine --test steer_tool_live -- --ignored --nocapture
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+//! OPENAGENTS_TEST_HARNESS=claude cargo test -p openagents-engine --test all steer_tool_live:: -- --ignored --nocapture
 use openagents_doc::{MessagePart, MessageRole, SessionCommandPayload, SessionMessageEntry};
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::{
     AcpHarness, ClaudeHarness, CodexHarness, CursorHarness, Harness, OpencodeHarness,
 };
 use openagents_proto::{ChatConfig, McpServer, RunRequest, SandboxLevel, SessionStatus};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 const CHAT: &str = "steer-tool";
 

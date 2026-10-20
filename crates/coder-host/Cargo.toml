@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 description = "The resident Coder host: enrollment, reach, direct channels, terminals, and tasks behind one process, plus the client that connects to it."
+# One test binary (tests/all.rs) plus the few below (#12199).
+autotests = false
 
 [features]
 default = ["host"]
@@ -121,56 +123,8 @@ nostr = { path = "../nostr", features = ["test-invoice"] }
 tempfile = "3"
 
 [[test]]
-name = "cj"
-required-features = ["host"]
-
-[[test]]
-name = "end_to_end"
-required-features = ["host"]
-
-[[test]]
-name = "serve"
-required-features = ["host"]
-
-[[test]]
-name = "websocket"
-required-features = ["host"]
-
-[[test]]
-name = "wss"
-required-features = ["host"]
-
-[[test]]
-name = "headless"
-required-features = ["host"]
-
-[[test]]
-name = "iroh"
-required-features = ["host"]
-
-[[test]]
-name = "nearby"
-required-features = ["host"]
-
-[[test]]
-name = "control"
-required-features = ["host"]
-
-[[test]]
-name = "adopt"
-required-features = ["host"]
-
-[[test]]
-name = "threads"
-required-features = ["host"]
-
-[[test]]
-name = "idle"
-required-features = ["host"]
-
-[[test]]
-name = "robot_lab"
-required-features = ["host"]
+name = "all"
+path = "tests/all.rs"
 
 [lints]
 workspace = true

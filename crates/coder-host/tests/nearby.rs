@@ -12,8 +12,7 @@ use openagents_connect::control::{NearbyPrompt, Op, Reply};
 use openagents_connect::nearby::{self, DeviceOutcome, NearbyComputer};
 use tokio::sync::oneshot;
 
-#[path = "support/connect.rs"]
-mod support;
+use crate::connect as support;
 
 use support::{Host, POLICY, Phone, call, host, now};
 

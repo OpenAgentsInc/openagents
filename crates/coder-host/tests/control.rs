@@ -10,8 +10,7 @@ use coder_host::access::Code;
 use coder_host::reach::pubkey;
 use openagents_connect::control::{Autostart, Op, Reply};
 
-#[path = "support/connect.rs"]
-mod support;
+use crate::connect as support;
 
 #[cfg(unix)]
 use support::{Options, host_with};

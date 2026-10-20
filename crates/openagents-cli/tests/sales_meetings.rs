@@ -1,7 +1,6 @@
 //! Installed private meeting controls over a scratch host.
 #![cfg(unix)]
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use serde_json::{Value, json};
 use std::{fs, os::unix::fs::PermissionsExt, path::Path, process::Command};
 fn run(base: &Path, credential: &str, args: &[&str]) -> std::process::Output {

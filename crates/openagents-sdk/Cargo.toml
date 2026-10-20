@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 description = "The lightweight public OpenAgents client: app authentication and account resources."
+# One test binary (tests/all.rs) plus the few below (#12199).
+autotests = false
 
 [features]
 default = ["transport"]
@@ -66,7 +68,14 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt", "test-util"] }
 oa-auth = { path = "../oa-auth", features = ["fake", "local"] }
 tenancy = { path = "../tenancy" }
-openagents-web = { path = "../openagents-web" }
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
+
+[[test]]
+name = "reference"
+path = "tests/reference.rs"
 
 [lints]
 workspace = true

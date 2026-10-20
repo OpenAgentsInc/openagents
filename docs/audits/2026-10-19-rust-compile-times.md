@@ -423,6 +423,26 @@ The "after" run for `mobile` and `client` was stopped before it reached them
 to free capacity; their crates are on the incremental list, like `engine`.
 The before target was 189 GB.
 
+### One test binary per package (#12199)
+
+Each package's integration tests now build as one binary, `tests/all.rs`,
+with one module per former file: `coder` (33 files, plus `codex_home` and
+`relay_job`, which set environment variables), `openagents-cli` (49),
+`coder-host` (16), `openagents-sdk` (19, plus the `reference` generator),
+and the app's `engine` (40, plus 9 that set environment variables).
+`openagents-sdk` no longer dev-depends on `openagents-web`: its two tests
+that drive the website's handlers moved to `openagents-web/tests/sdk.rs`.
+Run one former file with `cargo test -p coder --test all host_serve::`.
+
+`scripts/dev/build-bench.sh --only test coder` on the owner's Mac
+(M-series, kache, the shared target, half the cores), 2026-10-20, with
+other agents' work on the machine:
+
+| `cargo test -p coder --no-run` | prep | noop | edit |
+| --- | ---: | ---: | ---: |
+| Before (35 test binaries) | 151.3 s | 13.8 s | 117.2 s |
+| After (3 test binaries) | 65.2 s | 11.9 s | **45.6 s** |
+
 ### openagents-web without the Verse stack (#12183)
 
 Issue: [#12183](https://github.com/OpenAgentsInc/openagents/issues/12183).

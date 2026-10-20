@@ -167,8 +167,8 @@ queued sync or persistence trouble without exposing internal limits.
 Relevant checks:
 
 ```
-cargo test --locked -p openagents-engine --test sync_resources -- --nocapture
-cargo test --locked -p openagents-engine --lib --test session_publication --test restart_resume --test local_profiles --test born_chat2_race --test codex_subagents --test message_queue --test transcript_salvage
+cargo test --locked -p openagents-engine --test all sync_resources:: -- --nocapture
+cargo test --locked -p openagents-engine --lib --test all
 cargo test --locked -p openagents-sync --lib
 cargo test --locked -p openagents-rpc --test device_room
 cargo check --locked -p openagents-ui

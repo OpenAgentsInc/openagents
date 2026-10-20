@@ -59,8 +59,8 @@ The implementation was checked on Linux with the following commands:
 | `cargo test --release --locked -p openagents-ui --lib -- --test-threads=1` | 762 passed |
 | `cargo test --release --locked -p openagents-engine --lib` | 161 passed |
 | `cargo test --release --locked -p openagents-proto -p openagents-rpc` | 47 passed, 1 previously ignored |
-| `cargo test --release --locked -p openagents-engine --test workspace_files` | 3 passed |
-| `cargo test --release --locked -p openagents-engine --test device_routing workspace_file_surface_proxies_over_the_relay` | 1 passed |
+| `cargo test --release --locked -p openagents-engine --test all workspace_files::` | 3 passed |
+| `cargo test --release --locked -p openagents-engine --test all device_routing::workspace_file_surface_proxies_over_the_relay` | 1 passed |
 | `cargo check --locked -p openagents` | Passed |
 
 The UI tests cover unsaved content without extra saves, independent selection surfaces, pointer opening and Escape dismissal of the lightbox, obsolete work, media limits and image invalidation. The relay test runs two engines through a test relay and checks remote image reads and checkout identity. The Mermaid corpus produces twenty-four SVG and PNG pairs across light/dark themes and Geist/Geist Mono. Prepared ER (light) and sequence (light/dark) PNGs with Geist Mono were inspected visually after fixing font resolution. Regression tests first reproduced zero visible text pixels with Geist Mono and an unavailable family, then passed after the fix.

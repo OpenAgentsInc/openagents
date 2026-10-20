@@ -10,7 +10,7 @@ use openagents_engine::{
     auth::{Auth, AuthConfig},
 };
 use sdk::agents::{
-    AgentDefinition, AgentSpec, Access,
+    Access, AgentDefinition, AgentSpec,
     assignments::{Assignment, AssignmentSpec, AssignmentState},
     voice::{VoiceAgent, VoiceTarget},
 };

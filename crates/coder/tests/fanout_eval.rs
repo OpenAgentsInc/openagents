@@ -13,8 +13,8 @@
 //!
 //! ```sh
 //! set -a; . ~/work/.secrets/typesafe.env; set +a   # TYPESAFE_API_KEY for Jev
-//! cargo test -p coder --test fanout_eval live_jev -- --ignored --nocapture
-//! FANOUT_EVAL_RECORD=1 cargo test -p coder --test fanout_eval live_jev -- --ignored
+//! cargo test -p coder --test all fanout_eval::live_jev -- --ignored --nocapture
+//! FANOUT_EVAL_RECORD=1 cargo test -p coder --test all fanout_eval::live_jev -- --ignored
 //! ```
 
 use std::path::PathBuf;

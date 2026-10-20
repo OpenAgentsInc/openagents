@@ -15,7 +15,7 @@
 //! test. Rewrite the generated note with
 //!
 //! ```text
-//! PLUGIN_LIST_WRITE=1 cargo test -p coder --test plugin_catalog
+//! PLUGIN_LIST_WRITE=1 cargo test -p coder --test all plugin_catalog::
 //! ```
 //!
 //! and then the route map's snapshot (`ROUTE_MAP_WRITE=1 cargo test -p
@@ -159,7 +159,7 @@ fn the_plugin_list_note_is_the_builtin_list() {
     assert!(
         committed == same,
         "knowledge/openagents/{LIST_ID}.md is stale for {LIST_SOURCE}; rewrite it with \
-         PLUGIN_LIST_WRITE=1 cargo test -p coder --test plugin_catalog"
+         PLUGIN_LIST_WRITE=1 cargo test -p coder --test all plugin_catalog::"
     );
     for plugin in BUILTIN_PLUGINS {
         assert!(committed.contains(plugin.name), "{}", plugin.name);

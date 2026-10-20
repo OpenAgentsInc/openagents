@@ -514,7 +514,7 @@ open issue itself, such as "pick one of the open issues nobody is working on
 and take it", names no issue. After the router judges it coding work, Jev's
 issue question answers `pick` ([#10206](https://github.com/OpenAgentsInc/openagents/issues/10206);
 labeled asks in `crates/coder/fixtures/issue-pick/asks-v1.json`, scored by
-`cargo test -p coder --test issue_pick_eval -- --ignored`). Coder then reads
+`cargo test -p coder --test all issue_pick_eval:: -- --ignored`). Coder then reads
 the open issues and pull requests
 ([`coder::task::issue_pick`](../../crates/coder/src/task/issue_pick.rs)) and
 passes over any issue with an assignee, a claim (above), an open pull
@@ -697,7 +697,7 @@ form.
   offer that cannot be accepted without a host, text mode, and exit codes.
 - `live_chat_answers_from_product_knowledge` in the same file is the live
   check against the public worker, ignored by default:
-  `cargo test -p openagents-cli --test chat -- --ignored --nocapture`.
+  `cargo test -p openagents-cli --test all chat:: -- --ignored --nocapture`.
 - `live_chat_runs_coder_on_this_computer`, also ignored, runs a coding
   request in a scratch Python checkout with this computer's own Codex or
   Claude Code login; build the engine first (`cargo build -p microcoder`).

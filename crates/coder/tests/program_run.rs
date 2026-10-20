@@ -1493,7 +1493,7 @@ async fn a_program_chosen_for_a_request_with_no_work_delegates_nothing() {
 /// checkout the executor trusts:
 ///
 /// ```text
-/// cargo +1.97.1 test -p coder --test program_run -- --ignored --nocapture
+/// cargo +1.97.1 test -p coder --test all program_run:: -- --ignored --nocapture
 /// ```
 #[tokio::test]
 #[ignore = "needs an executor, a decision door, and a workspace the executor trusts"]

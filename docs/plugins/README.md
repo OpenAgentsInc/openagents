@@ -76,10 +76,10 @@ your computer when they are installed, and Coder delegates to them over
 ACP. This table, the chat's answers about which plugins there are, and the
 website's plugin cards follow
 [`crates/coder/src/builtin_plugins.rs`](../../crates/coder/src/builtin_plugins.rs);
-`cargo test -p coder --test plugin_catalog` fails until they agree. After
+`cargo test -p coder --test all plugin_catalog::` fails until they agree. After
 changing that list, rewrite the generated plugin list and the route map:
-`PLUGIN_LIST_WRITE=1 cargo test -p coder --test plugin_catalog` and
-`ROUTE_MAP_WRITE=1 cargo test -p coder --test route_map_sources`.
+`PLUGIN_LIST_WRITE=1 cargo test -p coder --test all plugin_catalog::` and
+`ROUTE_MAP_WRITE=1 cargo test -p coder --test all route_map_sources::`.
 
 The packages under `crates/plugin-*` that the hosted eval runner lists
 ([`deploy/eval-runner/catalog`](../../deploy/eval-runner/catalog)) are test

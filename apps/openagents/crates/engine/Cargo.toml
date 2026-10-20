@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+# One test binary (tests/all.rs) plus the few below (#12199).
+autotests = false
 
 [features]
 # Upstream compatibility only; never enabled by our application builds.
@@ -81,3 +83,43 @@ openagents-sync = { workspace = true, features = ["mock-server"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
+
+[[test]]
+name = "acp_lifecycle"
+path = "tests/acp_lifecycle.rs"
+
+[[test]]
+name = "codex_login_resolver"
+path = "tests/codex_login_resolver.rs"
+
+[[test]]
+name = "github_cli_login_shell"
+path = "tests/github_cli_login_shell.rs"
+
+[[test]]
+name = "m5c_accounts_uploads_titles"
+path = "tests/m5c_accounts_uploads_titles.rs"
+
+[[test]]
+name = "m5_repos_diffs_terminals"
+path = "tests/m5_repos_diffs_terminals.rs"
+
+[[test]]
+name = "runtime_survival_live"
+path = "tests/runtime_survival_live.rs"
+
+[[test]]
+name = "self_continued_quiesce"
+path = "tests/self_continued_quiesce.rs"
+
+[[test]]
+name = "subagent_idle_reap"
+path = "tests/subagent_idle_reap.rs"
+
+[[test]]
+name = "turn_quiesce"
+path = "tests/turn_quiesce.rs"

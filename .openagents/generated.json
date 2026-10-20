@@ -47,8 +47,8 @@
       "files": ["crates/openagents-chat-app/src/route_map/sources.json"],
       "sources": ["crates/coder/", "knowledge/", "packages/coder-defaults/", "plugins/"],
       "package": "coder",
-      "check": "cargo test -p coder --test route_map_sources the_route_map_sources_match_the_router",
-      "regenerate": "ROUTE_MAP_WRITE=1 cargo test -q -p coder --test route_map_sources the_route_map_sources_match_the_router"
+      "check": "cargo test -p coder --test all route_map_sources::the_route_map_sources_match_the_router",
+      "regenerate": "ROUTE_MAP_WRITE=1 cargo test -q -p coder --test all route_map_sources::the_route_map_sources_match_the_router"
     },
     {
       "name": "android-core-binding",

@@ -15,11 +15,9 @@ use openagents_connect::control::{Op, Reply, Request, Response};
 use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
 
-#[path = "support/connect.rs"]
-mod support;
+use crate::connect as support;
 
-#[path = "support/chat_worker.rs"]
-mod chat_worker;
+use crate::chat_worker;
 
 use support::{Options, call, host, host_with};
 

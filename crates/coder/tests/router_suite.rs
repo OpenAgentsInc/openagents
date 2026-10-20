@@ -13,7 +13,7 @@
 //! regenerated:
 //!
 //! ```text
-//! ROUTER_SUITE_WRITE=1 cargo test -p coder --test router_suite -- --ignored
+//! ROUTER_SUITE_WRITE=1 cargo test -p coder --test all router_suite:: -- --ignored
 //! ```
 //!
 //! `chat-router-v1.json` and its question set `chat-router-route-v2.json`,

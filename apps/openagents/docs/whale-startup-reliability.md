@@ -75,7 +75,7 @@ emits its Vitest shutdown-state diagnostic; the focused checkpoint run is clean.
 
 ```sh
 cargo test -p openagents-sync -p openagents-rpc --features openagents-sync/mock-server
-cargo test -p openagents-engine --lib --test session_publication --test restart_resume --test local_profiles --test codex_subagents
+cargo test -p openagents-engine --lib --test all
 cargo test -p openagents-update
 cargo test -p openagents-ui --lib -- --test-threads=1
 npm --prefix edge run typecheck

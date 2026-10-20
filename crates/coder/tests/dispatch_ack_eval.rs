@@ -16,12 +16,12 @@
 //!
 //! ```sh
 //! # The personalization model (OPENROUTER_API_KEY or ~/.openagents/openrouter.json):
-//! cargo test -p coder --test dispatch_ack_eval live_personalize -- --ignored --nocapture
-//! DISPATCH_ACK_RECORD=1 cargo test -p coder --test dispatch_ack_eval live_personalize -- --ignored
+//! cargo test -p coder --test all dispatch_ack_eval::live_personalize -- --ignored --nocapture
+//! DISPATCH_ACK_RECORD=1 cargo test -p coder --test all dispatch_ack_eval::live_personalize -- --ignored
 //!
 //! # The hosted chat, through `openagents chat send --scratch --no-run`:
 //! OPENAGENTS_BIN=$CARGO_TARGET_DIR/debug/openagents \
-//!   cargo test -p coder --test dispatch_ack_eval live_hosted_chat -- --ignored --nocapture
+//!   cargo test -p coder --test all dispatch_ack_eval::live_hosted_chat -- --ignored --nocapture
 //! ```
 
 use std::path::PathBuf;

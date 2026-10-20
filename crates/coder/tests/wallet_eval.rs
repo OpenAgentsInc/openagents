@@ -13,12 +13,12 @@
 //!
 //! ```sh
 //! set -a; . ~/work/.secrets/typesafe.env; set +a   # TYPESAFE_API_KEY for Jev
-//! cargo test -p coder --test wallet_eval live_jev -- --ignored --nocapture
-//! WALLET_EVAL_RECORD=1 cargo test -p coder --test wallet_eval live_jev -- --ignored
+//! cargo test -p coder --test all wallet_eval::live_jev -- --ignored --nocapture
+//! WALLET_EVAL_RECORD=1 cargo test -p coder --test all wallet_eval::live_jev -- --ignored
 //!
 //! # The hosted chat, through `openagents chat send --scratch --no-run`:
 //! OPENAGENTS_BIN=$CARGO_TARGET_DIR/debug/openagents \
-//!   cargo test -p coder --test wallet_eval live_hosted_chat -- --ignored --nocapture
+//!   cargo test -p coder --test all wallet_eval::live_hosted_chat -- --ignored --nocapture
 //! ```
 //!
 //! The first asks live Jev and checks the same decisions (and, with

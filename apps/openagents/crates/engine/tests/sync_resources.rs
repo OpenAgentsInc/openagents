@@ -3,7 +3,11 @@
 #[test]
 fn sync_keeps_git_available_with_256_file_descriptors() {
     let output = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "resource_limit_child", "--nocapture"])
+        .args([
+            "--exact",
+            "sync_resources::resource_limit_child",
+            "--nocapture",
+        ])
         .env("OPENAGENTS_RESOURCE_TEST_CHILD", "1")
         .output()
         .unwrap();
@@ -39,13 +43,13 @@ fn resource_limit_child() {
 #[cfg(unix)]
 async fn stress() {
     use futures::{SinkExt, StreamExt};
-    use std::{sync::Arc, time::Duration};
     use openagents_engine::{DocHost, DocHostConfig, EdgeConfig};
     use openagents_proto::HarnessId;
     use openagents_sync::{
         DocsStore,
         chat_frames::{decode, encode, frame_type},
     };
+    use std::{sync::Arc, time::Duration};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (disconnect, _) = tokio::sync::watch::channel(0u64);

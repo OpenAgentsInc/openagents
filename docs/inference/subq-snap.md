@@ -155,7 +155,7 @@ set -a; . ~/work/.secrets/subq.env; set +a
 export CODER_DECISION_PROFILE=hosted_http CODER_DECISION_URL=https://api.subq.ai \
        CODER_DECISION_MODEL=subq-snap-preview CODER_DECISION_KEY="$SUBQ_API_KEY"
 ROUTER_EVAL_SPLIT=held_out ROUTER_EVAL_MAPS=on \
-  cargo test -p coder --test router_eval live_router -- --ignored --nocapture --test-threads 1
+  cargo test -p coder --test all router_eval::live_router -- --ignored --nocapture --test-threads 1
 OPENAGENTS_PRODUCT_KB_EMBEDDINGS="" cargo run -p coder --bin chat-goldens -- router
 ```
 

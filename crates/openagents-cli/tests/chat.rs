@@ -7,7 +7,7 @@
 //! worker with `--scratch`:
 //!
 //! ```sh
-//! cargo test -p openagents-cli --test chat -- --ignored --nocapture
+//! cargo test -p openagents-cli --test all chat:: -- --ignored --nocapture
 //! ```
 
 use std::path::Path;
@@ -756,7 +756,7 @@ async fn live_chat_answers_from_product_knowledge() {
 /// own Codex or Claude Code login, a scratch Python checkout, and the
 /// public chat worker. Needs `cargo build -p microcoder` (the engine beside
 /// the `openagents` binary) and a signed-in Codex or Claude Code.
-/// `cargo test -p openagents-cli --test chat -- --ignored live_chat_runs --nocapture`
+/// `cargo test -p openagents-cli --test all chat:: -- --ignored live_chat_runs --nocapture`
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "live: runs Coder with this computer's own Codex or Claude Code login"]
 async fn live_chat_runs_coder_on_this_computer() {

@@ -21,11 +21,9 @@ use coder_host::{Error, Result};
 use openagents_chat::service::{Command, Snapshot};
 use openagents_connect::control::{Op, Reply};
 
-#[path = "support/connect.rs"]
-mod support;
+use crate::connect as support;
 
-#[path = "support/chat_worker.rs"]
-mod chat_worker;
+use crate::chat_worker;
 
 use support::{Options, Phone, call, host_with, now};
 

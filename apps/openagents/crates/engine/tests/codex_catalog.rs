@@ -19,7 +19,10 @@ async fn catalog_child() {
     .expect("assemble isolated engine");
     let client = openagents_rpc::memory_client(core.rpc_service());
     let catalog = client
-        .call(openagents_rpc::methods::LIST_HARNESSES, serde_json::json!({}))
+        .call(
+            openagents_rpc::methods::LIST_HARNESSES,
+            serde_json::json!({}),
+        )
         .await
         .unwrap();
     let codex = catalog
@@ -46,7 +49,7 @@ fn npm_codex_is_offered_by_production_catalog() {
     std::fs::create_dir_all(&prefix).unwrap();
     std::fs::write(prefix.join("codex.cmd"), b"npm shim").unwrap();
     let mut command = std::process::Command::new(std::env::current_exe().unwrap());
-    command.args(["--exact", "catalog_child", "--nocapture"]);
+    command.args(["--exact", "codex_catalog::catalog_child", "--nocapture"]);
     for key in [
         "HOME",
         "USERPROFILE",

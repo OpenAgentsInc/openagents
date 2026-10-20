@@ -21,8 +21,7 @@ use coder_host::{Principal, Standing, TaskRef, Tasks};
 use nostr::activity_summary::Phase;
 use openagents_connect::control::{Op, Reply};
 
-#[path = "support/connect.rs"]
-mod support;
+use crate::connect as support;
 
 /// A task owner that records each creation once per idempotency key.
 #[derive(Default)]

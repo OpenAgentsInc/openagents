@@ -1,7 +1,6 @@
 //! Real CLI dispatch over isolated private partner records; no service or funds.
 #![cfg(unix)]
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

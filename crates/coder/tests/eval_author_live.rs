@@ -5,7 +5,7 @@
 //! ```sh
 //! CODER_ENV_FILE=/path/to/door.env TYPESAFE_ENV_FILE=/path/to/typesafe.env \
 //! EVAL_AUTHOR_LIVE_OUT=/tmp/interviews \
-//!   cargo test -p coder --test eval_author_live -- --ignored --nocapture
+//!   cargo test -p coder --test all eval_author_live:: -- --ignored --nocapture
 //! ```
 //!
 //! The door comes from `CODER_DOOR_URL`, `CODER_DOOR_KEY`, and
@@ -327,7 +327,7 @@ async fn three_live_interviews_write_valid_test_sets() {
 ///
 /// ```sh
 /// CODER_ENV_FILE=/path/to/door.env TYPESAFE_ENV_FILE=/path/to/typesafe.env \
-///   cargo test -p coder --test eval_author_live live_make_a_tool -- --ignored --nocapture
+///   cargo test -p coder --test all eval_author_live::live_make_a_tool -- --ignored --nocapture
 /// ```
 /// The answer a scripted person gives when the interview asks one more
 /// thing about a tool we make.

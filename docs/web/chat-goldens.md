@@ -154,7 +154,7 @@ in 4 s still falls back to the gateway, and fails).
 ## Running them
 
 ```sh
-scripts/chat-goldens.sh check                          # offline; also cargo test -p coder --test chat_goldens
+scripts/chat-goldens.sh check                          # offline; also cargo test -p coder --test all chat_goldens::
 scripts/chat-goldens.sh router                         # Jev and the router here
 scripts/chat-goldens.sh local                          # this checkout's worker and site, end to end
 scripts/chat-goldens.sh http --base http://127.0.0.1:4300

@@ -1,6 +1,7 @@
 //! Route-only test relay; no cloud service or credentials.
 #![allow(clippy::result_large_err)]
 use futures::{SinkExt, StreamExt};
+use openagents_rpc::{DeviceFrameHeader, decode_device_frame, encode_device_frame};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
@@ -9,7 +10,6 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::tungstenite::handshake::server::{
     Request as WsRequest, Response as WsResponse,
 };
-use openagents_rpc::{DeviceFrameHeader, decode_device_frame, encode_device_frame};
 
 #[derive(Default)]
 struct RelayState {

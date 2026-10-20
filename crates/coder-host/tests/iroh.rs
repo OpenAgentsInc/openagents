@@ -16,8 +16,7 @@ use coder_host::reach::channel::ClientConfig;
 use coder_host::reach::{Refusal, pubkey};
 use openagents_connect::control::{Op, Reply};
 
-#[path = "support/connect.rs"]
-mod support;
+use crate::connect as support;
 
 use support::{Phone, call, host, key, now};
 

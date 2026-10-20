@@ -373,7 +373,7 @@ against the real one:
 
 ```sh
 CODER_DELEGATE_DIR=/path/to/openagents \
-  cargo +1.97.1 test -p coder --test delegation -- --ignored --nocapture
+  cargo +1.97.1 test -p coder --test all delegation:: -- --ignored --nocapture
 ```
 
 Run them from a checkout the executor trusts. `CODER_DELEGATE_DIR` names the

@@ -52,8 +52,8 @@ data and fails when the committed file differs, so the map never shows a
 hand-copied list:
 
 ```sh
-cargo test -p coder --test route_map_sources                      # check
-ROUTE_MAP_WRITE=1 cargo test -p coder --test route_map_sources    # rewrite
+cargo test -p coder --test all route_map_sources::                      # check
+ROUTE_MAP_WRITE=1 cargo test -p coder --test all route_map_sources::    # rewrite
 ```
 
 A plugin's evaluation status comes from published records only:
@@ -65,7 +65,7 @@ plugin's package (publisher and slug from its `package.json`). Rewrite it
 with the ignored live test:
 
 ```sh
-ROUTE_MAP_WRITE=1 cargo test -p coder --test route_map_sources live_route_map_records -- --ignored
+ROUTE_MAP_WRITE=1 cargo test -p coder --test all route_map_sources::live_route_map_records -- --ignored
 ```
 
 The ladder a plugin climbs: **Not packaged** (code without a package record

@@ -1,12 +1,12 @@
 //! Opt-in production engine + Cursor SDK checks. Uses real account quota.
-//! OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) cargo test -p openagents-engine --test cursor_live -- --ignored --nocapture --test-threads=1
-use std::{sync::Arc, time::Duration};
+//! OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) cargo test -p openagents-engine --test all cursor_live:: -- --ignored --nocapture --test-threads=1
 use openagents_doc::{
     MessagePart, MessageRole, MessageStatus, SessionCommandPayload, SessionMessageEntry,
 };
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::CursorHarness;
 use openagents_proto::{HarnessId, RunRequest, SandboxLevel};
+use std::{sync::Arc, time::Duration};
 
 const CHAT: &str = "cursor-live-audit";
 fn setup(path: &std::path::Path) -> EngineCore {
@@ -322,7 +322,9 @@ async fn startup_steering_burst_retains_all_interrupted_messages() {
                     .unwrap()
                     .0
                     .iter()
-                    .filter(|e| matches!(e.event, openagents_proto::AgentEvent::SessionStarted { .. }))
+                    .filter(|e| {
+                        matches!(e.event, openagents_proto::AgentEvent::SessionStarted { .. })
+                    })
                     .count()
                     == i + 1
             },

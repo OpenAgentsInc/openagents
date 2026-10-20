@@ -19,7 +19,8 @@ use coder::{Agent, Outcome, Permit, Proposal, Recorder, Status};
 const CHILD_ENV: &str = "CODER_TRACE_KILL_CHILD";
 
 /// The test the child re-runs, which has to match the function's name.
-const KILL_TEST: &str = "a_killed_session_leaves_the_steps_it_had";
+// The name libtest gives it inside the merged test binary (#12199).
+const KILL_TEST: &str = "trace::a_killed_session_leaves_the_steps_it_had";
 
 /// A conversation writes itself down without anybody asking it to: the
 /// person's turn, the instructions the model was given, and the answer.

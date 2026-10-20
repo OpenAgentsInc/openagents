@@ -1,7 +1,6 @@
 //! Installed untrusted inbox controls with isolated storage and no mailbox or model.
 #![cfg(unix)]
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use serde_json::{Value, json};
 use std::{
     fs,

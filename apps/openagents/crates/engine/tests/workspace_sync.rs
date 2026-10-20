@@ -14,7 +14,9 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 
-use openagents_doc::{CommandBasedOn, SessionCommandEntry, SessionCommandPayload, SessionCommandStatus};
+use openagents_doc::{
+    CommandBasedOn, SessionCommandEntry, SessionCommandPayload, SessionCommandStatus,
+};
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::{Harness, HarnessError, RunControls};
 use openagents_proto::{

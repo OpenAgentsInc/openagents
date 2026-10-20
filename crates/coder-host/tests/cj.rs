@@ -24,8 +24,7 @@ use nostr::domain::Event;
 use secp256k1::SecretKey;
 use serde_json::json;
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
+use crate::relay;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
 

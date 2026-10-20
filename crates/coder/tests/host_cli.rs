@@ -13,8 +13,7 @@ use coder_host::access::{RelayPolicy, client};
 use coder_host::reach::pubkey;
 use secp256k1::SecretKey;
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
+use crate::relay;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
 

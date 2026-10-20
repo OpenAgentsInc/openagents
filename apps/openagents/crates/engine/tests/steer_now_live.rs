@@ -5,17 +5,17 @@
 //! The current answer must stop early and the steer must be answered within
 //! the same live runtime — not after the long answer finishes.
 //!
-//! OPENAGENTS_TEST_HARNESS=codex cargo test -p openagents-engine --test steer_now_live -- --ignored --nocapture
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+//! OPENAGENTS_TEST_HARNESS=codex cargo test -p openagents-engine --test all steer_now_live:: -- --ignored --nocapture
 use openagents_doc::{MessagePart, MessageRole, SessionCommandPayload, SessionMessageEntry};
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::{
     AcpHarness, ClaudeHarness, CodexHarness, CursorHarness, Harness, OpencodeHarness,
 };
 use openagents_proto::{ChatConfig, RunRequest, SandboxLevel, SessionStatus};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 const CHAT: &str = "steer-now";
 
@@ -194,7 +194,9 @@ async fn steer_now_interrupts_a_streaming_answer() {
             assert!(core.doc_host.steer_queued_now(CHAT, &row).await.unwrap());
         }
     }
-    for i in (0..bursts).filter(|_| openagents_brand::env_var("OPENAGENTS_TEST_CLICK_GAP_MS").is_err()) {
+    for i in
+        (0..bursts).filter(|_| openagents_brand::env_var("OPENAGENTS_TEST_CLICK_GAP_MS").is_err())
+    {
         let word = format!("PINEAPPLE{i}");
         let row = core
             .doc_host

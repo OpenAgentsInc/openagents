@@ -7,6 +7,8 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 description = "The openagents command: one program that reaches every OpenAgents surface an agent needs, over Nostr."
+# One test binary (tests/all.rs) plus the few below (#12199).
+autotests = false
 
 [features]
 # The Verse commands (`verse`, `xp`, `zone`, `chamber`, `film`), off by
@@ -190,6 +192,10 @@ tempfile = "3"
 # `tests/terminal.rs` reads OpenAgents Terminal's screen in a
 # pseudo-terminal with the emulator the phone's terminal uses.
 coder-vt = { path = "../coder-vt" }
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
 
 [lints]
 workspace = true

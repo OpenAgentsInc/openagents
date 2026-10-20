@@ -40,7 +40,7 @@ resumed child's output to the original document.
 
 ```sh
 cargo test --locked -p openagents-harness -p openagents-doc -p openagents-proto
-cargo test --locked -p openagents-engine --lib --test e2e --test codex_subagents
+cargo test --locked -p openagents-engine --lib --test all
 ```
 
 ## Live validation

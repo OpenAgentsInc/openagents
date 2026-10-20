@@ -75,9 +75,14 @@ fn assemble_with(dir: &Path, harness: Arc<dyn Harness>) -> EngineCore {
     let id = harness.id();
     openagents_engine::set_keeper_launch(
         std::env::current_exe().unwrap(),
-        ["--exact", "keeper_entry", "--nocapture", "--test-threads=1"]
-            .map(Into::into)
-            .to_vec(),
+        [
+            "--exact",
+            "keepers::keeper_entry",
+            "--nocapture",
+            "--test-threads=1",
+        ]
+        .map(Into::into)
+        .to_vec(),
     );
     let registry = HarnessRegistry::new();
     registry.register(harness);

@@ -88,7 +88,11 @@ async fn login_child() {
 
 fn probe(path: &Path, override_path: Option<&Path>, expected: bool) {
     let mut command = std::process::Command::new(std::env::current_exe().unwrap());
-    command.args(["--exact", "login_child", "--nocapture"]);
+    command.args([
+        "--exact",
+        "codex_login_resolution::login_child",
+        "--nocapture",
+    ]);
     for key in [
         "HOME",
         "USERPROFILE",

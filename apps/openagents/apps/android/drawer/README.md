@@ -83,8 +83,8 @@ fresh Rust compiler state. Direct formatting of changed Rust files and
 
 After capacity returns and the coordinator assigns the serial slot, queue:
 
-1. Root SDK `cargo test -p openagents-sdk --test chats saved_rename` and
-   `cargo test -p openagents-sdk --test history saved_` (search and pin-order
+1. Root SDK `cargo test -p openagents-sdk --test all chats::saved_rename` and
+   `cargo test -p openagents-sdk --test all history::saved_` (search and pin-order
    fixtures, including a server that ignored the query and malformed move replies).
 2. Root web `cargo test -p openagents-web saved_search`,
    `cargo test -p openagents-web saved_pin_moves`, and
@@ -97,7 +97,7 @@ After capacity returns and the coordinator assigns the serial slot, queue:
    confirmed ordering, outage retention, late account replies, and UniFFI hints).
 4. New source fixtures, all unrun: `cargo test -p openagents-web indexed_read_markers`,
    `cargo test -p openagents-web session_index::seen::tests`,
-   `cargo test -p openagents-sdk --test sessions indexed_read_ack`, app account
+   `cargo test -p openagents-sdk --test all sessions::indexed_read_ack`, app account
    `cargo test -p openagents-account --test history indexed_`, and mobile
    `cargo test -p openagents-mobile --lib indexed_`.
 5. Regenerate Android bindings from the actual Android ELF using final B1's

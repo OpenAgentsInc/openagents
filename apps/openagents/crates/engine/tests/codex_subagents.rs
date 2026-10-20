@@ -5,7 +5,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
+use openagents_doc::{
+    MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus,
+};
 use openagents_engine::{EngineCore, EngineProfile, HarnessRegistry};
 use openagents_harness::CodexHarness;
 use openagents_proto::{HarnessId, RunRequest, SandboxLevel, SessionStatus};

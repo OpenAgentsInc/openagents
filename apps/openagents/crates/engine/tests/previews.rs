@@ -1,8 +1,8 @@
 use futures::StreamExt;
-use std::{sync::Arc, time::Duration};
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_proto::{HarnessId, PreviewService};
 use openagents_rpc::{RpcReply, RpcService, methods};
+use std::{sync::Arc, time::Duration};
 
 fn service(device: &str, cwd: &std::path::Path, id: &str) -> PreviewService {
     PreviewService {

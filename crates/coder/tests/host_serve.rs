@@ -9,8 +9,6 @@ use coder::task::remote::Inbox;
 use coder::task::{Execution, Status, Store};
 use coder_host::Tasks;
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
 #[path = "../../coder-host/tests/support/scenario.rs"]
 mod scenario;
 

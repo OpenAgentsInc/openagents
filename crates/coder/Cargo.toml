@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 description = "The Coder agent: Classify routes, Generate answers, the terminal draws it."
 publish.workspace = true
+# One test binary (tests/all.rs) plus the few below (#12199).
+autotests = false
 
 [dependencies]
 standing-jobs = { path = "../standing-jobs" }
@@ -106,6 +108,18 @@ coder-connect = { path = "../coder-connect" }
 coderbench = { path = "../coderbench" }
 tempfile = "3"
 wat = "1"
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
+
+[[test]]
+name = "codex_home"
+path = "tests/codex_home.rs"
+
+[[test]]
+name = "relay_job"
+path = "tests/relay_job.rs"
 
 [lints]
 workspace = true

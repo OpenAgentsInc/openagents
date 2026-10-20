@@ -1995,8 +1995,8 @@ async fn workspace_entry_mutations_are_forwarded_to_the_owning_plain_folder() {
 /// registry and the same device relay used by the routing tests above.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn mcp_standalone_session_executes_on_the_selected_device() {
+    use openagents_mcp::{OpenAgents, Origin, Tools};
     use serde_json::json;
-    use openagents_mcp::{Origin, Tools, OpenAgents};
 
     let (relay_url, relay) = fake_device_room().await;
     let dirs = tempfile::tempdir().unwrap();

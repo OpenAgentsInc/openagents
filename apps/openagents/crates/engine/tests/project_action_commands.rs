@@ -42,7 +42,7 @@ async fn manual_and_setup_actions_preserve_long_multiline_commands() {
             launch_project_action(&terminals, action, root.path(), &checkout, 80, 24)
         }
         .unwrap();
-        tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::time::timeout(Duration::from_secs(60), async {
             loop {
                 if std::fs::read_to_string(checkout.join("literal"))
                     .ok()

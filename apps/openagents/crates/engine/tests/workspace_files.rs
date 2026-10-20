@@ -492,7 +492,7 @@ async fn projectless_home_is_required_for_files_catalogs_and_terminal() {
         let output = tokio::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "projectless_home_is_required_for_files_catalogs_and_terminal",
+                "workspace_files::projectless_home_is_required_for_files_catalogs_and_terminal",
                 "--nocapture",
             ])
             .env(CHILD, "1")

@@ -11,9 +11,7 @@ use coder_host::config::{Config, Control, Iroh};
 use coder_host::serve::keys::{FileKeySource, Keys};
 use serde_json::{Value, json};
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-#[allow(dead_code)]
-mod relay;
+use crate::relay;
 
 #[test]
 fn native_crew_creation_charter_verdict_restart_and_refusals() {

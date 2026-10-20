@@ -30,8 +30,7 @@ use coder_host::{NoTasks, Running};
 use secp256k1::SecretKey;
 use tokio::net::TcpStream;
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
+use crate::relay;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
 const GENERATION: u64 = 11;

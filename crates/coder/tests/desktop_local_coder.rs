@@ -1,5 +1,6 @@
 //! The desktop's real socket client against a scratch durable Coder inbox.
 #![cfg(unix)]
+use crate::relay;
 use coder_host::{
     access::{
         Code, RelayPolicy,
@@ -11,8 +12,6 @@ use coder_host::{
 use openagents_connect::keys::FileKeySource;
 use openagents_desktop::control::SocketControl;
 use std::{collections::BTreeMap, sync::Arc};
-#[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn desktop_creates_retries_reads_and_cancels_through_the_phone_clients() {

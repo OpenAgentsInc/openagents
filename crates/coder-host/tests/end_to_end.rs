@@ -7,8 +7,6 @@ use std::sync::{Arc, Mutex};
 use coder_host::{Code, TaskCreate, TaskRef, Tasks};
 use nostr::activity_summary::Phase;
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
 #[path = "support/scenario.rs"]
 mod scenario;
 

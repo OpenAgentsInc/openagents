@@ -1,7 +1,6 @@
 //! Actual installed colleague reuse over distinct native credentials and bytes.
 #![cfg(unix)]
-#[path = "../../discovery/tests/support/curated.rs"]
-mod fixture;
+use crate::curated as fixture;
 use fixture::Fixture;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};

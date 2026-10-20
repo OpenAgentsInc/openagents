@@ -1,7 +1,6 @@
 //! Actual private CLI consumers with native file keys, no engine or outreach.
 #![cfg(unix)]
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;

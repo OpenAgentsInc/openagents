@@ -1,8 +1,7 @@
 //! Actual-process curated discovery uses explicit public fixtures and no grants.
 #![cfg(unix)]
 
-#[path = "../../discovery/tests/support/curated.rs"]
-mod fixture;
+use crate::curated as fixture;
 
 use fixture::Fixture;
 use serde_json::{Value, json};

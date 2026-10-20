@@ -3,16 +3,16 @@
 //! its busy state lands, or any remote client), the composer queue, and
 //! explicit steering (queue-row Steer / Send next, MCP `send_message` steer).
 //!
-//! OPENAGENTS_TEST_HARNESS=pi cargo test -p openagents-engine --test queue_order_live -- --ignored --nocapture
+//! OPENAGENTS_TEST_HARNESS=pi cargo test -p openagents-engine --test all queue_order_live:: -- --ignored --nocapture
 //! OPENAGENTS_TEST_MODEL optionally pins the model; OPENAGENTS_TEST_SCENARIO runs one of
 //! `sends`, `queue`, `steer`.
-use std::{sync::Arc, time::Duration};
 use openagents_doc::{MessagePart, MessageRole, SessionCommandPayload, SessionMessageEntry};
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::{
     AcpHarness, ClaudeHarness, CodexHarness, CursorHarness, Harness, OpencodeHarness,
 };
 use openagents_proto::{ChatConfig, HarnessId, RunRequest, SandboxLevel, SessionStatus};
+use std::{sync::Arc, time::Duration};
 
 const CHAT: &str = "order";
 

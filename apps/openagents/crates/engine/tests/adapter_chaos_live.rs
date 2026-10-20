@@ -4,7 +4,7 @@
 //!
 //! OPENAGENTS_TEST_HARNESS=claude OPENAGENTS_TEST_MODEL=claude-sonnet-5-5 \
 //! OPENAGENTS_TEST_OTHER_MODEL=claude-haiku-4-5 OPENAGENTS_CHAOS_ROUNDS=3 \
-//!   cargo test -p openagents-engine --test adapter_chaos_live -- --ignored --nocapture
+//!   cargo test -p openagents-engine --test all adapter_chaos_live:: -- --ignored --nocapture
 //!
 //! `OPENAGENTS_CHAOS_ONLY=<scenario>` runs one scenario. Invariants, per chat:
 //! - Never "done" early: no agent output after a Done unless a new user turn
@@ -91,7 +91,8 @@ fn engine(dir: &std::path::Path, name: &str) -> EngineCore {
 
 impl Suite {
     fn new() -> Self {
-        let name = openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
+        let name = openagents_brand::env_var("OPENAGENTS_TEST_HARNESS")
+            .unwrap_or_else(|_| "claude".into());
         let (id, _, sleep_base) = harness(&name);
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().to_str().unwrap().to_owned();
@@ -513,7 +514,9 @@ fn descendants(root: u32) -> Vec<u32> {
 
 /// The answer to every question an approval or ask raises: an allowing
 /// option where one is offered, else the first.
-fn answer_all(questions: &[openagents_proto::UserInputQuestion]) -> Vec<openagents_proto::UserInputAnswer> {
+fn answer_all(
+    questions: &[openagents_proto::UserInputQuestion],
+) -> Vec<openagents_proto::UserInputAnswer> {
     questions
         .iter()
         .map(|q| {
@@ -1255,7 +1258,8 @@ async fn restart_durability() {
             .with_test_writer()
             .try_init();
     }
-    let name = openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
+    let name =
+        openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
     let (id, _, base) = harness(&name);
     let dir = tempfile::tempdir().unwrap();
     let cwd = dir.path().to_str().unwrap().to_owned();
@@ -1343,7 +1347,7 @@ async fn restart_durability() {
     // app here), then restart: the interrupted turn is resumed and finishes.
     let crash_marker = format!("zr{}=1", base + 8);
     let mut child = tokio::process::Command::new(std::env::current_exe().unwrap())
-        .args(["crash_phase", "--exact", "--ignored", "--nocapture"])
+        .args(["adapter_chaos_live::crash_phase", "--exact", "--ignored", "--nocapture"])
         .env("OPENAGENTS_CRASH_DIR", dir.path())
         .env("OPENAGENTS_CRASH_PROMPT", format!(
             "Please run this shell command in the foreground and wait for it to finish: python3 -c 'import time; {crash_marker}; time.sleep(30)'"
@@ -1427,13 +1431,18 @@ async fn crash_phase() {
     let Some(dir) = openagents_brand::env_var_os("OPENAGENTS_CRASH_DIR") else {
         return;
     };
-    let name = openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
+    let name =
+        openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
     let dir = std::path::PathBuf::from(dir);
     let core = engine(&dir, &name);
     let cwd = dir.to_str().unwrap().to_owned();
     send_to(
         &core,
-        restart_request(&name, &cwd, &openagents_brand::env_var("OPENAGENTS_CRASH_PROMPT").unwrap()),
+        restart_request(
+            &name,
+            &cwd,
+            &openagents_brand::env_var("OPENAGENTS_CRASH_PROMPT").unwrap(),
+        ),
     );
     let marker = openagents_brand::env_var("OPENAGENTS_CRASH_MARKER").unwrap();
     wait_for(240, "the command to start", || probe_alive(&marker)).await;

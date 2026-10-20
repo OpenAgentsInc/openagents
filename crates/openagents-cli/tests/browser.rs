@@ -179,7 +179,9 @@ fn an_interrupted_run_ends_the_browser_and_removes_the_profile() {
     let child = browser_run(&fixture, "touch \"$HOME/started\"; sleep 30")
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(20);
+    // A freshly linked debug binary can take most of 20 s to start on a
+    // Mac under load, now that every test shares one binary (#12199).
+    let deadline = Instant::now() + Duration::from_secs(90);
     while !fixture.home.join("started").exists() {
         assert!(Instant::now() < deadline, "the command never started");
         std::thread::sleep(Duration::from_millis(20));

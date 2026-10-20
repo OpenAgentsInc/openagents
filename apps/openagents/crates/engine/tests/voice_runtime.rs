@@ -1,8 +1,8 @@
 //! Offline tests for the remote voice protocol against a fake native Codex package.
-use serde_json::json;
 use openagents_engine::{EngineCore, EngineProfile, HarnessRegistry};
 use openagents_proto::HarnessId;
 use openagents_rpc::methods;
+use serde_json::json;
 #[path = "voice_fixture/mod.rs"]
 mod voice_fixture;
 
@@ -372,9 +372,9 @@ mod voice_relay;
 #[cfg(unix)]
 #[tokio::test]
 async fn remote_voice_crosses_two_engines_and_owner_drop_releases_host() {
-    use std::{sync::Arc, time::Duration};
     use openagents_proto::voice::{VoiceEvent, remote as wire};
     use openagents_rpc::{HostRelay, HostRelayConfig, LinkCache, LinkCacheConfig, StaticToken};
+    use std::{sync::Arc, time::Duration};
     let temp = tempfile::tempdir().unwrap();
     let (host, _account) = native_core(&temp).await;
     std::fs::remove_file(
@@ -561,9 +561,9 @@ async fn voice_requires_a_saved_agent_and_resolves_the_default_by_ids() {
 #[cfg(unix)]
 #[tokio::test]
 async fn voice_relays_owner_messages_context_and_full_answers_through_normal_chats() {
-    use std::{sync::Arc, time::Duration};
-    use openagents_proto::voice::{VoiceChatContext, remote as wire};
     use openagents_doc::{MessagePart, MessageRole};
+    use openagents_proto::voice::{VoiceChatContext, remote as wire};
+    use std::{sync::Arc, time::Duration};
     let temp = tempfile::tempdir().unwrap();
     let (core, account) = native_core(&temp).await;
     let client = openagents_rpc::memory_client(core.rpc_service());

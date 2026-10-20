@@ -7,7 +7,7 @@
 //! prints the accuracy; it needs Jev's credentials (`~/.openagents/jev.json`):
 //!
 //! ```text
-//! cargo test -p coder --test issue_pick_eval -- --ignored --nocapture
+//! cargo test -p coder --test all issue_pick_eval:: -- --ignored --nocapture
 //! ```
 
 use std::path::Path;

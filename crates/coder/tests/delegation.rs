@@ -299,7 +299,7 @@ async fn the_three_ways_a_delegation_does_not_answer_stay_apart() {
 /// checkout the executor trusts:
 ///
 /// ```text
-/// cargo +1.97.1 test -p coder --test delegation -- --ignored --nocapture
+/// cargo +1.97.1 test -p coder --test all delegation:: -- --ignored --nocapture
 /// ```
 #[tokio::test]
 #[ignore = "needs the Devin CLI and a workspace it trusts"]

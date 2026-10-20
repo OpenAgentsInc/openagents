@@ -6,7 +6,7 @@
 //! set -a; . ~/work/.secrets/typesafe.env; set +a    # TYPESAFE_API_KEY for Jev
 //! CODER_AI_GATEWAY_KEY=... \                      # embeddings for the baseline
 //! ROUTER_EVAL_SPLIT=held_out \
-//!   cargo test -p coder --test router_eval -- --ignored --nocapture --test-threads 1
+//!   cargo test -p coder --test all router_eval:: -- --ignored --nocapture --test-threads 1
 //! ```
 //!
 //! `ROUTER_EVAL_SPLIT` is `held_out` (the default), `tune`, `all`, or

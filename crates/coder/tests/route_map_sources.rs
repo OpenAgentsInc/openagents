@@ -3,8 +3,8 @@
 //! desktop read (`crates/openagents-chat-app/src/route_map/sources.json`).
 //!
 //! ```sh
-//! cargo test -p coder --test route_map_sources               # check
-//! ROUTE_MAP_WRITE=1 cargo test -p coder --test route_map_sources  # rewrite
+//! cargo test -p coder --test all route_map_sources::               # check
+//! ROUTE_MAP_WRITE=1 cargo test -p coder --test all route_map_sources::  # rewrite
 //! ```
 //!
 //! A change to the routes, the rubric, the bank, the labeled set, the
@@ -16,7 +16,7 @@
 //! published records the map reads beside it (`records.json`):
 //!
 //! ```sh
-//! ROUTE_MAP_WRITE=1 cargo test -p coder --test route_map_sources live_route_map_records -- --ignored
+//! ROUTE_MAP_WRITE=1 cargo test -p coder --test all route_map_sources::live_route_map_records -- --ignored
 //! ```
 
 use std::collections::BTreeMap;
@@ -528,7 +528,7 @@ fn the_route_map_sources_match_the_router() {
     assert!(
         committed == document,
         "crates/openagents-chat-app/src/route_map/sources.json is stale; rewrite it with \
-         ROUTE_MAP_WRITE=1 cargo test -p coder --test route_map_sources"
+         ROUTE_MAP_WRITE=1 cargo test -p coder --test all route_map_sources::"
     );
     // Every route the router offers is on the map, in its order.
     let words: Vec<&str> = built.routes.iter().map(|r| r.id.as_str()).collect();

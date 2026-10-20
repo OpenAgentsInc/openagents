@@ -28,9 +28,14 @@ const WAIT: Duration = Duration::from_secs(20);
 fn assemble(dir: &Path) -> EngineCore {
     openagents_engine::set_keeper_launch(
         std::env::current_exe().unwrap(),
-        ["--exact", "keeper_entry", "--nocapture", "--test-threads=1"]
-            .map(Into::into)
-            .to_vec(),
+        [
+            "--exact",
+            "terminal_keepers::keeper_entry",
+            "--nocapture",
+            "--test-threads=1",
+        ]
+        .map(Into::into)
+        .to_vec(),
     );
     EngineCore::assemble(dir, Arc::new(HarnessRegistry::new()), HarnessId::Mock, None).unwrap()
 }
@@ -353,7 +358,11 @@ fn an_exited_shell_is_picked_up_as_ended() {
 fn keepers_can_be_turned_off() {
     if std::env::var_os("TERMINAL_KEEPERS_OFF").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "keepers_can_be_turned_off", "--test-threads=1"])
+            .args([
+                "--exact",
+                "terminal_keepers::keepers_can_be_turned_off",
+                "--test-threads=1",
+            ])
             .env("TERMINAL_KEEPERS_OFF", "1")
             .env(keeper::ENV, "0")
             .status()

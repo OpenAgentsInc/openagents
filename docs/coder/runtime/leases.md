@@ -796,7 +796,7 @@ dev-app, scratch, deploys, and the caller, and the log, all on fixtures that
 never signal a real process). `tests/dead_holder.rs` kills a holder and a waiter with
 `SIGKILL` and shows the lease is free on the next request.
 `tests/shim.rs` runs the `cargo` shim with stand-in programs.
-`cargo test -p openagents-cli --test lease` runs the command end to end,
+`cargo test -p openagents-cli --test all lease::` runs the command end to end,
 including `lease build` in a slot, a build's receipt with its slot and
 linked worktree's bytes and `lease du` over it, a second build that waits under a count
 of one, waiters lined up by `--priority` and `OPENAGENTS_LEASE_PRIORITY`

@@ -22,8 +22,7 @@ use coder_service::adopt::{self, Paths};
 use secp256k1::SecretKey;
 use tokio::net::TcpStream;
 
-#[path = "../../coder-control/src/tests/relay.rs"]
-mod relay;
+use crate::relay;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
 

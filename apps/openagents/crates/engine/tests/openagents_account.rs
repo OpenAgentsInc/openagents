@@ -10,6 +10,8 @@ use openagents_account::{
     desktop::{self, MemoryStore},
     openagents::{Client, Deployment},
 };
+use openagents_engine::{AuthState, Engine, EngineConfig, EngineProfile, WorkspaceScope};
+use openagents_proto::HarnessId;
 use serde_json::json;
 use std::{
     sync::{
@@ -18,8 +20,6 @@ use std::{
     },
     time::Duration,
 };
-use openagents_engine::{AuthState, Engine, EngineConfig, EngineProfile, WorkspaceScope};
-use openagents_proto::HarnessId;
 #[tokio::test]
 async fn sdk_identity_drives_synced_rooms_and_logout_removes_authority() {
     let root = tempfile::tempdir().unwrap();

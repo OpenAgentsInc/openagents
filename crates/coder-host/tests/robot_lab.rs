@@ -1,6 +1,5 @@
 //! Paired robot reads and controls over a real encrypted direct connection.
-#[path = "support/connect.rs"]
-mod connect;
+use crate::connect;
 use coder_host::{
     access::{
         Right, Rights,

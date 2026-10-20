@@ -24,7 +24,7 @@ placeholder and uses the existing 2–15 second retry ladder.
 ```sh
 cargo test -p openagents-proto -p openagents-doc
 cargo test -p openagents-engine generated_image
-cargo test -p openagents-engine --test e2e --test device_routing --test workspace_sync
+cargo test -p openagents-engine --test all
 cargo test -p openagents-harness codex
 cargo test -p openagents-harness --test codex
 cargo test -p openagents-ui transcript
@@ -53,7 +53,7 @@ installation and a model/account provisioned for image generation.
 
 ```sh
 cargo test -p openagents-harness --test codex real_image_generation_smoke -- --ignored
-cargo test -p openagents-engine --test e2e real_image_generation_profile_smoke -- --ignored
+cargo test -p openagents-engine --test all e2e::real_image_generation_profile_smoke -- --ignored
 ```
 
 The harness smoke checks that the real provider returns an existing saved file;

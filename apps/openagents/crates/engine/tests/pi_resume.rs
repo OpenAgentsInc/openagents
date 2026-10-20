@@ -1,9 +1,9 @@
 //! Pi's native session id survives an idle process crash through dispatch.
 #![cfg(unix)]
-use std::{sync::Arc, time::Duration};
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::PiHarness;
 use openagents_proto::{HarnessId, RunRequest, SandboxLevel};
+use std::{sync::Arc, time::Duration};
 
 #[tokio::test]
 async fn pi_idle_crash_next_dispatch_loads_stored_session() {
@@ -103,7 +103,10 @@ async fn timed_out_native_question_resolves_and_finishes_without_user_input() {
             let entries = handle.doc().read_entries().unwrap();
             if entries.iter().any(|entry| {
                 entry.parts.iter().any(|part| {
-                    matches!(part, openagents_doc::MessagePart::Input { resolved: true, .. })
+                    matches!(
+                        part,
+                        openagents_doc::MessagePart::Input { resolved: true, .. }
+                    )
                 })
             }) && core
                 .sessions

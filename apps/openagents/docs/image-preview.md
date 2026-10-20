@@ -41,7 +41,7 @@ Validation commands:
 
 ```sh
 cargo test --release --locked -p openagents-ui --lib -- --test-threads=1
-cargo test --release --locked -p openagents-engine --lib --test workspace_files --test device_routing
+cargo test --release --locked -p openagents-engine --lib --test all
 ```
 
 Automated results recorded on 2026-09-12 (Linux):

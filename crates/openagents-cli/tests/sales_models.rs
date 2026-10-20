@@ -1,7 +1,6 @@
 //! Actual expense controls over a scratch native host, without providers.
 #![cfg(unix)]
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use coder::task::{
     agent,
     agent_key::FileKeys,

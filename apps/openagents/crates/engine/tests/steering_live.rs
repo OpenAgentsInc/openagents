@@ -1,12 +1,12 @@
 //! Opt-in real-model checks through the production queue and command executor.
-//! OPENAGENTS_TEST_HARNESS=claude OPENAGENTS_TEST_MODEL=claude-haiku-4-5 cargo test -p openagents-engine --test steering_live -- --ignored --nocapture
-use std::{sync::Arc, time::Duration};
+//! OPENAGENTS_TEST_HARNESS=claude OPENAGENTS_TEST_MODEL=claude-haiku-4-5 cargo test -p openagents-engine --test all steering_live:: -- --ignored --nocapture
 use openagents_doc::{MessageRole, SessionCommandPayload};
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::{
     AcpHarness, ClaudeHarness, CodexHarness, CursorHarness, Harness, OpencodeHarness,
 };
 use openagents_proto::{ChatConfig, RunRequest, SandboxLevel, SessionStatus};
+use std::{sync::Arc, time::Duration};
 
 async fn wait(core: &EngineCore, mut predicate: impl FnMut() -> bool, what: &str) {
     if tokio::time::timeout(Duration::from_secs(180), async {

@@ -1,8 +1,6 @@
 //! A world host names its instance in the owner directory (#10552): only
 //! with the owner key, only for a host the owner already listed, and once.
-#[path = "../../coder-control/src/tests/relay.rs"]
-#[allow(dead_code)]
-mod relay;
+use crate::relay;
 
 use coder_host::access::RelayPolicy;
 use coder_host::client::{WorldListing, fetch_directory, list_world, publish_directory};

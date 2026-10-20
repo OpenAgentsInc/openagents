@@ -162,8 +162,9 @@ async fn local_work_imports_into_synced_profile_once() {
 
     // Doc bytes present in the synced store in born-chat2 shape (cursor 0,
     // epoch 2) — the shape DocHost pushes from VV zero on first room join.
-    let store = openagents_sync::DocsStore::open(dir.path().join("orgs").join("org1").join("user1"))
-        .expect("open synced store");
+    let store =
+        openagents_sync::DocsStore::open(dir.path().join("orgs").join("org1").join("user1"))
+            .expect("open synced store");
     let (bytes, cursor, epoch) = store
         .load_snapshot_with_cursor(&chat_doc)
         .expect("load")

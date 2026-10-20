@@ -13039,7 +13039,6 @@ dependencies = [
  "oa-copy",
  "openagents-dashboard",
  "openagents-login",
- "openagents-web",
  "openagents-workspace-hack",
  "prettyplease 0.2.37",
  "reqwest 0.12.28",

@@ -1,7 +1,6 @@
 //! Installed native privacy controls, with isolated files and no contact transport.
 #![cfg(unix)]
-#[path = "support/sales_binary.rs"]
-mod sales_binary;
+use crate::sales_binary;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::os::unix::fs::PermissionsExt;

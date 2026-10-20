@@ -14,7 +14,7 @@
 //! record it produced. To run it:
 //!
 //! ```text
-//! cargo test -p coder --test state_caps sweep -- --ignored --nocapture
+//! cargo test -p coder --test all state_caps::sweep -- --ignored --nocapture
 //! ```
 //!
 //! `STATE_SWEEP_ROWS` names the JSON Lines file the rows go to; by default

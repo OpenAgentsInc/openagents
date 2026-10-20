@@ -86,11 +86,11 @@ consume provider quota. Always set a fresh isolated state directory.
 
 ```sh
 cargo test -p openagents-doc
-cargo test -p openagents-engine --test message_queue
+cargo test -p openagents-engine --test all message_queue::
 cargo test -p openagents-harness
 
 OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) OPENAGENTS_CURSOR_EARLY_ROUNDS=10 \
-  cargo test -p openagents-engine --test cursor_live -- --ignored --nocapture --test-threads=1
+  cargo test -p openagents-engine --test all cursor_live:: -- --ignored --nocapture --test-threads=1
 
 OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) OPENAGENTS_CURSOR_TEST_MODEL=muse-spark-1.3 \
   cargo run -p openagents-harness --example cursor_stability_probe -- history 40

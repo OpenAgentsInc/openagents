@@ -123,8 +123,8 @@ Commands from the repository root:
 cargo test --release --locked -p openagents-proto --lib
 cargo test --release --locked -p openagents-engine --lib workspace_files::
 cargo test --release --locked -p openagents-engine --lib rpc::
-cargo test --release --locked -p openagents-engine --test workspace_files
-cargo test --release --locked -p openagents-engine --test device_routing workspace_entry_mutations_are_forwarded
+cargo test --release --locked -p openagents-engine --test all workspace_files::
+cargo test --release --locked -p openagents-engine --test all device_routing::workspace_entry_mutations_are_forwarded
 cargo test --release --locked -p openagents-ui --lib -- --test-threads=1
 cargo check --release --locked -p openagents
 ```

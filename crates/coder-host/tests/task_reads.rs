@@ -1,7 +1,6 @@
 //! Canonical task reads pass through native signed admission and disclosure.
 
-#[path = "support/connect.rs"]
-mod connect;
+use crate::connect;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
