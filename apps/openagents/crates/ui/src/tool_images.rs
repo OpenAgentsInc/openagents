@@ -16,8 +16,6 @@ use std::{
 use gpui::{Context, RenderImage, SharedString, Task};
 use openagents_proto::ToolCall;
 
-use crate::state::EngineHandle;
-
 /// Previews per chip; further paths stay in the text output.
 pub(crate) const MAX_IMAGES_PER_TOOL: usize = 4;
 /// Decoded thumbnail bounds: the 560×220 frame at 2× density (≤ 1.9 MiB
@@ -201,7 +199,7 @@ struct Entry {
 
 /// Where loads go: the engine and this device's id (remote owners relay).
 pub(crate) struct Loader {
-    pub engine: Option<EngineHandle>,
+    pub engine: Option<crate::rpc::Rpc>,
     pub local_device: Option<String>,
 }
 

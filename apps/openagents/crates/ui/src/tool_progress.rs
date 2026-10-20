@@ -249,7 +249,9 @@ pub fn capture(
         })
     })
     .map_err(|_| anyhow::anyhow!("fixture transcript did not apply"))?;
-    let transcript = cx.update(|cx| cx.new(|cx| Transcript::new(state.clone(), cx)));
+    let transcript = cx.update(|cx| {
+        cx.new(|cx| Transcript::new(crate::transcript_host::AppHost::shared(&state), cx))
+    });
     let window = cx.open_window(gpui::size(px(720.0), px(320.0)), |_, cx| {
         cx.new(|_| Host(transcript))
     })?;

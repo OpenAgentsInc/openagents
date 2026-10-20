@@ -284,6 +284,20 @@ pub struct EngineHandle {
     deferred_state: Option<tokio::sync::watch::Receiver<DeferredEngineState>>,
 }
 
+impl crate::rpc::Call for EngineHandle {
+    fn call(&self, method: &str, params: serde_json::Value) -> crate::rpc::Reply {
+        let engine = self.clone();
+        let method = method.to_owned();
+        Box::pin(async move {
+            engine
+                .client()
+                .call(&method, params)
+                .await
+                .map_err(|e| e.to_string())
+        })
+    }
+}
+
 impl EngineHandle {
     pub(crate) fn same_connection(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
@@ -563,6 +577,11 @@ impl EngineHandle {
 
     pub fn client(&self) -> &RpcClient {
         self.inner.client()
+    }
+
+    /// This connection as the portable views call it.
+    pub fn rpc(&self) -> crate::rpc::Rpc {
+        crate::rpc::Rpc::new(self.clone())
     }
 
     pub fn mode(&self) -> EngineMode {

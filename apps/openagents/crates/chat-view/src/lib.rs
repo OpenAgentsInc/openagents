@@ -21,6 +21,7 @@ pub mod markdown;
 pub mod motion;
 pub mod popover;
 pub mod prefs;
+pub mod rpc;
 pub mod rust_native_gpui;
 pub mod theme;
 pub mod typography;

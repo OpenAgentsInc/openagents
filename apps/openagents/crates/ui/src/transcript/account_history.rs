@@ -16,12 +16,12 @@ pub(super) struct AccountHistory {
 }
 impl Transcript {
     pub fn for_account_history(
-        state: Entity<AppState>,
+        host: Rc<dyn TranscriptHost>,
         model: Arc<Reader>,
         doc_id: String,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut view = Self::for_doc(state, doc_id, true, cx);
+        let mut view = Self::for_doc(host, doc_id, true, cx);
         view.account_history = Some(AccountHistory {
             epoch: model.snapshot().epoch,
             model,

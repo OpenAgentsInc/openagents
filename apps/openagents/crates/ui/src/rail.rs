@@ -476,7 +476,9 @@ impl Transcript {
         if !self.rail_enabled() {
             return gpui::Empty.into_any_element();
         }
-        let entity = self.state_entity().clone();
+        let Some(entity) = crate::transcript_host::AppHost::state_of(self).cloned() else {
+            return gpui::Empty.into_any_element();
+        };
         let state = entity.read(cx);
         let key = RailKey::new(
             state.selected_chat.clone(),

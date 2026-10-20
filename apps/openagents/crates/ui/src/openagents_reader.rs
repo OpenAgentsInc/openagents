@@ -373,7 +373,7 @@ impl SavedReader {
         let doc_id = format!("openagents-saved-chat-{}", uuid::Uuid::new_v4());
         let transcript = cx.new(|cx| {
             crate::transcript::Transcript::for_account_history(
-                state.clone(),
+                crate::transcript_host::AppHost::shared(&state),
                 model.clone(),
                 doc_id.clone(),
                 cx,
@@ -499,7 +499,7 @@ impl SavedReader {
             self.show_files = false;
             self.transcript = cx.new(|cx| {
                 crate::transcript::Transcript::for_account_history(
-                    self.state.clone(),
+                    crate::transcript_host::AppHost::shared(&self.state),
                     self.model.clone(),
                     self.doc_id.clone(),
                     cx,

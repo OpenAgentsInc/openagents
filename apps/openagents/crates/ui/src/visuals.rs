@@ -30,7 +30,6 @@ use openagents_visual::{
 };
 
 use crate::markdown::render::LinkUi;
-use crate::state::EngineHandle;
 use crate::theme::Theme;
 
 /// The visual's tree changed shape; the transcript remeasures its row.
@@ -180,7 +179,7 @@ impl VisualFrame {
         id: SharedString,
         title: String,
         path: String,
-        engine: Option<EngineHandle>,
+        engine: Option<crate::rpc::Rpc>,
         target_device_id: Option<String>,
         cx: &mut Context<Self>,
     ) -> Self {

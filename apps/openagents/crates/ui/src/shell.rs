@@ -2420,7 +2420,8 @@ impl Shell {
             ConnectionStatus::Connecting => SplashPhase::Visible,
             ConnectionStatus::Ready | ConnectionStatus::Failed(_) => SplashPhase::Gone,
         };
-        let transcript = cx.new(|cx| Transcript::new(state.clone(), cx));
+        let transcript =
+            cx.new(|cx| Transcript::new(crate::transcript_host::AppHost::shared(&state), cx));
         transcript.update(cx, |transcript, _| transcript.retain_for_route_exit());
         let composer = cx.new(|cx| Composer::new(state.clone(), cx));
         let voice = cx.new(|_| crate::voice::VoiceController::default());
@@ -4420,8 +4421,14 @@ impl Shell {
             });
         // A live subagent follows its streaming end (main-transcript feel);
         // a frozen one reads top-down.
-        let transcript =
-            cx.new(|cx| Transcript::for_doc(self.state.clone(), doc_id.clone(), !frozen, cx));
+        let transcript = cx.new(|cx| {
+            Transcript::for_doc(
+                crate::transcript_host::AppHost::shared(&self.state),
+                doc_id.clone(),
+                !frozen,
+                cx,
+            )
+        });
         let links = Self::session_links(Some(self.active_chat.clone()), cx);
         transcript.update(cx, |transcript, _| {
             transcript.set_workspace_link_handler(links)

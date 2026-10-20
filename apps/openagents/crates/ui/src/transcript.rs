@@ -26,6 +26,7 @@
 //! streaming has advanced beyond the last measured frame.
 
 mod account_history;
+pub mod host;
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -44,6 +45,7 @@ use gpui::{
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
 use openagents_proto::ToolCall;
 
+use self::host::TranscriptHost;
 use crate::markdown::mermaid_cache::{self, MermaidCache};
 use crate::markdown::parser::{
     Block, BlockTree, IncrementalParser, InlineRun, InlineStyle, parse_full,
@@ -52,7 +54,6 @@ use crate::markdown::render::{self, RenderCache, RenderOptions};
 use crate::markdown::veil::RowVeil;
 use crate::motion::{self, AnimationExt as _};
 use crate::notice::{NoticeChipIcon::Tile, notice_chip};
-use crate::state::AppState;
 use crate::syntax_cache::{DocumentHighlightKey, SyntaxHighlightCache};
 use crate::theme::Theme;
 use openagents_syntax::LanguageId as Lang;
@@ -2510,7 +2511,7 @@ impl HighlightStore {
 /// Expensive presentation work belongs to the subscription's background job,
 /// never to a GPUI observer/render callback. Shared rows survive navigation.
 #[derive(Default)]
-pub(crate) struct TranscriptPreparation {
+pub struct TranscriptPreparation {
     entries: Vec<SessionMessageEntry>,
     cache: HashMap<String, Arc<Vec<Row>>>,
     live_parsers: HashMap<String, IncrementalParser>,
@@ -2518,7 +2519,7 @@ pub(crate) struct TranscriptPreparation {
     baseline: Option<openagents_doc::TranscriptBaseline>,
 }
 
-pub(crate) struct PreparedTranscript {
+pub struct PreparedTranscript {
     pub(crate) rows: HashMap<String, Arc<Vec<Row>>>,
     pub(crate) historical: HashMap<String, Vec<Row>>,
     fully_historical: HashSet<String>,
@@ -3121,7 +3122,7 @@ impl SavedViewportCache {
 }
 
 pub struct Transcript {
-    state: Entity<AppState>,
+    host: Rc<dyn TranscriptHost>,
     list: ListState,
     rows: Vec<Row>,
     last_source: Option<(Option<String>, TranscriptReplayState, u64)>,
@@ -3130,7 +3131,7 @@ pub struct Transcript {
     /// Cleared as soon as the exit is invisible; never used for another chat.
     retain_on_deselect: bool,
     /// `Some(doc_id)` pins this instance to a SUBAGENT doc: rows come from
-    /// `AppState::sub_transcript(doc_id)` instead of the selected chat, and
+    /// the host's entries for `doc_id` instead of the selected chat, and
     /// the instance is READ-ONLY — no echoes, no own-turn hold, and no global
     /// attachment protection (that set is shared with the primary transcript
     /// and overwritten wholesale).
@@ -3219,7 +3220,7 @@ pub struct Transcript {
     render_cache: Rc<RefCell<RenderCache>>,
     workspace_link: Option<render::LinkUi>,
     /// File-link roots per linking chat, valid for one
-    /// `AppState::link_roots_revision`: every rendered row asks for them.
+    /// the host's link-roots revision: every rendered row asks for them.
     file_link_roots: (
         u64,
         HashMap<SharedString, Rc<Vec<crate::workspace_links::FileLinkRoot>>>,
@@ -3366,8 +3367,7 @@ pub struct Transcript {
     /// recently (click "Show full output" after a diff → see the output).
     blob_fetch_order: HashMap<SharedString, u64>,
     blob_fetch_counter: u64,
-    _observe: Subscription,
-    _text_changes: Subscription,
+    _host_watch: Vec<Subscription>,
 }
 
 /// One sidecar blob fetch's lifecycle.
@@ -3419,7 +3419,7 @@ impl Transcript {
         cx: &mut Context<Self>,
     ) -> Option<render::LinkUi> {
         let roots = self.file_link_roots(source_chat_id, cx);
-        let source_local = self.state.read(cx).chat_is_local(source_chat_id);
+        let source_local = self.host.chat_is_local(source_chat_id, cx);
         self.workspace_link.clone().map(|mut link| {
             link.source_session = Some(source_chat_id.to_string());
             link.source_local = source_local;
@@ -3437,14 +3437,15 @@ impl Transcript {
         chat_id: &SharedString,
         cx: &gpui::App,
     ) -> Rc<Vec<crate::workspace_links::FileLinkRoot>> {
-        let state = self.state.read(cx);
+        let host = self.host.clone();
         let (revision, memo) = &mut self.file_link_roots;
-        if *revision != state.link_roots_revision {
-            *revision = state.link_roots_revision;
+        let current = host.link_roots_revision(cx);
+        if *revision != current {
+            *revision = current;
             memo.clear();
         }
         memo.entry(chat_id.clone())
-            .or_insert_with(|| Rc::new(state.file_link_roots(chat_id)))
+            .or_insert_with(|| Rc::new(host.file_link_roots(chat_id, cx)))
             .clone()
     }
 
@@ -3465,7 +3466,7 @@ impl Transcript {
         let Some(roots) = ui.file_roots.as_deref() else {
             return tree.clone();
         };
-        let revision = self.state.read(cx).link_roots_revision;
+        let revision = self.host.link_roots_revision(cx);
         if self.inline_code_links.set_revision(revision) {
             self.render_cache.borrow_mut().clear();
         }
@@ -3480,8 +3481,8 @@ impl Transcript {
         self.link_ui(cx).map(|link| ToolFileOpener { link })
     }
 
-    pub fn new(state: Entity<AppState>, cx: &mut Context<Self>) -> Self {
-        Self::build(state, None, true, cx)
+    pub fn new(host: Rc<dyn TranscriptHost>, cx: &mut Context<Self>) -> Self {
+        Self::build(host, None, true, cx)
     }
 
     /// A read-only transcript over one SUBAGENT doc (right-pane tab). The
@@ -3491,16 +3492,16 @@ impl Transcript {
     /// way the tab OPENS at the latest content — a frozen transcript lands
     /// at the end once, unpinned, and free-scrolls from there.
     pub fn for_doc(
-        state: Entity<AppState>,
+        host: Rc<dyn TranscriptHost>,
         doc_id: String,
         follow: bool,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::build(state, Some(doc_id), follow, cx)
+        Self::build(host, Some(doc_id), follow, cx)
     }
 
     fn build(
-        state: Entity<AppState>,
+        host: Rc<dyn TranscriptHost>,
         doc_override: Option<String>,
         follow: bool,
         cx: &mut Context<Self>,
@@ -3531,25 +3532,13 @@ impl Transcript {
             })
             .ok();
         });
-        let observe = cx.observe(&state, |this: &mut Self, _, cx| this.sync(cx));
+        let host_watch = host.watch(cx);
         cx.on_release(|this: &mut Self, cx| {
             this.close_diagram_zoom(cx);
             crate::image_media::release_media(this.diagrams.borrow_mut().drain(), cx);
             this.tool_images.clear(cx);
         })
         .detach();
-        let text_changes = cx.subscribe(
-            &state,
-            |this: &mut Self, state, event: &crate::state::TranscriptTextChanged, cx| {
-                let doc_id = this
-                    .doc_override
-                    .as_deref()
-                    .or_else(|| state.read(cx).selected_chat.as_deref());
-                if doc_id == Some(event.doc_id.as_str()) {
-                    this.sync(cx);
-                }
-            },
-        );
         // The rail is sized for the conversation column; a narrow right-pane
         // tab has no width gate driving it, so override instances skip it.
         let rail_enabled = doc_override.is_none();
@@ -3561,7 +3550,7 @@ impl Transcript {
         // wheel-up, and resticks/jumps exactly like the main transcript.
         let pinned = follow;
         let mut this = Self {
-            state,
+            host,
             list,
             rows: Vec::new(),
             last_source: None,
@@ -3655,8 +3644,7 @@ impl Transcript {
             blob_details: HashMap::new(),
             blob_fetch_order: HashMap::new(),
             blob_fetch_counter: 0,
-            _observe: observe,
-            _text_changes: text_changes,
+            _host_watch: host_watch,
         };
         this.sync(cx);
         this
@@ -3811,8 +3799,23 @@ impl Transcript {
         }
     }
 
-    pub(crate) fn state_entity(&self) -> &Entity<AppState> {
-        &self.state
+    /// The app this transcript draws from.
+    pub fn host(&self) -> &Rc<dyn TranscriptHost> {
+        &self.host
+    }
+
+    /// The host's answers changed: everything, or only `doc_id`'s text.
+    pub fn host_changed(&mut self, doc_id: Option<&str>, cx: &mut Context<Self>) {
+        if let Some(doc_id) = doc_id {
+            let shown = self
+                .doc_override
+                .as_deref()
+                .or_else(|| self.host.selected_chat(cx));
+            if shown != Some(doc_id) {
+                return;
+            }
+        }
+        self.sync(cx);
     }
 
     /// Hand viewport ownership to explicit rail/navigation input before its
@@ -4650,12 +4653,12 @@ impl Transcript {
     fn route_exit_pending(&self, cx: &gpui::App) -> bool {
         self.retain_on_deselect
             && self.doc_override.is_none()
-            && self.state.read(cx).selected_chat.is_none()
+            && self.host.selected_chat(cx).is_none()
             && self.chat_id.is_some()
     }
 
     pub(crate) fn finish_route_exit(&mut self, cx: &mut Context<Self>) {
-        if self.state.read(cx).selected_chat.is_none() && self.chat_id.is_some() {
+        if self.host.selected_chat(cx).is_none() && self.chat_id.is_some() {
             self.retain_on_deselect = false;
             self.sync(cx);
             self.retain_on_deselect = true;
@@ -4666,7 +4669,7 @@ impl Transcript {
     fn sync(&mut self, cx: &mut Context<Self>) {
         if self.retain_on_deselect
             && self.doc_override.is_none()
-            && self.state.read(cx).selected_chat.is_none()
+            && self.host.selected_chat(cx).is_none()
             && self.chat_id.is_some()
         {
             // A quick return can reuse this entity before the exit finishes.
@@ -4675,30 +4678,26 @@ impl Transcript {
             return;
         }
         let (selected, replay) = {
-            let s = self.state.read(cx);
+            let host = &self.host;
             match &self.doc_override {
                 // Pinned to a subagent doc: `selected` equals `chat_id` by
                 // construction, so the attach/reset branch below never fires,
                 // and echoes stay empty (nothing is ever sent from here).
                 Some(doc_id) => (Some(doc_id.clone()), TranscriptReplayState::Populated),
                 None => {
-                    let replay = if !s.transcript_replayed {
+                    let replay = if !host.transcript_replayed(cx) {
                         TranscriptReplayState::Pending
-                    } else if s.transcript.is_empty() {
+                    } else if host.entries(None, cx).is_empty() {
                         TranscriptReplayState::Empty
                     } else {
                         TranscriptReplayState::Populated
                     };
-                    (s.selected_chat.clone(), replay)
+                    (host.selected_chat(cx).map(str::to_owned), replay)
                 }
             }
         };
 
-        let source = (
-            selected.clone(),
-            replay,
-            self.state.read(cx).transcript_revision,
-        );
+        let source = (selected.clone(), replay, self.host.transcript_revision(cx));
         if self.last_source.as_ref() == Some(&source) {
             return;
         }
@@ -4798,16 +4797,9 @@ impl Transcript {
         // handle lets rows_for mutate our caches without copying every text
         // and tool payload on each app-state notification.
         let (entries_empty, tail_streaming) = {
-            let state = self.state.clone();
-            let state = state.read(cx);
-            let entries = match &self.doc_override {
-                Some(doc_id) => state.sub_transcript(doc_id),
-                None => state.transcript.as_slice(),
-            };
-            let prepared = self
-                .chat_id
-                .as_ref()
-                .and_then(|id| state.prepared_transcripts.get(id));
+            let host = self.host.clone();
+            let entries = host.entries(self.doc_override.as_deref(), cx);
+            let prepared = self.chat_id.as_ref().and_then(|id| host.prepared(id, cx));
             for entry in entries {
                 if !self.compact_mode
                     && let Some(rows) = prepared.and_then(|p| p.rows.get(&entry.id))
@@ -4818,7 +4810,7 @@ impl Transcript {
                 }
             }
             if self.doc_override.is_none() {
-                for echo in state.pending_echoes() {
+                for echo in host.pending_echoes(cx) {
                     new_rows.extend(self.rows_for(echo, true));
                 }
             }
@@ -4833,7 +4825,7 @@ impl Transcript {
         let baseline = self
             .chat_id
             .as_deref()
-            .and_then(|id| self.state.read(cx).transcript_baseline(id))
+            .and_then(|id| self.host.baseline(id, cx))
             .cloned();
         let baseline_changed = baseline.as_ref().is_some_and(|baseline| {
             self.last_replay_baseline
@@ -4844,16 +4836,10 @@ impl Transcript {
         let mut fully_historical: HashSet<SharedString> = HashSet::new();
         if baseline_changed {
             let baseline = baseline.as_ref().unwrap();
-            let state = self.state.read(cx);
-            let entries = match &self.doc_override {
-                Some(id) => state.sub_transcript(id),
-                None => &state.transcript,
-            };
+            let host = self.host.clone();
+            let entries = host.entries(self.doc_override.as_deref(), cx);
             let previous_markdown = std::mem::take(&mut self.historical_markdown);
-            let prepared = self
-                .chat_id
-                .as_ref()
-                .and_then(|id| state.prepared_transcripts.get(id));
+            let prepared = self.chat_id.as_ref().and_then(|id| host.prepared(id, cx));
             let mut historical_rows = Vec::new();
             for entry in entries {
                 let covered = prepared.map_or_else(
@@ -4871,7 +4857,7 @@ impl Transcript {
                     && let Some(rows) = self
                         .chat_id
                         .as_ref()
-                        .and_then(|id| state.prepared_transcripts.get(id))
+                        .and_then(|id| host.prepared(id, cx))
                         .and_then(|p| p.historical.get(&entry.id))
                 {
                     historical_rows.extend(rows.iter().cloned());
@@ -5295,14 +5281,14 @@ impl Transcript {
             Some(BlobFetch::Loading(_)) => return,
             Some(BlobFetch::Failed) | None => {}
         }
-        let Some(engine) = self.state.read(cx).engine().cloned() else {
+        let Some(rpc) = self.host.rpc(cx) else {
             return;
         };
         let is_diff = blob_ref.ends_with(".diff");
         let ref_key = blob_ref.clone();
         let task = cx.spawn(async move |this, cx| {
-            let reply = crate::attachments::call_with_timeout(
-                &engine,
+            let reply = crate::rpc::call_with_timeout(
+                &rpc,
                 cx.background_executor(),
                 openagents_rpc::methods::FETCH_TOOL_BLOB,
                 serde_json::json!({ "blobRef": ref_key.as_ref() }),
@@ -5615,12 +5601,11 @@ impl Transcript {
         if self.doc_override.is_some() {
             return Vec::new();
         }
-        let state = self.state.read(cx);
         let mut ids = Vec::new();
-        if let Some(chat) = state.selected_chat_row() {
-            ids.push(chat.device_id.clone());
+        if let Some(place) = self.host.chat_place(None, cx) {
+            ids.push(place.device_id);
         }
-        if let Some(local) = state.local_device_id.clone()
+        if let Some(local) = self.host.local_device_id(cx).map(str::to_owned)
             && !ids.contains(&local)
         {
             ids.push(local);
@@ -5630,8 +5615,8 @@ impl Transcript {
 
     fn generated_attachment_device_ids(&self, owner: &str, cx: &Context<Self>) -> Vec<String> {
         let mut fallback = self.attachment_device_ids(cx);
-        if let Some(local) = &self.state.read(cx).local_device_id {
-            fallback.push(local.clone());
+        if let Some(local) = self.host.local_device_id(cx) {
+            fallback.push(local.to_owned());
         }
         generated_image_devices(owner, &fallback)
     }
@@ -5713,11 +5698,11 @@ impl Transcript {
             AttachmentKey, read_attachment_image, store_error_for, store_loaded_for,
         };
         let key = AttachmentKey::new(&device_id, &path, expected_raster_mime.as_deref());
-        let Some(engine) = self.state.read(cx).engine().cloned() else {
+        let Some(engine) = self.host.rpc(cx) else {
             store_error_for(&key);
             return;
         };
-        let local = self.state.read(cx).local_device_id.clone();
+        let local = self.host.local_device_id(cx).map(str::to_owned);
         // Relay-forward only for a genuinely remote owner; the local device's
         // files are served directly.
         let target = (local.as_deref() != Some(device_id.as_str())).then(|| device_id.clone());
@@ -5810,10 +5795,10 @@ impl Transcript {
             .and_then(|rest| rest.split_once('/'))
             .map(|(id, _)| id);
         let percent = upload_id
-            .and_then(|id| self.state.read(cx).transfer_percent(id))
+            .and_then(|id| self.host.transfer_percent(id, cx))
             .or_else(|| {
                 sending
-                    .then(|| self.state.read(cx).upload_progress_percent())
+                    .then(|| self.host.upload_progress_percent(cx))
                     .flatten()
             });
         (sending, percent)
@@ -5894,15 +5879,10 @@ impl Transcript {
     /// The chat whose agent produced these rows (a subagent tab borrows the
     /// selected chat's host and cwd).
     fn image_host(&self, cx: &gpui::App) -> (Option<String>, Option<String>) {
-        let state = self.state.read(cx);
-        let chat = self
-            .chat_id
-            .as_deref()
-            .and_then(|id| state.chats.iter().find(|chat| chat.id == id))
-            .or_else(|| state.selected_chat_row());
+        let place = self.host.chat_place(self.chat_id.as_deref(), cx);
         (
-            chat.map(|chat| chat.device_id.clone()),
-            chat.and_then(|chat| chat.cwd.clone()),
+            place.as_ref().map(|place| place.device_id.clone()),
+            place.and_then(|place| place.cwd),
         )
     }
 
@@ -5921,8 +5901,8 @@ impl Transcript {
         }
         let (device, cwd) = self.image_host(cx);
         let loader = crate::tool_images::Loader {
-            engine: self.state.read(cx).engine().cloned(),
-            local_device: self.state.read(cx).local_device_id.clone(),
+            engine: self.host.rpc(cx),
+            local_device: self.host.local_device_id(cx).map(str::to_owned),
         };
         tools
             .iter()
@@ -6143,10 +6123,10 @@ impl Transcript {
 
     /// Copy the original file (not the preview) from its owning device.
     fn copy_image(&mut self, path: String, devices: Vec<String>, cx: &mut Context<Self>) {
-        let Some(engine) = self.state.read(cx).engine().cloned() else {
+        let Some(engine) = self.host.rpc(cx) else {
             return;
         };
-        let local = self.state.read(cx).local_device_id.clone();
+        let local = self.host.local_device_id(cx).map(str::to_owned);
         self.image_copy = Some(cx.spawn(async move |this, cx| {
             let executor = cx.background_executor().clone();
             for device in &devices {
@@ -6713,11 +6693,10 @@ impl Transcript {
         let frame = match self.visuals.get(row_id) {
             Some(frame) => frame.clone(),
             None => {
-                let state = self.state.read(cx);
-                let engine = state.engine().cloned();
+                let engine = self.host.rpc(cx);
                 // Relay-forward only for a genuinely remote owner.
                 let target =
-                    (state.local_device_id.as_deref() != Some(owner)).then(|| owner.to_owned());
+                    (self.host.local_device_id(cx) != Some(owner)).then(|| owner.to_owned());
                 let frame = cx.new(|cx| {
                     crate::visuals::VisualFrame::new(
                         row_id.clone(),
@@ -7059,24 +7038,7 @@ impl Transcript {
         let Some(chat_id) = self.chat_id.clone() else {
             return;
         };
-        let engine = self.state.read(cx).engine().cloned();
-        self.state.update(cx, |s, cx| {
-            s.retry_pending_send(&chat_id, chrono::Utc::now());
-            cx.notify();
-        });
-        if let Some(engine) = engine {
-            cx.spawn(async move |_, _| {
-                let params = serde_json::json!({ "chatId": chat_id });
-                if let Err(err) = engine
-                    .client()
-                    .call(openagents_rpc::methods::RETRY_DELIVERY, params)
-                    .await
-                {
-                    tracing::warn!(error = %err, "delivery retry RPC failed");
-                }
-            })
-            .detach();
-        }
+        self.host.clone().retry_send(&chat_id, cx);
     }
 
     fn render_working_trailer(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -7093,8 +7055,7 @@ impl Transcript {
             if !self.doc_live {
                 return None;
             }
-            let state = self.state.read(cx);
-            let last = state.sub_transcript(doc_id).last()?;
+            let last = self.host.entries(Some(doc_id), cx).last()?;
             let live =
                 last.status == Some(MessageStatus::Streaming) || last.role == MessageRole::User;
             if !live {
@@ -7106,7 +7067,7 @@ impl Transcript {
             let chat_id = self.chat_id.clone()?;
             // Failed-send state first: past the grace window the trailer IS
             // the retry affordance, whatever the indicator fell back to.
-            if self.state.read(cx).send_undelivered(&chat_id, now) {
+            if self.host.send_undelivered(&chat_id, now, cx) {
                 let theme = Theme::of(cx).clone();
                 return Some(
                     div()
@@ -7124,43 +7085,13 @@ impl Transcript {
                         .into_any_element(),
                 );
             }
-            let (sending, queued, elapsed, turn) = {
-                let state = self.state.read(cx);
-                if state.indicator_for(&chat_id, now) != crate::state::Indicator::Working {
-                    return None;
-                }
-                // During the send→turn window the session row's `started_at`
-                // still belongs to the PREVIOUS turn — a timer based on the
-                // send counted the round-trip and then restarted when the
-                // turn actually began (user report). Bridge it as "Sending…"
-                // with no timer instead; the word + timer start with the
-                // turn.
-                let turn_started = state.session_for(&chat_id).and_then(|s| s.started_at);
-                let send_started = state.pending_send_started(&chat_id, now);
-                let sending = sending_bridge(send_started, turn_started);
-                // Degraded delivery path: the send is a durable local write
-                // waiting on connectivity — say so instead of faking
-                // progress. (The overlay holds while degraded, so this line
-                // owns the surface until the ack or the failed state.)
-                let queued = sending && state.chat_delivery_degraded(&chat_id);
-                let chat_created = state
-                    .chats
-                    .iter()
-                    .find(|c| c.id == chat_id)
-                    .map(|c| c.created_at.timestamp_millis());
-                let elapsed = turn_elapsed_secs(
-                    turn_started.map(|t| t.timestamp_millis()),
-                    chat_created,
-                    now.timestamp_millis(),
-                );
-                // While sending, the session row still carries the PREVIOUS
-                // turn: the bridge keys on its own send instead, so it never
-                // rolls out of that turn's word or an earlier send's.
-                let turn = if sending { send_started } else { turn_started }
-                    .map_or(0, |t| t.timestamp_millis());
-                (sending, queued, elapsed, turn)
-            };
-            (sending, queued, elapsed, turn)
+            let activity = self.host.turn_activity(&chat_id, now, cx)?;
+            (
+                activity.sending,
+                activity.queued,
+                activity.elapsed_secs,
+                activity.turn_ms,
+            )
         };
         if self.compact_mode
             && !sending
@@ -7168,15 +7099,13 @@ impl Transcript {
             && let Some(elapsed_secs) = elapsed_secs.filter(|secs| *secs > 0)
         {
             let entry_id = if let Some(doc_id) = &self.doc_override {
-                self.state
-                    .read(cx)
-                    .sub_transcript(doc_id)
+                self.host
+                    .entries(Some(doc_id), cx)
                     .last()
                     .map(|e| e.id.clone())
             } else {
-                self.state
-                    .read(cx)
-                    .transcript
+                self.host
+                    .entries(None, cx)
                     .iter()
                     .rev()
                     .find(|e| e.role == MessageRole::Assistant)
@@ -7188,10 +7117,7 @@ impl Transcript {
         }
         // OpenAgents (#11969): name the running tool and time it.
         let tool = (!sending && !queued && self.doc_override.is_none())
-            .then(|| {
-                let state = self.state.read(cx);
-                crate::tool_progress::running(&state.transcript, &state.chats, chrono::Utc::now())
-            })
+            .then(|| self.host.running_tool(chrono::Utc::now(), cx))
             .flatten();
         let elapsed_secs = tool
             .as_ref()
@@ -7266,12 +7192,9 @@ impl Transcript {
         self.rendered_rows.insert(row.id.clone());
         let theme = Theme::of(cx).clone();
         let workspace_root = {
-            let state = self.state.read(cx);
-            self.chat_id
-                .as_deref()
-                .and_then(|chat_id| state.chats.iter().find(|chat| chat.id == chat_id))
-                .or_else(|| state.selected_chat_row())
-                .and_then(|chat| chat.cwd.as_deref())
+            self.host
+                .chat_place(self.chat_id.as_deref(), cx)
+                .and_then(|place| place.cwd)
                 .map(SharedString::from)
         };
         // The viewport spans the full window (under the titlebar): the first
@@ -10422,6 +10345,7 @@ impl Render for Transcript {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::AppState;
 
     #[test]
     fn jump_button_stays_available_when_scrolling_down_until_near_bottom() {
@@ -10443,7 +10367,8 @@ mod tests {
             cx.set_global(Theme::dark());
             crate::settings::init(crate::settings::UiSettings::default(), dir.path(), cx);
             let state = cx.new(|_| AppState::new());
-            let transcript = cx.new(|cx| Transcript::new(state.clone(), cx));
+            let transcript =
+                cx.new(|cx| Transcript::new(crate::transcript_host::AppHost::shared(&state), cx));
             transcript.update(cx, |transcript, cx| {
                 transcript.retain_for_route_exit();
                 transcript.chat_id = Some("departing".into());
@@ -10472,7 +10397,8 @@ mod tests {
             cx.set_global(Theme::dark());
             crate::settings::init(crate::settings::UiSettings::default(), dir.path(), cx);
             let state = cx.new(|_| AppState::new());
-            let transcript = cx.new(|cx| Transcript::new(state.clone(), cx));
+            let transcript =
+                cx.new(|cx| Transcript::new(crate::transcript_host::AppHost::shared(&state), cx));
             transcript.update(cx, |this, _| this.retain_for_route_exit());
             replay_tool_group(&state, &transcript, "chat-a", cx);
             run(state, transcript, cx);
@@ -11960,7 +11886,8 @@ mod tests {
             crate::settings::init(crate::settings::UiSettings::default(), dir.path(), cx);
         });
         let state = cx.new(|_| AppState::new());
-        let transcript = cx.new(|cx| Transcript::new(state, cx));
+        let transcript =
+            cx.new(|cx| Transcript::new(crate::transcript_host::AppHost::shared(&state), cx));
         let mut bytes = std::io::Cursor::new(Vec::new());
         image::DynamicImage::new_rgba8(64, 48)
             .write_to(&mut bytes, image::ImageFormat::Png)
@@ -12023,7 +11950,8 @@ mod tests {
             cx.set_global(Theme::dark());
             crate::settings::init(crate::settings::UiSettings::default(), dir.path(), cx);
             let state = cx.new(|_| AppState::new());
-            let transcript = cx.new(|cx| Transcript::new(state, cx));
+            let transcript =
+                cx.new(|cx| Transcript::new(crate::transcript_host::AppHost::shared(&state), cx));
             let entries: Vec<SessionMessageEntry> =
                 serde_json::from_str(include_str!("../tests/fixtures/generated-images.json"))
                     .unwrap();
@@ -13096,7 +13024,8 @@ mod tests {
         fn with_transcript(test: impl FnOnce(&mut Transcript, &mut Context<Transcript>) + 'static) {
             openagents_gpui_test::os_test_application().run(move |cx| {
                 let state = cx.new(|_| AppState::new());
-                let transcript = cx.new(|cx| Transcript::new(state, cx));
+                let transcript = cx
+                    .new(|cx| Transcript::new(crate::transcript_host::AppHost::shared(&state), cx));
                 transcript.update(cx, test);
                 // Quit after the platform loop starts; calloop resets its
                 // stop flag on entry, so quitting in the launch hook hangs.
@@ -13134,7 +13063,9 @@ mod tests {
                             ..Default::default()
                         },
                         |_, cx| {
-                            let transcript = cx.new(|cx| Transcript::new(state, cx));
+                            let transcript = cx.new(|cx| {
+                                Transcript::new(crate::transcript_host::AppHost::shared(&state), cx)
+                            });
                             cx.new(|_| CachedTranscript(transcript))
                         },
                     )
@@ -15209,7 +15140,8 @@ mod tests {
                 total: 1_000,
             }])
         });
-        let transcript = cx.new(|cx| Transcript::new(state, cx));
+        let transcript =
+            cx.new(|cx| Transcript::new(crate::transcript_host::AppHost::shared(&state), cx));
         let body = format!(
             "compare {} with {} and {}",
             attachment_mention_link(1, None),

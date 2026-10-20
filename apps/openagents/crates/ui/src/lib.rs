@@ -77,6 +77,7 @@ mod pull_request_skeleton;
 mod pull_request_test_support;
 pub mod queue;
 pub mod rail;
+pub use openagents_chat_view::rpc;
 mod roll_text;
 pub mod rounded_clip;
 pub mod running_pill;
@@ -94,6 +95,9 @@ mod todo_panel;
 pub(crate) mod tool_images;
 pub mod tool_progress;
 pub mod transcript;
+#[cfg(feature = "account-fixture")]
+pub mod transcript_capture;
+pub mod transcript_host;
 pub mod typography;
 pub mod video_timeline;
 pub mod visuals;

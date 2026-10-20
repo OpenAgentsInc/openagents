@@ -23,6 +23,7 @@ use gpui::{
     AnyElement, BackgroundExecutor, Image, ImageFormat, SharedString, Size, div, prelude::*, px,
 };
 
+#[cfg(test)]
 use crate::state::EngineHandle;
 use crate::theme::ink;
 use openagents_rpc::methods;
@@ -467,21 +468,7 @@ const READ_CHUNK_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Race an RPC against `timeout` on the gpui background executor (these
 /// futures run under `cx.spawn`, so tokio's timer reactor isn't available).
-pub(crate) async fn call_with_timeout(
-    engine: &EngineHandle,
-    executor: &BackgroundExecutor,
-    method: &str,
-    params: serde_json::Value,
-    timeout: Duration,
-) -> Result<serde_json::Value, String> {
-    let call = engine.client().call(method, params);
-    let timer = executor.timer(timeout);
-    futures::pin_mut!(call);
-    match futures::future::select(call, timer).await {
-        futures::future::Either::Left((result, _)) => result.map_err(|e| e.to_string()),
-        futures::future::Either::Right(_) => Err(format!("{method} timed out")),
-    }
-}
+pub(crate) use crate::rpc::call_with_timeout;
 
 /// Chunks in flight at once. `seq` slots are idempotent engine-side, so
 /// completion order doesn't matter; a small window hides per-chunk latency
@@ -525,7 +512,7 @@ fn chunk_ranges(b64_len: usize) -> Vec<(u64, std::ops::Range<usize>)> {
 /// composer's "Uploading… N%" reads it every paint. Errors return the raw
 /// cause (the composer shows friendly copy).
 pub async fn upload_attachment(
-    engine: &EngineHandle,
+    engine: &(impl crate::rpc::Call + ?Sized),
     executor: &BackgroundExecutor,
     target_device_id: Option<&str>,
     upload_id: &str,
@@ -638,7 +625,7 @@ pub struct LoadedAttachmentImage {
 /// the same stuck-offset guard as openagents's `readAttachmentImage`). Returns the
 /// file's name, MIME type and bytes.
 pub(crate) async fn read_attachment_bytes(
-    engine: &EngineHandle,
+    engine: &(impl crate::rpc::Call + ?Sized),
     executor: &BackgroundExecutor,
     target_device_id: Option<&str>,
     path: &str,
@@ -696,7 +683,7 @@ pub(crate) async fn read_attachment_bytes(
 
 /// Read back a staged file of any type (a queued message restored for editing).
 pub async fn read_attachment_file(
-    engine: &EngineHandle,
+    engine: &(impl crate::rpc::Call + ?Sized),
     executor: &BackgroundExecutor,
     target_device_id: Option<&str>,
     path: &str,
@@ -710,7 +697,7 @@ pub async fn read_attachment_file(
 }
 
 pub async fn read_attachment_image(
-    engine: &EngineHandle,
+    engine: &(impl crate::rpc::Call + ?Sized),
     executor: &BackgroundExecutor,
     target_device_id: Option<&str>,
     path: &str,
