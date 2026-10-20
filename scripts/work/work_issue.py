@@ -117,7 +117,8 @@ class Run:
 
 
 def sh(cmd, cwd=None, check=True, timeout=None, env=None, input=None) -> subprocess.CompletedProcess:
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env, input=input)
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, errors="replace", timeout=timeout,
+                          env=env, input=input)
     if check and proc.returncode != 0:
         raise RuntimeError(f"{' '.join(map(str, cmd))[:160]}: {(proc.stderr or proc.stdout)[-1200:]}")
     return proc
@@ -285,9 +286,59 @@ def kinds_mod():
     return kinds
 
 
-def replay_checks(run: Run, root: Path, base: str) -> list[dict]:
+# A nested workspace's tests build it cold the first time on a host (the
+# desktop app's GPUI crates take well over the kinds' 300 s default).
+NESTED_SECS = int(os.environ.get("OA_WORK_NESTED_SECS", "2400"))
+
+
+def test_report(stdout: str, stderr: str) -> tuple[str, list[str]]:
+    """The failing tests' names and a tail that shows them. libtest prints
+    failures on stdout and cargo's build lines on stderr, so a tail of
+    stdout + stderr is all compiler warnings (#12242's runs said only
+    `error: test failed`)."""
+    failed = []
+    for name in re.findall(r"^test (\S+) \.\.\. FAILED$", stdout, re.M):
+        if name not in failed:
+            failed.append(name)
+    errors = [row for row in stderr.splitlines() if row.startswith("error")][-6:]
+    if failed:
+        detail = stdout[stdout.find("\nfailures:\n"):] if "\nfailures:\n" in stdout else ""
+        text = "\n".join([f"failing tests: {', '.join(failed)}", detail[:1600], *errors])
+    else:
+        text = "\n".join([*errors, (stdout + stderr)[-1200:]])
+    return text[-2400:], failed
+
+
+def base_failures(root: Path, base: str, pkg: str, names: list[str]) -> list[str]:
+    """Which of `names` also fail in `pkg` at `base`, in a worktree of the
+    base commit: a test main already fails isn't the change's doing."""
+    dest = root.parent / f"base-{pkg}"
+    shutil.rmtree(dest, ignore_errors=True)
+    if git_ok(root, "worktree", "add", "-f", "-q", "--detach", str(dest), base).returncode != 0:
+        return []
+    try:
+        test = cargo(dest, ["test", "-p", pkg, "--no-fail-fast", "--message-format", "short", "--", "--exact", *names],
+                     2400)
+        _, failed = test_report(test.stdout, test.stderr)
+        if not failed and test.returncode != 0:
+            return []  # it didn't build or run at the base: nothing to excuse
+        return [name for name in names if name in failed]
+    finally:
+        git_ok(root, "worktree", "remove", "--force", str(dest))
+        shutil.rmtree(dest, ignore_errors=True)
+
+
+def named_in(name: str, text: str) -> bool:
+    """The issue names this test (it asks for it to be fixed)."""
+    leaf = name.rsplit("::", 1)[-1]
+    return bool(text) and (name in text or (len(leaf) > 8 and leaf in text))
+
+
+def replay_checks(run: Run, root: Path, base: str, issue_text: str = "") -> list[dict]:
     """fmt, then the tests of every root-workspace Rust package the diff
-    touches, then every other changed file's checks by kind (#11310)."""
+    touches, then every other changed file's checks by kind (#11310).
+    Tests that fail at `base` too are reported, not counted against the
+    change, unless the issue names them (it asks for them to be fixed)."""
     kinds = kinds_mod()
     files = [f for f in changed_files(root, base) if (root / f).exists()]
     planned = kinds.plan(files, kinds.Tree(root), base)
@@ -310,18 +361,30 @@ def replay_checks(run: Run, root: Path, base: str) -> list[dict]:
     for pkg in packages:
         run.say("checks", f"running {pkg}'s tests")
         t0 = time.time()
-        test = cargo(root, ["test", "-p", pkg, "--message-format", "short"], 2400)
+        test = cargo(root, ["test", "-p", pkg, "--no-fail-fast", "--message-format", "short"], 2400)
         text = test.stdout + test.stderr
         ran = sum(int(n) for n in re.findall(r"test result: \w+\. (\d+) passed", text))
         failed = sum(int(n) for n in re.findall(r"; (\d+) failed", text))
-        checks.append({"name": f"cargo test -p {pkg}", "ok": test.returncode == 0, "passed": ran,
-                       "failed": failed, "secs": round(time.time() - t0, 1),
-                       "tail": text[-1500:] if test.returncode else ""})
+        tail, names = test_report(test.stdout, test.stderr) if test.returncode else ("", [])
+        check = {"name": f"cargo test -p {pkg}", "ok": test.returncode == 0, "passed": ran,
+                 "failed": failed, "failed_tests": names, "secs": round(time.time() - t0, 1), "tail": tail}
+        excusable = [n for n in names if not named_in(n, issue_text)]
+        if names and excusable == names:
+            run.say("checks", f"{pkg}: {len(names)} test(s) failed; checking whether main fails them too")
+            already = base_failures(root, base, pkg, names)
+            if already and set(already) == set(names):
+                check.update(ok=True, preexisting=already,
+                             tail=f"these tests fail on main too, so they don't count against the change: "
+                                  f"{', '.join(already)}")
+                run.say("checks", f"{pkg}: main fails the same tests; not counted")
+        checks.append(check)
     for c in planned:
         if c["kind"] == "rust" or c["id"].startswith("check:"):
             continue
         run.say("checks", f"{c['what']}" if c.get("available", True) else f"no checker here: {c['what']}")
-        r = kinds.run_check(c, root, str(LOCAL_EXEC))
+        secs = NESTED_SECS if c["kind"] == "rust-nested" else kinds.CHECK_SECS
+        r = kinds.run_check(c, root, str(LOCAL_EXEC), timeout=secs,
+                            env=dict(os.environ, OA_WORK_CMD_TIMEOUT=str(secs)))
         checks.append({"name": " ".join(c["argv"])[:200], "id": c["id"], "kind": c["kind"], "ok": r["ok"],
                        "available": r["available"], "secs": r["secs"], "tail": r["tail"]})
     return checks
@@ -382,7 +445,7 @@ def verify_fails(log: Path) -> tuple[int, bool]:
     """(failing verify calls, whether any passed)."""
     fails, passed = 0, False
     if log.exists():
-        for line in log.read_text().splitlines():
+        for line in log.read_text(errors="replace").splitlines():
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:
@@ -465,14 +528,15 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
     fails, passed = verify_fails(out / "verify.jsonl")
     return {"secs": round(time.time() - t0, 1), "summary": summary, "usage": usage_of(summary.get("result")),
             "verify_fails": fails, "verify_passed": passed, "timed_out": summary.get("timed_out", False),
-            "error": summary.get("error") or ((out / "agent-stderr.txt").read_text()[-600:] if proc.returncode else None)}
+            "error": summary.get("error") or ((out / "agent-stderr.txt").read_text(errors="replace")[-600:]
+                                              if proc.returncode else None)}
 
 
 def relay_verify(run: Run, log: Path, seen: int) -> int:
     """Each new `verify` verdict as a progress line."""
     if not log.exists():
         return seen
-    rows = log.read_text().splitlines()
+    rows = log.read_text(errors="replace").splitlines()
     for line in rows[seen:]:
         try:
             row = json.loads(line)
@@ -498,7 +562,8 @@ def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: 
     result, timed_out = None, False
     with open(out / "agent-events.jsonl", "w") as sink:
         proc = subprocess.Popen(argv, cwd=root, env=agent_env(out), stdout=subprocess.PIPE,
-                                stdin=subprocess.DEVNULL, stderr=open(out / "agent-stderr.txt", "w"), text=True)
+                                stdin=subprocess.DEVNULL, stderr=open(out / "agent-stderr.txt", "w"), text=True,
+                                errors="replace")
         try:
             for line in proc.stdout:
                 sink.write(line)
@@ -515,7 +580,19 @@ def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: 
         finally:
             proc.wait()
     return {"secs": round(time.time() - t0, 1), "usage": usage_of(result), "timed_out": timed_out,
-            "error": None if result else (out / "agent-stderr.txt").read_text()[-600:]}
+            "error": bare_error(result, (out / "agent-stderr.txt").read_text(errors="replace"))}
+
+
+def bare_error(result: dict | None, stderr: str) -> str | None:
+    """Why Claude Code did no work: its own error result (a usage limit
+    answers in under a second, #12203's token out of its weekly limit), or
+    its stderr when it printed no result at all."""
+    if result is None:
+        return stderr[-600:] or "Claude Code ended without a result"
+    if result.get("is_error"):
+        text = str(result.get("result") or result.get("api_error") or "Claude Code reported an error")
+        return text[-600:]
+    return None
 
 
 # ------------------------------------------------------------------ landing
@@ -571,7 +648,7 @@ def land_direct(run: Run, root: Path, repo: str, issue: dict, run_id: str, engin
             return land_fallback(run, root, repo, issue, run_id, engine, "the change conflicts with main")
         base = sh(["git", "-C", str(root), "rev-parse", "origin/main"]).stdout.strip()
         run.say("land", f"rebased onto main {base[:10]}; checking it again")
-        checks = replay_checks(run, root, base)
+        checks = replay_checks(run, root, base, issue_text(issue))
         if not checks_pass(checks):
             failed = ", ".join(f"`{c['name']}`" for c in checks if c["ok"] is False)
             return land_fallback(run, root, repo, issue, run_id, engine,
@@ -688,13 +765,19 @@ def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: 
     else:
         agent = run_bare(run, issue, wt, out, args.model, args.timeout, args.land)
     files = changed_files(wt, base)
-    checks = replay_checks(run, wt, base) if files else []
+    checks = replay_checks(run, wt, base, issue_text(issue)) if files else []
     stat = diff_stat(wt, base) if files else {"files": [], "added": 0, "removed": 0}
+    if files:  # kept after the worktree goes, to see what a failed run tried
+        (out / "change.patch").write_text(working_patch(wt, base))
     ok = bool(files) and checks_pass(checks)
     outcome = "passed" if ok else ("no change" if not files else "checks failed")
     return {"engine": engine, "worktree": str(wt), "out": str(out), "agent": agent, "checks": checks, "diff": stat,
             "ok": ok, "outcome": outcome, "briefing_digest": (b or {}).get("digest"),
             "cost_usd": agent["usage"].get("cost_usd"), "secs": agent.get("secs")}
+
+
+def issue_text(issue: dict) -> str:
+    return f"{issue.get('title') or ''}\n{issue.get('body') or ''}"
 
 
 def working_patch(root: Path, base: str) -> str:
@@ -703,6 +786,12 @@ def working_patch(root: Path, base: str) -> str:
     patch = sh(["git", "-C", str(root), "diff", "--cached", "--binary", base]).stdout
     sh(["git", "-C", str(root), "reset", "-q"])
     return patch
+
+
+def fallback_ran(a: dict) -> bool:
+    """Whether bare Claude Code did any work: a change, or an end without
+    its own error."""
+    return bool(a["diff"]["files"]) or not a["agent"].get("error")
 
 
 def failure_reason(a: dict) -> str:
@@ -854,10 +943,18 @@ def main() -> int:
             else:
                 run.say("escalate", why + "; falling back to bare Claude Code")
                 result["escalated"] = why
-                engine = "bare"
-                a = attempt(run, engine, issue, checkout, base, out / engine, args, None)
-                result["attempts"].append(a)
+                briefed = a
+                bare = attempt(run, "bare", issue, checkout, base, out / "bare", args, None)
+                result["attempts"].append(bare)
                 say_cost(run, result["attempts"])
+                if fallback_ran(bare):
+                    engine, a = "bare", bare
+                else:
+                    # Claude Code did nothing (a usage limit): the result is
+                    # the briefed attempt's, with why the fallback didn't help.
+                    couldnt = f"Claude Code could not take over: {bare['agent']['error']}"
+                    run.say("escalate", couldnt)
+                    result["escalated"] = f"{why}; {couldnt}"
         result["engine"], result["ok"] = engine, a["ok"]
         result["checks"], result["diff"] = a["checks"], a["diff"]
         result["cost_usd"] = cost_so_far(result["attempts"])[0]

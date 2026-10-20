@@ -147,5 +147,166 @@ class DirectLandingTests(unittest.TestCase):
         self.assertIn("rewrote files", landed["fallback"])
 
 
+LIBTEST_OUT = """
+running 3 tests
+test pages::a::tests::fine ... ok
+test pages::sdk_docs::tests::every_contract_operation_has_a_page ... FAILED
+test pages::b::tests::other_thing_breaks ... FAILED
+
+failures:
+
+---- pages::sdk_docs::tests::every_contract_operation_has_a_page stdout ----
+thread 'x' panicked at src/pages/sdk_docs/tests.rs:19:5:
+missing a page for land.submit
+
+failures:
+    pages::sdk_docs::tests::every_contract_operation_has_a_page
+    pages::b::tests::other_thing_breaks
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out
+"""
+CARGO_ERR = "   Compiling x v1.0.0\nwarning: unused\n" * 80 + "error: test failed, to rerun pass `-p x --lib`\n"
+
+
+class TestReportTests(unittest.TestCase):
+    """The replayed test check names what failed (#12242's runs showed only
+    compiler warnings)."""
+
+    def test_the_tail_names_the_failing_tests_and_their_panics(self):
+        tail, failed = work.test_report(LIBTEST_OUT, CARGO_ERR)
+        self.assertEqual(failed, ["pages::sdk_docs::tests::every_contract_operation_has_a_page",
+                                  "pages::b::tests::other_thing_breaks"])
+        self.assertTrue(tail.startswith("failing tests: pages::sdk_docs"))
+        self.assertIn("missing a page for land.submit", tail)
+        self.assertIn("error: test failed", tail)
+        self.assertNotIn("Compiling", tail)
+
+    def test_a_build_failure_keeps_the_compiler_errors(self):
+        tail, failed = work.test_report("", "src/lib.rs:1:1: error[E0308]: mismatched types\nerror: could not compile `x`\n")
+        self.assertEqual(failed, [])
+        self.assertIn("error[E0308]", tail)
+
+    def test_an_issue_that_names_a_test_keeps_it_counted(self):
+        text = "sdk_docs::every_contract_operation_has_a_page fails on main"
+        self.assertTrue(work.named_in("pages::sdk_docs::tests::every_contract_operation_has_a_page", text))
+        self.assertFalse(work.named_in("pages::b::tests::other_thing_breaks", text))
+        self.assertFalse(work.named_in("x::tests::a", ""))
+
+
+class PreexistingFailureTests(unittest.TestCase):
+    """A test main already fails doesn't fail the change, unless the issue
+    asks for it to be fixed."""
+
+    def replay(self, issue_text, at_base):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "worktree"
+            (root / "crates/x/src").mkdir(parents=True)
+            (root / "crates/x/src/lib.rs").write_text("")
+            kinds = Mock()
+            kinds.plan.return_value = []
+            kinds.nested_root.return_value = None
+
+            def cargo(_root, args, _timeout):
+                if args[0] == "fmt":
+                    return Mock(returncode=0, stdout="", stderr="")
+                return Mock(returncode=101, stdout=LIBTEST_OUT, stderr=CARGO_ERR)
+            with patch.object(work, "changed_files", return_value=["crates/x/src/lib.rs"]), \
+                    patch.object(work, "package_of", return_value="x"), \
+                    patch.object(work, "kinds_mod", return_value=kinds), \
+                    patch.object(work, "cargo", side_effect=cargo), \
+                    patch.object(work, "base_failures", return_value=at_base) as base:
+                checks = work.replay_checks(Mock(), root, "base", issue_text)
+        return checks[-1], base
+
+    def test_tests_main_fails_too_are_not_counted(self):
+        both = ["pages::sdk_docs::tests::every_contract_operation_has_a_page", "pages::b::tests::other_thing_breaks"]
+        check, base = self.replay("Speed up the pool", both)
+        self.assertTrue(check["ok"])
+        self.assertEqual(check["preexisting"], both)
+        self.assertTrue(base.called)
+
+    def test_a_test_only_the_change_breaks_still_fails(self):
+        check, _ = self.replay("Speed up the pool", ["pages::b::tests::other_thing_breaks"])
+        self.assertFalse(check["ok"])
+        self.assertIn("failing tests:", check["tail"])
+
+    def test_a_test_the_issue_names_is_never_excused(self):
+        check, base = self.replay("every_contract_operation_has_a_page fails on main", ["anything"])
+        self.assertFalse(check["ok"])
+        self.assertFalse(base.called)
+
+
+class FallbackTests(unittest.TestCase):
+    """Bare Claude Code out of its usage limit is said, and the briefed
+    attempt's checks stay the run's (the runs reported `checks 0/0`)."""
+
+    LIMIT = {"type": "result", "is_error": True, "api_error_status": 429, "api_error": "usage_limit_reached",
+             "result": "You've hit your weekly limit · resets Oct 24, 8am (UTC)", "total_cost_usd": 0}
+
+    def test_a_usage_limit_result_is_the_attempts_error(self):
+        self.assertIn("weekly limit", work.bare_error(self.LIMIT, ""))
+        self.assertIsNone(work.bare_error({"type": "result", "is_error": False}, ""))
+        self.assertEqual(work.bare_error(None, "boom"), "boom")
+
+    def test_a_fallback_that_did_nothing_did_not_run(self):
+        nothing = {"diff": {"files": []}, "agent": {"error": "You've hit your weekly limit"}}
+        self.assertFalse(work.fallback_ran(nothing))
+        self.assertTrue(work.fallback_ran({"diff": {"files": []}, "agent": {"error": None}}))
+        self.assertTrue(work.fallback_ran({"diff": {"files": ["a.rs"]}, "agent": {"error": "late"}}))
+
+    def test_the_run_keeps_the_briefed_attempts_checks(self):
+        briefed = {"engine": "briefed:codex", "ok": False, "outcome": "checks failed", "worktree": "/nowhere/w",
+                   "out": "/nowhere", "agent": {"usage": {"cost_usd": None}, "verify_fails": 0,
+                                                "verify_passed": True, "error": None},
+                   "checks": [{"name": "cargo test -p x", "ok": False}, {"name": "cargo fmt -p x", "ok": True}],
+                   "diff": {"files": ["crates/x/src/lib.rs"], "added": 1, "removed": 0}}
+        bare = {"engine": "bare", "ok": False, "outcome": "no change", "worktree": "/nowhere/b", "out": "/nowhere",
+                "agent": {"usage": {"cost_usd": 0}, "error": "You've hit your weekly limit"},
+                "checks": [], "diff": {"files": [], "added": 0, "removed": 0}}
+        issue = {"number": 1, "title": "t", "body": "", "state": "OPEN", "url": "u"}
+        with tempfile.TemporaryDirectory() as temporary:
+            out = Path(temporary) / "run"
+            argv = ["work_issue.py", "--repo", "o/r", "--issue", "1", "--engine", "briefed:codex",
+                    "--out", str(out), "--land", "none", "--no-rebrief"]
+            briefing = {"files": [{"path": "a", "score": 1}], "finder": "lite", "checks": [], "markdown": "m"}
+            with patch.object(work.sys, "argv", argv), \
+                    patch.object(work, "signed_in", return_value=None), \
+                    patch.object(work, "sh", return_value=Mock(stdout=__import__("json").dumps(issue))), \
+                    patch.object(work, "checkout_for", return_value=Path(temporary)), \
+                    patch.object(work, "default_branch_sha", return_value="base"), \
+                    patch.object(work, "briefing_for", return_value=briefing), \
+                    patch.dict(work.os.environ, {"OA_BRIEFED_AGENT": __file__}), \
+                    patch.object(work, "attempt", side_effect=[briefed, bare]), \
+                    patch.object(work, "drop_worktree"), \
+                    patch("builtins.print"):
+                self.assertEqual(work.main(), 1)
+            result = __import__("json").loads((out / "result.json").read_text())
+        self.assertEqual(result["engine"], "briefed:codex")
+        self.assertEqual(len(result["checks"]), 2)
+        self.assertIn("Claude Code could not take over: You've hit your weekly limit", result["escalated"])
+
+
+class BinaryFileBriefingTests(unittest.TestCase):
+    """A briefing that lists a binary file (#12241: a `.wasm` asset) shows
+    it as binary instead of stopping on its bytes."""
+
+    def test_a_binary_file_is_excerpted_as_binary(self):
+        work.sys.path.insert(0, str(work.BENCH))
+        import briefing
+        import common
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            work.sh(["git", "init", "-q", str(repo)])
+            (repo / "lander_gl_bg.wasm").write_bytes(b"\x00asm\x01\x00\x00\x00\xfb\xfe\xff" * 40)
+            (repo / "lib.rs").write_text("fn main() {}\n")
+            work.sh(["git", "-C", str(repo), "add", "-A"])
+            work.sh(["git", "-C", str(repo), "-c", "user.email=t@example.com", "-c", "user.name=t",
+                     "commit", "-qm", "base"])
+            levers = dict(common.LEVERS)
+            with patch.object(common, "REPO", repo), patch.object(briefing, "REPO", repo):
+                self.assertEqual(briefing.excerpt("HEAD", "lander_gl_bg.wasm", [], levers), "(binary file)")
+                self.assertIn("fn main", briefing.excerpt("HEAD", "lib.rs", [], levers))
+
+
 if __name__ == "__main__":
     unittest.main()

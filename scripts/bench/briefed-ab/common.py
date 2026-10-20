@@ -97,6 +97,9 @@ def run(cmd, cwd=None, check=True, input=None, timeout=None, env=None):
         input=input,
         capture_output=True,
         text=isinstance(input, str) or input is None,
+        # A file in the tree may be binary or not UTF-8 (a font, a
+        # compressed asset): never let its bytes stop a briefing (#12241).
+        errors="replace" if isinstance(input, str) or input is None else None,
         timeout=timeout,
         env=env,
     )

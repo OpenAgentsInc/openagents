@@ -72,7 +72,7 @@ class Tree:
     def read(self, path: str) -> str | None:
         if self.rev:
             proc = subprocess.run(["git", "show", f"{self.rev}:{path}"], cwd=self.root,
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, errors="replace")
             return proc.stdout if proc.returncode == 0 else None
         p = self.root / path
         try:
@@ -102,12 +102,12 @@ class Tree:
         if self._paths is None:
             if self.rev:
                 out = subprocess.run(["git", "ls-tree", "-r", "--name-only", self.rev], cwd=self.root,
-                                     capture_output=True, text=True).stdout
+                                     capture_output=True, text=True, errors="replace").stdout
             else:
                 out = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-                                     cwd=self.root, capture_output=True, text=True).stdout
+                                     cwd=self.root, capture_output=True, text=True, errors="replace").stdout
                 gone = set(subprocess.run(["git", "ls-files", "--deleted"], cwd=self.root,
-                                          capture_output=True, text=True).stdout.splitlines())
+                                          capture_output=True, text=True, errors="replace").stdout.splitlines())
                 out = "\n".join(p for p in out.splitlines() if p not in gone)
             self._paths = out.splitlines()
         return self._paths
@@ -117,7 +117,7 @@ class Tree:
         args = ["git", "grep", "-l", "-I", "-F", "-e", needle]
         args += [self.rev, "--"] if self.rev else ["--untracked", "--"]
         args += list(under)
-        proc = subprocess.run(args, cwd=self.root, capture_output=True, text=True)
+        proc = subprocess.run(args, cwd=self.root, capture_output=True, text=True, errors="replace")
         rows = proc.stdout.splitlines()
         if self.rev:
             rows = [r.split(":", 1)[1] if r.startswith(self.rev + ":") else r for r in rows]
@@ -436,7 +436,7 @@ def run_check(check: dict, root: Path, exec_path: str | None = None, filter_word
     if check.get("runner") == "exec" and exec_path:
         argv = [exec_path, *argv]
     try:
-        proc = subprocess.run(argv, cwd=root, capture_output=True, text=True, timeout=timeout,
+        proc = subprocess.run(argv, cwd=root, capture_output=True, text=True, errors="replace", timeout=timeout,
                               env=dict(env or os.environ, PYTHONDONTWRITEBYTECODE="1"))
         code, text = proc.returncode, proc.stdout + proc.stderr
     except subprocess.TimeoutExpired as e:

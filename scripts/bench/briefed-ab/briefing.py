@@ -92,7 +92,7 @@ def tokens_of(text: str) -> dict[str, float]:
 def grep_files(rev: str, term: str) -> dict[str, list[int]]:
     proc = subprocess.run(
         ["git", "grep", "-n", "-I", "-F", "--max-count=40", "-e", term, rev, "--", ".", *SKIP],
-        cwd=REPO, capture_output=True, text=True,
+        cwd=REPO, capture_output=True, text=True, errors="replace",
     )
     hits: dict[str, list[int]] = defaultdict(list)
     for line in proc.stdout.splitlines()[:4000]:
@@ -218,7 +218,7 @@ def finder_files(task: dict, levers: dict, no_cards: bool = False) -> tuple[list
             [sys.executable, str(tool), "query", "--repo", str(REPO), "--rev", task["parent"],
              "--issue", str(task["issue"]), "--k", str(int(levers["briefing_files"])), "--json"]
             + (["--no-cards"] if no_cards else []),
-            cwd=REPO, capture_output=True, text=True, timeout=600, env=finder_env(),
+            cwd=REPO, capture_output=True, text=True, errors="replace", timeout=600, env=finder_env(),
         )
         try:
             found = json.loads(proc.stdout)["files"]
@@ -241,10 +241,19 @@ def outline(rows: list[str], cap: int) -> list[int]:
     return [i for i, row in enumerate(rows, 1) if pat.match(row)][:cap]
 
 
+def is_binary(text: str) -> bool:
+    """A file `show` decoded with replacements: a NUL byte or undecodable
+    bytes near its start mean binary content, not text to excerpt."""
+    head = text[:8000]
+    return "\x00" in head or head.count("\ufffd") > 2
+
+
 def excerpt(rev: str, path: str, hit_lines: list[int], levers: dict) -> str:
     text = show(rev, path)
     if text is None:
         return "(new file)"
+    if is_binary(text):
+        return "(binary file)"
     rows = text.splitlines()
     cap = int(levers["excerpt_lines"])
     if not hit_lines and len(rows) > cap and levers["excerpt"] != "whole":
