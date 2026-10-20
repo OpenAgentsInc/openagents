@@ -7,6 +7,10 @@
 //! carries no fonts and a return visit reads them from the cache.
 
 pub mod check_ins;
+#[cfg_attr(not(target_family = "wasm"), allow(dead_code))]
+mod complete;
+#[cfg(target_family = "wasm")]
+mod compose;
 pub mod model;
 mod notifications;
 pub mod route;

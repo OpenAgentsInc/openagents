@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use anyhow::{Result, anyhow};
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use js_sys::Uint8Array;
 use k256::schnorr::SigningKey;
 use openagents_proto::device_frame::{self, DeviceFrameHeader};
@@ -166,7 +166,14 @@ impl Key {
     }
 }
 
-type Pending = Rc<RefCell<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
+/// A call waiting for its answer: one value, or a stream's items until it
+/// ends (`{id, item}` frames, then `{id, done: true}`).
+enum Waiting {
+    Once(oneshot::Sender<Result<Value>>),
+    Items(mpsc::UnboundedSender<Result<Value>>),
+}
+
+type Pending = Rc<RefCell<HashMap<u64, Waiting>>>;
 
 /// One open device-room connection to a computer.
 pub struct Computer {
@@ -186,8 +193,15 @@ impl Drop for Computer {
 }
 
 fn fail_all(pending: &Pending, message: &str) {
-    for (_, tx) in pending.borrow_mut().drain() {
-        let _ = tx.send(Err(anyhow!("{message}")));
+    for (_, waiting) in pending.borrow_mut().drain() {
+        match waiting {
+            Waiting::Once(tx) => {
+                let _ = tx.send(Err(anyhow!("{message}")));
+            }
+            Waiting::Items(tx) => {
+                let _ = tx.unbounded_send(Err(anyhow!("{message}")));
+            }
+        }
     }
 }
 
@@ -243,17 +257,35 @@ impl Computer {
                 let Some(id) = frame["id"].as_u64() else {
                     return;
                 };
-                let Some(tx) = pending.borrow_mut().remove(&id) else {
-                    return;
-                };
-                let answer = match frame.get("err").and_then(Value::as_str) {
-                    Some(error) => Err(anyhow!(
-                        "{}",
-                        error.strip_prefix("failed: ").unwrap_or(error)
-                    )),
-                    None => Ok(frame.get("ok").cloned().unwrap_or(Value::Null)),
-                };
-                let _ = tx.send(answer);
+                let error = frame
+                    .get("err")
+                    .and_then(Value::as_str)
+                    .map(|error| anyhow!("{}", error.strip_prefix("failed: ").unwrap_or(error)));
+                let mut pending = pending.borrow_mut();
+                match pending.get(&id) {
+                    None => {}
+                    Some(Waiting::Items(tx)) => {
+                        if let Some(item) = frame.get("item") {
+                            if tx.unbounded_send(Ok(item.clone())).is_err() {
+                                pending.remove(&id);
+                            }
+                        } else if let Some(error) = error {
+                            let _ = tx.unbounded_send(Err(error));
+                            pending.remove(&id);
+                        } else if frame["done"] == true {
+                            pending.remove(&id);
+                        }
+                    }
+                    Some(Waiting::Once(_)) => {
+                        let Some(Waiting::Once(tx)) = pending.remove(&id) else {
+                            return;
+                        };
+                        let _ = tx.send(match error {
+                            Some(error) => Err(error),
+                            None => Ok(frame.get("ok").cloned().unwrap_or(Value::Null)),
+                        });
+                    }
+                }
             })
         };
         let closed = {
@@ -282,24 +314,48 @@ impl Computer {
         })
     }
 
-    /// One host RPC call.
-    pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
-        let id = {
-            let mut next = self.next.borrow_mut();
-            *next += 1;
-            *next
-        };
-        let payload = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))?;
+    fn next_id(&self) -> u64 {
+        let mut next = self.next.borrow_mut();
+        *next += 1;
+        *next
+    }
+
+    fn send(&self, frame: &Value) -> Result<()> {
+        let payload = serde_json::to_vec(frame)?;
         let frame = device_frame::encode(&DeviceFrameHeader::new(RPC_KIND, RPC_KIND), &payload)
             .map_err(|e| anyhow!(e))?;
+        self.socket.send_with_u8_array(&frame).map_err(js)
+    }
+
+    /// One host RPC call.
+    pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
+        let id = self.next_id();
         let (tx, rx) = oneshot::channel();
-        self.pending.borrow_mut().insert(id, tx);
-        if let Err(error) = self.socket.send_with_u8_array(&frame) {
+        self.pending.borrow_mut().insert(id, Waiting::Once(tx));
+        if let Err(error) = self.send(&json!({"id": id, "method": method, "params": params})) {
             self.pending.borrow_mut().remove(&id);
-            return Err(js(error));
+            return Err(error);
         }
         rx.await
             .map_err(|_| anyhow!("The connection to this computer closed."))?
+    }
+
+    /// A streaming host RPC call (`WatchQueue`, `WatchWorkspaceFiles`, ...):
+    /// its items until the computer ends it. Dropping the [`Watch`] tells
+    /// the computer to stop.
+    pub fn watch(self: &Rc<Self>, method: &str, params: Value) -> Result<Watch> {
+        let id = self.next_id();
+        let (tx, rx) = mpsc::unbounded();
+        self.pending.borrow_mut().insert(id, Waiting::Items(tx));
+        if let Err(error) = self.send(&json!({"id": id, "method": method, "params": params})) {
+            self.pending.borrow_mut().remove(&id);
+            return Err(error);
+        }
+        Ok(Watch {
+            computer: self.clone(),
+            id,
+            items: rx,
+        })
     }
 
     /// Prove the key on this connection. Fails until the computer allows it.
@@ -350,7 +406,40 @@ impl Computer {
     }
 }
 
-async fn sleep(ms: i32) {
+/// A stream from [`Computer::watch`]. Each item is the computer's JSON, or
+/// the error that ended it.
+pub struct Watch {
+    computer: Rc<Computer>,
+    id: u64,
+    items: mpsc::UnboundedReceiver<Result<Value>>,
+}
+
+impl futures::Stream for Watch {
+    type Item = Result<Value>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        std::pin::Pin::new(&mut self.items).poll_next(cx)
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        if self
+            .computer
+            .pending
+            .borrow_mut()
+            .remove(&self.id)
+            .is_some()
+        {
+            let _ = self.computer.send(&json!({"id": self.id, "cancel": true}));
+        }
+    }
+}
+
+pub(crate) async fn sleep(ms: i32) {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
         if let Some(window) = web_sys::window() {
             let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms);

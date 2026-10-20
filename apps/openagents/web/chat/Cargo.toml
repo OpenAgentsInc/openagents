@@ -18,6 +18,8 @@ anyhow.workspace = true
 futures.workspace = true
 log.workspace = true
 openagents-web-chat-view.workspace = true
+# The composer's tokens and the question wizard (#12267, #12268).
+openagents-chat-view.workspace = true
 openagents-web-client.workspace = true
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
@@ -34,4 +36,4 @@ getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 uuid.workspace = true
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Notification", "NotificationOptions", "NotificationPermission", "EventSource", "MessageEvent", "AudioContext", "AudioBuffer", "AudioBufferSourceNode", "AudioNode", "AudioDestinationNode", "History", "Location", "PopStateEvent", "Window", "Document", "Element", "HtmlElement"] }
+web-sys = { version = "0.3", features = ["Notification", "NotificationOptions", "NotificationPermission", "EventSource", "MessageEvent", "AudioContext", "AudioBuffer", "AudioBufferSourceNode", "AudioNode", "AudioDestinationNode", "History", "Location", "PopStateEvent", "Window", "Document", "Element", "HtmlElement", "Storage", "Navigator"] }

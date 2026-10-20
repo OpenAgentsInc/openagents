@@ -73,6 +73,33 @@ pub fn signed_in() -> bool {
         .is_none_or(|value| value != "0")
 }
 
+/// The computer a chat's address names (`?computer=DEVICE&harness=NAME`),
+/// for a chat that runs there, until the registry sidebar (#12265) opens
+/// computers' chats itself.
+pub fn computer_of(search: &str) -> Option<(String, Option<String>)> {
+    let mut device = None;
+    let mut harness = None;
+    for pair in search.trim_start_matches('?').split('&') {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        let valid = !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b));
+        match key {
+            "computer" if valid => device = Some(value.to_owned()),
+            "harness" if valid => harness = Some(value.to_owned()),
+            _ => {}
+        }
+    }
+    device.map(|device| (device, harness))
+}
+
+#[cfg(target_family = "wasm")]
+pub fn computer() -> Option<(String, Option<String>)> {
+    computer_of(&web_sys::window()?.location().search().ok()?)
+}
+
 #[cfg(target_family = "wasm")]
 pub fn current() -> Option<String> {
     let path = web_sys::window()?.location().pathname().ok()?;
@@ -139,6 +166,22 @@ pub fn watch() -> mpsc::UnboundedReceiver<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn addresses_name_a_chats_computer() {
+        assert_eq!(
+            computer_of("?computer=mac-1&harness=claude"),
+            Some(("mac-1".into(), Some("claude".into())))
+        );
+        assert_eq!(
+            computer_of("?harness=codex&computer=a1"),
+            Some(("a1".into(), Some("codex".into())))
+        );
+        assert_eq!(computer_of("?computer=mac-1"), Some(("mac-1".into(), None)));
+        assert_eq!(computer_of("?ui=gpui"), None);
+        assert_eq!(computer_of("?computer=a%2Fb"), None);
+        assert_eq!(computer_of(""), None);
+    }
 
     #[test]
     fn addresses_name_chats() {

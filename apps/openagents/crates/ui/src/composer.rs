@@ -108,8 +108,7 @@ pub const INPUT_LINE_HEIGHT: f32 = 22.75;
 pub const INPUT_TEXT_SIZE: f32 = 14.0;
 /// A compact ramp; the glyph-ascent inset keeps the clip edge invisible.
 const INPUT_FADE_BAND: f32 = 12.0;
-/// Single-select questions auto-advance after this long.
-pub const AUTO_ADVANCE_MS: u64 = 220;
+pub use openagents_chat_view::composer_wizard::AUTO_ADVANCE_MS;
 /// Drag-selection autoscroll runs at the display-friendly 60fps cadence.
 pub const DRAG_SCROLL_FRAME_MS: u64 = 16;
 
@@ -625,207 +624,10 @@ fn wizard_escape_goes_back(key: &str, input_focused: bool, input_empty: bool) ->
     key == "escape" && (!input_focused || input_empty)
 }
 
-/// Find the unresolved input request the panel should serve, if any: an
-/// unresolved input part on the LAST assistant entry — regardless of the
-/// entry's run status. The question stays answerable until the user actually
-/// answers it (user requirement): a run that died under its question (engine
-/// restart reaping it) leaves an aborted entry whose answer the engine
-/// delivers as a resumed turn (`RespondInput`'s dead-run fallback). A newer
-/// assistant entry supersedes an unanswered question. Assistant-entry-scoped,
-/// not last-entry: a steer prompt sent while the agent waits appends a USER
-/// entry after the streaming assistant entry, and a last-entry-only read made
-/// the QuestionPanel vanish exactly when the user typed (earlier forensics;
-/// matches the original composer.tsx, which reads the live-assistant fold —
-/// rebuilt from replay even after the run died).
-pub fn pending_input_request(
-    transcript: &[SessionMessageEntry],
-) -> Option<(String, Vec<UserInputQuestion>)> {
-    transcript
-        .iter()
-        .rev()
-        .find(|entry| entry.role == MessageRole::Assistant)
-        .and_then(|entry| {
-            entry.parts.iter().find_map(|part| match part {
-                MessagePart::Input {
-                    request_id,
-                    questions,
-                    resolved: false,
-                    ..
-                } => Some((request_id.clone(), questions.clone())),
-                _ => None,
-            })
-        })
-}
-
-/// Whether the transcript shows `request_id` explicitly resolved (here or on
-/// another device) — the wizard latch's release condition.
-pub fn input_request_resolved(transcript: &[SessionMessageEntry], request_id: &str) -> bool {
-    transcript.iter().any(|entry| {
-        entry.parts.iter().any(|part| {
-            matches!(
-                part,
-                MessagePart::Input {
-                    request_id: rid,
-                    resolved: true,
-                    ..
-                } if rid == request_id
-            )
-        })
-    })
-}
-
-// ---------------------------------------------------------------------------
-// Question wizard (pure reducer)
-// ---------------------------------------------------------------------------
-
-/// Reducer outcome of a wizard interaction.
-#[derive(Debug, Clone, PartialEq)]
-pub enum WizardStep {
-    Stay,
-    /// Single-select landed — advance after [`AUTO_ADVANCE_MS`].
-    AutoAdvance,
-    /// All pages answered — submit these answers.
-    Done(Vec<UserInputAnswer>),
-}
-
-/// Paged question state ("1/3"): single-select auto-advances, multi-select and
-/// typed answers advance explicitly, number keys 1-9 select, Back pages back.
-#[derive(Debug, Clone)]
-pub struct Wizard {
-    pub request_id: String,
-    pub questions: Vec<UserInputQuestion>,
-    pub page: usize,
-    picked: Vec<Vec<usize>>,
-    typed: Vec<String>,
-}
-
-impl Wizard {
-    pub fn new(request_id: String, questions: Vec<UserInputQuestion>) -> Self {
-        let n = questions.len();
-        let typed = questions
-            .iter()
-            .map(|q| q.prefill.clone().unwrap_or_default())
-            .collect();
-        Self {
-            request_id,
-            questions,
-            page: 0,
-            picked: vec![Vec::new(); n],
-            typed,
-        }
-    }
-
-    pub fn counter(&self) -> String {
-        format!("{}/{}", self.page + 1, self.questions.len().max(1))
-    }
-
-    pub fn current(&self) -> Option<&UserInputQuestion> {
-        self.questions.get(self.page)
-    }
-
-    pub fn is_picked(&self, option_ix: usize) -> bool {
-        self.picked
-            .get(self.page)
-            .is_some_and(|p| p.contains(&option_ix))
-    }
-
-    /// Whether the current page has any picked option.
-    pub fn page_has_pick(&self) -> bool {
-        self.picked.get(self.page).is_some_and(|p| !p.is_empty())
-    }
-
-    /// Click/tap an option.
-    pub fn select(&mut self, option_ix: usize) -> WizardStep {
-        let Some(question) = self.questions.get(self.page) else {
-            return WizardStep::Stay;
-        };
-        if option_ix >= question.options.len() {
-            return WizardStep::Stay;
-        }
-        let multi = question.multi_select;
-        let Some(picked) = self.picked.get_mut(self.page) else {
-            return WizardStep::Stay;
-        };
-        if multi {
-            match picked.iter().position(|&p| p == option_ix) {
-                Some(at) => {
-                    picked.remove(at);
-                }
-                None => picked.push(option_ix),
-            }
-            WizardStep::Stay
-        } else {
-            *picked = vec![option_ix];
-            WizardStep::AutoAdvance
-        }
-    }
-
-    /// Number key 1-9.
-    pub fn press_number(&mut self, number: usize) -> WizardStep {
-        if number == 0 {
-            return WizardStep::Stay;
-        }
-        self.select(number - 1)
-    }
-
-    pub fn set_typed(&mut self, text: String) {
-        if let Some(slot) = self.typed.get_mut(self.page) {
-            *slot = text;
-        }
-    }
-
-    /// Explicit submit / auto-advance landing.
-    pub fn advance(&mut self) -> WizardStep {
-        if self.page + 1 < self.questions.len() {
-            self.page += 1;
-            WizardStep::Stay
-        } else {
-            WizardStep::Done(self.answers())
-        }
-    }
-
-    /// Page back; false when already on the first page.
-    pub fn back(&mut self) -> bool {
-        if self.page > 0 {
-            self.page -= 1;
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Answers per question: free text overrides picked labels.
-    pub fn answers(&self) -> Vec<UserInputAnswer> {
-        self.questions
-            .iter()
-            .enumerate()
-            .map(|(ix, q)| {
-                let typed = self
-                    .typed
-                    .get(ix)
-                    .map(|s| if q.multiline { s.as_str() } else { s.trim() })
-                    .unwrap_or("");
-                let labels = if !typed.is_empty() || q.multiline {
-                    vec![typed.to_string()]
-                } else {
-                    self.picked
-                        .get(ix)
-                        .map(|picked| {
-                            picked
-                                .iter()
-                                .filter_map(|&p| q.options.get(p).cloned())
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                };
-                UserInputAnswer {
-                    question_id: q.id.clone(),
-                    labels,
-                }
-            })
-            .collect()
-    }
-}
+// The question wizard's reducer lives in the portable crate (#12216).
+pub use openagents_chat_view::composer_wizard::{
+    Wizard, WizardStep, input_request_resolved, pending_input_request,
+};
 
 // ---------------------------------------------------------------------------
 // Multiline text input (adapted from gpui examples/input.rs)
@@ -5404,215 +5206,10 @@ pub enum ComposerEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MentionToken {
-    pub(crate) range: Range<usize>,
-    pub(crate) query: String,
-}
-
-/// Refine a locally identified token using Markdown source ranges. This is
-/// deliberately called only after a trigger has passed cheap boundary checks.
-fn completion_markdown_end(
-    text: &str,
-    start: usize,
-    cursor: usize,
-    mut end: usize,
-) -> Option<usize> {
-    use pulldown_cmark::{Event, Options, Parser, Tag};
-    let needs_quote_boundary = text[..start].ends_with('>');
-    let line_start = text[..start].rfind('\n').map_or(0, |at| at + 1);
-    let mut paragraph_start = line_start;
-    let mut token_is_prose = false;
-    let mut quote_boundary = false;
-    let parser = Parser::new_ext(text, Options::ENABLE_STRIKETHROUGH);
-    // Definitions have no body events, but their destinations are still link
-    // syntax and must never be replaced by a nested canonical link.
-    if parser
-        .reference_definitions()
-        .iter()
-        .any(|(_, definition)| definition.span.contains(&start))
-    {
-        return None;
-    }
-    for (event, range) in parser.into_offset_iter() {
-        if !range.contains(&start) {
-            continue;
-        }
-        match event {
-            Event::Start(Tag::Link { .. } | Tag::Image { .. }) => return None,
-            Event::Start(Tag::Paragraph | Tag::Heading { .. } | Tag::Item) => {
-                paragraph_start = range.start;
-            }
-            Event::Text(_) => token_is_prose = true,
-            Event::Start(Tag::BlockQuote(_)) if needs_quote_boundary => {
-                let prefix = &text[range.start.max(line_start)..start];
-                quote_boundary |= prefix.chars().all(|ch| matches!(ch, '>' | ' ' | '\t'));
-            }
-            Event::Start(tag @ (Tag::Strong | Tag::Emphasis | Tag::Strikethrough)) => {
-                let delimiter = match tag {
-                    Tag::Strong => 2,
-                    Tag::Emphasis => 1,
-                    _ => text[range.clone()]
-                        .bytes()
-                        .take_while(|byte| *byte == b'~')
-                        .count(),
-                };
-                let closing = range.end.saturating_sub(delimiter);
-                if cursor > closing {
-                    return None;
-                }
-                end = end.min(closing);
-            }
-            _ => {}
-        }
-    }
-    if needs_quote_boundary && !quote_boundary {
-        return None;
-    }
-    // Duplicate reference definitions are consumed without body events and
-    // only the first definition is retained by reference_definitions(). Requiring
-    // text also protects those later definitions and raw HTML without excluding
-    // tight-list items, which omit paragraph events.
-    if !token_is_prose {
-        return None;
-    }
-    // The parser leaves an unfinished link as prose. Once its destination is
-    // being authored, inserting a canonical link would create nested syntax.
-    // An unfinished destination can continue across a soft line break. Stay
-    // within its parsed paragraph so a malformed link in an earlier block does
-    // not disable completion in later prose.
-    let before = &text[paragraph_start..cursor];
-    for (destination, _) in before.rmatch_indices("](") {
-        if let Some(label) = before[..destination].rfind('[') {
-            let escaped = before[..label]
-                .bytes()
-                .rev()
-                .take_while(|byte| *byte == b'\\')
-                .count()
-                % 2
-                == 1;
-            let closing_escaped = before[..destination]
-                .bytes()
-                .rev()
-                .take_while(|byte| *byte == b'\\')
-                .count()
-                % 2
-                == 1;
-            if !escaped && !closing_escaped && paragraph_start + destination + 2 <= start {
-                let mut depth = 1usize;
-                let mut chars = before[destination + 2..].chars();
-                while let Some(ch) = chars.next() {
-                    match ch {
-                        '\\' => {
-                            chars.next();
-                        }
-                        '(' => depth += 1,
-                        ')' => {
-                            depth = depth.saturating_sub(1);
-                            if depth == 0 {
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                if depth > 0 {
-                    return None;
-                }
-            }
-        }
-    }
-    (!in_code(text, cursor)).then_some(end)
-}
-
-/// The `@` must begin a token. This intentionally excludes `name@example.com`
-/// and ordinary words while allowing punctuation such as `(@src`.
-pub(crate) fn mention_token(text: &str, cursor: usize) -> Option<MentionToken> {
-    if cursor > text.len() || !text.is_char_boundary(cursor) {
-        return None;
-    }
-    let token_start = text[..cursor]
-        .char_indices()
-        .rev()
-        .find_map(|(at, ch)| ch.is_whitespace().then_some(at + ch.len_utf8()))
-        .unwrap_or(0);
-    let Some(relative_at) = text[token_start..cursor].rfind('@') else {
-        return None;
-    };
-    let at = token_start + relative_at;
-    let valid_boundary = at == 0
-        || text[..at]
-            .chars()
-            .next_back()
-            .is_some_and(|ch| ch.is_whitespace() || matches!(ch, '(' | '[' | '{' | '>'));
-    if text[at + 1..cursor].contains('@') || !valid_boundary {
-        return None;
-    }
-    let closing = text[..at].chars().next_back().and_then(|ch| match ch {
-        '(' => Some(')'),
-        '[' => Some(']'),
-        '{' => Some('}'),
-        _ => None,
-    });
-    let end = text[cursor..]
-        .char_indices()
-        .find_map(|(offset, ch)| {
-            (ch.is_whitespace() || Some(ch) == closing).then_some(cursor + offset)
-        })
-        .unwrap_or(text.len());
-    if closing.is_some_and(|ch| text[at + 1..cursor].contains(ch)) {
-        return None;
-    }
-    let end = completion_markdown_end(text, at, cursor, end)?;
-    Some(MentionToken {
-        range: at..end,
-        query: text[at + 1..cursor].to_string(),
-    })
-}
-
-/// Invocation triggers share file completion's boundary rules, but never
-/// interpret paths, currency amounts or code as invocations.
-fn slash_token(text: &str, cursor: usize) -> Option<MentionToken> {
-    invocation_token(text, cursor, '/')
-}
-
-fn invocation_token(text: &str, cursor: usize, prefix: char) -> Option<MentionToken> {
-    if cursor > text.len() || !text.is_char_boundary(cursor) {
-        return None;
-    }
-    let start = text[..cursor]
-        .char_indices()
-        .rev()
-        .find(|(_, c)| c.is_whitespace() || matches!(c, '(' | '[' | '{' | '>'))
-        .map_or(0, |(i, c)| i + c.len_utf8());
-    if !text[start..cursor].starts_with(prefix) {
-        return None;
-    }
-    let query = &text[start + 1..cursor];
-    let name_grapheme = |grapheme: &str| {
-        grapheme.chars().next().is_some_and(char::is_alphanumeric)
-            || matches!(grapheme, "-" | "_" | ":" | ".")
-    };
-    if !query.graphemes(true).all(name_grapheme)
-        || (prefix == '$' && query.starts_with(char::is_numeric))
-    {
-        return None;
-    }
-    // Scan from the token's start, including any combining marks after a caret
-    // positioned between code points of the same grapheme.
-    let end = text[start + 1..]
-        .grapheme_indices(true)
-        .find_map(|(offset, grapheme)| (!name_grapheme(grapheme)).then_some(start + 1 + offset))
-        .unwrap_or(text.len());
-    if text.get(end..end + 1) == Some("/") {
-        return None;
-    }
-    let end = completion_markdown_end(text, start, cursor, end)?;
-    Some(MentionToken {
-        range: start..end,
-        query: query.to_string(),
-    })
-}
+// The completion tokens (`@`, `/`, `$`) live in the portable crate (#12216).
+pub(crate) use openagents_chat_view::composer_tokens::{
+    MentionToken, invocation_token, mention_token, slash_token,
+};
 
 /// Pasted prose is eligible only at completion boundaries, never inside
 /// Markdown code/links. Catalog matching below decides whether it is a reference.
@@ -9741,7 +9338,7 @@ impl Composer {
         match wizard.advance() {
             WizardStep::Done(answers) => self.wizard_finish(answers, cx),
             _ => {
-                let text = wizard.typed.get(wizard.page).cloned().unwrap_or_default();
+                let text = wizard.typed().to_owned();
                 self.input.update(cx, |input, cx| input.set_text(text, cx));
                 cx.notify();
             }
@@ -9753,7 +9350,7 @@ impl Composer {
         if let Some(wizard) = self.wizard.as_mut() {
             wizard.set_typed(text);
             wizard.back();
-            let text = wizard.typed.get(wizard.page).cloned().unwrap_or_default();
+            let text = wizard.typed().to_owned();
             self.input.update(cx, |input, cx| input.set_text(text, cx));
             cx.notify();
         }

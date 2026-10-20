@@ -28,6 +28,7 @@ use openagents_web_client::web::{Client, Follow};
 use openagents_web_client::{Change, Event, MessageRole as SentBy, Project, Refusal, Thread};
 use web_time::Instant;
 
+use crate::compose::{Compose, HostChat};
 use crate::model::{self, Group, Msg};
 use crate::route;
 
@@ -77,6 +78,9 @@ pub struct ChatApp {
     live: Option<Live>,
     list_state: ListState,
     composer: Entity<TextInput>,
+    /// The composer's drafts, send key, completions, queue, and question
+    /// wizard (#12267, #12268).
+    compose: Entity<Compose>,
     search: Entity<TextInput>,
     filter: String,
     rename: Option<(String, Entity<TextInput>)>,
@@ -111,6 +115,15 @@ impl ChatApp {
                 this.send(event.0.clone(), window, cx);
             },
         )
+        .detach();
+        let client = Client::from_page();
+        let compose = cx.new(|cx| Compose::new(composer.clone(), client.clone(), cx));
+        cx.observe(&compose, |this, compose, cx| {
+            if let Some(notice) = compose.update(cx, |compose, _| compose.take_notice()) {
+                this.notice = Some(notice);
+            }
+            cx.notify();
+        })
         .detach();
         let search = cx.new(|cx| TextInput::new("Search chats", cx));
         cx.observe(&search, |this, search, cx| {
@@ -182,7 +195,7 @@ impl ChatApp {
             .and_then(|w| w.location().origin().ok())
             .unwrap_or_default();
         let mut this = Self {
-            client: Client::from_page(),
+            client,
             check_ins: cx.new(crate::check_ins::CheckIns::new),
             signed_in: route::signed_in(),
             origin,
@@ -195,6 +208,7 @@ impl ChatApp {
             live: None,
             list_state: ListState::new(0, ListAlignment::Top, px(1200.)),
             composer,
+            compose,
             search,
             filter: String::new(),
             rename: None,
@@ -293,6 +307,8 @@ impl ChatApp {
     /// Shows `chat`, reading its messages, and follows its answer when one
     /// is being written.
     fn load(&mut self, chat: Option<String>, cx: &mut Context<Self>) {
+        self.compose
+            .update(cx, |compose, cx| compose.switch_chat(chat.as_deref(), cx));
         self.generation += 1;
         let generation = self.generation;
         self.menu = None;
@@ -312,11 +328,26 @@ impl ChatApp {
         self.composer
             .update(cx, |composer, _| composer.set_placeholder(placeholder));
         let Some(id) = chat else {
+            self.set_host_chat(None, cx);
             route::set_title("New chat");
             self.loading_chat = false;
             cx.notify();
             return;
         };
+        // A chat on one of the account's computers: its composer, queue,
+        // and questions go to that computer (#12267, #12268).
+        let host = route::computer().map(|(device, harness)| HostChat {
+            device,
+            chat: id.clone(),
+            harness,
+        });
+        let on_computer = host.is_some();
+        self.set_host_chat(host, cx);
+        if on_computer {
+            self.loading_chat = false;
+            cx.notify();
+            return;
+        }
         self.loading_chat = true;
         cx.notify();
         let client = self.client.clone();
@@ -343,7 +374,7 @@ impl ChatApp {
                         let messages = model::messages(&id, &rows, &detail.messages);
                         let pending = thread.pending() && !thread.synced();
                         let (kept, live) = model::split_pending(messages, pending);
-                        this.show(&kept);
+                        this.show(&kept, cx);
                         match (pending, thread.request_id.clone()) {
                             (true, Some(request)) => this.follow(id.clone(), request, live, cx),
                             _ => this.live = None,
@@ -358,9 +389,21 @@ impl ChatApp {
         .detach();
     }
 
-    fn show(&mut self, messages: &[Msg]) {
+    fn show(&mut self, messages: &[Msg], cx: &mut Context<Self>) {
         self.entries = model::entries(messages);
         self.sync_list();
+        let entries = &self.entries;
+        self.compose
+            .update(cx, |compose, cx| compose.transcript(entries, cx));
+    }
+
+    /// The open chat runs on one of the account's computers (or no longer
+    /// does): its commands, skills, files, queue, and questions come from
+    /// there (#12267, #12268).
+    pub fn set_host_chat(&mut self, host: Option<HostChat>, cx: &mut Context<Self>) {
+        self.compose
+            .update(cx, |compose, cx| compose.set_host(host, cx));
+        cx.notify();
     }
 
     /// Tells the list how many rows there are (the entries, and the answer
@@ -508,7 +551,18 @@ impl ChatApp {
 
     fn send(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
         let text = text.trim().to_owned();
-        if text.is_empty() || self.sending || self.live.is_some() {
+        if text.is_empty() {
+            return;
+        }
+        // A chat on a computer: the message goes on its queue, which the
+        // computer sends when the agent is free (#12268).
+        if self.compose.read(cx).host().is_some() {
+            self.compose
+                .update(cx, |compose, cx| compose.queue(text, cx));
+            window.focus(&self.composer.focus_handle(cx), cx);
+            return;
+        }
+        if self.sending || self.live.is_some() {
             return;
         }
         if text.chars().count() > MAX_CHARS {
@@ -541,6 +595,7 @@ impl ChatApp {
         self.sync_list();
         self.sending = true;
         self.notice = None;
+        self.compose.update(cx, |compose, cx| compose.sent(cx));
         let client = self.client.clone();
         let current = self.current.clone();
         let project = self.new_project.clone();
@@ -558,6 +613,8 @@ impl ChatApp {
                             route::push(Some(&id));
                             route::set_title(&model::title_from(&text));
                             this.current = Some(id.clone());
+                            this.compose
+                                .update(cx, |compose, _| compose.renamed_chat(&id));
                             this.generation += 1;
                             this.composer
                                 .update(cx, |composer, _| composer.set_placeholder("Ask anything"));
@@ -1307,6 +1364,28 @@ impl ChatApp {
     }
 
     fn render_composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        // An agent's question stands in for the composer (#12268).
+        let (wizard, completion, queue, send_key) = self.compose.update(cx, |compose, cx| {
+            (
+                compose.render_wizard(cx),
+                compose.render_completion(cx),
+                compose.render_queue(cx),
+                compose.render_send_key(cx),
+            )
+        });
+        if let Some(wizard) = wizard {
+            return div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .px(px(16.))
+                .pb(px(16.))
+                .pt(px(6.))
+                .gap(px(8.))
+                .children(queue)
+                .child(wizard)
+                .into_any_element();
+        }
         let live = self.live.is_some();
         let busy = live || self.sending;
         let empty = self.composer.read(cx).is_empty();
@@ -1356,6 +1435,8 @@ impl ChatApp {
             .pt(px(6.))
             .gap(px(8.))
             .children(blocked.map(|line| footer_text(line)))
+            .children(queue)
+            .children(completion)
             .child(
                 div()
                     .w_full()
@@ -1381,6 +1462,8 @@ impl ChatApp {
                     )
                     .child(send),
             )
+            .child(send_key)
+            .into_any_element()
     }
 
     fn render_new_chat(&self, cx: &mut Context<Self>) -> AnyElement {

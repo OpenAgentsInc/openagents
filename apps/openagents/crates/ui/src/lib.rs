@@ -29,7 +29,8 @@ mod comment_ui;
 pub mod comments;
 pub mod composer;
 mod composer_dock;
-mod composer_markdown;
+// The composer's Markdown editing helpers moved to the portable crate (#12216).
+pub(crate) use openagents_chat_view::composer_markdown;
 mod context_usage;
 mod dictation;
 pub use openagents_chat_view::edge_fade;

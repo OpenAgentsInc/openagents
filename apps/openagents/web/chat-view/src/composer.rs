@@ -3,15 +3,24 @@
 //! ([`TextInput::new`]) or, for a message, several
 //! ([`TextInput::multiline`]): Shift+Enter starts a new line, long lines
 //! wrap, and the field grows to [`MAX_ROWS`] rows, then scrolls.
+//!
+//! A message field is the desktop composer's editing model (#12267): its
+//! Markdown draws bold, italic, code, and struck text as it's typed, a new
+//! line continues a list (`openagents_chat_view::composer_markdown`), the
+//! send key is Enter or Cmd/Ctrl+Enter ([`TextInput::set_send_with_modifier`]),
+//! and while the app shows a completion list
+//! ([`TextInput::set_completing`]) the arrows, Enter, Tab, and Escape go to
+//! it as [`CompletionKey`]s.
 
 use std::ops::Range;
 
 use gpui::{
     App, Bounds, ClipboardItem, Context, CursorStyle, ElementId, ElementInputHandler, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, KeyBinding,
-    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
-    ScrollWheelEvent, ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle,
-    Window, WrappedLine, actions, div, fill, point, prelude::*, px, relative, size,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontWeight, GlobalElementId,
+    KeyBinding, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad,
+    Pixels, Point, ScrollWheelEvent, ShapedLine, SharedString, StrikethroughStyle, Style, TextRun,
+    UTF16Selection, UnderlineStyle, Window, WrappedLine, actions, div, fill, point, prelude::*, px,
+    relative, size,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -39,6 +48,8 @@ actions!(
         Down,
         SelectUp,
         SelectDown,
+        SubmitAlways,
+        Tab,
     ]
 );
 
@@ -59,6 +70,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("home", Home, context),
         KeyBinding::new("end", End, context),
         KeyBinding::new("enter", Submit, context),
+        KeyBinding::new("cmd-enter", SubmitAlways, context),
+        KeyBinding::new("ctrl-enter", SubmitAlways, context),
+        KeyBinding::new("tab", Tab, context),
         KeyBinding::new("shift-enter", Newline, context),
         KeyBinding::new("alt-enter", Newline, context),
         KeyBinding::new("up", Up, context),
@@ -83,6 +97,19 @@ pub struct Submitted(pub String);
 /// Emitted when the person presses Escape in the field.
 pub struct Cancelled;
 
+/// Emitted when the text or the caret changes, so the app can follow the
+/// token under the caret (`@`, `/`, `$`) and keep the chat's draft.
+pub struct Edited;
+
+/// A key meant for the completion list the app shows over the field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompletionKey {
+    Up,
+    Down,
+    Accept,
+    Dismiss,
+}
+
 pub struct TextInput {
     focus_handle: FocusHandle,
     content: SharedString,
@@ -100,10 +127,16 @@ pub struct TextInput {
     last_rows: Vec<(usize, WrappedLine, Pixels)>,
     /// How far a multi-line field has scrolled down.
     scroll_y: Pixels,
+    /// Enter starts a new line and Cmd/Ctrl+Enter sends.
+    send_with_modifier: bool,
+    /// The app shows a completion list for the token under the caret.
+    completing: bool,
 }
 
 impl EventEmitter<Submitted> for TextInput {}
 impl EventEmitter<Cancelled> for TextInput {}
+impl EventEmitter<Edited> for TextInput {}
+impl EventEmitter<CompletionKey> for TextInput {}
 
 impl TextInput {
     pub fn new(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
@@ -120,6 +153,8 @@ impl TextInput {
             multiline: false,
             last_rows: Vec::new(),
             scroll_y: px(0.),
+            send_with_modifier: false,
+            completing: false,
         }
     }
 
@@ -145,6 +180,40 @@ impl TextInput {
         self.placeholder = placeholder.into();
     }
 
+    /// The caret's byte offset.
+    pub fn cursor(&self) -> usize {
+        self.cursor_offset()
+    }
+
+    /// Whether IME composition is in progress.
+    pub fn composing(&self) -> bool {
+        self.marked_range.is_some()
+    }
+
+    /// Enter starts a new line and Cmd/Ctrl+Enter sends, or (false, the
+    /// default) Enter sends and Shift+Enter starts a new line.
+    pub fn set_send_with_modifier(&mut self, on: bool) {
+        self.send_with_modifier = on;
+    }
+
+    /// While on, the arrows, Enter, Tab, and Escape emit [`CompletionKey`]s.
+    pub fn set_completing(&mut self, on: bool) {
+        self.completing = on;
+    }
+
+    /// Puts `text` in place of `range` (from a completion), with the caret
+    /// after it.
+    pub fn replace_range(&mut self, range: Range<usize>, text: &str, cx: &mut Context<Self>) {
+        if range.end > self.content.len()
+            || !self.content.is_char_boundary(range.start)
+            || !self.content.is_char_boundary(range.end)
+            || range.start > range.end
+        {
+            return;
+        }
+        self.insert(Some(range), text, cx);
+    }
+
     /// Takes the text out of the field, leaving it empty.
     pub fn take(&mut self, cx: &mut Context<Self>) -> String {
         let text = self.content.to_string();
@@ -168,10 +237,27 @@ impl TextInput {
     }
 
     fn cancel(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
+        if self.completing {
+            return cx.emit(CompletionKey::Dismiss);
+        }
         cx.emit(Cancelled);
     }
 
-    fn submit(&mut self, _: &Submit, _: &mut Window, cx: &mut Context<Self>) {
+    fn submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
+        if self.completing && self.marked_range.is_none() {
+            return cx.emit(CompletionKey::Accept);
+        }
+        if self.multiline && self.send_with_modifier {
+            return self.newline(&Newline, window, cx);
+        }
+        self.send(cx);
+    }
+
+    fn submit_always(&mut self, _: &SubmitAlways, _: &mut Window, cx: &mut Context<Self>) {
+        self.send(cx);
+    }
+
+    fn send(&mut self, cx: &mut Context<Self>) {
         if self.marked_range.is_some() || self.is_empty() {
             return;
         }
@@ -179,17 +265,37 @@ impl TextInput {
         cx.emit(Submitted(text));
     }
 
+    fn tab(&mut self, _: &Tab, _: &mut Window, cx: &mut Context<Self>) {
+        if self.completing && self.marked_range.is_none() {
+            return cx.emit(CompletionKey::Accept);
+        }
+        cx.propagate();
+    }
+
     fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
         if !self.multiline {
-            return self.submit(&Submit, window, cx);
+            return self.send(cx);
         }
+        let _ = window;
         if self.marked_range.is_some() {
             return;
+        }
+        // A list continues on the next line; an empty item ends it.
+        if self.selected_range.is_empty() {
+            if let Some((range, text)) = openagents_chat_view::composer_markdown::newline_edit(
+                &self.content,
+                self.cursor_offset(),
+            ) {
+                return self.insert(Some(range), &text, cx);
+            }
         }
         self.insert(None, "\n", cx);
     }
 
     fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
+        if self.completing {
+            return cx.emit(CompletionKey::Up);
+        }
         match self.vertical(self.cursor_offset(), -1) {
             Some(offset) => self.move_to(offset, cx),
             None => self.move_to(0, cx),
@@ -197,6 +303,9 @@ impl TextInput {
     }
 
     fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
+        if self.completing {
+            return cx.emit(CompletionKey::Down);
+        }
         match self.vertical(self.cursor_offset(), 1) {
             Some(offset) => self.move_to(offset, cx),
             None => self.move_to(self.content.len(), cx),
@@ -277,6 +386,7 @@ impl TextInput {
             (self.content[0..range.start].to_owned() + text + &self.content[range.end..]).into();
         self.selected_range = range.start + text.len()..range.start + text.len();
         self.marked_range.take();
+        cx.emit(Edited);
         cx.notify();
     }
 
@@ -407,6 +517,7 @@ impl TextInput {
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         self.selected_range = offset..offset;
+        cx.emit(Edited);
         cx.notify()
     }
 
@@ -594,6 +705,7 @@ impl EntityInputHandler for TextInput {
             .map(|range_utf16| self.range_from_utf16(range_utf16))
             .map(|new_range| new_range.start + range.start..new_range.end + range.start)
             .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
+        cx.emit(Edited);
         cx.notify();
     }
 
@@ -843,6 +955,8 @@ impl Render for TextInput {
             .track_focus(&self.focus_handle(cx))
             .cursor(CursorStyle::IBeam)
             .on_action(cx.listener(Self::submit))
+            .on_action(cx.listener(Self::submit_always))
+            .on_action(cx.listener(Self::tab))
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
@@ -979,6 +1093,13 @@ impl AreaElement {
             underline: None,
             strikethrough: None,
         };
+        if input.multiline && !placeholder {
+            return (
+                text.clone(),
+                markdown_runs(&text, &run, input.marked_range.clone()),
+                false,
+            );
+        }
         let runs = match input.marked_range.as_ref().filter(|_| !placeholder) {
             Some(marked) => [
                 TextRun {
@@ -1006,6 +1127,85 @@ impl AreaElement {
         };
         (text, runs, placeholder)
     }
+}
+
+/// A draft's runs with its Markdown drawn as typed: bold (and headings),
+/// italic, code, and struck text, the IME's marked text underlined.
+fn markdown_runs(text: &str, base: &TextRun, marked: Option<Range<usize>>) -> Vec<TextRun> {
+    use openagents_chat_view::composer_markdown::{Face, faces};
+    let faces = faces(text);
+    let mut cuts = vec![0, text.len()];
+    for (range, _) in &faces {
+        cuts.push(range.start.min(text.len()));
+        cuts.push(range.end.min(text.len()));
+    }
+    if let Some(marked) = &marked {
+        cuts.push(marked.start.min(text.len()));
+        cuts.push(marked.end.min(text.len()));
+    }
+    cuts.sort_unstable();
+    cuts.dedup();
+    let mut runs = Vec::with_capacity(cuts.len());
+    for pair in cuts.windows(2) {
+        let (start, end) = (pair[0], pair[1]);
+        if start >= end {
+            continue;
+        }
+        let has = |face: Face| {
+            faces
+                .iter()
+                .any(|(range, f)| *f == face && range.start <= start && end <= range.end)
+        };
+        let bold = has(Face::Bold);
+        let code = has(Face::Code);
+        let mut run = TextRun {
+            len: end - start,
+            font: if code {
+                theme::mono(if bold {
+                    FontWeight::BOLD
+                } else {
+                    FontWeight::NORMAL
+                })
+            } else {
+                theme::sans(
+                    if bold {
+                        FontWeight::BOLD
+                    } else {
+                        FontWeight::NORMAL
+                    },
+                    has(Face::Italic),
+                )
+            },
+            ..base.clone()
+        };
+        if code {
+            run.color = theme::text_muted();
+        }
+        if has(Face::Strikethrough) {
+            run.strikethrough = Some(StrikethroughStyle {
+                color: Some(base.color),
+                thickness: px(1.0),
+            });
+        }
+        if marked
+            .as_ref()
+            .is_some_and(|marked| marked.start <= start && end <= marked.end)
+        {
+            run.underline = Some(UnderlineStyle {
+                color: Some(base.color),
+                thickness: px(1.0),
+                wavy: false,
+            });
+        }
+        runs.push(run);
+    }
+    if runs.is_empty() {
+        runs.push(TextRun {
+            len: text.len(),
+            ..base.clone()
+        });
+    }
+    runs
 }
 
 impl Element for AreaElement {

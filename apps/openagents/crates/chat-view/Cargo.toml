@@ -22,9 +22,13 @@ openagents-theme.workspace = true
 openagents-syntax = { path = "../syntax", default-features = false }
 openagents-brand.workspace = true
 openagents-proto.workspace = true
+# The chat entries the question wizard reads (`composer_wizard`).
+openagents-doc.workspace = true
 web-time = "1.1.0"
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 openagents-markdown.workspace = true
+# The composer's Markdown editing helpers (`composer_markdown`).
+pulldown-cmark.workspace = true
 openagents-veil.workspace = true
 unicode-segmentation.workspace = true
 serde_json.workspace = true

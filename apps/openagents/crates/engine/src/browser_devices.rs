@@ -10,13 +10,15 @@
 //! this computer allows the request in the computer's own app
 //! ([`Browsers::answer`], served by [`crate::connect_phone::LocalRpc`]).
 //!
-//! What a browser may call is [`ALLOWED`]: reads of the computer's
-//! harnesses, models, skills, commands, and workspace files. Later work
-//! widens it method by method.
+//! What a browser may call is [`ALLOWED`], reads of the computer's
+//! harnesses, models, skills, commands, and workspace files under the
+//! grant's observe right, and [`OPERATE`], the changes its run right
+//! covers: the chat queue, answers to an agent's questions, and edits to
+//! workspace files. Later work widens them method by method.
 
 use async_trait::async_trait;
-use coder_access::Rights;
 use coder_access::protocol::DeviceState;
+use coder_access::{Right, Rights};
 use openagents_rpc::browsers::{
     AskAccess, BROWSER_FORGET, BROWSER_HELLO, BROWSER_REQUEST, BROWSER_REQUEST_STATUS, Browser,
     BrowserRequest, Hello, RequestState, State,
@@ -43,7 +45,41 @@ pub const ALLOWED: &[&str] = &[
     methods::READ_WORKSPACE_BYTES,
     methods::SEARCH_WORKSPACE_FILES,
     methods::SEARCH_WORKSPACE_CONTENT,
+    // The composer's @ mentions (#12267).
+    methods::SEARCH_FILES,
+    // The queue panel's view of a chat's queue (#12268).
+    methods::WATCH_QUEUE,
+    // The file panel follows changes on the computer (#12272).
+    methods::WATCH_WORKSPACE_FILES,
 ];
+
+/// The engine methods a browser may call under its grant's run right
+/// ([`Right::Operate`]).
+pub const OPERATE: &[&str] = &[
+    // The queue panel and the question wizard (#12268).
+    methods::QUEUE_MESSAGE,
+    methods::UPDATE_QUEUED_MESSAGE,
+    methods::MOVE_QUEUED_MESSAGE,
+    methods::REMOVE_QUEUED_MESSAGE,
+    methods::SEND_QUEUED_MESSAGE_NOW,
+    methods::STEER_QUEUED_MESSAGE_NOW,
+    methods::QUEUE_COMMAND,
+    // The file panel's edits (#12272).
+    methods::WRITE_WORKSPACE_FILE,
+    methods::MOVE_WORKSPACE_ENTRY,
+    methods::DELETE_WORKSPACE_ENTRY,
+];
+
+/// The right `method` needs, or `None` when a browser can't call it.
+pub fn required_right(method: &str) -> Option<Right> {
+    if ALLOWED.contains(&method) {
+        Some(Right::Observe)
+    } else if OPERATE.contains(&method) {
+        Some(Right::Operate)
+    } else {
+        None
+    }
+}
 
 const ALLOW_FIRST: &str = "Allow this browser on the computer first.";
 const ENDED: &str = "This browser's access to this computer ended. Ask again.";
@@ -387,7 +423,9 @@ impl RpcService for Connection {
                     *lock(&self.key) = None;
                     return Err(RpcError::Failed(ENDED.into()));
                 }
-                if !ALLOWED.contains(&method) {
+                // `grant` admits only a browser grant, so its rights are
+                // `Rights::browser()`.
+                if !required_right(method).is_some_and(|right| Rights::browser().contains(right)) {
                     return Err(RpcError::Failed(
                         "A browser can't do that on this computer yet.".into(),
                     ));

@@ -137,6 +137,17 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
         ),
         json!({"entries": ["src"]})
     );
+    // The run right covers the queue, answers, and file edits (#12268, #12272).
+    for method in [
+        methods::QUEUE_MESSAGE,
+        methods::QUEUE_COMMAND,
+        methods::WRITE_WORKSPACE_FILE,
+    ] {
+        assert_eq!(
+            value(tab.handle(method, json!({})).await),
+            json!({ "ran": method })
+        );
+    }
     for method in ["OpenTerminal", methods::MUTATE, "StopEngine"] {
         assert!(
             failed(tab.handle(method, json!({})).await).contains("can't do that"),
@@ -229,4 +240,27 @@ async fn a_denied_browser_gets_nothing_and_an_allowed_one_can_forget() {
     }
     let key = SecretKey::new(&mut secp256k1::rand::rng());
     assert!(failed(tab.handle(BROWSER_REQUEST, ask(&key)).await).contains("Too many"));
+}
+
+/// Every method a browser may call names one right, and the browser grant
+/// holds each of them; nothing else is callable.
+#[test]
+fn each_browser_method_needs_a_right_the_grant_holds() {
+    for method in ALLOWED {
+        assert_eq!(required_right(method), Some(Right::Observe), "{method}");
+        assert!(!OPERATE.contains(method), "{method} is in both lists");
+    }
+    for method in OPERATE {
+        assert_eq!(required_right(method), Some(Right::Operate), "{method}");
+    }
+    for right in [Right::Observe, Right::Operate] {
+        assert!(Rights::browser().contains(right));
+    }
+    for method in [
+        methods::OPEN_TERMINAL,
+        methods::MUTATE,
+        methods::STOP_ENGINE,
+    ] {
+        assert_eq!(required_right(method), None, "{method}");
+    }
 }

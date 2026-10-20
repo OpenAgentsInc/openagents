@@ -12,6 +12,9 @@
 //! changes, and on the web [`icons::set_web_painter`] for icons.
 //! `docs/audits/2026-10-19-gpui-web-chat.md` is the plan.
 
+pub mod composer_markdown;
+pub mod composer_tokens;
+pub mod composer_wizard;
 pub mod edge_fade;
 pub mod file_icons;
 pub mod frost;
