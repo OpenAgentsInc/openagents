@@ -102,7 +102,7 @@ async fn foreman_page(State(app): State<App>, headers: HeaderMap) -> Response {
 
 /// The page, with the GPUI graph over the server map when `live`.
 pub(crate) fn page(headers: &HeaderMap, live: bool) -> Response {
-    live_page_with(headers, live, None, None)
+    live_page_with(headers, live, None, None, None)
 }
 
 /// The page for a server with the AgentGraph `build`, if any: the graph,
@@ -116,7 +116,7 @@ fn live_page(
         let json = serde_json::to_string(&agent_graph::foreman::graph()).ok()?;
         FirstFrame::cached(build, &json)
     });
-    live_page_with(headers, build.is_some(), first.as_deref(), fonts)
+    live_page_with(headers, build.is_some(), first.as_deref(), fonts, build)
 }
 
 fn live_page_with(
@@ -124,6 +124,7 @@ fn live_page_with(
     live: bool,
     first: Option<&FirstFrame>,
     fonts: Option<Markup>,
+    build: Option<&std::path::Path>,
 ) -> Response {
     let ui = UiPage::new("Foreman").path(PATH).description(
         "Foreman, the agent that keeps the whole picture of OpenAgents work, \
@@ -139,7 +140,7 @@ fn live_page_with(
         _ => GRAPH_POLICY.to_owned(),
     };
     let html = ui
-        .head(html! { (graph_script()) @if let Some(fonts) = fonts { (fonts) } })
+        .head(html! { (graph_script(build)) @if let Some(fonts) = fonts { (fonts) } })
         .content(body(Some(&graph), frame))
         .render(headers)
         .into_string();
@@ -185,15 +186,11 @@ fn compressed(headers: &HeaderMap, html: String) -> Response {
 }
 
 /// The start script, which loads the module and hands it the graph.
-fn graph_script() -> Markup {
-    // The glue and the module start downloading with the page instead of
-    // after the start script and the glue have each made a round trip
-    // (#12237). wasm-bindgen fetches the module with `fetch`, which this
-    // `as=fetch crossorigin` preload matches.
+fn graph_script(build: Option<&std::path::Path>) -> Markup {
     html! {
-        link rel="modulepreload" href=(format!("{GRAPH_ASSETS}/{GRAPH_GLUE}"));
-        link rel="preload" as="fetch" crossorigin="anonymous" href=(format!("{GRAPH_ASSETS}/{GRAPH_WASM}"));
-        script type="module" src=(format!("{GRAPH_ASSETS}/{GRAPH_START}")) {}
+        link rel="modulepreload" href=(super::gpui_build::url(build, GRAPH_ASSETS, GRAPH_GLUE));
+        link rel="preload" as="fetch" crossorigin="anonymous" href=(super::gpui_build::url(build, GRAPH_ASSETS, GRAPH_WASM));
+        script type="module" src=(super::gpui_build::url(build, GRAPH_ASSETS, GRAPH_START)) {}
     }
 }
 
@@ -333,7 +330,7 @@ async fn agent_page(
         return ui.scriptless().content(content).respond(&headers);
     };
     let mut response = ui
-        .head(html! { (graph_script()) (fonts) })
+        .head(html! { (graph_script(graph_build(&app))) (fonts) })
         .content(content)
         .respond(&headers);
     response.headers_mut().insert(
@@ -428,7 +425,7 @@ async fn graph_file(
     else {
         return crate::not_found().await;
     };
-    super::everglade::serve_build(directory, &file, content_type, &request).await
+    super::gpui_build::serve(directory, GRAPH_ASSETS, &file, content_type, &request).await
 }
 
 /// All of Foreman's own text: its instructions and every playbook skill.
@@ -1027,7 +1024,7 @@ mod tests {
         assert!(!json.contains('<') && !json.contains('&'));
         let back: agent_graph::GraphSpec = serde_json::from_str(json).unwrap();
         assert_eq!(back, graph);
-        let script = graph_script().into_string();
+        let script = graph_script(None).into_string();
         assert!(script.contains("src=\"/agent-graph/start.js\""));
         assert!(script.contains(
             "rel=\"preload\" as=\"fetch\" crossorigin=\"anonymous\" href=\"/agent-graph/openagents_web_agent_graph_bg.wasm\""

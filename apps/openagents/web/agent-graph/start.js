@@ -171,7 +171,7 @@ if (box && !navigator.gpu) {
 } else if (box) {
   tools();
   var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  Promise.all([init(), graph(), fonts()])
+  Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_agent_graph_bg.wasm", import.meta.url))) }), graph(), fonts()])
     .then(function (ready) {
       box.classList.add("is-live");
       var chat = document.getElementById("agent-graph-chat");

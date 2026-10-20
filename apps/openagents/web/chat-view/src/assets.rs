@@ -106,3 +106,17 @@ impl AssetSource for Assets {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod mask_tests {
+    include!(concat!(env!("OUT_DIR"), "/icons.rs"));
+
+    #[test]
+    fn every_embedded_icon_has_a_visible_alpha_mask() {
+        for (name, _) in super::ICONS {
+            let alpha = mask(name).unwrap_or_else(|| panic!("missing mask: {name}"));
+            assert_eq!(alpha.len(), 64 * 64, "{name}");
+            assert!(alpha.iter().any(|alpha| *alpha > 0), "{name}");
+        }
+    }
+}

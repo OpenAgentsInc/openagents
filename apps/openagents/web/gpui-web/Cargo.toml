@@ -21,6 +21,7 @@ path = "src/gpui_web.rs"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 gpui.workspace = true
+image = { version = "0.25", default-features = false }
 parking_lot = { version = "0.12.1", features = ["nightly"] }
 gpui_wgpu.workspace = true
 http_client.workspace = true
@@ -38,6 +39,10 @@ js-sys = "0.3"
 raw-window-handle.workspace = true
 wasm_thread = { version = "0.3", features = ["es_modules"], optional = true }
 web-sys = { version = "0.3", features = [
+    "Blob",
+    "CanvasRenderingContext2d",
+    "ImageBitmap",
+    "ImageData",
     "console",
     "Clipboard",
     "ClipboardEvent",
@@ -79,3 +84,6 @@ web-sys = { version = "0.3", features = [
     "WheelEvent",
     "Window",
 ] }
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.78"

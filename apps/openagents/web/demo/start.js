@@ -11,10 +11,13 @@ function fonts() {
     return Promise.reject(new Error("the page names no fonts"));
   }
   return Promise.all(
-    Array.prototype.map.call(links, function (link) {
-      return fetch(link.href).then(function (response) {
+    Array.prototype.map.call(links, function (link) { return link.href; }).concat([
+      new URL("./NotoSansCJKjp-Regular-demo.otf", import.meta.url),
+      new URL("./NotoColorEmoji-demo.ttf", import.meta.url),
+    ]).map(function (url) {
+      return fetch(url).then(function (response) {
         if (!response.ok) {
-          throw new Error("font " + link.href + ": " + response.status);
+          throw new Error("font " + url + ": " + response.status);
         }
         return response.arrayBuffer();
       }).then(function (buffer) {
@@ -27,7 +30,7 @@ function fonts() {
 // The module draws with WebGPU only (#12237).
 (navigator.gpu ? Promise.resolve() : Promise.reject(new Error("no WebGPU")))
   .then(function () {
-    return Promise.all([init(), fonts()]);
+    return Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_demo_bg.wasm", import.meta.url))) }), fonts()]);
   })
   .then(function (ready) {
     launch(ready[1]);

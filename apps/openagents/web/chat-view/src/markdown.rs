@@ -431,7 +431,7 @@ fn checkbox(checked: bool) -> impl IntoElement {
         .justify_center();
     if checked {
         base.bg(theme::accent()).child(
-            gpui::svg()
+            crate::svg()
                 .path("icons/check.svg")
                 .size(px(11.))
                 .text_color(theme::on_solid()),

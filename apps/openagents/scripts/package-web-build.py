@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Check a GPUI module's transfer budget and name its assets by content."""
+import gzip
+import hashlib
+import json
+import re
+import shutil
+from pathlib import Path
+import subprocess
+import sys
+
+BUDGET = 1_500_000
+
+
+def package(directory, name):
+    directory = Path(directory)
+    wasm = name + "_bg.wasm"
+    # Recompress the actual optimized module: a stale .br must never pass.
+    subprocess.run(["brotli", "-q", "11", "-f", str(directory / wasm)], check=True)
+    size = (directory / (wasm + ".br")).stat().st_size
+    report = {
+        "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+        "module": wasm,
+        "raw_bytes": (directory / wasm).stat().st_size,
+        "brotli_bytes": size,
+        "budget_bytes": BUDGET,
+    }
+    (directory / "size.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report), flush=True)
+    if size > BUDGET:
+        raise SystemExit(f"{wasm}: {size} bytes brotli exceeds the {BUDGET} byte budget")
+
+    assets = {}
+
+    def write(original, content):
+        path = Path(original)
+        digest = hashlib.sha256(content).hexdigest()
+        hashed = f"{path.stem}.{digest}{path.suffix}"
+        assets[original] = hashed
+        target = directory / original
+        target.write_bytes(content)
+        target.with_name(original + ".gz").write_bytes(gzip.compress(content, mtime=0))
+        if original != wasm:
+            subprocess.run(["brotli", "-q", "11", "-f", str(target)], check=True)
+        for suffix in ("", ".gz", ".br"):
+            shutil.copyfile(directory / (original + suffix), directory / (hashed + suffix))
+        return hashed
+
+    hashed_wasm = write(wasm, (directory / wasm).read_bytes())
+    glue = name + ".js"
+    source = (directory / glue).read_text()
+    if wasm not in source:
+        raise SystemExit(f"{glue}: wasm-bindgen no longer names {wasm}")
+    hashed_glue = write(glue, source.replace(wasm, hashed_wasm).encode())
+    source = (directory / "start.js").read_text()
+    if glue not in source or wasm not in source:
+        raise SystemExit("start.js must name both the glue and the streaming module")
+    source = source.replace(glue, hashed_glue).replace(wasm, hashed_wasm)
+    # Read only fonts named by the source loader, not hashed leftovers from
+    # an earlier build in this directory.
+    fonts = re.findall(r'"(?:\./)?(Noto[^/"]+\.(?:ttf|otf))"', source)
+    for filename in sorted(set(fonts)):
+        hashed_font = write(filename, (directory / filename).read_bytes())
+        source = source.replace(filename, hashed_font)
+    write("start.js", source.encode())
+    (directory / "assets.json").write_text(json.dumps(assets, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        raise SystemExit("usage: package-web-build.py OUTDIR MODULE_NAME")
+    package(*sys.argv[1:])

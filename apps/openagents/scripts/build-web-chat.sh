@@ -15,7 +15,7 @@
 #
 # Prerequisites: as build-web-demo.sh, the pinned toolchain's
 # wasm32-unknown-unknown target and the `wasm-bindgen` CLI at the version
-# web/Cargo.lock pins. `wasm-opt` and `brotli` are used when present.
+# web/Cargo.lock pins. `wasm-opt`, `brotli`, and Python 3 are required.
 #
 # Usage: apps/openagents/scripts/build-web-chat.sh OUTDIR
 set -euo pipefail
@@ -38,17 +38,19 @@ if [ "$installed" != "$locked" ]; then
   exit 69
 fi
 
+for tool in wasm-opt brotli python3; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "$tool is not installed" >&2; exit 69; }
+done
+
 cargo build --locked --manifest-path "$web/Cargo.toml" -p openagents-web-chat \
   --release --target "$target"
 
 mkdir -p "$out/fonts"
 wasm-bindgen --target web --no-typescript --out-dir "$out" \
   "$target_dir/$target/release/openagents_web_chat.wasm"
-if command -v wasm-opt >/dev/null 2>&1; then
-  wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
+wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     --enable-sign-ext --enable-mutable-globals --enable-reference-types \
     "$out/openagents_web_chat_bg.wasm" -o "$out/openagents_web_chat_bg.wasm"
-fi
 cp "$web/chat/start.js" "$out/start.js"
 # The faces start.js asks for, by the names in its FONTS list.
 fonts="$(sed -n 's/^  "\([A-Za-z-]*\.ttf\)",$/\1/p' "$web/chat/start.js")"
@@ -61,9 +63,7 @@ compress() {
     brotli -q 11 -f -o "$1.br" "$1"
   fi
 }
-for file in openagents_web_chat.js openagents_web_chat_bg.wasm start.js; do
-  compress "$out/$file"
-done
+python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat
 for font in $fonts; do
   compress "$out/fonts/$font"
 done

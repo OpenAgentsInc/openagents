@@ -10,11 +10,13 @@ use futures::StreamExt as _;
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, Focusable, FollowMode, FontWeight,
     Hsla, Image, IntoElement, ListAlignment, ListState, ParentElement, Render, SharedString,
-    SharedUri, Styled, Task, Window, div, img, list, prelude::*, px, svg,
+    SharedUri, Styled, Task, Window, div, list, prelude::*, px,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
+use openagents_gpui_web::img;
 use openagents_web_chat_view::composer::{Cancelled, Submitted, TextInput};
 use openagents_web_chat_view::markdown::{Veil, visible_chars};
+use openagents_web_chat_view::svg;
 use openagents_web_chat_view::transcript::{
     self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, VEIL_FADE_MS, ago, button, chip,
     footer_text, info_card, truncate, veil_alpha,

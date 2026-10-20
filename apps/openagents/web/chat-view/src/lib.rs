@@ -14,3 +14,10 @@ pub mod transcript;
 pub fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
+
+#[cfg(target_family = "wasm")]
+mod icon;
+#[cfg(not(target_family = "wasm"))]
+pub use gpui::svg;
+#[cfg(target_family = "wasm")]
+pub use icon::svg;

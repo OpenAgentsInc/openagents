@@ -64,17 +64,19 @@ if (!supported()) {
       });
     })
   );
-  Promise.all([init(), fonts])
+  document.addEventListener("gpui-first-frame", function () {
+    var shell = document.getElementById("gpui-shell");
+    if (shell) {
+      shell.style.display = "none";
+    }
+    // Measure the actual first frame, including renderer initialization.
+    window.__gpuiReadyAt = performance.now();
+    window.__gpuiReadyMs = window.__gpuiReadyAt - started;
+    document.documentElement.dataset.gpui = "ready";
+  }, { once: true });
+  Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
     .then(function (loaded) {
       launch(loaded[1]);
-      var shell = document.getElementById("gpui-shell");
-      if (shell) {
-        shell.style.display = "none";
-      }
-      // How long the page took to draw the canvas, for the size checks.
-      window.__gpuiReadyAt = performance.now();
-      window.__gpuiReadyMs = window.__gpuiReadyAt - started;
-      document.documentElement.dataset.gpui = "ready";
     })
     .catch(function (error) {
       say("The chat couldn't start. Reload the page to try again.");

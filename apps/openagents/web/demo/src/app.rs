@@ -9,7 +9,7 @@ use std::time::Duration;
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, Focusable, FollowMode, FontWeight,
     Hsla, Image, ImageFormat, IntoElement, ListAlignment, ListState, ParentElement, Render,
-    SharedString, Styled, Window, div, list, prelude::*, px, svg,
+    SharedString, Styled, Window, div, list, prelude::*, px,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_proto::{
@@ -19,6 +19,7 @@ use web_time::Instant;
 
 use openagents_web_chat_view::composer::{Submitted, TextInput};
 use openagents_web_chat_view::markdown::{Veil, visible_chars};
+use openagents_web_chat_view::svg;
 use openagents_web_chat_view::theme;
 use openagents_web_chat_view::transcript::{
     self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, VEIL_FADE_MS, ago, chip, choice_mark,

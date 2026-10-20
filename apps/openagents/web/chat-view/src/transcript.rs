@@ -6,14 +6,19 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+#[cfg(not(target_family = "wasm"))]
+use gpui::img;
 use gpui::{
     AnyElement, App, ClickEvent, FontWeight, Hsla, Image, IntoElement, ObjectFit, ParentElement,
-    SharedString, Styled, Window, div, img, prelude::*, px, svg,
+    SharedString, Styled, Window, div, prelude::*, px,
 };
 use openagents_doc::{MessagePart, MessageStatus};
+#[cfg(target_family = "wasm")]
+use openagents_gpui_web::img;
 use openagents_proto::{ReasoningLevel, TodoStatus, ToolCall, UserInputQuestion};
 
 use crate::markdown::{Markdown, Veil};
+use crate::svg;
 use crate::{now_ms, theme};
 
 pub const SIDEBAR_WIDTH: f32 = 272.;

@@ -60,12 +60,5 @@ use openagents_gpui_web::WebFonts;
 
 #[cfg(target_family = "wasm")]
 fn font_faces(fonts: &js_sys::Array) -> Vec<std::borrow::Cow<'static, [u8]>> {
-    let mut faces = WebFonts::from_js(openagents_web_chat_view::theme::SANS, fonts).faces;
-    faces.push(std::borrow::Cow::Borrowed(include_bytes!(
-        "../assets/fonts/NotoSansCJKjp-Regular-demo.otf"
-    )));
-    faces.push(std::borrow::Cow::Borrowed(include_bytes!(
-        "../assets/fonts/NotoColorEmoji-demo.ttf"
-    )));
-    faces
+    WebFonts::from_js(openagents_web_chat_view::theme::SANS, fonts).faces
 }

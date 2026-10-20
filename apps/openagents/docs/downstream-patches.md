@@ -1365,3 +1365,26 @@ them in `/agent/foreman` (`pages/first_frame.rs` in `openagents-web`).
   `<link rel=preload as=fetch crossorigin data-gpui-font>` preloads, which
   its start script reads back. `first-frame-capture` still compiles the
   same files in, natively.
+
+### Web transfer budget (#12219)
+
+- Web release builds use size-focused compilation, require Binaryen and
+  brotli, and fail above 1,500,000 brotli bytes. `size.json` records the
+  commit, raw size, compressed size, and budget.
+- `package-web-build.py` hashes the module, glue, start script, and demo font
+  subsets in dependency order. `assets.json` maps entry points to immutable
+  files. Server preloads and the loader use the same hashed module URL;
+  the loader compiles it while downloading. Stable URLs revalidate.
+- Chat images use the browser's decoder and GPUI's image painter. Fixed
+  icons become alpha masks on the build machine, tinted by GPUI at runtime;
+  the module carries neither desktop image codecs nor an SVG parser.
+- The chat keeps its HTML outline until `gpui-first-frame`. The demo's CJK
+  and emoji subsets are separate font files; the signed-in chat fetches
+  neither subset.
+
+Measured with Rust 1.98.1 and Binaryen 128: AgentGraph 1,292,635 B,
+chat 1,446,032 B, and demo 1,408,006 B brotli. Five fresh Chromium sessions
+with cache off, 20 Mbit/s, and 40 ms latency reached the chat's first-frame
+event in a median 1.39 s (1.13–1.80 s); server HTML painted first in every
+run. Pixel and cross-browser checks after deployment are tracked in the
+master delegation audit.

@@ -235,7 +235,7 @@ RUN --mount=type=bind,target=/context \
 FROM rust:1.98.1-slim-trixie AS gpuiweb-base
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        --no-install-recommends build-essential pkg-config clang llvm binaryen brotli curl \
+        --no-install-recommends build-essential pkg-config clang llvm binaryen brotli curl python3 \
     && rm -rf /var/lib/apt/lists/*
 COPY scripts/deploy/oa-kache.sh /usr/local/bin/oa-kache
 RUN oa-kache install

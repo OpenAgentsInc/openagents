@@ -153,7 +153,15 @@ pub(crate) async fn page(app: &App, headers: &HeaderMap, chat: Option<String>) -
     // otherwise the start script loads the build's own copies.
     let fonts = super::gpui_fonts::fonts(app)
         .and_then(|fonts| fonts.preloads(&super::gpui_fonts::CHAT_FACES));
-    let document = shell(&title, &csrf, &rows, chat.as_deref(), &regular, fonts);
+    let document = shell(
+        &title,
+        &csrf,
+        &rows,
+        chat.as_deref(),
+        &regular,
+        fonts,
+        build(app),
+    );
     let mut response = Html(document.into_string()).into_response();
     let headers = response.headers_mut();
     headers.insert(
@@ -174,6 +182,7 @@ fn shell(
     current: Option<&str>,
     regular: &str,
     fonts: Option<Markup>,
+    build: Option<&Path>,
 ) -> Markup {
     html! {
         (DOCTYPE)
@@ -188,9 +197,8 @@ fn shell(
                 title { (title) " \u{b7} OpenAgents" }
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
                 link rel="stylesheet" href=(SHELL_CSS_PATH);
-                link rel="modulepreload" href={ (BUILD_PATH) "/" (GPUI_CHAT_GLUE) };
-                // The module downloads with the page (#12237).
-                link rel="preload" as="fetch" crossorigin="anonymous" href={ (BUILD_PATH) "/" (GPUI_CHAT_WASM) };
+                link rel="modulepreload" href=(super::gpui_build::url(build, BUILD_PATH, GPUI_CHAT_GLUE));
+                link rel="preload" as="fetch" crossorigin="anonymous" href=(super::gpui_build::url(build, BUILD_PATH, GPUI_CHAT_WASM));
                 @if let Some(fonts) = fonts { (fonts) }
             }
             body {
@@ -223,7 +231,7 @@ fn shell(
                         }
                     }
                 }
-                script type="module" src={ (BUILD_PATH) "/" (GPUI_CHAT_START) } {}
+                script type="module" src=(super::gpui_build::url(build, BUILD_PATH, GPUI_CHAT_START)) {}
             }
         }
     }
@@ -272,7 +280,7 @@ async fn build_file(
     else {
         return crate::not_found().await;
     };
-    super::everglade::serve_build(directory, &file, content_type, &request).await
+    super::gpui_build::serve(directory, BUILD_PATH, &file, content_type, &request).await
 }
 
 async fn font_file(
@@ -341,7 +349,16 @@ mod tests {
 
     #[test]
     fn the_shell_paints_the_chat_list_and_loads_the_start_script() {
-        let html = shell("Chat", "abc123", &rows(), Some("c1"), "/chat/c1", None).into_string();
+        let html = shell(
+            "Chat",
+            "abc123",
+            &rows(),
+            Some("c1"),
+            "/chat/c1",
+            None,
+            None,
+        )
+        .into_string();
         assert!(html.contains("src=\"/gpui/build/start.js\""));
         assert!(html.contains("rel=\"modulepreload\" href=\"/gpui/build/openagents_web_chat.js\""));
         assert!(html.contains("name=\"openagents-csrf\" content=\"abc123\""));
@@ -354,8 +371,26 @@ mod tests {
     }
 
     #[test]
+    fn the_preload_and_loader_use_the_same_hashed_module() {
+        let dir = tempfile::tempdir().unwrap();
+        let hashed = format!("openagents_web_chat_bg.{}.wasm", "a".repeat(64));
+        std::fs::write(
+            dir.path().join("assets.json"),
+            serde_json::to_vec(&std::collections::HashMap::from([(
+                GPUI_CHAT_WASM,
+                &hashed,
+            )]))
+            .unwrap(),
+        )
+        .unwrap();
+        let html = shell("Chat", "csrf", &[], None, "/", None, Some(dir.path())).into_string();
+        assert!(html.contains(&format!("href=\"{BUILD_PATH}/{hashed}\"")));
+        assert!(!html.contains(&format!("href=\"{BUILD_PATH}/{GPUI_CHAT_WASM}\"")));
+    }
+
+    #[test]
     fn the_shell_copy_is_plain_and_names_no_upstream() {
-        let html = shell("New chat", "x", &rows(), None, "/", None).into_string();
+        let html = shell("New chat", "x", &rows(), None, "/", None, None).into_string();
         let text = oa_copy::visible_text(&html);
         assert!(oa_copy::violations(&text, &[]).is_empty(), "{text}");
         assert!(!html.to_lowercase().contains("zeron"));

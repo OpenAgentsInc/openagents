@@ -26,8 +26,7 @@
 #
 # Prerequisites: the pinned toolchain's wasm32-unknown-unknown target and the
 # `wasm-bindgen` CLI at the version web/Cargo.lock pins (`cargo install
-# wasm-bindgen-cli --version VERSION --locked`). `wasm-opt` (Binaryen) is
-# used when present, and `brotli` when present.
+# wasm-bindgen-cli --version VERSION --locked`). `wasm-opt` (Binaryen), `brotli`, and Python 3 are required.
 #
 # Usage: apps/openagents/scripts/build-web-demo.sh [--with-page] [--app APP] OUTDIR
 set -euo pipefail
@@ -68,24 +67,24 @@ if [ "$installed" != "$locked" ]; then
   exit 69
 fi
 
+for tool in wasm-opt brotli python3; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "$tool is not installed" >&2; exit 69; }
+done
+
 cargo build --locked --manifest-path "$web/Cargo.toml" -p "$package" \
   --release --target "$target"
 
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-dir "$out" \
   "$target_dir/$target/release/$name.wasm"
-if command -v wasm-opt >/dev/null 2>&1; then
-  wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
+wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     --enable-sign-ext --enable-mutable-globals --enable-reference-types \
     "$out/${name}_bg.wasm" -o "$out/${name}_bg.wasm"
-fi
 cp "$crate/start.js" "$out/start.js"
-for file in "$name.js" "${name}_bg.wasm" start.js; do
-  gzip -9 -n -c "$out/$file" > "$out/$file.gz"
-  if command -v brotli >/dev/null 2>&1; then
-    brotli -q 11 -f -o "$out/$file.br" "$out/$file"
-  fi
-done
+if [ "$app_name" = demo ]; then
+  cp "$crate/assets/fonts/"*.otf "$crate/assets/fonts/"*.ttf "$out/"
+fi
+python3 "$app/scripts/package-web-build.py" "$out" "$name"
 if [ "$app_name" = agent-graph ]; then
   first="$out/first-frame"
   mkdir -p "$first"

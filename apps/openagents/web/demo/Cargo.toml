@@ -31,3 +31,7 @@ getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] 
 uuid.workspace = true
 chrono = { version = "0.4", features = ["wasmbind"] }
 js-sys = "0.3"
+
+# The imported fixture tests validate their Luau visual scripts natively.
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+openagents-visual = { path = "../../crates/visual" }

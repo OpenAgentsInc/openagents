@@ -68,14 +68,16 @@ fn build(app: &App) -> Option<&Path> {
 /// The loading line; the demo adds its canvas to the page and the start
 /// script removes the line once the demo runs. `fonts` preloads the shared
 /// font files the start script hands to the module.
-fn body(fonts: &str) -> String {
+fn body(fonts: &str, build: Option<&Path>) -> String {
+    let start = super::gpui_build::url(build, GPUI_DEMO_PATH, GPUI_DEMO_START);
+    let glue = super::gpui_build::url(build, GPUI_DEMO_PATH, GPUI_DEMO_GLUE);
+    let wasm = super::gpui_build::url(build, GPUI_DEMO_PATH, GPUI_DEMO_WASM);
     format!(
-        "<link rel=\"modulepreload\" href=\"{GPUI_DEMO_PATH}/{GPUI_DEMO_GLUE}\">\
-<link rel=\"preload\" as=\"fetch\" crossorigin=\"anonymous\" href=\"{GPUI_DEMO_PATH}/{GPUI_DEMO_WASM}\">\
-{fonts}<h1 class=\"unseen\">{TITLE}</h1>\
+        "<link rel=\"modulepreload\" href=\"{glue}\">\
+<link rel=\"preload\" as=\"fetch\" crossorigin=\"anonymous\" href=\"{wasm}\">{fonts}<h1 class=\"unseen\">{TITLE}</h1>\
 <p class=\"glade-status\" id=\"gpui-status\" aria-live=\"polite\">Loading\u{2026}</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to see the demo.</p></noscript>\
-<script type=\"module\" src=\"{GPUI_DEMO_PATH}/{GPUI_DEMO_START}\"></script>"
+<script type=\"module\" src=\"{start}\"></script>"
     )
 }
 
@@ -106,7 +108,7 @@ async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
     let (Some(_), Some(fonts)) = (build(&app), fonts) else {
         return unavailable(&headers);
     };
-    let mut response = fullscreen(TITLE, &body(&fonts.into_string()));
+    let mut response = fullscreen(TITLE, &body(&fonts.into_string(), build(&app)));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(GPUI_DEMO_POLICY),
@@ -119,11 +121,12 @@ async fn build_file(
     UrlPath(file): UrlPath<String>,
     request: HeaderMap,
 ) -> Response {
-    let (Some(directory), Some(content_type)) = (build(&app), super::everglade::build_type(&file))
+    let (Some(directory), Some(content_type)) =
+        (build(&app), super::gpui_build::content_type(&file))
     else {
         return crate::not_found().await;
     };
-    super::everglade::serve_build(directory, &file, content_type, &request).await
+    super::gpui_build::serve(directory, GPUI_DEMO_PATH, &file, content_type, &request).await
 }
 
 #[cfg(test)]
@@ -140,16 +143,18 @@ mod tests {
 
     #[test]
     fn the_page_loads_the_start_script_from_the_build() {
-        let html = body("<link data-gpui-font=\"Geist.ttf\">");
+        let html = body("<link data-gpui-font=\"Geist.ttf\">", None);
         assert!(html.contains("src=\"/demo/gpui/start.js\""));
-        assert!(html.contains("as=\"fetch\" crossorigin=\"anonymous\" href=\"/demo/gpui/openagents_web_demo_bg.wasm\""));
+        assert!(html.contains(
+            "as=\"fetch\" crossorigin=\"anonymous\" href=\"/demo/gpui/openagents_web_demo_bg.wasm\""
+        ));
         assert!(html.contains("id=\"gpui-status\""));
     }
 
     #[test]
     fn the_page_copy_is_plain_and_names_no_upstream() {
-        let text = oa_copy::visible_text(&body(""));
+        let text = oa_copy::visible_text(&body("", None));
         assert!(oa_copy::violations(&text, &[]).is_empty(), "{text}");
-        assert!(!body("").to_lowercase().contains("zeron"));
+        assert!(!body("", None).to_lowercase().contains("zeron"));
     }
 }
