@@ -70,6 +70,12 @@ roadmap records completed Linux CPU/CUDA latency and throughput comparisons,
 HTTP results, package inventories, and retained intermediate misses. Apple and mobile
 device qualification remains in `NEEDS_OWNER.md`.
 
+## Implementation roadmap
+
+The [implementation roadmap](implementation-roadmap.md) combines the DeepInfer
+and Mesh-LLM findings into prioritized changes, dependencies, and completion
+criteria grounded in Psionic's current serving and cluster code.
+
 ## Framework comparisons
 
 The [DeepInfer review](deepinfer-lessons.md) compares its released inference
