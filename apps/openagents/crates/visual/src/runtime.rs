@@ -60,10 +60,18 @@ pub fn globals(lua: &Lua) -> Result<Table<'_>> {
 
 pub fn interrupt(lua: &mut Lua, check: impl Fn() -> Result<()> + 'static) {
     #[cfg(any(target_family = "wasm", feature = "portable-runtime"))]
-    lua.set_interrupt_handler(luau::InterruptHooks::new().on_execution(move |_| {
-        check()?;
-        Ok(luau::InterruptAction::Continue)
-    }));
+    {
+        let execution = std::rc::Rc::new(check);
+        let pattern = execution.clone();
+        lua.set_interrupt_handler(
+            luau::InterruptHooks::new()
+                .on_execution(move |_| {
+                    execution()?;
+                    Ok(luau::InterruptAction::Continue)
+                })
+                .on_pattern(move |_| pattern()),
+        );
+    }
     #[cfg(not(any(target_family = "wasm", feature = "portable-runtime")))]
     lua.set_interrupt(move |_| {
         check()?;

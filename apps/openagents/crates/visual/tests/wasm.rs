@@ -69,6 +69,13 @@ fn script_failures_and_limits_return_errors_without_trapping_the_app() {
     let error = Visual::load("while true do end", 1).err().unwrap();
     assert!(error.message.contains("time budget"), "{error}");
     let error = Visual::load(
+        "string.find(string.rep('a', 128), '^a*a*a*a*a*a*a*a*b$') return ui.text 'finished'",
+        1,
+    )
+    .err()
+    .unwrap();
+    assert!(error.message.contains("time budget"), "{error}");
+    let error = Visual::load(
         "local t = {} for i = 1, 1e9 do t[i] = string.rep('x', 1024) .. i end",
         1,
     )
