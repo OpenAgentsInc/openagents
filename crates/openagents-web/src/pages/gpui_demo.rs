@@ -57,7 +57,7 @@ pub(crate) fn routes() -> Router<App> {
 
 /// The build directory, when it holds the glue, the module and the start
 /// script.
-fn build(app: &App) -> Option<&Path> {
+pub(crate) fn build(app: &App) -> Option<&Path> {
     let directory = app.config.gpui_demo.as_deref()?;
     [GPUI_DEMO_GLUE, GPUI_DEMO_WASM, GPUI_DEMO_START]
         .iter()

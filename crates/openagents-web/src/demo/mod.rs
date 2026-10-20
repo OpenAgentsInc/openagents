@@ -12,7 +12,7 @@ mod view;
 
 use axum::{
     Form, Router,
-    extract::{DefaultBodyLimit, Path},
+    extract::{DefaultBodyLimit, Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -90,11 +90,27 @@ pub(crate) fn sample(headers: &HeaderMap, slug: &str) -> Response {
     }
 }
 
-async fn index(headers: HeaderMap) -> Response {
+/// Where the GPUI demo answers. The HTML demo retires in its favor
+/// (#12337): with the GPUI build on this server, `/demo` and its chats
+/// move there; without it, the HTML demo stays.
+const GPUI_DEMO: &str = "/demo/gpui";
+
+fn retired(app: &App) -> Option<Response> {
+    crate::pages::gpui_demo::build(app)
+        .map(|_| protect(Redirect::permanent(GPUI_DEMO).into_response()))
+}
+
+async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
+    if let Some(moved) = retired(&app) {
+        return moved;
+    }
     page(&headers, &CHATS[0], &[])
 }
 
-async fn show(headers: HeaderMap, Path(slug): Path<String>) -> Response {
+async fn show(State(app): State<App>, headers: HeaderMap, Path(slug): Path<String>) -> Response {
+    if let Some(moved) = retired(&app) {
+        return moved;
+    }
     // The earlier demo addressed chats by number (`/demo/5`).
     if slug.bytes().all(|b| b.is_ascii_digit()) {
         return protect(Redirect::to("/demo").into_response());

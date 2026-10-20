@@ -161,3 +161,30 @@ async fn a_sent_message_gets_a_scripted_reply_with_and_without_htmx() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+/// #12337: with the GPUI demo built on this server, the HTML demo and its
+/// chats move to `/demo/gpui` for good.
+#[tokio::test]
+async fn the_html_demo_moves_to_the_gpui_demo_when_it_is_built() {
+    let root = tempfile::tempdir().unwrap();
+    let build = root.path().join("gpui-demo");
+    std::fs::create_dir(&build).unwrap();
+    for file in [
+        crate::pages::gpui_demo::GPUI_DEMO_GLUE,
+        crate::pages::gpui_demo::GPUI_DEMO_WASM,
+        crate::pages::gpui_demo::GPUI_DEMO_START,
+    ] {
+        std::fs::write(build.join(file), "").unwrap();
+    }
+    for path in ["/demo", "/demo/lease-fix", "/demo/5"] {
+        let mut config = config(root.path());
+        config.gpui_demo = Some(build.clone());
+        let (status, headers, _) = send(config, get(path, "openagents.com", false)).await;
+        assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{path}");
+        assert_eq!(headers[header::LOCATION], "/demo/gpui", "{path}");
+    }
+    let mut config = config(root.path());
+    config.gpui_demo = Some(build);
+    let (status, _, _) = send(config, get("/demo/gpui", "openagents.com", false)).await;
+    assert_eq!(status, StatusCode::OK);
+}
