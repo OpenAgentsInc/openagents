@@ -32,6 +32,7 @@ use crate::compose::{Compose, HostChat};
 use crate::model::{self, Msg};
 use crate::route;
 
+mod cloud_computers;
 /// Every computer's chats from the registry (#12265).
 mod computers;
 /// A new session on a computer (#12266).
@@ -94,6 +95,7 @@ pub struct ChatApp {
     watching: Option<Task<()>>,
     /// A new session's computer, project, branch, and agent (#12266).
     target: new_session::Target,
+    cloud_computers: cloud_computers::State,
     _registry: Task<()>,
     /// The open chat; `None` is a new chat.
     current: Option<String>,
@@ -235,6 +237,7 @@ impl ChatApp {
             computers_loaded: false,
             watching: None,
             target: new_session::Target::default(),
+            cloud_computers: cloud_computers::State::default(),
             _registry: Task::ready(()),
             current: None,
             entries: Vec::new(),

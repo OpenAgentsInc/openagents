@@ -7,6 +7,7 @@
 //! with `EventSource`, signed in by the site's own cookie; writes carry the
 //! page's CSRF value in `x-openagents-csrf`.
 
+pub mod cloud_computers;
 pub mod event;
 pub mod types;
 /// Every computer's chats, from the account's registry (#12265).

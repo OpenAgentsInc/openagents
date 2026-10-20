@@ -209,7 +209,7 @@ impl Client {
         self.send("GET", path, None::<&()>).await
     }
 
-    async fn send<T: DeserializeOwned>(
+    pub async fn send<T: DeserializeOwned>(
         &self,
         method: &str,
         path: &str,

@@ -396,7 +396,7 @@ impl ChatApp {
             let online = computers.iter().map(|d| r.online(d, now_ms())).collect();
             (computers, r.spaces(), online)
         });
-        if computers.is_empty() {
+        if !self.signed_in {
             return None;
         }
         let target = &self.target;
@@ -654,6 +654,7 @@ impl ChatApp {
             }
         }
         if target.open == Some(Picker::Computer) {
+            choices.extend(self.render_cloud_computers(cx));
             choices.push(
                 choice(
                     "computer-site",
@@ -750,6 +751,9 @@ impl ChatApp {
         } else {
             Some(picker)
         };
+        if self.target.open == Some(Picker::Computer) {
+            self.refresh_cloud_computers(cx);
+        }
         cx.notify();
     }
 }
