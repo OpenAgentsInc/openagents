@@ -96,6 +96,7 @@ pub struct ChatApp {
     expanded: HashSet<String>,
     answers: HashMap<String, BTreeSet<usize>>,
     images: HashMap<String, Arc<Image>>,
+    visuals: openagents_web_chat_view::visuals::Frames,
     rng: u64,
     new_chats: usize,
     /// The fixture approval at the end of the working demo chat.
@@ -137,6 +138,7 @@ impl ChatApp {
             expanded: HashSet::new(),
             answers: HashMap::new(),
             images,
+            visuals: Default::default(),
             rng: 0x9e37_79b9_7f4a_7c15,
             new_chats: 0,
             approval: Approval::new(),
@@ -984,10 +986,47 @@ impl ChatApp {
                     .ok();
             })
         };
-        let mut questions = |part_ix: usize, asked: &[UserInputQuestion], resolved: bool| {
-            self.render_questions(&chat_id, entry_ix, part_ix, asked, resolved, cx)
+        let mut question_cards: HashMap<usize, AnyElement> = entry
+            .parts
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, part)| {
+                if let MessagePart::Input {
+                    questions,
+                    resolved,
+                    ..
+                } = part
+                {
+                    Some((
+                        ix,
+                        self.render_questions(&chat_id, entry_ix, ix, questions, *resolved, cx),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let mut questions = |ix: usize, _: &[UserInputQuestion], _: bool| {
+            question_cards
+                .remove(&ix)
+                .unwrap_or_else(|| div().into_any_element())
         };
-        transcript::assistant_body(view, &toggle, &mut questions)
+        let read: openagents_web_chat_view::visuals::Read =
+            std::rc::Rc::new(|path| Box::pin(async move { crate::demo::visuals::read(&path) }));
+        let mut visuals = |id: &str, title: &str, path: &str| {
+            self.visuals.render(
+                format!("{key}#{id}"),
+                title,
+                path,
+                read.clone(),
+                |this, cx| {
+                    this.list_state.remeasure();
+                    cx.notify();
+                },
+                cx,
+            )
+        };
+        transcript::assistant_body_with_visuals(view, &toggle, &mut questions, &mut visuals)
     }
 
     fn render_questions(
