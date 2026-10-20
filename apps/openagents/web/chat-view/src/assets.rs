@@ -1,5 +1,5 @@
-//! Fonts and icons, bundled into the module: a browser page has no system
-//! fonts GPUI can reach, and no file system to load icons from.
+//! Fonts and icons: a browser page has no system fonts GPUI can reach, and
+//! no file system to load icons from, so the icons are compiled in.
 
 use std::borrow::Cow;
 
@@ -11,10 +11,25 @@ macro_rules! ui_asset {
     };
 }
 
-/// Every face the page draws: the desktop's Geist and Geist Mono, plus
-/// Noto subsets for the CJK and emoji in the demo chats.
-pub fn font_faces() -> Vec<Cow<'static, [u8]>> {
-    let faces: [&'static [u8]; 12] = [
+/// The desktop's Geist and Geist Mono faces the chat draws, by file name
+/// under `apps/openagents/crates/ui/assets/fonts/`. The signed-in chat
+/// loads these as separate cached files; the demo compiles them in.
+pub const FONT_FILES: [&str; 10] = [
+    "Geist.ttf",
+    "Geist-Italic.ttf",
+    "Geist-Medium.ttf",
+    "Geist-SemiBold.ttf",
+    "Geist-SemiBoldItalic.ttf",
+    "Geist-Bold.ttf",
+    "Geist-BoldItalic.ttf",
+    "GeistMono.ttf",
+    "GeistMono-Medium.ttf",
+    "GeistMono-SemiBold.ttf",
+];
+
+/// The [`FONT_FILES`] faces, compiled into the module.
+pub fn bundled_font_faces() -> Vec<Cow<'static, [u8]>> {
+    let faces: [&'static [u8]; 10] = [
         ui_asset!("fonts/Geist.ttf"),
         ui_asset!("fonts/Geist-Italic.ttf"),
         ui_asset!("fonts/Geist-Medium.ttf"),
@@ -25,8 +40,6 @@ pub fn font_faces() -> Vec<Cow<'static, [u8]>> {
         ui_asset!("fonts/GeistMono.ttf"),
         ui_asset!("fonts/GeistMono-Medium.ttf"),
         ui_asset!("fonts/GeistMono-SemiBold.ttf"),
-        include_bytes!("../assets/fonts/NotoSansCJKjp-Regular-demo.otf"),
-        include_bytes!("../assets/fonts/NotoColorEmoji-demo.ttf"),
     ];
     faces.into_iter().map(Cow::Borrowed).collect()
 }
@@ -70,6 +83,25 @@ const ICONS: &[(&str, &[u8])] = &[
     ("icons/tuning.svg", ui_asset!("icons/tuning.svg")),
     ("icons/widget.svg", ui_asset!("icons/widget.svg")),
     ("icons/folder.svg", ui_asset!("icons/folder.svg")),
+    (
+        "icons/chat-round-line.svg",
+        ui_asset!("icons/chat-round-line.svg"),
+    ),
+    (
+        "icons/archive-minimalistic.svg",
+        ui_asset!("icons/archive-minimalistic.svg"),
+    ),
+    ("icons/magnifer.svg", ui_asset!("icons/magnifer.svg")),
+    (
+        "icons/more-horizontal.svg",
+        ui_asset!("icons/more-horizontal.svg"),
+    ),
+    (
+        "icons/trash-bin-minimalistic.svg",
+        ui_asset!("icons/trash-bin-minimalistic.svg"),
+    ),
+    ("icons/refresh.svg", ui_asset!("icons/refresh.svg")),
+    ("icons/pen.svg", ui_asset!("icons/pen.svg")),
 ];
 
 pub struct Assets;

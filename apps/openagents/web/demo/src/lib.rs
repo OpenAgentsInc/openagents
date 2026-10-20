@@ -1,12 +1,8 @@
 //! The OpenAgents desktop chat UI in a browser: GPUI drawing into a canvas
 //! through `openagents-gpui-web`, showing the desktop's offline demo chats.
 
-mod assets;
-mod composer;
 mod demo;
-mod markdown;
 mod shims;
-mod theme;
 
 #[cfg(target_family = "wasm")]
 mod app;
@@ -23,6 +19,7 @@ pub fn start() {
 
     use gpui::{AppContext, Application, WindowBounds, WindowOptions, px, size};
     use openagents_gpui_web::{WebFonts, WebPlatform};
+    use openagents_web_chat_view::{assets, composer, theme};
 
     console_error_panic_hook::set_once();
     openagents_gpui_web::init_logging();
@@ -30,7 +27,7 @@ pub fn start() {
         false,
         WebFonts {
             fallback_family: theme::SANS,
-            faces: assets::font_faces(),
+            faces: font_faces(),
         },
     );
     // The browser owns the run loop: `run` would drop the app as soon as it
@@ -51,4 +48,18 @@ pub fn start() {
             cx.activate(true);
         });
     std::mem::forget(handle);
+}
+
+/// The shared Geist faces, plus Noto subsets for the CJK and emoji in the
+/// demo chats.
+#[cfg(target_family = "wasm")]
+fn font_faces() -> Vec<std::borrow::Cow<'static, [u8]>> {
+    let mut faces = openagents_web_chat_view::assets::bundled_font_faces();
+    faces.push(std::borrow::Cow::Borrowed(include_bytes!(
+        "../assets/fonts/NotoSansCJKjp-Regular-demo.otf"
+    )));
+    faces.push(std::borrow::Cow::Borrowed(include_bytes!(
+        "../assets/fonts/NotoColorEmoji-demo.ttf"
+    )));
+    faces
 }

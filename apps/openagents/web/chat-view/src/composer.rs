@@ -30,6 +30,7 @@ actions!(
         Cut,
         Copy,
         Submit,
+        Cancel,
     ]
 );
 
@@ -45,6 +46,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("home", Home, context),
         KeyBinding::new("end", End, context),
         KeyBinding::new("enter", Submit, context),
+        KeyBinding::new("escape", Cancel, context),
         KeyBinding::new("cmd-a", SelectAll, context),
         KeyBinding::new("cmd-v", Paste, context),
         KeyBinding::new("cmd-c", Copy, context),
@@ -59,6 +61,9 @@ pub fn bind_keys(cx: &mut App) {
 /// Emitted when the person presses Enter with text in the field.
 pub struct Submitted(pub String);
 
+/// Emitted when the person presses Escape in the field.
+pub struct Cancelled;
+
 pub struct TextInput {
     focus_handle: FocusHandle,
     content: SharedString,
@@ -72,6 +77,7 @@ pub struct TextInput {
 }
 
 impl EventEmitter<Submitted> for TextInput {}
+impl EventEmitter<Cancelled> for TextInput {}
 
 impl TextInput {
     pub fn new(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
@@ -86,6 +92,11 @@ impl TextInput {
             last_bounds: None,
             is_selecting: false,
         }
+    }
+
+    /// The field's text.
+    pub fn text(&self) -> String {
+        self.content.to_string()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -105,6 +116,20 @@ impl TextInput {
         self.marked_range = None;
         cx.notify();
         text
+    }
+
+    /// Replaces the field's text, with the caret at its end and all of it
+    /// selected.
+    pub fn set_text(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.content = text.into();
+        self.selected_range = 0..self.content.len();
+        self.selection_reversed = false;
+        self.marked_range = None;
+        cx.notify();
+    }
+
+    fn cancel(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
+        cx.emit(Cancelled);
     }
 
     fn submit(&mut self, _: &Submit, _: &mut Window, cx: &mut Context<Self>) {
@@ -632,6 +657,7 @@ impl Render for TextInput {
             .track_focus(&self.focus_handle(cx))
             .cursor(CursorStyle::IBeam)
             .on_action(cx.listener(Self::submit))
+            .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::left))

@@ -8,25 +8,25 @@ use std::time::Duration;
 
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, Focusable, FollowMode, FontWeight,
-    Hsla, Image, ImageFormat, IntoElement, ListAlignment, ListState, ObjectFit, ParentElement,
-    Render, SharedString, Styled, Window, div, img, list, prelude::*, px, svg,
+    Hsla, Image, ImageFormat, IntoElement, ListAlignment, ListState, ParentElement, Render,
+    SharedString, Styled, Window, div, list, prelude::*, px, svg,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_proto::{
-    ChangeRequestState, HarnessId, ReasoningLevel, SessionStatus, TodoStatus, ToolCall,
-    UserInputQuestion,
+    ChangeRequestState, HarnessId, ReasoningLevel, SessionStatus, UserInputQuestion,
 };
 use web_time::Instant;
 
-use crate::composer::{Submitted, TextInput};
-use crate::demo::{fixtures, png, transcripts, transcripts::Step};
-use crate::markdown::{Markdown, Veil, visible_chars};
-use crate::{attachments, now_ms, theme};
+use openagents_web_chat_view::composer::{Submitted, TextInput};
+use openagents_web_chat_view::markdown::{Veil, visible_chars};
+use openagents_web_chat_view::theme;
+use openagents_web_chat_view::transcript::{
+    self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, VEIL_FADE_MS, ago, chip, choice_mark,
+    footer_text, model_label, reasoning_label, truncate, veil_alpha,
+};
 
-const SIDEBAR_WIDTH: f32 = 272.;
-const CONTENT_WIDTH: f32 = 740.;
-/// The desktop veil's fade, `clamp(ema × 3, 120, 400)` at a typical cadence.
-const VEIL_FADE_MS: f32 = 320.;
+use crate::demo::{fixtures, png, transcripts, transcripts::Step};
+use crate::{attachments, now_ms};
 const LONG_CHAT: &str = "chat-long";
 const WEB_DEVICE: &str = "web-demo";
 
@@ -889,15 +889,7 @@ impl ChatApp {
             MessageRole::User => self.render_user(entry),
             _ => self.render_assistant(chat_ix, ix, entry, cx),
         };
-        div()
-            .w_full()
-            .flex()
-            .justify_center()
-            .px(px(24.))
-            .when(ix == 0, |row| row.pt(px(28.)))
-            .pb(px(26.))
-            .child(div().w_full().max_w(px(CONTENT_WIDTH)).child(body))
-            .into_any_element()
+        transcript::entry_row(ix == 0, body)
     }
 
     fn render_user(&self, entry: &SessionMessageEntry) -> AnyElement {
@@ -911,58 +903,17 @@ impl ChatApp {
             .collect::<Vec<_>>()
             .join("\n\n");
         let (body, paths) = attachments::split(&text);
-        let mut attachments_row: Vec<AnyElement> = Vec::new();
-        for path in &paths {
-            if let Some(image) = self.images.get(*path) {
-                attachments_row.push(
-                    img(image.clone())
-                        .h(px(120.))
-                        .max_w(px(220.))
-                        .rounded(px(12.))
-                        .object_fit(ObjectFit::Cover)
-                        .into_any_element(),
-                );
-            } else {
-                let name = path.rsplit('/').next().unwrap_or(path);
-                attachments_row.push(chip(
-                    "icons/paperclip.svg",
-                    name.to_owned(),
-                    theme::text_muted(),
-                ));
-            }
-        }
-        let markdown = Markdown {
-            id: format!("u-{}", entry.id).into(),
-            color: theme::text(),
-        };
-        div()
-            .flex()
-            .flex_col()
-            .items_end()
-            .gap(px(8.))
-            .when(!attachments_row.is_empty(), |col| {
-                col.child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .flex_wrap()
-                        .justify_end()
-                        .gap(px(8.))
-                        .children(attachments_row),
-                )
+        let row = paths
+            .iter()
+            .map(|path| match self.images.get(*path) {
+                Some(image) => transcript::attachment_image(image.clone()),
+                None => {
+                    let name = path.rsplit('/').next().unwrap_or(path);
+                    chip("icons/paperclip.svg", name.to_owned(), theme::text_muted())
+                }
             })
-            .child(
-                div()
-                    .max_w(px(CONTENT_WIDTH * 0.82))
-                    .px(px(16.))
-                    .py(px(10.))
-                    .rounded(px(20.))
-                    .bg(theme::surface_raised())
-                    .text_size(px(theme::BODY))
-                    .line_height(px(theme::BODY_LINE))
-                    .child(markdown.render(body, None)),
-            )
-            .into_any_element()
+            .collect();
+        transcript::user_bubble(&entry.id, body, row)
     }
 
     fn render_assistant(
@@ -973,242 +924,37 @@ impl ChatApp {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let chat_id = self.chats[chat_ix].id.clone();
-        let mut blocks: Vec<AnyElement> = Vec::new();
-        let parts = &entry.parts;
-        let mut ix = 0;
-        while ix < parts.len() {
-            match &parts[ix] {
-                MessagePart::Tool { .. } | MessagePart::Reasoning { .. } => {
-                    let start = ix;
-                    while ix < parts.len()
-                        && matches!(
-                            parts[ix],
-                            MessagePart::Tool { .. } | MessagePart::Reasoning { .. }
-                        )
-                    {
-                        ix += 1;
-                    }
-                    let key = format!("{chat_id}/{}/{start}", entry.id);
-                    blocks.push(self.render_tool_group(key, &parts[start..ix], cx));
-                    continue;
-                }
-                MessagePart::Text { id, text } => {
-                    if !text.is_empty() {
-                        let veil = self.veil_for(chat_ix, entry_ix, ix);
-                        let markdown = Markdown {
-                            id: format!("{chat_id}-{}-{id}-{ix}", entry.id).into(),
-                            color: theme::text(),
-                        };
-                        blocks.push(markdown.render(text, veil.as_ref()));
-                    }
-                }
-                MessagePart::Image { path, name, .. } => {
-                    if let Some(image) = self.images.get(path) {
-                        blocks.push(
-                            img(image.clone())
-                                .max_w(px(420.))
-                                .rounded(px(12.))
-                                .into_any_element(),
-                        );
-                    } else {
-                        blocks.push(chip(
-                            "icons/document.svg",
-                            name.clone(),
-                            theme::text_muted(),
-                        ));
-                    }
-                }
-                MessagePart::Visual { title, .. } => blocks.push(visual_card(title)),
-                MessagePart::Input {
-                    questions,
-                    resolved,
-                    ..
-                } => blocks
-                    .push(self.render_questions(&chat_id, entry_ix, ix, questions, *resolved, cx)),
-                MessagePart::Error { message, .. } => blocks.push(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_start()
-                        .gap(px(8.))
-                        .px(px(12.))
-                        .py(px(9.))
-                        .rounded(px(10.))
-                        .bg(theme::danger().opacity(0.08))
-                        .border_1()
-                        .border_color(theme::danger().opacity(0.25))
-                        .text_size(px(13.5))
-                        .text_color(theme::danger())
-                        .child(
-                            svg()
-                                .mt(px(2.))
-                                .path("icons/danger-triangle.svg")
-                                .size(px(15.))
-                                .text_color(theme::danger()),
-                        )
-                        .child(message.clone())
-                        .into_any_element(),
-                ),
-                MessagePart::Fork { source_title, .. } => blocks.push(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(10.))
-                        .text_size(px(12.))
-                        .text_color(theme::text_faint())
-                        .child(div().flex_1().h(px(1.)).bg(theme::border()))
-                        .child(format!("Forked from {source_title}"))
-                        .child(div().flex_1().h(px(1.)).bg(theme::border()))
-                        .into_any_element(),
-                ),
-            }
-            ix += 1;
-        }
-        let footer: Option<AnyElement> = match entry.status {
-            Some(MessageStatus::Streaming) => Some(working_label().into_any_element()),
-            Some(MessageStatus::Aborted) => Some(footer_text("Stopped").into_any_element()),
-            _ => entry.duration_ms.map(|ms| {
-                footer_text(format!("Worked for {}", duration(ms.max(0) as u64))).into_any_element()
-            }),
+        let key = format!("{chat_id}/{}", entry.id);
+        let last_text = entry.parts.len().saturating_sub(1);
+        let view = TurnView {
+            key: &key,
+            parts: &entry.parts,
+            status: entry.status,
+            duration_ms: entry.duration_ms,
+            images: &self.images,
+            expanded: &self.expanded,
+            veil: self.veil_for(chat_ix, entry_ix, last_text),
         };
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(14.))
-            .text_size(px(theme::BODY))
-            .line_height(px(theme::BODY_LINE))
-            .children(blocks)
-            .children(footer)
-            .into_any_element()
-    }
-
-    fn render_tool_group(
-        &self,
-        key: String,
-        parts: &[MessagePart],
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let expanded = self.expanded.contains(&key);
-        let mut pairs: Vec<(ToolCall, bool)> = Vec::new();
-        let mut thoughts = 0usize;
-        let mut running = false;
-        let (mut additions, mut deletions) = (0u64, 0u64);
-        for part in parts {
-            match part {
-                MessagePart::Tool {
-                    call,
-                    is_error,
-                    resolved,
-                    diff_stats,
-                    ..
-                } => {
-                    pairs.push((call.clone(), *is_error));
-                    running |= !resolved;
-                    for stat in diff_stats.iter().flatten() {
-                        additions += stat.additions;
-                        deletions += stat.deletions;
-                    }
-                }
-                MessagePart::Reasoning { .. } => thoughts += 1,
-                _ => {}
-            }
-        }
-        // The desktop's `tool_group_summary`: thoughts ride the shared rule.
-        let mut segments: Vec<String> = Vec::new();
-        match thoughts {
-            0 => {}
-            1 => segments.push("thought process".into()),
-            n => segments.push(format!("thought {n} times")),
-        }
-        if !pairs.is_empty() {
-            segments.push(openagents_proto::view::tool_group_summary(&pairs));
-        }
-        let mut summary = segments.join(" · ");
-        if let Some(first) = summary.get_mut(..1) {
-            first.make_ascii_uppercase();
-        }
-        let pulse = if running {
-            0.55 + 0.45 * ((now_ms() as f32 / 260.).sin() * 0.5 + 0.5)
-        } else {
-            1.0
+        let entity = cx.entity().downgrade();
+        let toggle = move |key: String| -> OnClick {
+            let entity = entity.clone();
+            Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                let key = key.clone();
+                entity
+                    .update(cx, |this: &mut ChatApp, cx| {
+                        if !this.expanded.remove(&key) {
+                            this.expanded.insert(key);
+                        }
+                        this.list_state.remeasure();
+                        cx.notify();
+                    })
+                    .ok();
+            })
         };
-        let toggle_key = key.clone();
-        let header = div()
-            .id(SharedString::from(format!("group-{key}")))
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(8.))
-            .h(px(28.))
-            .cursor_pointer()
-            .text_size(px(13.5))
-            .text_color(theme::text_muted().opacity(pulse))
-            .hover(|style| style.text_color(theme::text()))
-            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                if !this.expanded.remove(&toggle_key) {
-                    this.expanded.insert(toggle_key.clone());
-                }
-                this.list_state.remeasure();
-                cx.notify();
-            }))
-            .child(
-                div()
-                    .size(px(20.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(theme::border())
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        svg()
-                            .path(if expanded {
-                                "icons/alt-arrow-down.svg"
-                            } else {
-                                "icons/alt-arrow-right.svg"
-                            })
-                            .size(px(13.))
-                            .text_color(theme::text_muted()),
-                    ),
-            )
-            .child(summary)
-            .when(additions + deletions > 0, |row| {
-                row.child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .gap(px(5.))
-                        .font_family(theme::MONO)
-                        .text_size(px(12.))
-                        .child(
-                            div()
-                                .text_color(theme::diff_add())
-                                .child(format!("+{additions}")),
-                        )
-                        .child(
-                            div()
-                                .text_color(theme::diff_del())
-                                .child(format!("−{deletions}")),
-                        ),
-                )
-            });
-        let mut group = div().flex().flex_col().gap(px(4.)).child(header);
-        if expanded {
-            group = group.child(
-                div()
-                    .ml(px(9.))
-                    .pl(px(18.))
-                    .border_l_1()
-                    .border_color(theme::border())
-                    .flex()
-                    .flex_col()
-                    .gap(px(8.))
-                    .py(px(4.))
-                    .children(parts.iter().map(tool_row)),
-            );
-        }
-        group.into_any_element()
+        let mut questions = |part_ix: usize, asked: &[UserInputQuestion], resolved: bool| {
+            self.render_questions(&chat_id, entry_ix, part_ix, asked, resolved, cx)
+        };
+        transcript::assistant_body(view, &toggle, &mut questions)
     }
 
     fn render_questions(
@@ -1410,271 +1156,6 @@ impl Render for ChatApp {
 // Pieces
 // ---------------------------------------------------------------------
 
-fn tool_row(part: &MessagePart) -> AnyElement {
-    match part {
-        MessagePart::Reasoning { text, .. } => div()
-            .flex()
-            .flex_col()
-            .gap(px(2.))
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(theme::text_muted())
-                    .child("Thought"),
-            )
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .line_height(px(20.))
-                    .italic()
-                    .text_color(theme::text_faint())
-                    .child(text.clone()),
-            )
-            .into_any_element(),
-        MessagePart::Tool {
-            call,
-            is_error,
-            resolved,
-            output,
-            diff_stats,
-            ..
-        } => {
-            let (verb, target) = tool_label(call);
-            let mut row = div().flex().flex_col().gap(px(3.)).child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(7.))
-                    .min_w_0()
-                    .text_size(px(13.))
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_color(if *is_error {
-                                theme::danger()
-                            } else {
-                                theme::text_muted()
-                            })
-                            .child(if *resolved {
-                                verb.to_owned()
-                            } else {
-                                format!("{} …", running_verb(verb))
-                            }),
-                    )
-                    .when(!target.is_empty(), |row| {
-                        row.child(
-                            div()
-                                .min_w_0()
-                                .truncate()
-                                .font_family(theme::MONO)
-                                .text_size(px(12.))
-                                .text_color(theme::text())
-                                .px(px(6.))
-                                .py(px(1.))
-                                .rounded(px(5.))
-                                .bg(theme::input_bg())
-                                .border_1()
-                                .border_color(theme::border())
-                                .child(target),
-                        )
-                    })
-                    .children(diff_stats.iter().flatten().map(|stat| {
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap(px(5.))
-                            .flex_none()
-                            .font_family(theme::MONO)
-                            .text_size(px(12.))
-                            .child(
-                                div()
-                                    .text_color(theme::diff_add())
-                                    .child(format!("+{}", stat.additions)),
-                            )
-                            .child(
-                                div()
-                                    .text_color(theme::diff_del())
-                                    .child(format!("−{}", stat.deletions)),
-                            )
-                    })),
-            );
-            if let ToolCall::Todo { items } = call {
-                row = row.child(div().flex().flex_col().gap(px(3.)).pt(px(2.)).children(
-                    items.iter().map(|item| {
-                        let done = item.done || item.status == Some(TodoStatus::Completed);
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(8.))
-                            .text_size(px(13.))
-                            .text_color(if done {
-                                theme::text_faint()
-                            } else {
-                                theme::text_muted()
-                            })
-                            .child(choice_mark(done, true))
-                            .child(item.text.clone())
-                    }),
-                ));
-            }
-            if let Some(output) = output.as_deref().filter(|o| !o.trim().is_empty()) {
-                row = row.child(
-                    div()
-                        .font_family(theme::MONO)
-                        .text_size(px(12.))
-                        .line_height(px(18.))
-                        .text_color(if *is_error {
-                            theme::danger().opacity(0.85)
-                        } else {
-                            theme::text_faint()
-                        })
-                        .child(truncate(output.lines().next().unwrap_or(""), 160)),
-                );
-            }
-            row.into_any_element()
-        }
-        _ => div().into_any_element(),
-    }
-}
-
-fn tool_label(call: &ToolCall) -> (&'static str, String) {
-    match call {
-        ToolCall::Exec { command } => ("Ran", command.clone()),
-        ToolCall::ReadFile { path } => ("Read", path.clone()),
-        ToolCall::WriteFile { path, .. } => ("Wrote", path.clone()),
-        ToolCall::EditFile { path, .. } => ("Edited", path.clone()),
-        ToolCall::ApplyPatch { path } => ("Patched", path.clone().unwrap_or_default()),
-        ToolCall::Search { pattern, path } => (
-            "Searched",
-            match path {
-                Some(path) => format!("{pattern} in {path}"),
-                None => pattern.clone(),
-            },
-        ),
-        ToolCall::Glob { pattern } => ("Listed", pattern.clone()),
-        ToolCall::WebFetch { url, .. } => ("Fetched", url.clone()),
-        ToolCall::WebSearch { query } => ("Searched the web", query.clone()),
-        ToolCall::Todo { .. } => ("Updated the plan", String::new()),
-        ToolCall::Mcp { server, tool, .. } => ("Used", format!("{server} · {tool}")),
-        ToolCall::Unknown { name, .. } => ("Used", name.clone()),
-    }
-}
-
-fn running_verb(verb: &str) -> &str {
-    match verb {
-        "Ran" => "Running",
-        "Read" => "Reading",
-        "Edited" => "Editing",
-        "Wrote" => "Writing",
-        "Searched" => "Searching",
-        "Fetched" => "Fetching",
-        _ => verb,
-    }
-}
-
-fn choice_mark(selected: bool, square: bool) -> impl IntoElement {
-    let base = div()
-        .flex_none()
-        .size(px(14.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(if square { px(4.) } else { px(7.) });
-    if selected {
-        base.bg(theme::accent()).child(
-            svg()
-                .path("icons/check.svg")
-                .size(px(11.))
-                .text_color(theme::on_solid()),
-        )
-    } else {
-        base.border_1().border_color(theme::border_strong())
-    }
-}
-
-fn chip(icon: &'static str, label: String, color: Hsla) -> AnyElement {
-    div()
-        .flex()
-        .flex_row()
-        .flex_none()
-        .items_center()
-        .gap(px(5.))
-        .px(px(8.))
-        .h(px(24.))
-        .rounded(px(12.))
-        .border_1()
-        .border_color(theme::border())
-        .text_size(px(12.))
-        .text_color(color)
-        .child(svg().path(icon).size(px(13.)).text_color(color))
-        .child(label)
-        .into_any_element()
-}
-
-fn visual_card(title: &str) -> AnyElement {
-    div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(12.))
-        .p(px(14.))
-        .rounded(px(14.))
-        .border_1()
-        .border_color(theme::border())
-        .bg(theme::surface_card())
-        .child(
-            div()
-                .size(px(36.))
-                .rounded(px(10.))
-                .bg(theme::accent_wash())
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    svg()
-                        .path("icons/widget.svg")
-                        .size(px(18.))
-                        .text_color(theme::accent()),
-                ),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .child(div().text_size(px(14.)).child(title.to_owned()))
-                .child(
-                    div()
-                        .text_size(px(12.5))
-                        .text_color(theme::text_faint())
-                        .child("Interactive visual. Open it in the desktop app to use it."),
-                ),
-        )
-        .into_any_element()
-}
-
-fn footer_text(text: impl Into<SharedString>) -> impl IntoElement {
-    div()
-        .text_size(px(12.5))
-        .text_color(theme::text_faint())
-        .child(text.into())
-}
-
-fn working_label() -> impl IntoElement {
-    let phase = (now_ms() / 350) % 4;
-    div()
-        .text_size(px(12.5))
-        .text_color(theme::accent())
-        .child(format!("Working{}", ".".repeat(phase as usize)))
-}
-
-/// The desktop veil's curve, `1 − (1−p)^1.6`: fast attack, soft landing.
-fn veil_alpha(elapsed_ms: f32, duration_ms: f32) -> f32 {
-    let p = (elapsed_ms / duration_ms).clamp(0.0, 1.0);
-    1.0 - (1.0 - p).powf(1.6)
-}
-
 fn answer_key(chat: &str, entry: usize, question: &str) -> String {
     format!("{chat}/{entry}/{question}")
 }
@@ -1697,78 +1178,12 @@ fn split_words(body: &str) -> VecDeque<String> {
     out
 }
 
-fn truncate(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
-        return text.to_owned();
-    }
-    let mut out: String = text.chars().take(max - 1).collect();
-    out.push('…');
-    out
-}
-
-fn ago(ms: i64) -> String {
-    let secs = (ms / 1000).max(0);
-    match secs {
-        0..=59 => format!("{}s", secs.max(1)),
-        60..=3599 => format!("{}m", secs / 60),
-        3600..=86_399 => format!("{}h", secs / 3600),
-        _ => format!("{}d", secs / 86_400),
-    }
-}
-
-fn duration(ms: u64) -> String {
-    let secs = (ms / 1000).max(1);
-    if secs < 60 {
-        format!("{secs}s")
-    } else {
-        format!("{}m {}s", secs / 60, secs % 60)
-    }
-}
-
 fn device_label(device: &str) -> &'static str {
     match device {
         fixtures::MAC => "MacBook Pro",
         fixtures::VPS => "Devbox VPS",
         fixtures::STUDIO => "Mac Studio",
         _ => "This browser",
-    }
-}
-
-fn model_label(model: &str) -> String {
-    let name = model.strip_prefix("claude-").unwrap_or(model);
-    if let Some(rest) = name.strip_prefix("gpt-") {
-        let mut parts = rest.splitn(2, '-');
-        let version = parts.next().unwrap_or("");
-        return match parts.next() {
-            Some(variant) => format!("GPT-{version} {}", capitalize(variant)),
-            None => format!("GPT-{version}"),
-        };
-    }
-    name.split('-')
-        .map(capitalize)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn capitalize(word: &str) -> String {
-    let mut chars = word.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
-}
-
-fn reasoning_label(level: ReasoningLevel) -> &'static str {
-    match level {
-        ReasoningLevel::Minimal => "Minimal",
-        ReasoningLevel::Low => "Low",
-        ReasoningLevel::Medium => "Medium",
-        ReasoningLevel::High => "High",
-        ReasoningLevel::XHigh => "Extra high",
-        ReasoningLevel::Max => "Max",
-        ReasoningLevel::Ultra => "Ultra",
-        ReasoningLevel::Ultracode => "Ultracode",
-        ReasoningLevel::Ultrathink => "Ultrathink",
     }
 }
 
