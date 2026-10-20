@@ -19,7 +19,8 @@ pub fn script() -> Option<PathBuf> {
     [
         openagents_brand::env_var_os("OPENAGENTS_VIDEO_LAB_SCRIPT").map(PathBuf::from),
         from_exe,
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join("work/openagents/scripts/film/lab.py")),
+        std::env::var_os("HOME")
+            .map(|h| PathBuf::from(h).join("work/openagents/scripts/film/lab.py")),
     ]
     .into_iter()
     .flatten()

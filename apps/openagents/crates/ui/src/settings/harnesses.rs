@@ -370,7 +370,9 @@ impl HarnessesPage {
                     .engine_info()
                     .supports(openagents_proto::capabilities::HARNESS_UPDATES_V1)
             },
-            |device| state.device_supports(device, openagents_proto::capabilities::HARNESS_UPDATES_V1),
+            |device| {
+                state.device_supports(device, openagents_proto::capabilities::HARNESS_UPDATES_V1)
+            },
         )
     }
 
@@ -1336,7 +1338,10 @@ mod tests {
         window
             .update(cx, |page, _, cx| {
                 page.toggle_agent_details(openagents_proto::HarnessId::Codex, cx);
-                assert_eq!(page.expanded_harness, Some(openagents_proto::HarnessId::Codex));
+                assert_eq!(
+                    page.expanded_harness,
+                    Some(openagents_proto::HarnessId::Codex)
+                );
                 assert_eq!(
                     page.accounts_page
                         .as_ref()

@@ -186,6 +186,9 @@ pub struct WebMedia {
     /// The site an image's path is on, when the app loads images by URL.
     pub origin: Option<String>,
     pub after_entry: Option<AfterEntry>,
+    /// Bundled demo files or authenticated attachment reads supplied by the app.
+    pub visual_reader: Option<crate::visuals::Read>,
+    pub(crate) visuals: crate::visuals::Frames,
 }
 
 impl WebMedia {
@@ -247,7 +250,9 @@ impl TranscriptMedia for WebMedia {
 
     fn released(_this: &mut Transcript, _cx: &mut App) {}
 
-    fn chat_changed(_this: &mut Transcript, _cx: &mut Context<Transcript>) {}
+    fn chat_changed(this: &mut Transcript, _cx: &mut Context<Transcript>) {
+        this.media.visuals.clear();
+    }
 
     fn rows_built(_this: &mut Transcript, _rows: &[Row]) {}
 
@@ -321,14 +326,27 @@ impl TranscriptMedia for WebMedia {
     }
 
     fn visual(
-        _this: &mut Transcript,
-        _row_id: &SharedString,
+        this: &mut Transcript,
+        row_id: &SharedString,
         _owner: &str,
-        _path: &str,
-        _title: &str,
-        _cx: &mut Context<Transcript>,
+        path: &str,
+        title: &str,
+        cx: &mut Context<Transcript>,
     ) -> AnyElement {
-        div().into_any_element()
+        let Some(read) = this.media.visual_reader.clone() else {
+            return div().into_any_element();
+        };
+        let row = row_id.clone();
+        this.media.visuals.render(
+            row_id.to_string(),
+            title,
+            path,
+            read,
+            move |this: &mut Transcript, cx| {
+                this.diagram_layout_changed(std::slice::from_ref(&row), cx);
+            },
+            cx,
+        )
     }
 
     fn markdown_media(

@@ -816,7 +816,9 @@ impl Shell {
             .iter()
             .map(|device| device.id.clone())
             .chain(std::iter::once(engine.engine_info().device_id.clone()))
-            .filter(|id| state.device_supports(id, openagents_proto::capabilities::HARNESS_UPDATES_V1))
+            .filter(|id| {
+                state.device_supports(id, openagents_proto::capabilities::HARNESS_UPDATES_V1)
+            })
             // A stale copy of a computer can't update and isn't the computer.
             .filter(|id| !state.superseded_device(id, Utc::now()))
             .map(|id| {
@@ -910,7 +912,11 @@ impl Shell {
                     && !matches!(&error, openagents_rpc::RpcError::Failed(message)
                         if method == methods::APPLY_HARNESS_UPDATE && message == "update cancelled")
                 {
-                    shell.show_notice(crate::toast::ToastKind::Error, format!("Agent update ({device}): {error}"), cx);
+                    shell.show_notice(
+                        crate::toast::ToastKind::Error,
+                        format!("Agent update ({device}): {error}"),
+                        cx,
+                    );
                 }
                 cx.notify();
             })

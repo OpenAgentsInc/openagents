@@ -14,9 +14,9 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyTooltip, App, Bounds, ClipboardEntry, ClipboardItem, Context, CursorStyle,
-    DispatchPhase, ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle,
-    Focusable, GlobalElementId, KeyBinding, KeyDownEvent, KeyUpEvent, Keystroke, LayoutId,
+    AnyTooltip, App, Bounds, ClipboardEntry, ClipboardItem, Context, CursorStyle, DispatchPhase,
+    ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable,
+    GlobalElementId, KeyBinding, KeyDownEvent, KeyUpEvent, Keystroke, LayoutId,
     ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit,
     PaintQuad, PathPromptOptions, Pixels, Point, Role, ScrollWheelEvent, SharedString, Style,
     StyledImage as _, Subscription, Task, TextRun, TextStyle, UTF16Selection, UnderlineStyle,
@@ -44,16 +44,16 @@ use crate::theme::Theme;
 mod chip;
 pub use chip::ChipKind;
 use chip::*;
-use openagents_chat_view::composer_mentions::{TextProjection, skill_display_name};
-#[cfg(test)]
-use openagents_chat_view::composer_mentions::{
-    FileMentionLink, MENTION_SIDE_PAD, compact_chip_label, compact_chip_labels,
-    file_mention_links, mention_display_labels,
-};
-pub use openagents_chat_view::composer_mentions::{SentMentionSpan, sent_mention_display};
 pub(crate) use chip::{
     CHIP_PAD_FAMILY, ChipIcon, chip_icon, chip_pad_ranges, chip_text, paint_chip,
 };
+#[cfg(test)]
+use openagents_chat_view::composer_mentions::{
+    FileMentionLink, MENTION_SIDE_PAD, compact_chip_label, compact_chip_labels, file_mention_links,
+    mention_display_labels,
+};
+pub use openagents_chat_view::composer_mentions::{SentMentionSpan, sent_mention_display};
+use openagents_chat_view::composer_mentions::{TextProjection, skill_display_name};
 
 // ---------------------------------------------------------------------------
 // Constants + pure decision logic
@@ -2820,7 +2820,9 @@ impl ComposerInput {
             }
             text.push_str(&self.content[at..link.range.start]);
             text.push_str(&openagents_proto::invocation::invocation_prompt(
-                &openagents_proto::file_mentions::file_mention_prompt(&self.content[link.range.clone()]),
+                &openagents_proto::file_mentions::file_mention_prompt(
+                    &self.content[link.range.clone()],
+                ),
             ));
             at = link.range.end;
         }
@@ -2901,7 +2903,9 @@ impl ComposerInput {
                     .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
                 {
                     if value.get("text").and_then(|v| v.as_str()) == Some(text.as_str()) {
-                        if let Some(raw) = value.get("openagentsComposerV1").and_then(|v| v.as_str()) {
+                        if let Some(raw) =
+                            value.get("openagentsComposerV1").and_then(|v| v.as_str())
+                        {
                             // Chip numbers belong to one draft: chips copied from
                             // another chat would name the wrong attachment, so
                             // they paste as their plain labels instead.
@@ -4883,7 +4887,6 @@ fn completion_trigger(
     (token, skill, include_skills, commands_allowed)
 }
 
-
 /// Commands implemented by OpenAgents, independently of the provider protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceCommand {
@@ -4907,17 +4910,32 @@ impl WorkspaceCommand {
                 "OpenAgents: choose agent, model, and reasoning",
                 false,
             ),
-            (Self::New, "new", "OpenAgents: start a new conversation", false),
+            (
+                Self::New,
+                "new",
+                "OpenAgents: start a new conversation",
+                false,
+            ),
             (
                 Self::Resume,
                 "resume",
                 "OpenAgents: search and open conversations",
                 false,
             ),
-            (Self::Settings, "settings", "OpenAgents: open settings", false),
+            (
+                Self::Settings,
+                "settings",
+                "OpenAgents: open settings",
+                false,
+            ),
             (Self::Diff, "diff", "OpenAgents: open changes", true),
             (Self::Files, "files", "OpenAgents: open project files", true),
-            (Self::Terminal, "terminal", "OpenAgents: open a terminal", true),
+            (
+                Self::Terminal,
+                "terminal",
+                "OpenAgents: open a terminal",
+                true,
+            ),
             (
                 Self::Rename,
                 "rename",
@@ -5963,9 +5981,9 @@ impl Composer {
                 }
                 None => Some(att.name.as_str()),
             };
-            links.push(openagents_proto::attachment_mentions::attachment_mention_link(
-                index, file_name,
-            ));
+            links.push(
+                openagents_proto::attachment_mentions::attachment_mention_link(index, file_name),
+            );
             indices.push(index);
         }
         // Chips are inserted before the attachments join the draft, so a
@@ -7280,8 +7298,10 @@ impl Composer {
                         .client()
                         .call(methods::LIST_SKILLS, params.clone())
                         .await?;
-                    serde_json::from_value::<Option<Vec<openagents_proto::invocation::Skill>>>(value)
-                        .map_err(|e| RpcError::Failed(e.to_string()))
+                    serde_json::from_value::<Option<Vec<openagents_proto::invocation::Skill>>>(
+                        value,
+                    )
+                    .map_err(|e| RpcError::Failed(e.to_string()))
                 };
                 let (commands, skills) = futures::join!(commands, skills);
                 merge_invocation_results(commands, skills, skill).map(
@@ -8138,7 +8158,8 @@ impl Composer {
             .iter()
             .filter_map(|att| att.mention)
             .collect();
-        let text = openagents_proto::attachment_mentions::demote_unattached_mentions(&text, &attached);
+        let text =
+            openagents_proto::attachment_mentions::demote_unattached_mentions(&text, &attached);
         let text = crate::comments::with_comments(&text, &comments);
         self.preview = None;
         let message_id = self
@@ -12438,7 +12459,10 @@ mod tests {
                 if change_target {
                     assert_eq!(text, raw);
                 } else {
-                    assert_eq!(openagents_proto::invocation::invocation_links(text).len(), 2);
+                    assert_eq!(
+                        openagents_proto::invocation::invocation_links(text).len(),
+                        2
+                    );
                     assert!(text.ends_with(" @README.md"));
                 }
             });
@@ -14228,7 +14252,8 @@ mod tests {
             assert!(display[span.range.clone()].contains("Brief\u{00A0}Hello"));
         }
         // Two chats with one title keep their titles, never their ids.
-        let other = openagents_proto::chat_mentions::chat_mention_link("a2c4", "Brief Hello").unwrap();
+        let other =
+            openagents_proto::chat_mentions::chat_mention_link("a2c4", "Brief Hello").unwrap();
         let (display, spans) = sent_mention_display(&format!("{link} {other}")).unwrap();
         assert!(
             spans

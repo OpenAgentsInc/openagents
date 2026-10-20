@@ -3,8 +3,8 @@ use gpui::{
     AppContext, AsyncApp, Bounds, Context, Entity, Render, Window, WindowBounds, WindowOptions,
     div, prelude::*, px, size,
 };
-use std::{path::Path, path::PathBuf, time::Duration};
 use openagents_ui::*;
+use std::{path::Path, path::PathBuf, time::Duration};
 
 struct Fixture {
     pickers: Entity<pickers::Pickers>,

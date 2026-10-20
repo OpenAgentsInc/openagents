@@ -3,7 +3,7 @@
 //! paints them with GPUI paths and shaped text, so a canvas is as crisp and
 //! as theme-bound as the rest of the reply.
 
-use mlua::{Table, UserData, UserDataFields, UserDataMethods, Value};
+use crate::runtime::{Table, UserData, UserDataFields, UserDataMethods, Value};
 
 use crate::VisualError;
 use crate::node::{parse_color, value_text};
@@ -76,7 +76,7 @@ impl Graphics {
         }
     }
 
-    fn push(&mut self, command: DrawCmd) -> mlua::Result<()> {
+    fn push(&mut self, command: DrawCmd) -> crate::runtime::Result<()> {
         if self.commands.len() >= MAX_COMMANDS {
             return Err(lua_error(format!(
                 "a canvas draws at most {MAX_COMMANDS} shapes per frame"
@@ -96,11 +96,11 @@ impl Graphics {
     }
 }
 
-pub(crate) fn lua_error(message: impl Into<String>) -> mlua::Error {
-    mlua::Error::RuntimeError(message.into())
+pub(crate) fn lua_error(message: impl Into<String>) -> crate::runtime::Error {
+    crate::runtime::Error::RuntimeError(message.into())
 }
 
-fn to_lua(error: VisualError) -> mlua::Error {
+fn to_lua(error: VisualError) -> crate::runtime::Error {
     lua_error(error.to_string())
 }
 
@@ -117,7 +117,7 @@ pub(crate) struct Paint {
 impl Paint {
     /// `default_fill` decides what a bare `color` means: a fill for shapes,
     /// a stroke for lines.
-    pub fn parse(options: Option<Table>, default_fill: bool) -> mlua::Result<Self> {
+    pub fn parse(options: Option<Table>, default_fill: bool) -> crate::runtime::Result<Self> {
         let mut paint = Paint {
             width: 1.0,
             ..Default::default()
@@ -165,7 +165,7 @@ impl Paint {
 }
 
 /// Points as a flat `{x1, y1, x2, y2, ...}` list or `{{x, y}, ...}` pairs.
-pub(crate) fn points(table: &Table) -> mlua::Result<Vec<[f32; 2]>> {
+pub(crate) fn points(table: &Table) -> crate::runtime::Result<Vec<[f32; 2]>> {
     let len = table.raw_len();
     let mut out = Vec::with_capacity(len / 2 + 1);
     match table.raw_get::<Value>(1)? {
@@ -207,7 +207,7 @@ pub(crate) fn arc_points(cx: f32, cy: f32, r: f32, a0: f32, a1: f32) -> Vec<[f32
 }
 
 impl Graphics {
-    fn shape(&mut self, points: Vec<[f32; 2]>, paint: &Paint) -> mlua::Result<()> {
+    fn shape(&mut self, points: Vec<[f32; 2]>, paint: &Paint) -> crate::runtime::Result<()> {
         if let Some(fill) = paint.fill {
             self.push(DrawCmd::Fill {
                 points: points.clone(),
@@ -245,10 +245,10 @@ fn rect_points(x: f32, y: f32, w: f32, h: f32, radius: f32) -> Vec<[f32; 2]> {
 
 impl UserData for Graphics {
     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("width", |_, g| Ok(g.width));
-        fields.add_field_method_get("height", |_, g| Ok(g.height));
-        fields.add_field_method_get("time", |_, g| Ok(g.time));
-        fields.add_field_method_get("pointer", |lua, g| {
+        crate::runtime::field!(fields, "width", |_, g| Ok(g.width));
+        crate::runtime::field!(fields, "height", |_, g| Ok(g.height));
+        crate::runtime::field!(fields, "time", |_, g| Ok(g.time));
+        crate::runtime::field!(fields, "pointer", |lua, g| {
             g.read_pointer.set(true);
             match g.pointer {
                 Some(p) => {
@@ -264,37 +264,49 @@ impl UserData for Graphics {
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method_mut(
-            "line",
-            |_, g, (x1, y1, x2, y2, options): (f32, f32, f32, f32, Option<Table>)| {
-                let paint = Paint::parse(options, false)?;
-                g.push(DrawCmd::Stroke {
-                    points: vec![[x1, y1], [x2, y2]],
-                    closed: false,
-                    color: paint.stroke.or(paint.fill).unwrap(),
-                    width: paint.width,
-                    dash: paint.dash,
-                })
-            },
-        );
-        methods.add_method_mut(
-            "polyline",
-            |_, g, (pts, options): (Table, Option<Table>)| {
-                let paint = Paint::parse(options, false)?;
-                let points = points(&pts)?;
-                if points.len() < 2 {
-                    return Ok(());
-                }
-                g.push(DrawCmd::Stroke {
-                    points,
-                    closed: false,
-                    color: paint.stroke.or(paint.fill).unwrap(),
-                    width: paint.width,
-                    dash: paint.dash,
-                })
-            },
-        );
-        methods.add_method_mut("polygon", |_, g, (pts, options): (Table, Option<Table>)| {
+        crate::runtime::method!(methods, "line", |_,
+                                                  g,
+                                                  (x1, y1, x2, y2, options): (
+            f32,
+            f32,
+            f32,
+            f32,
+            Option<Table>
+        )| {
+            let paint = Paint::parse(options, false)?;
+            g.push(DrawCmd::Stroke {
+                points: vec![[x1, y1], [x2, y2]],
+                closed: false,
+                color: paint.stroke.or(paint.fill).unwrap(),
+                width: paint.width,
+                dash: paint.dash,
+            })
+        });
+        crate::runtime::method!(methods, "polyline", |_,
+                                                      g,
+                                                      (pts, options): (
+            Table,
+            Option<Table>
+        )| {
+            let paint = Paint::parse(options, false)?;
+            let points = points(&pts)?;
+            if points.len() < 2 {
+                return Ok(());
+            }
+            g.push(DrawCmd::Stroke {
+                points,
+                closed: false,
+                color: paint.stroke.or(paint.fill).unwrap(),
+                width: paint.width,
+                dash: paint.dash,
+            })
+        });
+        crate::runtime::method!(methods, "polygon", |_,
+                                                     g,
+                                                     (pts, options): (
+            Table,
+            Option<Table>
+        )| {
             let paint = Paint::parse(options, true)?;
             let points = points(&pts)?;
             if points.len() < 3 {
@@ -302,108 +314,126 @@ impl UserData for Graphics {
             }
             g.shape(points, &paint)
         });
-        methods.add_method_mut(
-            "rect",
-            |_, g, (x, y, w, h, options): (f32, f32, f32, f32, Option<Table>)| {
-                let radius = match &options {
-                    Some(o) => o.raw_get::<Option<f32>>("radius")?.unwrap_or(0.0),
-                    None => 0.0,
-                };
-                let paint = Paint::parse(options, true)?;
-                g.shape(rect_points(x, y, w, h, radius), &paint)
-            },
-        );
-        methods.add_method_mut(
-            "circle",
-            |_, g, (x, y, r, options): (f32, f32, f32, Option<Table>)| {
-                let paint = Paint::parse(options, true)?;
-                let mut pts = arc_points(x, y, r.abs(), 0.0, std::f32::consts::TAU);
-                pts.pop();
-                g.shape(pts, &paint)
-            },
-        );
+        crate::runtime::method!(methods, "rect", |_,
+                                                  g,
+                                                  (x, y, w, h, options): (
+            f32,
+            f32,
+            f32,
+            f32,
+            Option<Table>
+        )| {
+            let radius = match &options {
+                Some(o) => o.raw_get::<Option<f32>>("radius")?.unwrap_or(0.0),
+                None => 0.0,
+            };
+            let paint = Paint::parse(options, true)?;
+            g.shape(rect_points(x, y, w, h, radius), &paint)
+        });
+        crate::runtime::method!(methods, "circle", |_,
+                                                    g,
+                                                    (x, y, r, options): (
+            f32,
+            f32,
+            f32,
+            Option<Table>
+        )| {
+            let paint = Paint::parse(options, true)?;
+            let mut pts = arc_points(x, y, r.abs(), 0.0, std::f32::consts::TAU);
+            pts.pop();
+            g.shape(pts, &paint)
+        });
         // An arc stroke, or with `inner` (a radius) / `fill`, a pie or donut
         // sector.
-        methods.add_method_mut(
-            "arc",
-            |_, g, (x, y, r, a0, a1, options): (f32, f32, f32, f32, f32, Option<Table>)| {
-                let inner = match &options {
-                    Some(o) => o.raw_get::<Option<f32>>("inner")?,
-                    None => None,
-                };
-                let sector = inner.is_some()
-                    || options
-                        .as_ref()
-                        .is_some_and(|o| o.raw_get::<Value>("fill").is_ok_and(|v| !v.is_nil()));
-                let paint = Paint::parse(options, sector)?;
-                let outer = arc_points(x, y, r.abs(), a0, a1);
-                if !sector {
-                    return g.push(DrawCmd::Stroke {
-                        points: outer,
-                        closed: false,
-                        color: paint.stroke.or(paint.fill).unwrap(),
-                        width: paint.width,
-                        dash: paint.dash,
-                    });
+        crate::runtime::method!(methods, "arc", |_,
+                                                 g,
+                                                 (x, y, r, a0, a1, options): (
+            f32,
+            f32,
+            f32,
+            f32,
+            f32,
+            Option<Table>
+        )| {
+            let inner = match &options {
+                Some(o) => o.raw_get::<Option<f32>>("inner")?,
+                None => None,
+            };
+            let sector = inner.is_some()
+                || options
+                    .as_ref()
+                    .is_some_and(|o| o.raw_get::<Value>("fill").is_ok_and(|v| !v.is_nil()));
+            let paint = Paint::parse(options, sector)?;
+            let outer = arc_points(x, y, r.abs(), a0, a1);
+            if !sector {
+                return g.push(DrawCmd::Stroke {
+                    points: outer,
+                    closed: false,
+                    color: paint.stroke.or(paint.fill).unwrap(),
+                    width: paint.width,
+                    dash: paint.dash,
+                });
+            }
+            let mut pts = outer;
+            match inner.filter(|r| *r > 0.0) {
+                Some(inner) => {
+                    let mut back = arc_points(x, y, inner, a0, a1);
+                    back.reverse();
+                    pts.extend(back);
                 }
-                let mut pts = outer;
-                match inner.filter(|r| *r > 0.0) {
-                    Some(inner) => {
-                        let mut back = arc_points(x, y, inner, a0, a1);
-                        back.reverse();
-                        pts.extend(back);
-                    }
-                    None => pts.push([x, y]),
+                None => pts.push([x, y]),
+            }
+            g.shape(pts, &paint)
+        });
+        crate::runtime::method!(methods, "text", |_,
+                                                  g,
+                                                  (x, y, text, options): (
+            f32,
+            f32,
+            Value,
+            Option<Table>
+        )| {
+            let mut draw = DrawText {
+                x,
+                y,
+                text: value_text(&text),
+                size: TextSize::Sm,
+                weight: Weight::Regular,
+                color: Color::token(Token::Text),
+                mono: false,
+                align: Align::Start,
+                baseline: Align::Start,
+            };
+            if let Some(o) = options {
+                if let Some(size) = o.raw_get::<Option<String>>("size")? {
+                    draw.size = TextSize::parse(&size).map_err(to_lua)?;
                 }
-                g.shape(pts, &paint)
-            },
-        );
-        methods.add_method_mut(
-            "text",
-            |_, g, (x, y, text, options): (f32, f32, Value, Option<Table>)| {
-                let mut draw = DrawText {
-                    x,
-                    y,
-                    text: value_text(&text),
-                    size: TextSize::Sm,
-                    weight: Weight::Regular,
-                    color: Color::token(Token::Text),
-                    mono: false,
-                    align: Align::Start,
-                    baseline: Align::Start,
-                };
-                if let Some(o) = options {
-                    if let Some(size) = o.raw_get::<Option<String>>("size")? {
-                        draw.size = TextSize::parse(&size).map_err(to_lua)?;
+                match o.raw_get::<Value>("weight")? {
+                    Value::Integer(n) => draw.weight = Weight::from_number(n as f64),
+                    Value::Number(n) => draw.weight = Weight::from_number(n),
+                    Value::String(s) => {
+                        draw.weight =
+                            Weight::parse(&crate::runtime::string_text(&s)).map_err(to_lua)?
                     }
-                    match o.raw_get::<Value>("weight")? {
-                        Value::Integer(n) => draw.weight = Weight::from_number(n as f64),
-                        Value::Number(n) => draw.weight = Weight::from_number(n),
-                        Value::String(s) => {
-                            draw.weight = Weight::parse(&s.to_string_lossy()).map_err(to_lua)?
-                        }
-                        _ => {}
-                    }
-                    if let Some(color) =
-                        parse_color(o.raw_get::<Value>("color")?).map_err(to_lua)?
-                    {
-                        draw.color = color;
-                    }
-                    draw.mono = o.raw_get::<Option<bool>>("mono")?.unwrap_or(false);
-                    if let Some(align) = o.raw_get::<Option<String>>("align")? {
-                        draw.align = Align::parse(&align).map_err(to_lua)?;
-                    }
-                    if let Some(baseline) = o.raw_get::<Option<String>>("baseline")? {
-                        draw.baseline = Align::parse(&baseline).map_err(to_lua)?;
-                    }
+                    _ => {}
                 }
-                if draw.text.is_empty() {
-                    return Ok(());
+                if let Some(color) = parse_color(o.raw_get::<Value>("color")?).map_err(to_lua)? {
+                    draw.color = color;
                 }
-                draw.text = draw.text.replace('\n', " ");
-                g.push(DrawCmd::Text(draw))
-            },
-        );
+                draw.mono = o.raw_get::<Option<bool>>("mono")?.unwrap_or(false);
+                if let Some(align) = o.raw_get::<Option<String>>("align")? {
+                    draw.align = Align::parse(&align).map_err(to_lua)?;
+                }
+                if let Some(baseline) = o.raw_get::<Option<String>>("baseline")? {
+                    draw.baseline = Align::parse(&baseline).map_err(to_lua)?;
+                }
+            }
+            if draw.text.is_empty() {
+                return Ok(());
+            }
+            draw.text = draw.text.replace('\n', " ");
+            g.push(DrawCmd::Text(draw))
+        });
     }
 }
 
