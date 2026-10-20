@@ -647,3 +647,50 @@ async fn an_owner_is_an_admin_where_the_environment_has_no_owner_role() {
         .unwrap();
     assert!(!again.wrote(), "no drift: {again:?}");
 }
+
+/// A read-only check against a real WorkOS environment: the key set, a
+/// user search, and an organization search decode with the SDK's models.
+/// Run by hand with `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` set; it never
+/// writes. `cargo test -p oa-auth --test workos live_read_only -- --ignored`
+#[tokio::test]
+#[ignore = "reaches a real WorkOS environment; run by hand"]
+async fn live_read_only() {
+    let (Ok(key), Ok(client)) = (
+        std::env::var("WORKOS_API_KEY"),
+        std::env::var("WORKOS_CLIENT_ID"),
+    ) else {
+        panic!("set WORKOS_API_KEY and WORKOS_CLIENT_ID");
+    };
+    let settings: oa_auth::workos::Settings = serde_json::from_value(
+        serde_json::json!({"client_id": client, "api_key_env": "WORKOS_API_KEY"}),
+    )
+    .unwrap();
+    let workos = oa_auth::workos::Workos::with_key(settings, &key);
+    workos.keys().refresh().await.expect("the key set decodes");
+    let nobody = workos
+        .users_by_email("nobody-oa-probe@example.invalid")
+        .await
+        .expect("a user search decodes");
+    assert!(nobody.is_empty());
+    assert!(
+        workos
+            .organization_for_domain("example.invalid")
+            .await
+            .expect("an organization search decodes")
+            .is_none()
+    );
+    assert!(
+        workos
+            .user("user_01OAPROBENOTREAL")
+            .await
+            .expect("a missing user is None")
+            .is_none()
+    );
+    let forged = oa_auth::workos::fake::mint("user_01X", "session_x", None, 60);
+    assert!(
+        workos.verify(&forged).await.is_err(),
+        "a token from another key is refused"
+    );
+    let role = workos.role_slug(tenancy::Role::Owner).await;
+    eprintln!("owner maps to {role}");
+}
