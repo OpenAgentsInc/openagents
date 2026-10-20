@@ -57,7 +57,7 @@ is the whole rollback.
 
 5. **Production: turn on `dual`.** After staging passes, and once a
    production build with WorkOS is serving (any web deploy at
-   `a705c56887` or later), add the keys and the switch to both containers of the
+   `33e20c815f` or later), add the keys and the switch to both containers of the
    production service:
 
    ```sh
