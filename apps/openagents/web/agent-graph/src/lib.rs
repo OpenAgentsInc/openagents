@@ -31,7 +31,7 @@ use wasm_bindgen::prelude::*;
 /// data, for readers who ask for less motion.
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen]
-pub fn mount(spec: &str, still: bool) -> Result<(), JsValue> {
+pub fn mount(spec: &str, still: bool, chat: Option<String>) -> Result<(), JsValue> {
     use std::rc::Rc;
 
     use gpui::{AppContext, Application, WindowBounds, WindowOptions, px, size};
@@ -40,6 +40,12 @@ pub fn mount(spec: &str, still: bool) -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
     openagents_gpui_web::init_logging();
     let spec = parse(spec).map_err(|e| JsValue::from_str(&e))?;
+    let events = chat
+        .as_deref()
+        .map(agent_graph::events::from_chat)
+        .transpose()
+        .map_err(|e| JsValue::from_str(&e.to_string()))?
+        .unwrap_or_default();
     let platform = WebPlatform::new(
         false,
         WebFonts {
@@ -56,7 +62,7 @@ pub fn mount(spec: &str, still: bool) -> Result<(), JsValue> {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            move |_, cx| cx.new(|_| app::GraphView::new(spec, still)),
+            move |_, cx| cx.new(|_| app::GraphView::new(spec, still, events)),
         )
         .expect("the page has a box to draw into");
         cx.activate(true);

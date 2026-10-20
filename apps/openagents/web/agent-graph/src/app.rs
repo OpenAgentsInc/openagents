@@ -13,7 +13,7 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, ParentElement, PathBuilder, Pixels, Render, ScrollWheelEvent,
     SharedString, Styled, Window, canvas, div, fill, point, prelude::*, px, size,
 };
-use web_time::Instant;
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::theme;
 
@@ -47,7 +47,7 @@ pub struct GraphView {
     drag: Drag,
     down_at: (f32, f32),
     moved: bool,
-    started: Instant,
+    events: Vec<agent_graph::events::Event>,
     still: bool,
     /// The graph area's size, from the last frame.
     area: (f32, f32),
@@ -58,7 +58,7 @@ fn f(p: Pixels) -> f32 {
 }
 
 impl GraphView {
-    pub fn new(spec: GraphSpec, still: bool) -> Self {
+    pub fn new(spec: GraphSpec, still: bool, events: Vec<agent_graph::events::Event>) -> Self {
         let layout = layout::layout(&spec);
         Self {
             spec,
@@ -71,7 +71,7 @@ impl GraphView {
             drag: Drag::None,
             down_at: (0.0, 0.0),
             moved: false,
-            started: Instant::now(),
+            events,
             still,
             area: (0.0, 0.0),
         }
@@ -258,7 +258,7 @@ struct Scene {
 }
 
 impl GraphView {
-    fn scene(&self, t: f32) -> (Scene, Vec<PinMark>) {
+    fn scene(&self, t: u64) -> (Scene, Vec<PinMark>) {
         let z = self.zoom;
         let (w, h) = self.area;
         let mut grid = vec![];
@@ -310,20 +310,17 @@ impl GraphView {
                 Hsla { a: 0.42, ..accent }
             };
             let width = if lit { 2.4 } else { 1.6 } * z.clamp(0.6, 1.4);
-            // Data moving along the link, two pieces a link, offset by link.
             if !self.still {
-                let speed = 0.16;
-                for k in 0..2 {
-                    let phase = (t * speed + at as f32 * 0.137 + k as f32 * 0.5).fract();
-                    dots.push(Dot {
-                        at: cubic(a, c1, c2, b, phase),
-                        r: (if lit { 3.4 } else { 2.6 }) * z.clamp(0.6, 1.4),
-                        color: if lit {
-                            accent
-                        } else {
-                            Hsla { a: 0.8, ..accent }
-                        },
-                    });
+                for event in &self.events {
+                    if let Some(phase) = agent_graph::events::phase(event.at, t) {
+                        if event.links(&self.spec).contains(&at) {
+                            dots.push(Dot {
+                                at: cubic(a, c1, c2, b, phase),
+                                r: 3.4 * z.clamp(0.6, 1.4),
+                                color: accent,
+                            });
+                        }
+                    }
                 }
             }
             curves.push(Curve {
@@ -763,9 +760,12 @@ impl Render for GraphView {
             self.fit_at_least(0.5);
             self.fitted = true;
         }
-        let t = self.started.elapsed().as_secs_f32();
+        let t = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
         let (scene, pins) = self.scene(t);
-        if !self.still {
+        if !self.still && self.events.iter().any(|e| e.at.saturating_add(1000) > t) {
             window.request_animation_frame();
         }
 

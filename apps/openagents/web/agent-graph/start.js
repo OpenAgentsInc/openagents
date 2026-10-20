@@ -149,7 +149,8 @@ if (box) {
   Promise.all([init(), graph()])
     .then(function (ready) {
       box.classList.add("is-live");
-      mount(ready[1], still);
+      var chat = document.getElementById("agent-graph-chat");
+      mount(ready[1], still, chat ? chat.textContent : undefined);
     })
     .catch(function (error) {
       box.classList.remove("is-live");

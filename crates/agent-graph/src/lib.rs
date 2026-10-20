@@ -16,6 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod catalog;
+pub mod events;
 pub mod layout;
 
 #[cfg(feature = "lab")]
