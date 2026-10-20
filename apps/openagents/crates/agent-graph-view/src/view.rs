@@ -6,13 +6,16 @@
 //! so it stays crisp; pins are painted over them. Pointer input is handled
 //! once, on the graph area, against the layout's boxes.
 
+use agent_graph::edit::{Edit, Editable};
 use agent_graph::layout::{self, HEADER, Layout, PIN_ROW, Rect, Side};
 use agent_graph::{Detail, GraphSpec, Unit, words};
 use gpui::{
-    AnyElement, Bounds, Context, FontWeight, Hsla, IntoElement, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ParentElement, PathBuilder, Pixels, Render, ScrollWheelEvent,
-    SharedString, Styled, Window, canvas, div, fill, point, prelude::*, px, size,
+    AnyElement, Bounds, Context, EventEmitter, FontWeight, Hsla, IntoElement, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, PathBuilder, Pixels, Render,
+    ScrollWheelEvent, SharedString, Styled, Window, canvas, div, fill, point, prelude::*, px, size,
 };
+use std::cell::Cell;
+use std::rc::Rc;
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::theme;
@@ -41,7 +44,12 @@ pub struct GraphView {
     zoom: f32,
     /// Where the graph's origin is on the screen.
     pan: (f32, f32),
-    fitted: bool,
+    /// The area size the graph was last fitted to, and whether the reader
+    /// has moved it since; until they do, a new size fits it again.
+    fitted: (f32, f32),
+    touched: bool,
+    /// Whether the panel sits under the graph, as on a phone.
+    narrow: bool,
     selected: Option<usize>,
     hovered: Option<usize>,
     focused: Option<usize>,
@@ -52,7 +60,23 @@ pub struct GraphView {
     still: bool,
     /// The graph area's size, from the last frame.
     area: (f32, f32),
+    /// The view's own box in the window, from the last frame: where the
+    /// graph area starts, and how much room the view has.
+    frame: Rc<Cell<(f32, f32, f32, f32)>>,
+    /// What the host lets the reader change; `None` is read-only.
+    editable: Option<Editable>,
+    /// Called with the selection on every frame, for a host's own mirror.
+    on_selection: Option<Box<dyn Fn(&GraphSpec, Option<usize>)>>,
 }
+
+/// What the view asks its host to do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GraphEvent {
+    /// The reader asked for a change to the agent.
+    Edit(Edit),
+}
+
+impl EventEmitter<GraphEvent> for GraphView {}
 
 fn f(p: Pixels) -> f32 {
     f32::from(p)
@@ -66,7 +90,9 @@ impl GraphView {
             layout,
             zoom: 1.0,
             pan: (0.0, 0.0),
-            fitted: false,
+            fitted: (0.0, 0.0),
+            touched: false,
+            narrow: false,
             selected: None,
             hovered: None,
             focused: None,
@@ -76,10 +102,77 @@ impl GraphView {
             events,
             still,
             area: (0.0, 0.0),
+            frame: Rc::new(Cell::new((0.0, 0.0, 0.0, 0.0))),
+            editable: None,
+            on_selection: None,
         }
     }
 
-    pub(crate) fn keyboard(&mut self, key: &str, unit: usize) -> bool {
+    /// Lets the reader ask for changes from the side panel, given what the
+    /// agent has now. The host applies them and calls [`Self::set_graph`].
+    pub fn with_editable(mut self, editable: Editable) -> Self {
+        self.editable = Some(editable);
+        self
+    }
+
+    /// Calls `hook` with the selection on every frame.
+    pub fn with_selection_hook(
+        mut self,
+        hook: impl Fn(&GraphSpec, Option<usize>) + 'static,
+    ) -> Self {
+        self.on_selection = Some(Box::new(hook));
+        self
+    }
+
+    /// Shows a changed graph, keeping the zoom, the pan, the selected unit,
+    /// and where the reader moved each unit that is still there.
+    pub fn set_graph(
+        &mut self,
+        spec: GraphSpec,
+        editable: Option<Editable>,
+        cx: &mut Context<Self>,
+    ) {
+        if spec == self.spec && editable == self.editable {
+            return;
+        }
+        let selected = self.selected.map(|at| self.spec.units[at].id.clone());
+        let mut layout = layout::layout(&spec);
+        // Keep each top-level unit where it was, moving its children with it.
+        let fresh = layout::layout(&self.spec);
+        for (at, unit) in spec.units.iter().enumerate() {
+            if unit.parent.is_some() {
+                continue;
+            }
+            if let Some(old) = self.spec.units.iter().position(|u| u.id == unit.id) {
+                let (was, now) = (self.layout.boxes[old], fresh.boxes[old]);
+                let (dx, dy) = (was.x - now.x, was.y - now.y);
+                if dx != 0.0 || dy != 0.0 {
+                    layout.translate(&spec, at, dx, dy);
+                }
+            }
+        }
+        self.selected = selected.and_then(|id| spec.units.iter().position(|u| u.id == id));
+        self.hovered = None;
+        self.focused = None;
+        self.drag = Drag::None;
+        self.spec = spec;
+        self.layout = layout;
+        self.editable = editable;
+        cx.notify();
+    }
+
+    pub fn spec(&self) -> &GraphSpec {
+        &self.spec
+    }
+
+    /// Selects the unit `id`, as a click on it does.
+    pub fn select(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.selected = self.spec.units.iter().position(|u| u.id == id);
+        cx.notify();
+    }
+
+    pub fn keyboard(&mut self, key: &str, unit: usize) -> bool {
+        self.touched = true;
         match key {
             "Enter" | " " => self.selected = Some(unit),
             "ArrowLeft" => self.pan.0 += 40.0,
@@ -93,7 +186,7 @@ impl GraphView {
         true
     }
 
-    pub(crate) fn focus_unit(&mut self, unit: Option<usize>) {
+    pub fn focus_unit(&mut self, unit: Option<usize>) {
         self.focused = unit;
         if let Some(unit) = unit {
             let b = self.layout.boxes[unit];
@@ -104,7 +197,7 @@ impl GraphView {
         }
     }
 
-    pub(crate) fn tab_order(&self) -> Vec<usize> {
+    pub fn tab_order(&self) -> Vec<usize> {
         let mut order: Vec<_> = (0..self.spec.units.len()).collect();
         order.sort_by(|&a, &b| {
             let a = self.layout.boxes[a];
@@ -168,8 +261,15 @@ impl GraphView {
             .unwrap_or(unit)
     }
 
+    /// A window position as a position in the graph area.
+    fn local(&self, p: gpui::Point<Pixels>) -> (f32, f32) {
+        let (ox, oy, _, _) = self.frame.get();
+        (f(p.x) - ox, f(p.y) - oy)
+    }
+
     fn on_down(&mut self, event: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let (x, y) = (f(event.position.x), f(event.position.y));
+        let (x, y) = self.local(event.position);
+        self.touched = true;
         let (gx, gy) = self.to_graph(x, y);
         self.down_at = (x, y);
         self.moved = false;
@@ -192,7 +292,7 @@ impl GraphView {
     }
 
     fn on_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let (x, y) = (f(event.position.x), f(event.position.y));
+        let (x, y) = self.local(event.position);
         if event.pressed_button != Some(MouseButton::Left) {
             self.drag = Drag::None;
         }
@@ -231,7 +331,8 @@ impl GraphView {
 
     fn on_wheel(&mut self, event: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
         let delta = event.delta.pixel_delta(px(16.0));
-        let (x, y) = (f(event.position.x), f(event.position.y));
+        self.touched = true;
+        let (x, y) = self.local(event.position);
         if event.modifiers.shift {
             self.pan = (self.pan.0 - f(delta.x) - f(delta.y), self.pan.1);
         } else {
@@ -521,7 +622,7 @@ impl GraphView {
             .right(px(12.0))
             // The page's toolbar sits at the top left; on a narrow screen it
             // can take the whole top, so the zoom controls go to the foot.
-            .top(px(if self.area.0 < NARROW {
+            .top(px(if self.narrow {
                 self.area.1 - 40.0
             } else {
                 12.0
@@ -543,6 +644,7 @@ impl GraphView {
                 MouseButton::Left,
                 cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
+                    this.touched = true;
                     this.zoom_at(1.0 / 1.25, center.0, center.1);
                     cx.notify();
                 }),
@@ -551,6 +653,7 @@ impl GraphView {
                 MouseButton::Left,
                 cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
+                    this.touched = true;
                     this.zoom_at(1.25, center.0, center.1);
                     cx.notify();
                 }),
@@ -565,7 +668,7 @@ impl GraphView {
             ))
     }
 
-    fn panel(&self, narrow: bool) -> impl IntoElement {
+    fn panel(&self, narrow: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let mut panel = div()
             .id("panel")
             .flex()
@@ -665,8 +768,161 @@ impl GraphView {
         if !sends.is_empty() {
             panel = panel.child(list(Some(words::SENDS), &sends));
         }
+        if let Some(editable) = &self.editable {
+            let changes = changes(&unit.id, editable);
+            if !changes.is_empty() {
+                panel = panel.child(label(words::CHANGE));
+                let mut row = div().flex().flex_wrap().gap(px(6.0));
+                for (at, (text, edit)) in changes.into_iter().enumerate() {
+                    row = row.child(
+                        div()
+                            .id(SharedString::from(format!("graph-change-{at}")))
+                            .debug_selector(move || format!("graph-change-{at}"))
+                            .px(px(9.0))
+                            .h(px(26.0))
+                            .flex()
+                            .items_center()
+                            .rounded(px(6.0))
+                            .border_1()
+                            .border_color(theme::border())
+                            .bg(theme::bg())
+                            .text_size(px(12.5))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::chip()))
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                cx.emit(GraphEvent::Edit(edit.clone()));
+                            }))
+                            .child(SharedString::from(text)),
+                    );
+                }
+                panel = panel.child(row);
+            }
+        }
         panel
     }
+}
+
+/// The changes a reader may ask for on the unit `id`, with their labels.
+pub fn changes(id: &str, editable: &Editable) -> Vec<(String, Edit)> {
+    let minutes = |m: Option<u32>, default: u32, step: i64, lo: u32, hi: u32| {
+        let now = i64::from(m.unwrap_or(default));
+        u32::try_from((now + step).clamp(i64::from(lo), i64::from(hi))).unwrap_or(lo)
+    };
+    let mut out = vec![];
+    match id {
+        "runtime" | "check-ins" => {
+            out.push((
+                if editable.check_ins {
+                    "Stop check-ins"
+                } else {
+                    "Check in on a schedule"
+                }
+                .to_owned(),
+                Edit::ToggleCheckIns,
+            ));
+            if editable.check_ins {
+                for (text, step) in [("Check in less often", 5), ("Check in more often", -5)] {
+                    out.push((
+                        text.to_owned(),
+                        Edit::SetEveryMinutes {
+                            minutes: Some(minutes(editable.every_minutes, 10, step, 5, 1440)),
+                        },
+                    ));
+                }
+            }
+            if id == "runtime" {
+                out.push((authority_label(editable).to_owned(), Edit::ToggleAuthority));
+            }
+        }
+        "authority" => out.push((authority_label(editable).to_owned(), Edit::ToggleAuthority)),
+        "stalls" => {
+            for (text, step) in [
+                ("Wait longer before a stall", 5),
+                ("Wait less before a stall", -5),
+            ] {
+                out.push((
+                    text.to_owned(),
+                    Edit::SetStallMinutes {
+                        minutes: Some(minutes(editable.stall_minutes, 20, step, 5, 240)),
+                    },
+                ));
+            }
+        }
+        "instructions" if editable.room_for_skill => {
+            out.push(("Add a skill".to_owned(), Edit::AddSkill));
+        }
+        "tools" => {
+            for name in agent_graph::edit::addable() {
+                if !editable.named.iter().any(|n| n == name) {
+                    out.push((format!("Add {name}"), Edit::AddTool { name: name.into() }));
+                }
+            }
+        }
+        "sources" => {
+            for (place, _, _) in agent_graph::catalog::SOURCES {
+                if !editable.places.iter().any(|p| p == place) {
+                    out.push((
+                        format!("Read {place}"),
+                        Edit::AddSource {
+                            place: place.into(),
+                        },
+                    ));
+                }
+            }
+        }
+        _ => {}
+    }
+    if let Some(number) = id.strip_prefix("skill-").and_then(|n| n.parse().ok()) {
+        out.push(("Remove this skill".to_owned(), Edit::RemoveSkill { number }));
+    }
+    if let Some(slug) = id.strip_prefix("source-") {
+        for (place, _, _) in agent_graph::catalog::SOURCES {
+            if slug_of(place) == slug {
+                out.push((
+                    format!("Stop reading {place}"),
+                    Edit::RemoveSource {
+                        place: place.into(),
+                    },
+                ));
+            }
+        }
+    }
+    if let Some(group) = id.strip_prefix("tools-") {
+        for name in &editable.named {
+            let in_group = agent_graph::catalog::TOOLS
+                .iter()
+                .find(|(g, _)| slug_of(g) == group)
+                .map_or(
+                    group == "commands" && agent_graph::catalog::COMMANDS.contains(&name.as_str()),
+                    |(_, names)| names.contains(&name.as_str()),
+                );
+            if in_group {
+                out.push((
+                    format!("Remove {name}"),
+                    Edit::RemoveTool { name: name.clone() },
+                ));
+            }
+        }
+    }
+    out
+}
+
+fn authority_label(editable: &Editable) -> &'static str {
+    if editable.authority {
+        "Stop asking for standing authority"
+    } else {
+        "Ask for standing authority"
+    }
+}
+
+/// A unit ID's slug for a name, as `agent_graph::lab` makes them.
+fn slug_of(name: &str) -> String {
+    name.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 fn pin_label(name: &str, row: usize, z: f32, output: bool) -> impl IntoElement {
@@ -785,20 +1041,51 @@ fn detail_block(detail: &Detail) -> AnyElement {
 
 impl Render for GraphView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        #[cfg(target_family = "wasm")]
-        crate::accessibility::sync(&self.spec, self.selected);
-        let viewport = window.viewport_size();
-        let (vw, vh) = (f(viewport.width), f(viewport.height));
+        if let Some(hook) = &self.on_selection {
+            hook(&self.spec, self.selected);
+        }
+        // The view's own size once it has been laid out; the window's before.
+        let (_, _, fw, fh) = self.frame.get();
+        let (vw, vh) = if fw > 1.0 && fh > 1.0 {
+            (fw, fh)
+        } else {
+            let viewport = window.viewport_size();
+            (f(viewport.width), f(viewport.height))
+        };
         let narrow = vw < NARROW;
+        self.narrow = narrow;
         self.area = if narrow {
             (vw, (vh * 0.62).round())
         } else {
             ((vw - PANEL_W).max(1.0), vh)
         };
-        if !self.fitted && self.area.0 > 1.0 && self.area.1 > 1.0 {
+        if !self.touched && self.fitted != self.area && self.area.0 > 1.0 && self.area.1 > 1.0 {
             self.fit_at_least(0.5);
-            self.fitted = true;
+            self.fitted = self.area;
         }
+        // Measure the view's box for the next frame; a change of size
+        // draws again.
+        let frame = self.frame.clone();
+        let entity = cx.entity().downgrade();
+        let measure = canvas(
+            move |bounds: Bounds<Pixels>, _, cx| {
+                let now = (
+                    f(bounds.origin.x),
+                    f(bounds.origin.y),
+                    f(bounds.size.width),
+                    f(bounds.size.height),
+                );
+                if frame.get() != now {
+                    frame.set(now);
+                    if let Some(view) = entity.upgrade() {
+                        cx.defer(move |cx| view.update(cx, |_, cx| cx.notify()));
+                    }
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full();
         let t = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -915,13 +1202,16 @@ impl Render for GraphView {
             area.flex_1().h_full()
         };
 
+        let panel = self.panel(narrow, cx);
         let root = div()
+            .relative()
             .size_full()
             .flex()
             .bg(theme::bg())
             .font_family(theme::SANS)
+            .child(measure)
             .child(area)
-            .child(self.panel(narrow));
+            .child(panel);
         if narrow {
             root.flex_col()
         } else {

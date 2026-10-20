@@ -3,6 +3,7 @@ use crate::{
     composer::{ComposerInput, ComposerInputEvent},
     theme::Theme,
 };
+use agent_graph::edit::{Edit, Op};
 use agent_lab::view::Action;
 use gpui::{
     AnyElement, App, AppContext, Context, Empty, Entity, EventEmitter, FocusHandle, Focusable,
@@ -14,12 +15,14 @@ use openagents_account::{
     Controller,
     agent_lab::{Effect, Lab},
 };
+use openagents_agent_graph_view::{GraphEvent, GraphView};
 use rust_native::{Activation, Axis, Element, FieldChange, Node, ValidatedView};
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Agent,
+    Graph,
     Tests,
     Results,
 }
@@ -27,6 +30,7 @@ impl Tab {
     fn label(self) -> &'static str {
         match self {
             Self::Agent => "Agent",
+            Self::Graph => "Graph",
             Self::Tests => "Tests",
             Self::Results => "Results",
         }
@@ -111,6 +115,12 @@ pub struct AgentLab {
     watch: Option<Task<()>>,
     poll: Option<Task<()>>,
     operation: Option<Task<()>>,
+    /// The draft as AgentGraph (#12231): made when the Graph tab first
+    /// opens, then kept in step with the draft the form edits.
+    graph: Option<(Entity<GraphView>, Subscription)>,
+    /// A draft to draw without an account, for previews.
+    #[cfg(feature = "account-fixture")]
+    fixture_draft: Option<::agent_lab::Experiment>,
 }
 #[derive(Clone)]
 pub enum Event {
@@ -146,6 +156,9 @@ impl AgentLab {
             watch: None,
             poll: None,
             operation: None,
+            graph: None,
+            #[cfg(feature = "account-fixture")]
+            fixture_draft: None,
         };
         this.account_changed(cx);
         this
@@ -225,6 +238,87 @@ impl AgentLab {
     }
     fn read_view(&mut self) {
         self.view = self.lab.as_ref().and_then(|l| l.view().validate().ok());
+    }
+    /// The draft the form shows, as a graph and what the graph may change.
+    fn draft_graph(&self) -> Option<(agent_graph::GraphSpec, agent_graph::edit::Editable)> {
+        #[cfg(feature = "account-fixture")]
+        let fixture = self.fixture_draft.clone();
+        #[cfg(not(feature = "account-fixture"))]
+        let fixture: Option<::agent_lab::Experiment> = None;
+        let draft = &match &self.lab {
+            Some(lab) => lab.snapshot().draft,
+            None => fixture?,
+        };
+        let id = draft.title.to_lowercase().replace(' ', "-");
+        Some((
+            agent_graph::lab::of(draft, &id, &Default::default()),
+            agent_graph::edit::editable(draft),
+        ))
+    }
+    /// Keeps the graph on the form's draft.
+    fn sync_graph(&mut self, cx: &mut Context<Self>) {
+        let Some((spec, editable)) = self.draft_graph() else {
+            return;
+        };
+        let editable = (!self.busy).then_some(editable);
+        if let Some((graph, _)) = &self.graph {
+            graph.update(cx, |g, cx| g.set_graph(spec, editable, cx));
+            return;
+        }
+        let graph = cx.new(|_| {
+            let view = GraphView::new(spec, false, vec![]);
+            match editable {
+                Some(e) => view.with_editable(e),
+                None => view,
+            }
+        });
+        let events = cx.subscribe(&graph, |this: &mut Self, _, event: &GraphEvent, cx| {
+            let GraphEvent::Edit(edit) = event;
+            this.graph_edit(edit.clone(), cx);
+        });
+        self.graph = Some((graph, events));
+    }
+    /// Makes a change asked for on the graph with the form's own steps, so
+    /// it goes through the same store and checks as typing in the form.
+    fn graph_edit(&mut self, edit: Edit, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        let Some(lab) = self.lab.clone() else {
+            return;
+        };
+        let ops = match agent_graph::edit::plan(&lab.snapshot().draft, &edit) {
+            Ok(ops) => ops,
+            Err(message) => {
+                self.error = Some(message);
+                cx.notify();
+                return;
+            }
+        };
+        self.error = None;
+        for op in ops {
+            self.read_view();
+            match op {
+                Op::Field { key, value } => {
+                    let Some(activation) = self.activation(&key) else {
+                        self.error = Some("This field changed. Try it again.".into());
+                        break;
+                    };
+                    if let Err(message) = lab.change_field(FieldChange { activation, value }) {
+                        self.error = Some(message);
+                        break;
+                    }
+                }
+                Op::Action { key } => {
+                    if let Some(activation) = self.activation(&key) {
+                        self.activate(activation, cx);
+                    }
+                }
+            }
+        }
+        self.read_view();
+        self.sync_graph(cx);
+        cx.notify();
     }
     fn activation(&self, key: &str) -> Option<Activation> {
         self.view.as_ref().map(|v| Activation {
@@ -528,7 +622,7 @@ impl Render for AgentLab {
             library = library.child(self.mount(n, cx));
         }
         let mut tabs = div().flex().gap(px(8.));
-        for tab in [Tab::Agent, Tab::Tests, Tab::Results] {
+        for tab in [Tab::Agent, Tab::Graph, Tab::Tests, Tab::Results] {
             tabs = tabs.child(
                 div()
                     .id(SharedString::from(format!("agent-lab-tab-{}", tab.label())))
@@ -562,10 +656,13 @@ impl Render for AgentLab {
             );
         }
         let chosen = match self.tab {
-            Tab::Agent => Area::Agent,
+            Tab::Agent | Tab::Graph => Area::Agent,
             Tab::Tests => Area::Tests,
             Tab::Results => Area::Results,
         };
+        if self.tab == Tab::Graph {
+            self.sync_graph(cx);
+        }
         let mut content = div()
             .id(SharedString::from(format!(
                 "agent-lab-{}",
@@ -578,8 +675,17 @@ impl Render for AgentLab {
             .flex()
             .flex_col()
             .gap(px(14.));
-        let selected: Vec<_> = nodes.iter().filter(|n| area(&n.key) == chosen).collect();
-        if selected.is_empty() {
+        let selected: Vec<_> = if self.tab == Tab::Graph {
+            vec![]
+        } else {
+            nodes.iter().filter(|n| area(&n.key) == chosen).collect()
+        };
+        if self.tab == Tab::Graph {
+            content = match &self.graph {
+                Some((graph, _)) => content.p(px(0.)).overflow_hidden().child(graph.clone()),
+                None => content.child("Connect your account to use Agent Lab."),
+            };
+        } else if selected.is_empty() {
             content = content.child(if self.lab.is_none() {
                 "Connect your account to use Agent Lab."
             } else if self.tab == Tab::Results {
@@ -695,6 +801,7 @@ impl AgentLab {
         cx: &mut Context<Self>,
     ) -> Self {
         let mut this = Self::new(controller, root, cx);
+        this.fixture_draft = Some(workbench.draft.clone());
         this.view = Some(
             workbench
                 .view()
@@ -703,8 +810,14 @@ impl AgentLab {
         );
         this
     }
+    /// Draws `draft` on the Graph tab instead of the fixture's own.
+    pub fn fixture_graph(&mut self, draft: ::agent_lab::Experiment, cx: &mut Context<Self>) {
+        self.fixture_draft = Some(draft);
+        self.tab = Tab::Graph;
+        cx.notify();
+    }
     pub fn fixture_tab(&mut self, tab: usize, cx: &mut Context<Self>) {
-        self.tab = [Tab::Agent, Tab::Tests, Tab::Results][tab];
+        self.tab = [Tab::Agent, Tab::Tests, Tab::Results, Tab::Graph][tab];
         cx.notify();
     }
 }

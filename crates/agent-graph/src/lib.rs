@@ -38,7 +38,8 @@ pub mod words {
     pub const TO: &str = "to";
     pub const FIT: &str = "Fit";
     pub const NOTHING: &str = "Nothing yet";
-    pub const ALL: [&str; 8] = [HINT, TAKES, SENDS, INSIDE, FROM, TO, FIT, NOTHING];
+    pub const CHANGE: &str = "Change it";
+    pub const ALL: [&str; 9] = [HINT, TAKES, SENDS, INSIDE, FROM, TO, FIT, NOTHING, CHANGE];
 }
 
 /// The schema a [`GraphSpec`] names.

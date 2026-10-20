@@ -1,6 +1,6 @@
 //! Real browser controls mirror the graph's units; the canvas and DOM share state.
 use agent_graph::GraphSpec;
-use gpui::{AppContext, Context};
+use gpui::Context;
 use wasm_bindgen::{JsCast, closure::Closure};
 
 use crate::GraphView;

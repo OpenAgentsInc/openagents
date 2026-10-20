@@ -1388,3 +1388,17 @@ with cache off, 20 Mbit/s, and 40 ms latency reached the chat's first-frame
 event in a median 1.39 s (1.13–1.80 s); server HTML painted first in every
 run. Pixel and cross-browser checks after deployment are tracked in the
 master delegation audit.
+
+## AgentGraph in the desktop's Agent Lab (#12231)
+
+- `crates/agent-graph-view` (`openagents-agent-graph-view`) holds the GPUI
+  graph view that `web/agent-graph` used to carry, so the desktop and the
+  web draw graphs with one view. It measures its own box (so it can sit
+  inside a pane, not only fill a window), keeps pan, zoom, and moved units
+  across `set_graph`, and, given an `agent_graph::edit::Editable`, offers
+  changes in its side panel as `GraphEvent::Edit`.
+- `crates/ui/src/agent_lab.rs` adds a Graph tab beside Agent, Tests, and
+  Results. It draws the form's draft, and turns each `GraphEvent::Edit` into
+  the form's own field changes and actions (`agent_graph::edit::plan`)
+  through `openagents_account::agent_lab::Lab`, so the graph and the form
+  share one store and one set of checks.

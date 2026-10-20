@@ -12,6 +12,7 @@ members = [
     "crates/proto",
     "crates/preview",
     "crates/doc",
+    "crates/agent-graph-view",
     "crates/sync",
     "crates/harness",
     "crates/engine",

@@ -107,6 +107,9 @@ lab-ui = { path = "../../../../crates/lab-ui" }
 # The autonomy card every shell shares (#12045).
 agent-lab = { path = "../../../../crates/agent-lab", features = ["views"] }
 agent-contract = { path = "../../../../crates/agent-contract" }
+# AgentGraph: an agent's definition as a graph, drawn and edited in Agent Lab (#12231).
+agent-graph = { path = "../../../../crates/agent-graph" }
+openagents-agent-graph-view = { path = "../agent-graph-view" }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 chat-home = { path = "../../../../crates/chat-home", features = ["ui"] }
 gethostname.workspace = true

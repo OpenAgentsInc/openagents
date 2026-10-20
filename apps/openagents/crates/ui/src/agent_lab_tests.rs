@@ -246,3 +246,101 @@ fn uncertain_saves_retry_the_same_request_with_the_edited_spec(cx: &mut gpui::Te
         "Concurrency reviewer"
     );
 }
+
+#[gpui::test]
+fn graph_edits_change_the_draft_the_form_shows(cx: &mut gpui::TestAppContext) {
+    use agent_graph::edit::Edit;
+    let f = fixture(cx);
+    let handle = ready(cx, &f);
+    handle
+        .update(cx, |lab, _, cx| {
+            let start = lab
+                .activation(&format!("template:{}", ::agent_lab::templates::FOREMAN_ID))
+                .unwrap();
+            lab.activate(start, cx);
+        })
+        .unwrap();
+    settle(cx, |cx| handle.update(cx, |lab, _, _| !lab.busy).unwrap());
+    handle.update(cx, |lab, _, _| lab.tab = Tab::Graph).unwrap();
+    draw(handle, cx);
+    let graph = handle
+        .update(cx, |lab, _, _| lab.graph.as_ref().unwrap().0.clone())
+        .unwrap();
+    let draft = |cx: &mut gpui::TestAppContext| {
+        handle
+            .update(cx, |lab, _, _| lab.lab.as_ref().unwrap().snapshot().draft)
+            .unwrap()
+    };
+    assert_eq!(draft(cx).draft.spec.name, "Foreman");
+    assert!(graph.read_with(cx, |g, _| g.spec().unit("authority").is_some()));
+
+    // A click on the panel's change goes through the form's own control.
+    graph.update(cx, |g, cx| g.select("authority", cx));
+    draw(handle, cx);
+    let mut visual = gpui::VisualTestContext::from_window(handle.into(), cx);
+    let change = visual.debug_bounds("graph-change-0").unwrap();
+    visual.simulate_click(change.center(), gpui::Modifiers::default());
+    settle(cx, |cx| handle.update(cx, |lab, _, _| !lab.busy).unwrap());
+    draw(handle, cx);
+    assert!(!draft(cx).draft.spec.autonomy.unwrap().authority);
+    handle
+        .update(cx, |lab, _, _| {
+            let view = lab.view.as_ref().unwrap();
+            let Element::Button { label, .. } =
+                &find(&view.view().root, "authority").unwrap().element
+            else {
+                panic!("the form has no authority control");
+            };
+            assert_eq!(label, "Ask for standing authority");
+        })
+        .unwrap();
+
+    // Tools come out of the agent's text and back.
+    graph.update(cx, |_, cx| {
+        cx.emit(GraphEvent::Edit(Edit::RemoveTool {
+            name: "read_chat".into(),
+        }))
+    });
+    settle(cx, |cx| handle.update(cx, |lab, _, _| !lab.busy).unwrap());
+    draw(handle, cx);
+    let text = agent_graph::lab::text(&draft(cx));
+    assert!(!agent_graph::catalog::named(&text, "read_chat"));
+    assert!(graph.read_with(cx, |g, _| {
+        !serde_json_contains(g.spec(), "`read_chat`") && g.spec().unit("tools-chats").is_some()
+    }));
+    graph.update(cx, |_, cx| {
+        cx.emit(GraphEvent::Edit(Edit::AddTool {
+            name: "read_chat".into(),
+        }))
+    });
+    settle(cx, |cx| handle.update(cx, |lab, _, _| !lab.busy).unwrap());
+    assert!(agent_graph::catalog::named(
+        &agent_graph::lab::text(&draft(cx)),
+        "read_chat"
+    ));
+
+    // An edit in the form shows on the graph.
+    handle
+        .update(cx, |lab, _, cx| lab.edit("every-minutes", "30".into(), cx))
+        .unwrap();
+    draw(handle, cx);
+    assert_eq!(
+        graph.read_with(cx, |g, _| g.spec().unit("check-ins").unwrap().line.clone()),
+        "every 30 minutes"
+    );
+
+    // An out-of-range value from the graph keeps the draft from saving.
+    graph.update(cx, |_, cx| {
+        cx.emit(GraphEvent::Edit(Edit::SetStallMinutes { minutes: Some(1) }))
+    });
+    settle(cx, |cx| handle.update(cx, |lab, _, _| !lab.busy).unwrap());
+    handle
+        .update(cx, |lab, _, _| {
+            assert!(!lab.lab.as_ref().unwrap().snapshot().draft_valid());
+        })
+        .unwrap();
+}
+
+fn serde_json_contains(spec: &agent_graph::GraphSpec, needle: &str) -> bool {
+    serde_json::to_string(spec).unwrap().contains(needle)
+}

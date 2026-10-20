@@ -170,7 +170,10 @@ fn main() -> anyhow::Result<()> {
                 )
                 .unwrap();
             cx.spawn(async move |cx| {
-                for (index, name) in ["agent", "tests", "results"].into_iter().enumerate() {
+                for (index, name) in ["agent", "tests", "results", "graph"]
+                    .into_iter()
+                    .enumerate()
+                {
                     window
                         .update(cx, |lab, _, cx| lab.fixture_tab(index, cx))
                         .unwrap();
@@ -184,6 +187,20 @@ fn main() -> anyhow::Result<()> {
                         })
                         .unwrap();
                 }
+                window
+                    .update(cx, |lab, _, cx| {
+                        lab.fixture_graph(::agent_lab::templates::foreman(), cx)
+                    })
+                    .unwrap();
+                cx.background_executor()
+                    .timer(Duration::from_millis(700))
+                    .await;
+                gpui::AnyWindowHandle::from(window)
+                    .update(cx, |_, window, cx| {
+                        window.draw(cx).clear();
+                        capture(window, &output.join("graph-foreman.png")).unwrap();
+                    })
+                    .unwrap();
                 cx.update(|cx| cx.quit());
                 drop(runtime);
             })

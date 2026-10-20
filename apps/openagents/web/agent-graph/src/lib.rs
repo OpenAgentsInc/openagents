@@ -12,11 +12,9 @@ use agent_graph::GraphSpec;
 
 #[cfg(target_family = "wasm")]
 mod accessibility;
-mod app;
 pub mod assets;
-pub mod theme;
 
-pub use app::GraphView;
+pub use openagents_agent_graph_view::{GraphView, theme};
 
 /// A graph from the page, checked before anything draws it.
 pub fn parse(json: &str) -> Result<GraphSpec, String> {
@@ -84,7 +82,8 @@ pub fn mount(
             },
             move |_, cx| {
                 cx.new(|cx| {
-                    let view = app::GraphView::new(spec.clone(), still, events);
+                    let view = GraphView::new(spec.clone(), still, events)
+                        .with_selection_hook(accessibility::sync);
                     accessibility::install(&spec, &view.tab_order(), cx);
                     view
                 })
