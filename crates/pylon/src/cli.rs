@@ -48,6 +48,12 @@ Commands:
                             the decision engine (default: its device).
       --text-engine NAME    openai (default), gpt-oss, or llama-cpp.
                             Runs the chosen local model server.
+      --text-chat-template FILE|off
+                            Override llama.cpp's chat template, or clear it.
+      --text-stop TEXT       Stop llama.cpp's answer at TEXT (repeatable;
+                            `off` clears saved stops).
+      --text-override-kv KEY=TYPE:VALUE|off
+                            Override llama.cpp metadata (repeatable).
       --device NAME         metal, cuda, or cpu (default: what doctor picks).
       --port N              The decision engine's loopback port (default 18096).
       --text-port N         The text engine's loopback port (default 18097),
@@ -2118,6 +2124,9 @@ async fn start(
         let lane = crate::online::LaneSpec {
             kind: crate::online::LaneKind::Decisions,
             engine: crate::share::TextEngine::Openai,
+            chat_template: None,
+            stop: Vec::new(),
+            metadata_overrides: Vec::new(),
             port,
             model_file: model,
             device: Some(device),

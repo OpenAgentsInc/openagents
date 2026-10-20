@@ -68,6 +68,9 @@ pub enum LaneKind {
 pub struct LaneSpec {
     pub kind: LaneKind,
     pub engine: TextEngine,
+    pub chat_template: Option<PathBuf>,
+    pub stop: Vec<String>,
+    pub metadata_overrides: Vec<String>,
     pub port: u16,
     pub model_file: PathBuf,
     /// The device (`metal`, `cuda`, `cpu`), selected separately for text
@@ -102,6 +105,9 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
         out.push(LaneSpec {
             kind: LaneKind::Decisions,
             engine: TextEngine::Openai,
+            chat_template: None,
+            stop: Vec::new(),
+            metadata_overrides: Vec::new(),
             port: lane.port,
             model_file: lane.model_file.clone(),
             device: Some(lane.device.clone()),
@@ -112,6 +118,9 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
         out.push(LaneSpec {
             kind: LaneKind::Text,
             engine: lane.engine,
+            chat_template: lane.chat_template.clone(),
+            stop: lane.stop.clone(),
+            metadata_overrides: lane.metadata_overrides.clone(),
             port: lane.port,
             model_file: lane.model_file.clone(),
             device: lane
@@ -150,6 +159,19 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
                 "auto"
             },
         ]);
+        if let Some(template) = &lane.chat_template {
+            command.arg("--chat-template-file").arg(template);
+        }
+        if !lane.stop.is_empty() {
+            command
+                .arg("--reverse-prompt")
+                .arg(csv_arguments(&lane.stop));
+        }
+        if !lane.metadata_overrides.is_empty() {
+            command
+                .arg("--override-kv")
+                .arg(csv_arguments(&lane.metadata_overrides));
+        }
         return command;
     }
     match lane.kind {
@@ -168,12 +190,35 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
     command
 }
 
+// Current llama.cpp accepts one CSV value per option, rather than repeated flags.
+fn csv_arguments(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|value| {
+            if value.contains([',', '"', '\n', '\r']) {
+                format!("\"{}\"", value.replace('"', "\"\""))
+            } else {
+                value.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// Environment variables an engine child keeps; everything else (API keys,
 /// tokens) is dropped.
 fn keeps(name: &str) -> bool {
     matches!(
         name,
-        "PATH" | "HOME" | "USER" | "LANG" | "LC_ALL" | "TMPDIR" | "TZ" | "RUST_LOG"
+        "PATH"
+            | "HOME"
+            | "USER"
+            | "LANG"
+            | "LC_ALL"
+            | "TMPDIR"
+            | "TZ"
+            | "RUST_LOG"
+            | "LLAMA_ARG_THREADS"
     ) || ["LD_LIBRARY_PATH", "DYLD_", "CUDA_", "NVIDIA_", "PSIONIC_"]
         .iter()
         .any(|prefix| name.starts_with(prefix))
@@ -999,6 +1044,12 @@ pub struct Up {
     pub text_device: Option<String>,
     /// Which local server serves the text model.
     pub text_engine: Option<TextEngine>,
+    /// A llama.cpp template path; `off` clears a saved override.
+    pub text_chat_template: Option<PathBuf>,
+    /// Answer boundaries for llama.cpp; a single `off` clears saved stops.
+    pub text_stop: Option<Vec<String>>,
+    /// llama.cpp metadata overrides; a single `off` clears saved values.
+    pub text_override_kv: Option<Vec<String>>,
     pub device: Option<String>,
     pub port: Option<u16>,
     /// `--text-port`: the text engine's loopback port.
@@ -1031,6 +1082,13 @@ impl Up {
             .pop()
             .map(PathBuf::from);
         let device = share::take_values(&mut words, "--device")?.pop();
+        let text_chat_template = share::take_values(&mut words, "--text-chat-template")?
+            .pop()
+            .map(PathBuf::from);
+        let stops = share::take_values(&mut words, "--text-stop")?;
+        let text_stop = (!stops.is_empty()).then_some(stops);
+        let overrides = share::take_values(&mut words, "--text-override-kv")?;
+        let text_override_kv = (!overrides.is_empty()).then_some(overrides);
         let text_device = share::take_values(&mut words, "--text-device")?.pop();
         let text_engine = share::take_values(&mut words, "--text-engine")?
             .pop()
@@ -1066,6 +1124,9 @@ impl Up {
             text_model,
             text_device,
             text_engine,
+            text_chat_template,
+            text_stop,
+            text_override_kv,
             device,
             port,
             text_port,
@@ -1180,15 +1241,65 @@ pub fn settings_for_up(
                     .unwrap_or(TEXT_MODEL)
                     .to_lowercase()
             };
+            let engine = up
+                .text_engine
+                .or_else(|| settings.text.as_ref().map(|t| t.engine))
+                .unwrap_or_default();
+            let chat_template = match &up.text_chat_template {
+                Some(path) if path == Path::new("off") => None,
+                Some(path) => Some(path.clone()),
+                None => settings.text.as_ref().and_then(|held| {
+                    (held.model_file == file && held.engine == engine)
+                        .then(|| held.chat_template.clone())
+                        .flatten()
+                }),
+            };
+            let stop = match &up.text_stop {
+                Some(stops) if stops.as_slice() == ["off"] => Vec::new(),
+                Some(stops) => stops.clone(),
+                None => settings
+                    .text
+                    .as_ref()
+                    .filter(|held| held.model_file == file && held.engine == engine)
+                    .map(|held| held.stop.clone())
+                    .unwrap_or_default(),
+            };
+            let metadata_overrides = match &up.text_override_kv {
+                Some(values) if values.as_slice() == ["off"] => Vec::new(),
+                Some(values) => values.clone(),
+                None => settings
+                    .text
+                    .as_ref()
+                    .filter(|held| held.model_file == file && held.engine == engine)
+                    .map(|held| held.metadata_overrides.clone())
+                    .unwrap_or_default(),
+            };
+            if !metadata_overrides.is_empty() && engine != TextEngine::LlamaCpp {
+                return Err("--text-override-kv needs --text-engine llama-cpp".into());
+            }
+            if !stop.is_empty() && engine != TextEngine::LlamaCpp {
+                return Err("--text-stop needs --text-engine llama-cpp".into());
+            }
+            if let Some(path) = &chat_template {
+                if engine != TextEngine::LlamaCpp {
+                    return Err("--text-chat-template needs --text-engine llama-cpp".into());
+                }
+                if !path.is_file() {
+                    return Err(format!(
+                        "the chat template is missing at {}",
+                        path.display()
+                    ));
+                }
+            }
             Some(TextLane {
                 port: text_port,
                 model,
                 model_file: file,
                 device: text_device,
-                engine: up
-                    .text_engine
-                    .or_else(|| settings.text.as_ref().map(|t| t.engine))
-                    .unwrap_or_default(),
+                engine,
+                chat_template,
+                stop,
+                metadata_overrides,
             })
         }
     } else {

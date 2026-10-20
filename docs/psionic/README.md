@@ -43,6 +43,9 @@ analysis is kept separate from the final answer.
 Pylon can also explicitly supervise a local llama.cpp server for families
 without a native GPU decoder. See [model selection and qualification](../compute/pylon.md#choose-another-text-model)
 for the pinned eight-model catalog and repeatable RTX 4080 checks.
+The catalog additionally includes Nemotron-4 340B IQ2_XXS through
+llama.cpp with RAM/GPU offload, a pinned prompt template, and answer stop
+markers; this is not a native Psionic Nemotron decoder.
 
 ## Who uses it
 

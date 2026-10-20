@@ -72,6 +72,15 @@ pub struct TextLane {
     /// Which local server loads this model.
     #[serde(default)]
     pub engine: TextEngine,
+    /// Optional llama.cpp chat template for models with incorrect GGUF metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_template: Option<PathBuf>,
+    /// Strings that end a llama.cpp answer before another transcript turn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stop: Vec<String>,
+    /// llama.cpp metadata fixes for GGUFs with incorrect tokenizer settings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub metadata_overrides: Vec<String>,
 }
 
 /// What the owner chose for this computer's shared compute.

@@ -70,5 +70,47 @@
     "bytes": 12109566624,
     "sha256": "27cd6c432c7672cb812a92f611cf3ba7bbc35928262bb1e1253ff4ee6ae35901",
     "backend": "cuda"
+  },
+  {
+    "id": "nemotron4-340b",
+    "repo": "mradermacher/Nemotron-4-340B-Instruct-hf-i1-GGUF",
+    "revision": "27ab32138238f7f7a6ce67f6c3d6357e9c7d7369",
+    "file": "Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf",
+    "bytes": 92288617984,
+    "download_parts": [
+      {
+        "file": "Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf.part1of2",
+        "bytes": 46170898432,
+        "sha256": "75ca0400cc670ab3f3e373f017a045c6e39f9b908e06aa55111b9c6ea9692281"
+      },
+      {
+        "file": "Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf.part2of2",
+        "bytes": 46117719552,
+        "sha256": "17e3e8e80e1cea9309180ac47416a4ff41138cbfe0e017c1def7e0abe3dd494d"
+      }
+    ],
+    "backend": "cuda",
+    "engines": [
+      "llama-cpp"
+    ],
+    "parameters_billions": 340,
+    "quantization": "IQ2_XXS",
+    "chat_template": "templates/nemotron4.jinja",
+    "chat_template_sha256": "e70a97ff172dd9e456643fe335f9eb1ec2c06f04e5805e0385bb420da2de0f5b",
+    "max_output_tokens": 32,
+    "throughput_tokens": 16,
+    "upstream_model": "nvidia/Nemotron-4-340B-Instruct",
+    "download_workers": 4,
+    "stop_sequences": [
+      "<extra_id_1>",
+      "<extra_id_0>",
+      "<|endoftext|>",
+      "\u0011"
+    ],
+    "execution_backend": "cuda+cpu",
+    "sha256": "11c3fc4a7ee4359d1e84e938535caff086e7dafd16b53705194a6fb0a4492ff5",
+    "metadata_overrides": [
+      "tokenizer.ggml.add_bos_token=bool:false"
+    ]
   }
 ]

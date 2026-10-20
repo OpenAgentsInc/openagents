@@ -666,3 +666,113 @@ fn a_stopped_or_dead_foreground_supervisor_does_not_block_up() {
     // Stale.
     assert!(!online::foreground_running(&Live { at: 1, ..mine }, at));
 }
+
+#[test]
+fn chat_template_override_persists_and_clears_when_switching_models() {
+    let dir = tempfile::tempdir().unwrap();
+    let model = dir.path().join("nemotron.gguf");
+    let template = dir.path().join("template with spaces.jinja");
+    std::fs::write(&model, b"gguf").unwrap();
+    std::fs::write(&template, b"{{ messages }}").unwrap();
+    let mut up = Up::parse(&[
+        "--text-engine".into(),
+        "llama-cpp".into(),
+        "--text-model".into(),
+        model.display().to_string(),
+        "--text-chat-template".into(),
+        template.display().to_string(),
+        "--text-stop".into(),
+        "<extra_id_1>".into(),
+        "--text-stop".into(),
+        "next,turn".into(),
+        "--text-override-kv".into(),
+        "tokenizer.ggml.add_bos_token=bool:false".into(),
+    ])
+    .unwrap();
+    let (settings, _) =
+        online::settings_for_up(None, "box", "wss://r", &up, "cuda", Ok(())).unwrap();
+    let saved: Settings = serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+    let (restarted, _) = online::settings_for_up(
+        Some(saved),
+        "box",
+        "wss://r",
+        &Up::parse(&[]).unwrap(),
+        "cuda",
+        Ok(()),
+    )
+    .unwrap();
+    assert_eq!(
+        restarted.text.as_ref().unwrap().chat_template.as_ref(),
+        Some(&template)
+    );
+    assert_eq!(
+        restarted.text.as_ref().unwrap().stop,
+        ["<extra_id_1>", "next,turn"]
+    );
+    assert_eq!(
+        restarted.text.as_ref().unwrap().metadata_overrides,
+        ["tokenizer.ggml.add_bos_token=bool:false"]
+    );
+    let specs = online::lanes(&restarted);
+    let text = specs
+        .iter()
+        .find(|lane| lane.kind == LaneKind::Text)
+        .unwrap();
+    let command = online::psionic_command(Path::new("llama-server"), text);
+    let args: Vec<_> = command.as_std().get_args().collect();
+    assert!(
+        args.windows(2)
+            .any(|pair| pair[0] == "--chat-template-file" && pair[1] == template.as_os_str())
+    );
+    assert!(
+        args.windows(2)
+            .any(|pair| pair == ["--reverse-prompt", "<extra_id_1>,\"next,turn\""])
+    );
+    assert!(
+        args.windows(2)
+            .any(|pair| pair == ["--override-kv", "tokenizer.ggml.add_bos_token=bool:false"])
+    );
+    let next = dir.path().join("other.gguf");
+    std::fs::write(&next, b"gguf").unwrap();
+    up.text_model = Some(next);
+    up.text_chat_template = None;
+    up.text_stop = None;
+    up.text_override_kv = None;
+    let (changed, _) = online::settings_for_up(
+        Some(restarted.clone()),
+        "box",
+        "wss://r",
+        &up,
+        "cuda",
+        Ok(()),
+    )
+    .unwrap();
+    let changed = changed.text.unwrap();
+    assert!(changed.chat_template.is_none());
+    assert!(changed.stop.is_empty());
+    assert!(changed.metadata_overrides.is_empty());
+    up.text_model = Some(model);
+    up.text_chat_template = Some("off".into());
+    up.text_stop = Some(vec!["off".into()]);
+    up.text_override_kv = Some(vec!["off".into()]);
+    let (cleared, _) =
+        online::settings_for_up(Some(restarted), "box", "wss://r", &up, "cuda", Ok(())).unwrap();
+    let cleared = cleared.text.unwrap();
+    assert!(cleared.chat_template.is_none());
+    assert!(cleared.stop.is_empty());
+    assert!(cleared.metadata_overrides.is_empty());
+    up.text_chat_template = Some(template);
+    up.text_engine = Some(pylon::share::TextEngine::Openai);
+    assert!(
+        online::settings_for_up(None, "box", "wss://r", &up, "cuda", Ok(()))
+            .unwrap_err()
+            .contains("llama-cpp")
+    );
+    up.text_engine = Some(pylon::share::TextEngine::LlamaCpp);
+    up.text_chat_template = Some(dir.path().join("missing.jinja"));
+    assert!(
+        online::settings_for_up(None, "box", "wss://r", &up, "cuda", Ok(()))
+            .unwrap_err()
+            .contains("missing")
+    );
+}

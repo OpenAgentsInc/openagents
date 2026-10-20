@@ -76,6 +76,12 @@ seconds. The provider logs no job content.
 cpu|cuda|metal` selects its device independently of Clef's decision device.
 `--text-engine openai|gpt-oss|llama-cpp` selects the local server; choices
 persist across restarts. The default is Psionic's general OpenAI server.
+For llama.cpp, `--text-chat-template FILE` overrides the GGUF's template,
+and repeatable `--text-stop TEXT` stops before another transcript turn.
+Use `off` to clear a saved choice; selecting a different model or engine
+also clears saved template, stop, and metadata overrides.
+`--text-override-kv KEY=TYPE:VALUE` supplies repeatable llama.cpp metadata
+fixes, using its `int`, `float`, `bool`, or `str` value syntax.
 GPT-OSS uses `psionic-gpt-oss-server`; llama.cpp uses `llama-server`.
 Set `OPENAGENTS_PSIONIC_GPT_OSS_BIN` or `OPENAGENTS_LLAMA_CPP_BIN` to an
 executable outside `PATH`. All three listen on loopback.
@@ -125,6 +131,45 @@ retain all 72 answers: median CLI round trips ranged from 608 ms for
 Gemma to 1,602 ms for GPT-OSS. GPT-OSS passed all five exact checks and
 Gemma passed four; smaller models often failed arithmetic or the embedded
 instruction check. Clef was paused for these individual-model timings.
+
+The catalog also pins **Nemotron-4-340B-Instruct IQ2_XXS**, 92.3 GB,
+with checksummed byte parts and NVIDIA's documented chat format. It is
+the largest parameter-count candidate checked that fits this host's
+125 GiB RAM plus 16 GiB RTX 4080 with runtime headroom. The checked
+550B Ultra quant starts at 188 GB, beyond their combined capacity.
+340B is an older dense model; its size does not imply better answers
+than newer Nemotron releases. It uses substantial CPU/RAM offload.
+The [selection evidence](../../scripts/bench/pylon-models/nemotron-selection-2026-10-20.json)
+records the compared versions and exact revisions.
+
+Download it first using the runner's `--models nemotron4-340b
+--download-only`; this keeps the running pylon online. Downloads resume,
+verify each part, and join in place without a second full model copy.
+The runner installs the pinned template beside the model. The profile
+also disables the GGUF's extra BOS token to match NVIDIA's example. For substantial
+CPU offload, use a CPU backend with AVX2/FMA/F16C enabled. The reproducible
+[Linux runtime recipe](../../scripts/bench/pylon-models/prepare-llama-runtime.sh)
+keeps an existing CUDA build and replaces its CPU backend from the same
+llama.cpp source revision. It uses explicit feature flags because Nix can
+strip `-march=native`. Point `OPENAGENTS_LLAMA_CPP_BIN` at its server and
+prepend its `bin` folder to `LD_LIBRARY_PATH`; `LLAMA_ARG_THREADS=16` sets
+the thread count used on this host. Then select it:
+
+```sh
+pylon up --text-engine llama-cpp --text-device cuda \
+  --text-model "$HOME/.openagents/models/nemotron4-340b/Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf" \
+  --text-chat-template "$HOME/.openagents/models/nemotron4-340b/chat-template.jinja" \
+  --text-stop '<extra_id_1>' --text-stop '<extra_id_0>' \
+  --text-stop '<|endoftext|>' --text-stop $'\x11' \
+  --text-override-kv tokenizer.ggml.add_bos_token=bool:false --max-tokens 32
+```
+
+Use `pylon-net` on the configured RTX 4080 host to select its existing
+service home. The original eight-model benchmark uses 2,048 output tokens
+and a 128-token throughput probe; the large Nemotron profile uses a
+smaller budget and probe, recorded with each result. `--cases` selects
+individual benchmark prompts. These budgets do not extend the provider's
+90-second job deadline.
 
 The beacon carries only what NIP-PYLON allows: `class` (`gpu`, `medium`,
 16 GB for the 4080), `slots`, one service (`cj-conversation`, the model
