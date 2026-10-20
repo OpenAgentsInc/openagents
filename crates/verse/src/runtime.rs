@@ -635,6 +635,8 @@ impl WorldRuntime {
         // Meteor Swarm's blasts and a Thunderwave shake the camera.
         framing.eye += match self.zone {
             crate::zones::ZoneId::Grove => self.grove_shake(),
+            // A heavy blow jolts the camera.
+            crate::zones::ZoneId::Duel => self.duel().map_or(Vec3::ZERO, |d| d.shake()),
             crate::zones::ZoneId::Everglade
             | crate::zones::ZoneId::MeteorStressTest
             | crate::zones::ZoneId::MeteorShowcase => self.demolition_shake(),
@@ -697,6 +699,7 @@ impl WorldRuntime {
                     | crate::zones::ZoneId::WaterLab
                     | crate::zones::ZoneId::Coast
                     | crate::zones::ZoneId::Arena
+                    | crate::zones::ZoneId::Duel
             )
     }
 

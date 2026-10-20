@@ -55,6 +55,17 @@ choices are a function of the fight's state and one seeded dice stream, so a
 seed and the same inputs replay the same fight. It is local-only and resets
 on each visit.
 
+## Prussian duel: directional melee
+
+The [Prussian duel](duel.md) is a local one-on-one melee under the combat
+model's dice, with three documented deviations for this zone only: the
+blade's swept volume, not a d20 attack roll, decides whether a blow lands;
+an armour save by hit zone decides whether it does harm; and windups,
+recoveries, and stamina pace the fight instead of a global cooldown. The
+opponent's choices are a function of the fight's state and his own seeded
+dice, so a seed and the same commands replay the same fight. It is
+local-only and resets on each visit.
+
 ## Lagrange 1: physics without combat
 
 [Lagrange 1](lagrange-1.md) uses the same zone lifecycle with a different

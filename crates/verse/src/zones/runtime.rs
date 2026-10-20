@@ -73,6 +73,9 @@ impl WorldRuntime {
             }
         } else if let Some(arena) = &mut self.zone_state.arena {
             arena.move_player(&mut self.player, input, dt, ZoneId::Arena.half_extent());
+        } else if let Some(duel) = &mut self.zone_state.duel {
+            // The duel moves the knight itself; the keys become footwork.
+            duel.move_player(input);
         } else {
             self.player
                 .update(input, dt, &self.world.blockers, self.zone_half());
@@ -308,6 +311,66 @@ impl WorldRuntime {
         self.camera = crate::camera::FollowCamera::default();
         // The robots stand taller than the plaza's figure.
         self.camera.distance = 10.5;
+    }
+
+    /// Enter the Prussian duel: a Teutonic knight against a Prussian
+    /// warrior on a meadow under Everglade's sky. Its geometry is
+    /// generated; nothing is downloaded.
+    pub fn install_duel(&mut self) {
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.zone_cancel_loading();
+        self.world = super::duel::Duel::world();
+        self.zone_state.duel = Some(Box::new(super::duel::Duel::new()));
+        self.zone = ZoneId::Duel;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(super::duel::Duel::spawn(), super::duel::Duel::spawn_yaw());
+        self.camera = crate::camera::FollowCamera::default();
+        // Close over the knight's shoulder, so both fighters fill the view.
+        self.camera.distance = 4.6;
+        self.camera.pitch = 0.2;
+    }
+
+    /// Enter the Prussian duel from the plaza, as `verse --duel` does.
+    ///
+    /// # Errors
+    ///
+    /// The player is not in the plaza.
+    pub fn enter_duel(&mut self) -> Result<(), String> {
+        if !self.is_plaza() {
+            return Err("Return to the plaza before entering the duel".into());
+        }
+        self.cancel_navigation();
+        self.doors.cancel_transient();
+        self.install_duel();
+        Ok(())
+    }
+
+    /// The Prussian duel, while the player is in it.
+    #[must_use]
+    pub fn duel(&self) -> Option<&super::duel::Duel> {
+        self.zone_state.duel.as_deref()
+    }
+
+    /// The Prussian duel, to give it the player's commands.
+    pub fn duel_mut(&mut self) -> Option<&mut super::duel::Duel> {
+        self.zone_state.duel.as_deref_mut()
+    }
+
+    /// Starts the duel again from the start. False outside it.
+    pub fn duel_restart(&mut self) -> bool {
+        let Some(duel) = self.zone_state.duel.as_deref_mut() else {
+            return false;
+        };
+        let (pos, yaw) = duel.restart();
+        let _ = self.set_spawn(pos, yaw);
+        if let Some(duel) = self.zone_state.duel.as_deref_mut() {
+            duel.tick(1e-4, &mut self.player);
+        }
+        true
     }
 
     /// Enter the Grid Arena from the plaza, as `verse --arena` does.
@@ -1467,6 +1530,7 @@ impl WorldRuntime {
                 self.zone_state.lagrange2 = None;
                 self.zone_state.lab = None;
                 self.zone_state.arena = None;
+                self.zone_state.duel = None;
                 self.zone_state.robot_lab = None;
                 self.zone_state.everglade = None;
                 #[cfg(not(target_arch = "wasm32"))]
@@ -2497,6 +2561,9 @@ impl WorldRuntime {
         } else if let Some(arena) = &self.zone_state.arena {
             // The arena draws its own action bar; no panel controls.
             arena.caption()
+        } else if let Some(duel) = &self.zone_state.duel {
+            // The duel draws its own screen; no panel controls.
+            duel.caption()
         } else if let Some(lab) = &self.zone_state.lab {
             add("knob_prev", "Prev", Intent::KnobPrev, true);
             add("knob_next", "Next", Intent::KnobNext, true);
@@ -2802,8 +2869,8 @@ impl WorldRuntime {
             false
         } else if let Some(lab) = &self.zone_state.lab {
             crate::runtime::mesh_occludes(lab.dynamic(), eye, direction, distance)
-        } else if self.zone_state.arena.is_some() {
-            // Two robots in an open ring hide nothing worth the test.
+        } else if self.zone_state.arena.is_some() || self.zone_state.duel.is_some() {
+            // Two fighters in the open hide nothing worth the test.
             false
         } else if let Some(everglade) = &self.zone_state.everglade {
             crate::runtime::mesh_occludes(everglade.dynamic(), eye, direction, distance)
@@ -3496,6 +3563,9 @@ impl WorldRuntime {
         if let Some(arena) = &mut self.zone_state.arena {
             arena.tick(dt, &mut self.player);
         }
+        if let Some(duel) = &mut self.zone_state.duel {
+            duel.tick(dt, &mut self.player);
+        }
         if let Some(room) = &mut self.zone_state.robot_lab {
             room.tick(dt);
         }
@@ -3630,6 +3700,18 @@ impl WorldRuntime {
         // The arena draws the player as its robot; no plaza figure.
         if let Some(arena) = &self.zone_state.arena {
             mesh.extend(arena.dynamic());
+        }
+        // The duel draws the knight and the Prussian under Everglade's
+        // late-morning stage, its shadows centered on the fight.
+        if let Some(duel) = &self.zone_state.duel {
+            mesh.extend(duel.dynamic());
+            let mut stage = super::everglade::Everglade::stage_at(super::duel::HOUR, elapsed);
+            if let Some(key) = stage.key.as_mut() {
+                key.shadow_center = self.player.pos;
+                key.shadow_half = 30.0;
+                key.shadow_distance = Some(70.0);
+            }
+            mesh.neon = Some(stage);
         }
         if let Some(lab) = &self.zone_state.lab {
             mesh.extend(lab.dynamic());

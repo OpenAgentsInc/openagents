@@ -158,6 +158,19 @@ interrupts. The rules, dice, and numbers are in
 `cargo run -p verse --example arena_capture -- OUT.png` renders a frame of
 the fight, such as [this one](captures/grid-arena/duel.png).
 
+### Prussian duel controls
+
+The Prussian duel (`verse --duel`) is a one-on-one melee on a meadow under
+Everglade's sky: a Teutonic knight with sword and heater shield against an
+Old Prussian warrior with axe and round shield, about 1240. No arch leads to
+it. Moving the mouse picks a blow's direction and the left button strikes;
+the right button holds the shield up, `Q` parries, `E` bashes, `W`/`S`
+step in and out, `A`/`D` circle, and `Space` takes a quick step. `R` starts
+again and `G` returns to the plaza. [Prussian duel](duel.md) has the
+controls, the rules, and the historical notes;
+`cargo run -p verse --features capture --example duel_capture -- OUT.png`
+renders a frame of the fight, such as [this one](captures/prussian-duel/duel.jpg).
+
 ### Everglade controls
 
 You walk the plaza character over the glade's generated ground; the camera

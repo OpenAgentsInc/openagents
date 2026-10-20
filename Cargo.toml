@@ -149,6 +149,8 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.verse-zone-lagrange2]
 opt-level = 3
+[profile.dev.package.verse-zone-duel]
+opt-level = 3
 [profile.dev.package.physics]
 opt-level = 3
 # The CAD physics the website and Everglade run (#12183).

@@ -896,6 +896,14 @@ impl Everglade {
         air
     }
 
+    /// The glade's lit stage with the town clock pinned at `hour`, for a
+    /// zone that stands under Everglade's sky and light without its town,
+    /// such as the Prussian duel's meadow.
+    #[must_use]
+    pub fn stage_at(hour: f32, time: f32) -> Neon {
+        Self::glade_stage(time, &time_of_day::Light::at_hours(hour))
+    }
+
     /// The zone's air with the town clock pinned at `hour`, as a zone that
     /// pins it declares its atmosphere.
     #[must_use]

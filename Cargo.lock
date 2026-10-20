@@ -20256,6 +20256,7 @@ dependencies = [
  "verse-zone-arena",
  "verse-zone-coast",
  "verse-zone-crypt",
+ "verse-zone-duel",
  "verse-zone-everglade",
  "verse-zone-grove",
  "verse-zone-lab",
@@ -20643,6 +20644,20 @@ dependencies = [
  "serde",
  "serde_json",
  "verse-core",
+ "verse-pbr",
+ "verse-world",
+]
+
+[[package]]
+name = "verse-zone-duel"
+version = "1.0.0"
+dependencies = [
+ "glam",
+ "oa-copy",
+ "openagents-workspace-hack",
+ "physics",
+ "verse-core",
+ "verse-gfx",
  "verse-pbr",
  "verse-world",
 ]

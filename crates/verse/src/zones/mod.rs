@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub use verse_zone_arena as arena;
 pub use verse_zone_coast as coast;
 pub use verse_zone_crypt as crypt;
+pub use verse_zone_duel as duel;
 pub use verse_zone_everglade::zones::everglade;
 pub use verse_zone_everglade::zones::everglade_pack;
 pub use verse_zone_water as water;
@@ -29,6 +30,8 @@ pub mod cad_place;
 mod coast_tests;
 #[cfg(test)]
 mod crypt_tests;
+#[cfg(test)]
+mod duel_tests;
 #[cfg(test)]
 mod everglade_spell_tests;
 #[cfg(test)]
@@ -111,9 +114,12 @@ pub enum ZoneId {
     Lagrange2,
     /// The robot duel on the Grid's floor ([`arena`], `verse --arena`).
     Arena,
+    /// A Teutonic knight against a Prussian warrior on a grassy meadow
+    /// ([`duel`], `verse --duel`, `docs/verse/duel.md`).
+    Duel,
 }
 impl ZoneId {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Plaza,
         Self::Lagrange1,
         Self::PhysicsLab,
@@ -127,6 +133,7 @@ impl ZoneId {
         Self::MeteorShowcase,
         Self::Lagrange2,
         Self::Arena,
+        Self::Duel,
     ];
 
     /// Whether this zone is one of the standalone Meteor Swarm stages: the
@@ -164,6 +171,7 @@ impl ZoneId {
             Self::MeteorShowcase => "verse-meteor-showcase",
             Self::Lagrange2 => "verse-lagrange-2",
             Self::Arena => "verse-arena",
+            Self::Duel => "verse-duel-v1",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -181,6 +189,7 @@ impl ZoneId {
             Self::MeteorShowcase => "Meteor Showcase",
             Self::Lagrange2 => "Lagrange 2",
             Self::Arena => "Grid Arena",
+            Self::Duel => "Prussian Duel",
         }
     }
     pub const fn half_extent(self) -> f32 {
@@ -197,6 +206,7 @@ impl ZoneId {
             Self::WaterLab => water::HALF_EXTENT,
             Self::Coast => coast::HALF_EXTENT,
             Self::Arena => arena::HALF_EXTENT,
+            Self::Duel => duel::HALF_EXTENT,
         }
     }
     /// The zone's primary portal: the plaza's Lagrange 1 arch, or a zone's
@@ -240,6 +250,7 @@ impl ZoneId {
             Self::WaterLab => vec![(Self::Plaza, water::EXIT)],
             Self::Coast => vec![(Self::Plaza, coast::RETURN_PORTAL)],
             Self::Arena => vec![(Self::Plaza, arena::RETURN_PORTAL)],
+            Self::Duel => vec![(Self::Plaza, duel::RETURN_PORTAL)],
         }
     }
     /// Short arch lettering for a destination.
@@ -258,6 +269,7 @@ impl ZoneId {
             Self::MeteorShowcase => "METEOR SHOWCASE",
             Self::Lagrange2 => "LAGRANGE 2",
             Self::Arena => "GRID ARENA",
+            Self::Duel => "PRUSSIAN DUEL",
         }
     }
 }
@@ -300,6 +312,8 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
         ZoneId::Grove | ZoneId::MeteorStressTest => grove::light::ATMOSPHERE,
         // Everglade's haze in the low Sun's color.
         ZoneId::MeteorShowcase => meteor_showcase::atmosphere(),
+        // The meadow stands under Everglade's late-morning sky.
+        ZoneId::Duel => everglade::Everglade::air_at(duel::HOUR),
         // The cove's warm sea haze.
         ZoneId::Coast => Atmosphere {
             color: water::sea::NOON_HAZE,
@@ -417,6 +431,8 @@ pub(crate) struct State {
     coast: Option<Box<coast::Coast>>,
     /// The Grid Arena's duel.
     arena: Option<Box<arena::Arena>>,
+    /// The Prussian duel.
+    duel: Option<Box<duel::Duel>>,
     /// Open Everglade as the demolition yard (`verse --demolition`).
     demolition: bool,
     /// The town clock Everglade's sky follows (`verse --town-hour`,
@@ -502,6 +518,7 @@ impl Default for State {
             water: None,
             coast: None,
             arena: None,
+            duel: None,
             demolition: false,
             town_clock: town_clock::Clock::DAYTIME,
             dev_destruction: false,
@@ -598,6 +615,7 @@ fn arch_rings(mesh: &mut crate::mesh::Mesh, zone: ZoneId, at: glam::Vec3, elapse
         ZoneId::Crypt => [1.0, 0.56, 0.24],
         ZoneId::WaterLab | ZoneId::Coast => [0.35, 0.8, 1.0],
         ZoneId::Arena => crate::palette::amber(coder_ui::theme::Intensity::Full),
+        ZoneId::Duel => [0.85, 0.82, 0.7],
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {

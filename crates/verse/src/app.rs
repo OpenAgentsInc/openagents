@@ -116,6 +116,9 @@ pub struct Options {
     /// Open straight into the Grid Arena, the robot duel, once the window
     /// shows (`verse --arena`).
     pub arena: bool,
+    /// Open straight into the Prussian duel, a knight's melee on a meadow,
+    /// once the window shows (`verse --duel`).
+    pub duel: bool,
     /// Open the standalone castle bombardment zone.
     pub meteor_stress_test: bool,
     /// Open the Meteor Showcase, two kit houses under an eight-meteor
@@ -204,6 +207,7 @@ impl Default for Options {
             robot_lab_config: None,
             grove: false,
             arena: false,
+            duel: false,
             meteor_stress_test: false,
             meteor_showcase: false,
             crypt: false,
@@ -3511,6 +3515,57 @@ impl App {
                 });
                 return;
             }
+            // The Prussian duel: 1 to 4 or the arrow keys strike in a
+            // direction, Q parries, E bashes, C pulls a windup back, Space
+            // steps the way the movement keys point, R starts again, and G
+            // leaves. W, A, S, and D stay footwork.
+            if self.runtime.duel().is_some() {
+                let input = self.keys.input();
+                let strike = match code {
+                    KeyCode::Digit1 | KeyCode::ArrowUp => Some(zones::duel::Dir::Overhead),
+                    KeyCode::Digit2 | KeyCode::ArrowLeft => Some(zones::duel::Dir::Left),
+                    KeyCode::Digit3 | KeyCode::ArrowRight => Some(zones::duel::Dir::Right),
+                    KeyCode::Digit4 | KeyCode::ArrowDown => Some(zones::duel::Dir::Thrust),
+                    _ => None,
+                };
+                if let Some(duel) = self.runtime.duel_mut() {
+                    let used = match code {
+                        _ if strike.is_some() => {
+                            let _ = duel.attack(strike);
+                            true
+                        }
+                        KeyCode::KeyQ => {
+                            let _ = duel.parry();
+                            true
+                        }
+                        KeyCode::KeyE => {
+                            let _ = duel.bash();
+                            true
+                        }
+                        KeyCode::KeyC => {
+                            let _ = duel.cancel();
+                            true
+                        }
+                        KeyCode::Space => {
+                            let _ = duel.dodge(&input);
+                            true
+                        }
+                        _ => false,
+                    };
+                    if used {
+                        return;
+                    }
+                }
+                if code == KeyCode::KeyR {
+                    self.runtime.duel_restart();
+                    return;
+                }
+                if code == KeyCode::KeyG {
+                    self.capture(false);
+                    self.zone_action(ZoneIntent::Return);
+                    return;
+                }
+            }
             // The Grid Arena: 1 to 4 fire the abilities, R starts the
             // fight again, and G leaves.
             if self.runtime.arena().is_some() {
@@ -3977,6 +4032,27 @@ impl App {
             self.open_studio_panel(StudioPanel::Decisions);
             return;
         }
+        // The Prussian duel: the left button strikes in the chosen
+        // direction and the right holds the shield up. The cursor stays
+        // locked so the mouse can pick directions.
+        if self.runtime.duel().is_some() && matches!(button, MouseButton::Left | MouseButton::Right)
+        {
+            if let Some(duel) = self.runtime.duel_mut() {
+                match button {
+                    MouseButton::Left if pressed => {
+                        let _ = duel.attack(None);
+                    }
+                    MouseButton::Right => duel.set_shield(pressed),
+                    _ => {}
+                }
+            }
+            self.keys.left_button = false;
+            self.keys.right_button = false;
+            if pressed {
+                self.capture(true);
+            }
+            return;
+        }
         // Other buttons pressed over the panel do not reach the world.
         if pressed
             && button != MouseButton::Left
@@ -4309,6 +4385,12 @@ impl App {
             self.zone_press = None;
             self.keys.left_button = true;
             self.capture(true);
+        }
+        // In the duel the mouse picks the next blow's direction; the camera
+        // stays over the knight's shoulder.
+        if let Some(duel) = self.runtime.duel_mut() {
+            duel.aim(dx / self.scale, dy / self.scale);
+            return;
         }
         if self.keys.right_button {
             let _ = self.runtime.apply(Action::Look { dx, dy });
@@ -4914,6 +4996,17 @@ impl App {
                     }
                     ui.vertices.extend(bar.vertices);
                 }
+                // The duel's bars, cues, and callouts.
+                if let (Some(atlas), Some(duel)) = (&self.map_atlas, self.runtime.duel()) {
+                    let mut bar = crate::ui::UiBatch::default();
+                    let logical = size.map(|v| v / self.scale);
+                    let view_proj = self.runtime.view(size[0] / size[1].max(1.0)).view_proj;
+                    zones::duel::hud::draw(&mut bar, atlas, logical, view_proj, duel);
+                    for vertex in &mut bar.vertices {
+                        vertex.pos = vertex.pos.map(|v| v * self.scale);
+                    }
+                    ui.vertices.extend(bar.vertices);
+                }
                 // The Grid Arena's bars, numbers, and action bar.
                 if let (Some(atlas), Some(arena)) = (&self.map_atlas, self.runtime.arena()) {
                     let mut bar = crate::ui::UiBatch::default();
@@ -5381,6 +5474,16 @@ impl ApplicationHandler for App {
         if std::mem::take(&mut self.connection_options.robot_lab) {
             if let Err(error) = self.runtime.install_robot_lab() {
                 self.error = Some(error);
+            }
+        }
+        // `--duel` enters the Prussian duel once, from the first window.
+        if std::mem::take(&mut self.connection_options.duel) {
+            match self.runtime.enter_duel() {
+                Ok(()) => {
+                    self.keys = Keys::default();
+                    self.sync_zone_services(true);
+                }
+                Err(error) => self.error = Some(error),
             }
         }
         // `--arena` enters the Grid Arena once, from the first window.
