@@ -175,3 +175,18 @@ stage/transport fixtures. Bay and Forge work can proceed independently.
 The [model addendum](../psionic/deepseek-v41-native.md#review-addendum-2026-10-20)
 and [strategy addendum](2026-10-20-enter-the-verse.md#review-addendum-2026-10-20)
 explain the revised gates without changing the owner's product direction.
+
+## Filed independent CPU components (2026-10-20)
+
+The owner requested serial implementation of the first independent native Rust
+port phase. [#12377](https://github.com/OpenAgentsInc/openagents/issues/12377)
+(P1.3), [#12378](https://github.com/OpenAgentsInc/openagents/issues/12378)
+(P1.7), [#12379](https://github.com/OpenAgentsInc/openagents/issues/12379)
+(P1.4a/P1.5a), and
+[#12380](https://github.com/OpenAgentsInc/openagents/issues/12380) (P1.6)
+are children of #12369 on project 19. This chat claims one at a time, pushes
+each passing implementation to `main`, and closes it before starting the next.
+The existing oracle and protocol scopes stay separate. See the
+[component status](../psionic/deepseek-v41-native.md#independent-cpu-port-first-implementation-phase-2026-10-20)
+for completed checks and remaining integration. Small synthetic fixtures unblock
+implementation; they do not replace P1.0's full-checkpoint numerical gates.

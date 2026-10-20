@@ -519,6 +519,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 - #12358/#12360/#12364/#12367: DS0 and the [serial Pylon llama.cpp GPU flow](../psionic/deepseek-support-plan.md#serial-pylon-gpu-qualification-12360) pass 27 checks; the [managed recovery flow](../psionic/deepseek-support-plan.md#automatic-serial-pylon-recovery-12364) passes 13 more, including automatic crash/frozen-worker replacement and subsequent answers. The explicit [DeepSeek `pylon up` profile](../psionic/deepseek-support-plan.md#deepseek-profile-through-pylon-up-12367) passes 20 lifecycle checks, including saved resume and `down`. Clef/network Pylon stayed unchanged. The [native CUDA greedy profile, #12368](../psionic/deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368), passes six model, four real HTTP-disconnect/admission, and 20 managed recovery checks; sampled native decoding, longer reasoning within the deadline, broader native selection, and cloud deployment remain separate.
 
+- #12377–#12380: after the independent CPU component implementations land,
+  compare their hyper-connection coefficients/residuals, router ids/weights and
+  expert activations, attention/compression/index selections, and Engram map,
+  hashes, and gated output against #12371's pinned original-weight oracle. Record
+  BF16/FP8/FP4 activation boundaries and tie behavior explicitly. Synthetic NumPy
+  fixtures qualify float32 equations only; full attention wiring, 40-layer
+  decode, native CUDA, and a V4.1 serving model remain separate gates.
+
 - #12373: on the #12371 oracle VM with the V4.1-Flash weights, from
   `crates/psionic`, run `cargo run --release -p psionic-models --example
   deepseek_v41_weights_check -- CHECKPOINT_DIR --verify-sha256 --oracle

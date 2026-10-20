@@ -9,6 +9,7 @@ mod csm;
 mod csm_parity;
 mod deepseek_r1;
 pub mod deepseek_v41;
+pub mod deepseek_v41_cpu;
 pub mod deepseek_v41_weights;
 mod fixtures;
 mod harmony;
