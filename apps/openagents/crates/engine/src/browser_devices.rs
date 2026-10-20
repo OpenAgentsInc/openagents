@@ -10,14 +10,11 @@
 //! this computer allows the request in the computer's own app
 //! ([`Browsers::answer`], served by [`crate::connect_phone::LocalRpc`]).
 //!
-//! What a browser may call is [`ALLOWED`], reads of the computer's
-//! harnesses, models, skills, commands, and workspace files under the
-//! grant's observe right, and [`OPERATE`], the changes its run right
-//! covers: the chat queue, answers to an agent's questions, edits to
-//! workspace files, and a new session's checkout (#12266). A chat's
-//! transcript and the new-session pickers' repository reads are reads.
-//! [`sanitize`] strips what only this computer's own app may set before a
-//! call reaches the engine. Later work widens them method by method.
+//! What a browser may call is [`ALLOWED`], reads under the grant's observe
+//! right, and [`OPERATE`], changes under its run right. These cover workspace
+//! files, chat queues, question answers, new sessions, and client-media voice.
+//! [`sanitize`] strips what only this computer's own app may set. Voice
+//! signaling keeps its envelope after checking that it names this computer.
 
 use async_trait::async_trait;
 use coder_access::protocol::DeviceState;
@@ -37,6 +34,8 @@ pub const MAX_WAITING: usize = 8;
 
 /// The engine methods a browser may call.
 pub const ALLOWED: &[&str] = &[
+    methods::VOICE_CAPABILITIES_V2,
+    methods::GET_VOICE_AGENT,
     methods::ENGINE_INFO,
     methods::LIST_HARNESSES,
     methods::LIST_MODELS,
@@ -80,6 +79,14 @@ pub const ALLOWED: &[&str] = &[
 /// The engine methods a browser may call under its grant's run right
 /// ([`Right::Operate`]).
 pub const OPERATE: &[&str] = &[
+    methods::CANCEL_VOICE_ATTEMPT_V2,
+    methods::STOP_VOICE_V2,
+    methods::UPDATE_VOICE_CONTEXT_V2,
+    methods::REPORT_VOICE_MEDIA_V2,
+    methods::CONFIRM_VOICE_MEDIA_V2,
+    methods::NEGOTIATE_VOICE_V2,
+    methods::OWN_VOICE_V2,
+    methods::PREPARE_VOICE_V2,
     // The queue panel and the question wizard (#12268).
     methods::QUEUE_MESSAGE,
     methods::UPDATE_QUEUED_MESSAGE,
@@ -106,12 +113,32 @@ pub const OPERATE: &[&str] = &[
     methods::SET_WORKTREE_SETTINGS,
 ];
 
+fn voice_method(method: &str) -> bool {
+    matches!(
+        method,
+        methods::VOICE_CAPABILITIES_V2
+            | methods::GET_VOICE_AGENT
+            | methods::PREPARE_VOICE_V2
+            | methods::OWN_VOICE_V2
+            | methods::NEGOTIATE_VOICE_V2
+            | methods::CONFIRM_VOICE_MEDIA_V2
+            | methods::REPORT_VOICE_MEDIA_V2
+            | methods::UPDATE_VOICE_CONTEXT_V2
+            | methods::STOP_VOICE_V2
+            | methods::CANCEL_VOICE_ATTEMPT_V2
+    )
+}
+
 /// Parameters a browser never sets: forwarding to another computer under
 /// this one's authority (`targetDeviceId`), an agent's grants
 /// (`originChatId`), attachments staged on this computer (`transfers`,
 /// `attachments`), and the run's OpenAgents tools, which this engine
-/// injects itself (`command.request.mcp`).
+/// injects itself (`command.request.mcp`). Client-media voice keeps its
+/// envelope; the connection checks its target before dispatch.
 pub fn sanitize(method: &str, mut params: serde_json::Value) -> serde_json::Value {
+    if voice_method(method) {
+        return params;
+    }
     if let Some(map) = params.as_object_mut() {
         map.remove("targetDeviceId");
         map.remove("originChatId");
@@ -507,6 +534,15 @@ impl RpcService for Connection {
                 if !right.is_some_and(|right| Rights::browser().contains(right)) {
                     return Err(RpcError::Failed(
                         "A browser can't do that on this computer yet.".into(),
+                    ));
+                }
+                if voice_method(method)
+                    && value
+                        .get("targetDeviceId")
+                        .is_some_and(|id| id.as_str() != Some(&browsers.device))
+                {
+                    return Err(RpcError::Failed(
+                        "Choose this computer to use it from this browser.".into(),
                     ));
                 }
                 browsers.inner.handle(method, sanitize(method, value)).await

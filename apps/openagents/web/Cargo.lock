@@ -4288,6 +4288,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-orb"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+]
+
+[[package]]
 name = "openagents-proto"
 version = "1.0.0"
 dependencies = [
@@ -4355,6 +4362,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-voice-session"
+version = "1.0.0"
+dependencies = [
+ "openagents-orb",
+ "openagents-proto",
+ "openagents-workspace-hack",
+ "web-time",
+]
+
+[[package]]
 name = "openagents-web-agent-graph"
 version = "1.0.0"
 dependencies = [
@@ -4415,8 +4432,10 @@ dependencies = [
  "openagents-chat-view",
  "openagents-doc",
  "openagents-gpui-web",
+ "openagents-orb",
  "openagents-proto",
  "openagents-theme",
+ "openagents-voice-session",
  "openagents-web-chat-view",
  "openagents-web-client",
  "postcard",

@@ -121,6 +121,7 @@ pub struct ChatApp {
     live: Option<Live>,
     list_state: ListState,
     composer: Entity<TextInput>,
+    voice: Entity<crate::voice::Stage>,
     /// The composer's drafts, send key, completions, queue, and question
     /// wizard (#12267, #12268).
     compose: Entity<Compose>,
@@ -307,6 +308,7 @@ impl ChatApp {
             live: None,
             list_state: ListState::new(0, ListAlignment::Top, px(1200.)),
             composer,
+            voice: cx.new(crate::voice::Stage::new),
             compose,
             search,
             filter: String::new(),
@@ -330,6 +332,7 @@ impl ChatApp {
             settings: settings::Settings::load(),
         };
         this.start_settings(cx);
+        cx.observe(&this.voice, |_, _, cx| cx.notify()).detach();
         if this.signed_in {
             let weak = cx.entity().downgrade();
             let mut async_cx = cx.to_async();
@@ -1574,6 +1577,18 @@ impl ChatApp {
                     .font_weight(FontWeight::MEDIUM)
                     .child(title),
             )
+            .when(self.signed_in, |row| {
+                row.child(
+                    div()
+                        .id("start-voice-call")
+                        .cursor_pointer()
+                        .text_size(px(13.))
+                        .child("Voice")
+                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                            this.voice.update(cx, |voice, cx| voice.start(None, cx));
+                        })),
+                )
+            })
             .children(project.map(|p| chip("icons/folder.svg", p, theme::text_muted())))
             .children(computer.map(|c| chip("icons/laptop.svg", c, theme::text_muted())))
             // The work panel: work runs, environments, and Mac jobs (#12225).
@@ -1930,6 +1945,9 @@ impl Focusable for ChatApp {
 
 impl Render for ChatApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.voice.read(cx).open {
+            return self.voice.clone().into_any_element();
+        }
         // Once the chats and the open chat have arrived, this frame is the
         // one a page snapshot shows until the app draws (`gpui-ready`), and
         // the one it keeps for the next visit (#12244).
@@ -2047,6 +2065,7 @@ impl Render for ChatApp {
         } else {
             root.child(main)
         }
+        .into_any_element()
     }
 }
 
