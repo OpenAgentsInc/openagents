@@ -36140,6 +36140,42 @@
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "retract",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "check",
+                  "retract"
+                ],
+                "usage": [
+                  "check retract --pylon NPUB"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "check"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "retract"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "pylon",
+                        "value": "NPUB",
+                        "open": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Withdraw this checker's own failing verdicts about the pylon from the last day (a NIP-09 deletion signed by the checker key), such as one published by mistake. --label ID            Only this verdict.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
             }
           ]
         },

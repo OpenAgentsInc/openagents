@@ -143,6 +143,8 @@ const PYLON: &[Declared] = &[
     Declared::computer("check canary", Effect::Publishes),
     Declared::computer("check redundant", Effect::Publishes),
     Declared::computer("check decide", Effect::Publishes),
+    // A NIP-09 deletion of this checker's own failing verdicts.
+    Declared::computer("check retract", Effect::Publishes),
     Declared::computer("league", Effect::LocalWrite),
     Declared::computer("status", Effect::LocalWrite),
     Declared::computer("pool", Effect::Publishes),

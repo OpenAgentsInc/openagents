@@ -276,6 +276,12 @@ Commands:
                             for reproducible calibration runs.
       --own-buyer           Send from the stored buyer key (for a pylon that
                             admits only allowlisted keys).
+  check retract --pylon NPUB
+                            Withdraw this checker's own failing verdicts about
+                            the pylon from the last day (a NIP-09 deletion
+                            signed by the checker key), such as one published
+                            by mistake.
+      --label ID            Only this verdict.
   check decide --watch      Keep checking: read the relay's beacons and check
                             every online pylon serving the reference's model
                             when it first appears, then every --every seconds;
@@ -1333,6 +1339,9 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
         home: home(),
         wait: Duration::from_secs(args.number("--wait", 90)?.clamp(1, 600)),
     };
+    if mode == "retract" {
+        return check_retract(json_out, args, &checker, &pylons).await;
+    }
     if mode == "decide" && args.flag("--watch") {
         return check_decide_watch(json_out, args, checker, pylons).await;
     }
@@ -1415,7 +1424,7 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
             }
             checker.redundant(&prompt, &pylons).await?
         }
-        _ => return Err("check takes `canary`, `redundant`, or `decide`".into()),
+        _ => return Err("check takes `canary`, `redundant`, `decide`, or `retract`".into()),
     };
     let awarded = if award {
         checker.award(&checked).await?
@@ -1443,6 +1452,80 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
     emit(
         json_out,
         &json!({"checker": checker.checker.npub(), "checked": checked, "award": awarded}),
+        &text,
+    );
+    Ok(())
+}
+
+/// `check retract --pylon NPUB [--label ID]`: withdraw this computer's own
+/// failing verdicts about a pylon, such as one a checker published by
+/// mistake, with a NIP-09 deletion request signed by the checker key. The
+/// relay then drops those labels, so readers (this computer's `ask` among
+/// them) stop counting them. Only this checker's own `check-fail` labels
+/// from the last [`crate::check::CHECK_WINDOW_SECS`] can be withdrawn.
+async fn check_retract(
+    json_out: bool,
+    args: &mut Args,
+    checker: &crate::check::Checker,
+    pylons: &[String],
+) -> Result<(), String> {
+    let [pylon] = pylons else {
+        return Err("check retract takes one --pylon NPUB".into());
+    };
+    let only = args.value("--label")?;
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let me = checker.checker.pubkey().to_string();
+    let mut conn =
+        crate::relay::connect(&checker.relay, &checker.checker, Duration::from_secs(60)).await?;
+    let since = crate::now().saturating_sub(crate::check::CHECK_WINDOW_SECS);
+    let (labels, _) = crate::check::fetch(&mut conn, &BTreeSet::from([me.clone()]), since).await?;
+    let ids: Vec<String> = labels
+        .iter()
+        .filter_map(|e| nostr::pylon::parse_check(e).ok())
+        .filter(|c| {
+            c.checker == me
+                && &c.provider == pylon
+                && c.verdict == nostr::pylon::Verdict::Fail
+                && only.as_ref().is_none_or(|id| &c.id == id)
+        })
+        .map(|c| c.id)
+        .collect();
+    if ids.is_empty() {
+        let _ = conn.close().await;
+        let text = "this checker has no failing verdict about that pylon to withdraw".to_string();
+        emit(json_out, &json!({"retracted": [], "deletion": null}), &text);
+        return Ok(());
+    }
+    let mut tags: Vec<nostr::domain::Tag> = ids
+        .iter()
+        .map(|id| nostr::domain::Tag::new(vec!["e".to_string(), id.clone()]))
+        .collect();
+    tags.push(nostr::domain::Tag::new(vec![
+        "k".into(),
+        nostr::pylon::CHECK_KIND.to_string(),
+    ]));
+    let deletion = checker.checker.signer().sign(
+        crate::now(),
+        5,
+        tags,
+        "withdrawn by the checker that published it".into(),
+    );
+    let published = crate::relay::publish(&mut conn, &deletion).await;
+    let _ = conn.close().await;
+    published?;
+    let text = format!(
+        "withdrew {} failing verdict{} about {}: {}\ndeletion {}",
+        ids.len(),
+        if ids.len() == 1 { "" } else { "s" },
+        crate::identity::npub(pylon),
+        ids.join(", "),
+        deletion.id
+    );
+    emit(
+        json_out,
+        &json!({"retracted": ids, "deletion": deletion.id}),
         &text,
     );
     Ok(())
