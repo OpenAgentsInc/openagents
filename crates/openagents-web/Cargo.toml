@@ -91,6 +91,8 @@ libc = "0.2"
 nostr = { path = "../nostr" }
 # Profile pages read kind 0 and kind 3 from relays (src/profiles, #12254).
 nostr-transport = { path = "../nostr-transport" }
+# XP on profiles, derived from NIP-XP awards (src/profiles/evidence.rs, #12257).
+xp-ledger = { path = "../xp-ledger" }
 # /pylons' live field: NIP-PYLON beacons and receipts from the relay,
 # verified and projected (pylon::field). No broker: it links SQLite.
 pylon = { path = "../pylon", default-features = false }
@@ -128,6 +130,7 @@ url = "2"
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+xp-ledger = { path = "../xp-ledger", features = ["fixtures"] }
 coder-host = { path = "../coder-host" }
 verse-lagrange2 = { path = "../verse-lagrange2" }
 jsonschema = { version = "0.33", default-features = false }

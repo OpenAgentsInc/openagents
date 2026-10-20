@@ -471,6 +471,10 @@ pub struct Config {
     /// (`OPENAGENTS_WEB_AGENT_KEY_SEED`, 64 hex characters, a secret;
     /// #12255). `None` turns agent keys off.
     pub agent_key_seed: Option<[u8; 32]>,
+    /// The NIP-XP referees whose awards count on profiles, as hex keys
+    /// (`OPENAGENTS_WEB_XP_REFEREES`, comma-separated npubs or hex;
+    /// #12257). Empty shows no XP.
+    pub xp_referees: Vec<String>,
     /// `/lander8`'s chat (`--lander8 DIR`, default `/srv/lander8` when it
     /// exists): its WebGPU-only and WebGL2 builds, served under
     /// `/lander8/build/`. Without it, `/lander8` is the Grid, the name, and
@@ -620,6 +624,7 @@ impl Config {
             pylons_relay: None,
             profile_relays: Vec::new(),
             agent_key_seed: None,
+            xp_referees: Vec::new(),
             lander8: None,
             lander9: None,
             snap: None,

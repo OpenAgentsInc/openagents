@@ -26,6 +26,7 @@
 //! relays about once a minute.
 
 mod edit;
+pub(crate) mod evidence;
 pub(crate) use edit::PAGE as SETTINGS_PAGE;
 mod picture;
 pub(crate) mod relays;
@@ -73,13 +74,14 @@ pub(crate) fn routes() -> Router<App> {
         .route(WELL_KNOWN, get(nostr_json))
         .route(PAGE, get(page))
         .route(PICTURE, get(picture::serve))
+        .route("/event/{id}", get(evidence::event_page))
         .merge(edit::routes())
 }
 
 /// Whether this site answers `path` itself.
 #[must_use]
 pub(crate) fn owns(path: &str) -> bool {
-    path == WELL_KNOWN || path.starts_with("/@") || edit::owns(path)
+    path == WELL_KNOWN || path.starts_with("/@") || path.starts_with("/event/") || edit::owns(path)
 }
 
 /// Who a page is for.
@@ -372,10 +374,21 @@ async fn page(State(app): State<App>, Path(text): Path<String>, headers: HeaderM
         return Redirect::permanent(&format!("/@{name}")).into_response();
     }
     let loaded = load(&app.config.profile_relays, &who.pubkey).await;
-    render(&headers, &who, &loaded)
+    let evidence = evidence::load(
+        &app.config.profile_relays,
+        &app.config.xp_referees,
+        &who.pubkey,
+    )
+    .await;
+    render(&headers, &who, &loaded, &evidence)
 }
 
-fn render(headers: &HeaderMap, who: &Who, loaded: &Loaded) -> Response {
+fn render(
+    headers: &HeaderMap,
+    who: &Who,
+    loaded: &Loaded,
+    evidence: &evidence::Evidence,
+) -> Response {
     let metadata = loaded.metadata.clone().unwrap_or_default();
     let npub_full = npub(&who.pubkey);
     let handle_text = who
@@ -431,6 +444,7 @@ fn render(headers: &HeaderMap, who: &Who, loaded: &Loaded) -> Response {
                 }))
             }
         }
+        (evidence::sections(evidence))
         (follows_section(loaded))
         section.oa-card aria-labelledby="profile-key" {
             (MarkdownRoot::new(html! {

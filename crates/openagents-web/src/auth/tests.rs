@@ -146,6 +146,7 @@ async fn world_built_with(
     config.api_host = Some("api.openagents.com".into());
     config.profile_relays = profile_relays;
     config.agent_key_seed = Some([7; 32]);
+    config.xp_referees = vec![xp_ledger::eval::fixture::pubkey("referee")];
     config.public_hosts.push("api.openagents.com".into());
     config.inference = Some(Arc::new(
         crate::upstream::Upstream::new(&account_service).unwrap(),

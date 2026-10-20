@@ -248,9 +248,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Profiles read and publish on the production relay unless told otherwise.
     if config.profile_relays.is_empty() {
-        config.profile_relays.push("wss://relay.openagents.com".to_owned());
+        config
+            .profile_relays
+            .push("wss://relay.openagents.com".to_owned());
     }
     config.profile_relays.retain(|relay| relay != "off");
+    // Whose XP awards count on profiles.
+    if let Ok(list) = std::env::var("OPENAGENTS_WEB_XP_REFEREES") {
+        config.xp_referees = list.split(',').filter_map(xp_ledger::parse_key).collect();
+    }
     // Published agents' own keys derive from this secret seed.
     if let Ok(seed) = std::env::var("OPENAGENTS_WEB_AGENT_KEY_SEED") {
         let bytes: Option<Vec<u8>> = (seed.len() == 64)
@@ -262,7 +268,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .flatten();
         match bytes.and_then(|b| <[u8; 32]>::try_from(b).ok()) {
             Some(seed) => config.agent_key_seed = Some(seed),
-            None => eprintln!("OPENAGENTS_WEB_AGENT_KEY_SEED must be 64 hex characters; agent keys are off"),
+            None => eprintln!(
+                "OPENAGENTS_WEB_AGENT_KEY_SEED must be 64 hex characters; agent keys are off"
+            ),
         }
     }
     // /lander8's chat ships at /srv/lander8 in the image.

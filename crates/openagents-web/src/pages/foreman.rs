@@ -499,6 +499,17 @@ async fn published_page(app: &App, id: &str, headers: &HeaderMap) -> Response {
         None => None,
     };
     let retired = found.owner.as_ref().is_some_and(|o| o.revoked);
+    let evidence = match found.agent.as_deref() {
+        Some(agent) => Some(
+            crate::profiles::evidence::load(
+                &app.config.profile_relays,
+                &app.config.xp_referees,
+                agent,
+            )
+            .await,
+        ),
+        None => None,
+    };
     let owner = html! {
         @if let Some(owned) = found.owner.as_ref() {
             section.oa-card aria-labelledby="agent-owner" {
@@ -530,6 +541,9 @@ async fn published_page(app: &App, id: &str, headers: &HeaderMap) -> Response {
     let live = graph_build(app).is_some();
     let content = html! {
         (owner)
+        @if let Some(evidence) = &evidence {
+            (crate::profiles::evidence::sections(evidence))
+        }
         (generic_body(id, &graph, live))
     };
     let (true, Some(fonts)) = (live, graph_fonts(app)) else {

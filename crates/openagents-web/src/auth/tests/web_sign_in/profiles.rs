@@ -31,7 +31,10 @@ fn matches(filter: &Value, event: &Event) -> bool {
         .get("#p")
         .and_then(Value::as_array)
         .is_none_or(|list| event.tag_values("p").any(|p| list.contains(&json!(p))));
-    has("authors", json!(event.pubkey)) && has("kinds", json!(event.kind)) && tagged
+    has("ids", json!(event.id))
+        && has("authors", json!(event.pubkey))
+        && has("kinds", json!(event.kind))
+        && tagged
 }
 
 impl Relay {
@@ -503,6 +506,12 @@ async fn a_published_agent_gets_its_own_key_an_owner_and_a_page() {
         (pat.pubkey(), id.as_str())
     );
 
+    // Work the agent did and a review of it.
+    let job = receipt(&key(31), &agent);
+    let review = label(&key(32), &agent, "reliable");
+    relay.put(job.clone());
+    relay.put(review.clone());
+
     // The owner's profile lists it; its page names the owner; its key moves to it.
     let page = anyone.get(&world, "/@pat-test").await;
     assert!(
@@ -514,6 +523,17 @@ async fn a_published_agent_gets_its_own_key_an_owner_and_a_page() {
     assert_eq!(agent_page.status, StatusCode::OK, "{}", agent_page.body);
     assert!(agent_page.body.contains("Owned by"));
     assert!(agent_page.body.contains("@pat-test"));
+    assert!(
+        agent_page
+            .body
+            .contains(&format!("href=\"/event/{}\"", job.id))
+    );
+    assert!(
+        agent_page
+            .body
+            .contains(&format!("href=\"/event/{}\"", review.id))
+    );
+    assert!(agent_page.body.contains("reliable"));
     crate::copy_guard::assert_plain("/agent/{id}", &agent_page.body);
     let by_key = anyone
         .get(&world, &format!("/agent/{}", crate::profiles::npub(&agent)))
@@ -546,4 +566,172 @@ async fn a_published_agent_gets_its_own_key_an_owner_and_a_page() {
     assert!(!page.body.contains(&format!("href=\"/agent/{id}\"")));
     let agent_page = anyone.get(&world, &format!("/agent/{id}")).await;
     assert!(agent_page.body.contains("Its owner retired this agent."));
+}
+
+/// An `eval-check` quest by `referee`, an evaluator's result, a checker's
+/// check, and the awards for them, as `xp-ledger`'s own tests build them.
+fn xp_world(referee: &RelaySigner, evaluator: &str, checker: &str) -> Vec<Event> {
+    use xp_ledger::eval::fixture::{Run, published, release, signer};
+    const AT: u64 = 1_790_000_000;
+    let suite = release(&signer("suite-author"), "project-map-tests", AT - 5_000);
+    let subject = release(&signer("ext-author"), "project-map", AT - 5_000);
+    let spec = json!({
+        "id": "ext-eval.project-map.check",
+        "version": 1,
+        "season": {"id": "ext-eval-s1", "opens_at": AT - 10_000, "closes_at": AT + 100_000},
+        "title": "Check a Project map result",
+        "objective": "Rerun the Project map test set on the same tool release and confirm a published result.",
+        "acceptance": {
+            "rule": "eval-check",
+            "suite": {"id": suite.id, "pubkey": suite.pubkey, "kind": suite.kind},
+            "subject": {"id": subject.id, "pubkey": subject.pubkey, "kind": subject.kind},
+            "max_awards": 500,
+        },
+        "reference": null,
+        "award": {"checker": 50, "evaluator": 25, "suite-author": 25},
+    });
+    let parts = nostr::xp::quest(&spec).unwrap();
+    let quest = referee.sign(AT - 10_000, parts.kind, parts.tags, parts.content);
+    let result = published(&signer(evaluator), &Run::better(&suite, &subject), None, AT);
+    let check = published(
+        &signer(checker),
+        &Run::better(&suite, &subject),
+        Some(&result.id),
+        AT + 10,
+    );
+    let awards: Vec<Event> = nostr::xp::eval_check_awards(&quest, &result, &check, &[], AT + 100)
+        .unwrap()
+        .into_iter()
+        .map(|p| referee.sign(AT + 100, p.kind, p.tags, p.content))
+        .collect();
+    let mut all = vec![suite, subject, quest, result, check];
+    all.extend(awards);
+    all
+}
+
+fn receipt(buyer: &RelaySigner, provider: &str) -> Event {
+    use nostr::pylon::{Lane, Outcome, RECEIPT_V, Receipt, UnitKind, Units};
+    let body = Receipt {
+        v: RECEIPT_V.into(),
+        requires: Vec::new(),
+        meta: None,
+        buyer: buyer.pubkey().into(),
+        provider: provider.into(),
+        pylon: "box-1".into(),
+        lane: Lane::CjConversation,
+        capability: "chat".into(),
+        request: "1".repeat(64),
+        request_digest: "2".repeat(64),
+        result_digest: None,
+        started_at: 1_790_000_000,
+        finished_at: 1_790_000_010,
+        units: Units {
+            kind: UnitKind::Jobs,
+            count: 1,
+        },
+        outcome: Outcome::Accepted,
+        payment: None,
+    };
+    nostr::pylon::receipt_event(buyer, &body, 1_790_000_010).unwrap()
+}
+
+fn label(by: &RelaySigner, about: &str, value: &str) -> Event {
+    by.sign(
+        1_790_000_020,
+        1985,
+        vec![
+            Tag::new(vec!["L".into(), "openagents.review".into()]),
+            Tag::new(vec!["l".into(), value.into(), "openagents.review".into()]),
+            Tag::new(vec!["p".into(), about.into()]),
+        ],
+        String::new(),
+    )
+}
+
+#[tokio::test]
+async fn a_profile_shows_xp_receipts_and_labels_each_linked_to_its_event() {
+    use xp_ledger::eval::fixture::{pubkey, signer};
+    let relay = Relay::start().await;
+    let world = key_world_with(vec![relay.url.clone()]).await;
+    // A real referee credits Bob; a forger "credits" Erin.
+    for event in xp_world(&signer("referee"), "alice", "bob") {
+        relay.put(event);
+    }
+    for event in xp_world(&signer("forger"), "dave", "erin") {
+        relay.put(event);
+    }
+    let bob = pubkey("bob");
+    let job = receipt(&key(31), &bob);
+    let review = label(&key(32), &bob, "helpful");
+    relay.put(job.clone());
+    relay.put(review.clone());
+
+    let mut anyone = Browser::default();
+    let page = anyone
+        .get(&world, &format!("/@{}", crate::profiles::npub(&bob)))
+        .await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    for shown in [
+        "XP 50",
+        "Check a Project map result",
+        "Jobs done",
+        "chat",
+        "Reviews",
+        "helpful",
+    ] {
+        assert!(page.body.contains(shown), "{shown}: {}", page.body);
+    }
+    assert!(page.body.contains(&format!("href=\"/event/{}\"", job.id)));
+    assert!(
+        page.body
+            .contains(&format!("href=\"/event/{}\"", review.id))
+    );
+    let award = relay
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|e| e.kind == nostr::xp::AWARD_KIND && e.pubkey == pubkey("referee"))
+        .unwrap()
+        .clone();
+    assert!(
+        page.body.contains(&format!("/event/{}", award.id)),
+        "{}",
+        page.body
+    );
+    crate::copy_guard::assert_plain("/@{npub}", &page.body);
+
+    // The forged award counts for no one.
+    let erin = anyone
+        .get(
+            &world,
+            &format!("/@{}", crate::profiles::npub(&pubkey("erin"))),
+        )
+        .await;
+    assert!(!erin.body.contains("XP "), "{}", erin.body);
+
+    // Each link opens the signed event.
+    let opened = anyone.get(&world, &format!("/event/{}", job.id)).await;
+    assert_eq!(opened.status, StatusCode::OK, "{}", opened.body);
+    assert!(opened.body.contains("Signed event"));
+    assert!(opened.body.contains(&job.id));
+    assert_eq!(
+        anyone
+            .get(&world, &format!("/event/{}", "0".repeat(64)))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[test]
+fn a_forged_award_counts_for_no_one() {
+    use xp_ledger::eval::fixture::{pubkey, signer};
+    let referees = vec![pubkey("referee")];
+    let forged = xp_world(&signer("forger"), "alice", "bob");
+    let (xp, awards) = crate::profiles::evidence::xp_of(&pubkey("bob"), &forged, &referees);
+    assert_eq!((xp, awards.len()), (0, 0));
+    let real = xp_world(&signer("referee"), "alice", "bob");
+    let (xp, awards) = crate::profiles::evidence::xp_of(&pubkey("bob"), &real, &referees);
+    assert_eq!((xp, awards.len()), (50, 1));
 }

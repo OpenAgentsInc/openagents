@@ -13279,6 +13279,7 @@ dependencies = [
  "verse-lagrange2",
  "video-lab",
  "workbench",
+ "xp-ledger",
  "zip 3.0.0",
 ]
 
