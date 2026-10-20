@@ -247,7 +247,8 @@ Commands:
       --questions JSON      The questions, keyed by id, as /v1/systemone
                             takes them.
       --pylon NPUB          Use this pylon instead of the best fresh one.
-      --wait SECS           How long to wait for the answer (default 60).
+      --wait SECS           How long to wait for the answer (default 60, at
+                            most 118).
   check canary --pylon NPUB Send the pylon its class's pinned Gym suite of
                             known-answer jobs as the buyer key, and sign a
                             check verdict on each receipt with the checker key.
@@ -1051,7 +1052,8 @@ async fn decide(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Stri
         Some(p) => Some(hex_pubkey(&p).ok_or("--pylon is not a key")?),
         None => None,
     };
-    let wait = Duration::from_secs(args.number("--wait", 60)?.clamp(1, 600));
+    // One relay connection carries the job, and it lives at most 120 s.
+    let wait = Duration::from_secs(args.number("--wait", 60)?.clamp(1, 118));
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
     }

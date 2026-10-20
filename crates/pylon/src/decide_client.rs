@@ -61,7 +61,8 @@ pub async fn ask(
     };
     let event = decision::request_event(seal, &body, worker)
         .map_err(|e| format!("the job cannot be sealed: {e}"))?;
-    let lifetime = (budget + Duration::from_secs(2)).min(Duration::from_secs(300));
+    // The transport refuses a connection meant to live past 120 s.
+    let lifetime = (budget + Duration::from_secs(2)).min(Duration::from_secs(120));
     let run = async {
         let mut conn = nostr_transport::Connection::connect(relay, buyer.secret(), lifetime)
             .await
