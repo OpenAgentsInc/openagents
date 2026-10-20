@@ -427,7 +427,7 @@ struct Game {
     blurb: &'static str,
 }
 
-const LAB: [Game; 2] = [
+const LAB: [Game; 3] = [
     Game {
         title: "Harbor Builders",
         image: "harbor.jpg",
@@ -439,6 +439,12 @@ const LAB: [Game; 2] = [
         image: "sea-arch.jpg",
         alt: "Dark rocks forming a sea arch in deep blue water",
         blurb: "Dive under the sea arch and bring a reef back to life, one species at a time.",
+    },
+    Game {
+        title: "Community Conservation Cleanup",
+        image: "lighthouse.jpg",
+        alt: "A lighthouse overlooking the water",
+        blurb: "A town's creek is in trouble: a factory breaks its discharge permit, neighbors fertilize before a storm, dog waste goes uncollected, and an aging septic tank is cracked. Work with community members to investigate, choose solutions, and protect the watershed. For high school students.",
     },
 ];
 

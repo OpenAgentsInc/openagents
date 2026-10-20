@@ -715,6 +715,7 @@ The following guides and plans were added after the September 29 inventory.
 | [verse/world-interactions.md](verse/world-interactions.md) | Design and guide | Maps, companions, and local door demos |
 | [verse/chat.md](verse/chat.md) | Reference | Verse chat |
 | [verse/gdd.md](verse/gdd.md) | Reference | Verse game design document (draft) |
+| [verse/games/community-conservation-cleanup.md](verse/games/community-conservation-cleanup.md) | Design | High school watershed investigation and community conservation game (draft) |
 | [verse/agent-trainer-leveling.md](verse/agent-trainer-leveling.md) | Design / assessment | Agent trainer leveling: XP, levels, raids, credentials, and the Gym |
 
 ## voyager
