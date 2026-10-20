@@ -32,6 +32,7 @@ base64 = "0.22"
 # Settings' imported themes, compiled (#12289); loro links it already.
 postcard = { version = "1.1.3", default-features = false }
 openagents-theme = { path = "../../crates/theme" }
+agent-lab = { path = "../../../../crates/agent-lab", features = ["views"] }
 web-time.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]

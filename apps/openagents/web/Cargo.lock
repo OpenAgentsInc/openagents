@@ -53,6 +53,7 @@ dependencies = [
  "agent-contract",
  "lab-kit",
  "openagents-workspace-hack",
+ "rust-native",
  "serde",
  "serde_json",
 ]
@@ -4402,6 +4403,7 @@ dependencies = [
 name = "openagents-web-chat"
 version = "1.0.0"
 dependencies = [
+ "agent-lab",
  "anyhow",
  "base64 0.22.1",
  "console_error_panic_hook",
