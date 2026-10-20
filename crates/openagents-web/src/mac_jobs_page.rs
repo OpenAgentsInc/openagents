@@ -15,7 +15,7 @@
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{Form, Path, State};
+use axum::extract::{Form, Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -197,11 +197,18 @@ fn job_row(job: &Job, now: u64) -> Markup {
     }
 }
 
-async fn list_page(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn list_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    RawQuery(raw): RawQuery,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Some(gpui) = crate::pages::gpui_chat::work_for(&app, &headers, raw.as_deref(), "mac") {
+        return gpui;
+    }
     let owner = account_owner(&viewer.account_id);
     let store = &app.config.chat_store;
     let found = mac_jobs::macs(store, &owner).await.unwrap_or_default();
@@ -280,12 +287,22 @@ fn question_markup(csrf: &str, job: &Job) -> Markup {
     }
 }
 
-async fn job_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+async fn job_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    RawQuery(raw): RawQuery,
+) -> Response {
     let path = format!("{PAGE}/{id}");
     let (service, viewer) = match viewer(&app, &headers, &path).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Some(gpui) =
+        crate::pages::gpui_chat::work_for(&app, &headers, raw.as_deref(), &format!("mac:{id}"))
+    {
+        return gpui;
+    }
     let owner = account_owner(&viewer.account_id);
     let job = match crate::mac_jobs_actor::find(&app, &viewer.account_id, &id).await {
         Ok(Some(job)) => job,

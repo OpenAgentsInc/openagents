@@ -5,7 +5,7 @@ mod video;
 use crate::App;
 use axum::{
     Router,
-    extract::{Path, Query, State},
+    extract::{Path, Query, RawQuery, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
     routing::get,
@@ -18,6 +18,8 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/labs/{kind}/{document}", get(document))
         .route("/labs/files/{id}/play", get(play))
+        .route("/labs/{kind}/{document}/media", get(player))
+        .route(PLAYER_CSS, get(player_css))
         .route(
             "/v1/labs/documents/{document}/versions/{version}/timeline",
             get(video::timeline),
@@ -44,13 +46,82 @@ fn personal() -> String {
     "me".into()
 }
 
-async fn document(
+/// The player's own styles: the GPUI page frames it (#12333).
+const PLAYER_CSS: &str = "/labs/player.css";
+/// The page's policy with the GPUI page as the one frame it may sit in.
+const PLAYER_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; frame-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
+
+async fn player_css() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        "html,body{margin:0;height:100%;background:transparent;color:#ddd;font:14px system-ui,sans-serif}\
+         body{display:flex;align-items:center;justify-content:center}\
+         video,img,iframe{display:block;max-width:100%;max-height:100vh;border:0}\
+         iframe{width:100%;height:100vh}\
+         .oa-lab-compare{display:flex;gap:12px;max-height:100vh}\
+         .oa-lab-compare img{max-height:calc(100vh - 28px)}\
+         figure{margin:0}figcaption{text-align:center;padding-top:6px}",
+    )
+        .into_response()
+}
+
+/// A document's player alone (#12333): its video, image, comparison, 3D
+/// model, or playable, for the GPUI page to frame over its canvas.
+async fn player(
     State(app): State<App>,
     headers: HeaderMap,
     Path((kind, document)): Path<(String, String)>,
     Query(page): Query<Page>,
 ) -> Response {
     let space = page.space();
+    let authority = crate::labs_api::caller_headers(&app, &headers);
+    let api = crate::labs_api::runtime(&app);
+    let card = match page.v {
+        Some(version) => api.read_card(&authority, &space, &document, version).await,
+        None => api.latest_card(&authority, &space, &document).await,
+    };
+    let card = match card {
+        Ok(card) if card.kind == kind => card,
+        Ok(_) => return lab_api::ApiError::missing().into_response(),
+        Err(error) => return error.into_response(),
+    };
+    let body = html! {
+        (maud::DOCTYPE)
+        html lang="en" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width, initial-scale=1";
+                title { (card.title) }
+                link rel="stylesheet" href=(PLAYER_CSS);
+            }
+            body { (media(&card, &space)) }
+        }
+    };
+    let mut response = crate::chat_html::protect(Html(body.into_string()).into_response());
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(PLAYER_POLICY),
+    );
+    response
+}
+
+async fn document(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((kind, document)): Path<(String, String)>,
+    Query(page): Query<Page>,
+    RawQuery(raw): RawQuery,
+) -> Response {
+    let space = page.space();
+    let gpui_path = format!("labs/{kind}/{document}/{}/{space}", page.v.unwrap_or(0));
+    if let Some(gpui) =
+        crate::pages::gpui_chat::page_for(&app, &headers, raw.as_deref(), &gpui_path)
+    {
+        return gpui;
+    }
     let authority = crate::labs_api::caller_headers(&app, &headers);
     let api = crate::labs_api::runtime(&app);
     let card = match page.v {
@@ -280,6 +351,12 @@ fn media(card: &Card, space: &str) -> Markup {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_player_is_this_sites_to_answer() {
+        assert!(crate::upstream::owned("/labs/image/d1/media"));
+        assert!(crate::upstream::owned("/labs/player.css"));
+    }
 
     #[test]
     fn unknown_views_show_a_report_and_media_use_credential_checked_artifacts() {

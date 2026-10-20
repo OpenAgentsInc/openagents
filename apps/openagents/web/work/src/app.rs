@@ -186,6 +186,42 @@ impl WorkApp {
         cx.notify();
     }
 
+    /// Open the item an address names (#12332): `work:ID`, `env:ID`,
+    /// `env:ID/run:RUN`, or `mac:ID`, on its tab.
+    pub fn focus(&mut self, target: &str, cx: &mut Context<Self>) {
+        if let Some(id) = target.strip_prefix("work:") {
+            self.tab = Tab::Work;
+            self.open_work(
+                WorkRun {
+                    id: id.to_owned(),
+                    ..WorkRun::default()
+                },
+                cx,
+            );
+        } else if let Some(rest) = target.strip_prefix("env:") {
+            self.tab = Tab::Environments;
+            match rest.split_once("/run:") {
+                Some((env, run)) => self.open_run(env.to_owned(), run.to_owned(), cx),
+                None => self.open_environment(rest.to_owned(), cx),
+            }
+        } else if let Some(id) = target.strip_prefix("mac:") {
+            self.tab = Tab::Mac;
+            self.open_job(
+                MacJob {
+                    id: id.to_owned(),
+                    ..MacJob::default()
+                },
+                cx,
+            );
+        } else if target == "work" {
+            self.switch(Tab::Work, cx);
+        } else if target == "env" {
+            self.switch(Tab::Environments, cx);
+        } else if target == "mac" {
+            self.switch(Tab::Mac, cx);
+        }
+    }
+
     fn close_detail(&mut self) {
         self.open = Open::Nothing;
         self.detail = None;

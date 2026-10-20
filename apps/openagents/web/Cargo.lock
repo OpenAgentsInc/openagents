@@ -3117,6 +3117,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lab-ui"
+version = "1.0.0"
+dependencies = [
+ "lab-kit",
+ "openagents-workspace-hack",
+ "rust-native",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4168,6 +4179,8 @@ dependencies = [
  "futures",
  "gpui",
  "gpui-base",
+ "lab-kit",
+ "lab-ui",
  "openagents-brand",
  "openagents-doc",
  "openagents-markdown",
@@ -4616,6 +4629,28 @@ name = "openagents-web-hands"
 version = "1.0.0"
 dependencies = [
  "coder-hands",
+]
+
+[[package]]
+name = "openagents-web-lab"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "lab-kit",
+ "openagents-chat-view",
+ "openagents-gpui-web",
+ "openagents-web-client",
+ "openagents-web-page-host",
+ "rust-native",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

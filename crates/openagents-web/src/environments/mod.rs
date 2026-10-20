@@ -39,7 +39,7 @@ use std::time::Duration;
 
 use axum::Form;
 use axum::Router;
-use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, RawQuery, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::sse::{Event, KeepAlive};
@@ -283,13 +283,16 @@ fn valid_id(id: &str) -> bool {
     coder_environment::valid_id(id)
 }
 
-async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn index(State(app): State<App>, headers: HeaderMap, RawQuery(raw): RawQuery) -> Response {
     let Some(studio) = studio(&app) else {
         return unavailable(&app, &headers);
     };
     let Some(scope) = mine(&app, &headers).await else {
         return missing(&headers);
     };
+    if let Some(gpui) = crate::pages::gpui_chat::work_for(&app, &headers, raw.as_deref(), "env") {
+        return gpui;
+    }
     let rows = scope.rows(studio);
     index_page(&headers, &rows)
 }
@@ -596,12 +599,23 @@ pub(crate) fn detail_page(
     )
 }
 
-async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+async fn show(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    RawQuery(raw): RawQuery,
+) -> Response {
     let Some(studio) = studio(&app) else {
         return unavailable(&app, &headers);
     };
     if !valid_id(&id) {
         return missing(&headers);
+    }
+    if mine(&app, &headers).await.is_some()
+        && let Some(gpui) =
+            crate::pages::gpui_chat::work_for(&app, &headers, raw.as_deref(), &format!("env:{id}"))
+    {
+        return gpui;
     }
     page(&app, studio, &headers, &id, None).await
 }
@@ -784,7 +798,19 @@ async fn run(
     State(app): State<App>,
     headers: HeaderMap,
     Path((id, run)): Path<(String, String)>,
+    RawQuery(raw): RawQuery,
 ) -> Response {
+    if valid_id(&id)
+        && mine(&app, &headers).await.is_some()
+        && let Some(gpui) = crate::pages::gpui_chat::work_for(
+            &app,
+            &headers,
+            raw.as_deref(),
+            &format!("env:{id}/run:{run}"),
+        )
+    {
+        return gpui;
+    }
     run_page(&app, &headers, id, run, None).await
 }
 

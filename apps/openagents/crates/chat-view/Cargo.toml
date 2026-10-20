@@ -27,6 +27,9 @@ openagents-doc.workspace = true
 chrono.workspace = true
 web-time = "1.1.0"
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
+# A Lab document's card, as the chat and the site draw it (#12333).
+lab-kit = { path = "../../../../crates/lab-kit" }
+lab-ui = { path = "../../../../crates/lab-ui" }
 openagents-markdown.workspace = true
 # The composer's Markdown editing helpers (`composer_markdown`).
 pulldown-cmark.workspace = true

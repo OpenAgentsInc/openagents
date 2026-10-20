@@ -57,7 +57,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{Form, Path, Query, State};
+use axum::extract::{Form, Path, Query, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -2603,11 +2603,15 @@ async fn list_page(
     State(app): State<App>,
     headers: HeaderMap,
     Query(query): Query<PageQuery>,
+    RawQuery(raw): RawQuery,
 ) -> Response {
     let (service, viewer) = match crate::settings::viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Some(gpui) = crate::pages::gpui_chat::work_for(&app, &headers, raw.as_deref(), "work") {
+        return gpui;
+    }
     let owner = account_owner(&viewer.account_id);
     let runs = list(&app.config.chat_store, &owner)
         .await
@@ -2823,12 +2827,22 @@ async fn submit_page(
     }
 }
 
-async fn run_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+async fn run_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    RawQuery(raw): RawQuery,
+) -> Response {
     let path = format!("{PAGE}/{id}");
     let (service, viewer) = match crate::settings::viewer(&app, &headers, &path).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Some(gpui) =
+        crate::pages::gpui_chat::work_for(&app, &headers, raw.as_deref(), &format!("work:{id}"))
+    {
+        return gpui;
+    }
     let owner = account_owner(&viewer.account_id);
     let run = match load(&app.config.chat_store, &owner, &id).await {
         Ok(Some(run)) => run,

@@ -17,10 +17,18 @@ mod app;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
 
-/// Starts the panel with the page's fonts, one `Uint8Array` per face.
+#[cfg(target_family = "wasm")]
+thread_local! {
+    static PANEL: std::cell::RefCell<Option<(gpui::WeakEntity<app::WorkApp>, gpui::AsyncApp)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Starts the panel with the page's fonts, one `Uint8Array` per face, open
+/// at `target` when an address names an item (#12332; see
+/// [`app::WorkApp::focus`]).
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen]
-pub fn mount(fonts: js_sys::Array) {
+pub fn mount(fonts: js_sys::Array, target: Option<String>) {
     use std::borrow::Cow;
     use std::rc::Rc;
     use std::sync::Arc;
@@ -54,12 +62,35 @@ pub fn mount(fonts: js_sys::Array) {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     ..Default::default()
                 },
-                |window, cx| cx.new(|cx| app::WorkApp::new(window, cx)),
+                move |window, cx| {
+                    cx.new(|cx| {
+                        let mut panel = app::WorkApp::new(window, cx);
+                        if let Some(target) = &target {
+                            panel.focus(target, cx);
+                        }
+                        panel
+                    })
+                },
             );
-            if opened.is_err() {
-                app::signal("oa-work-failed");
+            match opened.and_then(|window| window.entity(cx)) {
+                Ok(entity) => {
+                    let async_cx = cx.to_async();
+                    PANEL.with(|p| *p.borrow_mut() = Some((entity.downgrade(), async_cx)));
+                }
+                Err(_) => app::signal("oa-work-failed"),
             }
             cx.activate(true);
         });
     std::mem::forget(handle);
+}
+
+/// Opens the item `target` names in the mounted panel (#12332).
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen]
+pub fn focus(target: String) {
+    PANEL.with(|p| {
+        if let Some((entity, cx)) = p.borrow().as_ref() {
+            let _ = entity.update(&mut cx.clone(), |panel, cx| panel.focus(&target, cx));
+        }
+    });
 }

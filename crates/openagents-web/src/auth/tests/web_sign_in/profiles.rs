@@ -1647,6 +1647,15 @@ async fn account_pages_open_in_the_gpui_app_when_it_is_on() {
         ("/settings/agents", "/gpui?page=agents"),
         ("/projects", "/gpui?page=projects"),
         ("/projects/proj_1", "/gpui?page=projects/proj_1"),
+        ("/work", "/gpui?work=work"),
+        ("/work/run_1", "/gpui?work=work:run_1"),
+        ("/settings/mac-jobs", "/gpui?work=mac"),
+        ("/settings/mac-jobs/job_1", "/gpui?work=mac:job_1"),
+        ("/labs/image/doc_1", "/gpui?page=labs/image/doc_1/0/me"),
+        (
+            "/labs/video/doc_2?v=3&project=p9",
+            "/gpui?page=labs/video/doc_2/3/project:p9",
+        ),
     ] {
         let moved = browser.get(&world, page).await;
         assert!(moved.status.is_redirection(), "{page}: {}", moved.status);

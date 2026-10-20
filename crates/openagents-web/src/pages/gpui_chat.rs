@@ -216,6 +216,28 @@ pub(crate) fn page_for(
     query: Option<&str>,
     path: &str,
 ) -> Option<Response> {
+    open_with(app, headers, query, "page", path)
+}
+
+/// For a work address (#12332): the GPUI chat with its work panel open at
+/// `target` (`work:ID`, `env:ID`, `env:ID/run:RUN`, `mac:ID`, or `env`),
+/// as [`page_for`] decides.
+pub(crate) fn work_for(
+    app: &App,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    target: &str,
+) -> Option<Response> {
+    open_with(app, headers, query, "work", target)
+}
+
+fn open_with(
+    app: &App,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    key: &str,
+    path: &str,
+) -> Option<Response> {
     let choice = choice(app.config.features, headers, query);
     if !choice.serves(app, headers) {
         return None;
@@ -223,14 +245,14 @@ pub(crate) fn page_for(
     let encoded: String = path
         .bytes()
         .map(|b| match b {
-            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'/' => {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'/' | b':' => {
                 char::from(b).to_string()
             }
             _ => format!("%{b:02X}"),
         })
         .collect();
     let mut response =
-        axum::response::Redirect::to(&format!("{GPUI_CHAT_PATH}?page={encoded}")).into_response();
+        axum::response::Redirect::to(&format!("{GPUI_CHAT_PATH}?{key}={encoded}")).into_response();
     choice.remember(app, &mut response);
     Some(response)
 }

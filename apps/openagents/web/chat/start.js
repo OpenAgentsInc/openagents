@@ -386,9 +386,20 @@ window.addEventListener("oa-dictation-cancel", function () {
 // own module, loaded the first time the header's work button asks for it,
 // in a box on the right.
 var workBox = null;
-function openWork() {
+var workModule = null;
+// `target` names an item to open (#12332): `work:ID`, `env:ID`,
+// `env:ID/run:RUN`, or `mac:ID`, as `?work=` carries it.
+function openWork(target) {
+  target = typeof target === "string" ? target : "";
   if (workBox) {
-    workBox.hidden = !workBox.hidden;
+    if (target) {
+      workBox.hidden = false;
+      if (workModule) {
+        workModule.focus(target);
+      }
+    } else {
+      workBox.hidden = !workBox.hidden;
+    }
     return;
   }
   workBox = document.createElement("div");
@@ -403,8 +414,9 @@ function openWork() {
       return module.default({
         module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_work_bg.wasm", import.meta.url))),
       }).then(function () {
+        workModule = module;
         mountIn(workBox, function () {
-          module.mount(loaded[1]);
+          module.mount(loaded[1], target || undefined);
         });
       });
     })
@@ -414,7 +426,12 @@ function openWork() {
       workBox = null;
     });
 }
-window.addEventListener("oa-work-toggle", openWork);
+window.addEventListener("oa-work-toggle", function () {
+  openWork("");
+});
+window.addEventListener("oa-work-open", function (event) {
+  openWork(event.detail || "env");
+});
 window.addEventListener("oa-work-close", function () {
   if (workBox) {
     workBox.hidden = true;
@@ -512,6 +529,7 @@ var PAGES = {
   agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
   "agent-lab": ["./openagents_web_agent_lab.js", "./openagents_web_agent_lab_bg.wasm"],
+  labs: ["./openagents_web_lab.js", "./openagents_web_lab_bg.wasm"],
 };
 var pageBoxes = {};
 var pageModules = {};
@@ -583,9 +601,14 @@ window.addEventListener("oa-page-close", function (event) {
   pageParam("");
 });
 function openAddressedPage() {
-  var path = new URL(window.location.href).searchParams.get("page");
+  var params = new URL(window.location.href).searchParams;
+  var path = params.get("page");
   if (path) {
     openPage(path);
+  }
+  var work = params.get("work");
+  if (work) {
+    openWork(work);
   }
 }
 

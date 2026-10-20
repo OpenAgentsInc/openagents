@@ -341,6 +341,11 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ),
     ("/labs/files/{id}/play", "a Lab file, played inside a card"),
     (
+        "/labs/{kind}/{document}/media",
+        "a Lab document's player, framed by its GPUI page",
+    ),
+    ("/labs/player.css", "the Lab player's styles"),
+    (
         "/labs/agent",
         "Agent Lab, a live workbench over the person's own experiments",
     ),

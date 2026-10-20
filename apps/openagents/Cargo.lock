@@ -11165,6 +11165,8 @@ dependencies = [
  "futures",
  "gpui",
  "gpui-base",
+ "lab-kit",
+ "lab-ui",
  "oa-copy",
  "openagents-brand",
  "openagents-doc",

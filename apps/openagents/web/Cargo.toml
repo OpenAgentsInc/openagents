@@ -18,6 +18,7 @@ members = [
     "traces",
     "agents",
     "projects",
+    "lab",
     "work",
     "settings",
     "demo",

@@ -768,3 +768,40 @@ fn projects_list_and_open_one_with_members_repositories_and_sources() {
     // The owner can't leave; a member can.
     assert!(!intents.contains(&Intent::Projects(Action::AskLeave(true))));
 }
+
+#[test]
+fn a_lab_document_draws_the_shared_card_and_leaves_its_player_to_the_host() {
+    use lab::{Action, State, view};
+    let card: lab_kit::Card = serde_json::from_value(serde_json::json!({
+        "kind": "video", "document": "d1", "version": 2, "title": "Launch cut",
+        "summary": "Thirty seconds", "view": "video", "primary": "file_1",
+    }))
+    .unwrap();
+    let state = State {
+        space: "me".into(),
+        card: Load::Ready(card),
+    };
+    assert!(state.player());
+    let root = view(&state, &Paints::default());
+    let out = plain_view(&root);
+    assert!(out.iter().any(|w| w == "Launch cut · v2"), "{out:?}");
+    assert!(out.iter().any(|w| w == "Thirty seconds"));
+    assert!(intents(&root).contains(&Intent::Lab(Action::Visit(
+        "/labs/video/d1?ui=html&v=2&space=me".into()
+    ))));
+    let report: lab_kit::Card = serde_json::from_value(serde_json::json!({
+        "kind": "sim", "document": "d2", "version": 1, "title": "Run",
+        "view": "report", "primary": "out.json",
+    }))
+    .unwrap();
+    let state = State {
+        space: "project:p1".into(),
+        card: Load::Ready(report),
+    };
+    assert!(!state.player());
+    assert!(
+        intents(&view(&state, &Paints::default())).contains(&Intent::Lab(Action::Download(
+            "/v1/labs/artifacts/out.json/content?space=project%3Ap1".into()
+        )))
+    );
+}

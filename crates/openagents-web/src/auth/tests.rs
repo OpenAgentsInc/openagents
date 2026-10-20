@@ -178,10 +178,19 @@ async fn world_tweaked(
     // GPUI account pages (#12329).
     let gpui = root.path().join("gpui-chat");
     std::fs::create_dir(&gpui).unwrap();
-    for file in ["openagents_web_chat.js", "openagents_web_chat_bg.wasm", "start.js"] {
+    for file in [
+        "openagents_web_chat.js",
+        "openagents_web_chat_bg.wasm",
+        "start.js",
+    ] {
         std::fs::write(gpui.join(file), "").unwrap();
     }
     config.gpui_chat = Some(gpui);
+    // The GPUI chat only where a browser asks for it, so the HTML pages
+    // these tests read stay the default.
+    config
+        .features
+        .set(crate::features::Feature::GpuiDefault, false);
     config.xp_referees = vec![xp_ledger::eval::fixture::pubkey("referee")];
     config.public_hosts.push("api.openagents.com".into());
     config.inference = Some(Arc::new(

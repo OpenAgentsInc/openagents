@@ -39,6 +39,11 @@ pub trait Page: Sized + 'static {
     /// Show `path` (after the module's name: `""`, or `ID`, or `ID/more`).
     fn open(host: &mut Host<Self>, path: &str, cx: &mut Context<Host<Self>>);
     fn intent(host: &mut Host<Self>, intent: Intent, cx: &mut Context<Host<Self>>);
+    /// Height kept clear under the header for something the page mounts
+    /// over the canvas itself, such as a Lab document's player (#12333).
+    fn pinned(&self) -> Option<f32> {
+        None
+    }
     /// The text the person entered for `prompt`.
     fn submit(
         _host: &mut Host<Self>,
@@ -322,14 +327,22 @@ impl<P: Page> Render for Host<P> {
             .text_color(theme::text())
             .text_size(px(theme::BODY));
         root.text_style().font_fallbacks = Some(theme::fallbacks());
-        root.child(header).children(notice).children(field).child(
-            div()
-                .id("page-body")
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scroll()
-                .child(div().w_full().max_w(px(820.)).mx_auto().child(body)),
-        )
+        let pinned = self
+            .page
+            .pinned()
+            .map(|height| div().id("page-pinned").flex_none().w_full().h(px(height)));
+        root.child(header)
+            .children(pinned)
+            .children(notice)
+            .children(field)
+            .child(
+                div()
+                    .id("page-body")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .child(div().w_full().max_w(px(820.)).mx_auto().child(body)),
+            )
     }
 }
 

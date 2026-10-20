@@ -1100,6 +1100,35 @@ impl ChatApp {
                     )
                     .child("New chat"),
             )
+            // Environments open in the work panel (#12332).
+            .when(self.signed_in, |col| {
+                col.child(
+                    div()
+                        .id("environments")
+                        .mx(px(10.))
+                        .px(px(8.))
+                        .h(px(34.))
+                        .rounded(px(8.))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(10.))
+                        .text_color(theme::text_muted())
+                        .text_size(px(14.))
+                        .cursor_pointer()
+                        .hover(|style| style.bg(theme::element_hover()).text_color(theme::text()))
+                        .on_click(|_: &ClickEvent, _, _| {
+                            crate::compose::page_event("oa-work-open", "env")
+                        })
+                        .child(
+                            svg()
+                                .path("icons/document.svg")
+                                .size(px(17.))
+                                .text_color(theme::text_muted()),
+                        )
+                        .child("Environments"),
+                )
+            })
             .child(
                 div()
                     .mx(px(10.))

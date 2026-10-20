@@ -17,6 +17,8 @@ pub mod agents;
 pub mod appearance;
 /// Earn on a paired computer (#12294).
 pub mod earn;
+/// A Lab document (#12333).
+pub mod lab;
 /// Projects (#12331).
 pub mod projects;
 pub mod providers;
@@ -338,6 +340,8 @@ pub enum Intent {
     Agents(agents::Action),
     /// Projects (#12331).
     Projects(projects::Action),
+    /// A Lab document (#12333).
+    Lab(lab::Action),
 }
 
 /// The theme's colors for the forms, which the host reads from its theme
