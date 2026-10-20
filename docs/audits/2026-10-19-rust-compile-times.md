@@ -562,6 +562,55 @@ Host load varied during these samples; the routing consumer's small build
 improvement should be read with that limitation. Warm-up is excluded from
 the table (the three consumer build warm-ups were 34.6, 142.4, and 54.0 s).
 
+The app split uses Rust 1.98.1 in the Linux native-library shell, on the
+same host with eight jobs and no compiler wrapper. Its baseline is
+`c720d485bd` with the Linux transcript-test access fixes that later landed
+on main. Those fixes are present on both sides of the comparison. The
+baseline UI build and test-build took 14.3 and 21.1 s; editing UI and
+building the desktop binary took 10.9 s.
+
+| Edited area | Package before → after | Build before | Build after | Test-build before | Test-build after |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Native media, Lab cards, orbs, and cues | `openagents-ui` → `openagents-media-view` | 14.3 | **1.9** | 21.1 | **2.6** |
+| Remaining desktop UI | `openagents-ui` → `openagents-ui` | 14.3 | 18.7 | 21.1 | 27.0 |
+
+The media crate's own edit loop improved. The remaining UI sample did not;
+its build no-op also took 17.2 s, versus 1.9 s in the baseline. These app
+samples span main's shared composer/sidebar changes and varied host load,
+so they do not establish an improvement for all desktop edits. The media
+build and test-build warm-ups were 195.5 and 49.5 s, excluded above; UI's
+were 113.8 and 66.5 s.
+
+The following consumer rows edit `openagents-media-view` with
+`--edit-package`, including the dependent UI and desktop binary:
+
+| Edited library | Consumer | Build before | Build after | Test-build before | Test-build after |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `openagents-media-view` | `openagents-ui` | 14.3 | 23.0 | 21.1 | 18.7 |
+| `openagents-media-view` | `openagents` desktop | 10.9 | 9.8 | — | — |
+
+The raw media/UI rows and UI-consumer build precede the final root rebase
+and removal of unused direct media dependencies; the moved Rust code is
+unchanged. The final consumer test-build and desktop build warm-ups were
+795.9 and 63.9 s, excluded above. The UI-consumer build did not improve;
+the crate's own checks are the demonstrated gain. These single samples do
+not establish a general desktop edit-loop improvement.
+
+Final validation passed 28 media unit tests, 1523 UI unit tests, and
+11 UI integration tests, plus the required fixture-example compile
+check. Chat-view's 301 tests passed with a command-local opt-level 2;
+its existing 5 ms rail assertion fails in an unoptimized test run. The
+benchmark test-builds retain the normal dev profiles.
+
+`openagents-media-view` owns native media decoding, Lab cards and model
+views, voice orbs, rounded clipping, running pills, and notification cues.
+The old `openagents-ui` module paths reexport those modules, and shared
+chat-view types keep their identity. Bundled fonts stay in the existing
+asset directory and are exposed as statics by the media crate; desktop
+typography and SVG conversion use those same faces. Both app crates keep
+incremental compilation enabled. Platform dependencies follow the moved
+code, and the app lockfile keeps its existing version pins.
+
 ## The extreme options
 
 The owner asked whether to rewrite, change language, or change patterns.
@@ -588,7 +637,7 @@ oversized crates, too many test binaries, and caches that start cold.
 | #12176 | Shared remote compile cache (landed by another chat; repeat its debug measurement with line tables) |
 | #12177 | Deploy image caching (landed by another chat) |
 | #12183 | `openagents-web` stops building the Verse stack |
-| #12184 | Split `openagents-web`, `coder` and the app's `ui` (open; `f40eed6e9a` only changed the benchmark script) |
+| #12184 | Split `openagents-web`, `coder` and the app's `ui` (landed; measured above) |
 | #12185 | One feature set with `cargo-hakari` (landed, `2796c12a25`; rerun the "prep" column to measure it) |
 | #12186 | Owner decision: nightly parallel front end for dev builds |
 | #12198 | Land queue: formatting and `cargo check --tests` before building tests |

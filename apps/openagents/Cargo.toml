@@ -19,6 +19,7 @@ members = [
     "crates/rpc",
     "crates/update",
     "crates/ui",
+    "crates/media-view",
     "crates/chat-view",
     "crates/gpui-test",
     "crates/syntax",
@@ -197,6 +198,8 @@ incremental = false
 [profile.dev.package.openagents]
 incremental = true
 [profile.dev.package.openagents-ui]
+incremental = true
+[profile.dev.package.openagents-media-view]
 incremental = true
 [profile.dev.package.openagents-engine]
 incremental = true

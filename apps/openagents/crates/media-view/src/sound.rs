@@ -21,13 +21,13 @@ const DISABLE_ENV: &str = "OPENAGENTS_DISABLE_SOUND";
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-static SOUND_APPSHOT: &[u8] = include_bytes!("../assets/sounds/appshot.wav");
+static SOUND_APPSHOT: &[u8] = include_bytes!("../../ui/assets/sounds/appshot.wav");
 
-static SOUND_DONE: &[u8] = include_bytes!("../assets/sounds/done.wav");
-static SOUND_REQUEST: &[u8] = include_bytes!("../assets/sounds/request.wav");
-static SOUND_ATTENTION: &[u8] = include_bytes!("../assets/sounds/attention.wav");
-static SOUND_VOICE_START: &[u8] = include_bytes!("../assets/sounds/voice-start.wav");
-static SOUND_VOICE_END: &[u8] = include_bytes!("../assets/sounds/voice-end.wav");
+static SOUND_DONE: &[u8] = include_bytes!("../../ui/assets/sounds/done.wav");
+static SOUND_REQUEST: &[u8] = include_bytes!("../../ui/assets/sounds/request.wav");
+static SOUND_ATTENTION: &[u8] = include_bytes!("../../ui/assets/sounds/attention.wav");
+static SOUND_VOICE_START: &[u8] = include_bytes!("../../ui/assets/sounds/voice-start.wav");
+static SOUND_VOICE_END: &[u8] = include_bytes!("../../ui/assets/sounds/voice-end.wav");
 
 /// Which notification chime to play.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -329,14 +329,14 @@ use openagents_proto::{
 /// Notification baseline is separate from the visual activity indicator:
 /// going idle can mean cancellation, expiry, or an internal handoff.
 #[derive(Debug, Clone)]
-pub(crate) struct SessionNotificationState {
+pub struct SessionNotificationState {
     indicator: Indicator,
     last_completed_turn: Option<String>,
     fresh: bool,
 }
 
 impl SessionNotificationState {
-    pub(crate) fn new(session: &Session, now: chrono::DateTime<chrono::Utc>) -> Self {
+    pub fn new(session: &Session, now: chrono::DateTime<chrono::Utc>) -> Self {
         Self {
             indicator: effective_indicator(Some(session), now),
             last_completed_turn: session.last_completed_turn.clone(),
@@ -349,7 +349,7 @@ impl SessionNotificationState {
 
     /// Call after saving the new baseline, including when delivery is pending
     /// or outputs are disabled. Suppressed pings must never be replayed later.
-    pub(crate) fn sound_since(&self, prev: &Self, send_pending: bool) -> Option<Sound> {
+    pub fn sound_since(&self, prev: &Self, send_pending: bool) -> Option<Sound> {
         if self.indicator == Indicator::Errored && prev.indicator != Indicator::Errored {
             return Some(Sound::Attention);
         }
@@ -371,7 +371,7 @@ impl SessionNotificationState {
 /// The engine already holds raw transport degradation for four seconds before
 /// exposing `Offline` or `Reconnecting`. Notify once when that durable state is
 /// first crossed; booting into an outage is seeded silently by the shell.
-pub(crate) fn connectivity_sound_since(
+pub fn connectivity_sound_since(
     current: openagents_proto::ConnectivityState,
     previous: openagents_proto::ConnectivityState,
 ) -> Option<Sound> {
@@ -386,7 +386,7 @@ pub(crate) fn connectivity_sound_since(
 /// alerts only after a longer healthy observation, or after recovery from a
 /// boot-time outage. Runtime replacement resets the observation flag.
 #[derive(Debug, Default)]
-pub(crate) struct ConnectivityNotificationState {
+pub struct ConnectivityNotificationState {
     previous: Option<openagents_proto::ConnectivityState>,
     first_observed_at: Option<Instant>,
     armed: bool,
@@ -395,7 +395,7 @@ pub(crate) struct ConnectivityNotificationState {
 impl ConnectivityNotificationState {
     const STARTUP_QUIET: Duration = Duration::from_secs(5);
 
-    pub(crate) fn update(
+    pub fn update(
         &mut self,
         current: openagents_proto::ConnectivityState,
         observed: bool,
@@ -422,14 +422,14 @@ impl ConnectivityNotificationState {
 /// Coalesce attention requests delivered by independent state watches. The
 /// persistent gate also collapses multiple failures in one session snapshot.
 #[derive(Debug, Default)]
-pub(crate) struct AttentionSoundGate {
+pub struct AttentionSoundGate {
     last_played: Option<Instant>,
 }
 
 impl AttentionSoundGate {
     const COALESCE: Duration = Duration::from_millis(250);
 
-    pub(crate) fn should_play(&mut self, now: Instant) -> bool {
+    pub fn should_play(&mut self, now: Instant) -> bool {
         if self
             .last_played
             .is_some_and(|last| now.duration_since(last) < Self::COALESCE)

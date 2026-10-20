@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-pub(crate) fn release_media(images: impl IntoIterator<Item = MediaImage>, cx: &mut gpui::App) {
+pub fn release_media(images: impl IntoIterator<Item = MediaImage>, cx: &mut gpui::App) {
     let images: Vec<_> = images.into_iter().map(|media| media.image).collect();
     // After the active window returns to App, release its atlas tiles as well.
     cx.defer(move |cx| {
@@ -16,7 +16,7 @@ pub(crate) fn release_media(images: impl IntoIterator<Item = MediaImage>, cx: &m
 }
 
 #[derive(Clone)]
-pub(crate) struct MediaImage {
+pub struct MediaImage {
     pub image: Arc<Image>,
     pub width: f32,
     pub height: f32,
@@ -68,7 +68,7 @@ fn svg_retained_bytes(svg: &str, raster: (u32, u32)) -> usize {
 
 impl MediaImage {
     /// Preserve the sanitized vector source; only the outer raster viewport changes.
-    pub(crate) fn for_view(&self, viewport: (f32, f32), dpi: f32, pixels: usize) -> Self {
+    pub fn for_view(&self, viewport: (f32, f32), dpi: f32, pixels: usize) -> Self {
         let Some(svg) = &self.svg else {
             return self.clone();
         };
@@ -98,7 +98,7 @@ impl MediaImage {
     /// owner can still spend (`available`, excluding this media). A larger
     /// raster that does not fit keeps the current one: slightly softer, never
     /// over budget.
-    pub(crate) fn preview_within(&self, viewport: (f32, f32), dpi: f32, available: usize) -> Self {
+    pub fn preview_within(&self, viewport: (f32, f32), dpi: f32, available: usize) -> Self {
         let next = self.preview_for_view(viewport, dpi);
         if next.bytes > self.bytes && next.bytes > available {
             self.clone()
@@ -107,11 +107,11 @@ impl MediaImage {
         }
     }
 
-    pub(crate) fn preview_for_view(&self, viewport: (f32, f32), dpi: f32) -> Self {
+    pub fn preview_for_view(&self, viewport: (f32, f32), dpi: f32) -> Self {
         self.for_view(viewport, dpi, PREVIEW_PIXELS)
     }
 
-    pub(crate) fn enlarged(
+    pub fn enlarged(
         &self,
         viewport: (f32, f32),
         dpi: f32,
@@ -136,7 +136,7 @@ impl MediaImage {
 
 /// Prepared media centered at its natural size within the reading column,
 /// capped at 480px tall. A click requests the enlarged lightbox.
-pub(crate) fn preview_element(
+pub fn preview_element(
     loaded: &MediaImage,
     id: gpui::SharedString,
     on_click: impl Fn(&mut gpui::Window, &mut gpui::App) + 'static,
@@ -164,13 +164,13 @@ pub(crate) fn preview_element(
         .into_any_element()
 }
 
-pub(crate) fn svg_options() -> usvg::Options<'static> {
+pub fn svg_options() -> usvg::Options<'static> {
     static FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     let fonts = FONTS
         .get_or_init(|| {
             let mut db = usvg::fontdb::Database::new();
             db.load_system_fonts();
-            for face in crate::typography::bundled_font_faces() {
+            for face in crate::fonts::bundled_font_faces() {
                 db.load_font_data(face.to_vec());
             }
             db.set_sans_serif_family("Geist");
@@ -192,7 +192,7 @@ pub(crate) fn svg_options() -> usvg::Options<'static> {
     }
 }
 
-pub(crate) fn decode_image(mime: &str, bytes: Vec<u8>) -> Result<MediaImage, String> {
+pub fn decode_image(mime: &str, bytes: Vec<u8>) -> Result<MediaImage, String> {
     if bytes.len() > openagents_proto::MAX_WORKSPACE_IMAGE_BYTES {
         return Err("Image exceeds preview size limit".into());
     }
@@ -221,7 +221,7 @@ pub(crate) fn decode_image(mime: &str, bytes: Vec<u8>) -> Result<MediaImage, Str
 }
 
 /// Repository icons retain only a small static thumbnail, even for large source logos.
-pub(crate) fn decode_project_icon(mime: &str, bytes: Vec<u8>) -> Result<MediaImage, String> {
+pub fn decode_project_icon(mime: &str, bytes: Vec<u8>) -> Result<MediaImage, String> {
     if mime == "image/svg+xml" {
         decode_image(mime, bytes).map(|media| media.for_view((16.0, 16.0), 2.0, 4096))
     } else {
@@ -230,7 +230,7 @@ pub(crate) fn decode_project_icon(mime: &str, bytes: Vec<u8>) -> Result<MediaIma
 }
 
 /// Validate generated raster metadata and retain a bounded static preview.
-pub(crate) fn decode_generated_image(
+pub fn decode_generated_image(
     bytes: Vec<u8>,
     mime: &str,
     max_bytes: usize,
@@ -250,13 +250,13 @@ pub(crate) fn decode_generated_image(
     decode_raster_image_bounded(bytes, max_bytes, Some(2048))
 }
 
-pub(crate) fn decode_raster_image(bytes: Vec<u8>, max_bytes: usize) -> Result<MediaImage, String> {
+pub fn decode_raster_image(bytes: Vec<u8>, max_bytes: usize) -> Result<MediaImage, String> {
     decode_raster_image_bounded(bytes, max_bytes, None)
 }
 
 /// Decoder bounds for every raster preview: 4096 px per side, 64 MiB of
 /// decoder allocation.
-pub(crate) fn raster_limits() -> image::Limits {
+pub fn raster_limits() -> image::Limits {
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(4096);
     limits.max_image_height = Some(4096);

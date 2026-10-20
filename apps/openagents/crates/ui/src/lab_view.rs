@@ -1167,7 +1167,7 @@ mod tests {
         let model_id = card.primary.clone().unwrap();
         let fetch: Fetch = Rc::new(move |id: String, _: &mut App| {
             Task::ready(Some(if id == model_id {
-                Media::Model(crate::lab_model::tests::triangle_glb())
+                Media::Model(crate::lab_model::fixtures::triangle_glb())
             } else {
                 Media::Image(PNG.to_vec())
             }))

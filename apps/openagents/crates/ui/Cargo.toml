@@ -103,6 +103,7 @@ name = "compact-picker-fixture"
 required-features = ["compact-picker-fixture"]
 
 [dependencies]
+openagents-media-view = { path = "../media-view" }
 openagents-brand.workspace = true
 openagents-account.workspace = true
 openagents-background.workspace = true
@@ -119,7 +120,6 @@ chat-home = { path = "../../../../crates/chat-home", features = ["ui"] }
 gethostname.workspace = true
 openagents-voice-media.workspace = true
 openagents-voice-session.workspace = true
-openagents-orb.workspace = true
 openagents-veil.workspace = true
 openagents-voice = { path = "../voice" }
 url = "2"
@@ -186,10 +186,7 @@ core-foundation = "0.10"
 core-graphics = { version = "0.24", features = ["elcapitan", "highsierra", "link"] }
 foreign-types = "0.5"
 block = "0.1"
-objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "AVPlayer", "AVPlayerItem", "AVPlayerItemOutput", "objc2-core-media", "objc2-core-video"] }
-objc2-core-media = { version = "0.3.2", default-features = false, features = ["std", "CMTime"] }
 objc2-core-video = { version = "0.3.2", default-features = false, features = ["std", "CVBuffer", "CVImageBuffer", "CVPixelBuffer"] }
-core-video = { version = "0.5.2", features = ["metal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "0.13.13", default-features = false, features = ["async-io", "global_shortcuts", "screenshot", "settings"] }
@@ -199,6 +196,7 @@ url = "2"
 x11rb = { version = "0.14.0", features = ["image"] }
 
 [dev-dependencies]
+openagents-media-view = { path = "../media-view", features = ["test-support"] }
 openagents-chat-view = { workspace = true, features = ["test-support"] }
 # Headless GPUI tests and offscreen captures; the only way tests and
 # fixtures reach the real platform (#11973).

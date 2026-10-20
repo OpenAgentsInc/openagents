@@ -2,6 +2,10 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12184: extract native media and Lab card views into
+  `openagents-media-view`, preserving the `openagents-ui` module imports.
+  Share bundled font statics with desktop typography.
+
 - OpenAgents #12307: mount the shared Rust Native Lightning address sheet in
   the iOS and Android wallets, and edit signed `lud16` metadata in the shared
   public profile form, with explicit publish/hide controls for verified Pylon,

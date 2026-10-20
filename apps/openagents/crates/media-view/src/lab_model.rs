@@ -27,7 +27,7 @@ const TURN: f32 = 0.01;
 const MAX_PITCH: f32 = 1.5;
 
 /// The scene a model is shown in.
-pub(crate) fn script() -> String {
+pub fn script() -> String {
     openagents_account::lab_cards::model_script(240)
 }
 
@@ -321,40 +321,10 @@ impl Render for LabModel {
 use gpui::prelude::FluentBuilder as _;
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
-    /// One red triangle as a binary glTF.
-    pub(crate) fn triangle_glb() -> Vec<u8> {
-        let positions: [f32; 9] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-        let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
-        let mut json = format!(
-            r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],
-            "nodes":[{{"mesh":0}}],
-            "meshes":[{{"primitives":[{{"attributes":{{"POSITION":0}},"material":0}}]}}],
-            "materials":[{{"doubleSided":true,"pbrMetallicRoughness":{{"baseColorFactor":[1,0,0,1]}}}}],
-            "accessors":[{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]}}],
-            "bufferViews":[{{"buffer":0,"byteLength":{len}}}],
-            "buffers":[{{"byteLength":{len}}}]}}"#,
-            len = bin.len()
-        )
-        .into_bytes();
-        while !json.len().is_multiple_of(4) {
-            json.push(b' ');
-        }
-        let total = 12 + 8 + json.len() + 8 + bin.len();
-        let mut glb = Vec::with_capacity(total);
-        glb.extend_from_slice(b"glTF");
-        glb.extend_from_slice(&2u32.to_le_bytes());
-        glb.extend_from_slice(&(total as u32).to_le_bytes());
-        glb.extend_from_slice(&(json.len() as u32).to_le_bytes());
-        glb.extend_from_slice(b"JSON");
-        glb.extend_from_slice(&json);
-        glb.extend_from_slice(&(bin.len() as u32).to_le_bytes());
-        glb.extend_from_slice(b"BIN\0");
-        glb.extend_from_slice(&bin);
-        glb
-    }
+    use super::fixtures::triangle_glb;
 
     #[test]
     fn dragging_turns_the_camera_and_pitch_stops_at_the_poles() {
@@ -409,5 +379,41 @@ pub(crate) mod tests {
         model.update(cx, |m, cx| m.release(cx));
         assert!(!model.read_with(cx, |m, _| m.drawn()));
         assert!(parse(b"not a model".to_vec()).is_none());
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod fixtures {
+    /// One red triangle as a binary glTF.
+    pub fn triangle_glb() -> Vec<u8> {
+        let positions: [f32; 9] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let mut json = format!(
+            r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],
+            "nodes":[{{"mesh":0}}],
+            "meshes":[{{"primitives":[{{"attributes":{{"POSITION":0}},"material":0}}]}}],
+            "materials":[{{"doubleSided":true,"pbrMetallicRoughness":{{"baseColorFactor":[1,0,0,1]}}}}],
+            "accessors":[{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]}}],
+            "bufferViews":[{{"buffer":0,"byteLength":{len}}}],
+            "buffers":[{{"byteLength":{len}}}]}}"#,
+            len = bin.len()
+        )
+        .into_bytes();
+        while !json.len().is_multiple_of(4) {
+            json.push(b' ');
+        }
+        let total = 12 + 8 + json.len() + 8 + bin.len();
+        let mut glb = Vec::with_capacity(total);
+        glb.extend_from_slice(b"glTF");
+        glb.extend_from_slice(&2u32.to_le_bytes());
+        glb.extend_from_slice(&(total as u32).to_le_bytes());
+        glb.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        glb.extend_from_slice(b"JSON");
+        glb.extend_from_slice(&json);
+        glb.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        glb.extend_from_slice(b"BIN\0");
+        glb.extend_from_slice(&bin);
+        glb
     }
 }
