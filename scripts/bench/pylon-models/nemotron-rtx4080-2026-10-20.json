@@ -44,7 +44,8 @@
     "Direct throughput includes prefill and a short 16-token output; engine timings separately report generation speed.",
     "This is a low-bit quantization of the older dense 340B model, selected by parameter count and memory fit, not answer quality.",
     "Pylon retains its 90-second job deadline, limiting longer prompts or outputs on this model.",
-    "The shared-GPU load check used four GPU layers while large Rust builds ran; its timing is not an idle-host performance measurement and its short answer timed out."
+    "The shared-GPU load check used four GPU layers while large Rust builds ran; its timing is not an idle-host performance measurement and its short answer timed out.",
+    "The shared live continuation is pending a clean 16-token reply; its eight-token trial returned the correct number followed by an incomplete role marker. Clef passed all eight checks with four Nemotron transformer blocks on GPU and the output weights in RAM; Gemma/Clef remained running unchanged."
   ],
   "model": {
     "id": "nemotron4-340b",
@@ -240,11 +241,473 @@
     "quiet_retry_deferred": "Foreman requested releasing quiet to prioritize the owner /home builds; quiet lease released and not renewed."
   },
   "final_service": {
-    "state": "serving",
+    "observed_at_utc": "2026-10-20T23:27:21Z",
+    "state": "paused",
     "decision_model": "clef-flash",
     "text_model": "gemma-4-E4B-it-Q4_K_M",
     "both_engines_up": true,
+    "engine_pids_and_restart_counts_unchanged": true,
+    "settings_unchanged": true,
     "verify_pass": true,
     "quiet_lease_released": true
+  },
+  "live_side_by_side_attempts": {
+    "schema": "openagents.pylon.nemotron-shared-attempts.v1",
+    "issue": 12348,
+    "status": "clean_16_token_reply_pending",
+    "scope": "Isolated loopback llama.cpp child beside the existing Gemma/Clef engines. No service stop, restart, model switch, or settings write. Local HTTP and Clef selfcheck only. Host load is retained; this is not an idle throughput or relay qualification run.",
+    "attempts": [
+      {
+        "schema": "openagents.pylon.nemotron-shared-live.v1",
+        "date": "2026-10-20",
+        "source_commit": "ad335f12982b2e5b3e88e865a4b616ad6a678c92",
+        "protocol": {
+          "engine": "llama-cpp",
+          "supervision": "isolated child on loopback; existing Pylon service and settings untouched",
+          "gpu_layers": 4,
+          "context_tokens": 256,
+          "batch_tokens": 64,
+          "ubatch_tokens": 32,
+          "threads": 16,
+          "parallel": 1,
+          "temperature": 0,
+          "max_output_tokens": 8,
+          "warmup": false,
+          "scope": "short local HTTP answer and live Clef selfcheck; not relay qualification or idle throughput benchmark"
+        },
+        "model": {
+          "id": "nemotron4-340b",
+          "file": "Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf",
+          "bytes": 92288617984,
+          "sha256": "11c3fc4a7ee4359d1e84e938535caff086e7dafd16b53705194a6fb0a4492ff5",
+          "revision": "27ab32138238f7f7a6ce67f6c3d6357e9c7d7369",
+          "chat_template_sha256": "e70a97ff172dd9e456643fe335f9eb1ec2c06f04e5805e0385bb420da2de0f5b",
+          "metadata_overrides": [
+            "tokenizer.ggml.add_bos_token=bool:false"
+          ],
+          "stop_sequences": [
+            "<extra_id_1>",
+            "<extra_id_0>",
+            "<|endoftext|>",
+            "\u0011"
+          ]
+        },
+        "server_sha256": "2cdfb3a9dbfc2d8dc735617ebf83330767b94bb2486f0c8e85669c7f604db53b",
+        "command": [
+          "/home/christopherdavid/work/pylon-runtimes/llama-cpp-avx2/bin/llama-server",
+          "-m",
+          "/home/christopherdavid/.openagents/models/nemotron4-340b/Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "56223",
+          "--ctx-size",
+          "256",
+          "--parallel",
+          "1",
+          "--n-gpu-layers",
+          "4",
+          "--threads",
+          "16",
+          "--threads-batch",
+          "16",
+          "--batch-size",
+          "64",
+          "--ubatch-size",
+          "32",
+          "--temp",
+          "0",
+          "--seed",
+          "1",
+          "--jinja",
+          "--chat-template-file",
+          "/home/christopherdavid/.openagents/models/nemotron4-340b/chat-template.jinja",
+          "--override-kv",
+          "tokenizer.ggml.add_bos_token=bool:false",
+          "--no-warmup",
+          "--fit",
+          "off",
+          "--flash-attn",
+          "off",
+          "-lv",
+          "4"
+        ],
+        "load_before": {
+          "at_utc": "2026-10-20T23:06:18Z",
+          "loadavg": "25.94 23.03 25.48 23/2309 2778884",
+          "cargo_rustc": [
+            "2658615 cargo            0.9",
+            "2706829 rustc            326",
+            "3277081 cargo            0.0",
+            "3277089 cargo            0.0",
+            "3277091 cargo           45.6"
+          ],
+          "MemAvailable": 113427648,
+          "SwapFree": 14890196,
+          "gpu_used_free_mib_util_percent": "10805, 5133, 0"
+        },
+        "passed": false,
+        "error": "Isolated engine exited 1; see engine.log",
+        "elapsed_ms": 99827.336,
+        "outcome": "cuda_allocation_failed",
+        "lease_request": {
+          "at_ms": 1792537220015,
+          "build_waiting": 0,
+          "build_held": 2
+        },
+        "quiet_lease": {
+          "requested_at_ms": 1792537220031,
+          "acquired_at_ms": 1792537578707,
+          "released_at_ms": 1792537678690,
+          "wait_ms": 358676,
+          "held_ms": 99983,
+          "exit": 1,
+          "resource": "quiet",
+          "class_name": "bench",
+          "place": "local"
+        },
+        "live_service": {
+          "state_before": "paused",
+          "state_after": "paused",
+          "engines_before": [
+            {
+              "lane": "decisions",
+              "port": 18196,
+              "pid": 1295400,
+              "up": true,
+              "restarts": 0,
+              "last_exit": null
+            },
+            {
+              "lane": "text",
+              "port": 18097,
+              "pid": 1295401,
+              "up": true,
+              "restarts": 0,
+              "last_exit": null
+            }
+          ],
+          "engines_after": [
+            {
+              "lane": "decisions",
+              "port": 18196,
+              "pid": 1295400,
+              "up": true,
+              "restarts": 0,
+              "last_exit": null
+            },
+            {
+              "lane": "text",
+              "port": 18097,
+              "pid": 1295401,
+              "up": true,
+              "restarts": 0,
+              "last_exit": null
+            }
+          ],
+          "settings_unchanged": true,
+          "engine_pids_and_restart_counts_unchanged": true,
+          "verify_pass": true,
+          "isolated_engine_reaped": true
+        },
+        "allocation_mib": 5667.12,
+        "free_mib_at_device_selection": 4889,
+        "placement_interpretation": {
+          "cli_n_gpu_layers": 4,
+          "gpu_transformer_layers": 3,
+          "output_weight_device": "CUDA",
+          "runtime_counts_output_among_layers": true
+        }
+      },
+      {
+        "schema": "openagents.pylon.nemotron-shared-live.v1",
+        "date": "2026-10-20",
+        "source_commit": "ad335f12982b2e5b3e88e865a4b616ad6a678c92",
+        "protocol": {
+          "engine": "llama-cpp",
+          "supervision": "isolated child on loopback; existing Pylon service and settings untouched",
+          "gpu_transformer_layers": 4,
+          "cli_n_gpu_layers": 5,
+          "output_weight_device": "CPU",
+          "context_tokens": 256,
+          "batch_tokens": 64,
+          "ubatch_tokens": 32,
+          "threads": 16,
+          "parallel": 1,
+          "temperature": 0,
+          "max_output_tokens": 8,
+          "warmup": false,
+          "scope": "short local HTTP answer and live Clef selfcheck; not relay qualification or idle throughput benchmark"
+        },
+        "model": {
+          "id": "nemotron4-340b",
+          "file": "Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf",
+          "bytes": 92288617984,
+          "sha256": "11c3fc4a7ee4359d1e84e938535caff086e7dafd16b53705194a6fb0a4492ff5",
+          "revision": "27ab32138238f7f7a6ce67f6c3d6357e9c7d7369",
+          "chat_template_sha256": "e70a97ff172dd9e456643fe335f9eb1ec2c06f04e5805e0385bb420da2de0f5b",
+          "metadata_overrides": [
+            "tokenizer.ggml.add_bos_token=bool:false"
+          ],
+          "stop_sequences": [
+            "<extra_id_1>",
+            "<extra_id_0>",
+            "<|endoftext|>",
+            "\u0011"
+          ]
+        },
+        "server_sha256": "2cdfb3a9dbfc2d8dc735617ebf83330767b94bb2486f0c8e85669c7f604db53b",
+        "command": [
+          "/home/christopherdavid/work/pylon-runtimes/llama-cpp-avx2/bin/llama-server",
+          "-m",
+          "/home/christopherdavid/.openagents/models/nemotron4-340b/Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "39247",
+          "--ctx-size",
+          "256",
+          "--parallel",
+          "1",
+          "--n-gpu-layers",
+          "5",
+          "--override-tensor",
+          "^output[.]weight$=CPU",
+          "--threads",
+          "16",
+          "--threads-batch",
+          "16",
+          "--batch-size",
+          "64",
+          "--ubatch-size",
+          "32",
+          "--temp",
+          "0",
+          "--seed",
+          "1",
+          "--jinja",
+          "--chat-template-file",
+          "/home/christopherdavid/.openagents/models/nemotron4-340b/chat-template.jinja",
+          "--override-kv",
+          "tokenizer.ggml.add_bos_token=bool:false",
+          "--no-warmup",
+          "--fit",
+          "off",
+          "--flash-attn",
+          "off",
+          "-lv",
+          "5"
+        ],
+        "load_before": {
+          "at_utc": "2026-10-20T23:24:51Z",
+          "loadavg": "7.79 20.64 24.59 3/2166 77140",
+          "cargo_rustc": [
+            "3277081 cargo            0.0",
+            "3277089 cargo            0.0",
+            "3277091 cargo           46.8"
+          ],
+          "MemAvailable": 116890280,
+          "SwapFree": 14527956,
+          "gpu_used_free_mib_util_percent": "10805, 5133, 0"
+        },
+        "passed": false,
+        "error": "Incorrect Nemotron answer",
+        "elapsed_ms": 152167.183,
+        "outcome": "reply_format_failed_at_output_limit",
+        "lease_request": {
+          "at_ms": 1792538434893,
+          "build_waiting": 0,
+          "build_held": 2
+        },
+        "quiet_lease": {
+          "requested_at_ms": 1792538434910,
+          "acquired_at_ms": 1792538691457,
+          "released_at_ms": 1792538843718,
+          "wait_ms": 256547,
+          "held_ms": 152261,
+          "exit": 1,
+          "resource": "quiet",
+          "class_name": "bench",
+          "place": "local"
+        },
+        "live_service": {
+          "state_before": "paused",
+          "state_after": "paused",
+          "engines_before": [
+            {
+              "lane": "decisions",
+              "port": 18196,
+              "pid": 1295400,
+              "up": true,
+              "restarts": 0,
+              "last_exit": null
+            },
+            {
+              "lane": "text",
+              "port": 18097,
+              "pid": 1295401,
+              "up": true,
+              "restarts": 0,
+              "last_exit": null
+            }
+          ],
+          "engines_after": [
+            {
+              "lane": "decisions",
+              "port": 18196,
+              "pid": 1295400,
+              "up": true,
+              "restarts": 0,
+              "last_exit": null
+            },
+            {
+              "lane": "text",
+              "port": 18097,
+              "pid": 1295401,
+              "up": true,
+              "restarts": 0,
+              "last_exit": null
+            }
+          ],
+          "settings_unchanged": true,
+          "engine_pids_and_restart_counts_unchanged": true,
+          "verify_pass": true,
+          "isolated_engine_reaped": true
+        },
+        "ready_ms": 106255.522,
+        "memory_loaded": {
+          "host": {
+            "at_utc": "2026-10-20T23:26:38Z",
+            "loadavg": "9.75 17.00 22.82 2/2268 186410",
+            "cargo_rustc": [
+              "186220 cargo           22.2",
+              "3277081 cargo            0.0",
+              "3277089 cargo            0.0",
+              "3277091 cargo           46.9"
+            ],
+            "MemAvailable": 117371816,
+            "SwapFree": 13574576,
+            "gpu_used_free_mib_util_percent": "15026, 912, 11"
+          },
+          "compute_apps": [
+            "2763974, 145",
+            "1295401, 3370",
+            "1295400, 7092",
+            "1677237, 9",
+            "77381, 4216"
+          ],
+          "nemotron_pid": 77381,
+          "nemotron_kib": {
+            "VmHWM": 86846748,
+            "VmRSS": 86846748
+          }
+        },
+        "memory_after_answers": {
+          "host": {
+            "at_utc": "2026-10-20T23:27:21Z",
+            "loadavg": "16.36 17.60 22.74 3/2176 239704",
+            "cargo_rustc": [
+              "3277081 cargo            0.0",
+              "3277089 cargo            0.0",
+              "3277091 cargo           47.0"
+            ],
+            "MemAvailable": 117335992,
+            "SwapFree": 13868028,
+            "gpu_used_free_mib_util_percent": "15032, 906, 0"
+          },
+          "compute_apps": [
+            "2763974, 145",
+            "1295401, 3370",
+            "1295400, 7084",
+            "1677237, 9",
+            "77381, 4230"
+          ],
+          "nemotron_pid": 77381,
+          "nemotron_kib": {
+            "VmHWM": 87050472,
+            "VmRSS": 87050472
+          }
+        },
+        "nemotron_answer": {
+          "prompt": "What is 2 + 2? Reply with only the number.",
+          "expected": "4",
+          "text": "4\n<extra_id_0",
+          "wall_ms": 42230.939,
+          "finish_reason": "length",
+          "usage": {
+            "completion_tokens": 8,
+            "prompt_tokens": 43,
+            "total_tokens": 51,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 43,
+            "prompt_ms": 25791.743,
+            "prompt_per_token_ms": 599.807976744186,
+            "prompt_per_second": 1.6672002353621467,
+            "predicted_n": 8,
+            "predicted_ms": 16430.272,
+            "predicted_per_token_ms": 2347.1817142857144,
+            "predicted_per_second": 0.4260428555291111
+          }
+        },
+        "clef_selfcheck": {
+          "wall_ms": 501.858,
+          "result": {
+            "schema": "openagents.pylon/1",
+            "command": "selfcheck",
+            "ok": true,
+            "status": "ok",
+            "summary": "openagents pylon selfcheck finished",
+            "data": {
+              "at": 1792538799,
+              "model": "clef-flash",
+              "model_id": "gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3",
+              "artifact_digest": "sha256:3626116623ca8d89641952471fac9ce12af84fb3517520029a2ac6f5146868a2",
+              "backend": "cuda",
+              "items": 8,
+              "unusable": 0,
+              "median": 0.0009577274322514207,
+              "p99": 0.0018190622329705697,
+              "max": 0.0018190622329705697,
+              "top_agree": 1.0,
+              "round_pass": 1.0,
+              "round_strike": 0.0,
+              "decisions_per_second": 16.388319392513843,
+              "pass": true
+            },
+            "warnings": [],
+            "needs_owner": null,
+            "next": [],
+            "exit_code": 0
+          }
+        },
+        "placement_log": [
+          "0.00.400.031 D tensor output.weight (3093 MiB q5_K) buffer type overridden to CUDA_Host",
+          "1.29.474.005 I load_tensors: offloading 4 repeating layers to GPU",
+          "1.29.474.006 I load_tensors: offloaded 5/97 layers to GPU",
+          "1.29.474.248 I load_tensors:   CPU_Mapped model buffer size = 86001.47 MiB",
+          "1.29.474.249 I load_tensors:        CUDA0 model buffer size =  3431.11 MiB"
+        ],
+        "numeric_answer_correct": true,
+        "clean_reply_pass": false
+      }
+    ],
+    "reservation_timeout": {
+      "outcome": "Reservation timed out before quiet could be acquired; no model check ran",
+      "requested_at_ms": 1792539097917,
+      "build_waiting_at_request": 0,
+      "build_held_at_request": 2,
+      "outer_timeout_seconds": 875,
+      "exit_code": 124,
+      "quiet_acquired": false,
+      "quiet_held_ms": 0,
+      "long_build_acquired_at_ms": 1792538844122,
+      "observed_after_timeout_ms": 1792540075163,
+      "note": "The same active build lease remained held throughout; no result or engine log was created. Quiet is absent after timeout, and other builds resumed."
+    }
   }
 }

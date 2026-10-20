@@ -271,14 +271,24 @@ pylon up --text-engine llama-cpp --text-device cuda --text-gpu-layers 4 \
 ```
 
 Use `pylon-net` on the configured RTX 4080 host to select its existing
-service home. Four GPU layers leave room for Clef on this shared 16 GiB
-GPU. Automatic fitting attempted a 12.5 GiB allocation beside Clef's
-7 GiB and failed; the isolated benchmark's automatic fit was measured
-with Clef paused. Four layers loaded beside Clef, but a short answer hit
-120 seconds under concurrent large builds. The idle-host answer check is
-[#12348](https://github.com/OpenAgentsInc/openagents/issues/12348); its
-quiet retry was deferred for the owner's `/home` work. Use an idle machine
-for this model. The original eight-model benchmark uses 2,048 output tokens
+service home. In the pinned runtime, `--text-gpu-layers 4` selects three
+transformer blocks plus the large output head. Its 5.53 GiB model allocation
+failed while both Gemma and Clef remained loaded.
+
+The separate local HTTP check keeps both live engines running by placing
+four transformer blocks on GPU and the output weights in RAM:
+`llama-server --n-gpu-layers 5 --override-tensor '^output[.]weight$=CPU'`.
+With a context of 256 tokens, 16 threads, a batch of 64 tokens, and a
+microbatch of 32 tokens, Nemotron used 83.0 GiB resident RAM and 4.13 GiB
+process VRAM after its reply. Clef passed
+all eight self-check items. Nemotron returned `4` in 42.2 s, followed by an
+incomplete role marker at the output ceiling of eight tokens; the strict format
+check failed. [#12348](https://github.com/OpenAgentsInc/openagents/issues/12348)
+tracks the clean reply check with a budget of 16 tokens. The measurements retain load, placement,
+raw output, and quiet receipts; both live engine PIDs, restart counts, and
+settings stayed unchanged, and `verify` passed.
+
+The original eight-model benchmark uses 2,048 output tokens
 and a 128-token throughput probe; the large Nemotron profile uses a
 smaller budget and probe, recorded with each result. `--cases` selects
 individual benchmark prompts. These budgets do not extend the provider's
