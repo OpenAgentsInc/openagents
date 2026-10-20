@@ -1,3 +1,13 @@
+## Listen to the GPUI web chat with VoiceOver and NVDA (#12220)
+
+Open `https://openagents.com/new?ui=gpui` (signed out, or as a test
+account) and send a message. With VoiceOver on a Mac and NVDA on Windows,
+check that the new answer is read out, that Tab reaches "Show the chat as
+text" and the links and buttons in it, and that Cmd+F or Ctrl+F finds a
+word from the answer. Delete the chat afterward. Chrome's automated check
+passed: the text view holds the live transcript, its status line is a live
+region, its links are real anchors, and find opens it.
+
 ## Check the GPUI web chat in Safari and Firefox (#12221)
 
 The GPUI chat at `/`, `/new`, and `/chat/{id}` is on in production for

@@ -331,7 +331,11 @@ The chat API's values and rules (`openagents_sdk::chats::wire`) are now
 the SDK's own, which builds for the browser without its `transport`
 feature; `web/client` is the browser transport over them.
 
-Parity with the HTML chat at `/chat/{id}` with the flag on (2026-10-20):
+Parity with the HTML chat at `/chat/{id}` with the flag on (2026-10-20).
+The side panel and the text view are the server's HTML chat beside the
+canvas, so they cost the module nothing; drawing cards and approvals in
+the canvas itself through `rust_native_gpui` is the next step now that
+#12299 freed about 320 KB of the budget.
 
 | Feature | GPUI chat |
 | --- | --- |
@@ -340,9 +344,11 @@ Parity with the HTML chat at `/chat/{id}` with the flag on (2026-10-20):
 | New chat at `/` and the sidebar, signed in and signed out | Done; the sidebar polls every 5 s instead of a JSON `/chats/events` |
 | Multi-line composer, IME, paste | Done (Chrome checked) |
 | Coder chats | Read-only, as before; live rooms wait on #12224 |
-| Cards | Named cards that open the HTML chat (`?ui=html`); Rust Native cards wait on #12218 |
-| Approvals, file uploads, the agents panel, computer asks | Not yet (#12223); the sidebar's "Open the regular chat" covers them |
-| Find in page, screen-reader mirror | Not yet (#12220) |
+| Cards | A card in the canvas opens the text view at the newest card, where the HTML chat's live card draws (Play, notes) |
+| Approvals, agents panel, computer asks | The side panel over the canvas (`/gpui/side`): the HTML chat's own Approve or Deny card, Agents panel, and asks, posting and refreshing as there |
+| File uploads | The side panel's "Send with files": the HTML chat's composer; the canvas then follows the answer |
+| Find in page, screen-reader mirror, links | The text view (`/gpui/text`): the HTML transcript, live through its event stream; Cmd+F or Ctrl+F shows it for the browser's find; hidden, it stays in the accessibility tree |
+| Zoom | Browser zoom changes the device pixel ratio, which the canvas follows; the browser's text-size setting doesn't scale the canvas |
 | Browsers | Chrome checked; without a WebGPU adapter the page goes to the HTML chat (#12237 dropped WebGL2) |
 
 ## The first-frame painter (2026-10-19)
