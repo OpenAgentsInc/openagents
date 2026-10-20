@@ -28,6 +28,8 @@ openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
 serde_json = "1"
 base64 = "0.22"
+serde = "1"
+agent-lab = { path = "../../../../crates/agent-lab", features = ["views"] }
 web-time.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]

@@ -4,7 +4,6 @@ Keep fork-specific changes here so upstream updates can review each integration.
 
 - OpenAgents #12281: add cloud computer creation, stop, wake, removal, and CPU
   usage to the web chat's new-session computer picker.
-
 - OpenAgents #12295: wrap web chat table cells within their columns, including
   long links and identifiers. Keep left, center, and right text alignment.
   The desktop transcript already wraps cells and scrolls wide tables.
@@ -12,6 +11,10 @@ Keep fork-specific changes here so upstream updates can review each integration.
 - OpenAgents #12077: make the Coder UI Rust Native syntax feature optional
   while preserving its default, so the Android app can keep its existing
   Tree-sitter version. Resolve the app lockfile without changing existing pins.
+- OpenAgents #12285: mount Agent Lab's shared Rust Native workbench in the
+  GPUI web chat, with Agent, Tests, and Results tabs, account API actions,
+  and trial conversations through the paired computer's device room.
+
 - OpenAgents #12100: bind cloud sends to the captured account lease and saved
   submit, retry, and stop actions to their expected chat before admission.
 - [OpenAgents #12159](https://github.com/OpenAgentsInc/openagents/issues/12159):

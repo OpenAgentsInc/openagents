@@ -6,6 +6,7 @@
 //! fonts beside the module and calls [`launch`] with them, so the module
 //! carries no fonts and a return visit reads them from the cache.
 
+pub mod agent_lab;
 mod attachment_chunks;
 #[cfg(target_family = "wasm")]
 mod attachments;

@@ -299,6 +299,18 @@ impl ChatApp {
         if let Some(registry) = &self.registry {
             registry.write(|r| r.seen(&id, now_ms()));
         }
+        self.load_computer_on(id, chat.device_id, name, generation, cx);
+    }
+
+    /// A Lab trial can finish before its chat arrives in the registry.
+    pub(super) fn load_computer_on(
+        &mut self,
+        id: String,
+        device: String,
+        name: String,
+        generation: u64,
+        cx: &mut Context<Self>,
+    ) {
         self.loading_chat = true;
         let client = self.client.clone();
         let (asked_tx, mut asked) = futures::channel::mpsc::unbounded::<()>();
@@ -316,7 +328,6 @@ impl ChatApp {
                 }
             }
         });
-        let device = chat.device_id.clone();
         self.watching = Some(cx.spawn(async move |this, cx| {
             let _asking = asking;
             let mut entries: Vec<SessionMessageEntry> = Vec::new();

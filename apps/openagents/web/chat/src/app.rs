@@ -34,6 +34,8 @@ use crate::route;
 
 /// Adding a project on a computer (#12318).
 mod add_project;
+/// The Agent Lab workbench (#12285).
+mod agent_lab;
 mod cloud_computers;
 /// Every computer's chats from the registry (#12265).
 mod computers;
@@ -82,6 +84,9 @@ pub struct ChatApp {
     /// The open Coder chat's question and agents (#12316).
     work: Entity<crate::work::Work>,
     check_ins: Entity<crate::check_ins::CheckIns>,
+    agent_lab: Entity<crate::agent_lab::AgentLab>,
+    lab_open: bool,
+    lab_task: Option<HostChat>,
     /// Signed in, or chatting as the browser's visitor (the page's
     /// `openagents-signed-in`).
     signed_in: bool,
@@ -249,7 +254,13 @@ impl ChatApp {
         let mut back = route::watch();
         let history = cx.spawn(async move |this, cx| {
             while let Some(chat) = back.next().await {
-                if this.update(cx, |this, cx| this.load(chat, cx)).is_err() {
+                if this
+                    .update(cx, |this, cx| {
+                        this.lab_open = false;
+                        this.load(chat, cx);
+                    })
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -258,10 +269,27 @@ impl ChatApp {
         let origin = web_sys::window()
             .and_then(|w| w.location().origin().ok())
             .unwrap_or_default();
+        let agent_lab = cx.new(crate::agent_lab::AgentLab::new);
+        cx.subscribe_in(
+            &agent_lab,
+            window,
+            |this, _, task: &crate::agent_lab::OpenTask, window, cx| {
+                this.lab_task = Some(HostChat {
+                    device: task.device.clone(),
+                    chat: task.chat.clone(),
+                    harness: None,
+                });
+                this.open(Some(task.chat.clone()), window, cx);
+            },
+        )
+        .detach();
         let mut this = Self {
             client,
             work,
             check_ins: cx.new(crate::check_ins::CheckIns::new),
+            agent_lab,
+            lab_open: false,
+            lab_task: None,
             signed_in: route::signed_in(),
             origin,
             threads: Vec::new(),
@@ -375,6 +403,7 @@ impl ChatApp {
     }
 
     fn open(&mut self, chat: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        self.lab_open = false;
         route::push(chat.as_deref());
         self.sidebar_open = false;
         self.load(chat, cx);
@@ -423,7 +452,9 @@ impl ChatApp {
                 chat: id.clone(),
                 harness,
             })
-            .or_else(|| self.host_chat_of(&id));
+            .or_else(|| self.host_chat_of(&id))
+            .or_else(|| self.lab_task.clone().filter(|host| host.chat == id));
+        let device = host.as_ref().map(|host| host.device.clone());
         let on_computer = host.is_some();
         self.set_host_chat(host, cx);
         if self.is_computer(&id) {
@@ -432,7 +463,7 @@ impl ChatApp {
             return;
         }
         if on_computer {
-            self.loading_chat = false;
+            self.load_computer_on(id, device.unwrap(), "your computer".into(), generation, cx);
             cx.notify();
             return;
         }
@@ -1040,7 +1071,36 @@ impl ChatApp {
                     ),
             )
             .when(self.signed_in, |sidebar| {
-                sidebar.child(self.check_ins.clone())
+                sidebar
+                    .child(
+                        div()
+                            .id("open-agent-lab")
+                            .role(gpui::Role::Button)
+                            .aria_label("Agent Lab")
+                            .tab_index(0)
+                            .mx(px(10.))
+                            .p(px(8.))
+                            .cursor_pointer()
+                            .child("Agent Lab")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.lab_open = true;
+                                this.sidebar_open = false;
+                                this.agent_lab.update(cx, |lab, cx| lab.open(cx));
+                                route::set_title("Agent Lab");
+                                cx.notify();
+                            }))
+                            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                    this.lab_open = true;
+                                    this.sidebar_open = false;
+                                    this.agent_lab.update(cx, |lab, cx| lab.open(cx));
+                                    route::set_title("Agent Lab");
+                                    cx.notify();
+                                    cx.stop_propagation();
+                                }
+                            })),
+                    )
+                    .child(self.check_ins.clone())
             })
             .child(
                 div()
@@ -1842,6 +1902,9 @@ impl Render for ChatApp {
         if self.loaded && !self.loading_chat {
             openagents_gpui_web::announce_ready();
         }
+        if self.lab_open {
+            return self.render_agent_lab(window, cx);
+        }
         let wide = window.viewport_size().width > px(820.);
         let rows = self.entries.len() + usize::from(self.live.is_some());
         let transcript: AnyElement = if self.show_computers {
@@ -1940,13 +2003,14 @@ impl Render for ChatApp {
             .text_color(theme::text())
             .text_size(px(theme::BODY));
         root.text_style().font_fallbacks = Some(theme::fallbacks());
-        if wide {
+        (if wide {
             root.child(self.render_sidebar(false, cx)).child(main)
         } else if self.sidebar_open {
             root.child(self.render_sidebar(true, cx))
         } else {
             root.child(main)
-        }
+        })
+        .into_any_element()
     }
 }
 
