@@ -1,6 +1,7 @@
 # Native DeepSeek-V4.1-Flash in Psionic
 
-Status: proposal, 2026-10-20. Nothing in this document is implemented. It
+Status: proposal, 2026-10-20. Only the V2 weight reader is implemented
+([Weight loader](#weight-loader-v2)); everything else is planned. It
 extends the [DeepSeek support plan](deepseek-support-plan.md) (DS0–DS6) and
 the [implementation roadmap](implementation-roadmap.md) with one concrete
 goal: serve the current DeepSeek release, V4.1-Flash, with Psionic as the only
@@ -58,14 +59,15 @@ download the weights.
 | Context | 1,048,576 positions allocated; YaRN factor 16 over 65,536 | `config.json` |
 | Optional parts | DSpark/MTP draft (block 5, 128 experts, 3 active); 32-layer vision encoder | `config.json` |
 
-Memory split, by our arithmetic from the config and the safetensors element
-counts. These are estimates, not measurements.
+Memory split, summed from the tensor byte ranges in all 48 shard headers
+(#12373; the [retained report][WeightsReport] lists each layer):
 
-| Part | Approximate size | Notes |
+| Part | Size | Notes |
 | --- | --- | --- |
-| Routed experts, 40 layers × 384 | 280 GB | About 544 billion FP4 parameters plus scales |
-| Engram tables, 2 | 196 GB | FP8; a few rows are read per token |
-| Everything else | 34 GB | Attention, shared experts, gates, embeddings, head, MTP, vision |
+| Routed experts, 40 layers × 384 | 288.8 GB | 271.8 GB of packed FP4 (about 544 billion parameters) plus 17.0 GB of E8M0 scales |
+| Engram tables, 2 | 202.8 GB | Each table is `F8_E4M3` [about 384 million, 256] (98.3 GB) plus `F8_E8M0` [about 384 million, 8] scales (3.1 GB); a few rows are read per token |
+| Everything else | 18.7 GB | Attention, shared experts, gates, hyper-connections, embeddings and head (2.6 GB), MTP (7.9 GB, 7.2 GB of it experts), vision (1.0 GB) |
+| Total | 510.3 GB | 510,286,023,000 bytes, as the index declares |
 
 Each token reads 6 routed experts and 1 shared expert in each of the 40
 layers: about 10 billion expert parameters, or 5 GB at FP4. Attention and the
@@ -74,9 +76,9 @@ head with a 128-token window and compressed history, the cache for a long
 context is small compared with the weights.
 
 Engram is a lookup table, not a matrix product. Only a few rows are touched
-for each token, so the 196 GB can live in host memory or on local SSD with
+for each token, so the 203 GB can live in host memory or on local SSD with
 the touched rows copied to the GPU. That brings the GPU-resident part down to
-about 314 GB.
+about 308 GB.
 
 ## What we reuse and what we write
 
@@ -200,11 +202,22 @@ host with enough RAM: a `g4-standard-384` host has 1,440 GiB and an A4 host abou
 ## Psionic gaps this plan must close
 
 - **No DeepSeek decoder family.** `GgufDecoderFamily` has no DeepSeek case,
-  and loading is GGUF-centric. V2 adds a safetensors path.
-- **No FP4 E2M1 or FP8 E4M3 block layouts with UE8M0 scales.**
-  `QuantizationMode` has MXFP4 and GGUF block formats. MXFP4 also uses E2M1
-  values with E8M0 scales over 32 elements, so check whether its layout
-  matches before reusing it.
+  and loading is GGUF-centric. The V2 safetensors reader has landed
+  ([Weight loader](#weight-loader-v2)); the decoder family is still to come.
+- **FP4 E2M1 and FP8 E4M3 block layouts with UE8M0 scales: landed (#12373)**
+  as `V41BlockFormat` in `psionic_models::deepseek_v41_weights`, with CPU
+  dequantization for a 32×32 FP8 block, an FP8 or FP4 row, and an Engram
+  row. CUDA kernels for them are V5.
+- **MXFP4 isn't reused, by design (#12373).** `QuantizationMode::GgmlMxfp4`
+  has the same E2M1 values, 32-element blocks, and E8M0 exponents, but not
+  the same bytes. GGML stores one scale inline before each 16 packed bytes
+  and puts element `j + 16` in the high nibble of byte `j`; V4.1 keeps scales
+  in separate `.scale` tensors and puts elements `2i` and `2i + 1` in the low
+  and high nibbles of byte `i` (`inference/convert.py` lines 31–34). GGML's
+  decoder also reads scale byte `0xFF` as infinity, where `float8_e8m0fnu`
+  defines NaN. Repacking would change the checkpoint's bytes and identity,
+  so V4.1 keeps its own format type instead of adding a `QuantizationMode`,
+  whose modes all describe GGUF blocks with inline scales.
 - **One device per process.** Kept on purpose: V6 runs one stage process per GPU.
 - **No collective execution.** Planning types exist in `psionic-collectives`
   and `psionic-cluster`, but nothing runs all-to-all or all-reduce, and the
@@ -215,6 +228,53 @@ host with enough RAM: a `g4-standard-384` host has 1,440 GiB and an A4 host abou
 - **The Gemma 4 pipeline is two stages, unqualified (R4), and sends f32
   hidden state.** Generalize it with a typed stage-state message rather than
   adding a second pipeline protocol.
+
+## Weight loader (V2)
+
+`psionic_models::deepseek_v41_weights` (#12373) reads the checkpoint as
+stored:
+
+- `DeepSeekV41Checkpoint::open` parses the index and all 48 shard headers. It
+  refuses unknown dtypes, overlapping or out-of-file byte ranges, a tensor the
+  index names that its shard lacks, a shard tensor the index doesn't name, a
+  total that doesn't match, a checkpoint that doesn't match the pin, and any
+  name or dtype that differs from the typed model map (`V41ModelMap`, 96,085
+  tensors with their roles).
+- `CheckpointPin::deepseek_v41_flash` pins the revision, the index SHA-256,
+  and each shard's size and SHA-256. `verify_shard_hashes` hashes the shards
+  as a separate step, because it reads all 510 GB.
+- Tensor data is read with positioned reads of only the bytes asked for, so
+  no shard is loaded whole. `fp8_weight_block`, `dequantize_row`, and
+  `engram_row` return f32 values for the CPU reference and the CUDA parity
+  tests.
+- `select(&V41StageSelection)` lists the tensors and bytes for a layer range
+  plus optional embeddings, head, MTP, and vision. Layers 0–4 need
+  138.5 GB (101.4 GB of it the layer-1 Engram table), layers 10–14 need
+  138.5 GB (the layer-14 table), and layers 35–39 need 37.0 GB.
+- E2M1 nibble order: the low nibble holds the even element, as
+  `inference/convert.py` lines 31–34 unpack it. A test checks it.
+
+The offline tests use synthetic shards, the real index, and the real headers
+of shards 17 (layer 14), 47, and 48 (the Engram tables), all under
+`crates/psionic/crates/psionic-models/src/testdata/deepseek_v41_weights/`.
+With the weights, run:
+
+```sh
+cargo run --release -p psionic-models --example deepseek_v41_weights_check -- \
+  CHECKPOINT_DIR [--oracle DEQUANT_PARITY.json] [--verify-sha256]
+```
+
+It opens every tensor (its first and last bytes, and the first and last rows
+of every weight dequantized), reports bytes per layer and per range, and
+compares dequantized values with the reference's. The reference's values come
+in a `psionic.deepseek_v41.dequant_parity.v1` file: `cases` of
+`{"kind": "fp8_block", "tensor", "block_row", "block_col"}`,
+`{"kind": "row", "tensor", "row"}`, or `{"kind": "engram_row", "layer", "row"}`,
+each with `f32_bits`, the reference's `weight.float() * scale.float()` as
+IEEE-754 bit patterns in row-major order. The oracle run (#12371) writes it.
+Opening every tensor's bytes and the parity check run on that machine; until
+then they are listed under After-close checks in the
+[master delegation](../audits/2026-10-16-master-delegation.md#after-close-checks).
 
 ## Pylon gaps for this model
 
@@ -233,7 +293,6 @@ but block V7:
 
 - The precise active parameter count and the KV bytes per token at each
   compression ratio. Measure both in V4 instead of trusting our estimates.
-- Whether MXFP4 in Psionic is byte-compatible with this FP4 layout.
 - G4 spot price and capacity on the day of the run.
 - Whether to qualify vision. It's out of scope for the first result; image
   requests are refused.
@@ -244,3 +303,4 @@ but block V7:
 [Recipe]: https://github.com/deepseek-ai/deepseek-recipe
 [EPLB]: https://github.com/deepseek-ai/EPLB
 [Muse]: ../research/muse/2026-10-15-muse-spark-serving.md
+[WeightsReport]: ../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41_weights/weights_report_headers.json

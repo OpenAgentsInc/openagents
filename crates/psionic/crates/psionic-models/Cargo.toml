@@ -44,4 +44,5 @@ tokenizers = { version = "0.23.1", default-features = false, features = ["onig"]
 unicode-normalization = "0.1.24"
 
 [dev-dependencies]
+flate2 = "1.1"
 tempfile = "3"

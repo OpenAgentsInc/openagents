@@ -519,6 +519,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 - #12358/#12360/#12364/#12367: DS0 and the [serial Pylon llama.cpp GPU flow](../psionic/deepseek-support-plan.md#serial-pylon-gpu-qualification-12360) pass 27 checks; the [managed recovery flow](../psionic/deepseek-support-plan.md#automatic-serial-pylon-recovery-12364) passes 13 more, including automatic crash/frozen-worker replacement and subsequent answers. The explicit [DeepSeek `pylon up` profile](../psionic/deepseek-support-plan.md#deepseek-profile-through-pylon-up-12367) passes 20 lifecycle checks, including saved resume and `down`. Clef/network Pylon stayed unchanged. Native Psionic's real HTTP-disconnect check and hard recovery, broader native serial selection, and cloud deployment remain separate work in the [personal serving plan](../psionic/deepseek-support-plan.md#personal-serving-first-one-generation-at-a-time).
 
+- #12373: on the #12371 oracle VM with the V4.1-Flash weights, from
+  `crates/psionic`, run `cargo run --release -p psionic-models --example
+  deepseek_v41_weights_check -- CHECKPOINT_DIR --verify-sha256 --oracle
+  DEQUANT_PARITY.json`. It must exit 0: all 96,085 tensors open, no NaN in
+  the dequantized rows, every shard hash matches the pin, and every parity case
+  has 0 mismatches. Post the JSON on #12373. Without the oracle file, run it
+  without `--oracle` first and add parity when #12371 writes the file.
+
 - #12344: After the web deploy, use the dedicated test account and a disposable computer chat with a saved chart and 3D visual. Confirm the visual module downloads only when a visual is shown, attachment reads follow the computer grant, controls work, resizing and scrolling keep the canvases in their rows, and changing chats removes them. Delete the chat afterward.
 
 - #12337: After the next web deploy, confirm 308 redirects from `/lander3`–`/lander9` and `/landing` to `/home`, `/lander8/chat/{id}` and `/gpui/chat/{id}` to `/chat/{id}`, `/gpui` and `/cloud` to `/`, `/cloud/app/settings*` to the corresponding Settings page, and `/demo` and its HTML demo chats to `/demo/gpui`. Confirm `/`, `/home`, `/chat/{id}`, `/lander10`, `/lander11`, `/verse`, `/verse/hands/*`, `/demo/gpui`, and the HTML fallback still load.

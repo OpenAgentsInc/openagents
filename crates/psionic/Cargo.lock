@@ -4987,6 +4987,7 @@ dependencies = [
  "candle-nn",
  "candle-transformers",
  "fancy-regex 0.16.2",
+ "flate2",
  "half",
  "hex",
  "moshi",
