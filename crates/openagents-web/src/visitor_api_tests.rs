@@ -776,6 +776,7 @@ async fn a_signed_in_page_reads_the_account_api_with_its_cookie() {
         "/v1/agent-definitions",
         "/v1/agent-assignments",
         "/v1/schedules",
+        "/v1/memory",
         "/v1/labs/agent/kinds",
         "/v1/labs/agent/documents",
         "/v1/voice-agent",
@@ -892,4 +893,90 @@ async fn a_signed_in_page_reads_the_account_api_with_its_cookie() {
     )
     .await;
     assert_eq!(status, 401, "{body}");
+}
+
+/// GPUI memory uses the same records Coder sync reads, with cookie CSRF checks.
+#[tokio::test]
+async fn gpui_memory_edits_reach_coder_and_require_csrf() {
+    let world = world_with(Options::default()).await;
+    let mut alice = Browser::default();
+    alice.sign_in(&world, "octo-local").await;
+    let session = alice.0["oa_cloud_session"].clone();
+    let cookie = format!("oa_cloud_session={session}");
+    let (_, _, page) = from_page(
+        &world,
+        &cookie,
+        None,
+        "same-origin",
+        "GET",
+        "/lander8/session",
+        None,
+    )
+    .await;
+    let csrf = page["csrf"].as_str().unwrap();
+    let note = json!({"kind":"feedback", "name":"Builds", "description":"", "body":"Use the pinned compiler."});
+    let (status, _, _) = from_page(
+        &world,
+        &cookie,
+        None,
+        "same-origin",
+        "PUT",
+        "/v1/memory/new",
+        Some(note.clone()),
+    )
+    .await;
+    assert_eq!(status, 403);
+    let (status, _, made) = from_page(
+        &world,
+        &cookie,
+        Some(csrf),
+        "same-origin",
+        "PUT",
+        "/v1/memory/new",
+        Some(note.clone()),
+    )
+    .await;
+    assert_eq!(status, 200, "{made}");
+    let id = made["note"]["id"].as_str().unwrap();
+    let mut edited = note;
+    edited["body"] = json!("Use cargo test.");
+    let path = format!("/v1/memory/{id}");
+    let (status, _, saved) = from_page(
+        &world,
+        &cookie,
+        Some(csrf),
+        "same-origin",
+        "PUT",
+        &path,
+        Some(edited),
+    )
+    .await;
+    assert_eq!(status, 200, "{saved}");
+    let (status, listed) = call(&world, Some(&session), "GET", "/coder/memory", None).await;
+    assert_eq!(status, 200);
+    assert_eq!(listed["notes"][0]["body"], "Use cargo test.");
+    let (status, _, _) = from_page(
+        &world,
+        &cookie,
+        Some(csrf),
+        "cross-site",
+        "DELETE",
+        &path,
+        None,
+    )
+    .await;
+    assert_eq!(status, 403);
+    let (status, _, deleted) = from_page(
+        &world,
+        &cookie,
+        Some(csrf),
+        "same-origin",
+        "DELETE",
+        &path,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{deleted}");
+    let (_, listed) = call(&world, Some(&session), "GET", "/coder/memory", None).await;
+    assert_eq!(listed["notes"][0]["deleted"], true);
 }

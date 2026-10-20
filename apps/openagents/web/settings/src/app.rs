@@ -193,6 +193,10 @@ impl SettingsApp {
     }
 
     fn show(&mut self, page: Page, push: bool, cx: &mut Context<Self>) {
+        if matches!(page, Page::Memory | Page::Schedules) {
+            store::signal("oa-page-open", page.slug());
+            return;
+        }
         if push {
             store::signal("oa-settings-page", page.slug());
         }

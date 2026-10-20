@@ -131,6 +131,7 @@ mod room_tokens;
 pub mod sales_remote;
 mod screens;
 mod settings;
+mod settings_memory_schedules;
 mod ship_lab;
 pub mod shutdown;
 mod sign_in_keys;
@@ -803,6 +804,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(terminal_connect::routes())
         .merge(account::routes())
         .merge(settings::routes())
+        .merge(settings_memory_schedules::routes())
         .merge(sign_in_keys::routes())
         .merge(agent_accounts::routes())
         .merge(vault::routes())

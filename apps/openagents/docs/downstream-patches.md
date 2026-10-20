@@ -1304,6 +1304,8 @@ OUTDIR` serves it at `/demo/gpui`. The website image builds it in the
 `gpuiweb` stages of `crates/openagents-web/Dockerfile` (Rust 1.98.1) and
 copies it to `/srv/gpui-demo`, which the server uses without a flag.
 
+- #12327: Shared Rust Native Memory and Schedules settings forms, editable GPUI field mounting, and account API wiring in separate lazy Memory and Schedules modules over page-host; existing account sync records and HTML fallback forms remain in use.
+
 ## The agent demo card (`/lander6`)
 
 - `web/gpui-web` honours the window's background appearance: a window

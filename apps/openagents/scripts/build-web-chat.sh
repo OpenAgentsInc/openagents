@@ -130,6 +130,13 @@ for page in traces agents projects agent-lab lab voice; do
       --enable-sign-ext --enable-mutable-globals --enable-reference-types \
       "$out/openagents_web_${page//-/_}_bg.wasm" -o "$out/openagents_web_${page//-/_}_bg.wasm"
 done
+# Account memory and schedules: separate modules over page-host (#12327).
+for page in memory schedules; do
+  cargo build --locked --manifest-path "$web/Cargo.toml" -p "openagents-web-$page" --release --target "$target"
+  wasm-bindgen --target web --no-typescript --out-dir "$out" "$target_dir/$target/release/openagents_web_$page.wasm"
+  wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-reference-types \
+    "$out/openagents_web_${page}_bg.wasm" -o "$out/openagents_web_${page}_bg.wasm"
+done
 cp "$web/chat/start.js" "$out/start.js"
 # The faces start.js asks for, by the names in its FONTS list.
 fonts="$(sed -n 's/^  "\([A-Za-z-]*\.ttf\)",$/\1/p' "$web/chat/start.js")"
@@ -145,7 +152,7 @@ compress() {
 # The first-frame painter: the page paints the frame this browser kept
 # from the last visit before the module loads (#12244).
 "$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
-WEB_BUILD_NAMES_DIR="$target_dir/$target/release" python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces openagents_web_agents openagents_web_projects openagents_web_agent_lab openagents_web_lab openagents_web_voice
+WEB_BUILD_NAMES_DIR="$target_dir/$target/release" python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces openagents_web_agents openagents_web_projects openagents_web_agent_lab openagents_web_lab openagents_web_voice openagents_web_memory openagents_web_schedules
 for font in $fonts; do
   compress "$out/fonts/$font"
 done
