@@ -11979,7 +11979,6 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "serde_core",
- "serde_json",
  "simd-adler32",
  "simdutf8",
  "slab",

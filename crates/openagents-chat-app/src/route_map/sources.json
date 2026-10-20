@@ -3529,7 +3529,7 @@
       "kind": "knowledge",
       "reach": "chat",
       "route": "product.kb",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Answers how the OpenAgents app, its features, and its code work, from our documentation."
     },
     {
@@ -3538,7 +3538,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "work.dispatch",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Works on the user's code, repository, files, or machine: changes, fixes, builds, tests, and looks through code, on a computer the user connected."
     },
     {
@@ -3547,7 +3547,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "cli",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Runs an openagents command for the user's own account or devices after they confirm it: their computers, tasks, sessions, XP, quests, the knowledge base, and what is published on a relay."
     },
     {
@@ -3556,7 +3556,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "wallet",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Explains the user's OpenAgents wallet, bitcoin amounts, receiving, sending, and backups, and opens the wallet for them."
     },
     {
@@ -3565,7 +3565,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "account",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Explains and opens account settings: identity keys, connecting or removing computers, playtest sessions, and reporting a problem."
     },
     {
@@ -3574,7 +3574,7 @@
       "kind": "program",
       "reach": "chat",
       "route": "eval.run",
-      "source": "crates/coder/src/router/capability.rs",
+      "source": "crates/coder-router/src/router/capability.rs",
       "line": "Tests a plugin on Coder, makes a new one and its tests with the user, checks another trainer's result, and reports what their work earned."
     }
   ],

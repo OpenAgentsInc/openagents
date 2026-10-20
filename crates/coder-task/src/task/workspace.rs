@@ -173,6 +173,7 @@ mod unix {
         }
         Ok(dir)
     }
+    #[cfg(not(target_os = "macos"))]
     fn names(
         root: &File,
         path: &str,
@@ -180,7 +181,7 @@ mod unix {
         began: Instant,
     ) -> std::io::Result<(Vec<(String, Kind)>, bool, usize)> {
         let dir = directory(root, Path::new(path))?;
-        // /dev/fd refers to this opened directory on macOS and Linux. All
+        // /dev/fd refers to this opened directory on Linux. All
         // descendant opens use handles; a renamed parent cannot redirect them.
         let entries = std::fs::read_dir(format!("/dev/fd/{}", dir.as_raw_fd()))?;
         let mut out = Vec::new();
@@ -213,6 +214,110 @@ mod unix {
                 name
             } else {
                 format!("{path}/{name}")
+            };
+            if path.len() <= MAX_PATH && (Operation::Read { path: path.clone() }).valid() {
+                out.push((path, kind));
+            } else {
+                truncated = true;
+            }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok((out, truncated, visited))
+    }
+    #[cfg(target_os = "macos")]
+    fn names(
+        root: &File,
+        path: &str,
+        limit: usize,
+        began: Instant,
+    ) -> std::io::Result<(Vec<(String, Kind)>, bool, usize)> {
+        use std::ffi::CStr;
+
+        let dir = directory(root, Path::new(path))?;
+        // Open a new directory description so enumeration does not change
+        // the original handle's offset, including for repeated root listings.
+        // SAFETY: dir is live and the relative path names this directory.
+        let fd = unsafe {
+            libc::openat(
+                dir.as_raw_fd(),
+                c".".as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: fd is owned here; fdopendir takes ownership on success.
+        let stream = unsafe { libc::fdopendir(fd) };
+        if stream.is_null() {
+            let error = std::io::Error::last_os_error();
+            // SAFETY: fdopendir failed without taking ownership of fd.
+            unsafe { libc::close(fd) };
+            return Err(error);
+        }
+        struct Directory(*mut libc::DIR);
+        impl Drop for Directory {
+            fn drop(&mut self) {
+                // SAFETY: this wrapper uniquely owns the directory stream.
+                unsafe { libc::closedir(self.0) };
+            }
+        }
+        let stream = Directory(stream);
+        let mut out = Vec::new();
+        let mut truncated = false;
+        let mut visited = 0;
+        loop {
+            // SAFETY: Darwin's errno slot is thread-local and valid here.
+            unsafe { *libc::__error() = 0 };
+            // SAFETY: the stream is live and used only within this call.
+            let entry = unsafe { libc::readdir(stream.0) };
+            if entry.is_null() {
+                let error = std::io::Error::last_os_error();
+                if error.raw_os_error().is_some_and(|code| code != 0) {
+                    return Err(error);
+                }
+                break;
+            }
+            // SAFETY: d_name is NUL-terminated and valid until the next readdir.
+            let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+            if matches!(name.to_bytes(), b"." | b"..") {
+                continue;
+            }
+            if visited >= limit || began.elapsed() > Duration::from_millis(500) {
+                truncated = true;
+                break;
+            }
+            visited += 1;
+            let Ok(text) = name.to_str() else {
+                continue;
+            };
+            if text == ".git" || text.chars().any(char::is_control) {
+                continue;
+            }
+            let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+            // SAFETY: the directory and name are live; stat is writable.
+            // AT_SYMLINK_NOFOLLOW inspects the entry without following links.
+            if unsafe {
+                libc::fstatat(
+                    dir.as_raw_fd(),
+                    name.as_ptr(),
+                    stat.as_mut_ptr(),
+                    libc::AT_SYMLINK_NOFOLLOW,
+                )
+            } != 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+            // SAFETY: successful fstatat initialized stat.
+            let kind = match unsafe { stat.assume_init() }.st_mode & libc::S_IFMT {
+                libc::S_IFDIR => Kind::Directory,
+                libc::S_IFREG => Kind::File,
+                _ => continue,
+            };
+            let path = if path.is_empty() {
+                text.into()
+            } else {
+                format!("{path}/{text}")
             };
             if path.len() <= MAX_PATH && (Operation::Read { path: path.clone() }).valid() {
                 out.push((path, kind));

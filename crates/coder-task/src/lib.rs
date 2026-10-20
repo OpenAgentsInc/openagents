@@ -2,5 +2,6 @@
 
 use coder_core::*;
 
+pub mod customer;
 mod private;
 pub mod task;

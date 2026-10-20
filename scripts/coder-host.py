@@ -210,7 +210,7 @@ class Installation:
         if state.exists() or state.is_symlink():
             # The task store holds each run's grant and grows past the other
             # metadata's bound; `coder` reads up to 16 MiB of it
-            # (MAX_STORE_BYTES in crates/coder/src/task.rs).
+            # (MAX_STORE_BYTES in crates/coder-task/src/task.rs).
             schema = read_json(state, TASK_STORE_BYTES).get("schema")
             if schema not in manifest["read_state_schemas"]:
                 refuse("retained task state is incompatible with the selected binary")

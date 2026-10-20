@@ -188,10 +188,12 @@ trap restore EXIT
 
 now() { python3 -c 'import time; print(time.time())'; }
 timed() {
-  local start end status=0
+  local start end log status=0
+  log=$(mktemp "$run_dir/build.log.XXXXXX")
   start=$(now)
-  "$@" > "$run_dir/build.log" 2>&1 || status=$?
+  "$@" > "$log" 2>&1 || status=$?
   end=$(now)
+  cp "$log" "$run_dir/build.log"
   python3 -c "print(f'{$end - $start:.1f}')"
   if [ $status -ne 0 ]; then
     echo "  failed: $* (see $run_dir/build.log)" >&2
@@ -224,7 +226,7 @@ row() {
 if [ "$cold" = 1 ]; then
   all=()
   for pkg in "${packages[@]}" "${with_packages[@]}"; do all+=(-p "$pkg"); done
-  cold_time=$(timed cargo build -q "${cargo_args[@]}" "${profile_args[@]}" "${all[@]}" --timings)
+  cold_time=$(timed cargo build "${cargo_args[@]}" "${profile_args[@]}" "${all[@]}" --timings)
   row '(all)' cold "$cold_time" - -
 fi
 for pkg in "${packages[@]}"; do
@@ -242,9 +244,9 @@ for pkg in "${packages[@]}"; do
   for cmd in build test; do
     [ -n "$only" ] && [ "$only" != "$cmd" ] && continue
     if [ "$cmd" = build ]; then
-      argv=(cargo build -q "${cargo_args[@]}" "${profile_args[@]}" "${package_args[@]}")
+      argv=(cargo build "${cargo_args[@]}" "${profile_args[@]}" "${package_args[@]}")
     else
-      argv=(cargo test -q "${cargo_args[@]}" "${profile_args[@]}" "${package_args[@]}" --no-run)
+      argv=(cargo test "${cargo_args[@]}" "${profile_args[@]}" "${package_args[@]}" --no-run)
     fi
     prep_argv=("${argv[@]}")
     [ "$timings" = 1 ] && [ "$cmd" = build ] && prep_argv+=(--timings)

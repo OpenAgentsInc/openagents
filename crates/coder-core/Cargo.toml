@@ -46,3 +46,6 @@ tempfile = "3"
 
 [lints]
 workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

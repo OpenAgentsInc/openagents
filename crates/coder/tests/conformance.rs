@@ -738,22 +738,56 @@ async fn a_cancelled_run_marks_the_callers_end_not_the_works() {
     let root = machine.path();
     let runstate = tempfile::tempdir().unwrap();
 
-    // A door that takes four seconds; the run's budget gives it 200ms.
-    let slow = door(|asked| {
-        std::thread::sleep(Duration::from_secs(4));
+    // Wait for the decision request before advancing the timeout. The
+    // deadline leaves time for the lookup and durable runstate writes.
+    let deadline = Duration::from_secs(60);
+    let (dispatched, arrived) = tokio::sync::oneshot::channel();
+    let dispatched = Mutex::new(Some(dispatched));
+    let (release, held) = std::sync::mpsc::channel::<()>();
+    let held = Mutex::new(held);
+    let slow = door(move |asked| {
+        let _ = dispatched.lock().unwrap().take().unwrap().send(());
+        let _ = held.lock().unwrap().recv();
         Reply::answered(answered(asked, "kev-latest", answer_for))
     });
-    let run = runtime(root, &slow.url)
+    // The runtime's timeout must expire before the HTTP client's own.
+    let client = jev::Client::new(
+        jev::Config::new()
+            .api_key("ts-test-key")
+            .base_url(&slow.url)
+            .default_model("kev-latest")
+            .timeout(deadline * 2)
+            .retry(jev::RetryPolicy {
+                max_retries: 0,
+                ..jev::RetryPolicy::default()
+            }),
+    )
+    .expect("the stub door builds a client");
+    let runtime = runtime_with_client(root, client)
         .with_budget(Budget {
-            deadline: Some(Duration::from_millis(200)),
+            deadline: Some(deadline),
             ..Budget::default()
         })
-        .with_runstate(runstate.path())
-        .run(&burn_down(root), &burn_down_inputs(), &Grant::all(), None)
-        .await;
+        .with_runstate(runstate.path());
+    let program = burn_down(root);
+    let inputs = burn_down_inputs();
+    let grant = Grant::all();
+    let running = runtime.run(&program, &inputs, &grant, None);
+    tokio::pin!(running);
+    tokio::select! {
+        run = &mut running => panic!("the run ended before the decision arrived: {:?}", run.stopped),
+        arrived = arrived => arrived.expect("the decision reached the door"),
+    }
+    tokio::time::pause();
+    tokio::time::advance(deadline).await;
+    let run = running.await;
+    tokio::time::resume();
+    drop(release);
 
     let stopped = run.stopped.as_ref().expect("the deadline ended the run");
     assert_eq!(stopped.code, "budget_exceeded", "{stopped}");
+    assert_eq!(stopped.step, "independence");
+    assert_eq!(slow.requests().len(), 1);
     // The lookup answered inside its time; the dispatched decide did
     // not come back, and what did not come back is not a refusal the
     // work gave.

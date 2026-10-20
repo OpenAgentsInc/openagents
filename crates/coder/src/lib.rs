@@ -47,9 +47,8 @@
 pub use coder_core::*;
 pub use coder_router::*;
 pub use coder_runtime::*;
-pub use coder_task::task;
+pub use coder_task::{customer, task};
 
-pub mod customer;
 pub mod efficiency;
 
 #[cfg(test)]

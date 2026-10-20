@@ -45,8 +45,6 @@ secp256k1 = { version = "0.31.1", features = ["rand"] }
 nostr = { version = "1.0.0", path = "../nostr" }
 openagents-connect = { path = "../openagents-connect" }
 plugin = { path = "../plugin" }
-receipts = { path = "../receipts" }
-openagents-x402 = { path = "../x402" }
 coder-core = { path = "../coder-core" }
 coder-router = { path = "../coder-router" }
 coder-runtime = { path = "../coder-runtime" }
@@ -59,6 +57,7 @@ coder-history = { path = "../coder-history" }
 coder-connect = { path = "../coder-connect" }
 coderbench = { path = "../coderbench" }
 tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
 
 [lints]
 workspace = true

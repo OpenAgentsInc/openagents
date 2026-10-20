@@ -15,8 +15,11 @@ platforms = [
 ]
 
 [traversal-excludes]
-# These optional backends must remain opt-in on supported platforms.
 third-party = [
+    # arbitrary_precision changes numeric deserialization in tagged enums.
+    # Keep serde_json features specific to each consumer.
+    { name = "serde_json" },
+    # These optional backends must remain opt-in on supported platforms.
     { name = "candle-core" },
     { name = "candle-nn" },
     { name = "candle-transformers" },

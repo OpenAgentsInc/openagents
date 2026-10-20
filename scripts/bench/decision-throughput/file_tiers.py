@@ -33,15 +33,15 @@ import briefing  # noqa: E402  (after AB_REPO is set)
 # What the file_questions step ranks for a router/first-contact issue: real
 # paths, with the finder fields filefind.py emits.
 FILES = [
-    {"path": "crates/coder/src/router/judge.rs", "rank": 1, "conf": 0.71,
+    {"path": "crates/coder-router/src/router/judge.rs", "rank": 1, "conf": 0.71,
      "reasons": ["issue names `route`", "defines `route_instructions`", "embedding rank 2 (cos 0.63)"]},
-    {"path": "crates/coder/src/first.rs", "rank": 2, "conf": 0.62,
+    {"path": "crates/coder-core/src/first.rs", "rank": 2, "conf": 0.62,
      "reasons": ["crate `coder` named in the issue", "changes with the seeds (co 0.58)"]},
-    {"path": "crates/coder/src/cli_route.rs", "rank": 3, "conf": 0.55,
+    {"path": "crates/coder-router/src/cli_route.rs", "rank": 3, "conf": 0.55,
      "reasons": ["issue names `cli_group`", "mentions `CliRoute`"]},
-    {"path": "crates/coder/src/select.rs", "rank": 4, "conf": 0.44,
+    {"path": "crates/coder-core/src/select.rs", "rank": 4, "conf": 0.44,
      "reasons": ["defines `route`", "changes with the top-ranked files (co 0.51)"]},
-    {"path": "crates/coder/src/codebase.rs", "rank": 5, "conf": 0.39,
+    {"path": "crates/coder-router/src/codebase.rs", "rank": 5, "conf": 0.39,
      "reasons": ["under `crates/coder/src` named in the issue"]},
     {"path": "crates/jev/src/lib.rs", "rank": 6, "conf": 0.36,
      "reasons": ["crate `jev` named in the issue", "defines `Client`"]},

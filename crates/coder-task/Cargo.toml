@@ -54,6 +54,8 @@ nostr = { version = "1.0.0", path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
 openagents-connect = { path = "../openagents-connect" }
 receipts = { path = "../receipts" }
+plugin = { path = "../plugin" }
+openagents-x402 = { path = "../x402" }
 coder-core = { path = "../coder-core" }
 
 [target.'cfg(windows)'.dependencies]
@@ -65,3 +67,6 @@ tempfile = "3"
 
 [lints]
 workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

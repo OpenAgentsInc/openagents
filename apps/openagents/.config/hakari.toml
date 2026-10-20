@@ -19,8 +19,11 @@ platforms = [
 ]
 
 [traversal-excludes]
-# These optional backends must remain opt-in on supported platforms.
 third-party = [
+    # arbitrary_precision changes numeric deserialization in tagged enums.
+    # Keep serde_json features specific to each consumer.
+    { name = "serde_json" },
+    # These optional backends must remain opt-in on supported platforms.
     # Desktop presentation and test-support must not enter the phone core.
     { name = "gpui", git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" },
     { name = "gpui_platform", git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" },

@@ -270,7 +270,7 @@ fi
 
 # The Coder task runner leases target slots under ~/.openagents/targets,
 # named after the repository's common Git directory
-# (crates/coder/src/task/targets.rs): <name>-<sha256(path)[..12]>-slot-<n>.
+# (crates/coder-task/src/task/targets.rs): <name>-<sha256(path)[..12]>-slot-<n>.
 common="$(cd "$repo_dir/.git" && pwd -P)"
 tag="$(printf '%s' "$common" | sha256sum | cut -c1-12)"
 slot="$home/.openagents/targets/$(basename "$(dirname "$common")")-$tag-slot-0"
