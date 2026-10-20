@@ -210,6 +210,12 @@ publish.",
         lead: "Workspaces, their members and invitations, keys, billing, and usage.",
         tags: &["Workspaces"],
     },
+    Area {
+        slug: "earnings",
+        title: "Earnings",
+        lead: "What a party has earned, its payouts, and where they are sent.",
+        tags: &["Earnings"],
+    },
 ];
 
 /// The tag of an operation its contract leaves untagged, from its path.
@@ -223,6 +229,7 @@ fn tag_for(path: &str) -> Option<&'static str> {
         "balance" => "Balance",
         "account" => "Account",
         "workspaces" | "invitations" => "Workspaces",
+        "earnings" => "Earnings",
         _ => return None,
     })
 }
