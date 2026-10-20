@@ -34,6 +34,7 @@ fn pinned() -> Served {
     Served {
         model: "clef-flash".into(),
         artifact_digest: Some(format!("sha256:{}", pylon::setup::CLEF_FLASH_SHA256)),
+        model_id: None,
     }
 }
 
@@ -292,6 +293,7 @@ async fn a_contributor_is_asked_only_on_the_community_lane_after_a_check_pass() 
             identity: Served {
                 model: "clef-flash".into(),
                 artifact_digest: Some(format!("sha256:{}", "ab".repeat(32))),
+                model_id: None,
             },
         }),
         Arc::new(Dedicated),
@@ -630,6 +632,7 @@ async fn without_checkers_the_lane_header_changes_nothing() {
             identity: Served {
                 model: "clef-flash".into(),
                 artifact_digest: Some(format!("sha256:{}", "cd".repeat(32))),
+                model_id: None,
             },
         }),
     )

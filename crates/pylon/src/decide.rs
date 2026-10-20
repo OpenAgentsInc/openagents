@@ -31,18 +31,40 @@ pub struct Identity {
     pub model: String,
     /// The loaded artifact's digest (`sha256:…`), when the server names it.
     pub artifact_digest: Option<String>,
+    /// The model id that artifact resolves to on this computer
+    /// (`gguf-tensors:sha256:…`, a digest of its tensors), when known. Two
+    /// files whose header metadata differs share it (#12234).
+    pub model_id: Option<String>,
 }
 
 impl Identity {
-    /// The beacon's `model` for the service: `clef-flash@sha256:…`, or the
+    /// The beacon's `model` for the service: `clef-flash@gguf-tensors:sha256:…`
+    /// when the model id is known, else `clef-flash@sha256:<file>`, or the
     /// bare name when the server names no digest. At most 128 bytes.
     #[must_use]
     pub fn advertised(&self) -> String {
-        let text = match &self.artifact_digest {
-            Some(digest) => format!("{}@{digest}", self.model),
-            None => self.model.clone(),
+        let text = match (&self.model_id, &self.artifact_digest) {
+            (Some(id), _) => format!("{}@{id}", self.model),
+            (None, Some(digest)) => format!("{}@{digest}", self.model),
+            (None, None) => self.model.clone(),
         };
         text.chars().take(128).collect()
+    }
+
+    /// Whether a beacon's advertised identity is this model: the same name
+    /// at this model id or at this file's digest (#12234: a copy whose
+    /// header differs is the same model).
+    #[must_use]
+    pub fn serves(&self, advertised: &str) -> bool {
+        if advertised == self.advertised() {
+            return true;
+        }
+        let Some((name, tag)) = advertised.split_once('@') else {
+            return false;
+        };
+        name == self.model
+            && (self.model_id.as_deref() == Some(tag)
+                || self.artifact_digest.as_deref() == Some(tag))
     }
 }
 
@@ -68,6 +90,10 @@ pub struct Clef {
     /// server lists.
     wanted: Option<String>,
     identity: Mutex<Identity>,
+    /// The GGUF the server loaded, when known, to resolve its model id.
+    model_file: Option<std::path::PathBuf>,
+    /// The last file digest resolved to a model id, so a refresh hashes once.
+    resolved: Mutex<Option<(String, Option<String>)>>,
     client: reqwest::Client,
 }
 
@@ -89,9 +115,44 @@ impl Clef {
             identity: Mutex::new(Identity {
                 model: model.unwrap_or("clef-flash").to_string(),
                 artifact_digest: None,
+                model_id: None,
             }),
+            model_file: None,
+            resolved: Mutex::new(None),
             client,
         })
+    }
+
+    /// Resolve the served file's model id against `path`, the GGUF the
+    /// server loaded (the pinned download and `~/.openagents/models` are
+    /// always tried).
+    #[must_use]
+    pub fn with_model_file(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.model_file = Some(path.into());
+        self
+    }
+
+    /// The model id `digest` resolves to here, hashing a file at most once
+    /// per digest.
+    async fn model_id(&self, digest: &str) -> Option<String> {
+        if let Ok(held) = self.resolved.lock()
+            && let Some((seen, id)) = held.as_ref()
+            && seen == digest
+        {
+            return id.clone();
+        }
+        let file = self.model_file.clone();
+        let wanted = digest.to_string();
+        let id = tokio::task::spawn_blocking(move || {
+            crate::setup::model_id_for(&wanted, file.as_deref())
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Ok(mut held) = self.resolved.lock() {
+            *held = Some((digest.to_string(), id.clone()));
+        }
+        id
     }
 
     /// Read `GET /v1/models` and keep the decision model's identity.
@@ -125,11 +186,17 @@ impl Clef {
                 decides && named
             })
             .ok_or_else(|| format!("the server at {} lists no decision model", self.base))?;
+        let artifact_digest = entry["psionic"]["artifact_digest"]
+            .as_str()
+            .map(str::to_string);
+        let model_id = match &artifact_digest {
+            Some(digest) => self.model_id(digest).await,
+            None => None,
+        };
         let identity = Identity {
             model: entry["id"].as_str().unwrap_or("clef-flash").to_string(),
-            artifact_digest: entry["psionic"]["artifact_digest"]
-                .as_str()
-                .map(str::to_string),
+            artifact_digest,
+            model_id,
         };
         if let Ok(mut held) = self.identity.lock() {
             *held = identity.clone();
@@ -146,6 +213,7 @@ impl Decider for Clef {
             .unwrap_or(Identity {
                 model: "clef-flash".into(),
                 artifact_digest: None,
+                model_id: None,
             })
     }
 

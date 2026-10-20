@@ -165,12 +165,13 @@ pub trait Engines: Send + Sync {
     ///
     /// When the engine is not installed or the log cannot be opened.
     fn command(&self, home: &Path, lane: &LaneSpec) -> Result<tokio::process::Command, String>;
-    /// The decision server at `url`.
+    /// The decision server at `url`, which loaded `model_file` (used to
+    /// name the model by its tensors, #12234).
     ///
     /// # Errors
     ///
     /// When its client cannot be built.
-    fn decider(&self, url: &str) -> Result<Arc<dyn Decider>, String>;
+    fn decider(&self, url: &str, model_file: &Path) -> Result<Arc<dyn Decider>, String>;
     /// The text engine at `url` serving `model`.
     ///
     /// # Errors
@@ -215,8 +216,8 @@ impl Engines for PsionicEngines {
         Ok(command)
     }
 
-    fn decider(&self, url: &str) -> Result<Arc<dyn Decider>, String> {
-        Ok(Arc::new(Clef::new(url, None)?))
+    fn decider(&self, url: &str, model_file: &Path) -> Result<Arc<dyn Decider>, String> {
+        Ok(Arc::new(Clef::new(url, None)?.with_model_file(model_file)))
     }
 
     fn text(&self, url: &str, model: &str) -> Result<Arc<dyn Engine>, String> {
@@ -780,7 +781,8 @@ fn build(
         .map(|lane| engines.text(&format!("http://127.0.0.1:{}", lane.port), &lane.model))
         .transpose()?;
     if let Some(lane) = &settings.decide {
-        let decider = engines.decider(&format!("http://127.0.0.1:{}", lane.port))?;
+        let decider =
+            engines.decider(&format!("http://127.0.0.1:{}", lane.port), &lane.model_file)?;
         let provider = Provider::deciding(config, identity, text, Arc::clone(&decider), machine)?;
         Ok((provider, Some(decider)))
     } else {
@@ -1444,7 +1446,8 @@ async fn publish_offline(home: &Path, settings: &Settings) -> Result<(), String>
     config.owner = load_owner(home)?;
     let owner = config.owner.clone();
     let provider = if let Some(lane) = &settings.decide {
-        let clef = Clef::new(&format!("http://127.0.0.1:{}", lane.port), None)?;
+        let clef = Clef::new(&format!("http://127.0.0.1:{}", lane.port), None)?
+            .with_model_file(&lane.model_file);
         Provider::deciding(
             config,
             identity.clone(),

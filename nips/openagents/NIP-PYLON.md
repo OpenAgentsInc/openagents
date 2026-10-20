@@ -182,8 +182,11 @@ A pylon that answers [NIP-DEC](NIP-DEC.md) decision jobs (`25910` in,
 `27010` and `26910` out) advertises a service on the `cj-decision` lane:
 
 - `capability` is `<pylon key>:pylon/decision`;
-- `model` is the served identity, the model name and, when the server
-  names one, its artifact digest: `clef-flash@sha256:<64 hex>`;
+- `model` is the served identity: the model name and, when known, its model
+  id, a digest of its tensors (`clef-flash@gguf-tensors:sha256:<64 hex>`), so
+  two files that differ only in header metadata are the same model; else the
+  loaded file's digest (`clef-flash@sha256:<64 hex>`). Readers treat both
+  forms of one model as the same identity;
 - `slots` counts decisions and text jobs together.
 
 Every answer it returns names the same identity: `response.model` is the

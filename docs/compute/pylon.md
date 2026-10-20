@@ -267,8 +267,11 @@ openagents pylon serve --decide http://127.0.0.1:18096 --decisions-only \
 ```
 
 The beacon advertises `<pylon key>:pylon/decision` on the `cj-decision`
-lane with the served identity (`clef-flash@sha256:<artifact digest>`, read
-from the server's `/v1/models`) and its free slots; the beacon says
+lane with the served identity (`clef-flash@gguf-tensors:sha256:<model id>`,
+the digest of the loaded file's tensors, or `clef-flash@sha256:<file digest>`
+when this computer cannot resolve the file; read from the server's
+`/v1/models`; `serve --decide-model-file PATH` names a GGUF outside
+`~/.openagents/models`) and its free slots; the beacon says
 `draining` while the Clef server does not answer. Each decision job gets
 `27010 processing`, then a `26910` result whose answer names the model, the
 pylon (`service.door: "pylon:<slug>"`), and the latency, with a sealed
@@ -281,7 +284,8 @@ CoderOS-4080's), and logs its own dispatch key at start (`decisions: …
 **Community pylons (#12190).** A gateway whose `decisions.checkers` names
 trusted checker keys also sends work to pylons that are not on that list,
 once a checker has checked them. Such a pylon must serve the pinned
-Clef-Flash (`clef-flash@sha256:<the pinned file>`), allow the gateway's
+Clef-Flash (by its model id, or the pinned file's digest; a copy whose
+header differs counts, #12234), allow the gateway's
 dispatch key, and have a passing check (`openagents pylon check decide`,
 run by a trusted checker) from the last 24 hours with no failed check
 after it. It is asked only for decisions on the community lane: our own

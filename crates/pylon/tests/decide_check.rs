@@ -92,6 +92,7 @@ fn served() -> Served {
     Served {
         model: "clef-flash".into(),
         artifact_digest: Some(format!("sha256:{}", "cd".repeat(32))),
+        model_id: None,
     }
 }
 

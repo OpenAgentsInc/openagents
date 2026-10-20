@@ -167,6 +167,10 @@ Commands:
                             the beacon advertises pylon/decision.
       --decide-model NAME   The decision model at that server (default: the
                             first one it lists).
+      --decide-model-file PATH
+                            The GGUF that server loaded, so the pylon names the
+                            model by its tensors when the file is not the pinned
+                            download (a copy whose header differs).
       --decisions-only      Answer decision jobs only, no text jobs.
       --attested            Run as a NIP-ATT attested endpoint inside a Google
                             Confidential Space workload (the release image
@@ -565,6 +569,7 @@ async fn serve(
     }
     let decide_url = args.value("--decide")?;
     let decide_model = args.value("--decide-model")?;
+    let decide_model_file = args.value("--decide-model-file")?;
     let decisions_only = args.flag("--decisions-only");
     if decisions_only && decide_url.is_none() {
         return Err("--decisions-only needs --decide URL".into());
@@ -626,7 +631,10 @@ async fn serve(
         if price_msat > 0 {
             return Err("decisions are free work; drop --price-msat with --decide".into());
         }
-        let clef = crate::decide::Clef::new(url, decide_model.as_deref())?;
+        let mut clef = crate::decide::Clef::new(url, decide_model.as_deref())?;
+        if let Some(path) = &decide_model_file {
+            clef = clef.with_model_file(path);
+        }
         match clef.refresh().await {
             Ok(found) => {
                 eprintln!("pylon: decisions from {} at {url}", found.advertised());
@@ -853,7 +861,7 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
         .spawn()
         .map_err(|e| format!("Psionic did not start: {e}"))?;
     let url = format!("http://127.0.0.1:{port}");
-    let clef = crate::decide::Clef::new(&url, None)?;
+    let clef = crate::decide::Clef::new(&url, None)?.with_model_file(&weights);
     let started = std::time::Instant::now();
     let served = loop {
         match clef.refresh().await {
@@ -1922,7 +1930,7 @@ async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), Stri
     if server.is_none() {
         next.push(crate::setup::BUILD_SERVER.to_string());
     }
-    next.push("openagents pylon start --allow-any".to_string());
+    next.push("openagents pylon up --allow-any".to_string());
     let changed = match &change {
         crate::install::ModelChange::Changed { from, to } => {
             format!(

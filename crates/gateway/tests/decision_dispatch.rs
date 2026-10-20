@@ -63,6 +63,7 @@ async fn a_connected_pylon_answers_and_the_gateway_fails_over_when_it_stops() {
     let served = Served {
         model: "clef-flash".into(),
         artifact_digest: Some(format!("sha256:{}", "ab".repeat(32))),
+        model_id: None,
     };
     let provider = Provider::deciding(
         config,

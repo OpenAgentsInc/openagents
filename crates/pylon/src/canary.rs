@@ -215,6 +215,7 @@ mod tests {
             identity: Identity {
                 model: "clef-flash".into(),
                 artifact_digest: Some(format!("sha256:{}", "ab".repeat(32))),
+                model_id: None,
             },
         }
     }

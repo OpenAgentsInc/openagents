@@ -30,6 +30,7 @@ async fn decide_sends_one_decision_job_and_prints_the_answers() {
             identity: Served {
                 model: "clef-flash".into(),
                 artifact_digest: Some(format!("sha256:{}", "cd".repeat(32))),
+                model_id: None,
             },
         }),
         Arc::new(Dedicated),

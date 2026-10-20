@@ -47,7 +47,7 @@ pub struct Facts {
 }
 
 /// The command that brings the pylon online.
-pub const ONLINE: &str = "openagents pylon start --allow-any";
+pub const ONLINE: &str = "openagents pylon up --allow-any";
 
 /// The steps, in order: hardware, disk, model, engine, self-check, link,
 /// payout, online. Steps already done stay in the list marked `done`.

@@ -265,8 +265,11 @@ pub async fn round_with(
     if !reference.healthy().await {
         return Err("the reference decision server does not answer".into());
     }
-    let mine = reference.identity().advertised();
-    if mine != service.model {
+    let reference_identity = reference.identity();
+    let mine = reference_identity.advertised();
+    // Same model when the tensors match, even if the files' headers differ
+    // (#12234).
+    if !reference_identity.serves(&service.model) {
         return Err(format!(
             "the reference serves `{mine}`, but the pylon serves `{}`; a check needs the same artifact",
             service.model

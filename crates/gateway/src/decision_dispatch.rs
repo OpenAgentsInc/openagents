@@ -1547,7 +1547,13 @@ impl Dispatch {
         let matching: Vec<&pylon::canary::Canary> = community
             .canaries
             .iter()
-            .filter(|c| c.identity == candidate.identity)
+            // The same pinned model counts whether either side names it by
+            // its file or by its tensors' model id (#12234).
+            .filter(|c| {
+                c.identity == candidate.identity
+                    || (crate::decision_community::pinned_identity(&c.identity)
+                        && crate::decision_community::pinned_identity(&candidate.identity))
+            })
             .collect();
         if matching.is_empty() {
             return;

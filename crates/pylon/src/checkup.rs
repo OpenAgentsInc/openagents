@@ -138,7 +138,7 @@ async fn engine(url: &str) -> Item {
             State::Fail,
             format!("the engine does not answer at {health}"),
         )
-        .fix("openagents pylon start --allow-any")
+        .fix("openagents pylon up --allow-any")
     }
 }
 
@@ -207,7 +207,7 @@ pub fn beacon_item(newest: Option<&nostr::pylon::Beacon>, now: u64) -> Item {
             State::Fail,
             "no beacon from this pylon is on the relay",
         )
-        .fix("openagents pylon start --allow-any");
+        .fix("openagents pylon up --allow-any");
     };
     match (freshness(beacon, now), beacon.status) {
         (Freshness::Fresh, Status::Offline) => Item::new(
@@ -215,7 +215,7 @@ pub fn beacon_item(newest: Option<&nostr::pylon::Beacon>, now: u64) -> Item {
             State::Fail,
             "the relay shows this pylon as offline",
         )
-        .fix("openagents pylon start --allow-any"),
+        .fix("openagents pylon up --allow-any"),
         (Freshness::Fresh, Status::Draining) => Item::new(
             "beacon",
             State::Pass,
@@ -245,7 +245,7 @@ pub fn beacon_item(newest: Option<&nostr::pylon::Beacon>, now: u64) -> Item {
                 now.saturating_sub(beacon.observed_at)
             ),
         )
-        .fix("openagents pylon start --allow-any"),
+        .fix("openagents pylon up --allow-any"),
     }
 }
 
@@ -422,7 +422,7 @@ pub async fn loopback(addresses: &[IpAddr], ports: &[u16]) -> Item {
             State::Fail,
             format!("the engine answers beyond loopback at {}", open.join(", ")),
         )
-        .fix("restart the engine on 127.0.0.1 (openagents pylon start does)")
+        .fix("restart the engine on 127.0.0.1 (openagents pylon up does)")
     } else if addresses.is_empty() {
         Item::new(
             "loopback",

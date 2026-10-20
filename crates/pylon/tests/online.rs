@@ -30,11 +30,12 @@ impl Engines for Fake {
         Ok(command)
     }
 
-    fn decider(&self, _url: &str) -> Result<Arc<dyn Decider>, String> {
+    fn decider(&self, _url: &str, _model_file: &Path) -> Result<Arc<dyn Decider>, String> {
         Ok(Arc::new(Fixed {
             identity: Served {
                 model: "clef-flash".into(),
                 artifact_digest: Some("sha256:test".into()),
+                model_id: None,
             },
         }))
     }

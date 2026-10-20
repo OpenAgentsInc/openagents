@@ -262,7 +262,7 @@ pub const NVIDIA_ROOMY_GB: f64 = 12.0;
 pub const NVIDIA_HEADROOM_GIB: f64 = 1.0;
 
 /// The command that serves on the CPU anyway.
-pub const ALLOW_SLOW: &str = "openagents pylon start --allow-slow --allow-any";
+pub const ALLOW_SLOW: &str = "openagents pylon up --allow-slow --allow-any";
 
 /// Where Clef-Flash runs on `host`. Apple Silicon from 16 GB (packed
 /// weights below 24 GB, a little slower); NVIDIA from 12 GB, or from 8 GB
@@ -742,7 +742,7 @@ pub fn report_with_engine(
                 });
             }
         }
-        _ => warnings.push("no self-check yet; `openagents pylon start` runs one".into()),
+        _ => warnings.push("no self-check yet; `openagents pylon up` runs one".into()),
     }
     conclude(Report {
         ready: false,
@@ -787,7 +787,7 @@ fn conclude(mut report: Report) -> Report {
     if ready {
         if serving.is_none() {
             next.push(if fit.useful {
-                "openagents pylon start --allow-any".into()
+                "openagents pylon up --allow-any".into()
             } else {
                 ALLOW_SLOW.into()
             });
@@ -1140,10 +1140,7 @@ pub(crate) mod tests {
         );
         assert!(r.ready, "{:?}", r.blocks);
         assert!(r.inbound_ports.is_empty());
-        assert_eq!(
-            r.next,
-            vec!["openagents pylon start --allow-any".to_string()]
-        );
+        assert_eq!(r.next, vec!["openagents pylon up --allow-any".to_string()]);
     }
 
     #[test]
