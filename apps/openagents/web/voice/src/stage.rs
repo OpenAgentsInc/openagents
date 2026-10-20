@@ -229,9 +229,13 @@ impl Render for Stage {
                 div()
                     .id("voice-captions")
                     .max_w(px(680.))
-                    .min_h(px(72.))
+                    .w_full()
+                    .h(px(72.))
+                    .overflow_hidden()
+                    .text_center()
                     .text_size(px(18.))
-                    .child(self.view.caption().to_owned()),
+                    .line_height(px(24.))
+                    .child(openagents_veil::caption_tail(self.view.caption(), 160)),
             )
             .child(
                 div()

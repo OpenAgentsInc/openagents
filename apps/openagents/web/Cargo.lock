@@ -5151,6 +5151,7 @@ dependencies = [
  "openagents-gpui-web",
  "openagents-orb",
  "openagents-proto",
+ "openagents-veil",
  "openagents-voice-session",
  "openagents-web-chat-view",
  "openagents-web-client",

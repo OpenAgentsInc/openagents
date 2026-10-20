@@ -21,6 +21,7 @@ openagents-web-client.workspace = true
 openagents-voice-session = { path = "../../crates/voice-session", default-features = false }
 openagents-orb = { path = "../../crates/orb" }
 openagents-proto = { path = "../../crates/proto" }
+openagents-veil = { path = "../../crates/veil" }
 web-time.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
