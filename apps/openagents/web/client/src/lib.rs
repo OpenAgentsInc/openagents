@@ -9,6 +9,8 @@
 
 pub mod cloud_computers;
 pub mod event;
+/// Moving a chat to a cloud computer and back (#12282).
+pub mod moves;
 pub mod types;
 /// Every computer's chats, from the account's registry (#12265).
 pub mod workspace;

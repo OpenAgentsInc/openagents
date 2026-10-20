@@ -36,6 +36,8 @@ mod cloud_computers;
 /// Every computer's chats from the registry (#12265).
 mod computers;
 mod devices;
+/// Moving a computer chat to a cloud computer and back (#12282).
+mod move_sheet;
 /// A new session on a computer (#12266).
 mod new_session;
 
@@ -96,6 +98,8 @@ pub struct ChatApp {
     watching: Option<Task<()>>,
     /// A new session's computer, project, branch, and agent (#12266).
     target: new_session::Target,
+    /// The open move card (#12282).
+    moving: Option<move_sheet::MoveSheet>,
     cloud_computers: cloud_computers::State,
     _registry: Task<()>,
     /// The open chat; `None` is a new chat.
@@ -239,6 +243,7 @@ impl ChatApp {
             computers_loaded: false,
             watching: None,
             target: new_session::Target::default(),
+            moving: None,
             cloud_computers: cloud_computers::State::default(),
             _registry: Task::ready(()),
             current: None,
@@ -359,6 +364,7 @@ impl ChatApp {
         }
         self.current = chat.clone();
         self.watching = None;
+        self.moving = None;
         self.entries.clear();
         self.expanded.clear();
         self.list_state.reset(0);
@@ -1877,6 +1883,7 @@ impl Render for ChatApp {
                     .overflow_hidden()
                     .child(self.render_header(wide, cx))
                     .children(notice)
+                    .children(self.render_move_sheet(cx))
                     .child(transcript)
                     .child(self.render_composer(cx)),
             );

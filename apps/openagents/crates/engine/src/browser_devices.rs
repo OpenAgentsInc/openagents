@@ -67,6 +67,8 @@ pub const ALLOWED: &[&str] = &[
     // A chat on this computer: its transcript (#12266).
     methods::WATCH_DOC_MESSAGES,
     methods::READ_CHAT_WINDOW,
+    // A move's progress (#12282).
+    openagents_rpc::moves::MOVE_STATUS,
 ];
 
 /// The engine methods a browser may call under its grant's run right
@@ -87,6 +89,12 @@ pub const OPERATE: &[&str] = &[
     // A new session's checkout (#12266).
     methods::SWITCH_REF,
     methods::CREATE_WORKTREE,
+    // Moving a chat to a cloud computer and back (#12282).
+    openagents_rpc::moves::PLAN_MOVE,
+    openagents_rpc::moves::APPROVE_MOVE,
+    openagents_rpc::moves::START_MOVE,
+    openagents_rpc::moves::BRING_BACK,
+    openagents_rpc::moves::DISCARD_MOVE,
 ];
 
 /// Parameters a browser never sets: forwarding to another computer under

@@ -158,6 +158,10 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
         methods::LIST_FOLDERS,
         methods::WATCH_DOC_MESSAGES,
         methods::SWITCH_REF,
+        openagents_rpc::moves::PLAN_MOVE,
+        openagents_rpc::moves::APPROVE_MOVE,
+        openagents_rpc::moves::MOVE_STATUS,
+        openagents_rpc::moves::BRING_BACK,
     ] {
         assert_eq!(value(tab.handle(method, json!({})).await)["ran"], method);
     }

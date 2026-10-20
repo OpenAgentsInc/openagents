@@ -624,6 +624,26 @@ impl ChatApp {
                     .into_any_element(),
             );
         }
+        if !meta.archived {
+            let moving = id.clone();
+            let (key, label) = if self.on_cloud(&id) {
+                ("menu-bring-back", "Bring back")
+            } else {
+                ("menu-move-cloud", "Move to a cloud computer")
+            };
+            let back = self.on_cloud(&id);
+            items.push(
+                menu_item(key, "icons/laptop.svg", label)
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        if back {
+                            this.open_bring_back(moving.clone(), cx)
+                        } else {
+                            this.open_move(moving.clone(), cx)
+                        }
+                    }))
+                    .into_any_element(),
+            );
+        }
         let section = id.clone();
         items.push(
             menu_item("menu-section", "icons/folder.svg", "Move to section")
