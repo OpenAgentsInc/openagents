@@ -13206,6 +13206,7 @@ dependencies = [
  "game-lab",
  "github-actions",
  "glam",
+ "gym-leaderboard",
  "hmac 0.12.1",
  "hyper",
  "hyper-util",

@@ -492,6 +492,9 @@ pub struct Config {
     /// moving to `/`. Off by default until the owner confirms; the current
     /// home stays at `/home` either way.
     pub front_door: bool,
+    /// Whether agent pages read the published Gym leaderboard (#12302).
+    /// On in the binary, off for tests.
+    pub gym_results: bool,
     /// `/lander8`'s chat (`--lander8 DIR`, default `/srv/lander8` when it
     /// exists): its WebGPU-only and WebGL2 builds, served under
     /// `/lander8/build/`. Without it, `/lander8` is the Grid, the name, and
@@ -649,6 +652,7 @@ impl Config {
             xp_referees: Vec::new(),
             agent_replies: false,
             front_door: false,
+            gym_results: false,
             lander8: None,
             lander9: None,
             snap: None,

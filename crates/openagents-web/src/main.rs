@@ -254,6 +254,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     config.profile_relays.retain(|relay| relay != "off");
     // Published agents answer mentions and private messages only when asked.
+    config.gym_results = std::env::var("OPENAGENTS_WEB_GYM_RESULTS").map_or(true, |v| v != "off");
     config.front_door = std::env::var("OPENAGENTS_WEB_FRONT_DOOR").is_ok_and(|v| v == "on");
     config.agent_replies = std::env::var("OPENAGENTS_WEB_AGENT_REPLIES").is_ok_and(|v| v == "on");
     // Whose XP awards count on profiles.

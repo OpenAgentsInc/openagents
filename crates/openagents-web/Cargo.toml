@@ -95,6 +95,8 @@ nostr-transport = { path = "../nostr-transport" }
 xp-ledger = { path = "../xp-ledger" }
 # /explore reads plugin listings as the CLI does (src/profiles/explore.rs, #12259).
 plugin-registry = { path = "../plugin-registry" }
+# Gym results on agent pages, verified as the apps verify them (#12302).
+gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"] }
 # /pylons' live field: NIP-PYLON beacons and receipts from the relay,
 # verified and projected (pylon::field). No broker: it links SQLite.
 pylon = { path = "../pylon", default-features = false }

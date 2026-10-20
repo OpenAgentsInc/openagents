@@ -558,11 +558,18 @@ async fn published_page(app: &App, id: &str, headers: &HeaderMap) -> Response {
         .path(path)
         .description(graph.description.clone());
     let live = graph_build(app).is_some();
+    let benchmarks = crate::profiles::gym::section(
+        app,
+        &found.newest.definition.spec.name,
+        found.newest.definition.spec.model.as_deref(),
+    )
+    .await;
     let content = html! {
         (owner)
         @if let Some(evidence) = &evidence {
             (crate::profiles::evidence::sections(evidence))
         }
+        (benchmarks)
         (generic_body(id, &graph, live))
     };
     let (true, Some(fonts)) = (live, graph_fonts(app)) else {
