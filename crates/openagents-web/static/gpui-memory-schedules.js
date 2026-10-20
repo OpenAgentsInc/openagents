@@ -18,7 +18,11 @@ if (entry && navigator.gpu) {
     try { module.mount(fonts, data.page, JSON.stringify({ signedIn: true })); }
     catch (error) { box.remove(); throw error; }
     window.addEventListener("oa-settings-page", event => {
-      history.replaceState(null, "", "/settings?ui=gpui&page=" + encodeURIComponent(event.detail));
+      const page = event.detail;
+      const address = page === "memory" || page === "schedules"
+        ? "/settings/" + page + "?ui=gpui"
+        : "/gpui?ui=gpui&settings=" + encodeURIComponent(page);
+      history.replaceState(null, "", address);
     });
     window.addEventListener("oa-settings-close", () => location.assign("/?ui=gpui"));
     window.addEventListener("error", () => box.remove(), { once: true });
