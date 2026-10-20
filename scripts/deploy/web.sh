@@ -252,6 +252,9 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
     t=$(now)
     smoke=0
     "$ctx/scripts/smoke/staging.sh" || smoke=$?
+    browser_out="$(BROWSER=/usr/bin/true openagents scratch)/gpui-$sha"
+    python3 "$ctx/scripts/smoke/gpui-ready.py" --if-enabled \
+        --out "$browser_out" || smoke=$?
     took smoke "$t"
     took "stage total" "$started"
     rm -rf "$ctx"
