@@ -127,7 +127,8 @@ pub(super) async fn exercise(
             == Some(&format!("{origin}/"))),
         "wrong browser destination"
     );
-    let missing_runtime = openagents_brand::env_var_os("OPENAGENTS_LINK_FIXTURE_MISSING_RUNTIME").is_some();
+    let missing_runtime =
+        openagents_brand::env_var_os("OPENAGENTS_LINK_FIXTURE_MISSING_RUNTIME").is_some();
     let deadline = std::time::Instant::now() + Duration::from_secs(25);
     loop {
         let state = page.read_with(cx, |p, _| p.page.clone());

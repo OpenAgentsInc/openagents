@@ -9,11 +9,11 @@
 //! ([`openagents_rpc::connect_phone`]).
 
 use super::*;
-use std::sync::Arc;
 use openagents_rpc::connect_phone::{
     CANCEL_CONNECT_CODES, CANCEL_REPLACED_AFTER_SECS, CREATE_CONNECT_CODE, CancelConnectCodes,
     ConnectCode, IDLE_STOP_SECS, ROTATE_EVERY_SECS,
 };
+use std::sync::Arc;
 
 pub(crate) const TITLE: &str = "Connect your phone";
 pub(crate) const SCAN_HINT: &str =

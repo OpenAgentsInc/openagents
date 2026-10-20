@@ -145,6 +145,18 @@ pub fn assistant_body(
     toggle: &dyn Fn(String) -> OnClick,
     questions: &mut dyn FnMut(usize, &[UserInputQuestion], bool) -> AnyElement,
 ) -> AnyElement {
+    assistant_body_with_visuals(view, toggle, questions, &mut |_, title, _| {
+        visual_card(title)
+    })
+}
+
+/// Draws recorded visual parts through the host's persistent visual frames.
+pub fn assistant_body_with_visuals(
+    view: TurnView<'_>,
+    toggle: &dyn Fn(String) -> OnClick,
+    questions: &mut dyn FnMut(usize, &[UserInputQuestion], bool) -> AnyElement,
+    visual: &mut dyn FnMut(&str, &str, &str) -> AnyElement,
+) -> AnyElement {
     let mut blocks: Vec<AnyElement> = Vec::new();
     let parts = view.parts;
     let mut ix = 0;
@@ -196,7 +208,7 @@ pub fn assistant_body(
                     ));
                 }
             }
-            MessagePart::Visual { title, .. } => blocks.push(visual_card(title)),
+            MessagePart::Visual { id, title, path } => blocks.push(visual(id, title, path)),
             MessagePart::Input {
                 questions: asked,
                 resolved,
@@ -623,7 +635,7 @@ fn visual_card(title: &str) -> AnyElement {
     info_card(
         "icons/widget.svg",
         title.to_owned(),
-        "Interactive visual. Open it in the desktop app to use it.".into(),
+        "Visual unavailable".into(),
     )
 }
 
