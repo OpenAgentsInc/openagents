@@ -927,3 +927,35 @@ fn admin_entry_is_only_for_admins_and_drive_removal_requires_confirmation() {
         ))
     );
 }
+
+#[test]
+fn account_pages_mount_the_editable_forms_inside_settings() {
+    let mut remote = Remote::default();
+    remote.memory.notes = Load::Ready(vec![]);
+    remote.memory.edit(None);
+    remote.schedules.listed = Load::Ready(schedules::Listed {
+        computers: vec!["test-computer".into()],
+        ..Default::default()
+    });
+    remote.schedules.edit(None);
+    for (selected, field, save) in [
+        (
+            Page::Memory,
+            "memory-body",
+            Intent::Memory(memory::Action::Save),
+        ),
+        (
+            Page::Schedules,
+            "schedule-prompt",
+            Intent::Schedules(schedules::Action::Save),
+        ),
+    ] {
+        let root = page(selected, &Prefs::default(), &remote, &Paints::default());
+        assert!(matches!(
+            find(&root, field).unwrap().element,
+            Element::Field { .. }
+        ));
+        assert!(intents(&root).contains(&save));
+        View::new_v3("settings", 1, root).validate().unwrap();
+    }
+}

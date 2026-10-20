@@ -157,6 +157,7 @@ mod room_tokens;
 pub mod sales_remote;
 #[doc(hidden)]
 pub mod settings;
+mod settings_memory_schedules;
 mod ship_lab;
 pub mod shutdown;
 #[doc(hidden)]
@@ -845,6 +846,7 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .merge(terminal_connect::routes())
         .merge(account::routes())
         .merge(settings::routes())
+        .merge(settings_memory_schedules::routes())
         .merge(sign_in_keys::routes())
         .merge(agent_accounts::routes())
         .merge(vault::routes())

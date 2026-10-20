@@ -23,9 +23,11 @@ pub mod cloud;
 pub mod earn;
 /// A Lab document (#12333).
 pub mod lab;
+pub mod memory;
 /// Projects (#12331).
 pub mod projects;
 pub mod providers;
+pub mod schedules;
 pub mod shortcuts;
 /// Traces (#12329).
 pub mod traces;
@@ -57,10 +59,12 @@ pub enum Page {
     Earn,
     /// Your ID: the account's keys, sign out, and delete (#12290).
     Account,
+    Memory,
+    Schedules,
 }
 
 impl Page {
-    pub const ALL: [Page; 11] = [
+    pub const ALL: [Page; 13] = [
         Page::General,
         Page::Providers,
         Page::Claude,
@@ -72,6 +76,8 @@ impl Page {
         Page::Archived,
         Page::Earn,
         Page::Account,
+        Page::Memory,
+        Page::Schedules,
     ];
 
     /// The desktop's nav label for the page.
@@ -88,6 +94,8 @@ impl Page {
             Page::Archived => "Archived sessions",
             Page::Earn => "Earn",
             Page::Account => "Your ID",
+            Page::Memory => "Memory",
+            Page::Schedules => "Schedules",
         }
     }
 
@@ -106,6 +114,8 @@ impl Page {
             Page::Archived => "archived",
             Page::Earn => "earn",
             Page::Account => "account",
+            Page::Memory => "memory",
+            Page::Schedules => "schedules",
         }
     }
 
@@ -359,6 +369,8 @@ pub enum Intent {
     /// CAD documents and configurators (#12334).
     Cad(cad::Action),
     Cloud(cloud::Action),
+    Memory(memory::Action),
+    Schedules(schedules::Action),
 }
 
 /// The theme's colors for the forms, which the host reads from its theme
@@ -471,6 +483,8 @@ pub struct Remote {
     pub earn: earn::State,
     /// Providers: the chosen computer's agents and accounts (#12283).
     pub providers: providers::State,
+    pub memory: memory::State,
+    pub schedules: schedules::State,
     /// The browser lets the page show notifications (`Notification`
     /// permission), or `None` when it asks first.
     pub notifications_allowed: Option<bool>,
@@ -486,6 +500,8 @@ pub struct Remote {
 /// The view of `page`.
 pub fn page(page: Page, prefs: &Prefs, remote: &Remote, paints: &Paints) -> Node<Intent> {
     let body = match page {
+        Page::Memory => memory::page(&remote.memory, paints),
+        Page::Schedules => schedules::page(&remote.schedules, paints),
         Page::General => general(prefs, remote, paints),
         Page::Appearance => appearance::page(&prefs.appearance, remote, paints),
         Page::Notifications => notifications(prefs, remote, paints),

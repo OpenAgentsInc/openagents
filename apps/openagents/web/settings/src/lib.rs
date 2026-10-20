@@ -73,6 +73,7 @@ pub fn mount(fonts: js_sys::Array, page: String, shared: String) {
         .with_http_client(Arc::new(FetchHttpClient::new()))
         .run_embedded(move |cx| {
             openagents_web_chat_view::install(cx);
+            openagents_web_chat_view::composer::bind_keys(cx);
             let bounds = gpui::Bounds::centered(None, size(px(1280.), px(820.)), cx);
             let opened = cx.open_window(
                 WindowOptions {
