@@ -239,6 +239,7 @@ fn catalog() -> Vec<ToolDef> {
                 "properties": {
                     "project": { "type": "string", "description": "Project id, path, or name. Belongs to a specific device; when device is supplied, search only there. Optional." },
                     "device": { "type": "string", "description": "Host device (id or name). With project, it must own that project. Without either, use the local engine." },
+                    "place": { "type": "string", "enum": ["auto", "here"], "default": "auto", "description": "With project and no device or cwd: auto puts the chat on an idle always-on computer that has the project, else here while this computer has room, and spreads a batch; here keeps it on this computer (work that needs its files, devices, screen, or apps). The result's placement says where and why." },
                     "harness": { "type": "string", "description": "Harness id (see list_harnesses with the chosen device). Defaults to claude-code when available." },
                     "model": { "type": "string", "description": "Model id from list_models on the chosen device. Omit for the harness default." },
                     "reasoning": { "type": "string", "description": "Reasoning level the model supports (e.g. low, medium, high, max)." },
@@ -725,6 +726,8 @@ struct PendingTurn {
 struct CreateChatArgs {
     project: Option<String>,
     device: Option<String>,
+    /// `auto` (the default) or `here` (#12201).
+    place: Option<String>,
     harness: Option<String>,
     model: Option<String>,
     reasoning: Option<String>,
@@ -1087,11 +1090,13 @@ impl Tools {
             (1..=MAX_BATCH).contains(&args.requests.len()),
             "requests must contain between 1 and {MAX_BATCH} items"
         );
+        // A batch spreads over the computers it places on (#12201).
+        let spread = &std::sync::Mutex::new(crate::placement::Spread::new());
         let results = futures::future::join_all(args.requests.into_iter().enumerate().map(
             |(index, args)| async move {
                 let result = if create {
                     match serde_json::from_value(args) {
-                        Ok(args) => self.create_chat(args).await,
+                        Ok(args) => self.create_chat_in(args, Some(spread)).await,
                         Err(error) => Err(error.into()),
                     }
                 } else {
@@ -1340,6 +1345,175 @@ impl Tools {
     }
 
     async fn create_chat(&self, args: CreateChatArgs) -> anyhow::Result<Value> {
+        self.create_chat_in(args, None).await
+    }
+
+    /// Where a new chat runs (#12201): the device and project the caller
+    /// named, else the computer [`crate::placement::place`] chooses among
+    /// those that have the project, with why.
+    async fn chat_target(
+        &self,
+        args: &CreateChatArgs,
+        spread: Option<&std::sync::Mutex<crate::placement::Spread>>,
+    ) -> anyhow::Result<(Option<Space>, String, Option<crate::placement::Placed>)> {
+        use crate::placement::{Computer, Need, Placed};
+        let need = match args.place.as_deref().map(str::trim) {
+            None | Some("" | "auto") => Need::Auto,
+            Some("here") => Need::Here,
+            Some(other) => anyhow::bail!("place is auto or here, not {other:?}"),
+        };
+        let project = args
+            .project
+            .as_deref()
+            .map(str::trim)
+            .filter(|p| !p.is_empty());
+        let named_device = args
+            .device
+            .as_deref()
+            .map(str::trim)
+            .filter(|d| !d.is_empty());
+        let has_cwd = args.cwd.as_deref().is_some_and(|c| !c.trim().is_empty());
+        let Some(key) = project.filter(|_| named_device.is_none() && !has_cwd) else {
+            let (space, device) = self
+                .openagents
+                .resolve_target(args.project.as_deref(), args.device.as_deref())
+                .await?;
+            let placed = named_device.map(|_| Placed {
+                id: device.clone(),
+                name: device.clone(),
+                why: "you named it".into(),
+            });
+            return Ok((space, device, placed));
+        };
+        let (spaces, devices, local) = tokio::try_join!(
+            self.openagents.spaces(),
+            self.openagents.devices(),
+            self.openagents.local_device_id()
+        )?;
+        // The project on each computer: the key itself, or the same project
+        // (by name) on the others when the key names one computer's.
+        let twin = spaces
+            .iter()
+            .find(|s| s.id == key)
+            .map(|s| s.display_name().to_owned());
+        let mut candidates: Vec<Space> = Vec::new();
+        for device in &devices {
+            if need == Need::Here && device.id != local {
+                continue;
+            }
+            let theirs: Vec<Space> = spaces
+                .iter()
+                .filter(|s| s.device_id == device.id)
+                .cloned()
+                .collect();
+            let found = crate::openagents::resolve_space_in(&theirs, key)
+                .ok()
+                .or_else(|| {
+                    let name = twin.as_deref()?;
+                    crate::openagents::resolve_space_in(&theirs, name).ok()
+                });
+            if let Some(space) = found {
+                candidates.push(space);
+            }
+        }
+        if candidates.is_empty() {
+            // Nothing matched per computer: the usual resolution and its error.
+            let (space, device) = self.openagents.resolve_target(Some(key), None).await?;
+            return Ok((Some(space).flatten(), device, None));
+        }
+        let sessions = self.openagents.sessions().await.unwrap_or_default();
+        let harness = args
+            .harness
+            .as_deref()
+            .map(str::trim)
+            .filter(|h| !h.is_empty());
+        let now = chrono::Utc::now();
+        let mut computers = Vec::new();
+        for space in &candidates {
+            let Some(device) = devices.iter().find(|d| d.id == space.device_id) else {
+                continue;
+            };
+            let is_local = device.id == local;
+            let always_on = !is_local
+                && (matches!(
+                    device.origin,
+                    openagents_proto::DeviceOrigin::ManagedCloud { .. }
+                ) || device.platform.to_ascii_lowercase().contains("linux"));
+            let online = is_local
+                || device
+                    .last_seen_at
+                    .is_some_and(|at| now.signed_duration_since(at).num_seconds() <= 120);
+            // An always-on computer must have the agent runtime too.
+            let fits = if is_local || !always_on || !online {
+                true
+            } else {
+                match self.openagents.harnesses_on(Some(&device.id)).await {
+                    Ok(harnesses) => match harness {
+                        Some(raw) => parse_enum::<HarnessId>("harness", raw)
+                            .is_ok_and(|id| harnesses.iter().any(|h| h.id == id && h.available())),
+                        None => default_harness(&harnesses).is_ok(),
+                    },
+                    Err(_) => false,
+                }
+            };
+            computers.push(Computer {
+                id: device.id.clone(),
+                name: device.name.clone(),
+                local: is_local,
+                always_on,
+                online,
+                fits,
+                working: sessions
+                    .iter()
+                    .filter(|s| s.device_id == device.id && s.status == SessionStatus::Working)
+                    .count(),
+            });
+        }
+        let remote = computers
+            .iter()
+            .any(|c| !c.local && c.always_on && c.online);
+        let budget = if remote && !cfg!(test) {
+            let home = std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_default();
+            tokio::task::spawn_blocking(move || crate::placement::local_budget(&home))
+                .await
+                .unwrap_or_default()
+        } else {
+            crate::placement::Budget::default()
+        };
+        let placed = {
+            let mut own = crate::placement::Spread::new();
+            let mut shared = spread.map(|s| s.lock().unwrap_or_else(|e| e.into_inner()));
+            let spread = shared.as_deref_mut().unwrap_or(&mut own);
+            crate::placement::place(&need, &computers, &budget, spread)
+        };
+        let placed = match placed {
+            Some(placed) => placed,
+            None => {
+                // Only another computer that isn't always on has the project.
+                let [only] = computers.as_slice() else {
+                    anyhow::bail!(
+                        "{} computers have project {key:?}; name one with device",
+                        computers.len()
+                    );
+                };
+                Placed {
+                    id: only.id.clone(),
+                    name: only.name.clone(),
+                    why: format!("only {} has the project", only.name),
+                }
+            }
+        };
+        let space = candidates.into_iter().find(|s| s.device_id == placed.id);
+        Ok((space, placed.id.clone(), Some(placed)))
+    }
+
+    async fn create_chat_in(
+        &self,
+        args: CreateChatArgs,
+        spread: Option<&std::sync::Mutex<crate::placement::Spread>>,
+    ) -> anyhow::Result<Value> {
         // Every chat an agent creates is standalone and listed in Sessions.
         // The chat it was created from is reported back, never stored as a
         // parent (older `kind` and `parent` arguments are ignored).
@@ -1349,10 +1523,7 @@ impl Tools {
             .chat_id
             .clone()
             .filter(|origin| !openagents_proto::voice::is_orchestrator_chat(origin));
-        let (space, device_id) = self
-            .openagents
-            .resolve_target(args.project.as_deref(), args.device.as_deref())
-            .await?;
+        let (space, device_id, placement) = self.chat_target(&args, spread).await?;
         let harnesses = self.openagents.harnesses_on(Some(&device_id)).await?;
         let harness = match args.harness.as_deref() {
             Some(raw) => {
@@ -1460,6 +1631,11 @@ impl Tools {
             "title": args.title,
             "createdFrom": origin,
         });
+        // Where it runs and why, so the owner can see it (#12201).
+        if let Some(placed) = &placement {
+            result["placement"] =
+                json!({"deviceId": placed.id, "device": placed.name, "why": placed.why});
+        }
         if let Some(prompt) = args.prompt.filter(|p| !p.trim().is_empty()) {
             // The row may not have folded into WatchChats yet; build the
             // chat locally from what we just wrote rather than re-reading.
@@ -2389,12 +2565,7 @@ mod tests {
                 methods::READ_CHAT_WINDOW => {
                     let chat = params["chatId"].as_str().unwrap_or_default();
                     let entries: Vec<Value> = match self.live_transcripts.as_ref() {
-                        Some(live) => live
-                            .lock()
-                            .unwrap()
-                            .get(chat)
-                            .cloned()
-                            .unwrap_or_default(),
+                        Some(live) => live.lock().unwrap().get(chat).cloned().unwrap_or_default(),
                         None => vec![
                             json!({ "id": "u1", "role": "user", "createdAt": 1, "deviceId": "dev-local",
                               "parts": [{ "kind": "text", "id": "t", "text": "hi" }] }),
@@ -2407,7 +2578,9 @@ mod tests {
                     let offset = params["offset"].as_u64().unwrap_or(0) as usize;
                     let end = entries.len().saturating_sub(offset);
                     let start = end.saturating_sub(limit);
-                    RpcReply::Value(json!({ "total": entries.len(), "entries": entries[start..end] }))
+                    RpcReply::Value(
+                        json!({ "total": entries.len(), "entries": entries[start..end] }),
+                    )
                 }
                 methods::WATCH_DOC_MESSAGES if self.live_transcripts.is_some() => {
                     let chat = params["chatId"].as_str().unwrap_or_default();
@@ -3720,21 +3893,29 @@ mod tests {
         let world = Arc::new(World::default());
         let tools = tools(world.clone(), Origin::default());
         for args in [
-            json!({"project":"comet"}),
-            json!({"project":"/repo/comet"}),
             json!({"project":"space-1", "device":"Worker"}),
             json!({"project":"missing", "device":"Worker"}),
             json!({"device":"missing"}),
+            json!({"project":"comet", "place":"elsewhere"}),
         ] {
             let error = tools.call("create_chat", args).await.unwrap_err();
             assert!(world.writes.lock().unwrap().is_empty(), "{error}");
         }
-        let error = tools
-            .call("create_chat", json!({"project":"/repo/comet"}))
-            .await
-            .unwrap_err();
-        for candidate in ["space-1", "space-remote", "dev-local", "dev-remote"] {
-            assert!(error.contains(candidate), "{error}");
+        // A project on several computers is placed (#12201): the other one
+        // isn't an always-on computer, so this one takes it and says why.
+        for project in ["comet", "/repo/comet"] {
+            let placed = tools
+                .call("create_chat", json!({"project": project}))
+                .await
+                .unwrap();
+            assert_eq!(placed["deviceId"], "dev-local");
+            assert_eq!(placed["project"]["id"], "space-1");
+            assert!(
+                placed["placement"]["why"]
+                    .as_str()
+                    .is_some_and(|why| why.contains("this computer has room")),
+                "{placed}"
+            );
         }
         for project in ["comet", "/repo/comet", "space-remote"] {
             let created = tools

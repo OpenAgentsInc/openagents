@@ -7,6 +7,10 @@
 //! tool (`openagents_mcp`), the same path Foreman's `create_chat` takes, so
 //! the chat is a standalone session listed in `list_chats` and Sessions.
 //! It prints the chat's ID and returns; the chat runs in the app, not here.
+//!
+//! Without `--device` or `--here`, the app places the chat (#12201): an idle
+//! always-on computer that has the project, else this one while it has room
+//! (`openagents_mcp::placement`). The receipt says where and why.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,6 +35,8 @@ struct Options {
     model: Option<String>,
     title: Option<String>,
     port: Option<u16>,
+    /// `--here`: the work needs this computer.
+    here: bool,
 }
 
 fn parse(words: &[String]) -> Result<Options, String> {
@@ -38,7 +44,7 @@ fn parse(words: &[String]) -> Result<Options, String> {
         words,
         "chat open",
         &["project", "device", "harness", "model", "title", "ipc-port"],
-        &[],
+        &["here"],
         0,
         usize::MAX,
     )?;
@@ -83,6 +89,7 @@ fn parse(words: &[String]) -> Result<Options, String> {
         model: text("model"),
         title: text("title"),
         port,
+        here: args.switch("here"),
     })
 }
 
@@ -98,11 +105,15 @@ fn project_for(spaces: &[Space], device: &str, cwd: &Path) -> Option<String> {
         .map(|space| space.id.clone())
 }
 
-/// The `create_chat` arguments: the device is always named, so a project
-/// that exists on several computers resolves to the one asked for (this
-/// computer by default).
+/// The `create_chat` arguments. The device is named when `--device` or
+/// `--here` asked for one; otherwise, with a project, the app places the
+/// chat (#12201), and without one it runs on this computer.
 fn request(options: &Options, device: &str, project: Option<&str>) -> Value {
-    let mut args = json!({ "device": device });
+    let mut args = if options.device.is_some() || options.here || project.is_none() {
+        json!({ "device": device })
+    } else {
+        json!({ "place": "auto" })
+    };
     for (key, value) in [
         ("project", project),
         ("harness", options.harness.as_deref()),
@@ -188,12 +199,20 @@ fn render(value: &Value, computer: &str) -> String {
         Some(name) => format!("in {name}"),
         None => "with no project".to_owned(),
     };
+    let placed = value["placement"]["device"].as_str();
+    let computer = placed.unwrap_or(computer);
     let mut lines = vec![
         id.to_owned(),
         format!(
             "Opened an app chat {place} on {computer}. It shows in the app's Sessions, on your phone, and to Foreman."
         ),
     ];
+    if let Some(why) = value["placement"]["why"]
+        .as_str()
+        .filter(|_| placed.is_some())
+    {
+        lines.push(format!("It runs there because {why}."));
+    }
     if value.get("sent").is_some() {
         lines.push("Your brief is its first message; it is working on it now.".into());
     } else {
@@ -246,7 +265,15 @@ mod tests {
         };
         assert_eq!(
             request(&options, "dev-1", Some("space-1")),
-            json!({"device": "dev-1", "project": "space-1", "model": "m", "prompt": "brief"})
+            json!({"place": "auto", "project": "space-1", "model": "m", "prompt": "brief"})
+        );
+        let here = Options {
+            here: true,
+            ..Options::default()
+        };
+        assert_eq!(
+            request(&here, "dev-1", Some("space-1")),
+            json!({"device": "dev-1", "project": "space-1"})
         );
         assert_eq!(
             request(&Options::default(), "dev-1", None),
@@ -278,5 +305,14 @@ mod tests {
         assert!(text.starts_with("c-1\n"));
         assert!(text.contains("in openagents"));
         assert!(oa_copy::violations(&text, &[]).is_empty());
+        let placed = json!({"chatId": "c-2", "project": {"name": "openagents"},
+            "placement": {"device": "oa-agent-host-1", "why": "oa-agent-host-1 is an always-on computer with the project and nothing running"}});
+        let text = render(&placed, "this computer");
+        assert!(text.contains("on oa-agent-host-1."), "{text}");
+        assert!(
+            text.contains("It runs there because oa-agent-host-1 is an always-on"),
+            "{text}"
+        );
+        assert!(oa_copy::violations(&text, &[]).is_empty(), "{text}");
     }
 }

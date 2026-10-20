@@ -53,6 +53,42 @@ impl Target {
     }
 }
 
+/// Where `chat work` without `--on` runs (#12201), by the placement policy
+/// app chats share (`openagents_mcp::placement`): on the GCE pool when
+/// `openagents cloud up` granted it, so this computer stays free and the
+/// builds share the cloud compile cache; else here. Over its budget with no
+/// pool, it still runs here and says so. Returns the target and why.
+pub(super) fn auto_target(
+    pool_granted: bool,
+    budget: &openagents_mcp::placement::Budget,
+) -> (Target, String) {
+    use openagents_mcp::placement::{Computer, Need, Spread, place};
+    let computer = |id: &str, local: bool| Computer {
+        id: id.to_owned(),
+        name: if local {
+            "this computer"
+        } else {
+            "the GCE pool"
+        }
+        .to_owned(),
+        local,
+        always_on: !local,
+        online: true,
+        fits: true,
+        working: 0,
+    };
+    let mut computers = vec![computer("here", true)];
+    if pool_granted {
+        computers.push(computer("gce", false));
+    }
+    let placed = place(&Need::Auto, &computers, budget, &mut Spread::new());
+    match placed {
+        Some(placed) if placed.id == "gce" => (Target::Gce, placed.why),
+        Some(placed) => (Target::Here, placed.why),
+        None => (Target::Here, "this computer has room".to_owned()),
+    }
+}
+
 /// The placement of a run on `computer` under the operator's grant `grant`
 /// (revocation epoch `epoch`) for `repository`.
 pub(super) fn granted(computer: &str, grant: String, epoch: u64, repository: &str) -> Placement {
@@ -118,6 +154,40 @@ pub(super) fn stamp_ended(record: &mut serde_json::Value, message: &str) {
 
 pub(super) fn microusd(dollars: f64) -> u64 {
     (dollars * 1_000_000.0).round().max(0.0) as u64
+}
+
+#[cfg(test)]
+mod auto_tests {
+    use super::*;
+    use openagents_mcp::placement::Budget;
+
+    #[test]
+    fn work_without_on_goes_to_a_granted_pool_else_stays_here() {
+        let roomy = Budget {
+            load: Some(2.0),
+            cores: 18,
+            free_disk_gib: Some(300.0),
+            builds: Some(0),
+        };
+        let (target, why) = auto_target(true, &roomy);
+        assert_eq!(target, Target::Gce);
+        assert!(
+            why.contains("the GCE pool is an always-on computer"),
+            "{why}"
+        );
+        let (target, _) = auto_target(false, &roomy);
+        assert_eq!(target, Target::Here);
+        let full = Budget {
+            free_disk_gib: Some(90.0),
+            ..roomy
+        };
+        let (target, why) = auto_target(false, &full);
+        assert_eq!(target, Target::Here);
+        assert!(why.contains("over its budget (90 GiB free"), "{why}");
+        // An explicit --on is never second-guessed: it parses as asked.
+        assert_eq!(Target::parse(Some("here")).unwrap(), Target::Here);
+        assert_eq!(Target::parse(Some("archil")).unwrap(), Target::Archil);
+    }
 }
 
 #[cfg(test)]

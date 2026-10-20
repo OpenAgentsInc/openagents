@@ -61,6 +61,29 @@ enum Told {
     },
 }
 
+/// Where `chat work` without `--on` runs (#12201), said on stderr: the GCE
+/// pool when it is granted and Codex can run there, else this computer.
+fn auto_target(output: &Output) -> super::placement::Target {
+    if cfg!(test) {
+        return super::placement::Target::Here;
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    let budget = openagents_mcp::placement::local_budget(&home);
+    let pool =
+        coder_cloud::pool::Pool::granted().is_ok() && super::boat::codex_chatgpt_login().is_ok();
+    let (target, why) = super::placement::auto_target(pool, &budget);
+    let place = match target {
+        super::placement::Target::Gce => "the GCE pool (`--on gce`)",
+        _ => "this computer",
+    };
+    if !output.json() {
+        eprintln!("chat work: runs on {place} because {why}. Pass --on to choose.");
+    }
+    target
+}
+
 /// `chat work`.
 pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     if let Some(run) = args.option("resume-from") {
@@ -72,7 +95,10 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             Failure::Usage("`chat work` needs --issues NUMBERS or --issues LABEL".into())
         })?
         .to_owned();
-    let target = super::placement::Target::parse(args.option("on")).map_err(Failure::Usage)?;
+    let target = match args.option("on") {
+        Some(on) => super::placement::Target::parse(Some(on)).map_err(Failure::Usage)?,
+        None => auto_target(output),
+    };
     let on_boat = target == super::placement::Target::Boat;
     let engine_fallback = args.switch("engine-fallback");
     // The briefed agent is the default engine (#11258); `--engine bare`

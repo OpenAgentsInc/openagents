@@ -41,6 +41,7 @@ pub mod grant_machine;
 mod machine_action;
 #[cfg(unix)]
 pub mod machine_status;
+pub mod placement;
 mod inbox;
 mod jsonrpc;
 pub mod pylon;

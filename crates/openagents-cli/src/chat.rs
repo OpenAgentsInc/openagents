@@ -74,7 +74,7 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         and its events stream here. --no-run only shows the offer instead.
         `openagents settings` chooses the providers, whether Coder asks
         first, the project folders, and what its commands may reach.
-  open [BRIEF] [--project PROJECT] [--device DEVICE] [--harness HARNESS] [--model MODEL] [--title TITLE] [--ipc-port PORT]
+  open [BRIEF] [--project PROJECT] [--device DEVICE] [--here] [--harness HARNESS] [--model MODEL] [--title TITLE] [--ipc-port PORT]
         Start a chat in the OpenAgents app on this computer and print its
         ID. It is an app chat, like one started in the app: it shows in the
         app's Sessions, on your phone, on the website, and in Foreman's
@@ -82,9 +82,12 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         stdin) is its first message; without one it waits for a message.
         --project picks the app project by name, path, or id; without it,
         the project on this computer whose folder holds the current
-        directory, else none. --device starts it on another of your
-        computers. Use it to hand off from a terminal session instead of
-        coordinating issue work there (AGENTS.md).
+        directory, else none. With a project, the app places the chat: an
+        idle always-on computer that has the project, else this one while it
+        has room; it prints where and why. --device starts it on a computer
+        you name, and --here keeps it on this one (work that needs its
+        files, devices, or screen). Use it to hand off from a terminal
+        session instead of coordinating issue work there (AGENTS.md).
   shell-result -
         Record one exact approved shell result on its existing thread.
   shell-request -
