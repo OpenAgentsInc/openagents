@@ -35,7 +35,7 @@ use axum::extract::{Path as UrlPath, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
-use maud::{DOCTYPE, Markup, html};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
 
 use crate::App;
@@ -60,7 +60,8 @@ pub(crate) const GPUI_CHAT_START: &str = "start.js";
 /// only, and compiling WebAssembly. GPUI styles its canvas and its text
 /// field through the CSSOM, which `style-src` doesn't govern.
 pub(crate) const GPUI_CHAT_POLICY: &str = "default-src 'none'; style-src 'self'; \
-img-src 'self'; font-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; \
+img-src 'self'; font-src 'self'; media-src 'self'; frame-src 'self'; \
+script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; \
 base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// The fonts may be cached for a day: their names change with the faces.
@@ -78,6 +79,96 @@ pub(crate) fn routes() -> Router<App> {
         .route(SHELL_CSS_PATH, get(shell_css))
         .route("/gpui/build/{file}", get(build_file))
         .route("/gpui/build/fonts/{file}", get(font_file))
+        .route(SIDE_PATH, get(side))
+        .route(FILES_PATH, get(files))
+        .route(TEXT_PATH, get(text))
+}
+
+/// The side panel's live part: what the open chat waits on (#12223).
+const SIDE_PATH: &str = "/gpui/side";
+/// The side panel's "Send with files" composer.
+const FILES_PATH: &str = "/gpui/side/files";
+/// The text view: the open chat as the HTML chat draws it (#12220).
+const TEXT_PATH: &str = "/gpui/text";
+/// The event the start script sends when the canvas opens another chat.
+const CHAT_EVENT: &str = "oa-chat";
+
+/// The chat a fragment request is for: `?chat=`, else the page's own
+/// address, which HTMX sends as `HX-Current-URL` (`/chat/{id}` or
+/// `/gpui/chat/{id}`). `None` for a new chat.
+fn open_chat(headers: &HeaderMap, query: Option<&str>) -> Option<String> {
+    let named = query.and_then(|query| {
+        query.split('&').find_map(|pair| {
+            let (key, value) = pair.split_once('=')?;
+            (key == "chat").then(|| value.to_owned())
+        })
+    });
+    let id = named.or_else(|| {
+        let url = headers.get("hx-current-url")?.to_str().ok()?;
+        let path = url
+            .split_once("://")
+            .map_or(url, |(_, rest)| rest.find('/').map_or("", |at| &rest[at..]));
+        let path = path.split(['?', '#']).next().unwrap_or_default();
+        let id = path
+            .strip_prefix(GPUI_CHAT_PATH)
+            .unwrap_or(path)
+            .strip_prefix("/chat/")?;
+        Some(id.trim_end_matches('/').to_owned())
+    })?;
+    crate::chat_store::valid_id(&id).then_some(id)
+}
+
+/// A fragment for the open chat: `draw`'s markup, or nothing for a new
+/// chat or one this person can't read.
+async fn fragment<F, Fut>(app: &App, headers: &HeaderMap, query: Option<&str>, draw: F) -> Response
+where
+    F: FnOnce(crate::chat_store::Conversation) -> Fut,
+    Fut: std::future::Future<Output = Markup>,
+{
+    let markup = match open_chat(headers, query) {
+        Some(id) => match super::chat::load(app, headers, &id).await {
+            Ok(loaded) => draw(loaded.conversation).await,
+            Err(_) => html! {},
+        },
+        None => html! {},
+    };
+    crate::chat_html::protect(markup.into_response())
+}
+
+async fn side(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    fragment(&app, &headers, query.as_deref(), |chat| {
+        let (app, headers) = (app.clone(), headers.clone());
+        async move { super::chat::gpui_side(&app, &headers, &chat).await }
+    })
+    .await
+}
+
+async fn files(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    fragment(&app, &headers, query.as_deref(), |chat| {
+        let (app, headers) = (app.clone(), headers.clone());
+        async move { super::chat::gpui_files(&app, &headers, &chat).await }
+    })
+    .await
+}
+
+async fn text(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    fragment(&app, &headers, query.as_deref(), |chat| {
+        let (app, headers) = (app.clone(), headers.clone());
+        async move { super::chat::gpui_text(&app, &headers, &chat).await }
+    })
+    .await
 }
 
 /// The build directory, when it holds the glue, the module and the start
@@ -354,7 +445,10 @@ fn shell(page: &Shell<'_>) -> Markup {
                 meta name="openagents-signed-in" content=(if signed_in { "1" } else { "0" });
                 title { (title) " \u{b7} OpenAgents" }
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
+                (PreEscaped(crate::theme::style_tag()))
                 link rel="stylesheet" href=(SHELL_CSS_PATH);
+                (PreEscaped(crate::theme::script_tags()))
+                (crate::chat_html::fragment_head())
                 link rel="modulepreload" href=(super::gpui_build::url(build, BUILD_PATH, GPUI_CHAT_GLUE));
                 link rel="preload" as="fetch" crossorigin="anonymous" href=(super::gpui_build::url(build, BUILD_PATH, GPUI_CHAT_WASM));
                 @if let Some(fonts) = fonts { (fonts) }
@@ -389,6 +483,26 @@ fn shell(page: &Shell<'_>) -> Markup {
                             }
                         }
                     }
+                }
+                // What the canvas doesn't draw yet, as the HTML chat draws
+                // it (#12223): read again when the canvas opens another
+                // chat, and every few seconds.
+                aside #gpui-side .g-side-layer aria-label="Chat actions" {
+                    div #gpui-side-live hx-get=(SIDE_PATH)
+                        hx-trigger={ "load, " (CHAT_EVENT) " from:window, every 6s" } {}
+                    div #gpui-side-files hx-get=(FILES_PATH)
+                        hx-trigger={ "load, " (CHAT_EVENT) " from:window" } {}
+                }
+                // The text view (#12220): the open chat's text, live, for
+                // screen readers, links, and the browser's find. Cmd+F or
+                // Ctrl+F shows it; it stays readable to assistive
+                // technology while hidden.
+                section #gpui-text .g-text aria-label="Chat text" {
+                    div .g-text-bar {
+                        button #gpui-text-toggle .g-text-toggle type="button" aria-expanded="false" { "Show the chat as text" }
+                    }
+                    div #gpui-text-body hx-get=(TEXT_PATH)
+                        hx-trigger={ "load, " (CHAT_EVENT) " from:window" } {}
                 }
                 script type="module" src=(super::gpui_build::url(build, BUILD_PATH, GPUI_CHAT_START)) {}
             }
@@ -554,6 +668,61 @@ mod tests {
         assert!(html.contains("name=\"openagents-signed-in\" content=\"0\""));
         assert!(html.contains("class=\"g-new\" href=\"/\""));
         assert!(html.contains("href=\"/chat/c1\""));
+    }
+
+    #[test]
+    fn fragments_name_the_open_chat_from_the_page_address() {
+        let id = "5e1f0c3a-7d2b-4c4e-9a1b-000000000001";
+        let mut headers = HeaderMap::new();
+        assert_eq!(open_chat(&headers, None), None);
+        headers.insert(
+            "hx-current-url",
+            HeaderValue::from_str(&format!("https://openagents.com/chat/{id}?ui=gpui")).unwrap(),
+        );
+        assert_eq!(open_chat(&headers, None).as_deref(), Some(id));
+        headers.insert(
+            "hx-current-url",
+            HeaderValue::from_str(&format!("http://127.0.0.1:4300/gpui/chat/{id}/")).unwrap(),
+        );
+        assert_eq!(open_chat(&headers, None).as_deref(), Some(id));
+        headers.insert(
+            "hx-current-url",
+            HeaderValue::from_static("https://openagents.com/"),
+        );
+        assert_eq!(open_chat(&headers, None), None);
+        headers.insert(
+            "hx-current-url",
+            HeaderValue::from_static("https://openagents.com/chat/../settings"),
+        );
+        assert_eq!(open_chat(&headers, None), None);
+        assert_eq!(
+            open_chat(&headers, Some(&format!("chat={id}"))).as_deref(),
+            Some(id)
+        );
+    }
+
+    #[test]
+    fn the_shell_carries_the_side_panel_and_the_text_view() {
+        let rows = rows();
+        let html = shell(&Shell {
+            title: "Chat",
+            csrf: "x",
+            rows: &rows,
+            current: None,
+            regular: "/new?ui=html",
+            base: "",
+            signed_in: true,
+            fonts: None,
+            build: None,
+            first: None,
+        })
+        .into_string();
+        assert!(html.contains("id=\"gpui-side-live\" hx-get=\"/gpui/side\""));
+        assert!(html.contains("id=\"gpui-side-files\" hx-get=\"/gpui/side/files\""));
+        assert!(html.contains("id=\"gpui-text-body\" hx-get=\"/gpui/text\""));
+        assert!(html.contains("oa-chat from:window"));
+        assert!(html.contains("src=\"/static/htmx.min.js\""));
+        assert!(!html.contains("chat-start.js"));
     }
 
     fn cookie(value: &str) -> HeaderMap {

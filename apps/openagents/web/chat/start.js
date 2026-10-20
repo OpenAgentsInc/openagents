@@ -143,6 +143,45 @@ function start() {
     });
 }
 
+// The side panel and the text view follow the open chat: the canvas moves
+// between chats with history.pushState, and Back and Forward fire popstate;
+// either tells the page's fragments (`oa-chat`) to read again.
+function chatChanged() {
+  window.dispatchEvent(new Event("oa-chat"));
+}
+var pushState = history.pushState;
+history.pushState = function () {
+  var result = pushState.apply(this, arguments);
+  chatChanged();
+  return result;
+};
+window.addEventListener("popstate", chatChanged);
+
+// The text view: its button, Cmd+F or Ctrl+F (the browser's find then reads
+// the chat's text there), and Escape to close it.
+var textView = document.getElementById("gpui-text");
+var textToggle = document.getElementById("gpui-text-toggle");
+function showText(open) {
+  if (!textView || !textToggle) {
+    return;
+  }
+  textView.classList.toggle("g-open", open);
+  textToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  textToggle.textContent = open ? "Back to the chat" : "Show the chat as text";
+}
+if (textToggle) {
+  textToggle.addEventListener("click", function () {
+    showText(!textView.classList.contains("g-open"));
+  });
+}
+window.addEventListener("keydown", function (event) {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
+    showText(true);
+  } else if (event.key === "Escape" && textView && textView.classList.contains("g-open")) {
+    showText(false);
+  }
+}, true);
+
 supported().then(function (ok) {
   if (ok) {
     start();

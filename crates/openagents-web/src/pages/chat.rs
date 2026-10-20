@@ -1302,6 +1302,81 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     chat_page(&headers, chat, parts)
 }
 
+/// What the GPUI chat (`super::gpui_chat`) shows beside its canvas for
+/// `chat` (#12223): the pieces of this page the canvas doesn't draw yet,
+/// as this page draws them, so they post and refresh exactly as here. A
+/// Coder chat's question waiting for an answer while its computer is
+/// online; its agents; and its asks to the computer. [`gpui_files`] is the
+/// composer that adds files.
+pub(crate) async fn gpui_side(app: &App, headers: &HeaderMap, chat: &Conversation) -> Markup {
+    let viewer = reader(app, headers)
+        .await
+        .unwrap_or_else(|| chat.owner.clone());
+    let owner = viewer == chat.owner;
+    let approval = match &chat.terminal {
+        Some(_) if owner && continued::online(app, chat).await => {
+            Some(approval::current(app, chat).await)
+        }
+        _ => None,
+    };
+    let agents = if owner {
+        let rows = agents::rows(app, headers, chat).await;
+        (!rows.is_empty()).then(|| agents::render(&chat.id, &csrf(app, &chat.owner), &rows, None))
+    } else {
+        None
+    };
+    let asks: Vec<Markup> = match &chat.terminal {
+        Some(terminal) if owner => terminal
+            .asks
+            .iter()
+            .enumerate()
+            .map(|(index, ask)| computer::turn(chat, &terminal.computer, index, ask))
+            .collect(),
+        _ => Vec::new(),
+    };
+    html! {
+        @if let Some(approval) = approval { (approval) }
+        @if let Some(agents) = agents { (agents) }
+        @if !asks.is_empty() {
+            section.g-side-asks aria-label="Asks to the computer" {
+                @for ask in asks { (ask) }
+            }
+        }
+    }
+}
+
+/// This page's composer for the GPUI chat's "Send with files" (#12223):
+/// for a web chat the signed-in owner may continue, the same form, which
+/// adds files and posts back to this page; nothing otherwise.
+pub(crate) async fn gpui_files(app: &App, headers: &HeaderMap, chat: &Conversation) -> Markup {
+    let who = crate::chat_owner::who(app, headers).await;
+    let Some(viewer) = who.writer().map(str::to_owned) else {
+        return html! {};
+    };
+    if chat.terminal.is_some() || viewer != chat.owner || !who.signed_in() {
+        return html! {};
+    }
+    let row = Some(crate::composer_row::for_chat(app, headers, chat, false).await);
+    let dock = html! {
+        (ticket_for(app, chat, &viewer, false))
+        p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
+    };
+    html! {
+        details #gpui-files.g-side-files {
+            summary { "Send with files" }
+            (composer_with(&format!("/chat/{}", chat.id), "Send with files", row, dock, None))
+        }
+    }
+}
+
+/// The chat's text as this page draws it, live through its event stream,
+/// for the GPUI chat's text view (#12220): screen readers, the browser's
+/// find, and real links.
+pub(crate) async fn gpui_text(app: &App, headers: &HeaderMap, chat: &Conversation) -> Markup {
+    let links = work::links(app, headers).await;
+    content(chat, None, html! {}, links)
+}
+
 /// What a chat's page is drawn from.
 pub(crate) struct Parts {
     pub(crate) breadcrumb: Breadcrumb,

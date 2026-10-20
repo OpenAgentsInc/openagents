@@ -665,7 +665,7 @@ fn work_live(run: &crate::work_runs::WorkRun) -> Live {
 }
 
 /// The panel's rows for `chat` as this request may see them.
-async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
+pub(super) async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
     let links = super::work::links(app, headers).await;
     let now_unix = now();
     let studio = app.config.environments.get();

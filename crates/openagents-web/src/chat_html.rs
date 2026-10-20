@@ -16,10 +16,19 @@ pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self'; font-src 
 /// The chat and composer styles come from `openagents-ui` (`/static/ui.css`).
 pub(crate) fn head() -> Markup {
     html! {
+        (fragment_head())
+        script type="module" src="/static/chat-start.js" {}
+    }
+}
+
+/// [`head`] without the chat's in-place navigation (`/static/chat-start.js`):
+/// what a page needs to host this chat's fragments, as the GPUI chat's text
+/// view and side panel do (`crate::pages::gpui_chat`).
+pub(crate) fn fragment_head() -> Markup {
+    html! {
         meta name="htmx-config" content=r#"{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"refreshOnHistoryMiss":false,"selfRequestsOnly":true,"includeIndicatorStyles":false,"timeout":20000}"#;
         script src="/static/htmx.min.js" defer {}
         script src="/static/htmx-sse.js" defer {}
-        script type="module" src="/static/chat-start.js" {}
         // Files in the composer (#11174): paste, drop, or pick. Their
         // styles are in `/static/ui.css` (`openagents-ui`'s chat-files.css).
         script src=(crate::chat_files::SCRIPT_PATH) defer {}

@@ -76,3 +76,72 @@ html, body {
   .g-side { display: none; }
   .g-main { margin: 8px; }
 }
+
+/* What the canvas doesn't draw yet (#12223): the HTML chat's own cards,
+   over the canvas at the top right, only while there is something. */
+.g-side-layer {
+  position: fixed;
+  z-index: 3;
+  top: 64px;
+  right: 20px;
+  width: min(360px, calc(100vw - 40px));
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.g-side-layer > div:empty { display: none; }
+.g-side-layer > div {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: #121212;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+.g-side-files > summary { cursor: pointer; color: #a1a1a1; font-size: 13px; }
+.g-side-files[open] > summary { margin-bottom: 10px; }
+.g-side-asks { display: flex; flex-direction: column; gap: 8px; }
+
+/* The text view (#12220): readable to assistive technology while hidden,
+   shown over the chat for find (Cmd+F or Ctrl+F) or from its button. */
+.g-text {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: normal;
+}
+.g-text:focus-within, .g-text.g-open {
+  z-index: 4;
+  inset: 8px 8px 8px 280px;
+  width: auto;
+  height: auto;
+  clip-path: none;
+  overflow-y: auto;
+  padding: 0 24px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: #0b0b0b;
+}
+.g-text-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px 0;
+  background: #0b0b0b;
+  text-align: right;
+}
+.g-text-toggle {
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  background: transparent;
+  color: #e5e5e5;
+  font: inherit;
+  cursor: pointer;
+}
+@media (max-width: 820px) {
+  .g-text:focus-within, .g-text.g-open { inset: 8px; }
+}
