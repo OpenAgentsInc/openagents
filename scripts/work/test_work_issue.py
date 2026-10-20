@@ -353,6 +353,30 @@ class QueueSubmitTests(unittest.TestCase):
         self.assertEqual(landed["integrator_down"], down)
         self.assertIn(down, said.call_args.args[2])
         self.assertTrue(any("WARNING" in c.args[1] for c in run.say.call_args_list))
+class AttributionTests(unittest.TestCase):
+    """The commit credits the engine that did the work: a Codex change
+    never carries Claude's trailer (43ca758ed3 did)."""
+
+    def commit_message(self, engine):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            work.sh(["git", "init", "-q", str(root)])
+            for key, value in (("user.email", "t@example.com"), ("user.name", "t")):
+                work.sh(["git", "-C", str(root), "config", key, value])
+            (root / "a.txt").write_text("one\n")
+            work.sh(["git", "-C", str(root), "add", "-A"])
+            work.sh(["git", "-C", str(root), "commit", "-qm", "base"])
+            base = work.sh(["git", "-C", str(root), "rev-parse", "HEAD"]).stdout.strip()
+            (root / "a.txt").write_text("two\n")
+            work.commit(root, {"number": 7, "title": "Fix a"}, engine, base)
+            return work.sh(["git", "-C", str(root), "log", "-1", "--format=%B"]).stdout
+
+    def test_each_engine_gets_its_own_trailer(self):
+        self.assertIn("Co-Authored-By: Codex <noreply@openai.com>", self.commit_message("briefed:codex"))
+        self.assertNotIn("Claude", self.commit_message("briefed:codex"))
+        for engine in ("briefed", "bare"):
+            self.assertIn(work.TRAILER, self.commit_message(engine))
+        self.assertNotIn("Co-Authored-By", self.commit_message("briefed:gemini"))
 
 
 if __name__ == "__main__":

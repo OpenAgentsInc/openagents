@@ -80,6 +80,9 @@ BENCH = ROOT / "scripts" / "bench" / "briefed-ab"
 LOCAL_EXEC = HERE / "local-exec"
 
 TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+# Attribution names the engine that did the work (AGENTS.md: Codex never
+# credits Claude for its own work); an engine with no trailer gets none.
+TRAILERS = {"claude": TRAILER, "codex": "Co-Authored-By: Codex <noreply@openai.com>"}
 DROP_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 # A finder whose best file scores under this is a guess, not a briefing.
 MIN_CONFIDENCE = float(os.environ.get("OA_WORK_MIN_CONFIDENCE", "0.05"))
@@ -619,13 +622,21 @@ def engine_words(engine: str) -> str:
     return "bare Claude Code"
 
 
+def trailer_for(engine: str) -> str | None:
+    """The co-author line for the engine that made the change (`bare` is
+    Claude Code)."""
+    return TRAILERS.get("claude" if engine == "bare" else backend_of(engine))
+
+
 def commit(root: Path, issue: dict, engine: str, base: str) -> str:
     # One commit on `base`, whatever the engine committed on its own.
     sh(["git", "-C", str(root), "reset", "-q", "--soft", base])
     sh(["git", "-C", str(root), "add", "-A"])
+    trailer = trailer_for(engine)
     message = (f"{issue['title']} (#{issue['number']})\n\n"
                f"Worked by the {engine_words(engine)} "
-               f"(openagents work, engine {engine}); fixes #{issue['number']}.\n\n{TRAILER}\n")
+               f"(openagents work, engine {engine}); fixes #{issue['number']}."
+               + (f"\n\n{trailer}\n" if trailer else "\n"))
     sh(["git", "-C", str(root), "commit", "-q", "-m", message])
     return sh(["git", "-C", str(root), "rev-parse", "HEAD"]).stdout.strip()
 
@@ -736,7 +747,8 @@ def land(run: Run, root: Path, repo: str, issue: dict, how: str, run_id: str, en
              f"(`openagents work`, run `{run_id}`).", "", "Checks replayed on this diff:", ""]
     lines += [f"- {'pass' if c['ok'] else ('no checker here' if c['ok'] is None else 'FAIL')}: `{c['name']}`"
               for c in checks] or ["- none (nothing to check)"]
-    lines += ["", "🤖 Generated with [Claude Code](https://claude.com/claude-code)"]
+    if trailer_for(engine) == TRAILER:
+        lines += ["", "🤖 Generated with [Claude Code](https://claude.com/claude-code)"]
     proc = sh(["gh", "pr", "create", "--repo", repo, "--head", branch, "--base", "main",
                "--title", f"{issue['title']} (#{issue['number']})", "--body", "\n".join(lines)],
               cwd=root, timeout=300)
