@@ -4401,6 +4401,7 @@ name = "openagents-web-chat"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "console_error_panic_hook",
  "futures",
  "getrandom 0.2.17",

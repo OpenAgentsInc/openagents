@@ -602,7 +602,7 @@ impl ChatApp {
 
     fn send(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
         let text = text.trim().to_owned();
-        if text.is_empty() {
+        if text.is_empty() && !self.compose.read(cx).has_files() {
             return;
         }
         // A chat on a computer: the message goes on its queue, which the
@@ -1473,7 +1473,7 @@ impl ChatApp {
                 .child(wizard)
                 .into_any_element();
         }
-        let empty = self.composer.read(cx).is_empty();
+        let empty = self.composer.read(cx).is_empty() && !self.compose.read(cx).has_files();
         // A working computer chat takes more messages; Stop shows while the
         // composer is empty.
         let live = self.live.is_some() || (self.computer_working() && empty);
@@ -1552,6 +1552,10 @@ impl ChatApp {
                             .child(self.composer.clone()),
                     )
                     .child(send),
+            )
+            .child(
+                self.compose
+                    .update(cx, |compose, cx| compose.render_attachments(cx)),
             )
             .child(send_key)
             .into_any_element()

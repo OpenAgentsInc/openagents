@@ -100,6 +100,10 @@ pub struct Compose {
     answered: HashSet<String>,
     _advance: Option<Task<()>>,
     notice: Option<String>,
+    file_tx: futures::channel::mpsc::UnboundedSender<web_sys::File>,
+    files: Vec<(String, String, Option<String>)>,
+    uploading: bool,
+    pending_files: std::collections::VecDeque<web_sys::File>,
 }
 
 impl Compose {
@@ -122,6 +126,14 @@ impl Compose {
         let drafts = storage_get(DRAFTS_KEY)
             .and_then(|json| serde_json::from_str(&json).ok())
             .unwrap_or_default();
+        let (file_tx, mut file_rx) = futures::channel::mpsc::unbounded();
+        crate::attachments::intake(file_tx.clone());
+        cx.spawn(async move |this, cx| {
+            while let Some(file) = file_rx.next().await {
+                let _ = this.update(cx, |this, cx| this.attach(file, cx));
+            }
+        })
+        .detach();
         let mut this = Self {
             input,
             client,
@@ -143,6 +155,10 @@ impl Compose {
             answered: HashSet::new(),
             _advance: None,
             notice: None,
+            file_tx,
+            files: Vec::new(),
+            uploading: false,
+            pending_files: Default::default(),
         };
         this.restore(cx);
         this
@@ -183,6 +199,8 @@ impl Compose {
         if self.host == host {
             return;
         }
+        self.files.clear();
+        self.pending_files.clear();
         self.host = host;
         self.queue.clear();
         self.editing = None;
@@ -232,6 +250,18 @@ impl Compose {
         let Some(host) = self.host.clone() else {
             return;
         };
+        if self.uploading {
+            self.notice = Some("Wait for the upload to finish.".into());
+            self.input.update(cx, |input, cx| input.set_text(text, cx));
+            return;
+        }
+        let paths = self
+            .files
+            .iter()
+            .map(|(_, path, _)| path.clone())
+            .collect::<Vec<_>>();
+        let text = openagents_chat_view::attachments::with_attachments(&text, &paths);
+        self.files.clear();
         self.sent(cx);
         self.call(
             &host,
@@ -240,6 +270,129 @@ impl Compose {
             Some(text),
             cx,
         );
+    }
+
+    fn attach(&mut self, file: web_sys::File, cx: &mut Context<Self>) {
+        let Some(host) = self.host.clone() else {
+            return;
+        };
+        if self.uploading {
+            self.pending_files.push_back(file);
+            cx.notify();
+            return;
+        }
+        if file.size() > crate::attachment_chunks::MAX_BYTES as f64 {
+            self.notice = Some("This file is too large (24 MB max).".into());
+            cx.notify();
+            return;
+        }
+        self.uploading = true;
+        let preview_file = file.clone();
+        let client = self.client.clone();
+        let name = file.name().replace(['\r', '\n'], "_");
+        self.notice = Some(format!("Uploading {name}… 0%"));
+        cx.spawn(async move |this, cx| {
+            let result = async {
+                let buffer = wasm_bindgen_futures::JsFuture::from(file.array_buffer())
+                    .await
+                    .map_err(|_| anyhow::anyhow!("This file could not be read."))?;
+                let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
+                let computer = computer::connect(&client, &host.device, || {}).await?;
+                let id = uuid::Uuid::new_v4().to_string();
+                let chunks = crate::attachment_chunks::chunks(&bytes);
+                let count = chunks.len();
+                for (seq, data) in chunks.into_iter().enumerate() {
+                    computer
+                        .call(
+                            "UploadChunk",
+                            json!({"uploadId": id, "seq": seq, "data": data}),
+                        )
+                        .await?;
+                    let _ = this.update(cx, |this, cx| {
+                        this.notice =
+                            Some(format!("Uploading {name}… {}%", (seq + 1) * 100 / count));
+                        cx.notify();
+                    });
+                }
+                let reply = computer
+                    .call("UploadCommit", json!({"uploadId": id, "fileName": name}))
+                    .await?;
+                reply["path"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| anyhow::anyhow!("The upload returned no file."))
+            }
+            .await;
+            let _ = this.update(cx, |this, cx| {
+                this.uploading = false;
+                if this.host.as_ref() == Some(&host) {
+                    match result {
+                        Ok(path) => {
+                            this.files.push((
+                                name,
+                                path,
+                                Some(crate::attachments::preview_url(&preview_file)),
+                            ));
+                            this.notice = None;
+                        }
+                        Err(error) => this.notice = Some(error.to_string()),
+                    }
+                }
+                if let Some(file) = this.pending_files.pop_front() {
+                    this.attach(file, cx);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    pub fn render_attachments(&self, cx: &mut Context<Self>) -> AnyElement {
+        let action = |id: String, label: String| {
+            div()
+                .id(SharedString::from(id))
+                .cursor_pointer()
+                .child(label)
+        };
+        let mut row = div().flex().gap(px(8.));
+        if self.host.is_some() {
+            row = row.child(action("attach-file".into(), "Attach file".into()).on_click(cx.listener(|this, _, _, _| {
+                crate::attachments::pick(this.file_tx.clone());
+            }))).child(action("attach-screen".into(), "Screenshot".into()).on_click(cx.listener(|this, _, _, cx| {
+                let tx = this.file_tx.clone();
+                cx.spawn(async move |this, cx| {
+                    match crate::attachments::screenshot().await {
+                        Ok(file) => { let _ = tx.unbounded_send(file); }
+                        Err(_) => { let _ = this.update(cx, |this, cx| {
+                            this.notice = Some("No screenshot was attached. Choose a tab or screen to try again.".into());
+                            cx.notify();
+                        }); }
+                    }
+                }).detach();
+            })));
+            for (index, (name, _, preview)) in self.files.iter().enumerate() {
+                if let Some(url) = preview.clone() {
+                    row = row.child(
+                        action(format!("preview-{index}"), name.clone())
+                            .on_click(move |_, _, _| crate::attachments::preview(&url)),
+                    );
+                }
+                row = row.child(
+                    action(format!("attached-{index}"), format!("{name} ×")).on_click(cx.listener(
+                        move |this, _, _, cx| {
+                            this.files.remove(index);
+                            cx.notify();
+                        },
+                    )),
+                );
+            }
+        }
+        row.into_any_element()
+    }
+
+    pub fn has_files(&self) -> bool {
+        !self.files.is_empty()
     }
 
     fn keep_draft(&mut self, cx: &mut Context<Self>) {
