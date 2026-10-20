@@ -45,8 +45,46 @@ async fn workos_sign_in(
     }
 }
 
+/// The account-service half of deletion, including the tombstone sync.
+async fn workos_delete(
+    AxumState((dir, workos)): AxumState<(std::path::PathBuf, Workos)>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> axum::response::Response {
+    let Some(token) = crate::account_export::app_token(&headers) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let Ok(claims) = workos.verify(token).await else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let Some(account) = tenancy::workos_links::Links::open(&dir)
+        .account_of(&claims.sub)
+        .unwrap()
+    else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if body["confirm"] != "delete my account" {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":{"code":"confirm_required","message":"Confirm deletion."}})),
+        )
+            .into_response();
+    }
+    if body["check"] != true {
+        tenancy::accounts::Accounts::open(&dir)
+            .unwrap()
+            .delete_account(&account)
+            .unwrap();
+        oa_auth::workos::sync::account(&dir, &workos, &account, Default::default())
+            .await
+            .unwrap();
+    }
+    Json(json!({"deleted":body["check"] != true,"account":account})).into_response()
+}
+
 async fn workos_world(mode: Mode, methods: &[Method]) -> WorkosWorld {
     let fake = FakeWorkos::start().await;
+    let workos = fake.client(mode, methods);
     let root = tempfile::tempdir().unwrap();
     let stores = root.path().join("accounts");
     let github = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo()]);
@@ -58,13 +96,40 @@ async fn workos_world(mode: Mode, methods: &[Method]) -> WorkosWorld {
         "signup",
         3600,
     )
-    .unwrap();
+    .unwrap()
+    .with_workos(workos.clone());
     let routes = Router::new()
         .route("/v1/sessions/workos", axum::routing::post(workos_sign_in))
-        .with_state((stores.clone(), fake.client(Mode::Dual, methods)));
+        .route("/v1/account", axum::routing::delete(workos_delete))
+        .route(
+            "/v1/admin/workos/{operation}",
+            axum::routing::post(
+                |headers: axum::http::HeaderMap, Json(body): Json<serde_json::Value>| async move {
+                    if headers.get("authorization").and_then(|h| h.to_str().ok())
+                        != Some("Bearer fixture-admin-secret")
+                    {
+                        return (
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({"error":{"code":"unauthenticated","message":"Admin token required."}})),
+                        )
+                            .into_response();
+                    }
+                    Json(body).into_response()
+                },
+            ),
+        )
+        .with_state((stores.clone(), workos.clone()));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let account_service = format!("http://{}", listener.local_addr().unwrap());
-    let router = service.router().merge(routes);
+    let nostr = oa_auth::nostr::NostrAuth::open(&stores, &[ORIGIN.to_string()]).unwrap();
+    let router = service
+        .router()
+        .merge(routes)
+        .merge(oa_auth::nostr::router_workos(
+            nostr,
+            "signup",
+            workos.clone(),
+        ));
     tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
@@ -648,6 +713,17 @@ async fn an_expired_workos_session_refreshes_and_a_revoked_one_signs_out() {
         )
         .await;
     assert!(signed_in(&mut browser, &w.world).await);
+    assert!(browser.0.contains_key("oa_workos"));
+    assert!(!browser.0.contains_key("oa_cloud_session"));
+    assert!(
+        tenancy::Sessions::open(&w.world.root.path().join("accounts"))
+            .unwrap()
+            .store()
+            .unwrap()
+            .book
+            .sessions
+            .is_empty()
+    );
 
     // Replace the sealed session with one whose access token has expired.
     let workos = w.fake.client(Mode::Workos, PRODUCTION);
@@ -707,4 +783,411 @@ async fn legacy_mode_keeps_the_old_login() {
         .get(&w.world, "/auth/workos/github")
         .await;
     assert_eq!(start.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn primary_password_and_provider_logins_use_only_the_sealed_workos_cookie() {
+    for provider in [false, true] {
+        let w = workos_world(Mode::Workos, PRODUCTION).await;
+        let mut browser = Browser::default();
+        if provider {
+            w.fake.queue_sign_in(
+                "GitHubOAuth",
+                "primary@example.com",
+                "583232",
+                Some("Person"),
+            );
+            let start = browser.get(&w.world, "/auth/workos/github").await;
+            let returned = w.world.github.get(start.location()).send().await.unwrap();
+            let back = returned.headers()["location"]
+                .to_str()
+                .unwrap()
+                .strip_prefix(ORIGIN)
+                .unwrap();
+            let done = browser.get(&w.world, back).await;
+            assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+        } else {
+            w.fake
+                .add_user("primary@example.com", Some("a long enough password"), true);
+            let login = browser.get(&w.world, "/login").await;
+            let done = browser
+                .post(
+                    &w.world,
+                    "/login",
+                    &[
+                        ("csrf", &csrf(&login.body)),
+                        ("email", "primary@example.com"),
+                        ("password", "a long enough password"),
+                    ],
+                )
+                .await;
+            assert_eq!(done.status, StatusCode::SEE_OTHER, "{}", done.body);
+        }
+        assert!(browser.0.contains_key("oa_workos"));
+        assert!(!browser.0.contains_key("oa_cloud_session"));
+        assert!(signed_in(&mut browser, &w.world).await);
+        let rows = tenancy::Sessions::open(&w.world.root.path().join("accounts"))
+            .unwrap()
+            .store()
+            .unwrap();
+        assert!(rows.book.sessions.is_empty());
+        let token = browser.0["oa_workos"]
+            .clone()
+            .replace('-', "+")
+            .replace('_', "/")
+            .replace('.', "=");
+        let data = oa_auth::workos::sdk::unseal_session(&token, &cookie_password()).unwrap();
+        let sid = w
+            .fake
+            .client(Mode::Workos, PRODUCTION)
+            .verify(data.access_token.expose())
+            .await
+            .unwrap()
+            .sid;
+        let settings = browser.get(&w.world, "/settings").await;
+        assert_eq!(settings.status, StatusCode::OK, "{}", settings.body);
+        let done = browser
+            .post(
+                &w.world,
+                "/sign-out",
+                &[("csrf", &sign_out_csrf(&settings.body))],
+            )
+            .await;
+        assert_eq!(done.status, StatusCode::SEE_OTHER, "{}", done.body);
+        assert!(w.fake.revoked(&sid));
+        assert!(!browser.0.contains_key("oa_workos"));
+        assert!(!signed_in(&mut browser, &w.world).await);
+    }
+}
+
+#[tokio::test]
+async fn primary_extension_and_phone_approval_create_no_legacy_cookie_or_session() {
+    use super::web_sign_in::{call, call_capability, key, nip98, scanned};
+    for phone in [false, true] {
+        let w = workos_world(Mode::Workos, PRODUCTION).await;
+        let mut browser = Browser::default();
+        if phone {
+            let (status, started) = call(
+                &w.world,
+                &mut browser,
+                "POST",
+                "/login/key",
+                Some(ORIGIN),
+                None,
+                Some(br#"{"return_to":"/settings"}"#),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{started}");
+            let (request, challenge) = scanned(started["link"].as_str().unwrap());
+            let body = json!({"request":request}).to_string();
+            let signed = nip98(
+                &key(43),
+                &format!("{ORIGIN}/v1/web-sign-in/approve"),
+                &challenge,
+                body.as_bytes(),
+            );
+            let (status, approved) = call_capability(
+                &w.world,
+                &mut Browser::default(),
+                "POST",
+                "/v1/web-sign-in/approve",
+                None,
+                Some(&signed),
+                Some(body.as_bytes()),
+                false,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{approved}");
+            let (status, done) = call(
+                &w.world,
+                &mut browser,
+                "GET",
+                &format!("/login/key/{request}/status"),
+                None,
+                None,
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{done}");
+        } else {
+            let (_, challenge) = call(
+                &w.world,
+                &mut browser,
+                "GET",
+                "/v1/device/nostr/challenge",
+                None,
+                None,
+                None,
+            )
+            .await;
+            let body = br#"{"return_to":"/settings"}"#;
+            let signed = nip98(
+                &key(44),
+                &format!("{ORIGIN}/login/key/extension"),
+                challenge["challenge"].as_str().unwrap(),
+                body,
+            );
+            let (status, done) = call_capability(
+                &w.world,
+                &mut browser,
+                "POST",
+                "/login/key/extension",
+                Some(ORIGIN),
+                Some(&signed),
+                Some(body),
+                false,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{done}");
+        }
+        assert!(browser.0.contains_key("oa_workos"));
+        assert!(!browser.0.contains_key("oa_cloud_session"));
+        assert!(signed_in(&mut browser, &w.world).await);
+        assert!(
+            tenancy::Sessions::open(&w.world.root.path().join("accounts"))
+                .unwrap()
+                .store()
+                .unwrap()
+                .book
+                .sessions
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test]
+async fn primary_account_deletion_accepts_workos_bearers_and_sealed_browser_credentials() {
+    async fn remove(
+        world: &World,
+        browser: &Browser,
+        bearer: Option<&str>,
+        site: &str,
+        ticket: Option<&str>,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut request = Request::delete("/v1/account")
+            .header(header::HOST, HOST)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("sec-fetch-site", site);
+        if let Some(token) = bearer {
+            request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        if let Some(ticket) = ticket {
+            request = request.header(crate::cookie_api::CSRF_HEADER, ticket);
+        }
+        let cookie = browser
+            .0
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        let response = world
+            .site
+            .clone()
+            .oneshot(
+                request
+                    .header(header::COOKIE, cookie)
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap_or_default())
+    }
+
+    for cookie in [false, true] {
+        let w = workos_world(Mode::Workos, PRODUCTION).await;
+        w.fake
+            .add_user("delete@example.com", Some("a long enough password"), true);
+        let mut browser = Browser::default();
+        let login = browser.get(&w.world, "/login").await;
+        let done = browser
+            .post(
+                &w.world,
+                "/login",
+                &[
+                    ("csrf", &csrf(&login.body)),
+                    ("email", "delete@example.com"),
+                    ("password", "a long enough password"),
+                ],
+            )
+            .await;
+        assert_eq!(done.status, StatusCode::SEE_OTHER, "{}", done.body);
+        assert!(!browser.0.contains_key("oa_cloud_session"));
+        let sealed = browser.0["oa_workos"]
+            .replace('-', "+")
+            .replace('_', "/")
+            .replace('.', "=");
+        let data = oa_auth::workos::sdk::unseal_session(&sealed, &cookie_password()).unwrap();
+        let token = data.access_token.expose();
+        let before = accounts(&w.world);
+        let id = before.accounts.keys().next().unwrap().clone();
+        let confirmed = json!({"confirm":"delete my account"});
+        let empty = Browser::default();
+        let (status, _) = remove(
+            &w.world,
+            &empty,
+            Some("eyJhbGciOiJSUzI1NiJ9.invalid.signature"),
+            "none",
+            None,
+            confirmed.clone(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, missing) =
+            remove(&w.world, &empty, Some(token), "none", None, json!({})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{missing}");
+        assert_eq!(missing["error"]["code"], "confirm_required");
+        assert!(missing["error"]["export_url"].is_string());
+        let bootstrap = browser.get(&w.world, "/lander8/session").await;
+        assert_eq!(bootstrap.status, StatusCode::OK, "{}", bootstrap.body);
+        let bootstrap: serde_json::Value = serde_json::from_str(&bootstrap.body).unwrap();
+        let ticket = bootstrap["csrf"].as_str().unwrap();
+        for (site, csrf) in [("cross-site", Some(ticket)), ("same-origin", None)] {
+            let (status, _) = remove(&w.world, &browser, None, site, csrf, confirmed.clone()).await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+        }
+        assert_eq!(
+            accounts(&w.world).accounts[&id].label,
+            before.accounts[&id].label
+        );
+        assert!(
+            tenancy::workos_links::Links::open(&w.world.root.path().join("accounts"))
+                .user_of(&id)
+                .unwrap()
+                .is_some()
+        );
+        let (status, deleted) = if cookie {
+            remove(
+                &w.world,
+                &browser,
+                None,
+                "same-origin",
+                Some(ticket),
+                confirmed,
+            )
+            .await
+        } else {
+            remove(&w.world, &empty, Some(token), "none", None, confirmed).await
+        };
+        assert_eq!(status, StatusCode::OK, "{deleted}");
+        assert_eq!(deleted["deleted"], true);
+        let after = accounts(&w.world);
+        assert_eq!(after.accounts[&id].label, "Deleted account");
+        assert!(after.accounts[&id].principals.is_empty());
+        assert!(
+            tenancy::workos_links::Links::open(&w.world.root.path().join("accounts"))
+                .user_of(&id)
+                .unwrap()
+                .is_none()
+        );
+    }
+}
+
+#[tokio::test]
+async fn retirement_forwarding_requires_the_operators_explicit_bearer() {
+    use super::web_sign_in::call;
+    let w = workos_world(Mode::Workos, PRODUCTION).await;
+    for operation in ["retire-sessions", "restore-sessions"] {
+        let path = format!("/v1/admin/workos/{operation}");
+        let mut browser = Browser::default();
+        browser
+            .0
+            .insert("oa_cloud_session".into(), "sess_fake".into());
+        let (status, _) = call(
+            &w.world,
+            &mut browser,
+            "POST",
+            &path,
+            Some(ORIGIN),
+            None,
+            Some(br#"{"apply":false}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, _) = call(
+            &w.world,
+            &mut browser,
+            "POST",
+            &path,
+            Some(ORIGIN),
+            Some("Bearer ordinary-user-token"),
+            Some(br#"{"apply":false}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, answer) = call(
+            &w.world,
+            &mut browser,
+            "POST",
+            &path,
+            Some(ORIGIN),
+            Some("Bearer fixture-admin-secret"),
+            Some(br#"{"apply":false}"#),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{answer}");
+        assert_eq!(answer["apply"], false);
+    }
+}
+
+#[tokio::test]
+async fn app_nostr_returns_workos_tokens_in_primary_and_legacy_tokens_in_dual() {
+    use super::web_sign_in::{call, call_capability, key, nip98};
+    for (mode, capable) in [
+        (Mode::Workos, true),
+        (Mode::Workos, false),
+        (Mode::Dual, true),
+        (Mode::Dual, false),
+    ] {
+        let w = workos_world(mode, PRODUCTION).await;
+        let mut app = Browser::default();
+        let (_, challenge) = call(
+            &w.world,
+            &mut app,
+            "GET",
+            "/v1/device/nostr/challenge",
+            None,
+            None,
+            None,
+        )
+        .await;
+        let body = br#"{"app":"OpenAgents","computer":"test phone"}"#;
+        let signed = nip98(
+            &key(45),
+            &format!("{ORIGIN}/v1/device/nostr"),
+            challenge["challenge"].as_str().unwrap(),
+            body,
+        );
+        let (status, answer) = call_capability(
+            &w.world,
+            &mut app,
+            "POST",
+            "/v1/device/nostr",
+            None,
+            Some(&signed),
+            Some(body),
+            capable,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{answer}");
+        let token = answer["access_token"].as_str().unwrap();
+        assert!(answer["expires_in"].as_u64().unwrap() > 0);
+        if mode == Mode::Workos && capable {
+            assert!(oa_auth::workos::token::looks_like_access_token(token));
+            assert!(!answer["refresh_token"].as_str().unwrap().is_empty());
+        } else {
+            assert!(token.starts_with("sess_"));
+        }
+        let rows = tenancy::Sessions::open(&w.world.root.path().join("accounts"))
+            .unwrap()
+            .store()
+            .unwrap();
+        assert_eq!(
+            rows.book.sessions.len(),
+            usize::from(mode == Mode::Dual || !capable)
+        );
+    }
 }

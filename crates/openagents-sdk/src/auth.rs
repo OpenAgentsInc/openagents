@@ -52,6 +52,8 @@ pub struct CredentialRecord {
     account: Account,
     expires_at: Option<u64>,
     credential: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refresh_token: Option<String>,
 }
 
 /// The words `DELETE /v1/account` asks for, sent after the person confirms
@@ -105,6 +107,11 @@ impl Session {
     pub fn deployment(&self) -> &Deployment {
         &self.record.deployment
     }
+    /// Whether WorkOS issued a refresh token for this session.
+    pub fn can_refresh(&self) -> bool {
+        self.record.refresh_token.is_some()
+    }
+
     /// Export for explicit storage; the client never saves it by itself.
     pub fn record(&self) -> CredentialRecord {
         self.record.clone()
@@ -201,6 +208,8 @@ struct TokenAnswer {
     access_token: String,
     token_type: String,
     expires_in: u64,
+    #[serde(default)]
+    refresh_token: Option<String>,
     account: Account,
 }
 
@@ -209,7 +218,8 @@ impl TokenAnswer {
     fn checked(&self) -> Result<&Self, Error> {
         if self.token_type != "Bearer"
             || !openagents_login::is_sign_in_token(&self.access_token)
-            || !self.access_token.starts_with("sess_")
+            || !(self.access_token.starts_with("sess_")
+                || openagents_login::is_workos_access_token(&self.access_token))
             || self.account.id.is_empty()
             || self.expires_in == 0
             || self.expires_in > 30 * 86400
@@ -254,6 +264,7 @@ impl Client {
                 account: view.account,
                 expires_at: None,
                 credential: credential.into(),
+                refresh_token: None,
             },
         })
     }
@@ -374,6 +385,7 @@ impl Client {
                         account: answer.account,
                         expires_at: Some(crate::now().saturating_add(answer.expires_in)),
                         credential: answer.access_token,
+                        refresh_token: answer.refresh_token,
                     },
                 };
                 // Keep the issued credential even if a later account/workspace read is offline.
@@ -450,8 +462,65 @@ impl Client {
                 account: view.account,
                 expires_at: None,
                 credential: credential.into(),
+                refresh_token: None,
             },
         })
+    }
+
+    /// Refresh a stored WorkOS credential even when its access token expired while the app was closed.
+    pub async fn refresh_record(&self, record: &CredentialRecord) -> Result<Session, Error> {
+        self.refresh_session(&Session {
+            record: record.clone(),
+        })
+        .await
+    }
+
+    /// Rotate a WorkOS app session. The caller saves the returned record once rotation succeeds.
+    pub async fn refresh_session(&self, session: &Session) -> Result<Session, Error> {
+        if session.record.deployment != self.deployment {
+            return Err(Error::WrongDeployment);
+        }
+        let refresh_token = session
+            .record
+            .refresh_token
+            .as_deref()
+            .filter(|t| !t.is_empty() && t.len() <= 8192)
+            .ok_or(Error::InvalidCredential)?;
+        #[derive(Deserialize)]
+        struct Refreshed {
+            access_token: String,
+            refresh_token: String,
+            expires_in: u64,
+            token_type: String,
+        }
+        let reply: Refreshed = self
+            .request(
+                Method::POST,
+                &["device", "refresh"],
+                &[],
+                Some(json!({"refresh_token":refresh_token})),
+                None,
+            )
+            .await?;
+        if !openagents_login::is_workos_access_token(&reply.access_token)
+            || reply.refresh_token.is_empty()
+            || reply.refresh_token.len() > 8192
+            || reply.expires_in == 0
+            || reply.expires_in > 30 * 86400
+            || reply.token_type != "Bearer"
+        {
+            return Err(Error::InvalidResponse);
+        }
+        let renewed = Session {
+            record: CredentialRecord {
+                credential: reply.access_token,
+                refresh_token: Some(reply.refresh_token),
+                expires_at: Some(crate::now().saturating_add(reply.expires_in)),
+                ..session.record.clone()
+            },
+        };
+        self.account(&renewed).await?;
+        Ok(renewed)
     }
 
     /// Revalidate a record loaded by the caller. Failure does not erase caller storage.

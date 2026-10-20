@@ -71,13 +71,11 @@ pub fn is_sign_in_key(token: &str) -> bool {
         .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
-/// Whether `token` is one the site takes as a sign-in: a sign-in key or
-/// an app's `sess_` token.
-#[must_use]
 /// Whether the environment names a token at all ([`TOKEN_ENV`] or the
 /// older name, non-blank), login or not. A caller that finds one that
 /// [`Saved::from_env`] refuses must refuse too, never fall back to the
 /// login saved on disk (#11935).
+#[must_use]
 pub fn token_env_set(get_env: impl Fn(&str) -> Option<String>) -> bool {
     [TOKEN_ENV, TOKEN_ENV_OLDER]
         .into_iter()
@@ -85,11 +83,25 @@ pub fn token_env_set(get_env: impl Fn(&str) -> Option<String>) -> bool {
         .any(|value| !value.trim().is_empty())
 }
 
+/// Whether the token has the shape of a sign-in key, app session, or WorkOS JWT.
+#[must_use]
 pub fn is_sign_in_token(token: &str) -> bool {
     is_sign_in_key(token)
+        || is_workos_access_token(token)
         || token
             .strip_prefix("sess_")
             .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// Recognize the bounded JWT shape; the account service verifies its signature and claims.
+pub fn is_workos_access_token(token: &str) -> bool {
+    token.len() <= 8192
+        && token.starts_with("eyJ")
+        && token.split('.').count() == 3
+        && token.split('.').all(|part| !part.is_empty())
+        && token
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
 }
 
 /// Read a sign-in key from `input` (standard input or a prompt's line):
@@ -395,6 +407,14 @@ fn write_private(file: &Path, bytes: &[u8]) -> Result<(), String> {
 
 fn client() -> Result<reqwest::Client, Error> {
     reqwest::Client::builder()
+        .default_headers(
+            [(
+                reqwest::header::HeaderName::from_static("x-openagents-auth"),
+                reqwest::header::HeaderValue::from_static("workos"),
+            )]
+            .into_iter()
+            .collect(),
+        )
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(20))
@@ -676,3 +696,25 @@ fn unix_now() -> u64 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod workos_tokens {
+    #[test]
+    fn jwt_imports_are_bounded_and_do_not_replace_remote_verification() {
+        assert!(super::is_sign_in_token(
+            "eyJhbGciOiJSUzI1NiJ9.payload.signature"
+        ));
+        for token in [
+            "eyJ.payload.",
+            "eyJ..signature",
+            "eyJ.payload.signature.extra",
+            "eyJ.payload. signature",
+        ] {
+            assert!(!super::is_sign_in_token(token), "{token}");
+        }
+        assert!(!super::is_sign_in_token(&format!(
+            "eyJ.{}.signature",
+            "a".repeat(8192)
+        )));
+    }
+}

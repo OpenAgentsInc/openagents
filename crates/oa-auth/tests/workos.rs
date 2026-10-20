@@ -933,3 +933,87 @@ async fn live_read_only() {
     let role = workos.role_slug(tenancy::Role::Owner).await;
     eprintln!("owner maps to {role}");
 }
+
+#[test]
+fn retirement_preserves_keys_anonymous_and_proved_device_sessions_and_restores_safely() {
+    use tenancy::sessions::{AppLabel, KeyLabel, SessionBook, Sessions};
+    let (dir, accounts) = store();
+    let person = accounts.create_account("Person", &[]).unwrap();
+    let unlinked = accounts.create_account("Unlinked", &[]).unwrap();
+    let sessions = Sessions::install(dir.path(), SessionBook::new(3600, 3600)).unwrap();
+    Links::open(dir.path())
+        .link_user(&person.id, "user_person")
+        .unwrap();
+    let old = sessions
+        .mutate(|book, _, at| {
+            book.set_credential(person.id.as_str().into(), "d".repeat(64), at)?;
+            book.issue_recovery(&person.id.as_str().into(), at)?;
+            book.burn_nostr_proofs(&[&"e".repeat(64)], at + 300, at)?;
+            let legacy = book.issue(person.id.as_str().into(), at)?;
+            book.issue_app(
+                person.id.as_str().into(),
+                AppLabel::new("Coder", "device_code")?,
+                at,
+            )?;
+            book.issue_key(
+                person.id.as_str().into(),
+                KeyLabel::new("automation")?,
+                None,
+                at,
+            )?;
+            book.issue_anonymous(at)?;
+            let device = book.start_device(AppLabel::new("Coder", "fixture")?, at)?;
+            book.decide_device(&device.user_code, &person.id.as_str().into(), true, at)?;
+            book.poll_device(&device.device_code, at + 10)?;
+            let unlinked_device = book.start_device(AppLabel::new("Coder", "unlinked")?, at)?;
+            book.decide_device(
+                &unlinked_device.user_code,
+                &unlinked.id.as_str().into(),
+                true,
+                at,
+            )?;
+            book.poll_device(&unlinked_device.device_code, at + 10)?;
+            Ok(legacy.once)
+        })
+        .unwrap();
+    let before = sessions.store().unwrap();
+    let dry = oa_auth::workos::retire::retire(dir.path(), false).unwrap();
+    assert_eq!(dry.retired, 1);
+    assert_eq!(dry.preserved, 5);
+    assert_eq!(dry.app_sessions, 3);
+    assert!(dry.retire_apps_after_release);
+    assert!(dry.snapshot.is_none());
+    assert_eq!(before.digest, sessions.store().unwrap().digest);
+    let applied = oa_auth::workos::retire::retire(dir.path(), true).unwrap();
+    let snapshot = applied.snapshot.unwrap();
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join(&snapshot)).unwrap()).unwrap();
+    assert_eq!(saved["preserved_apps"].as_array().unwrap().len(), 3);
+    let after = sessions.store().unwrap();
+    after.validate("retired test").unwrap();
+    assert_eq!(after.book.sessions.len(), 5);
+    assert!(after.book.session_of_token(&old).is_none());
+    assert_eq!(
+        serde_json::to_value(&before.book.recoveries).unwrap(),
+        serde_json::to_value(&after.book.recoveries).unwrap()
+    );
+    assert_eq!(before.book.nostr_proofs, after.book.nostr_proofs);
+    assert_eq!(
+        oa_auth::workos::retire::restore(dir.path(), &snapshot, false)
+            .unwrap()
+            .restored,
+        1
+    );
+    assert_eq!(sessions.store().unwrap().book.sessions.len(), 5);
+    oa_auth::workos::retire::restore(dir.path(), &snapshot, true).unwrap();
+    let restored = sessions.store().unwrap();
+    restored.validate("restored test").unwrap();
+    assert_eq!(restored.book.sessions, before.book.sessions);
+    assert_eq!(
+        oa_auth::workos::retire::restore(dir.path(), &snapshot, true)
+            .unwrap()
+            .restored,
+        0
+    );
+    assert!(oa_auth::workos::retire::restore(dir.path(), "../sessions.json", true).is_err());
+}

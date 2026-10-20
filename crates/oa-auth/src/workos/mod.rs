@@ -4,8 +4,8 @@
 //! WorkOS holds one User per person and one Organization per shared
 //! workspace. Our account IDs never change: a User's `external_id` is the
 //! `acct_…` it belongs to, and [`tenancy::workos_links`] joins the two.
-//! Nostr keys stay ours: a key sign-in is checked here and issues our own
-//! `sess_`, tied to the account's User (owner decision 2, 2026-10-20).
+//! Nostr keys stay ours. In `workos` mode a verified key signs in through
+//! WorkOS; `dual` keeps the legacy session path for rollback.
 //!
 //! - [`Settings`] and [`Mode`]: the per-environment switch
 //!   (`OPENAGENTS_AUTH=legacy|dual|workos`) and the sign-in methods the
@@ -25,6 +25,7 @@ pub mod client;
 #[cfg(feature = "fake-workos")]
 pub mod fake;
 pub mod link;
+pub mod retire;
 pub mod session;
 pub mod sync;
 pub mod token;
@@ -59,9 +60,9 @@ pub enum Mode {
     /// pages still run on our session, minted after WorkOS signs a person
     /// in.
     Dual,
-    /// As `dual`, and a web session made by a WorkOS sign-in lasts only
-    /// as long as its WorkOS session: it refreshes with WorkOS, and ends
-    /// when WorkOS refuses the refresh.
+    /// WorkOS signs in browsers and capable apps. Device-code and older
+    /// app clients keep linked legacy sessions; keys and anonymous
+    /// sessions keep their existing stores.
     Workos,
 }
 

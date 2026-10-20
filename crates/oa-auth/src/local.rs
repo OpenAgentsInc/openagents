@@ -35,6 +35,8 @@ struct Inner {
     /// account holds. On by default here, so fixtures can make accounts;
     /// the gateway's default is off (#12005).
     github_signup: bool,
+    #[cfg(feature = "workos")]
+    workos: Option<crate::workos::Workos>,
 }
 
 /// The local account service.
@@ -66,6 +68,8 @@ impl LocalService {
             app: None,
             invite: None,
             github_signup: true,
+            #[cfg(feature = "workos")]
+            workos: None,
         })))
     }
 
@@ -80,6 +84,8 @@ impl LocalService {
             app: Some(app),
             invite: self.0.invite.clone(),
             github_signup: self.0.github_signup,
+            #[cfg(feature = "workos")]
+            workos: self.0.workos.clone(),
         }))
     }
 
@@ -93,6 +99,8 @@ impl LocalService {
             app: self.0.app.clone(),
             invite: Some(invite),
             github_signup: self.0.github_signup,
+            #[cfg(feature = "workos")]
+            workos: self.0.workos.clone(),
         }))
     }
 
@@ -107,12 +115,28 @@ impl LocalService {
             app: self.0.app.clone(),
             invite: self.0.invite.clone(),
             github_signup: false,
+            #[cfg(feature = "workos")]
+            workos: self.0.workos.clone(),
         }))
     }
 
     #[must_use]
     pub fn dir(&self) -> &Path {
         &self.0.dir
+    }
+
+    /// Accept WorkOS access tokens in local integration fixtures.
+    #[cfg(feature = "workos")]
+    pub fn with_workos(self, workos: crate::workos::Workos) -> Self {
+        Self(Arc::new(Inner {
+            dir: self.0.dir.clone(),
+            github: self.0.github.clone(),
+            tenant: self.0.tenant.clone(),
+            app: self.0.app.clone(),
+            invite: self.0.invite.clone(),
+            github_signup: self.0.github_signup,
+            workos: Some(workos),
+        }))
     }
 
     pub fn router(&self) -> Router {
@@ -183,8 +207,23 @@ fn caller(state: &LocalService, headers: &HeaderMap) -> Result<(String, String),
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .filter(|t| tenancy::sessions::is_session_bearer(t))
         .ok_or_else(unauthenticated)?;
+    #[cfg(feature = "workos")]
+    if let Some(workos) = &state.0.workos
+        && crate::workos::token::looks_like_access_token(token)
+    {
+        let claims = workos
+            .keys()
+            .verify_cached(token, false)
+            .and_then(Result::ok)
+            .ok_or_else(unauthenticated)?;
+        let account = tenancy::workos_links::Links::open(&state.0.dir)
+            .account_of(&claims.sub)
+            .ok()
+            .flatten()
+            .ok_or_else(unauthenticated)?;
+        return Ok((claims.sid, account));
+    }
     let store = Sessions::open(&state.0.dir)
         .and_then(|s| s.store())
         .map_err(|_| {
@@ -218,6 +257,19 @@ async fn github_sign_in(
     State(state): State<LocalService>,
     request: Result<axum::Json<CodeRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
+    #[cfg(feature = "workos")]
+    if state
+        .0
+        .workos
+        .as_ref()
+        .is_some_and(|w| w.settings().mode() == crate::workos::Mode::Workos)
+    {
+        return refused(
+            StatusCode::FORBIDDEN,
+            "workos_required",
+            "Sign in with WorkOS or your Nostr key.",
+        );
+    }
     let Ok(axum::Json(request)) = request else {
         return refused(
             StatusCode::BAD_REQUEST,
@@ -286,6 +338,23 @@ async fn session(State(state): State<LocalService>, headers: HeaderMap) -> Respo
         Ok(found) => found,
         Err(response) => return response,
     };
+    #[cfg(feature = "workos")]
+    if let Some(workos) = &state.0.workos
+        && id.starts_with("session_")
+    {
+        let token = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .unwrap_or_default();
+        let claims = match workos.verify(token).await {
+            Ok(c) => c,
+            Err(_) => return unauthenticated(),
+        };
+        return body(
+            json!({"session":{"id":id,"kind":"user","account":account,"created_at":0,"expires_at":claims.exp,"state":"active"}}),
+        );
+    }
     let Ok(store) = Sessions::open(&state.0.dir).and_then(|s| s.store()) else {
         return refused(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -323,6 +392,15 @@ async fn sign_out(State(state): State<LocalService>, headers: HeaderMap) -> Resp
         Ok(found) => found,
         Err(response) => return response,
     };
+    #[cfg(feature = "workos")]
+    if let Some(workos) = &state.0.workos
+        && id.starts_with("session_")
+    {
+        return match workos.revoke_session(&id).await {
+            Ok(()) => body(json!({"session":{"id":id,"state":"revoked"}})),
+            Err(_) => unauthenticated(),
+        };
+    }
     let Ok(sessions) = Sessions::open(&state.0.dir) else {
         return refused(
             StatusCode::SERVICE_UNAVAILABLE,

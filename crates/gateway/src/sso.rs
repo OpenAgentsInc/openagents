@@ -193,6 +193,9 @@ async fn sign_in(
     Path(workspace): Path<String>,
     Json(body): Json<Value>,
 ) -> Response {
+    if let Err(response) = crate::workos_auth::legacy_session_gate(&state) {
+        return response;
+    }
     if headers.get("authorization").is_some() {
         return refused(
             StatusCode::BAD_REQUEST,

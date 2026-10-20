@@ -11,8 +11,8 @@
 //!
 //! When WorkOS signs a person in, the access token goes to the account
 //! service, which checks it against WorkOS's keys, finds or makes the
-//! account, and issues our session; this server sets that session as the
-//! usual cookie and keeps the WorkOS session sealed beside it
+//! account, and in `dual` mode issues a legacy session. In `workos` mode
+//! this server uses only the sealed WorkOS session cookie
 //! ([`WORKOS_COOKIE`]). [`layer`] refreshes the sealed session when its
 //! access token expires; in `workos` mode a refresh WorkOS refuses (the
 //! session was revoked) signs the browser out. Signing out revokes the
@@ -520,7 +520,11 @@ async fn finish(
         return problem_redirect(return_to, "unavailable");
     };
     cookies.extend(selected);
-    let remaining = grant.viewer.expires_at.saturating_sub(now()).max(60);
+    let remaining = if workos.mode == Mode::Workos {
+        8 * 3600
+    } else {
+        grant.viewer.expires_at.saturating_sub(now()).max(60)
+    };
     let data = oa_auth::workos::sdk::SessionData {
         access_token: signed.access_token.clone(),
         refresh_token: signed.refresh_token.clone(),
@@ -1395,7 +1399,7 @@ fn rewrite_cookie(headers: &mut HeaderMap, name: &str, value: Option<&str>) {
     let Some(cookies) = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()) else {
         return;
     };
-    let kept: Vec<String> = cookies
+    let mut kept: Vec<String> = cookies
         .split(';')
         .map(str::trim)
         .filter(|part| !part.is_empty())
@@ -1404,6 +1408,13 @@ fn rewrite_cookie(headers: &mut HeaderMap, name: &str, value: Option<&str>) {
             _ => Some(part.to_string()),
         })
         .collect();
+    if let Some(value) = value
+        && !kept
+            .iter()
+            .any(|pair| pair.starts_with(&format!("{name}=")))
+    {
+        kept.push(format!("{name}={value}"));
+    }
     if let Ok(joined) = HeaderValue::from_str(&kept.join("; ")) {
         headers.insert(header::COOKIE, joined);
     }
@@ -1416,6 +1427,9 @@ pub(crate) async fn layer(State(app): State<App>, mut request: Request, next: Ne
     let Some((service, workos)) = on(&app) else {
         return next.run(request).await;
     };
+    if workos.mode == Mode::Workos {
+        rewrite_cookie(request.headers_mut(), "oa_cloud_session", None);
+    }
     let Some(sealed) = CloudSession::sealed_value(request.headers(), WORKOS_COOKIE) else {
         return next.run(request).await;
     };
@@ -1426,9 +1440,15 @@ pub(crate) async fn layer(State(app): State<App>, mut request: Request, next: Ne
         .authenticate()
         .await;
     if state.authenticated {
+        if workos.mode == Mode::Workos
+            && let Ok(token) = service.credential(request.headers())
+        {
+            rewrite_cookie(request.headers_mut(), "oa_cloud_session", Some(&token));
+        }
         return next.run(request).await;
     }
     let mut set = Vec::new();
+    let mut renewed_session = false;
     if state.needs_refresh {
         match refresh(workos, &sealed).await {
             Some(Ok(renewed)) => {
@@ -1443,10 +1463,12 @@ pub(crate) async fn layer(State(app): State<App>, mut request: Request, next: Ne
                         rewrite_cookie(request.headers_mut(), WORKOS_COOKIE, Some(&value));
                     }
                     set.push(cookie);
+                    renewed_session = true;
                 }
             }
             Some(Err(())) => {
                 set.push(service.clear_cookie(WORKOS_COOKIE));
+                rewrite_cookie(request.headers_mut(), WORKOS_COOKIE, None);
                 if workos.mode == Mode::Workos {
                     if let Some(token) = CloudSession::session_cookie(request.headers()) {
                         service.end_session(&token).await.ok();
@@ -1462,9 +1484,58 @@ pub(crate) async fn layer(State(app): State<App>, mut request: Request, next: Ne
         // Not a session we sealed: forget it.
         set.push(service.clear_cookie(WORKOS_COOKIE));
     }
+    if workos.mode == Mode::Workos && renewed_session {
+        if let Ok(token) = service.credential(request.headers()) {
+            rewrite_cookie(request.headers_mut(), "oa_cloud_session", Some(&token));
+        }
+    }
     let mut response = next.run(request).await;
     for cookie in set {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
     response
+}
+
+/// Forward the operator's own bearer; the gateway checks its admin token.
+/// Browser cookies are never substituted for this credential.
+pub(crate) async fn admin_sessions(
+    State(app): State<App>,
+    Path(operation): Path<String>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !matches!(operation.as_str(), "retire-sessions" | "restore-sessions") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let Some((service, _)) = on(&app) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some(bearer) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| v.starts_with("Bearer ") && v.len() <= 8192)
+    else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if body.len() > 4096 {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+    match service
+        .nostr_call(
+            reqwest::Method::POST,
+            &format!("/v1/admin/workos/{operation}"),
+            Some(bearer),
+            Some(body.to_vec()),
+        )
+        .await
+    {
+        Ok(answer) => protect(
+            (
+                StatusCode::from_u16(answer.status).unwrap_or(StatusCode::BAD_GATEWAY),
+                axum::Json(answer.body),
+            )
+                .into_response(),
+        ),
+        Err(_) => StatusCode::BAD_GATEWAY.into_response(),
+    }
 }

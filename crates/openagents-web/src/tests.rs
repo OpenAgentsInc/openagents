@@ -3316,6 +3316,7 @@ async fn misplaced_cloud_credentials_never_proxy_on_unowned_paths() {
     for authorization in [
         "Bearer sess_synthetic_private",
         "bEaReR  sess_synthetic_private",
+        "Bearer eyJhbGciOiJSUzI1NiJ9.payload.signature",
     ] {
         for path in [
             "/old-private-api",
@@ -3352,6 +3353,7 @@ async fn cloud_cookies_reach_owned_pages_only_on_a_configured_host() {
     let site = router(proxying(root.path(), &url));
     for cookie in [
         "oa_cloud_session=sess_synthetic_private",
+        "oa_workos=sealed_synthetic_private",
         "oa_cloud_workspace=synthetic",
         "oa_cloud_login=synthetic",
         "oa_cloud_future=synthetic",

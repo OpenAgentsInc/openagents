@@ -447,7 +447,10 @@ impl SessionBook {
             .clone()
             .expect("an approved grant names its account");
         let label = grant.label.clone();
-        let issued = self.issue_app(account.clone(), label, now)?;
+        let mut issued = self.issue_app(account.clone(), label, now)?;
+        issued.session.issued_via = Some("device_code".into());
+        self.sessions
+            .insert(issued.session.id.clone(), issued.session.clone());
         let grant = self.devices.get_mut(&id).expect("still here");
         grant.state = DeviceState::Redeemed;
         grant.last_poll = Some(now);
@@ -475,6 +478,7 @@ impl SessionBook {
             state: SessionState::Active,
             closed_at: None,
             app: Some(label),
+            issued_via: None,
             key: None,
         };
         self.sessions.insert(session.id.clone(), session.clone());

@@ -132,17 +132,25 @@ async fn sign_in(
     };
     // Platform decoding performs bounded network I/O only after the normal
     // signature/challenge checks, on a blocking task rather than this worker.
-    let answered = match tokio::task::spawn_blocking(move || {
+    let primary = crate::workos_auth::primary(&state);
+    let capable = headers
+        .get("x-openagents-auth")
+        .and_then(|v| v.to_str().ok())
+        == Some("workos");
+    let blocking_state = state.clone();
+    let mut answered = match tokio::task::spawn_blocking(move || {
+        let state = blocking_state;
         let _slot = slot;
         let authorization = headers.get("authorization").and_then(|v| v.to_str().ok());
         let mut gate = state.key_accounts.gate(&headers);
-        auth.sign_in_gated(
+        auth.sign_in_gated_session(
             host(&headers),
             &tenant,
             authorization,
             &body,
             unix_now(),
             &mut gate,
+            !primary,
         )
     })
     .await
@@ -156,6 +164,26 @@ async fn sign_in(
             );
         }
     };
+    if primary && answered.status == 200 {
+        let workos = &state.workos.as_ref().expect("primary mode").client;
+        answered.body = match oa_auth::workos::session::complete_key(
+            &state.dir,
+            workos,
+            answered.body,
+            !capable,
+        )
+        .await
+        {
+            Ok(body) => body,
+            Err(e) => {
+                return refused(
+                    StatusCode::from_u16(e.status()).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+                    e.code(),
+                    e.message(),
+                );
+            }
+        };
+    }
     let wait = answered.body["error"]["retry_after"].as_u64();
     let mut response = answer(answered);
     if let Some(wait) = wait

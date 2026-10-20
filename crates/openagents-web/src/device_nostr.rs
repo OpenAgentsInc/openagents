@@ -35,6 +35,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/v1/device/nostr/challenge", get(challenge))
         .route("/v1/device/nostr", post(sign_in))
+        .route("/v1/device/refresh", post(refresh))
         .route("/v1/device/keys/challenge", get(link_challenge))
         .route("/v1/device/keys", get(keys).post(link))
         .route("/v1/device/keys/{pubkey}", delete(unlink))
@@ -135,11 +136,15 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
         return unavailable();
     };
     let answer = match service
-        .nostr_call(
+        .nostr_call_capability(
             reqwest::Method::POST,
             "/v1/sessions/nostr",
             Some(signed),
             Some(body.to_vec()),
+            headers
+                .get("x-openagents-auth")
+                .and_then(|v| v.to_str().ok())
+                == Some("workos"),
         )
         .await
     {
@@ -158,6 +163,7 @@ async fn sign_in(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
     protect(
         axum::Json(json!({
             "access_token": body["token"],
+            "refresh_token": body["refresh_token"],
             "token_type": "Bearer",
             "expires_in": expires,
             "account": body["account"],
@@ -297,4 +303,22 @@ async fn claim_name(State(app): State<App>, headers: HeaderMap, body: Bytes) -> 
         }
         Err(_) => unavailable(),
     }
+}
+
+async fn refresh(State(app): State<App>, body: Bytes) -> Response {
+    if body.len() > 16384 {
+        return refused(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "invalid_request",
+            "That request is too large.",
+        );
+    }
+    call(
+        &app,
+        reqwest::Method::POST,
+        "/v1/sessions/workos/refresh",
+        None,
+        Some(body.to_vec()),
+    )
+    .await
 }

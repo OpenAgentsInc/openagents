@@ -4,8 +4,9 @@
 //!   (GitHub, Google, SSO, email and password, or an emailed code) and
 //!   forwards the access token WorkOS issued. We check it against the
 //!   environment's keys ourselves, read the User from WorkOS, find or make
-//!   the account ([`oa_auth::workos::link`]), and issue the same session a
-//!   GitHub sign-in does. The website never asserts who someone is.
+//!   the account ([`oa_auth::workos::link`]). In WorkOS mode the access token
+//!   remains the credential; dual mode also issues a legacy session.
+//!   The website never asserts who someone is.
 //! - WorkOS access tokens as bearers: [`principal`] resolves one to the
 //!   linked account on every account route, beside `sess_`, `oa_sk_`, and
 //!   `oak_`, which keep working unchanged.
@@ -104,8 +105,11 @@ impl WorkosState {
 pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
     vec![
         ("/v1/sessions/workos", post(sign_in)),
+        ("/v1/sessions/workos/refresh", post(refresh_session)),
         ("/v1/admin/workos/backfill", post(backfill)),
         ("/v1/admin/workos/reconcile", get(reconcile)),
+        ("/v1/admin/workos/retire-sessions", post(retire_sessions)),
+        ("/v1/admin/workos/restore-sessions", post(restore_sessions)),
     ]
 }
 
@@ -322,9 +326,26 @@ pub(crate) fn principal(state: &ServeState, token: &str) -> Option<Result<Princi
             )));
         }
     };
+    if claims.sid.is_empty()
+        || !tenancy::Accounts::open(&state.dir)
+            .and_then(|a| a.store())
+            .ok()
+            .and_then(|s| s.accounts.get(&account).cloned())
+            .is_some_and(|a| {
+                a.agent.is_none()
+                    && !(a.label == tenancy::accounts::deletion::DELETED_LABEL
+                        && a.principals.is_empty())
+            })
+    {
+        return Some(Err(refused(
+            StatusCode::UNAUTHORIZED,
+            "unauthenticated",
+            "Sign in again.",
+        )));
+    }
     Some(Ok(Principal::Account {
         account,
-        session: None,
+        session: Some(claims.sid),
     }))
 }
 
@@ -517,5 +538,174 @@ async fn reconcile(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> 
     match sync::reconcile(&state.dir) {
         Ok(report) => answered(StatusCode::OK, json!({"reconcile": report})),
         Err(error) => refusal(&error),
+    }
+}
+
+/// Refuse legacy human session issuers before they mutate any store.
+pub(crate) fn legacy_session_gate(state: &ServeState) -> Result<(), Response> {
+    if primary(state) {
+        return Err(refused(
+            StatusCode::FORBIDDEN,
+            "workos_required",
+            "Sign in with WorkOS or your Nostr key.",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn primary(state: &ServeState) -> bool {
+    state
+        .workos
+        .as_ref()
+        .is_some_and(|w| w.client.settings().mode() == oa_auth::workos::Mode::Workos)
+}
+
+/// The verified token's session view, without a legacy session row.
+pub(crate) fn session_view(state: &ServeState, headers: &HeaderMap) -> Option<Response> {
+    let token = crate::accounts::bearer(headers).ok()?;
+    let workos = state.workos.as_ref()?;
+    if !oa_auth::workos::token::looks_like_access_token(&token) {
+        return None;
+    }
+    let principal = match crate::accounts::principal(state, headers) {
+        Ok(p) => p,
+        Err(r) => return Some(r),
+    };
+    let claims = workos.client.keys().verify_cached(&token, false)?.ok()?;
+    Some(answered(
+        StatusCode::OK,
+        json!({"session": {
+            "id": claims.sid, "kind": "user", "account": principal.account(),
+            "state": "active", "created_at": 0, "expires_at": claims.exp,
+        }}),
+    ))
+}
+
+pub(crate) async fn logout(state: &ServeState, headers: &HeaderMap) -> Option<Response> {
+    let token = crate::accounts::bearer(headers).ok()?;
+    let workos = state.workos.as_ref()?;
+    if !oa_auth::workos::token::looks_like_access_token(&token) {
+        return None;
+    }
+    if let Err(r) = crate::accounts::principal(state, headers) {
+        return Some(r);
+    }
+    let claims = match workos.client.verify(&token).await {
+        Ok(c) => c,
+        Err(e) => return Some(refusal(&e)),
+    };
+    Some(match workos.client.revoke_session(&claims.sid).await {
+        Ok(()) => answered(
+            StatusCode::OK,
+            json!({"session":{"id":claims.sid,"state":"revoked"}}),
+        ),
+        Err(e) => refusal(&e),
+    })
+}
+
+/// Rotate an app's WorkOS tokens without minting a legacy session.
+async fn refresh_session(
+    State(state): State<Arc<ServeState>>,
+    Json(body): Json<Value>,
+) -> Response {
+    let Some(workos) = state.workos.as_ref() else {
+        return refused(
+            StatusCode::NOT_FOUND,
+            "workos_disabled",
+            "Sign-in isn't set up here.",
+        );
+    };
+    let Some(refresh_token) = body["refresh_token"]
+        .as_str()
+        .filter(|t| !t.is_empty() && t.len() <= 8192)
+    else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send refresh_token.",
+        );
+    };
+    let signed = match workos
+        .client
+        .authenticate(oa_auth::workos::Grant::Refresh {
+            refresh_token: refresh_token.into(),
+        })
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => return refusal(&e),
+    };
+    let claims = match workos.client.verify(signed.access_token.expose()).await {
+        Ok(c) => c,
+        Err(e) => return refusal(&e),
+    };
+    if tenancy::workos_links::Links::open(&state.dir)
+        .account_of(&claims.sub)
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        return refused(
+            StatusCode::UNAUTHORIZED,
+            "unauthenticated",
+            "Sign in again.",
+        );
+    }
+    answered(
+        StatusCode::OK,
+        json!({"access_token":signed.access_token.expose(),"refresh_token":signed.refresh_token.expose(),"token_type":"Bearer","expires_in":claims.exp.saturating_sub(crate::accounts::unix_now() as i64)}),
+    )
+}
+
+async fn retire_sessions(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    if let Err(r) = admin(&state, &headers) {
+        return r;
+    }
+    if !primary(&state) {
+        return refused(
+            StatusCode::CONFLICT,
+            "workos_required",
+            "Switch to WorkOS before retiring sessions.",
+        );
+    }
+    match oa_auth::workos::retire::retire(&state.dir, body["apply"].as_bool().unwrap_or(false)) {
+        Ok(report) => answered(StatusCode::OK, json!({"report":report})),
+        Err(_) => refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "sessions_unavailable",
+            "Sessions couldn't be updated.",
+        ),
+    }
+}
+async fn restore_sessions(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    if let Err(r) = admin(&state, &headers) {
+        return r;
+    }
+    if primary(&state) {
+        return refused(
+            StatusCode::CONFLICT,
+            "dual_required",
+            "Switch to dual before restoring sessions.",
+        );
+    }
+    match oa_auth::workos::retire::restore(
+        &state.dir,
+        body["snapshot"].as_str().unwrap_or_default(),
+        body["apply"].as_bool().unwrap_or(false),
+    ) {
+        Ok(report) => answered(StatusCode::OK, json!({"report":report})),
+        Err(_) => refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "sessions_unavailable",
+            "Sessions couldn't be restored.",
+        ),
     }
 }

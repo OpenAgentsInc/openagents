@@ -212,7 +212,11 @@ impl SessionGrant {
         }
         let mut cookies = legacy_clears(self.secure);
         cookies.extend([
-            cookie(SESSION_COOKIE, self.token.expose(), remaining, self.secure)?,
+            if oa_auth::workos::token::looks_like_access_token(self.token.expose()) {
+                cookie(SESSION_COOKIE, "", 0, self.secure)?
+            } else {
+                cookie(SESSION_COOKIE, self.token.expose(), remaining, self.secure)?
+            },
             cookie(WORKSPACE_COOKIE, "", 0, self.secure)?,
             cookie(LOGIN_COOKIE, "", 0, self.secure)?,
         ]);
@@ -262,7 +266,7 @@ impl CloudSession {
         client: &openagents_sdk::Client,
     ) -> Result<openagents_sdk::Session> {
         let viewer = self.authenticate(headers).await?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         let session = client
             .authenticate(&token)
             .await
@@ -415,6 +419,22 @@ impl CloudSession {
         cookie(name, "", 0, self.secure).expect("static cookie is valid")
     }
 
+    /// The access token inside the sealed WorkOS cookie, or the rollback cookie.
+    pub(crate) fn credential(&self, headers: &HeaderMap) -> Result<String> {
+        if let Some(workos) = self
+            .workos
+            .as_ref()
+            .filter(|w| w.mode == oa_auth::workos::Mode::Workos)
+        {
+            let sealed =
+                Self::sealed_value(headers, WORKOS_COOKIE).ok_or(SessionError::Unauthenticated)?;
+            let data = oa_auth::workos::sdk::unseal_session(&sealed, workos.cookie_password())
+                .map_err(|_| SessionError::Unauthenticated)?;
+            return Ok(data.access_token.expose().to_string());
+        }
+        value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)
+    }
+
     /// The session token this request's cookie carries.
     pub(crate) fn session_cookie(headers: &HeaderMap) -> Option<String> {
         value(headers, SESSION_COOKIE)
@@ -488,7 +508,13 @@ impl CloudSession {
             .then(|| serde_json::from_slice(&bytes).ok())
             .flatten()
             .ok_or(SessionError::Unavailable)?;
-        if !session_token(&wire.token) {
+        if !session_token(&wire.token)
+            || (self
+                .workos
+                .as_ref()
+                .is_some_and(|w| w.mode == oa_auth::workos::Mode::Workos)
+                && !oa_auth::workos::token::looks_like_access_token(&wire.token))
+        {
             return Err(SessionError::Unavailable);
         }
         let viewer = self.read_view(&wire.token, None).await?;
@@ -688,7 +714,13 @@ impl CloudSession {
             .then(|| serde_json::from_slice(&bytes).ok())
             .flatten()
             .ok_or(SessionError::Unavailable)?;
-        if !session_token(&wire.token) {
+        if !session_token(&wire.token)
+            || (self
+                .workos
+                .as_ref()
+                .is_some_and(|w| w.mode == oa_auth::workos::Mode::Workos)
+                && !oa_auth::workos::token::looks_like_access_token(&wire.token))
+        {
             return Err(SessionError::Unavailable);
         }
         // This server's own invite list: a GitHub user not on it (or an
@@ -776,7 +808,7 @@ impl CloudSession {
 
     pub async fn authenticate(&self, headers: &HeaderMap) -> Result<Viewer> {
         self.request_host(headers)?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         if !session_token(&token) {
             return Err(SessionError::Unauthenticated);
         }
@@ -906,7 +938,7 @@ impl CloudSession {
         // Recheck the current selection first; a revoked selection cannot be
         // silently replaced with another workspace by a stale form.
         self.authenticate(headers).await?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         self.read_view(&token, Some(target)).await
     }
 
@@ -933,9 +965,11 @@ impl CloudSession {
         if remaining == 0 {
             return Err(SessionError::Unauthenticated);
         }
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         let mut cookies = legacy_clears(self.secure);
-        cookies.push(cookie(SESSION_COOKIE, &token, remaining, self.secure)?);
+        if !oa_auth::workos::token::looks_like_access_token(&token) {
+            cookies.push(cookie(SESSION_COOKIE, &token, remaining, self.secure)?);
+        }
         cookies.push(match &viewer.workspace {
             Some(workspace) => cookie(WORKSPACE_COOKIE, &workspace.id, 2_592_000, self.secure)?,
             None => cookie(WORKSPACE_COOKIE, "", 0, self.secure)?,
@@ -961,7 +995,7 @@ impl CloudSession {
     /// End the cookie's native session without depending on workspace membership.
     pub async fn sign_out_current(&self, headers: &HeaderMap) -> Result<()> {
         self.request_origin(headers)?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         if !session_token(&token) {
             return Err(SessionError::Unauthenticated);
         }
@@ -1044,7 +1078,7 @@ impl CloudSession {
     /// A reviewed logout can clear cookies after native standing becomes unavailable.
     pub fn verify_logout_csrf(&self, headers: &HeaderMap, token: &str) -> Result<()> {
         let ticket = self.checked_ticket(headers, "sign-out", "", token)?;
-        let credential = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Csrf)?;
+        let credential = self.credential(headers).map_err(|_| SessionError::Csrf)?;
         if !session_token(&credential)
             || ticket.binding != hex(&Sha256::digest(credential.as_bytes()))
             || ticket.viewer.is_some()
@@ -1144,7 +1178,7 @@ impl CloudSession {
     }
 
     fn viewer_cookie(&self, headers: &HeaderMap, viewer: &Viewer) -> Result<()> {
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         if viewer.credential_digest != hex(&Sha256::digest(token.as_bytes()))
             || viewer.expires_at <= now()
             || value(headers, WORKSPACE_COOKIE)?.as_deref()
@@ -1325,6 +1359,9 @@ pub(crate) fn identifier(value: &str) -> bool {
 /// Every bearer and cookie check here goes through this one test, so a
 /// sign-in key reaches exactly what a sign-in does.
 pub(crate) fn session_token(value: &str) -> bool {
+    if oa_auth::workos::token::looks_like_access_token(value) {
+        return true;
+    }
     value
         .strip_prefix("sess_")
         .or_else(|| value.strip_prefix(SIGN_IN_KEY_PREFIX))

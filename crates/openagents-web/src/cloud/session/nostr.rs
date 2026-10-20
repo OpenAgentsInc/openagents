@@ -18,11 +18,27 @@ impl CloudSession {
         authorization: Option<&str>,
         body: Option<Vec<u8>>,
     ) -> Result<Answer> {
+        self.nostr_call_capability(method, path, authorization, body, true)
+            .await
+    }
+
+    /// Forward an app's compatibility marker without granting it any authority.
+    pub async fn nostr_call_capability(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        authorization: Option<&str>,
+        body: Option<Vec<u8>>,
+        capable: bool,
+    ) -> Result<Answer> {
         self.ready()?;
         let mut request = self
             .http
             .request(method, format!("{}{path}", self.account_service))
             .timeout(Duration::from_secs(10));
+        if capable {
+            request = request.header("X-OpenAgents-Auth", "workos");
+        }
         if let Some(value) = authorization {
             request = request.header(reqwest::header::AUTHORIZATION, value);
         }

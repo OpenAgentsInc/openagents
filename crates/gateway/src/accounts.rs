@@ -224,7 +224,7 @@ fn unavailable(name: &'static str, message: impl Into<String>) -> Response {
 }
 
 /// The bearer token of the request — `oak_`, `sess_`, or refused.
-fn bearer(headers: &HeaderMap) -> Result<String, Response> {
+pub(crate) fn bearer(headers: &HeaderMap) -> Result<String, Response> {
     let header = headers.get("authorization").ok_or_else(|| {
         refused(
             StatusCode::UNAUTHORIZED,
@@ -451,6 +451,20 @@ pub(crate) fn session_principal(
         return Err(SessionRefusal::Closed(standing));
     }
     // A sign-in key's last use, written at most hourly (#11305).
+    if crate::workos_auth::primary(state)
+        && session.kind == tenancy::sessions::SessionKind::User
+        && session.key.is_none()
+    {
+        if session.app.is_none()
+            || tenancy::workos_links::Links::open(&state.dir)
+                .user_of(session.user.as_str())
+                .ok()
+                .flatten()
+                .is_none()
+        {
+            return Err(SessionRefusal::Unknown);
+        }
+    }
     oa_auth::sign_in_keys::note_use(&state.dir, &store, session.id.as_str());
     Ok(match session.kind {
         SessionKind::Anonymous => Principal::Anonymous {
@@ -661,6 +675,9 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
     if headers.get("authorization").is_none() {
         return anonymous_sign_in(state).await;
     }
+    if let Err(response) = crate::workos_auth::legacy_session_gate(&state) {
+        return response;
+    }
     let token = match bearer(&headers) {
         Ok(token) => token,
         Err(response) => return response,
@@ -833,6 +850,9 @@ fn auth_refused(error: oa_auth::AuthError) -> Response {
 /// account holds with `403 signup_disabled`. The GitHub token is
 /// discarded; see docs/auth.
 async fn github_sign_in(State(state): State<Arc<ServeState>>, Json(body): Json<Value>) -> Response {
+    if let Err(response) = crate::workos_auth::legacy_session_gate(&state) {
+        return response;
+    }
     let Some(tenant) = accounts_config(&state).signup_tenant.clone() else {
         return refused(
             StatusCode::FORBIDDEN,
@@ -960,7 +980,52 @@ async fn device_poll(
     body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
     let body = body.map_or(Value::Null, |Json(body)| body);
-    device_answer(oa_auth::device::poll(&state.dir, &body))
+    if let Some(workos) = state.workos.as_ref() {
+        let store = match sessions_store(&state).and_then(|s| {
+            s.store().map_err(|_| {
+                unavailable("sessions_unavailable", "Login isn't available right now.")
+            })
+        }) {
+            Ok(store) => store,
+            Err(r) => return r,
+        };
+        let grant = Some(store).and_then(|s| {
+            let code = body["device_code"].as_str()?;
+            s.book
+                .devices
+                .get(&format!(
+                    "{:x}",
+                    <sha2::Sha256 as sha2::Digest>::digest(code.as_bytes())
+                ))
+                .cloned()
+        });
+        if let Some(account) = grant.and_then(|g| g.account) {
+            match oa_auth::workos::sync::account(
+                &state.dir,
+                &workos.client,
+                account.as_str(),
+                Default::default(),
+            )
+            .await
+            {
+                Ok(report) if report.failed.is_empty() => {}
+                _ => return unavailable("workos_unavailable", "Login isn't available right now."),
+            }
+            if tenancy::workos_links::Links::open(&state.dir)
+                .user_of(account.as_str())
+                .ok()
+                .flatten()
+                .is_none()
+            {
+                return unavailable("workos_unavailable", "Login isn't available right now.");
+            }
+        }
+    }
+    if state.workos.is_some() {
+        device_answer(oa_auth::device::poll_linked(&state.dir, &body))
+    } else {
+        device_answer(oa_auth::device::poll(&state.dir, &body))
+    }
 }
 
 /// `POST /v1/sessions/device/lookup` — `{user_code}`, under a browser
@@ -995,6 +1060,21 @@ async fn device_decide(
         Err(response) => return response,
     };
     let body = body.map_or(Value::Null, |Json(body)| body);
+    if body["approve"] == true
+        && let Some(workos) = &state.workos
+    {
+        match oa_auth::workos::sync::account(
+            &state.dir,
+            &workos.client,
+            &account,
+            Default::default(),
+        )
+        .await
+        {
+            Ok(report) if report.failed.is_empty() => {}
+            _ => return unavailable("workos_unavailable", "Login isn't available right now."),
+        }
+    }
     device_answer(oa_auth::device::decide(
         &state.dir,
         &account,
@@ -1189,6 +1269,9 @@ async fn anonymous_sign_in(state: Arc<ServeState>) -> Response {
 /// its deadline. The id is the
 /// token's digest — the token itself is never stored or returned.
 async fn session_status(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
+    if let Some(response) = crate::workos_auth::session_view(&state, &headers) {
+        return response;
+    }
     let principal = match principal(&state, &headers) {
         Ok(principal) => principal,
         Err(response) => return response,
@@ -1255,6 +1338,9 @@ async fn session_status(State(state): State<Arc<ServeState>>, headers: HeaderMap
 /// `DELETE /v1/session` — logout. Ending ends the session the bearer
 /// names; an `oak_` key has no session to end.
 async fn logout(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
+    if let Some(response) = crate::workos_auth::logout(&state, &headers).await {
+        return response;
+    }
     let principal = match principal(&state, &headers) {
         Ok(principal) => principal,
         Err(response) => return response,
@@ -1325,6 +1411,9 @@ async fn sign_up(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Response {
+    if let Err(response) = crate::workos_auth::legacy_session_gate(&state) {
+        return response;
+    }
     if !accounts_config(&state).open_signup && !operator_signup(&state, &headers) {
         return refused(
             StatusCode::FORBIDDEN,

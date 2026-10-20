@@ -114,6 +114,7 @@ struct Request {
 
 struct Approved {
     token: String,
+    refresh_token: Option<String>,
     created: bool,
 }
 
@@ -288,7 +289,7 @@ async fn forward(
     service: &CloudSession,
     authorization: &str,
     body: &[u8],
-) -> Result<(String, bool), Response> {
+) -> Result<(String, Option<String>, bool), Response> {
     let answer = service
         .nostr_call(
             reqwest::Method::POST,
@@ -306,7 +307,11 @@ async fn forward(
         .as_str()
         .filter(|t| crate::cloud::session::session_token(t))
         .ok_or_else(unavailable)?;
-    Ok((token.to_string(), answer.body["created"] == true))
+    Ok((
+        token.to_string(),
+        answer.body["refresh_token"].as_str().map(str::to_string),
+        answer.body["created"] == true,
+    ))
 }
 
 /// The cookies that sign this browser in with `token`, as GitHub sign-in's
@@ -317,10 +322,27 @@ async fn session_cookies(
     service: &CloudSession,
     headers: &HeaderMap,
     token: &str,
+    refresh_token: Option<&str>,
     created: bool,
 ) -> Result<Vec<HeaderValue>, SessionError> {
     let grant = service.web_grant(token, created).await?;
     let mut cookies = grant.cookies()?;
+    if let Some(refresh_token) = refresh_token {
+        let workos = service.workos().ok_or(SessionError::Unavailable)?;
+        let data = oa_auth::workos::sdk::SessionData {
+            access_token: oa_auth::workos::sdk::SecretString::from(token.to_string()),
+            refresh_token: oa_auth::workos::sdk::SecretString::from(refresh_token.to_string()),
+            user: None,
+            impersonator: None,
+        };
+        let sealed = oa_auth::workos::sdk::seal_session(&data, workos.cookie_password())
+            .map_err(|_| SessionError::Unavailable)?;
+        cookies.push(service.sealed_cookie(
+            crate::cloud::session::WORKOS_COOKIE,
+            &sealed,
+            8 * 3600,
+        )?);
+    }
     cookies.extend(crate::cloud::default_workspace_cookies(
         service,
         &grant.viewer,
@@ -519,7 +541,16 @@ async fn status(State(app): State<App>, headers: HeaderMap, Path(id): Path<Strin
         let request = map.remove(&id).expect("present");
         (request.approved.expect("approved"), request.return_to)
     };
-    match session_cookies(&app, service, &headers, &approved.token, approved.created).await {
+    match session_cookies(
+        &app,
+        service,
+        &headers,
+        &approved.token,
+        approved.refresh_token.as_deref(),
+        approved.created,
+    )
+    .await
+    {
         Ok(mut cookies) => {
             if let Ok(clear) = service.web_sign_in_cookie(COOKIE, "", 0, "/login/key") {
                 cookies.push(clear);
@@ -577,7 +608,7 @@ async fn approve(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
         }
         request.browser.clone()
     };
-    let (token, created) = match forward(service, authorization, &body).await {
+    let (token, refresh_token, created) = match forward(service, authorization, &body).await {
         Ok(issued) => issued,
         Err(response) => return response,
     };
@@ -587,6 +618,7 @@ async fn approve(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
             Some(request) => {
                 request.approved = Some(Approved {
                     token: token.clone(),
+                    refresh_token,
                     created,
                 });
                 false
@@ -626,11 +658,20 @@ async fn extension(State(app): State<App>, headers: HeaderMap, body: Bytes) -> R
         );
     }
     let back = return_to(&json_body(&body));
-    let (token, created) = match forward(service, authorization, &body).await {
+    let (token, refresh_token, created) = match forward(service, authorization, &body).await {
         Ok(issued) => issued,
         Err(response) => return response,
     };
-    match session_cookies(&app, service, &headers, &token, created).await {
+    match session_cookies(
+        &app,
+        service,
+        &headers,
+        &token,
+        refresh_token.as_deref(),
+        created,
+    )
+    .await
+    {
         Ok(cookies) => signed_in(cookies, &back),
         Err(_) => unavailable(),
     }

@@ -104,7 +104,7 @@ impl CloudSession {
         token: &str,
     ) -> Result<(String, bool, crate::computers_api::FreeCloud)> {
         if !(session_token(token) || token.starts_with("oak_"))
-            || token.len() > 512
+            || token.len() > 8192
             || token
                 .bytes()
                 .any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
@@ -221,7 +221,7 @@ impl CloudSession {
     /// The browser's own session token, for calls made as the viewer.
     pub(crate) fn browser_token(&self, headers: &HeaderMap) -> Result<String> {
         self.request_host(headers)?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         if !session_token(&token) {
             return Err(SessionError::Unauthenticated);
         }

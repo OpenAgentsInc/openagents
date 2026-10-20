@@ -247,6 +247,7 @@ impl Client {
                 format!("Nostr {authorization}"),
             )
             .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .header("X-OpenAgents-Auth", "workos")
             .body(body)
             .send()
             .await
@@ -289,6 +290,7 @@ impl Client {
                     account: answer.token.account,
                     expires_at: Some(crate::now().saturating_add(answer.token.expires_in)),
                     credential: answer.token.access_token,
+                    refresh_token: answer.token.refresh_token,
                 },
             },
             created: answer.created,

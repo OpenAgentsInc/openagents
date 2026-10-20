@@ -116,6 +116,7 @@ impl SessionBook {
             state: SessionState::Active,
             closed_at: None,
             app: None,
+            issued_via: None,
             key: Some(label),
         };
         self.sessions.insert(session.id.clone(), session.clone());

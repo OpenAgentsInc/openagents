@@ -11,7 +11,12 @@ impl CloudSession {
     /// The grant for a session `token` the account service just issued to
     /// a website sign-in; `created` when that sign-in made the account.
     pub(crate) async fn web_grant(&self, token: &str, created: bool) -> Result<SessionGrant> {
-        if !session_token(token) {
+        if !session_token(token)
+            || (self
+                .workos()
+                .is_some_and(|w| w.mode == oa_auth::workos::Mode::Workos)
+                && !oa_auth::workos::token::looks_like_access_token(token))
+        {
             return Err(SessionError::Unavailable);
         }
         let viewer = self.read_view(token, None).await?;

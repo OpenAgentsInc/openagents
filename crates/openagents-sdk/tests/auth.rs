@@ -491,3 +491,69 @@ fn play_request_hash_uses_the_server_byte_contract() {
         play_integrity_request_hash("challenge", "other")
     );
 }
+
+#[tokio::test]
+async fn workos_credentials_import_restore_and_rotate_without_losing_refresh_tokens() {
+    let access = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signature";
+    let renewed = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMiJ9.signature";
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let refreshed = Arc::new(AtomicUsize::new(0));
+    let observed = refreshed.clone();
+    let router = Router::new()
+        .route("/v1/device/nostr/challenge", get(|| async { Json(json!({"challenge":"fixture"})) }))
+        .route("/v1/device/nostr", post(move |headers: HeaderMap| async move {
+            assert_eq!(headers["x-openagents-auth"], "workos");
+            assert!(headers["authorization"].to_str().unwrap().starts_with("Nostr "));
+            Json(json!({"access_token":access,"refresh_token":"private-refresh-1","token_type":"Bearer","expires_in":300,"account":{"id":"acct_fixture","label":"Existing account"},"pubkey":"a".repeat(64)}))
+        }))
+        .route("/v1/account", get(move |headers: HeaderMap| async move {
+            let value = headers["authorization"].to_str().unwrap();
+            assert!(value == format!("Bearer {access}") || value == format!("Bearer {renewed}"));
+            Json(view())
+        }))
+        .route("/v1/device/refresh", post(move |headers: HeaderMap, Json(body): Json<Value>| {
+            let observed = observed.clone();
+            async move {
+                assert!(headers.get("authorization").is_none());
+                assert_eq!(body["refresh_token"], "private-refresh-1");
+                if observed.fetch_add(1, Ordering::SeqCst) > 0 { return StatusCode::UNAUTHORIZED.into_response(); }
+                Json(json!({"access_token":renewed,"refresh_token":"private-refresh-2","expires_in":300,"token_type":"Bearer"})).into_response()
+            }
+        }));
+    let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap();
+    let imported = client.authenticate(access).await.unwrap();
+    assert!(!imported.can_refresh());
+    struct Signer;
+    impl openagents_sdk::NostrSigner for Signer {
+        fn sign_event(
+            &self,
+            event: &openagents_sdk::EventTemplate,
+        ) -> Result<String, openagents_sdk::SignerError> {
+            Ok(serde_json::to_string(event).unwrap())
+        }
+    }
+    let signed = client
+        .sign_in_with_key(&Signer, "OpenAgents", "fixture")
+        .await
+        .unwrap();
+    assert!(signed.session.can_refresh());
+    let mut saved = serde_json::to_value(signed.session.record()).unwrap();
+    saved["expires_at"] = json!(0);
+    let expired: CredentialRecord = serde_json::from_value(saved).unwrap();
+    let session = client.refresh_record(&expired).await.unwrap();
+    assert!(session.can_refresh());
+    assert_eq!(session.bearer_token(), renewed);
+    let record = session.record();
+    assert_eq!(
+        serde_json::to_value(&record).unwrap()["refresh_token"],
+        "private-refresh-2"
+    );
+    assert!(!format!("{record:?}").contains("private-refresh"));
+    assert!(!format!("{record:?}").contains("signature"));
+    let restored = client.restore(&record).await.unwrap();
+    assert!(restored.can_refresh());
+    assert!(client.refresh_record(&expired).await.is_err());
+    task.abort();
+}

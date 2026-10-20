@@ -470,6 +470,21 @@ impl NostrAuth {
         now: u64,
         gate: &mut dyn NewKeyGate,
     ) -> Answer {
+        self.sign_in_gated_session(host, tenant, authorization, body, now, gate, true)
+    }
+
+    /// Verify and consume the same proof, optionally leaving session issuance to WorkOS.
+    #[allow(clippy::too_many_arguments)]
+    pub fn sign_in_gated_session(
+        &self,
+        host: Option<&str>,
+        tenant: &str,
+        authorization: Option<&str>,
+        body: &[u8],
+        now: u64,
+        gate: &mut dyn NewKeyGate,
+        legacy_session: bool,
+    ) -> Answer {
         if body.len() > BODY_MAX {
             return refused(413, "invalid_request", "That request is too large.");
         }
@@ -561,6 +576,12 @@ impl NostrAuth {
         let account = resolved.account.id.clone();
         let workspace = resolved.workspace.as_ref().map(|w| w.id.clone());
         let created = resolved.created;
+        if !legacy_session {
+            return ok(json!({
+                "account": {"id": resolved.account.id, "label": resolved.account.label},
+                "created": created, "pubkey": proof.pubkey, "_browser": browser, "_app_label": label,
+            }));
+        }
         let issued = sessions.mutate(|book, access, at| {
             let user = UserId::from(account.as_str());
             let issued = if browser {
@@ -723,6 +744,25 @@ impl NostrAuth {
 /// session bearer resolved through the session book.
 #[cfg(feature = "local")]
 pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
+    router_inner(
+        auth,
+        tenant,
+        #[cfg(feature = "workos")]
+        None,
+    )
+}
+
+#[cfg(all(feature = "local", feature = "workos"))]
+pub fn router_workos(auth: NostrAuth, tenant: &str, workos: crate::workos::Workos) -> axum::Router {
+    router_inner(auth, tenant, Some(workos))
+}
+
+#[cfg(feature = "local")]
+fn router_inner(
+    auth: NostrAuth,
+    tenant: &str,
+    #[cfg(feature = "workos")] workos: Option<crate::workos::Workos>,
+) -> axum::Router {
     use axum::body::Bytes;
     use axum::extract::{Path as UrlPath, State};
     use axum::http::{HeaderMap, StatusCode, header};
@@ -731,7 +771,13 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
     use std::sync::Arc;
 
     #[derive(Clone)]
-    struct Local(Arc<(NostrAuth, String)>);
+    struct Local(Arc<LocalState>);
+    struct LocalState {
+        auth: NostrAuth,
+        tenant: String,
+        #[cfg(feature = "workos")]
+        workos: Option<crate::workos::Workos>,
+    }
 
     fn answer(answer: Answer) -> Response {
         (
@@ -744,10 +790,21 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
         let token = headers
             .get(header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
-            .filter(|t| sessions::is_session_bearer(t));
+            .and_then(|v| v.strip_prefix("Bearer "));
+        #[cfg(feature = "workos")]
+        if let Some(workos) = &local.0.workos
+            && let Some(token) = token
+            && crate::workos::token::looks_like_access_token(token)
+        {
+            if let Some(Ok(claims)) = workos.keys().verify_cached(token, false)
+                && let Ok(Some(account)) =
+                    tenancy::workos_links::Links::open(&local.0.auth.dir).account_of(&claims.sub)
+            {
+                return Ok(account);
+            }
+        }
         let account = token.and_then(|token| {
-            let store = Sessions::open(&local.0.0.dir).ok()?.store().ok()?;
+            let store = Sessions::open(&local.0.auth.dir).ok()?.store().ok()?;
             let session = store.book.session_of_token(token)?;
             (session.kind == sessions::SessionKind::User
                 && session.standing(now()) == sessions::SessionState::Active)
@@ -758,12 +815,17 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
     fn host(headers: &HeaderMap) -> Option<&str> {
         headers.get(header::HOST).and_then(|v| v.to_str().ok())
     }
-    let local = Local(Arc::new((auth, tenant.to_string())));
+    let local = Local(Arc::new(LocalState {
+        auth,
+        tenant: tenant.to_string(),
+        #[cfg(feature = "workos")]
+        workos,
+    }));
     axum::Router::new()
         .route(
             "/v1/sessions/nostr/challenge",
             get(|State(local): State<Local>| async move {
-                answer(local.0.0.challenge(Purpose::SignIn, now()))
+                answer(local.0.auth.challenge(Purpose::SignIn, now()))
             }),
         )
         .route(
@@ -773,9 +835,42 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
                     let authorization = headers
                         .get(header::AUTHORIZATION)
                         .and_then(|v| v.to_str().ok());
-                    answer(local.0.0.sign_in(
+                    #[cfg(feature = "workos")]
+                    if let Some(workos) = &local.0.workos
+                        && workos.settings().mode() == crate::workos::Mode::Workos
+                    {
+                        let mut result = local.0.auth.sign_in_gated_session(
+                            host(&headers),
+                            &local.0.tenant,
+                            authorization,
+                            &body,
+                            now(),
+                            &mut Open,
+                            false,
+                        );
+                        if result.status == 200 {
+                            match crate::workos::session::complete_key(
+                                &local.0.auth.dir,
+                                workos,
+                                result.body,
+                                headers
+                                    .get("x-openagents-auth")
+                                    .and_then(|v| v.to_str().ok())
+                                    != Some("workos"),
+                            )
+                            .await
+                            {
+                                Ok(body) => result.body = body,
+                                Err(e) => {
+                                    return answer(refused(e.status(), e.code(), e.message()));
+                                }
+                            }
+                        }
+                        return answer(result);
+                    }
+                    answer(local.0.auth.sign_in(
                         host(&headers),
-                        &local.0.1,
+                        &local.0.tenant,
                         authorization,
                         &body,
                         now(),
@@ -788,7 +883,9 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
             get(
                 |State(local): State<Local>, headers: HeaderMap| async move {
                     match caller(&local, &headers) {
-                        Ok(account) => answer(local.0.0.challenge(Purpose::Link(&account), now())),
+                        Ok(account) => {
+                            answer(local.0.auth.challenge(Purpose::Link(&account), now()))
+                        }
                         Err(response) => response,
                     }
                 },
@@ -799,7 +896,7 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
             get(
                 |State(local): State<Local>, headers: HeaderMap| async move {
                     match caller(&local, &headers) {
-                        Ok(account) => answer(local.0.0.keys(&account)),
+                        Ok(account) => answer(local.0.auth.keys(&account)),
                         Err(response) => response,
                     }
                 },
@@ -808,7 +905,7 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
                 |State(local): State<Local>, headers: HeaderMap, body: Bytes| async move {
                     match caller(&local, &headers) {
                         Ok(account) => {
-                            answer(local.0.0.link(host(&headers), &account, &body, now()))
+                            answer(local.0.auth.link(host(&headers), &account, &body, now()))
                         }
                         Err(response) => response,
                     }
@@ -822,7 +919,7 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
                  UrlPath(pubkey): UrlPath<String>,
                  headers: HeaderMap| async move {
                     match caller(&local, &headers) {
-                        Ok(account) => answer(local.0.0.unlink(&account, &pubkey)),
+                        Ok(account) => answer(local.0.auth.unlink(&account, &pubkey)),
                         Err(response) => response,
                     }
                 },
@@ -833,7 +930,7 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
             get(
                 |State(local): State<Local>, headers: HeaderMap| async move {
                     match caller(&local, &headers) {
-                        Ok(account) => answer(local.0.0.name(&account)),
+                        Ok(account) => answer(local.0.auth.name(&account)),
                         Err(response) => response,
                     }
                 },
@@ -841,7 +938,7 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
             .put(
                 |State(local): State<Local>, headers: HeaderMap, body: Bytes| async move {
                     match caller(&local, &headers) {
-                        Ok(account) => answer(local.0.0.claim_name(&account, &body)),
+                        Ok(account) => answer(local.0.auth.claim_name(&account, &body)),
                         Err(response) => response,
                     }
                 },
@@ -849,7 +946,7 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
             .delete(
                 |State(local): State<Local>, headers: HeaderMap| async move {
                     match caller(&local, &headers) {
-                        Ok(account) => answer(local.0.0.release_name(&account)),
+                        Ok(account) => answer(local.0.auth.release_name(&account)),
                         Err(response) => response,
                     }
                 },
@@ -859,7 +956,7 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
             "/v1/names",
             get(
                 |State(local): State<Local>, uri: axum::http::Uri| async move {
-                    answer(local.0.0.lookup_query(uri.query()))
+                    answer(local.0.auth.lookup_query(uri.query()))
                 },
             ),
         )
@@ -867,7 +964,7 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
             "/v1/names/{name}",
             get(
                 |State(local): State<Local>, UrlPath(name): UrlPath<String>| async move {
-                    answer(local.0.0.lookup_name(&name))
+                    answer(local.0.auth.lookup_name(&name))
                 },
             ),
         )

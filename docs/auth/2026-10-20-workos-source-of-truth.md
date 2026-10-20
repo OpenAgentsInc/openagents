@@ -349,10 +349,10 @@ WorkOS-shaped token client inherited from Zeron behind the
 
 ## Migration
 
-Every phase sits behind one switch, `accounts.workos.mode = off | shadow |
-dual | primary`, so rollback is a configuration change until W4 drops rows.
-Old API addresses keep answering with the same shapes; new fields are added,
-none are removed.
+The implemented switch is `OPENAGENTS_AUTH=legacy|dual|workos` (or the
+configured `mode`). `dual` restores legacy issuance; after browser rows
+retire, restore their snapshot too. Existing app clients keep their session
+responses until they send the WorkOS capability header described below.
 
 | Phase | Epic | What changes | Done when | Rollback |
 | --- | --- | --- | --- | --- |
@@ -360,7 +360,7 @@ none are removed.
 | W1 Dual-write | [#12321](https://github.com/OpenAgentsInc/openagents/issues/12321) | An outbox writes every account, key link, workspace, membership, and deletion to WorkOS, idempotent by `external_id`; WorkOS events feed a drift report | 48 hours of `dual` in staging with an empty drift report | `shadow`; delete WorkOS records by external ID |
 | W2 Backfill | [#12322](https://github.com/OpenAgentsInc/openagents/issues/12322) | Resumable backfill with `--dry-run`, under 500 writes per 10 seconds | Empty reconcile report in production | Delete by recorded external IDs; our stores never changed |
 | W3 Sessions | [#12323](https://github.com/OpenAgentsInc/openagents/issues/12323) | Sign-in mints WorkOS sessions; the gateway and `coder-sync` accept WorkOS access tokens; the web uses a sealed cookie; apps store refresh tokens; sign-out revokes; cohorts from test accounts to 100 % | Test account works on web, phone, and CLI; Coder 1.0.0 device code still works | `dual`; apps re-sign silently with their key, so people see nothing |
-| W4 Retire | [#12324](https://github.com/OpenAgentsInc/openagents/issues/12324) | No new `sess_` except for Coder 1.0.0's device code; session rows read-only for 30 days, then dropped | No `sess_` minted in 7 days outside the device-code route | `dual` until rows drop; after that, the snapshot |
+| W4 Retire | [#12324](https://github.com/OpenAgentsInc/openagents/issues/12324) | WorkOS-only browsers and capable apps; retain linked unmarked app and device-code sessions; snapshot and retire browser rows through the sealed store | Targeted tests, staging restore check, and a 30-minute issuance audit; no 7/30-day wait | `dual` and restore browser rows from the snapshot |
 
 What keeps the account IDs stable: the WorkOS User's `external_id` is the
 `acct_` ID, the backfill never mints a new account, and every resolver maps
@@ -462,21 +462,25 @@ all methods we have supported in our account"):
 | Access tokens checked against the cached JWKS | `crates/oa-auth/src/workos/token.rs` |
 | Link table, migration 4 (`identity.workos_users`, `workspace.workos_orgs`; `workos-links.json` on files) | `crates/tenancy/src/workos_links.rs`, `crates/tenancy/migrations/0004_workos_links.sql` |
 | Which account a User signs in to: link, `external_id`, GitHub identity, verified email, else new; never a second account | `crates/oa-auth/src/workos/link.rs` |
-| `POST /v1/sessions/workos`: WorkOS access token in, our session out | `crates/oa-auth/src/workos/session.rs`, `crates/gateway/src/workos_auth.rs` |
+| `POST /v1/sessions/workos`: verified WorkOS access token in; a legacy session is also issued in `dual` | `crates/oa-auth/src/workos/session.rs`, `crates/gateway/src/workos_auth.rs` |
 | WorkOS access tokens as bearers on the account routes, beside `sess_`, `oa_sk_`, `oak_` | `gateway::workos_auth::principal` |
 | Dual-write after every account change; backfill (dry run first) and reconcile under the admin token | `crates/oa-auth/src/workos/sync.rs`, `POST /v1/admin/workos/backfill`, `GET /v1/admin/workos/reconcile` |
 | `/login` and `/signup` with the environment's methods and the Nostr key sign-in; `/auth/workos/{github,google}`, `/login/sso`, `/auth/callback`, `/login/code`, `/login/verify`, `/login/forgot`, `/login/reset` | `crates/openagents-web/src/workos_auth.rs` |
-| Sealed WorkOS session cookie `oa_workos` beside `oa_cloud_session`, refreshed when its token expires; in `workos` mode a refused refresh signs the browser out; sign-out revokes the WorkOS session | `workos_auth::layer`, `cloud::sign_out` |
+| Sealed WorkOS session cookie `oa_workos`, refreshed when its token expires; `workos` clears `oa_cloud_session` and a refused refresh signs the browser out; sign-out revokes the WorkOS session | `workos_auth::layer`, `cloud::sign_out` |
 | Old addresses: `/auth/github` sends a sign-in through WorkOS; the GitHub repository connection, the device code (Coder 1.0.0), key sign-in for the apps, and `sess_` keep working | `crates/openagents-web/src/auth.rs` |
+| WorkOS-only browser sessions and app sessions marked `X-OpenAgents-Auth: workos`; unmarked apps keep linked sessions (`issued_via=legacy_app`), and RFC 8628 keeps `issued_via=device_code`. `dual` restores the old path | `oa_auth::workos::session`, `gateway::workos_auth`, `openagents_web::workos_auth` |
+| Admin-only session retirement and restore through `Sessions::mutate`, with dry-run/apply and a private snapshot file | `POST /v1/admin/workos/retire-sessions` in `workos`; `POST /v1/admin/workos/restore-sessions` in `dual` with the returned `snapshot` basename. Both are forwarded by the web server with the operator's explicit admin bearer. |
 | An in-process fake WorkOS the real SDK talks to | `crates/oa-auth/src/workos/fake.rs` |
 | Deploy: `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, `WORKOS_METHODS`, `OPENAGENTS_AUTH` in the web and gateway launchers; `render.py --workos` on staging once its secrets exist | `deploy/staging/{web,gateway}.sh`, `deploy/production/web.sh`, `deploy/staging/render.py` |
 
 Differences from the plan: the link table is its own store beside the
 account document rather than rows in it, so an older binary still opens the
-stores. WorkOS sign-ins mint our `sess_` in every mode until W4; `workos`
-mode ties that session's life to the WorkOS session. The access-token
-bearer works on the account routes; `coder-sync` still takes `sess_` and
-`oa_sk_`.
+stores. WorkOS browser sign-ins use access tokens in `workos` mode and also
+mint `sess_` in `dual`. Capable apps send `X-OpenAgents-Auth: workos` and
+receive access and refresh tokens; unmarked apps keep linked app sessions
+until the fixed clients ship. The header selects compatibility behavior;
+the signed proof still establishes identity. Retirement snapshots app rows
+but removes only browser rows, preserving keys and anonymous sessions.
 
 ## Sources
 

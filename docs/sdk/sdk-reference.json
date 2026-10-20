@@ -309,6 +309,12 @@
               "calls": []
             },
             {
+              "name": "can_refresh",
+              "doc": "Whether WorkOS issued a refresh token for this session.",
+              "declaration": "pub fn can_refresh(&self) -> bool",
+              "calls": []
+            },
+            {
               "name": "record",
               "doc": "Export for explicit storage; the client never saves it by itself.",
               "declaration": "pub fn record(&self) -> CredentialRecord",
@@ -3351,6 +3357,23 @@
                 {
                   "method": "GET",
                   "path": "/v1/account"
+                }
+              ]
+            },
+            {
+              "name": "refresh_record",
+              "doc": "Refresh a stored WorkOS credential even when its access token expired while the app was closed.",
+              "declaration": "pub async fn refresh_record(&self, record: &CredentialRecord) -> Result<Session, Error>",
+              "calls": []
+            },
+            {
+              "name": "refresh_session",
+              "doc": "Rotate a WorkOS app session. The caller saves the returned record once rotation succeeds.",
+              "declaration": "pub async fn refresh_session(&self, session: &Session) -> Result<Session, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/device/refresh"
                 }
               ]
             },

@@ -787,3 +787,39 @@ fn a_name_is_claimed_looked_up_and_released() {
     assert_eq!(auth.release_name(&a).body["released"], "alice-w");
     assert_eq!(auth.lookup_name("alice-w").status, 404);
 }
+
+#[cfg(feature = "fake-workos")]
+#[tokio::test]
+async fn primary_key_proofs_are_consumed_without_minting_on_a_workos_failure() {
+    let (dir, auth) = world();
+    let key = signer(33);
+    let now = now();
+    let (challenge, _) = auth.issue(Purpose::SignIn, now);
+    let header = Request {
+        signer: &key,
+        created_at: now,
+        url: SIGN_IN,
+        method: "POST",
+        challenge: Some(&challenge),
+        payload: Some(BODY),
+    }
+    .header();
+    let resolved =
+        auth.sign_in_gated_session(None, "signup", Some(&header), BODY, now, &mut Open, false);
+    assert_eq!(resolved.status, 200);
+    assert!(resolved.body["token"].is_null());
+    let fake = crate::workos::fake::FakeWorkos::start().await;
+    fake.set_down(true);
+    let workos = fake.client(crate::workos::Mode::Workos, &[]);
+    assert!(
+        crate::workos::session::complete_key(dir.path(), &workos, resolved.body, false)
+            .await
+            .is_err()
+    );
+    let store = Sessions::open(dir.path()).unwrap().store().unwrap();
+    assert!(store.book.sessions.is_empty());
+    assert!(!store.book.nostr_proofs.is_empty());
+    let replay =
+        auth.sign_in_gated_session(None, "signup", Some(&header), BODY, now, &mut Open, false);
+    assert_ne!(replay.status, 200);
+}

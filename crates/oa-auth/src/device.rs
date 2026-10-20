@@ -151,6 +151,16 @@ pub fn start(dir: &Path, body: &Value) -> Answer {
 /// new `interval`); `expired_token`, `access_denied`, or `invalid_grant`
 /// end the flow.
 pub fn poll(dir: &Path, body: &Value) -> Answer {
+    poll_inner(dir, body, false)
+}
+
+/// The device exception when WorkOS is on: never issue for an unlinked account.
+#[cfg(feature = "workos")]
+pub fn poll_linked(dir: &Path, body: &Value) -> Answer {
+    poll_inner(dir, body, true)
+}
+
+fn poll_inner(dir: &Path, body: &Value, linked: bool) -> Answer {
     let Some(code) = text(body, "device_code").filter(|c| c.starts_with("dvc_")) else {
         return refused(400, "invalid_grant", "Send the device_code.");
     };
@@ -159,6 +169,25 @@ pub fn poll(dir: &Path, body: &Value) -> Answer {
         Err(answer) => return answer,
     };
     let polled = sessions.mutate(|book, log, now| {
+        #[cfg(feature = "workos")]
+        if linked {
+            use sha2::Digest;
+            if let Some(account) = book
+                .devices
+                .get(&format!("{:x}", sha2::Sha256::digest(code.as_bytes())))
+                .and_then(|g| g.account.as_ref())
+            {
+                if tenancy::workos_links::Links::open(dir)
+                    .user_of(account.as_str())
+                    .map_err(|_| Refusal::Unavailable)?
+                    .is_none()
+                {
+                    return Err(Refusal::Unavailable);
+                }
+            }
+        }
+        #[cfg(not(feature = "workos"))]
+        let _ = linked;
         let polled = book.poll_device(code, now)?;
         if let DevicePoll::Issued(issued, account) = &polled {
             push(
@@ -221,6 +250,18 @@ fn browser_session(dir: &Path, account: &str, session: Option<&str>) -> Result<(
         )
     };
     let session = session.ok_or_else(denied)?;
+    // `session` comes from an authenticated gateway/local-service principal.
+    // WorkOS session IDs are distinct from the legacy book's digest IDs.
+    #[cfg(feature = "workos")]
+    if session.starts_with("session_")
+        && tenancy::workos_links::Links::open(dir)
+            .user_of(account)
+            .ok()
+            .flatten()
+            .is_some()
+    {
+        return Ok(());
+    }
     let store = store(dir)?.store().map_err(|_| unavailable())?;
     let record = store
         .book

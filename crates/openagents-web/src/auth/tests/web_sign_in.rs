@@ -12,13 +12,13 @@ use sha2::{Digest, Sha256};
 
 use super::*;
 
-fn key(seed: u8) -> RelaySigner {
+pub(super) fn key(seed: u8) -> RelaySigner {
     RelaySigner::from_secret_hex(&format!("{seed:02x}").repeat(32)).unwrap()
 }
 
 /// `Nostr <base64 event>`: NIP-98 over `POST url` with `challenge` and the
 /// body's hash.
-fn nip98(key: &RelaySigner, url: &str, challenge: &str, body: &[u8]) -> String {
+pub(super) fn nip98(key: &RelaySigner, url: &str, challenge: &str, body: &[u8]) -> String {
     let hash: String = Sha256::digest(body)
         .iter()
         .map(|b| format!("{b:02x}"))
@@ -88,7 +88,7 @@ async fn key_world_with(profile_relays: Vec<String>) -> World {
 
 /// One JSON call from `browser`, keeping its cookies; `origin` is the page
 /// it comes from.
-async fn call(
+pub(super) async fn call(
     world: &World,
     browser: &mut Browser,
     method: &str,
@@ -97,12 +97,39 @@ async fn call(
     authorization: Option<&str>,
     body: Option<&[u8]>,
 ) -> (StatusCode, serde_json::Value) {
+    call_capability(
+        world,
+        browser,
+        method,
+        path,
+        origin,
+        authorization,
+        body,
+        true,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn call_capability(
+    world: &World,
+    browser: &mut Browser,
+    method: &str,
+    path: &str,
+    origin: Option<&str>,
+    authorization: Option<&str>,
+    body: Option<&[u8]>,
+    capable: bool,
+) -> (StatusCode, serde_json::Value) {
     let mut request = Request::builder()
         .method(method)
         .uri(path)
         .header(header::HOST, HOST)
         .header(header::USER_AGENT, BROWSER)
         .header(header::CONTENT_TYPE, "application/json");
+    if capable {
+        request = request.header("X-OpenAgents-Auth", "workos");
+    }
     if let Some(origin) = origin {
         request = request.header(header::ORIGIN, origin);
     }
@@ -138,7 +165,7 @@ async fn call(
 }
 
 /// The request and challenge in a scanned link.
-fn scanned(link: &str) -> (String, String) {
+pub(super) fn scanned(link: &str) -> (String, String) {
     let fragment = link
         .strip_prefix(&format!("{ORIGIN}/login/scan#"))
         .expect("the site's own scan link");

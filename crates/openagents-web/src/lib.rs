@@ -1095,9 +1095,9 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
         .any(|value| {
             value.to_str().map_or(true, |cookies| {
                 cookies.split(';').any(|part| {
-                    part.trim()
-                        .split_once('=')
-                        .is_some_and(|(name, _)| name.starts_with("oa_cloud_"))
+                    part.trim().split_once('=').is_some_and(|(name, _)| {
+                        name.starts_with("oa_cloud_") || name.starts_with("oa_workos")
+                    })
                 })
             })
         });
@@ -1111,7 +1111,8 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
                     kind.eq_ignore_ascii_case("bearer") && {
                         let token = token.trim_start_matches(' ');
                         token.starts_with("sess_")
-                            || token.starts_with(cloud::session::SIGN_IN_KEY_PREFIX)
+                            || token.starts_with("oa_sk_")
+                            || oa_auth::workos::token::looks_like_access_token(token)
                     }
                 })
             })

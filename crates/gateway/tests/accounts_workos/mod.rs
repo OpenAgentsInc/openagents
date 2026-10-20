@@ -92,6 +92,10 @@ fn signer(seed: u8) -> RelaySigner {
 }
 
 async fn key_sign_in(d: &Deployment, key: &RelaySigner) -> Value {
+    key_sign_in_capability(d, key, true).await
+}
+
+async fn key_sign_in_capability(d: &Deployment, key: &RelaySigner, capable: bool) -> Value {
     let (status, challenge) =
         exchange(reqwest::Client::new().get(format!("{}/v1/sessions/nostr/challenge", d.address)))
             .await;
@@ -125,6 +129,10 @@ async fn key_sign_in(d: &Deployment, key: &RelaySigner) -> Value {
             .post(&url)
             .header("authorization", header)
             .header("content-type", "application/json")
+            .header(
+                "x-openagents-auth",
+                if capable { "workos" } else { "legacy" },
+            )
             .body(body.to_vec()),
     )
     .await;
@@ -214,4 +222,249 @@ async fn the_admin_backfill_needs_the_admin_token() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let (status, _) = get(&d, "/v1/admin/workos/reconcile", "nope").await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn primary_sessions_are_workos_only_and_legacy_issuers_are_gated() {
+    let fake = FakeWorkos::start().await;
+    let (d, _keys) = deploy_with(&fake, Mode::Workos).await;
+    let user = fake.add_user("primary@example.com", None, true);
+    let (access, _) = fake.sign_in(&user);
+    let (status, signed) = sign_in(&d, &access).await;
+    assert_eq!(status, StatusCode::OK, "{signed}");
+    assert_eq!(signed["token"], access);
+    let (status, view) = get(&d, "/v1/session", &access).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(view["session"]["state"], "active");
+    assert_eq!(view["session"]["account"], signed["session"]["account"]);
+    for path in [
+        "/v1/sessions",
+        "/v1/accounts",
+        "/v1/sessions/github",
+        "/v1/workspaces/ws_test/sso/sign-in",
+    ] {
+        let (status, body) = post(&d, path, Some("oak_fake.fake"), &json!({})).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{path}: {body}");
+        assert_eq!(code(&body), "workos_required", "{path}: {body}");
+    }
+    assert!(
+        Sessions::open(d.dir.path())
+            .unwrap()
+            .store()
+            .unwrap()
+            .book
+            .sessions
+            .is_empty()
+    );
+    let (status, logged_out) = exchange(
+        reqwest::Client::new()
+            .delete(format!("{}/v1/session", d.address))
+            .bearer_auth(&access),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{logged_out}");
+    assert!(fake.revoked(view["session"]["id"].as_str().unwrap()));
+}
+
+#[tokio::test]
+async fn primary_nostr_returns_refresh_tokens_without_a_legacy_session_and_fails_closed() {
+    let fake = FakeWorkos::start().await;
+    let (d, _keys) = deploy_with(&fake, Mode::Workos).await;
+    let signed = key_sign_in(&d, &signer(31)).await;
+    let token = signed["access_token"].as_str().unwrap();
+    assert!(oa_auth::workos::token::looks_like_access_token(token));
+    let (status, view) = get(&d, "/v1/account", token).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    let refresh = signed["refresh_token"].as_str().unwrap();
+    let (status, renewed) = post(
+        &d,
+        "/v1/sessions/workos/refresh",
+        None,
+        &json!({"refresh_token": refresh}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{renewed}");
+    assert_ne!(renewed["refresh_token"], refresh);
+    let (status, _) = post(
+        &d,
+        "/v1/sessions/workos/refresh",
+        None,
+        &json!({"refresh_token": refresh}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(
+        Sessions::open(d.dir.path())
+            .unwrap()
+            .store()
+            .unwrap()
+            .book
+            .sessions
+            .is_empty()
+    );
+    // The separate oa-auth proof regression covers a refused bridge without issuing any session.
+}
+
+#[tokio::test]
+async fn primary_workos_bearer_can_delete_its_account_without_a_legacy_session() {
+    let fake = FakeWorkos::start().await;
+    let (d, _keys) = deploy_with(&fake, Mode::Workos).await;
+    let user = fake.add_user("delete@example.com", None, true);
+    let (access, _) = fake.sign_in(&user);
+    let (status, signed) = sign_in(&d, &access).await;
+    assert_eq!(status, StatusCode::OK, "{signed}");
+    let account = signed["session"]["account"].as_str().unwrap();
+    let (status, deleted) = exchange(
+        reqwest::Client::new()
+            .delete(format!("{}/v1/account", d.address))
+            .bearer_auth(&access)
+            .json(&json!({"confirm":"delete my account"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{deleted}");
+    let store = tenancy::accounts::Accounts::open(d.dir.path())
+        .unwrap()
+        .store()
+        .unwrap();
+    assert_eq!(store.accounts[account].label, "Deleted account");
+    assert!(store.accounts[account].principals.is_empty());
+    assert!(
+        tenancy::Sessions::open(d.dir.path())
+            .unwrap()
+            .store()
+            .unwrap()
+            .book
+            .sessions
+            .is_empty()
+    );
+    assert_eq!(
+        get(&d, "/v1/account", &access).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    for _ in 0..30 {
+        if fake.user(&user).is_none() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(fake.user(&user).is_none());
+    assert!(
+        tenancy::workos_links::Links::open(d.dir.path())
+            .user_of(account)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn primary_device_code_keeps_a_linked_legacy_session_with_a_server_source() {
+    let fake = FakeWorkos::start().await;
+    let (d, _keys) = deploy_with(&fake, Mode::Workos).await;
+    let user = fake.add_user("device@example.com", None, true);
+    let (access, _) = fake.sign_in(&user);
+    let (_, signed) = sign_in(&d, &access).await;
+    let (_, start) = post(
+        &d,
+        "/v1/sessions/device",
+        None,
+        &json!({"app":"Coder","computer":"fixture"}),
+    )
+    .await;
+    let (status, decision) = post(
+        &d,
+        "/v1/sessions/device/decide",
+        Some(&access),
+        &json!({"user_code":start["user_code"],"approve":true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{decision}");
+    let (status, poll) = post(
+        &d,
+        "/v1/sessions/device/poll",
+        None,
+        &json!({"device_code":start["device_code"]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{poll}");
+    let token = poll["token"].as_str().unwrap();
+    assert!(token.starts_with("sess_"));
+    let store = Sessions::open(d.dir.path()).unwrap().store().unwrap();
+    assert_eq!(store.book.sessions.len(), 1);
+    let row = store.book.session_of_token(token).unwrap();
+    assert_eq!(row.issued_via.as_deref(), Some("device_code"));
+    assert_eq!(
+        row.user.as_str(),
+        signed["session"]["account"].as_str().unwrap()
+    );
+    assert_eq!(
+        tenancy::workos_links::Links::open(d.dir.path())
+            .user_of(row.user.as_str())
+            .unwrap()
+            .as_deref(),
+        Some(user.as_str())
+    );
+    let (status, view) = get(&d, "/v1/account", token).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+}
+
+#[tokio::test]
+async fn retirement_endpoints_never_admit_a_user_token_as_admin() {
+    let fake = FakeWorkos::start().await;
+    let (d, _keys) = deploy_with(&fake, Mode::Workos).await;
+    let user = fake.add_user("not-admin@example.com", None, true);
+    let (access, _) = fake.sign_in(&user);
+    let _ = sign_in(&d, &access).await;
+    for path in [
+        "/v1/admin/workos/retire-sessions",
+        "/v1/admin/workos/restore-sessions",
+    ] {
+        let (status, _) = post(&d, path, Some(&access), &json!({"apply":true})).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, _) = post(&d, path, None, &json!({"apply":true})).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+}
+
+#[tokio::test]
+async fn primary_unmarked_app_clients_keep_linked_sessions_with_a_compatibility_source() {
+    let fake = FakeWorkos::start().await;
+    let (d, _keys) = deploy_with(&fake, Mode::Workos).await;
+    let signed = key_sign_in_capability(&d, &signer(47), false).await;
+    let token = signed["token"].as_str().unwrap();
+    assert!(token.starts_with("sess_"));
+    let store = Sessions::open(d.dir.path()).unwrap().store().unwrap();
+    let row = store.book.session_of_token(token).unwrap();
+    assert_eq!(row.issued_via.as_deref(), Some("legacy_app"));
+    assert!(row.app.is_some());
+    assert!(
+        tenancy::workos_links::Links::open(d.dir.path())
+            .user_of(row.user.as_str())
+            .unwrap()
+            .is_some()
+    );
+    let (status, view) = get(&d, "/v1/account", token).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert!(
+        store
+            .access
+            .iter()
+            .any(|a| a.detail.as_deref() == Some("nostr:legacy_app"))
+    );
+    // Existing app rows predate the marker and still work once linked.
+    Sessions::open(d.dir.path())
+        .unwrap()
+        .mutate(|book, _, _| {
+            book.sessions.get_mut(&row.id).unwrap().issued_via = None;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(get(&d, "/v1/account", token).await.0, StatusCode::OK);
+    fake.set_down(true);
+    tenancy::workos_links::Links::open(d.dir.path())
+        .unlink_account(row.user.as_str())
+        .unwrap();
+    assert_eq!(
+        get(&d, "/v1/account", token).await.0,
+        StatusCode::UNAUTHORIZED
+    );
 }

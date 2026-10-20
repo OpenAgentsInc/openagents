@@ -182,10 +182,12 @@ pub struct Session {
     /// When the session last left `active`, when it did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed_at: Option<u64>,
-    /// The app and computer, for a session an app signed in with a
-    /// device code; `None` for a browser session.
+    /// The app and computer for an app session; `None` for a browser session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<AppLabel>,
+    /// Set by the device-code or legacy-app issuer, never from client app labels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issued_via: Option<String>,
     /// The name and last use of a sign-in key (`oa_sk_…`) the person
     /// made in Settings for an agent; `None` for every other session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -673,6 +675,7 @@ impl SessionBook {
             state: SessionState::Active,
             closed_at: None,
             app: None,
+            issued_via: None,
             key: None,
         };
         self.sessions.insert(session.id.clone(), session.clone());

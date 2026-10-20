@@ -265,7 +265,7 @@ impl CloudSession {
         new: &NewProject,
     ) -> Result<Project> {
         self.request_host(headers)?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         self.create_project_as(&token, new).await
     }
 
@@ -277,7 +277,7 @@ impl CloudSession {
         change: &ProjectChange,
     ) -> Result<Project> {
         self.request_host(headers)?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         self.edit_project_as(&token, id, change).await
     }
 
@@ -395,7 +395,7 @@ impl CloudSession {
         body: Option<Value>,
     ) -> Result<Value> {
         self.request_host(headers)?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         self.project_call_as(&token, method, path, body).await
     }
 
@@ -438,7 +438,7 @@ impl CloudSession {
         body: Option<Value>,
     ) -> Result<Value> {
         self.request_host(headers)?;
-        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let token = self.credential(headers)?;
         self.account_call_as(&token, method, path, older, body)
             .await
     }

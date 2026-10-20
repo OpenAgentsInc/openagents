@@ -45,6 +45,10 @@ pub(crate) fn routes() -> Router<App> {
             oa_auth::workos::CALLBACK_PATH,
             get(crate::workos_auth::callback),
         )
+        .route(
+            "/v1/admin/workos/{operation}",
+            post(crate::workos_auth::admin_sessions),
+        )
         .route("/login/code", post(crate::workos_auth::send_code))
         .route(
             "/login/verify",
