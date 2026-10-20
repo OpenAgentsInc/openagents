@@ -52,6 +52,17 @@ pub async fn beacons(
 /// (addresses a trusted checker failed).
 #[must_use]
 pub fn choose(book: &BeaconBook, at: u64, failing: &BTreeSet<String>) -> Option<Beacon> {
+    choose_on(book, at, failing, Lane::CjConversation)
+}
+
+/// As [`choose`], on `lane` (the decision lane for `decide`).
+#[must_use]
+pub fn choose_on(
+    book: &BeaconBook,
+    at: u64,
+    failing: &BTreeSet<String>,
+    lane: Lane,
+) -> Option<Beacon> {
     book.iter()
         .map(|(_, beacon)| beacon)
         .filter(|b| {
@@ -59,7 +70,7 @@ pub fn choose(book: &BeaconBook, at: u64, failing: &BTreeSet<String>) -> Option<
                 && pylon::freshness(b, at) == Freshness::Fresh
                 && b.status == Status::Online
                 && b.slots.free > 0
-                && b.serves(Lane::CjConversation).is_some()
+                && b.serves(lane).is_some()
         })
         .max_by_key(|b| (b.slots.free, b.observed_at))
         .cloned()

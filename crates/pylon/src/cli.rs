@@ -241,6 +241,13 @@ Commands:
                             Choose who pays (`openagents pylon` only).
       --network NAME        The wallet's network: testnet (default) or
                             bitcoin, which needs the owner's grant.json.
+  decide --questions JSON   Send one free decision job (NIP-DEC) to a pylon and
+                            print its answers.
+      --state JSON          The state the questions are about (default {}).
+      --questions JSON      The questions, keyed by id, as /v1/systemone
+                            takes them.
+      --pylon NPUB          Use this pylon instead of the best fresh one.
+      --wait SECS           How long to wait for the answer (default 60).
   check canary --pylon NPUB Send the pylon its class's pinned Gym suite of
                             known-answer jobs as the buyer key, and sign a
                             check verdict on each receipt with the checker key.
@@ -417,6 +424,7 @@ fn dispatch(
             }),
             "serve" => serve(json_out, &mut args, &relay, wallet).await,
             "ask" => ask(json_out, &mut args, &relay, checkers, wallet).await,
+            "decide" => decide(json_out, &mut args, &relay).await,
             "status" => {
                 if args.flag("--field") || args.words.iter().any(|w| w == "--pool") {
                     status(json_out, &mut args, &relay).await
@@ -1020,6 +1028,107 @@ owner {}",
         ),
     );
     Ok(())
+}
+
+/// `decide`: one free decision job to a pylon, as this computer's buyer.
+async fn decide(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+    let state: Value = match args.value("--state")? {
+        Some(text) => {
+            serde_json::from_str(&text).map_err(|e| format!("--state is not JSON: {e}"))?
+        }
+        None => json!({}),
+    };
+    let questions = match args.value("--questions")? {
+        Some(text) => match serde_json::from_str::<Value>(&text)
+            .map_err(|e| format!("--questions is not JSON: {e}"))?
+        {
+            Value::Object(map) if !map.is_empty() => map,
+            _ => return Err("--questions is an object of questions keyed by id".into()),
+        },
+        None => return Err("decide needs --questions".into()),
+    };
+    let pylon = match args.value("--pylon")? {
+        Some(p) => Some(hex_pubkey(&p).ok_or("--pylon is not a key")?),
+        None => None,
+    };
+    let wait = Duration::from_secs(args.number("--wait", 60)?.clamp(1, 600));
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    let buyer = key("buyer")?;
+    let started = std::time::Instant::now();
+    let mut conn = crate::relay::connect(relay, &buyer, Duration::from_secs(10)).await?;
+    let authors = pylon.clone().map(|p| vec![p]);
+    let book = client::beacons(&mut conn, authors.as_deref()).await?;
+    let _ = conn.close().await;
+    let beacon = match &pylon {
+        Some(p) => book
+            .iter()
+            .map(|(_, b)| b.clone())
+            .filter(|b| &b.provider == p)
+            .max_by_key(|b| b.observed_at)
+            .ok_or_else(|| format!("no beacon from pylon {}", crate::identity::npub(p)))?,
+        None => client::choose_on(
+            &book,
+            crate::now(),
+            &BTreeSet::new(),
+            nostr::pylon::Lane::CjDecision,
+        )
+        .ok_or("no fresh online decision pylon with a free slot")?,
+    };
+    let service = beacon
+        .serves(nostr::pylon::Lane::CjDecision)
+        .ok_or("that pylon's beacon offers no decision service")?;
+    let model = service
+        .model
+        .split('@')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    let discover_ms = started.elapsed().as_millis() as u64;
+    let asked = std::time::Instant::now();
+    let reply = crate::decide_client::ask(
+        &buyer,
+        relay,
+        &beacon.provider,
+        &model,
+        &state,
+        &questions,
+        wait,
+    )
+    .await?;
+    let answer_ms = asked.elapsed().as_millis() as u64;
+    let npub = crate::identity::npub(&beacon.provider);
+    let (answers, error) = match &reply {
+        crate::decide_client::Reply::Answered(body) => (body["answers"].clone(), None),
+        crate::decide_client::Reply::Refused(why) => (Value::Null, Some(why.clone())),
+    };
+    let value = json!({
+        "pylon": beacon.address(),
+        "pylon_npub": npub,
+        "label": beacon.label,
+        "model": service.model,
+        "answers": answers,
+        "error": error,
+        "discover_ms": discover_ms,
+        "answer_ms": answer_ms,
+    });
+    let mut text = format!(
+        "pylon   {} ({npub})\nmodel   {}\n",
+        beacon.label, service.model
+    );
+    match &error {
+        None => text.push_str(&format!("answers {answers}\n")),
+        Some(why) => text.push_str(&format!("error   {why}\n")),
+    }
+    text.push_str(&format!(
+        "latency discovery {discover_ms} ms, answer {answer_ms} ms"
+    ));
+    emit(json_out, &value, &text);
+    match error {
+        None => Ok(()),
+        Some(why) => Err(why),
+    }
 }
 
 async fn ask(

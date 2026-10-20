@@ -124,6 +124,8 @@ const PYLON: &[Declared] = &[
     Declared::computer("route off", Effect::LocalWrite),
     Declared::computer("route status", Effect::ReadOnly),
     Declared::computer("ask", Effect::Spends),
+    // One free decision job; it publishes the encrypted request.
+    Declared::computer("decide", Effect::Publishes),
     // Sends known-answer or repeated jobs and publishes signed verdicts
     // (and, with --award, NIP-XP).
     Declared::computer("check canary", Effect::Publishes),
