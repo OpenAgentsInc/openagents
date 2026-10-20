@@ -3088,3 +3088,11 @@ build and `/lander9`'s landmarker, open `/verse` in Chrome on your Mac, press
 **Hands**, allow the camera, and check that pinching and moving looks around,
 pointing walks forward, and an open palm lets go. The camera's picture stays
 in the browser.
+
+## Ship Payments from your browser and Android's Public profile (#12310, #12308)
+
+Cut the next TestFlight build (it carries Wallet > Browser) and an Android
+debug build (More > Public profile, More > Payments from your browser). With
+the dedicated test account and test values, never your own wallet: ask to pay
+a small x402 test resource from Chrome, approve it on the phone, and check the
+browser completes it; on Android, save a name and picture and check `/@NAME`.
