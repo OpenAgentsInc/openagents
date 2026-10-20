@@ -13,6 +13,8 @@
 
 pub mod account;
 pub mod appearance;
+/// Earn on a paired computer (#12294).
+pub mod earn;
 pub mod shortcuts;
 
 use rust_native::style::{Color, Style, TextWeight};
@@ -34,18 +36,21 @@ pub enum Page {
     Shortcuts,
     Files,
     Archived,
+    /// Earn on a paired computer (#12294).
+    Earn,
     /// Your ID: the account's keys, sign out, and delete (#12290).
     Account,
 }
 
 impl Page {
-    pub const ALL: [Page; 7] = [
+    pub const ALL: [Page; 8] = [
         Page::General,
         Page::Appearance,
         Page::Notifications,
         Page::Shortcuts,
         Page::Files,
         Page::Archived,
+        Page::Earn,
         Page::Account,
     ];
 
@@ -58,6 +63,7 @@ impl Page {
             Page::Shortcuts => "Shortcuts",
             Page::Files => "Files",
             Page::Archived => "Archived sessions",
+            Page::Earn => "Earn",
             Page::Account => "Your ID",
         }
     }
@@ -72,6 +78,7 @@ impl Page {
             Page::Shortcuts => "shortcuts",
             Page::Files => "files",
             Page::Archived => "archived",
+            Page::Earn => "earn",
             Page::Account => "account",
         }
     }
@@ -309,6 +316,8 @@ pub enum Intent {
     ArchivedPage(usize),
     /// Your ID (#12290).
     Account(account::Action),
+    /// Earn (#12294).
+    Earn(earn::Action),
 }
 
 /// The theme's colors for the forms, which the host reads from its theme
@@ -416,6 +425,8 @@ pub struct Remote {
     pub confirm_delete_all: bool,
     pub deleting: bool,
     pub account: account::State,
+    /// Earn on the chosen computer (#12294).
+    pub earn: earn::State,
     /// The browser lets the page show notifications (`Notification`
     /// permission), or `None` when it asks first.
     pub notifications_allowed: Option<bool>,
@@ -437,6 +448,7 @@ pub fn page(page: Page, prefs: &Prefs, remote: &Remote, paints: &Paints) -> Node
         Page::Shortcuts => shortcuts::page(prefs, remote, paints),
         Page::Files => files(prefs, paints),
         Page::Archived => archived(remote, paints),
+        Page::Earn => earn::page(remote, paints),
         Page::Account => account::page(&remote.account, paints),
     };
     column(&format!("settings-{}", page.slug()), body)

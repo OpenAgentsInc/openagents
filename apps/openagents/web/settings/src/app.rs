@@ -11,10 +11,11 @@ use gpui::{
 };
 use openagents_chat_view::settings_forms::{
     self as forms, Archived, FilesPrefs, Intent, Load, Named, Page, Paints, Prefs, Remote, Titles,
-    Worktrees, account, appearance, shortcuts,
+    Worktrees, account, appearance, earn, shortcuts,
 };
 use openagents_chat_view::{rust_native_gpui, theme::Theme};
 use openagents_web_chat_view::theme;
+use openagents_web_client::earn::{self as pylon, Reply};
 use openagents_web_client::web::Client;
 use openagents_web_client::{Refusal, computer, store};
 use serde::Deserialize;
@@ -87,6 +88,9 @@ pub struct SettingsApp {
     focus_wanted: bool,
     computer_task: Option<Task<()>>,
     account_task: Option<Task<()>>,
+    /// Earn's reads of the computer (#12294), and the wait before the next.
+    earn_task: Option<Task<()>>,
+    earn_timer: Option<Task<()>>,
 }
 
 impl SettingsApp {
@@ -107,6 +111,8 @@ impl SettingsApp {
             focus_wanted: false,
             computer_task: None,
             account_task: None,
+            earn_task: None,
+            earn_timer: None,
         };
         openagents_chat_view::motion::init(
             this.prefs.appearance.reduce_motion,
@@ -172,6 +178,10 @@ impl SettingsApp {
         self.remote.archived = self.context.archived.clone();
         match page {
             Page::General => self.load_computer_settings(cx),
+            Page::Earn => {
+                self.remote.earn = earn::State::default();
+                self.load_earn(cx);
+            }
             Page::Account => self.load_account(cx),
             Page::Notifications => self.remote.notifications_allowed = notifications_allowed(),
             _ => {}
@@ -180,8 +190,8 @@ impl SettingsApp {
         cx.notify();
     }
 
-    /// Thread naming and the worktree folder of the chosen computer.
-    fn load_computer_settings(&mut self, cx: &mut Context<Self>) {
+    /// The chosen computer, the first one when none is chosen yet.
+    fn chosen_computer(&mut self) -> Option<String> {
         let computers = self.context.computers.clone();
         let remote = &mut self.remote;
         if remote
@@ -192,9 +202,122 @@ impl SettingsApp {
             remote.computer = computers.first().map(|c| c.id.clone());
         }
         remote.computers = computers;
-        let Some(device) = remote.computer.clone() else {
+        remote.computer.clone()
+    }
+
+    /// Earn on the chosen computer: its status, earnings, and pauses, read
+    /// again every ten seconds while the page is open.
+    fn load_earn(&mut self, cx: &mut Context<Self>) {
+        let Some(device) = self.chosen_computer() else {
             return;
         };
+        let state = &mut self.remote.earn;
+        for load in [&mut state.status, &mut state.earnings, &mut state.settings] {
+            if !matches!(load, Load::Ready(_)) {
+                *load = Load::Loading;
+            }
+        }
+        let name = self.computer_name(&device);
+        self.earn_task = Some(self.computer_calls(
+            device.clone(),
+            name,
+            vec![
+                (pylon::PYLON_STATUS, Value::Null),
+                (pylon::PYLON_EARNINGS, Value::Null),
+                (pylon::PYLON_SETTINGS, Value::Null),
+            ],
+            move |this, answers, cx| {
+                let state = &mut this.remote.earn;
+                let mut read = answers.into_iter().map(|answer| match answer {
+                    Ok(value) => Reply::read(&value),
+                    Err(error) => Reply::Failed(error),
+                });
+                for load in [&mut state.status, &mut state.earnings, &mut state.settings] {
+                    match read.next() {
+                        Some(Reply::Ok(data)) => *load = Load::Ready(data),
+                        Some(Reply::Unavailable) => state.unavailable = true,
+                        Some(Reply::Failed(error)) => *load = Load::Failed(error),
+                        Some(Reply::Running) | None => {}
+                    }
+                }
+                if state
+                    .status
+                    .ready()
+                    .is_some_and(|d| d["state"] == "serving" || d["state"] == "paused")
+                {
+                    state.setting_up = false;
+                }
+                let next = cx.spawn(async move |this, cx| {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_secs(10))
+                        .await;
+                    let _ = this.update(cx, |this, cx| {
+                        if this.page == Page::Earn
+                            && this.remote.computer.as_deref() == Some(device.as_str())
+                        {
+                            this.load_earn(cx);
+                        }
+                    });
+                });
+                this.earn_timer = Some(next);
+            },
+            cx,
+        ));
+    }
+
+    /// Turn sharing on or off, or change a pause, then read again.
+    fn earn_action(&mut self, action: earn::Action, cx: &mut Context<Self>) {
+        let Some(device) = self.remote.computer.clone() else {
+            return;
+        };
+        if self.remote.earn.busy {
+            return;
+        }
+        let (method, params) = match action {
+            earn::Action::TurnOn => (pylon::PYLON_UP, Value::Null),
+            earn::Action::TurnOff => (pylon::PYLON_DOWN, Value::Null),
+            earn::Action::PauseOnBattery(on) => (
+                pylon::PYLON_SET_PAUSE,
+                pylon::set_pause_params(pylon::Pause::Battery, on),
+            ),
+            earn::Action::PauseWhenHot(on) => (
+                pylon::PYLON_SET_PAUSE,
+                pylon::set_pause_params(pylon::Pause::Hot, on),
+            ),
+        };
+        self.remote.earn.busy = true;
+        self.notice = None;
+        let name = self.computer_name(&device);
+        self.computer_task = Some(self.computer_calls(
+            device,
+            name,
+            vec![(method, params)],
+            move |this, mut answers, cx| {
+                let state = &mut this.remote.earn;
+                state.busy = false;
+                let reply = match answers.pop() {
+                    Some(Ok(value)) => Reply::read(&value),
+                    Some(Err(error)) => Reply::Failed(error),
+                    None => return,
+                };
+                match reply {
+                    Reply::Ok(_) => state.setting_up = action == earn::Action::TurnOn,
+                    Reply::Running => state.setting_up = true,
+                    Reply::Unavailable => state.unavailable = true,
+                    Reply::Failed(error) => this.notice = Some(error),
+                }
+                this.load_earn(cx);
+            },
+            cx,
+        ));
+    }
+
+    /// Thread naming and the worktree folder of the chosen computer.
+    fn load_computer_settings(&mut self, cx: &mut Context<Self>) {
+        let Some(device) = self.chosen_computer() else {
+            return;
+        };
+        let remote = &mut self.remote;
         remote.titles = Load::Loading;
         remote.worktrees = Load::Loading;
         let name = self.computer_name(&device);
@@ -408,8 +531,14 @@ impl SettingsApp {
             Intent::Open(page) => self.show(page, true, cx),
             Intent::Computer(id) => {
                 self.remote.computer = Some(id);
-                self.load_computer_settings(cx);
+                if self.page == Page::Earn {
+                    self.remote.earn = earn::State::default();
+                    self.load_earn(cx);
+                } else {
+                    self.load_computer_settings(cx);
+                }
             }
+            Intent::Earn(action) => self.earn_action(action, cx),
             Intent::TitleHarness(harness) => {
                 self.save_titles(json!({ "harness": harness, "model": null }), cx)
             }

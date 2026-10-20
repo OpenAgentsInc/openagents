@@ -72,6 +72,12 @@ fn full_remote() -> Remote {
             .collect(),
         ..Remote::default()
     };
+    remote.earn = earn::State {
+        status: Load::Ready(serde_json::json!({"state": "serving"})),
+        earnings: Load::Ready(serde_json::json!({"checked_today": 3, "earned_sats": 120})),
+        settings: Load::Ready(serde_json::json!({"pause_on_battery": true})),
+        ..earn::State::default()
+    };
     remote.account = account::State {
         signed_in: true,
         label: Some("pat@example.com".into()),
@@ -483,4 +489,31 @@ fn account_page_asks_before_removing_and_deleting() {
         account::short("npub1abcdefghijklmnopqrstuvwxyz"),
         "npub1abcdefg…uvwxyz"
     );
+}
+
+#[test]
+fn earn_reads_the_computer_and_turns_sharing_off() {
+    let remote = full_remote();
+    let root = page(Page::Earn, &Prefs::default(), &remote, &Paints::default());
+    let mut out = Vec::new();
+    words(&root, &mut out);
+    for line in [
+        "Serving",
+        "3 checked decisions today",
+        "₿120 earned so far · ₿0 paid to you",
+        "Earnings go to this computer's wallet",
+        "Turn off",
+        "Pause on battery",
+    ] {
+        assert!(out.iter().any(|w| w == line), "{line} in {out:?}");
+    }
+    let mut off = remote.clone();
+    off.earn.status = Load::Ready(serde_json::json!({"state": "off"}));
+    assert!(!off.earn.sharing());
+    off.earn.unavailable = true;
+    let root = page(Page::Earn, &Prefs::default(), &off, &Paints::default());
+    let mut out = Vec::new();
+    words(&root, &mut out);
+    assert!(out.iter().any(|w| w == earn::NOT_AVAILABLE));
+    assert_eq!(Page::from_slug("earn"), Some(Page::Earn));
 }
