@@ -62,6 +62,7 @@ enum Menu {
 pub struct ChatApp {
     client: Client,
     check_ins: Entity<crate::check_ins::CheckIns>,
+    voice: Entity<crate::voice::Stage>,
     /// Signed in, or chatting as the browser's visitor (the page's
     /// `openagents-signed-in`).
     signed_in: bool,
@@ -181,7 +182,10 @@ impl ChatApp {
         let origin = web_sys::window()
             .and_then(|w| w.location().origin().ok())
             .unwrap_or_default();
+        let voice = cx.new(crate::voice::Stage::new);
+        cx.observe(&voice, |_, _, cx| cx.notify()).detach();
         let mut this = Self {
+            voice,
             client: Client::from_page(),
             check_ins: cx.new(crate::check_ins::CheckIns::new),
             signed_in: route::signed_in(),
@@ -1295,6 +1299,18 @@ impl ChatApp {
                     .font_weight(FontWeight::MEDIUM)
                     .child(title),
             )
+            .when(self.signed_in, |row| {
+                row.child(
+                    div()
+                        .id("start-voice-call")
+                        .cursor_pointer()
+                        .text_size(px(13.))
+                        .child("Voice")
+                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                            this.voice.update(cx, |voice, cx| voice.start(None, cx));
+                        })),
+                )
+            })
             .children(project.map(|p| chip("icons/folder.svg", p, theme::text_muted())))
             .children(computer.map(|c| chip("icons/laptop.svg", c, theme::text_muted())))
             .when(!wide && self.current.is_some(), |row| {
@@ -1601,6 +1617,9 @@ impl Focusable for ChatApp {
 
 impl Render for ChatApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.voice.read(cx).open {
+            return self.voice.clone().into_any_element();
+        }
         // Once the chats and the open chat have arrived, this frame is the
         // one a page snapshot shows until the app draws (`gpui-ready`), and
         // the one it keeps for the next visit (#12244).
@@ -1708,6 +1727,7 @@ impl Render for ChatApp {
         } else {
             root.child(main)
         }
+        .into_any_element()
     }
 }
 

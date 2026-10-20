@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use anyhow::{Result, anyhow};
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use js_sys::Uint8Array;
 use k256::schnorr::SigningKey;
 use openagents_proto::device_frame::{self, DeviceFrameHeader};
@@ -166,7 +166,29 @@ impl Key {
     }
 }
 
-type Pending = Rc<RefCell<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
+use crate::replies::{self, Reply};
+type Pending = Rc<RefCell<HashMap<u64, Reply>>>;
+
+/// Dropping a request cancels its host task, including a stream owner.
+pub struct Subscription {
+    pub items: mpsc::Receiver<Result<Value>>,
+    id: u64,
+    socket: web_sys::WebSocket,
+    pending: Pending,
+}
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        self.pending.borrow_mut().remove(&self.id);
+        if let Ok(payload) = serde_json::to_vec(&json!({"id": self.id, "cancel": true})) {
+            let _ = send(&self.socket, &payload);
+        }
+    }
+}
+fn send(socket: &web_sys::WebSocket, payload: &[u8]) -> Result<()> {
+    let frame = device_frame::encode(&DeviceFrameHeader::new(RPC_KIND, RPC_KIND), payload)
+        .map_err(|e| anyhow!(e))?;
+    socket.send_with_u8_array(&frame).map_err(js)
+}
 
 /// One open device-room connection to a computer.
 pub struct Computer {
@@ -186,9 +208,7 @@ impl Drop for Computer {
 }
 
 fn fail_all(pending: &Pending, message: &str) {
-    for (_, tx) in pending.borrow_mut().drain() {
-        let _ = tx.send(Err(anyhow!("{message}")));
-    }
+    replies::fail_all(&mut pending.borrow_mut(), message);
 }
 
 impl Computer {
@@ -212,6 +232,7 @@ impl Computer {
         };
         let on_message = {
             let pending = pending.clone();
+            let socket = socket.clone();
             Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |event: web_sys::MessageEvent| {
                 let Ok(buffer) = event.data().dyn_into::<js_sys::ArrayBuffer>() else {
                     return;
@@ -240,20 +261,12 @@ impl Computer {
                 let Ok(frame) = serde_json::from_slice::<Value>(&payload) else {
                     return;
                 };
-                let Some(id) = frame["id"].as_u64() else {
-                    return;
-                };
-                let Some(tx) = pending.borrow_mut().remove(&id) else {
-                    return;
-                };
-                let answer = match frame.get("err").and_then(Value::as_str) {
-                    Some(error) => Err(anyhow!(
-                        "{}",
-                        error.strip_prefix("failed: ").unwrap_or(error)
-                    )),
-                    None => Ok(frame.get("ok").cloned().unwrap_or(Value::Null)),
-                };
-                let _ = tx.send(answer);
+                if let Some(id) = replies::route(&mut pending.borrow_mut(), &frame) {
+                    let _ = send(
+                        &socket,
+                        &serde_json::to_vec(&json!({"id":id,"cancel":true})).unwrap(),
+                    );
+                }
             })
         };
         let closed = {
@@ -290,16 +303,42 @@ impl Computer {
             *next
         };
         let payload = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))?;
-        let frame = device_frame::encode(&DeviceFrameHeader::new(RPC_KIND, RPC_KIND), &payload)
-            .map_err(|e| anyhow!(e))?;
         let (tx, rx) = oneshot::channel();
-        self.pending.borrow_mut().insert(id, tx);
-        if let Err(error) = self.socket.send_with_u8_array(&frame) {
-            self.pending.borrow_mut().remove(&id);
-            return Err(js(error));
-        }
+        self.pending.borrow_mut().insert(id, Reply::Value(tx));
+        // The guard removes a pending reply and cancels the host on timeout
+        // or when its caller leaves before the reply arrives.
+        let (_tx, items) = mpsc::channel(1);
+        let _guard = Subscription {
+            items,
+            id,
+            socket: self.socket.clone(),
+            pending: self.pending.clone(),
+        };
+        send(&self.socket, &payload)?;
         rx.await
             .map_err(|_| anyhow!("The connection to this computer closed."))?
+    }
+
+    /// An ephemeral stream. Keep the returned owner until the call ends.
+    pub fn subscribe(&self, method: &str, params: Value) -> Result<Subscription> {
+        let id = {
+            let mut next = self.next.borrow_mut();
+            *next += 1;
+            *next
+        };
+        let (tx, items) = mpsc::channel(64);
+        self.pending.borrow_mut().insert(id, Reply::Stream(tx));
+        let subscription = Subscription {
+            items,
+            id,
+            socket: self.socket.clone(),
+            pending: self.pending.clone(),
+        };
+        send(
+            &self.socket,
+            &serde_json::to_vec(&json!({"id":id,"method":method,"params":params}))?,
+        )?;
+        Ok(subscription)
     }
 
     /// Prove the key on this connection. Fails until the computer allows it.
@@ -399,7 +438,10 @@ pub async fn connect(
     waiting: impl FnOnce(),
 ) -> Result<Rc<Computer>> {
     if let Some(open) = OPEN.with(|open| open.borrow().get(device).cloned()) {
-        return Ok(open);
+        if open.socket.ready_state() == web_sys::WebSocket::OPEN {
+            return Ok(open);
+        }
+        disconnect(device);
     }
     let key = Key::load_or_create().await?;
     let computer = Rc::new(Computer::open(client, device).await?);

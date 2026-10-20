@@ -7,6 +7,9 @@
 //! with `EventSource`, signed in by the site's own cookie; writes carry the
 //! page's CSRF value in `x-openagents-csrf`.
 
+#[cfg(any(target_family = "wasm", test))]
+mod replies;
+
 pub mod event;
 pub mod types;
 
@@ -18,3 +21,6 @@ pub mod web;
 pub mod computer;
 
 pub use types::*;
+
+#[cfg(target_family = "wasm")]
+pub mod voice;

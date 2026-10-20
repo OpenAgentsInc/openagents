@@ -19,6 +19,8 @@ futures.workspace = true
 log.workspace = true
 openagents-web-chat-view.workspace = true
 openagents-web-client.workspace = true
+openagents-voice-session = { path = "../../crates/voice-session", default-features = false }
+openagents-orb = { path = "../../crates/orb" }
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
 serde_json = "1"

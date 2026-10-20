@@ -60,7 +60,7 @@ pub(crate) const GPUI_CHAT_START: &str = "start.js";
 /// only, and compiling WebAssembly. GPUI styles its canvas and its text
 /// field through the CSSOM, which `style-src` doesn't govern.
 pub(crate) const GPUI_CHAT_POLICY: &str = "default-src 'none'; style-src 'self'; \
-img-src 'self'; font-src 'self'; media-src 'self'; frame-src 'self'; \
+img-src 'self'; font-src 'self'; media-src 'self' blob:; frame-src 'self'; \
 script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; \
 base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 

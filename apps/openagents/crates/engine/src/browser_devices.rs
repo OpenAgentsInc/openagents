@@ -11,8 +11,7 @@
 //! ([`Browsers::answer`], served by [`crate::connect_phone::LocalRpc`]).
 //!
 //! What a browser may call is [`ALLOWED`]: reads of the computer's
-//! harnesses, models, skills, commands, and workspace files. Later work
-//! widens it method by method.
+//! harnesses, models, skills, commands, workspace files, and client-media voice.
 
 use async_trait::async_trait;
 use coder_access::Rights;
@@ -32,6 +31,16 @@ pub const MAX_WAITING: usize = 8;
 
 /// The engine methods a browser may call.
 pub const ALLOWED: &[&str] = &[
+    methods::VOICE_CAPABILITIES_V2,
+    methods::GET_VOICE_AGENT,
+    methods::PREPARE_VOICE_V2,
+    methods::OWN_VOICE_V2,
+    methods::NEGOTIATE_VOICE_V2,
+    methods::CONFIRM_VOICE_MEDIA_V2,
+    methods::REPORT_VOICE_MEDIA_V2,
+    methods::UPDATE_VOICE_CONTEXT_V2,
+    methods::STOP_VOICE_V2,
+    methods::CANCEL_VOICE_ATTEMPT_V2,
     methods::ENGINE_INFO,
     methods::LIST_HARNESSES,
     methods::LIST_MODELS,
@@ -390,6 +399,14 @@ impl RpcService for Connection {
                 if !ALLOWED.contains(&method) {
                     return Err(RpcError::Failed(
                         "A browser can't do that on this computer yet.".into(),
+                    ));
+                }
+                if value
+                    .get("targetDeviceId")
+                    .is_some_and(|id| id.as_str() != Some(&browsers.device))
+                {
+                    return Err(RpcError::Failed(
+                        "Choose this computer to use it from this browser.".into(),
                     ));
                 }
                 browsers.inner.handle(method, value).await
