@@ -4976,6 +4976,12 @@ public protocol CoreAndroidHostProtocol: AnyObject, Sendable {
      */
     func attachTranscript(view: TranscriptView, generation: UInt64, contentRevision: UInt64) throws 
     
+    /**
+     * More > Payments from your browser, paying through the wallet once it
+     * is open (#12310).
+     */
+    func browserPayments() throws  -> CoreBrowserPayments
+    
     func client() throws  -> CoreClient?
     
     func composer() throws  -> CoreAndroidComposer?
@@ -4997,6 +5003,12 @@ public protocol CoreAndroidHostProtocol: AnyObject, Sendable {
     func offerAppLink(raw: String) throws  -> Bool
     
     func offerNotificationTap(link: String, request: String) throws  -> Bool
+    
+    /**
+     * More > Public profile: the shared Rust Native form this phone's key
+     * signs (#12308).
+     */
+    func publicProfile() throws  -> CorePublicProfile
     
     /**
      * Refresh a saved reader without detaching a live/cloud layout subscription.
@@ -5251,6 +5263,19 @@ open func attachTranscript(view: TranscriptView, generation: UInt64, contentRevi
 }
 }
     
+    /**
+     * More > Payments from your browser, paying through the wallet once it
+     * is open (#12310).
+     */
+open func browserPayments()throws  -> CoreBrowserPayments  {
+    return try  FfiConverterTypeCoreBrowserPayments_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_browser_payments(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
 open func client()throws  -> CoreClient?  {
     return try  FfiConverterOptionTypeCoreClient.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
@@ -5329,6 +5354,19 @@ open func offerNotificationTap(link: String, request: String)throws  -> Bool  {
             self.uniffiCloneHandle(),
         FfiConverterString.lower(link),
         FfiConverterString.lower(request),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * More > Public profile: the shared Rust Native form this phone's key
+     * signs (#12308).
+     */
+open func publicProfile()throws  -> CorePublicProfile  {
+    return try  FfiConverterTypeCorePublicProfile_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_public_profile(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -27351,6 +27389,14 @@ public enum AndroidHostRoute: Equatable, Hashable {
     case wallet
     case voiceSettings
     case sharing
+    /**
+     * More > Public profile (#12308).
+     */
+    case publicProfile
+    /**
+     * More > Payments from your browser (#12310).
+     */
+    case browserPayments
 
 
 
@@ -27389,6 +27435,10 @@ public struct FfiConverterTypeAndroidHostRoute: FfiConverterRustBuffer {
         case 8: return .voiceSettings
         
         case 9: return .sharing
+        
+        case 10: return .publicProfile
+        
+        case 11: return .browserPayments
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -27433,6 +27483,14 @@ public struct FfiConverterTypeAndroidHostRoute: FfiConverterRustBuffer {
         case .sharing:
             writeInt(&buf, Int32(9))
         
+        
+        case .publicProfile:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .browserPayments:
+            writeInt(&buf, Int32(11))
+        
         }
     }
 }
@@ -27468,6 +27526,8 @@ public enum AndroidHostSurface: Equatable, Hashable {
     case sharing
     case linkReview
     case composer
+    case publicProfile
+    case browserPayments
 
 
 
@@ -27510,6 +27570,10 @@ public struct FfiConverterTypeAndroidHostSurface: FfiConverterRustBuffer {
         case 10: return .linkReview
         
         case 11: return .composer
+        
+        case 12: return .publicProfile
+        
+        case 13: return .browserPayments
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -27561,6 +27625,14 @@ public struct FfiConverterTypeAndroidHostSurface: FfiConverterRustBuffer {
         
         case .composer:
             writeInt(&buf, Int32(11))
+        
+        
+        case .publicProfile:
+            writeInt(&buf, Int32(12))
+        
+        
+        case .browserPayments:
+            writeInt(&buf, Int32(13))
         
         }
     }
@@ -38183,6 +38255,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreandroidhost_attach_transcript() != 187) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_browser_payments() != 43429) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreandroidhost_client() != 49971) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38205,6 +38280,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_notification_tap() != 8193) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_public_profile() != 47980) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreandroidhost_refresh_transcript() != 65138) {

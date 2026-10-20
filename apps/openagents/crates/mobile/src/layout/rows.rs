@@ -79,7 +79,33 @@ pub(crate) struct UserBubble {
     pub files: Vec<(String, PText)>,
     pub pending: bool,
     pub expanded: bool,
+    /// `text` holds only the start of a longer message (see [`USER_FOLDED_BYTES`]).
+    pub clipped: bool,
     pub more: PText,
+}
+
+/// Text a folded user bubble shapes: well past its six shown lines at any
+/// phone width. Agents send multi-megabyte briefs as user messages, and
+/// shaping all of each kept gigabytes resident for one chat (build 1017's
+/// out-of-memory kills).
+pub(crate) const USER_FOLDED_BYTES: usize = 4 * 1024;
+/// Text an expanded user bubble shapes; Copy still takes the whole message.
+pub(crate) const USER_EXPANDED_BYTES: usize = 64 * 1024;
+
+/// The start of `body` to shape within `limit` bytes, ending at a
+/// whitespace near the cut when there is one, and whether it was cut.
+pub(crate) fn clip_user_text(body: &str, limit: usize) -> (&str, bool) {
+    if body.len() <= limit {
+        return (body, false);
+    }
+    let mut end = limit;
+    while !body.is_char_boundary(end) {
+        end -= 1;
+    }
+    let head = &body[..end];
+    let floor = end.saturating_sub(256);
+    let end = head[floor..].rfind(char::is_whitespace).map_or(end, |at| floor + at);
+    (body[..end].trim_end(), true)
 }
 
 pub(crate) struct Chip {
@@ -603,7 +629,15 @@ impl RowBuilder {
                 Some((mention.index, image.path.clone()))
             })
             .collect();
-        let text = prepare_user_text(ctx, parsed.text.trim(), style, lh, &previews);
+        let expanded = self.expanded.contains(&key);
+        let limit = if expanded { USER_EXPANDED_BYTES } else { USER_FOLDED_BYTES };
+        let (shown, clipped) = clip_user_text(parsed.text.trim(), limit);
+        let text = if clipped && expanded {
+            let shown = format!("{shown}\n\n… Copy the message to read the rest.");
+            prepare_user_text(ctx, &shown, style, lh, &previews)
+        } else {
+            prepare_user_text(ctx, shown, style, lh, &previews)
+        };
         // Copied text reads attachment chips as their plain label.
         let body = openagents_proto::attachment_mentions::attachment_mention_prompt(&parsed.text);
         let (msize, mlh) = TYPE.small;
@@ -623,7 +657,6 @@ impl RowBuilder {
                 (file_icon_asset(name), prepare_plain(ctx, name, mstyle, ctx.typo.px(mlh), ColorRole::Text, WhiteSpace::Pre))
             })
             .collect();
-        let expanded = self.expanded.contains(&key);
         let more = prepare_plain(
             ctx,
             if expanded { "Show less" } else { "Show more" },
@@ -643,6 +676,7 @@ impl RowBuilder {
                 files,
                 pending,
                 expanded,
+                clipped,
                 more,
             }),
             copy_text: body,
@@ -927,8 +961,8 @@ fn place_user(u: &UserBubble, px: Px, x: f32, y: f32, cw: f32, out: Option<&mut 
     let max_w = (cw * 0.86).max(cw - px.v(56.0)).min(cw);
     let text_w = (max_w - pad_x * 2.0).max(20.0);
     let stats = u.text.p.stats(text_w);
-    let folds = stats.line_count > BUBBLE_FOLD_LINES;
-    let shown = if folds && !u.expanded { BUBBLE_FOLD_SHOW } else { stats.line_count };
+    let folds = u.clipped || stats.line_count > BUBBLE_FOLD_LINES;
+    let shown = if folds && !u.expanded { BUBBLE_FOLD_SHOW.min(stats.line_count) } else { stats.line_count };
     let text_h = shown as f32 * u.text.lh;
     let more_h = if folds { u.more.lh + px.v(4.0) } else { 0.0 };
     let bubble_w = if folds { max_w } else { stats.max_line_width.ceil() + pad_x * 2.0 };

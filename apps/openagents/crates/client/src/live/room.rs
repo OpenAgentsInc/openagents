@@ -7,7 +7,7 @@
 //! Shape follows the engine's `EngineChatSink` / `ChatPersistence`, minus
 //! host duties (checkpoint posting, command execution).
 
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
@@ -26,8 +26,21 @@ use crate::lock;
 
 /// chat2 doc epoch stamped on every snapshot (pre-chat2 epochs are ignored).
 pub(crate) const CHAT2_DOC_EPOCH: u32 = 2;
-/// Snapshot flush cadence while rows stream in.
+/// Snapshot flush cadence while rows stream in (a small chat).
 const SAVE_INTERVAL: Duration = Duration::from_secs(1);
+/// Longest wait between saves of a very large chat.
+const SAVE_INTERVAL_MAX: Duration = Duration::from_secs(60);
+/// Snapshot bytes that add a second to the wait between saves.
+const SAVE_BYTES_PER_SECOND: usize = 2 * 1024 * 1024;
+
+/// How long to wait between saves of a chat whose last snapshot was
+/// `snapshot_len` bytes. Every save exports and rewrites the whole snapshot,
+/// so a 90 MB chat saved each second wrote gigabytes and held hundreds of
+/// megabytes in flight (build 1017's out-of-memory kills).
+pub(crate) fn save_interval(snapshot_len: usize) -> Duration {
+    let seconds = (snapshot_len / SAVE_BYTES_PER_SECOND) as u64;
+    Duration::from_secs(seconds).clamp(SAVE_INTERVAL, SAVE_INTERVAL_MAX)
+}
 /// How often the live-poll task checks whether a catch-up is due.
 const LIVE_POLL_TICK: Duration = Duration::from_millis(250);
 /// A catch-up that never completes (gap repair, redial) is retried after this.
@@ -92,6 +105,8 @@ pub(crate) struct Persister {
     generation: AtomicU64,
     saved: AtomicU64,
     urgent: AtomicBool,
+    /// Bytes of the last snapshot written (paces the next save).
+    last_len: AtomicUsize,
     write: Mutex<()>,
     wake: Arc<Notify>,
 }
@@ -111,6 +126,7 @@ impl Persister {
             generation: AtomicU64::new(0),
             saved: AtomicU64::new(0),
             urgent: AtomicBool::new(false),
+            last_len: AtomicUsize::new(0),
             write: Mutex::new(()),
             wake: Arc::new(Notify::new()),
         })
@@ -120,6 +136,7 @@ impl Persister {
         let weak = Arc::downgrade(self);
         let wake = self.wake.clone();
         crate::runtime::shared().spawn(async move {
+            let mut last_save: Option<tokio::time::Instant> = None;
             loop {
                 let notified = wake.notified();
                 tokio::select! {
@@ -132,14 +149,31 @@ impl Persister {
                     _ = notified => {}
                 }
                 let Some(this) = weak.upgrade() else { return };
-                if !this.urgent.swap(false, Ordering::AcqRel) {
-                    drop(this);
-                    tokio::time::sleep(SAVE_INTERVAL).await;
-                    let Some(again) = weak.upgrade() else { return };
-                    let _ = tokio::task::spawn_blocking(move || again.flush()).await;
+                let urgent = this.urgent.swap(false, Ordering::AcqRel);
+                let pace = save_interval(this.last_len.load(Ordering::Acquire));
+                drop(this);
+                // A small chat saves an urgent change at once and others after
+                // a second, as before; a large one waits out its pace either way.
+                let wait = if urgent {
+                    let since = last_save.map_or(pace, |at| at.elapsed());
+                    pace.saturating_sub(SAVE_INTERVAL).saturating_sub(since)
                 } else {
-                    let _ = tokio::task::spawn_blocking(move || this.flush()).await;
+                    pace
+                };
+                if !wait.is_zero() {
+                    tokio::select! {
+                        _ = cancel.cancelled() => {
+                            if let Some(this) = weak.upgrade() {
+                                let _ = tokio::task::spawn_blocking(move || this.flush()).await;
+                            }
+                            return;
+                        }
+                        _ = tokio::time::sleep(wait) => {}
+                    }
                 }
+                let Some(again) = weak.upgrade() else { return };
+                let _ = tokio::task::spawn_blocking(move || again.flush()).await;
+                last_save = Some(tokio::time::Instant::now());
             }
         });
     }
@@ -178,7 +212,10 @@ impl Persister {
         };
         let cursor = self.cursor();
         let bytes = match doc.export_snapshot() {
-            Ok(bytes) => bytes,
+            Ok(bytes) => {
+                self.last_len.store(bytes.len(), Ordering::Release);
+                bytes
+            }
             Err(err) => {
                 tracing::warn!(chat = %self.chat_id, error = %err, "chat snapshot export failed");
                 return;
@@ -799,5 +836,20 @@ impl Drop for Room {
             crate::runtime::shared().spawn(client.shutdown());
         }
         self.persister.flush();
+    }
+}
+
+#[cfg(test)]
+mod save_pace_tests {
+    use super::*;
+
+    #[test]
+    fn a_small_chat_saves_each_second_and_a_huge_one_paces_its_rewrites() {
+        assert_eq!(save_interval(0), SAVE_INTERVAL);
+        assert_eq!(save_interval(512 * 1024), SAVE_INTERVAL);
+        assert_eq!(save_interval(20 * 1024 * 1024), Duration::from_secs(10));
+        // The owner's 90 MB chat (build 1017): at most one rewrite every 45 s.
+        assert_eq!(save_interval(90 * 1024 * 1024), Duration::from_secs(45));
+        assert_eq!(save_interval(usize::MAX), SAVE_INTERVAL_MAX);
     }
 }

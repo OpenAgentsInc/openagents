@@ -1140,3 +1140,44 @@ fn working_row_follows_turn_activity_even_with_complete_saved_entries() {
     w.input = Default::default();
     assert_eq!(w.pass().row_count(), 0);
 }
+
+/// Build 1017 was killed for memory on a chat whose agents sent
+/// megabyte-long briefs as user messages: every bubble shaped its whole text
+/// although it shows six lines. A bubble shapes a bounded start of the text,
+/// still folds, and Copy keeps the whole message.
+#[test]
+fn a_huge_user_message_shapes_only_what_its_bubble_can_show() {
+    let brief = "Coordinate the lane, claim the issue, and report back when done. ".repeat(25_000);
+    assert!(brief.len() > 1_500_000);
+    let mut w = worker(390.0);
+    w.input = debug_input(vec![DebugEntry { id: "u".into(), user: true, text: brief.clone(), streaming: false }], false);
+    let folded = w.pass();
+    assert!(folded.prepared_heap_bytes() < 512 * 1024, "folded heap {}", folded.prepared_heap_bytes());
+    let d = folded.display(0).unwrap();
+    assert!(d.text.contains("Show more"), "a clipped bubble still offers Show more");
+    match &folded.rows[0].core.content {
+        rows::Content::User(u) => assert!(u.clipped),
+        _ => panic!("expected a user row"),
+    }
+    assert!(folded.rows[0].core.copy_text.len() >= brief.trim().len(), "Copy keeps the whole message");
+
+    let key = folded.placement(0).unwrap().key;
+    w.builder.expanded.insert(key);
+    w.builder.invalidate(key);
+    let open = w.pass();
+    assert!(open.placement(0).unwrap().height > folded.placement(0).unwrap().height * 3.0);
+    assert!(open.prepared_heap_bytes() < 16 * 1024 * 1024, "expanded heap {}", open.prepared_heap_bytes());
+    let d = open.display(0).unwrap();
+    assert!(d.text.contains("Copy the message to read the rest."), "the cut is said, not silent");
+}
+
+#[test]
+fn clipping_user_text_cuts_at_a_char_boundary_near_whitespace() {
+    assert_eq!(rows::clip_user_text("short", 10), ("short", false));
+    let (head, cut) = rows::clip_user_text("one two three four", 10);
+    assert!(cut);
+    assert_eq!(head, "one two");
+    let wide = "é".repeat(100);
+    let (head, cut) = rows::clip_user_text(&wide, 51);
+    assert!(cut && head.len() == 50 && head.chars().all(|c| c == 'é'));
+}
