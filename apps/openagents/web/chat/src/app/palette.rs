@@ -245,7 +245,13 @@ impl ChatApp {
                 .into_iter()
                 .filter(|s| *s != Shortcut::CommandPalette)
             {
-                if palette::score(&p.query, shortcut.label(), "", false).is_some() {
+                let available = match shortcut {
+                    Shortcut::ToggleFiles => p.host.is_some(),
+                    Shortcut::ArchiveSession => self.current.is_some(),
+                    Shortcut::NextSession | Shortcut::PrevSession => !self.threads.is_empty(),
+                    _ => true,
+                };
+                if available && palette::score(&p.query, shortcut.label(), "", false).is_some() {
                     rows.push(Row {
                         title: shortcut.label().into(),
                         detail: shortcuts::display_combo_on(
