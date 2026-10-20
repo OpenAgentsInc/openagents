@@ -45,6 +45,12 @@ function say(text) {
 // Without WebGPU the HTML chat takes over: the page goes to
 // its address (the note's link), and shows the note if it can't.
 function unsupported() {
+  var params = new URLSearchParams(location.search);
+  var settingsPage = params.get("settings") || (params.get("page") || "").replace(/^keys\//, "");
+  if (isKeysPage(settingsPage)) {
+    location.replace("/settings/" + settingsPage + "?ui=html");
+    return;
+  }
   var status = document.getElementById("gpui-status");
   if (status) {
     status.remove();
@@ -482,6 +488,13 @@ function openSettings(event) {
   }
   var page = asked.page || "general";
   var shared = JSON.stringify(asked.shared || {});
+  settingsShared = asked.shared || settingsShared;
+  if (isKeysPage(page)) {
+    if (settingsBox) settingsBox.hidden = true;
+    openPage("keys/" + page);
+    return;
+  }
+  hideKeys();
   if (settingsBox) {
     settingsBox.hidden = false;
     if (settings) {
@@ -525,6 +538,7 @@ window.addEventListener("oa-settings-open", openSettings);
 // path). Its box covers the chat; its Back to chat (`oa-page-close`) hides
 // the box, and moving within the page (`oa-page-path`) keeps the address.
 var PAGES = {
+  keys: ["./openagents_web_keys.js", "./openagents_web_keys_bg.wasm"],
   traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
   agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
@@ -533,6 +547,7 @@ var PAGES = {
 };
 var pageBoxes = {};
 var pageModules = {};
+var pageWanted = {};
 function pageParam(path) {
   var url = new URL(window.location.href);
   if (path) {
@@ -549,10 +564,20 @@ function openPage(path) {
     return;
   }
   var rest = path.slice(name.length + 1);
+  pageWanted[name] = rest;
+  if (name === "keys") {
+    var address = new URL(location.href);
+    address.searchParams.delete("settings");
+    history.replaceState(history.state, "", address.pathname + address.search);
+  }
   pageParam(path);
+  if (settingsBox) settingsBox.hidden = true;
   Object.keys(pageBoxes).forEach(function (other) {
     if (other !== name && pageBoxes[other]) {
       pageBoxes[other].hidden = true;
+      if (pageModules[other] && pageModules[other].hide) Promise.resolve().then(function () {
+        if (pageBoxes[other].hidden) pageModules[other].hide();
+      });
     }
   });
   if (pageBoxes[name]) {
@@ -576,8 +601,9 @@ function openPage(path) {
       }).then(function () {
         pageModules[name] = module;
         mountIn(box, function () {
-          module.mount(loaded[1], rest);
+          module.mount(loaded[1], pageWanted[name] || rest);
         });
+        if (box.hidden && module.hide) module.hide();
       });
     })
     .catch(function (error) {
@@ -585,6 +611,7 @@ function openPage(path) {
       box.remove();
       delete pageBoxes[name];
       pageParam("");
+      if (name === "keys") location.assign("/settings/" + (isKeysPage(rest) ? rest : "api-keys") + "?ui=html");
     });
 }
 window.addEventListener("oa-page-open", function (event) {
@@ -594,11 +621,15 @@ window.addEventListener("oa-page-path", function (event) {
   pageParam(event.detail || "");
 });
 window.addEventListener("oa-page-close", function (event) {
-  var box = pageBoxes[event.detail || ""];
-  if (box) {
-    box.hidden = true;
-  }
+  var name = event.detail || "";
+  var box = pageBoxes[name];
+  if (box) box.hidden = true;
+  pageWanted[name] = null;
+  if (pageModules[name] && pageModules[name].hide) Promise.resolve().then(function () {
+    if (box && box.hidden) pageModules[name].hide();
+  });
   pageParam("");
+  if (name === "keys") window.dispatchEvent(new Event("oa-settings-close"));
 });
 function openAddressedPage() {
   var params = new URL(window.location.href).searchParams;
@@ -617,6 +648,27 @@ window.addEventListener("oa-settings-hide", function () {
     settingsBox.hidden = true;
   }
 });
+
+// Settings routes open the credentials page through the shared page loader.
+var settingsShared = {};
+function isKeysPage(page) {
+  return ["api-keys", "sign-in-keys", "agent-accounts"].indexOf(page) !== -1;
+}
+function hideKeys() {
+  var box = pageBoxes.keys;
+  if (box) box.hidden = true;
+  pageWanted.keys = null;
+  if (pageModules.keys) Promise.resolve().then(function () {
+    if (box && box.hidden) pageModules.keys.hide();
+  });
+}
+window.addEventListener("oa-settings-page", function (event) {
+  if (isKeysPage(event.detail)) Promise.resolve().then(function () {
+    openSettings({detail: JSON.stringify({page: event.detail, shared: settingsShared})});
+  });
+});
+window.addEventListener("oa-settings-hide", hideKeys);
+window.addEventListener("pagehide", hideKeys);
 
 supported().then(function (ok) {
   if (ok) {

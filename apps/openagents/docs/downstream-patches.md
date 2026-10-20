@@ -1503,3 +1503,7 @@ master delegation audit.
   off, set the update policy of, check, apply, and cancel agents and their
   updates, and add, switch, and remove agent accounts. A browser's
   `StartAgentLogin` never names another device to serve its callback.
+
+## Account credentials in GPUI Settings (#12326)
+
+`chat-view::settings_forms::keys` shares the API key, sign-in key, and agent-account forms; `web/keys` loads separately through `start.js` and the shared `page-host`, uses the cookie API, and keeps a new key masked with a temporary copy control.

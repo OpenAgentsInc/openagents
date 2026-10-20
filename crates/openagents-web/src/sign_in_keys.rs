@@ -114,7 +114,11 @@ fn unreachable_service() -> Response {
     problem(StatusCode::BAD_GATEWAY, UNREACHABLE)
 }
 
-async fn settings_page(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn settings_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -139,7 +143,16 @@ async fn settings_page(State(app): State<App>, headers: HeaderMap) -> Response {
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
-    page(&headers, service, &viewer, "Login keys", PAGE, body)
+    crate::settings::keys_page(
+        &app,
+        &headers,
+        query.as_deref(),
+        service,
+        &viewer,
+        "Sign-in keys",
+        PAGE,
+        body,
+    )
 }
 
 /// A key's dates in words.

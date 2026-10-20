@@ -17,6 +17,7 @@ pub mod agents;
 pub mod appearance;
 /// Earn on a paired computer (#12294).
 pub mod earn;
+pub mod keys;
 /// A Lab document (#12333).
 pub mod lab;
 /// Projects (#12331).
@@ -51,10 +52,13 @@ pub enum Page {
     Earn,
     /// Your ID: the account's keys, sign out, and delete (#12290).
     Account,
+    ApiKeys,
+    SignInKeys,
+    AgentAccounts,
 }
 
 impl Page {
-    pub const ALL: [Page; 9] = [
+    pub const ALL: [Page; 12] = [
         Page::General,
         Page::Providers,
         Page::Appearance,
@@ -64,6 +68,9 @@ impl Page {
         Page::Archived,
         Page::Earn,
         Page::Account,
+        Page::ApiKeys,
+        Page::SignInKeys,
+        Page::AgentAccounts,
     ];
 
     /// The desktop's nav label for the page.
@@ -78,6 +85,9 @@ impl Page {
             Page::Archived => "Archived sessions",
             Page::Earn => "Earn",
             Page::Account => "Your ID",
+            Page::ApiKeys => "API keys",
+            Page::SignInKeys => "Sign-in keys",
+            Page::AgentAccounts => "Agent accounts",
         }
     }
 
@@ -94,6 +104,9 @@ impl Page {
             Page::Archived => "archived",
             Page::Earn => "earn",
             Page::Account => "account",
+            Page::ApiKeys => "api-keys",
+            Page::SignInKeys => "sign-in-keys",
+            Page::AgentAccounts => "agent-accounts",
         }
     }
 
@@ -304,6 +317,7 @@ pub enum Sound {
 #[serde(rename_all = "snake_case")]
 pub enum Intent {
     Open(Page),
+    Keys(keys::Action),
     SendWithModifier(bool),
     EscapeStopsAgent(bool),
     Sound(Sound, bool),
@@ -449,6 +463,7 @@ pub struct Remote {
     pub confirm_delete_all: bool,
     pub deleting: bool,
     pub account: account::State,
+    pub keys: keys::State,
     /// Earn on the chosen computer (#12294).
     pub earn: earn::State,
     /// Providers: the chosen computer's agents and accounts (#12283).
@@ -476,6 +491,9 @@ pub fn page(page: Page, prefs: &Prefs, remote: &Remote, paints: &Paints) -> Node
         Page::Archived => archived(remote, paints),
         Page::Earn => earn::page(remote, paints),
         Page::Account => account::page(&remote.account, paints),
+        Page::ApiKeys | Page::SignInKeys | Page::AgentAccounts => {
+            keys::page(page, &remote.keys, paints)
+        }
         Page::Providers => providers::page(
             &remote.providers,
             &remote.computers,

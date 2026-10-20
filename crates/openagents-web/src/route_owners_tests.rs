@@ -242,9 +242,11 @@ fn every_mounted_route_is_owned() {
         for route in paths {
             checked += 1;
             let path = sample(&route);
-            // `DELETE /v1/account` is owned by method (#12002).
+            // Account deletion and cookie-bridge forwards are owned by method.
             if crate::upstream::owned(&path)
                 || crate::account_delete::owns(&axum::http::Method::DELETE, &path)
+                || crate::cookie_api::owns(&axum::http::Method::GET, &path)
+                || crate::cookie_api::owns(&axum::http::Method::POST, &path)
                 || NOT_OWNED.iter().any(|(prefix, _)| path.starts_with(prefix))
             {
                 continue;

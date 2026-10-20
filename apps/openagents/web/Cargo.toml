@@ -21,6 +21,7 @@ members = [
     "lab",
     "work",
     "settings",
+    "keys",
     "demo",
     "agent-graph",
     "first-frame",
