@@ -112,7 +112,7 @@ fn slug(name: &str) -> String {
 
 /// The numbered steps of a stall skill: "1. **Message it** (rung 1, ...):
 /// ask what it needs." gives ("Message it", "Ask what it needs.").
-fn rungs(skill: &str) -> Vec<(String, String)> {
+pub(crate) fn rungs(skill: &str) -> Vec<(String, String)> {
     skill
         .lines()
         .filter_map(|line| {

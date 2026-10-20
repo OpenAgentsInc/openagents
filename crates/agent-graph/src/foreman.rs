@@ -140,6 +140,16 @@ pub fn notes() -> Notes {
     }
 }
 
+/// Foreman's whole definition, from the definition this build carries.
+pub fn definition() -> crate::definition::Definition {
+    crate::definition::of(
+        &templates::foreman(),
+        "foreman",
+        templates::FOREMAN_ID,
+        &notes(),
+    )
+}
+
 /// Foreman's graph, from the definition this build carries.
 pub fn graph() -> GraphSpec {
     lab::of(&templates::foreman(), "foreman", &notes())

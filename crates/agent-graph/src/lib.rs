@@ -19,6 +19,8 @@ pub mod catalog;
 pub mod layout;
 
 #[cfg(feature = "lab")]
+pub mod definition;
+#[cfg(feature = "lab")]
 pub mod foreman;
 #[cfg(feature = "lab")]
 pub mod lab;
