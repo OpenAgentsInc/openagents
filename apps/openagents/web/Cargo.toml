@@ -12,6 +12,7 @@ members = [
     "chat",
     "files",
     "room",
+    "agent-lab",
     "dictation",
     "page-host",
     "traces",

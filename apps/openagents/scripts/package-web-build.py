@@ -48,6 +48,47 @@ def measure(directory, wasm):
     }
 
 
+def contributors(module, limit=15):
+    """The crates taking the most bytes in `module`'s release build, for an
+    over-budget report: the names-carrying wasm in WEB_BUILD_NAMES_DIR (the
+    Cargo target's `wasm32-unknown-unknown/release`), read with `twiggy`.
+    Empty when either is missing."""
+    names = os.environ.get("WEB_BUILD_NAMES_DIR", "")
+    source = Path(names) / (module.removesuffix("_bg.wasm") + ".wasm") if names else None
+    if not source or not source.is_file() or not shutil.which("twiggy"):
+        return []
+    try:
+        listing = subprocess.check_output(
+            ["twiggy", "top", "-n", "1000000", "-f", "json", str(source)],
+            text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return []
+    sizes = {}
+    for item in json.loads(listing):
+        name = item["name"]
+        if name.startswith(('"function names"', "custom section", "...", "\u03a3")):
+            continue
+        found = re.match(r"^(?:dyn )?([A-Za-z_][A-Za-z0-9_]*)(?:\[[0-9a-f]+\])?::", name.lstrip("<&* "))
+        crate = found.group(1) if found else ("data" if name.startswith("data segment") else "other")
+        sizes[crate] = sizes.get(crate, 0) + item["shallow_size"]
+    return sorted(sizes.items(), key=lambda pair: -pair[1])[:limit]
+
+
+def check(directory, module):
+    """Refuse `module` over its brotli budget, naming its largest crates."""
+    measured = measure(Path(directory), module)
+    cap = budget(module)
+    if measured["brotli_bytes"] > cap:
+        lines = [f"{module}: {measured['brotli_bytes']} bytes brotli exceeds the {cap} byte budget."]
+        top = contributors(module)
+        if top:
+            lines.append("Largest crates in the release build (raw bytes, before wasm-opt):")
+            lines.extend(f"  {size:>9}  {crate}" for crate, size in top)
+        lines.append("Move page-like features into their own module (web/page-host) rather than raising the budget.")
+        raise SystemExit("\n".join(lines))
+    return measured
+
+
 def package(directory, name, *later):
     """Package the page's module `name` and the modules its start script
     loads `later` (each under the same budget), naming every asset by
@@ -61,11 +102,7 @@ def package(directory, name, *later):
     (directory / "size.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report), flush=True)
     for module in measured:
-        cap = budget(module["module"])
-        if module["brotli_bytes"] > cap:
-            raise SystemExit(
-                f"{module['module']}: {module['brotli_bytes']} bytes brotli exceeds the {cap} byte budget"
-            )
+        check(directory, module["module"])
 
     assets = {}
 
@@ -106,6 +143,10 @@ def package(directory, name, *later):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 4 and sys.argv[1] == "--check":
+        # One module, right after it is built (build-web-chat.sh): fail early.
+        print(json.dumps(check(sys.argv[2], sys.argv[3])), flush=True)
+        raise SystemExit(0)
     if len(sys.argv) < 3:
         raise SystemExit("usage: package-web-build.py OUTDIR MODULE_NAME [LATER_MODULE...]")
     package(*sys.argv[1:])

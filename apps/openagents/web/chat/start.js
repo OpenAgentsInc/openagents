@@ -511,6 +511,7 @@ var PAGES = {
   traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
   agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
+  "agent-lab": ["./openagents_web_agent_lab.js", "./openagents_web_agent_lab_bg.wasm"],
 };
 var pageBoxes = {};
 var pageModules = {};

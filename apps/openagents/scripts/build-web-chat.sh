@@ -21,6 +21,7 @@
 #   openagents_web_traces_bg.wasm  `?page=traces` (#12329)
 #   openagents_web_agents.js      Agents, at `?page=agents` (#12330), and
 #   openagents_web_projects.js    Projects, at `?page=projects` (#12331),
+#   openagents_web_agent_lab.js   Agent Lab, at `?page=agent-lab` (#12285),
 #                                 each with its _bg.wasm module
 #   start.js                      the page's one script: checks, loads, launches
 #   fonts/*.ttf                   the Geist faces the chat draws, fetched apart
@@ -67,6 +68,11 @@ wasm-bindgen --target web --no-typescript --out-dir "$out" \
 wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     --enable-sign-ext --enable-mutable-globals --enable-reference-types \
     "$out/openagents_web_chat_bg.wasm" -o "$out/openagents_web_chat_bg.wasm"
+# The chat module's budget, checked before the other modules build: over
+# it, the build stops here and names the largest crates (twiggy, when it is
+# installed).
+WEB_BUILD_NAMES_DIR="$target_dir/$target/release" \
+  python3 "$app/scripts/package-web-build.py" --check "$out" openagents_web_chat_bg.wasm
 # The file panel (#12271): its own module, which start.js loads the first
 # time the panel opens.
 cargo build --locked --manifest-path "$web/Cargo.toml" -p openagents-web-files \
@@ -113,14 +119,14 @@ wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     "$out/openagents_web_settings_bg.wasm" -o "$out/openagents_web_settings_bg.wasm"
 # The account's pages (#12329, #12330, #12331): each its own module, which
 # start.js loads at `?page=NAME`.
-for page in traces agents projects; do
+for page in traces agents projects agent-lab; do
   cargo build --locked --manifest-path "$web/Cargo.toml" -p "openagents-web-$page" \
     --release --target "$target"
   wasm-bindgen --target web --no-typescript --out-dir "$out" \
-    "$target_dir/$target/release/openagents_web_$page.wasm"
+    "$target_dir/$target/release/openagents_web_${page//-/_}.wasm"
   wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
       --enable-sign-ext --enable-mutable-globals --enable-reference-types \
-      "$out/openagents_web_${page}_bg.wasm" -o "$out/openagents_web_${page}_bg.wasm"
+      "$out/openagents_web_${page//-/_}_bg.wasm" -o "$out/openagents_web_${page//-/_}_bg.wasm"
 done
 cp "$web/chat/start.js" "$out/start.js"
 # The faces start.js asks for, by the names in its FONTS list.
@@ -137,7 +143,7 @@ compress() {
 # The first-frame painter: the page paints the frame this browser kept
 # from the last visit before the module loads (#12244).
 "$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
-python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces openagents_web_agents openagents_web_projects
+WEB_BUILD_NAMES_DIR="$target_dir/$target/release" python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces openagents_web_agents openagents_web_projects openagents_web_agent_lab
 for font in $fonts; do
   compress "$out/fonts/$font"
 done

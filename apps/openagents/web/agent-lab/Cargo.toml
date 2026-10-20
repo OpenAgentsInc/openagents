@@ -1,0 +1,39 @@
+# Agent Lab in the GPUI web app (#12285): the shared Lab workbench
+# (`agent-lab`'s views through the desktop's Rust Native adapter) over the
+# account's Lab host, signed in by the site's cookie. Its own module, which
+# the page's start script loads at `?page=agent-lab` or when the sidebar
+# opens it, so the chat's module stays under its budget. Built beside the
+# chat by `scripts/build-web-chat.sh`.
+[package]
+name = "openagents-web-agent-lab"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gpui.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+openagents-chat-view.workspace = true
+openagents-web-chat-view.workspace = true
+openagents-web-client.workspace = true
+agent-lab = { path = "../../../../crates/agent-lab", features = ["views"] }
+rust-native = { path = "../../../../crates/rust-native", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+web-time.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+openagents-gpui-web = { workspace = true, features = ["browser-text"] }
+wasm-bindgen.workspace = true
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1.7"
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+uuid.workspace = true
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["CustomEvent", "CustomEventInit", "Event", "EventTarget", "Window"] }

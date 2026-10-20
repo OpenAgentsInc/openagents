@@ -37,7 +37,6 @@ use crate::route;
 /// Adding a project on a computer (#12318).
 mod add_project;
 /// The Agent Lab workbench (#12285).
-mod agent_lab;
 mod cloud_computers;
 /// Every computer's chats from the registry (#12265).
 mod computers;
@@ -92,8 +91,6 @@ pub struct ChatApp {
     room: Option<String>,
     _room_events: Task<()>,
     check_ins: Entity<crate::check_ins::CheckIns>,
-    agent_lab: Entity<crate::agent_lab::AgentLab>,
-    lab_open: bool,
     lab_task: Option<HostChat>,
     /// Signed in, or chatting as the browser's visitor (the page's
     /// `openagents-signed-in`).
@@ -279,7 +276,6 @@ impl ChatApp {
             while let Some(chat) = back.next().await {
                 if this
                     .update(cx, |this, cx| {
-                        this.lab_open = false;
                         this.arrive(chat, cx);
                     })
                     .is_err()
@@ -292,19 +288,33 @@ impl ChatApp {
         let origin = web_sys::window()
             .and_then(|w| w.location().origin().ok())
             .unwrap_or_default();
-        let agent_lab = cx.new(crate::agent_lab::AgentLab::new);
-        cx.subscribe_in(
-            &agent_lab,
-            window,
-            |this, _, task: &crate::agent_lab::OpenTask, window, cx| {
-                this.lab_task = Some(HostChat {
-                    device: task.device.clone(),
-                    chat: task.chat.clone(),
-                    harness: None,
-                });
-                this.open(Some(task.chat.clone()), window, cx);
-            },
-        )
+        // A task's chat that Agent Lab opens (its own module, #12285).
+        let mut lab_tasks = window_events("oa-open-chat");
+        cx.spawn_in(window, async move |this, cx| {
+            while let Some(detail) = lab_tasks.next().await {
+                let Ok(task) = serde_json::from_str::<serde_json::Value>(&detail) else {
+                    continue;
+                };
+                let (Some(chat), Some(device)) = (task["chat"].as_str(), task["device"].as_str())
+                else {
+                    continue;
+                };
+                let (chat, device) = (chat.to_owned(), device.to_owned());
+                if this
+                    .update_in(cx, |this, window, cx| {
+                        this.lab_task = Some(HostChat {
+                            device,
+                            chat: chat.clone(),
+                            harness: None,
+                        });
+                        this.open(Some(chat), window, cx);
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
         .detach();
         let shared = cx.new(|_| WebTranscript::default());
         let transcript =
@@ -324,8 +334,6 @@ impl ChatApp {
             room: None,
             _room_events: room_events,
             check_ins: cx.new(crate::check_ins::CheckIns::new),
-            agent_lab,
-            lab_open: false,
             lab_task: None,
             signed_in: route::signed_in(),
             threads: Vec::new(),
@@ -426,7 +434,6 @@ impl ChatApp {
     }
 
     fn open(&mut self, chat: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
-        self.lab_open = false;
         route::push(chat.as_deref());
         self.sidebar_open = false;
         self.load(chat, cx);
@@ -1133,19 +1140,16 @@ impl ChatApp {
                             .p(px(8.))
                             .cursor_pointer()
                             .child("Agent Lab")
+                            // Agent Lab is its own module (#12285).
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.lab_open = true;
                                 this.sidebar_open = false;
-                                this.agent_lab.update(cx, |lab, cx| lab.open(cx));
-                                route::set_title("Agent Lab");
+                                crate::compose::page_event("oa-page-open", "agent-lab");
                                 cx.notify();
                             }))
                             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
                                 if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                    this.lab_open = true;
                                     this.sidebar_open = false;
-                                    this.agent_lab.update(cx, |lab, cx| lab.open(cx));
-                                    route::set_title("Agent Lab");
+                                    crate::compose::page_event("oa-page-open", "agent-lab");
                                     cx.notify();
                                     cx.stop_propagation();
                                 }
@@ -1900,9 +1904,6 @@ impl Render for ChatApp {
         if self.loaded && !self.loading_chat {
             openagents_gpui_web::announce_ready();
         }
-        if self.lab_open {
-            return self.render_agent_lab(window, cx);
-        }
         let wide = window.viewport_size().width > px(820.);
         let width = f32::from(window.viewport_size().width);
         // The message rail needs the room the desktop gives it (48rem).
@@ -2205,6 +2206,11 @@ fn project_choice(
 /// The page's `oa-room` events: each change to the open computer chat's
 /// room, as JSON from the room module (#12224).
 fn room_events() -> futures::channel::mpsc::UnboundedReceiver<String> {
+    window_events("oa-room")
+}
+
+/// Each `name` event's detail on the window, for the page's life.
+fn window_events(name: &str) -> futures::channel::mpsc::UnboundedReceiver<String> {
     use wasm_bindgen::JsCast as _;
     let (sender, receiver) = futures::channel::mpsc::unbounded();
     if let Some(window) = web_sys::window() {
@@ -2215,8 +2221,7 @@ fn room_events() -> futures::channel::mpsc::UnboundedReceiver<String> {
                 }
             },
         );
-        let _ =
-            window.add_event_listener_with_callback("oa-room", listener.as_ref().unchecked_ref());
+        let _ = window.add_event_listener_with_callback(name, listener.as_ref().unchecked_ref());
         // The page keeps one listener for its whole life.
         listener.forget();
     }
