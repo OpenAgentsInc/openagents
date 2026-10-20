@@ -15,6 +15,7 @@
 # tag SHA) in parallel, skipping either when that tag is already in
 # Artifact Registry, deploys both by digest to openagents-web-1-staging with
 # REF's deploy/staging/render.py, and runs scripts/smoke/staging.sh.
+# SMOKE_REF selects scripts/smoke from another commit; it defaults to REF.
 # --keep-spec builds only the web image and swaps it into the live staging
 # spec, keeping everything else (another change being tried on staging,
 # such as its storage, stays as it is). The web container also takes REF's
@@ -147,6 +148,7 @@ stage() {
     started=$(now)
     git -C "$ROOT" fetch -q origin
     full=$(git -C "$ROOT" rev-parse "$ref^{commit}")
+    smoke_ref=$(git -C "$ROOT" rev-parse "${SMOKE_REF:-$full}^{commit}")
     sha=$(printf '%s' "$full" | cut -c1-10)
     ctx=$(mktemp -d "${TMPDIR:-/tmp}/oa-stage-$sha.XXXXXX")
     export_context "$full" "$ctx"
@@ -256,6 +258,11 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
     took "staging deploy" "$t"
     printf '%s\n' "$web_digest" > "$STATE/staged-$sha"
     t=$(now)
+    if [ "$smoke_ref" != "$full" ]; then
+        rm -rf "$ctx/scripts/smoke"
+        (umask 022; git -C "$ROOT" archive "$smoke_ref" scripts/smoke | tar -x -C "$ctx")
+    fi
+    say "  smoke ref: $smoke_ref"
     smoke=0
     "$ctx/scripts/smoke/staging.sh" || smoke=$?
     browser_out="$(BROWSER=/usr/bin/true openagents scratch)/gpui-$sha"

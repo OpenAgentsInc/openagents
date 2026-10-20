@@ -652,10 +652,16 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                        asset.status == 200 and expected is not None
                        and hashlib.sha256(asset.body).hexdigest() == expected.group(1),
                        f"{asset.status}, {len(asset.body)} bytes")
-        landing = site.get("/?ui=html")
-        record("home: HTML landing page loads", landing.status == 200
-               and 'data-slot="hero-section"' in landing.text
-               and 'href="/new"' in landing.text, f"{landing.status}")
+        fallback = site.get("/?ui=html")
+        chat_form = re.search(r'<form(?=[^>]*id="chat-form")(?=[^>]*action="/chat")[^>]*>.*?</form>',
+                              fallback.text, re.S)
+        record("home: HTML chat fallback loads", fallback.status == 200
+               and re.search(r'<h1[^>]*>OpenAgents</h1>', fallback.text) is not None
+               and chat_form is not None
+               and bool(hidden_fields(chat_form.group(0)).get("csrf"))
+               and 'id="chat-input"' in fallback.text
+               and 'id="gpui-shell"' not in fallback.text
+               and 'id="gpui-mount"' not in fallback.text, f"{fallback.status}")
         home = site.get("/new?ui=html")
         chips = re.findall(r'<form class="oa-suggestion-form"[^>]*>.*?</form>', home.text, re.S)
         questions = [hidden_fields(c).get("q", "") for c in chips]
