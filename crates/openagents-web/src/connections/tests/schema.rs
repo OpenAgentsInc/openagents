@@ -154,7 +154,7 @@ async fn source_contract_qualifies_roles_revocation_limits_and_mutation_effects(
     let owner_id = account_owner_of(&world, "octo-local");
     assert_eq!(
         owner.get(&world, "/v1/connections").await.status,
-        StatusCode::UNAUTHORIZED
+        StatusCode::FORBIDDEN
     );
     assert_eq!(
         api(

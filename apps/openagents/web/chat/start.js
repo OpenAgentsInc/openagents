@@ -45,7 +45,8 @@ function unsupported() {
     note.hidden = false;
     var link = note.querySelector("a");
     if (link) {
-      location.replace(link.href);
+      var section = settingsSection();
+      location.replace(section ? location.pathname + "?ui=html" : link.href);
     }
   }
 }
@@ -132,7 +133,7 @@ function start() {
   loadedFonts = fonts;
   if (document.querySelector('meta[name="openagents-settings"]')) {
     var page = new URLSearchParams(location.search).get("page") || document.querySelector('meta[name="openagents-settings"]').content || "general";
-    if (page === "claude" || page === "data") {
+    if (PAGES[page.split("/")[0]]) {
       openPage(page);
     } else {
       openSettings({ detail: JSON.stringify({ page: page, shared: { signedIn: true } }) });
@@ -143,10 +144,16 @@ function start() {
     });
     return;
   }
-  openAddressedPage();
+  var addressedPage = openAddressedPage();
   Promise.all([loadRenderer(new URL("./openagents_web_chat.js", import.meta.url), new URL("./openagents_web_chat_bg.wasm", import.meta.url), new URL("./openagents_web_chat_webgl.js", import.meta.url), new URL("./openagents_web_chat_webgl_bg.wasm", import.meta.url)), fonts])
     .then(function (loaded) {
       chatModule = loaded[0];
+      var section = settingsSection();
+      if (section && !addressedPage) {
+        document.addEventListener("gpui-ready", function () {
+          openPage(section);
+        }, { once: true });
+      }
       chatModule.launch(loaded[1]);
     })
     .catch(function (error) {
@@ -536,6 +543,14 @@ function mountIn(box, mount) {
 var settings = null;
 var settingsBox = null;
 var settingsWanted = null;
+function settingsSection() {
+  var path = location.pathname;
+  if (path === "/settings/connections") return "connections";
+  if (path === "/settings/terminal") return "terminal";
+  if (path === "/settings/vault" || /^\/projects\/[^/]+\/vault$/.test(path)) return "vault";
+  return null;
+}
+
 function openSettings(event) {
   var asked = {};
   try {
@@ -544,6 +559,7 @@ function openSettings(event) {
     asked = {};
   }
   var page = asked.page || "general";
+  if (["connections", "vault", "terminal"].indexOf(page) !== -1) { openPage(page); return; }
   var shared = JSON.stringify(asked.shared || {});
   if (settingsBox) {
     settingsBox.hidden = false;
@@ -579,6 +595,7 @@ function openSettings(event) {
       console.error("Settings couldn't start", error);
       settingsBox.remove();
       settingsBox = null;
+      if (settingsSection()) location.replace(location.pathname + "?ui=html");
     });
 }
 window.addEventListener("oa-settings-open", openSettings);
@@ -701,6 +718,9 @@ var PAGES = {
   "cad": ["./openagents_web_cad.js", "./openagents_web_cad_bg.wasm", "./openagents_web_cad_webgl.js", "./openagents_web_cad_webgl_bg.wasm"],
   "labs": ["./openagents_web_lab.js", "./openagents_web_lab_bg.wasm", "./openagents_web_lab_webgl.js", "./openagents_web_lab_webgl_bg.wasm"],
   "voice": ["./openagents_web_voice.js", "./openagents_web_voice_bg.wasm", "./openagents_web_voice_webgl.js", "./openagents_web_voice_webgl_bg.wasm"],
+  "connections": ["./openagents_web_connections.js", "./openagents_web_connections_bg.wasm", "./openagents_web_connections_webgl.js", "./openagents_web_connections_webgl_bg.wasm"],
+  "vault": ["./openagents_web_vault.js", "./openagents_web_vault_bg.wasm", "./openagents_web_vault_webgl.js", "./openagents_web_vault_webgl_bg.wasm"],
+  "terminal": ["./openagents_web_terminal.js", "./openagents_web_terminal_bg.wasm", "./openagents_web_terminal_webgl.js", "./openagents_web_terminal_webgl_bg.wasm"],
 };
 // Pages a reload shouldn't reopen: a call starts only from its button.
 var UNADDRESSED = { voice: true };
@@ -726,9 +746,12 @@ function openPage(path) {
   if (!UNADDRESSED[name]) {
     pageParam(path);
   }
+  closeVault();
+  if (settingsBox) settingsBox.hidden = true;
   Object.keys(pageBoxes).forEach(function (other) {
     if (other !== name && pageBoxes[other]) {
       pageBoxes[other].hidden = true;
+      if (pageModules[other] && pageModules[other].hide) pageModules[other].hide();
     }
   });
   if (pageBoxes[name]) {
@@ -742,7 +765,7 @@ function openPage(path) {
   box.id = box.dataset.box = "gpui-page-" + name;
   box.setAttribute("aria-label", name);
   box.style.cssText = "position:fixed;inset:0;z-index:7;";
-  if (name === "claude" || name === "data") { box.style.zIndex = "100"; }
+  if (document.querySelector('meta[name="openagents-settings"]')) { box.style.zIndex = "100"; }
   document.body.appendChild(box);
   pageBoxes[name] = box;
   Promise.all([loadRenderer(new URL(files[0], import.meta.url), new URL(files[1], import.meta.url), new URL(files[2], import.meta.url), new URL(files[3], import.meta.url)), loadedFonts])
@@ -760,6 +783,7 @@ function openPage(path) {
       box.remove();
       delete pageBoxes[name];
       pageParam("");
+      if (settingsSection()) location.replace(location.pathname + "?ui=html");
     });
 }
 window.addEventListener("oa-page-open", function (event) {
@@ -772,11 +796,14 @@ window.addEventListener("oa-page-close", function (event) {
   var box = pageBoxes[event.detail || ""];
   if (box) {
     box.hidden = true;
+    var module = pageModules[event.detail || ""];
+    if (module && module.hide) module.hide();
+    closeVault();
   }
   if (!UNADDRESSED[event.detail || ""]) {
     pageParam("");
   }
-  if (event.detail === "claude" || event.detail === "data") {
+  if (document.querySelector('meta[name="openagents-settings"]')) {
     location.assign("/?ui=gpui");
   }
 });
@@ -790,12 +817,44 @@ function openAddressedPage() {
   if (work) {
     openWork(work);
   }
+  return Boolean(PAGES[(path || "").split("/")[0]] || work);
 }
 
 window.addEventListener("oa-settings-hide", function () {
   if (settingsBox) {
     settingsBox.hidden = true;
+
   }
 });
+
+// The vault keeps its own module and security policy. Removing this frame
+// on close also discards its unlocked session; the GPUI module reads no keys.
+var vaultBox = null;
+function closeVault() {
+  if (vaultBox) { vaultBox.remove(); vaultBox = null; }
+}
+window.addEventListener("oa-vault-open", function () {
+  if (vaultBox) return;
+  vaultBox = document.createElement("div");
+  vaultBox.setAttribute("role", "dialog");
+  vaultBox.setAttribute("aria-label", "Vault");
+  vaultBox.style.cssText = "position:fixed;inset:16px;z-index:101;background:white;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;";
+  var close = document.createElement("button");
+  close.textContent = "Close vault";
+  close.addEventListener("click", closeVault);
+  vaultBox.appendChild(close);
+  var frame = document.createElement("iframe");
+  frame.title = "Vault";
+  frame.style.cssText = "width:100%;flex:1;border:0;";
+  var project = /^\/projects\/[^/]+\/vault$/.test(location.pathname);
+  frame.src = (project ? location.pathname : "/settings/vault") + "?ui=html&embed=1";
+  vaultBox.appendChild(frame);
+  document.body.appendChild(vaultBox);
+  close.focus();
+});
+window.addEventListener("keydown", function (event) {
+  if (event.key === "Escape") closeVault();
+});
+window.addEventListener("oa-settings-hide", closeVault);
 
 start();

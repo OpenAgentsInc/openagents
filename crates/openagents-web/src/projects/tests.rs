@@ -71,6 +71,7 @@ impl World {
 pub(crate) struct Options {
     pub uploads: Option<crate::ProjectUploadPolicy>,
     pub cad: Option<std::path::PathBuf>,
+    pub gpui_chat: Option<std::path::PathBuf>,
     pub everglade: Option<std::path::PathBuf>,
     /// Serve a public host (`openagents.test`) instead of the local address.
     pub public: bool,
@@ -170,6 +171,7 @@ async fn world_at(port: u16, options: Options) -> World {
     let mut config = crate::Config::development(root.path().join("tasks"));
     config.project_uploads = options.uploads.unwrap_or_default();
     config.cad = options.cad;
+    config.gpui_chat = options.gpui_chat;
     config.everglade = options.everglade;
     config.port = port;
     config.room_token_key = options.room_token_key;

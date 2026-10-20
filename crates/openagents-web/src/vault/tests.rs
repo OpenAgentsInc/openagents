@@ -553,3 +553,28 @@ fn the_api_answers_no_one_else() {
     assert!(super::owns("/projects/abc/vault"));
     assert!(!super::owns("/projects/abc/sources"));
 }
+
+#[tokio::test]
+async fn gpui_mount_keeps_the_vault_module_in_its_own_same_origin_frame() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let embedded = browser.get(&world, "/settings/vault?ui=html&embed=1").await;
+    assert_eq!(embedded.status, StatusCode::OK);
+    assert!(embedded.body.contains("/vault/vault.js"));
+    assert!(embedded.body.contains("id=\"vault\""));
+    assert!(!embedded.body.contains("gpui/build/start.js"));
+    let policy = embedded.headers[header::CONTENT_SECURITY_POLICY]
+        .to_str()
+        .unwrap();
+    assert!(policy.contains("frame-ancestors 'self'"));
+    assert!(policy.contains("require-trusted-types-for 'script'"));
+    assert_eq!(embedded.headers[header::CACHE_CONTROL], "no-store, private");
+    let page = browser.get(&world, "/settings/vault?ui=html").await;
+    assert!(
+        page.headers[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .contains("frame-ancestors 'none'")
+    );
+}

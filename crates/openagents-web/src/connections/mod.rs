@@ -336,6 +336,7 @@ pub(crate) fn settings_row(app: &App, viewer: &Viewer) -> Markup {
 struct PageQuery {
     #[serde(default)]
     problem: Option<String>,
+    ui: Option<String>,
 }
 
 async fn page(
@@ -347,6 +348,12 @@ async fn page(
         Ok(found) => found,
         Err(response) => return response,
     };
+    let ui_query = query.ui.as_ref().map(|ui| format!("ui={ui}"));
+    if let Some(response) =
+        crate::terminal_connect::gpui::shell(&app, &headers, ui_query.as_deref(), PAGE).await
+    {
+        return response;
+    }
     let body = view(&app, service, &headers, &viewer, query.problem.as_deref()).await;
     crate::settings::page(&headers, service, &viewer, "Connections", PAGE, body)
 }
@@ -851,7 +858,8 @@ async fn finished(app: &App, headers: &HeaderMap, query: CallbackQuery) -> Respo
 // (`Authorization: Bearer sess_…` from `openagents login` or `coder login`,
 // or a sign-in key `oa_sk_…` from `openagents keys create`) and answers only
 // that account's own connection (`docs/api/connections.md`). A browser
-// cookie alone is never enough, so these routes need no CSRF token.
+// cookie is checked by `cookie_api` for same-origin reads and the page's
+// CSRF token on writes, then presented here as a Bearer.
 
 /// The caller of an app API route: the account service and their account
 /// owner, or the app API's refusal.

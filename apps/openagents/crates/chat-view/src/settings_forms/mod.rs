@@ -19,6 +19,7 @@ pub mod appearance;
 /// CAD documents and configurators (#12334).
 pub mod cad;
 pub mod cloud;
+pub mod connections;
 /// Earn on a paired computer (#12294).
 pub mod earn;
 /// A Lab document (#12333).
@@ -50,6 +51,9 @@ pub enum Page {
     Providers,
     Claude,
     Data,
+    Connections,
+    Vault,
+    Terminal,
     Appearance,
     Notifications,
     Shortcuts,
@@ -64,11 +68,14 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 13] = [
+    pub const ALL: [Page; 16] = [
         Page::General,
         Page::Providers,
         Page::Claude,
         Page::Data,
+        Page::Connections,
+        Page::Vault,
+        Page::Terminal,
         Page::Appearance,
         Page::Notifications,
         Page::Shortcuts,
@@ -87,6 +94,9 @@ impl Page {
             Page::Providers => "Providers",
             Page::Claude => "Claude",
             Page::Data => "Data",
+            Page::Connections => "Connections",
+            Page::Vault => "Vault",
+            Page::Terminal => "Connect your terminal",
             Page::Appearance => "Appearance",
             Page::Notifications => "Notifications",
             Page::Shortcuts => "Shortcuts",
@@ -107,6 +117,9 @@ impl Page {
             Page::Providers => "providers",
             Page::Claude => "claude",
             Page::Data => "data",
+            Page::Connections => "connections",
+            Page::Vault => "vault",
+            Page::Terminal => "terminal",
             Page::Appearance => "appearance",
             Page::Notifications => "notifications",
             Page::Shortcuts => "shortcuts",
@@ -354,6 +367,7 @@ pub enum Intent {
     Account(account::Action),
     /// Site administration (#12335).
     Admin(admin::Action),
+    Connections(connections::Action),
     /// Earn (#12294).
     Earn(earn::Action),
     /// Providers (#12283).
@@ -479,6 +493,7 @@ pub struct Remote {
     pub deleting: bool,
     pub account: account::State,
     pub cloud: cloud::State,
+    pub connections: connections::State,
     /// Earn on the chosen computer (#12294).
     pub earn: earn::State,
     /// Providers: the chosen computer's agents and accounts (#12283).
@@ -503,6 +518,9 @@ pub fn page(page: Page, prefs: &Prefs, remote: &Remote, paints: &Paints) -> Node
         Page::Memory => memory::page(&remote.memory, paints),
         Page::Schedules => schedules::page(&remote.schedules, paints),
         Page::General => general(prefs, remote, paints),
+        Page::Connections | Page::Vault | Page::Terminal => {
+            connections::page(page, &remote.connections, paints)
+        }
         Page::Appearance => appearance::page(&prefs.appearance, remote, paints),
         Page::Notifications => notifications(prefs, remote, paints),
         Page::Shortcuts => shortcuts::page(prefs, remote, paints),

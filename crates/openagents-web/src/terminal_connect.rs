@@ -27,6 +27,8 @@
 //! On a local server (`127.0.0.1`, `localhost`) the sign-in command names
 //! the server (`OPENAGENTS_ORIGIN=…`) and the local stack's Coder.
 
+pub(crate) mod gpui;
+
 use axum::Router;
 use axum::extract::rejection::FormRejection;
 use axum::extract::{Form, Query, State};
@@ -60,6 +62,7 @@ pub(crate) fn routes() -> Router<App> {
         .route(LIVE, get(live))
         .route(APPROVE, post(approve))
         .route(SYNC, post(choose))
+        .merge(gpui::routes())
 }
 
 /// Where the person stands, from what the page knows.
@@ -348,6 +351,7 @@ struct PageQuery {
     computer: Option<String>,
     problem: Option<String>,
     since: Option<u64>,
+    ui: Option<String>,
 }
 
 /// Where the person stands: the computer the page knows (or one signed
@@ -452,6 +456,10 @@ async fn page(
         Ok(found) => found,
         Err(response) => return response,
     };
+    let ui_query = query.ui.as_ref().map(|ui| format!("ui={ui}"));
+    if let Some(response) = gpui::shell(&app, &headers, ui_query.as_deref(), PAGE).await {
+        return response;
+    }
     let since = query.since.unwrap_or_else(crate::cloud::session::now);
     let step = match step(&app, service, &headers, &viewer, query.computer, since).await {
         Ok(step) => step,

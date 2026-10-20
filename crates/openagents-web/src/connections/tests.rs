@@ -2,6 +2,7 @@
 //! Settings, attaching a Drive folder to a project, and the chat's Drive
 //! door answering from it with a fake Gemini, citing what it read.
 
+mod gpui;
 mod schema;
 
 use std::sync::{Arc, Mutex};

@@ -421,6 +421,9 @@ pub(crate) async fn page(
     page_with_fallback(app, headers, chat, base, None).await
 }
 
+pub(crate) async fn settings_page(app: &App, headers: &HeaderMap, path: &str) -> Response {
+    page_with_fallback(app, headers, None, "", Some(format!("{path}?ui=html"))).await
+}
 async fn page_with_fallback(
     app: &App,
     headers: &HeaderMap,

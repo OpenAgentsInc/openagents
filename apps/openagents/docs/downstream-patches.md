@@ -271,6 +271,9 @@ Keep fork-specific changes here so upstream updates can review each integration.
   invitations. The Rust mobile reader refreshes chats and projects together
   on pull-to-refresh and when returning to the app.
 
+- OpenAgents #12328: add shared Connections, Vault, and Terminal forms to the
+  separate lazy modules over page-host; keep vault keys in its separate module.
+
 ## Custom agents (#11903–#11908)
 
 The SDK owns private definitions and assignments. `doc_host::custom_agents`
