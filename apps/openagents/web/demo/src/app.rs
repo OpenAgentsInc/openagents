@@ -898,13 +898,13 @@ impl ChatApp {
     /// The fixture approval, drawn by the shared decision panel through the
     /// desktop's Rust Native adapter.
     fn render_approval(&self, cx: &mut Context<Self>) -> AnyElement {
-        let panel = self.approval.panel(theme::desktop());
+        let panel = self.approval.panel(&theme::desktop());
         let card = rust_native_gpui::mount_root(
             &panel.node,
             "demo-approval",
             1,
             |this: &mut Self, activation, cx| {
-                this.approval.press(&activation.node, theme::desktop());
+                this.approval.press(&activation.node, &theme::desktop());
                 cx.notify();
             },
             cx,

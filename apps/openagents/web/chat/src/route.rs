@@ -35,6 +35,22 @@ pub fn chat_of(base: &str, path: &str) -> Option<String> {
     (!id.is_empty() && !id.contains('/')).then(|| id.to_owned())
 }
 
+/// The Settings page an address's query names (`?settings=appearance`),
+/// beside any chat, so the HTML `/settings` pages keep their addresses
+/// until each has a GPUI page (#12288).
+pub fn settings_of(search: &str) -> Option<openagents_chat_view::settings_forms::Page> {
+    search
+        .trim_start_matches('?')
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("settings="))
+        .and_then(openagents_chat_view::settings_forms::Page::from_slug)
+}
+
+/// The address of a Settings page under `base`.
+pub fn settings_path(base: &str, page: openagents_chat_view::settings_forms::Page) -> String {
+    format!("{}?settings={}", path_for(base, None), page.slug())
+}
+
 pub fn path_for(base: &str, chat: Option<&str>) -> String {
     match chat {
         Some(id) => format!("{base}/chat/{id}"),
@@ -106,6 +122,27 @@ pub fn current() -> Option<String> {
     chat_of(&base(), &path)
 }
 
+/// The Settings page this address names.
+#[cfg(target_family = "wasm")]
+pub fn settings() -> Option<openagents_chat_view::settings_forms::Page> {
+    settings_of(&web_sys::window()?.location().search().ok()?)
+}
+
+#[cfg(target_family = "wasm")]
+/// Shows a Settings page's address, adding a history entry when it changed.
+pub fn push_settings(page: openagents_chat_view::settings_forms::Page) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    if settings() == Some(page) {
+        return;
+    }
+    if let Ok(history) = window.history() {
+        let path = settings_path(&base(), page);
+        let _ = history.push_state_with_url(&JsValue::NULL, "", Some(&path));
+    }
+}
+
 #[cfg(target_family = "wasm")]
 /// Shows `chat`'s address, adding a history entry when it changed.
 pub fn push(chat: Option<&str>) {
@@ -113,7 +150,7 @@ pub fn push(chat: Option<&str>) {
         return;
     };
     let path = path_for(&base(), chat);
-    if window.location().pathname().ok().as_deref() == Some(path.as_str()) {
+    if window.location().pathname().ok().as_deref() == Some(path.as_str()) && settings().is_none() {
         return;
     }
     if let Ok(history) = window.history() {
@@ -194,6 +231,20 @@ mod tests {
         // At the regular addresses, once swapped in.
         assert_eq!(chat_of("", "/chat/abc"), Some("abc".into()));
         assert_eq!(path_for("", None), "/");
+    }
+
+    #[test]
+    fn addresses_name_settings_pages() {
+        use openagents_chat_view::settings_forms::Page;
+        assert_eq!(settings_of("?settings=appearance"), Some(Page::Appearance));
+        assert_eq!(
+            settings_of("?ui=gpui&settings=account"),
+            Some(Page::Account)
+        );
+        assert_eq!(settings_of("?settings=nope"), None);
+        assert_eq!(settings_of(""), None);
+        assert_eq!(settings_path(BASE, Page::General), "/gpui?settings=general");
+        assert_eq!(settings_path("", Page::Files), "/?settings=files");
     }
 
     #[test]

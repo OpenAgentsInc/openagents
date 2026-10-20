@@ -299,6 +299,11 @@ impl Client {
         }
     }
 
+    /// The page's CSRF value, for a form the page posts itself.
+    pub fn csrf(&self) -> &str {
+        &self.csrf
+    }
+
     pub async fn send<T: DeserializeOwned>(
         &self,
         method: &str,

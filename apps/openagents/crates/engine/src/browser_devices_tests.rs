@@ -142,6 +142,9 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
         methods::QUEUE_MESSAGE,
         methods::QUEUE_COMMAND,
         methods::WRITE_WORKSPACE_FILE,
+        // Settings on the web (#12288).
+        methods::SET_TITLE_SETTINGS,
+        methods::SET_WORKTREE_SETTINGS,
     ] {
         assert_eq!(value(tab.handle(method, json!({})).await)["ran"], method);
     }
@@ -156,6 +159,7 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
     for method in [
         methods::LIST_REFS,
         methods::LIST_FOLDERS,
+        methods::GET_TITLE_SETTINGS,
         methods::WATCH_DOC_MESSAGES,
         methods::SWITCH_REF,
         openagents_rpc::moves::PLAN_MOVE,

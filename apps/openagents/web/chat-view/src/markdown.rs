@@ -65,7 +65,8 @@ impl Markdown {
         let mut options = RenderOptions::settled(self.id.clone());
         options.veil = veil.cloned();
         WithWindow(Some(Box::new(move |window, _| {
-            let element = render::render_tree(&tree, &options, theme::desktop(), window, &|_| None);
+            let element =
+                render::render_tree(&tree, &options, &theme::desktop(), window, &|_| None);
             // Text already on screen when a seeded veil attached stays put;
             // only what arrives from the next frame on fades in.
             if let Some(veil) = &options.veil {

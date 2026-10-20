@@ -37,6 +37,7 @@ pub mod rail;
 pub mod roll_text;
 pub mod rpc;
 pub mod rust_native_gpui;
+pub mod settings_forms;
 pub mod syntax_cache;
 pub mod theme;
 pub mod tool_image_paths;

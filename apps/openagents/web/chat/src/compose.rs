@@ -428,12 +428,22 @@ impl Compose {
     }
 
     fn toggle_send_key(&mut self, cx: &mut Context<Self>) {
-        self.send_with_modifier = !self.send_with_modifier;
-        let on = self.send_with_modifier;
+        let on = !self.send_with_modifier;
+        self.set_send_with_modifier(on, cx);
+    }
+
+    /// Send with Cmd/Ctrl+Enter (Settings → General's "Send messages
+    /// with", #12288).
+    pub fn set_send_with_modifier(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.send_with_modifier = on;
         storage_set(SEND_KEY, if on { "1" } else { "0" });
         self.input
             .update(cx, |input, _| input.set_send_with_modifier(on));
         cx.notify();
+    }
+
+    pub fn send_with_modifier(&self) -> bool {
+        self.send_with_modifier
     }
 
     // -----------------------------------------------------------------
@@ -1178,7 +1188,9 @@ impl Compose {
         Some(
             div()
                 .w_full()
-                .max_w(px(openagents_web_chat_view::transcript::CONTENT_WIDTH + 24.))
+                .max_w(px(
+                    openagents_web_chat_view::transcript::content_width() + 24.
+                ))
                 .flex()
                 .flex_col()
                 .gap(px(10.))
@@ -1269,7 +1281,9 @@ fn card(id: &'static str) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .w_full()
-        .max_w(px(openagents_web_chat_view::transcript::CONTENT_WIDTH + 24.))
+        .max_w(px(
+            openagents_web_chat_view::transcript::content_width() + 24.
+        ))
         .flex()
         .flex_col()
         .gap(px(2.))

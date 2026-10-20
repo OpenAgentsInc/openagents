@@ -24,6 +24,20 @@ use crate::{now_ms, theme};
 pub const SIDEBAR_WIDTH: f32 = 272.;
 pub const CONTENT_WIDTH: f32 = 740.;
 
+thread_local! {
+    static WIDTH: std::cell::Cell<f32> = const { std::cell::Cell::new(CONTENT_WIDTH) };
+}
+
+/// The conversation's column width now: [`CONTENT_WIDTH`] until Settings →
+/// Appearance sets another (#12289).
+pub fn content_width() -> f32 {
+    WIDTH.with(std::cell::Cell::get)
+}
+
+pub fn set_content_width(width: f32) {
+    WIDTH.with(|w| w.set(width));
+}
+
 /// A text part whose id starts with this is a notice from the site (a
 /// stopped answer, a failure) and draws as a quiet line, not markdown.
 pub const NOTICE_PREFIX: &str = "notice";
@@ -53,7 +67,7 @@ pub fn entry_row(first: bool, body: AnyElement) -> AnyElement {
         .px(px(24.))
         .when(first, |row| row.pt(px(28.)))
         .pb(px(26.))
-        .child(div().w_full().max_w(px(CONTENT_WIDTH)).child(body))
+        .child(div().w_full().max_w(px(content_width())).child(body))
         .into_any_element()
 }
 

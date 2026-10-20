@@ -237,7 +237,7 @@ function openFiles() {
     return;
   }
   filesBox = document.createElement("div");
-  filesBox.id = "gpui-mount";
+  filesBox.id = filesBox.dataset.box = "gpui-files-panel";
   filesBox.setAttribute("aria-label", "Files");
   filesBox.style.cssText = "position:fixed;top:8px;right:8px;bottom:8px;width:min(560px,46vw);z-index:5;border-radius:14px;overflow:hidden;";
   document.body.appendChild(filesBox);
@@ -250,7 +250,9 @@ function openFiles() {
       }).then(function () {
         files = module;
         var parts = hostParts();
-        module.mount(loaded[1], parts[0], parts[1]);
+        mountIn(filesBox, function () {
+          module.mount(loaded[1], parts[0], parts[1]);
+        });
       });
     })
     .catch(function (error) {
@@ -327,7 +329,7 @@ function openWork() {
     return;
   }
   workBox = document.createElement("div");
-  workBox.id = "gpui-work";
+  workBox.id = workBox.dataset.box = "gpui-work";
   workBox.setAttribute("aria-label", "Work");
   workBox.style.cssText = "position:fixed;top:8px;right:8px;bottom:8px;width:min(560px,46vw);z-index:6;border-radius:14px;overflow:hidden;";
   document.body.appendChild(workBox);
@@ -338,7 +340,9 @@ function openWork() {
       return module.default({
         module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_work_bg.wasm", import.meta.url))),
       }).then(function () {
-        module.mount(loaded[1]);
+        mountIn(workBox, function () {
+          module.mount(loaded[1]);
+        });
       });
     })
     .catch(function (error) {
@@ -357,6 +361,86 @@ window.addEventListener("oa-work-failed", function () {
   if (workBox) {
     workBox.remove();
     workBox = null;
+  }
+});
+
+// A lazily loaded module's canvas goes in the box named `gpui-mount` when
+// its window opens, which happens after `mount` returns. The box keeps the
+// name until its canvas is in it, then takes its own (`data-box`), so the
+// next module finds its own box.
+function mountIn(box, mount) {
+  document.querySelectorAll("#gpui-mount").forEach(function (other) {
+    other.id = other.dataset.box || "";
+  });
+  box.id = "gpui-mount";
+  mount();
+  var tries = 0;
+  (function settle() {
+    if (box.querySelector("canvas") || tries++ > 200) {
+      box.id = box.dataset.box;
+    } else {
+      setTimeout(settle, 25);
+    }
+  })();
+}
+
+// Settings (#12288, #12289, #12290): its own module, loaded the first time
+// the chat opens it (`oa-settings-open`, with the page and what the chat
+// knows), in a box over the chat. It saves choices to this browser's
+// storage and tells the chat (`oa-settings-changed`); its Back goes
+// through the chat (`oa-settings-close`), which hides the box
+// (`oa-settings-hide`).
+var settings = null;
+var settingsBox = null;
+var settingsWanted = null;
+function openSettings(event) {
+  var asked = {};
+  try {
+    asked = JSON.parse(event.detail || "{}");
+  } catch (error) {
+    asked = {};
+  }
+  var page = asked.page || "general";
+  var shared = JSON.stringify(asked.shared || {});
+  if (settingsBox) {
+    settingsBox.hidden = false;
+    if (settings) {
+      settings.show(page, shared);
+    } else {
+      settingsWanted = [page, shared];
+    }
+    return;
+  }
+  settingsWanted = [page, shared];
+  settingsBox = document.createElement("div");
+  settingsBox.id = settingsBox.dataset.box = "gpui-settings";
+  settingsBox.setAttribute("aria-label", "Settings");
+  settingsBox.style.cssText = "position:fixed;inset:0;z-index:7;";
+  document.body.appendChild(settingsBox);
+  var glue = new URL("./openagents_web_settings.js", import.meta.url);
+  Promise.all([import(glue.href), loadedFonts])
+    .then(function (loaded) {
+      var module = loaded[0];
+      return module.default({
+        module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_settings_bg.wasm", import.meta.url))),
+      }).then(function () {
+        settings = module;
+        var wanted = settingsWanted;
+        mountIn(settingsBox, function () {
+          module.mount(loaded[1], wanted[0], wanted[1]);
+        });
+      });
+    })
+    .catch(function (error) {
+      console.error("Settings couldn't start", error);
+      settingsBox.remove();
+      settingsBox = null;
+    });
+}
+window.addEventListener("oa-settings-open", openSettings);
+window.addEventListener("oa-settings-hide", function () {
+  if (settingsBox) {
+    settingsBox.hidden = true;
   }
 });
 

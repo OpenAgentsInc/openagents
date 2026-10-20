@@ -134,7 +134,9 @@ fn boxed<E: Styled>(mut el: E, style: &Style) -> E {
         el = el.flex_none();
     }
     if style.fill_height == Some(true) {
-        el = el.flex_1();
+        // Free to shrink below its content, so its text wraps rather than
+        // pushing a row past its column.
+        el = el.flex_1().min_w_0();
     }
     if let Some(value) = style.min_height {
         el = el.min_h(px(f32::from(value)));

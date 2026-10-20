@@ -1,7 +1,10 @@
-//! The desktop's dark theme for the web views: each color is read from the
-//! desktop's own tokens (`openagents_chat_view::theme::Theme::dark`).
+//! The desktop's theme for the web views: each color is read from the
+//! desktop's own tokens (`openagents_chat_view::theme::Theme`). It starts as
+//! the dark theme; Settings → Appearance installs another with [`set`]
+//! (#12289).
 
-use std::sync::LazyLock;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use gpui::{Font, FontFallbacks, FontStyle, FontWeight, Hsla, font};
 use openagents_chat_view::theme::Theme;
@@ -17,92 +20,103 @@ pub const BODY_LINE: f32 = 23.0;
 pub const CODE: f32 = openagents_chat_view::typography::CODE_FONT_SIZE_DEFAULT;
 pub const CODE_LINE: f32 = 19.0;
 
-static DARK: LazyLock<Theme> = LazyLock::new(Theme::dark);
+thread_local! {
+    static CURRENT: RefCell<Rc<Theme>> = RefCell::new(Rc::new(Theme::dark()));
+}
+
+fn with<T>(read: impl FnOnce(&Theme) -> T) -> T {
+    CURRENT.with(|current| read(&current.borrow()))
+}
 
 /// The desktop theme the web views draw with.
-pub fn desktop() -> &'static Theme {
-    &DARK
+pub fn desktop() -> Rc<Theme> {
+    CURRENT.with(|current| current.borrow().clone())
 }
 
 /// Install the desktop theme as the GPUI global, for the desktop views the
 /// web mounts directly, such as Rust Native cards
 /// (`openagents_chat_view::rust_native_gpui`).
 pub fn install(cx: &mut gpui::App) {
-    let theme = Theme::dark();
+    set(Theme::dark(), cx);
+}
+
+/// Draw with `theme` from the next frame on.
+pub fn set(theme: Theme, cx: &mut gpui::App) {
     openagents_chat_view::theme::set_current_appearance(theme.appearance);
+    CURRENT.with(|current| *current.borrow_mut() = Rc::new(theme.clone()));
     cx.set_global(theme);
 }
 
 /// Main panel.
 pub fn bg() -> Hsla {
-    DARK.bg
+    with(|t| t.bg)
 }
 /// Shell and sidebar.
 pub fn surface() -> Hsla {
-    DARK.surface
+    with(|t| t.surface)
 }
 pub fn surface_raised() -> Hsla {
-    DARK.surface_raised
+    with(|t| t.surface_raised)
 }
 pub fn surface_card() -> Hsla {
-    DARK.surface_card
+    with(|t| t.surface_card)
 }
 pub fn element_hover() -> Hsla {
-    DARK.element_hover
+    with(|t| t.element_hover)
 }
 pub fn element_active() -> Hsla {
-    DARK.element_active
+    with(|t| t.element_active)
 }
 pub fn border() -> Hsla {
-    DARK.border
+    with(|t| t.border)
 }
 pub fn border_strong() -> Hsla {
-    DARK.border_strong
+    with(|t| t.border_strong)
 }
 pub fn input_bg() -> Hsla {
-    DARK.input_bg
+    with(|t| t.input_bg)
 }
 pub fn text() -> Hsla {
-    DARK.text
+    with(|t| t.text)
 }
 pub fn text_muted() -> Hsla {
-    DARK.text_muted
+    with(|t| t.text_muted)
 }
 pub fn text_faint() -> Hsla {
-    DARK.text_faint
+    with(|t| t.text_faint)
 }
 pub fn solid() -> Hsla {
-    DARK.solid
+    with(|t| t.solid)
 }
 pub fn on_solid() -> Hsla {
-    DARK.on_solid
+    with(|t| t.on_solid)
 }
 pub fn accent() -> Hsla {
-    DARK.accent
+    with(|t| t.accent)
 }
 /// The accent wash the desktop's notice cards and selected rows use
 /// (`accent.opacity(0.12)`); `Theme::accent_wash` is the stronger identity
 /// tint.
 pub fn accent_wash() -> Hsla {
-    DARK.accent.opacity(0.12)
+    with(|t| t.accent.opacity(0.12))
 }
 pub fn selection() -> Hsla {
-    DARK.selection
+    with(|t| t.selection)
 }
 pub fn danger() -> Hsla {
-    DARK.danger
+    with(|t| t.danger)
 }
 pub fn warning() -> Hsla {
-    DARK.warning
+    with(|t| t.warning)
 }
 pub fn success() -> Hsla {
-    DARK.success
+    with(|t| t.success)
 }
 pub fn diff_add() -> Hsla {
-    DARK.diff_add
+    with(|t| t.diff_add)
 }
 pub fn diff_del() -> Hsla {
-    DARK.diff_del
+    with(|t| t.diff_del)
 }
 
 /// Named fallbacks for Geist. Emoji isn't named: GPUI drops a named face

@@ -13,6 +13,7 @@ members = [
     "files",
     "room",
     "work",
+    "settings",
     "demo",
     "agent-graph",
     "first-frame",

@@ -70,6 +70,10 @@ web-sys = { version = "0.3", features = [
     "IdbRequest",
     "IdbTransaction",
     "IdbTransactionMode",
+    # Settings' choices and the new-thread background (#12288, #12289).
+    "Storage",
+    "CustomEvent",
+    "CustomEventInit",
     "Navigator",
     "WebSocket",
     "CloseEvent",

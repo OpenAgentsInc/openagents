@@ -68,6 +68,8 @@ pub const ALLOWED: &[&str] = &[
     methods::SEARCH_HOME_FOLDERS,
     methods::RELEASE_HOME_FOLDER_SEARCH,
     methods::LIST_DRIVES,
+    // Settings → General's thread naming (#12288).
+    methods::GET_TITLE_SETTINGS,
     // A chat on this computer: its transcript (#12266).
     methods::WATCH_DOC_MESSAGES,
     methods::READ_CHAT_WINDOW,
@@ -99,6 +101,9 @@ pub const OPERATE: &[&str] = &[
     openagents_rpc::moves::START_MOVE,
     openagents_rpc::moves::BRING_BACK,
     openagents_rpc::moves::DISCARD_MOVE,
+    // Settings → General's thread naming and worktree folder (#12288).
+    methods::SET_TITLE_SETTINGS,
+    methods::SET_WORKTREE_SETTINGS,
 ];
 
 /// Parameters a browser never sets: forwarding to another computer under

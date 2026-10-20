@@ -76,7 +76,7 @@ pub(crate) fn random<const N: usize>() -> Result<[u8; N]> {
 }
 
 /// Wait for an IndexedDB request.
-async fn done(request: &web_sys::IdbRequest) -> Result<JsValue> {
+pub(crate) async fn done(request: &web_sys::IdbRequest) -> Result<JsValue> {
     let (tx, rx) = oneshot::channel::<std::result::Result<JsValue, JsValue>>();
     let tx = Rc::new(RefCell::new(Some(tx)));
     let ok = {

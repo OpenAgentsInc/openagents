@@ -58,6 +58,9 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/voice-agent",
     "/v1/keys",
     "/v1/device/keys",
+    // The account's name@openagents.com name, which Settings > Your ID
+    // shows (#12290).
+    "/v1/device/name",
     "/v1/attention",
     "/v1/notify",
     "/v1/land",
@@ -216,6 +219,7 @@ mod tests {
             "/v1/voice-agent",
             "/v1/keys/k1",
             "/v1/device/keys/challenge",
+            "/v1/device/name",
             "/v1/account",
             "/v1/attention",
             "/v1/notify/n1/read",

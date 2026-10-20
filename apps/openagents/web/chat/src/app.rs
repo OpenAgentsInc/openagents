@@ -19,8 +19,7 @@ use openagents_web_chat_view::composer::{Cancelled, Submitted, TextInput};
 use openagents_web_chat_view::markdown::{self, Veil};
 use openagents_web_chat_view::svg;
 use openagents_web_chat_view::transcript::{
-    self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, ago, button, chip, footer_text,
-    info_card, truncate,
+    self, OnClick, SIDEBAR_WIDTH, TurnView, ago, button, chip, footer_text, info_card, truncate,
 };
 use openagents_web_chat_view::{composer::Copy, selection};
 use openagents_web_chat_view::{now_ms, theme};
@@ -42,6 +41,8 @@ mod devices;
 mod move_sheet;
 /// A new session on a computer (#12266).
 mod new_session;
+/// Settings (#12288, #12289, #12290).
+mod settings;
 
 /// How often the sidebar re-reads the chats when the feed says nothing.
 const REFRESH: Duration = Duration::from_secs(60);
@@ -146,6 +147,8 @@ pub struct ChatApp {
     _history: Task<()>,
     /// A transcript selection drag, scrolling at the edges (#12305).
     selection_drag: selection::DragScroll,
+    /// Settings: the open page and this browser's choices (#12288).
+    settings: settings::Settings,
 }
 
 impl ChatApp {
@@ -158,6 +161,10 @@ impl ChatApp {
                 this.send(event.0.clone(), window, cx);
             },
         )
+        .detach();
+        cx.subscribe(&composer, |this, _, _: &Cancelled, cx| {
+            this.escape_pressed(cx)
+        })
         .detach();
         let client = Client::from_page();
         let work = cx.new(|cx| crate::work::Work::new(client.clone(), cx));
@@ -264,7 +271,7 @@ impl ChatApp {
         let mut back = route::watch();
         let history = cx.spawn(async move |this, cx| {
             while let Some(chat) = back.next().await {
-                if this.update(cx, |this, cx| this.load(chat, cx)).is_err() {
+                if this.update(cx, |this, cx| this.arrive(chat, cx)).is_err() {
                     break;
                 }
             }
@@ -320,7 +327,9 @@ impl ChatApp {
             _ticker: ticker,
             _history: history,
             selection_drag: selection::DragScroll::default(),
+            settings: settings::Settings::load(),
         };
+        this.start_settings(cx);
         if this.signed_in {
             let weak = cx.entity().downgrade();
             let mut async_cx = cx.to_async();
@@ -333,7 +342,7 @@ impl ChatApp {
         }
         this.open_registry(cx);
         this.load_projects(cx);
-        this.load(route::current(), cx);
+        this.arrive(route::current(), cx);
         window.focus(&this.composer.focus_handle(cx), cx);
         this
     }
@@ -680,12 +689,17 @@ impl ChatApp {
                 .iter()
                 .map(|(index, (role, text))| (*index, role.as_str(), text.as_str())),
         );
-        if let Some(message) = error {
+        if let Some(message) = error.clone() {
             parts.push(MessagePart::Error {
                 id: "error".into(),
                 message,
             });
         }
+        crate::notifications::browser::chime(if error.is_some() {
+            openagents_chat_view::settings_forms::Sound::Attention
+        } else {
+            openagents_chat_view::settings_forms::Sound::Completion
+        });
         let id = format!("a-{}", live.request);
         if !live.cards.is_empty() {
             self.entry_cards.insert(id.clone(), live.cards.clone());
@@ -1155,6 +1169,7 @@ impl ChatApp {
                         .child("Sign in to keep your chats"),
                 )
             })
+            .child(self.render_settings_entry(cx))
             .child(
                 div()
                     .id("regular-chat")
@@ -1536,11 +1551,15 @@ impl ChatApp {
             .px(px(16.))
             .border_b_1()
             .border_color(theme::border())
-            .when(!wide, |row| {
+            .when(!wide || self.settings.sidebar_hidden, |row| {
                 row.child(
                     icon_button("open-sidebar", "icons/chat-round-line.svg").on_click(cx.listener(
-                        |this, _: &ClickEvent, _, cx| {
-                            this.sidebar_open = true;
+                        move |this, _: &ClickEvent, _, cx| {
+                            if wide {
+                                this.settings.sidebar_hidden = false;
+                            } else {
+                                this.sidebar_open = true;
+                            }
                             cx.notify();
                         },
                     )),
@@ -1659,7 +1678,7 @@ impl ChatApp {
             .child(
                 div()
                     .w_full()
-                    .max_w(px(CONTENT_WIDTH + 24.))
+                    .max_w(px(transcript::content_width() + 24.))
                     .flex()
                     .flex_row()
                     .items_end()
@@ -1747,7 +1766,7 @@ impl ChatApp {
                             .flex_wrap()
                             .justify_center()
                             .gap(px(8.))
-                            .max_w(px(CONTENT_WIDTH))
+                            .max_w(px(transcript::content_width()))
                             .children(choices),
                     )
                 },
@@ -1922,7 +1941,8 @@ impl Render for ChatApp {
         let transcript: AnyElement = if self.show_computers {
             self.render_computers(cx)
         } else if self.current.is_none() && rows == 0 {
-            self.render_new_chat(cx)
+            let fresh = self.render_new_chat(cx);
+            self.with_background(fresh)
         } else if self.loading_chat && rows == 0 {
             div()
                 .flex_1()
@@ -1979,7 +1999,9 @@ impl Render for ChatApp {
             .h_full()
             .py(px(8.))
             .pr(px(8.))
-            .when(!wide, |main| main.pl(px(8.)))
+            .when(!wide || self.settings.sidebar_hidden, |main| {
+                main.pl(px(8.))
+            })
             .child(
                 div()
                     .size_full()
@@ -2015,7 +2037,10 @@ impl Render for ChatApp {
             .text_color(theme::text())
             .text_size(px(theme::BODY));
         root.text_style().font_fallbacks = Some(theme::fallbacks());
-        if wide {
+        let root = self.shortcut_actions(root, cx);
+        if wide && self.settings.sidebar_hidden {
+            root.child(main)
+        } else if wide {
             root.child(self.render_sidebar(false, cx)).child(main)
         } else if self.sidebar_open {
             root.child(self.render_sidebar(true, cx))

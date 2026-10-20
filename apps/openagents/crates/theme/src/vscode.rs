@@ -91,6 +91,9 @@ struct NormalizedTheme {
     token_colors: Vec<TokenRule>,
     semantic_token_colors: BTreeMap<String, SemanticStyle>,
     files: Vec<PathBuf>,
+    /// The source itself, when it came as text rather than a file
+    /// ([`compile_text`]); hashed in place of `files`.
+    text: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -389,6 +392,167 @@ fn slug(value: &str) -> String {
     } else {
         output
     }
+}
+
+/// Compile one VS Code theme file from its text, for a host with no file
+/// system to read it from, such as the web app's theme library. The file
+/// must stand alone: an `include` or a token-color file it names is
+/// refused, since nothing else came with it.
+pub fn compile_text(
+    source: &str,
+    file_name: &str,
+    options: CompileOptions,
+) -> Result<SourceCompilation> {
+    if source.len() as u64 > MAX_SOURCE_BYTES {
+        bail!(
+            "{file_name} is {} bytes; the limit is {MAX_SOURCE_BYTES}",
+            source.len()
+        );
+    }
+    // Plain JSON after comments and trailing commas go: the web app links
+    // this without a JSON5 parser.
+    let value: Value = serde_json::from_str(&strip_jsonc(source))
+        .with_context(|| format!("could not parse JSONC theme {file_name}"))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| anyhow!("{file_name} is not a JSON object"))?;
+    if object.contains_key("include") || object.get("tokenColors").is_some_and(Value::is_string) {
+        bail!("{file_name} reads other files; import the theme's package on the desktop");
+    }
+    let mut theme = NormalizedTheme {
+        text: Some(source.to_owned()),
+        ..NormalizedTheme::default()
+    };
+    if let Some(colors) = object.get("colors").and_then(Value::as_object) {
+        for (key, value) in colors {
+            if let Some(value) = value.as_str() {
+                theme.colors.insert(key.clone(), value.into());
+            }
+        }
+    }
+    if let Some(Value::Array(rules)) = object.get("tokenColors") {
+        theme.token_colors.extend(parse_token_rules(rules));
+    }
+    if let Some(semantic) = object.get("semanticTokenColors").and_then(Value::as_object) {
+        for (selector, style) in semantic {
+            theme
+                .semantic_token_colors
+                .insert(selector.clone(), parse_semantic_style(style));
+        }
+    }
+    let appearance = match object.get("type").and_then(Value::as_str) {
+        Some(kind) if kind.eq_ignore_ascii_case("light") => Appearance::Light,
+        Some(kind) if kind.eq_ignore_ascii_case("dark") => Appearance::Dark,
+        _ => theme
+            .colors
+            .get("editor.background")
+            .and_then(|value| value.parse::<Color>().ok())
+            .map(|background| {
+                if Color::BLACK.contrast(background) > Color::WHITE.contrast(background) {
+                    Appearance::Light
+                } else {
+                    Appearance::Dark
+                }
+            })
+            .unwrap_or(Appearance::Dark),
+    };
+    let name = object
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| options.family_name.clone());
+    let mut imported = convert(
+        theme,
+        ImportOptions {
+            id: options.family_id.clone(),
+            family_id: options.family_id.clone(),
+            name,
+            appearance,
+            source_url: options.source_url,
+            revision: options.revision,
+            license: options.license,
+        },
+    )?;
+    imported.report.source_files = vec![file_name.to_owned()];
+    let reports = BTreeMap::from([(imported.theme.id.clone(), imported.report)]);
+    Ok(SourceCompilation {
+        path: PathBuf::from(file_name),
+        source_kind: DetectedThemeSource::File,
+        family: ThemeFamily {
+            id: options.family_id,
+            name: options.family_name,
+            variants: vec![imported.theme],
+        },
+        reports,
+        failures: Vec::new(),
+    })
+}
+
+/// JSONC as JSON: line and block comments and trailing commas removed,
+/// strings left as they are.
+pub fn strip_jsonc(source: &str) -> String {
+    // The second pass takes the commas a comment stood after.
+    strip_once(&strip_once(source))
+}
+
+fn strip_once(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut out = String::with_capacity(source.len());
+    let mut i = 0;
+    let mut start = 0;
+    let mut in_string = false;
+    let push = |out: &mut String, from: usize, to: usize| out.push_str(&source[from..to]);
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if b == b'\\' {
+                i += 2;
+                continue;
+            }
+            if b == b'"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'"' => {
+                in_string = true;
+                i += 1;
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                push(&mut out, start, i);
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                start = i;
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                push(&mut out, start, i);
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                i = (i + 2).min(bytes.len());
+                start = i;
+            }
+            b',' => {
+                let mut j = i + 1;
+                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if matches!(bytes.get(j), Some(b'}' | b']')) {
+                    push(&mut out, start, i);
+                    start = i + 1;
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    push(&mut out, start, bytes.len());
+    out
 }
 
 pub fn import_file(path: &Path, options: ImportOptions) -> Result<ImportResult> {
@@ -890,6 +1054,9 @@ fn convert(theme: NormalizedTheme, options: ImportOptions) -> Result<ImportResul
     for path in &theme.files {
         hasher.update(read_bounded(path, "theme source while hashing")?.as_bytes());
     }
+    if let Some(text) = &theme.text {
+        hasher.update(text.as_bytes());
+    }
     report.source_hash = format!("sha256:{:x}", hasher.finalize());
     output.source = ThemeSource {
         format: "vscode".into(),
@@ -1327,6 +1494,33 @@ fn syntax_role_for_semantic(selector: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_theme_compiles_from_its_text_alone() {
+        let jsonc = "{\n  // a note, with \"quotes\"\n  \"name\": \"Dusk // not a comment\",\n  \"type\": \"light\", /* block */\n  \"colors\": {\"editor.background\": \"#fafafa\", \"editor.foreground\": \"#202020\",},\n  \"tokenColors\": [{\"scope\": \"comment\", \"settings\": {\"foreground\": \"#808080\"}},], // last\n}";
+        let plain: Value = serde_json::from_str(&strip_jsonc(jsonc)).unwrap();
+        assert_eq!(plain["name"], "Dusk // not a comment");
+        let options = || CompileOptions {
+            family_id: "dusk".into(),
+            family_name: "Dusk".into(),
+            source_url: String::new(),
+            revision: String::new(),
+            license: String::new(),
+        };
+        let compiled = compile_text(jsonc, "dusk.json", options()).unwrap();
+        let variant = &compiled.family.variants[0];
+        assert_eq!(variant.name, "Dusk // not a comment");
+        assert_eq!(variant.appearance, Appearance::Light);
+        assert!(
+            compiled.reports[&variant.id]
+                .source_hash
+                .starts_with("sha256:")
+        );
+        // A theme that names other files can't come as text alone.
+        assert!(compile_text(r#"{"include": "./base.json"}"#, "x.json", options()).is_err());
+        assert!(compile_text(r#"{"tokenColors": "./t.json"}"#, "x.json", options()).is_err());
+        assert!(compile_text("[1, 2]", "x.json", options()).is_err());
+    }
 
     #[test]
     fn previous_import_report_fields_remain_readable() {

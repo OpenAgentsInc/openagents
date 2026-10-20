@@ -28,6 +28,10 @@ pub mod computer;
 #[cfg(target_family = "wasm")]
 pub mod chat_room;
 
+/// This browser's own storage: Settings' choices and pictures (#12288).
+#[cfg(target_family = "wasm")]
+pub mod store;
+
 /// The registry room over a WebSocket (#12265).
 #[cfg(target_family = "wasm")]
 pub mod registry;
