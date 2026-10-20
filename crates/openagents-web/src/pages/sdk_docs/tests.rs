@@ -151,6 +151,10 @@ fn every_public_sdk_item_is_described_and_its_calls_resolve() {
         "POST /v1/schedules/sync",
         "PUT /v1/device/name",
         "PUT /v1/published-agents/*/owner",
+        // The phone's answers to the browser's wallet requests (#12306).
+        "GET /v1/wallet/browser",
+        "PUT /v1/wallet/browser/grant",
+        "POST /v1/wallet/browser/requests/*/receipt",
     ];
     let unknown: Vec<&String> = unresolved
         .iter()

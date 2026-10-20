@@ -274,6 +274,16 @@ pub(crate) async fn stop(store: &Store, owner: &str, chat: &str) -> Result<(), E
 /// The chat a link opens, for anyone, and its record: `None` when there
 /// is no such link, sharing stopped, the chat is gone, or it can no
 /// longer be shared.
+/// The title of the chat a public share link opens, if it still opens
+/// (#12304: announcing a share as a note).
+pub(crate) async fn shared_title(store: &Store, token: &str) -> Option<String> {
+    public(store, token)
+        .await
+        .ok()
+        .flatten()
+        .map(|(chat, _)| chat.title)
+}
+
 async fn public(store: &Store, token: &str) -> Result<Option<(Conversation, Link)>, Error> {
     if !valid_token(token) {
         return Ok(None);
@@ -402,6 +412,9 @@ fn panel(chat: &str, csrf: &str, shown: &Shown<'_>, dialog: bool) -> Markup {
                 p { (SHARED) }
                 div.oa-share-link {
                     a #chat-share-url href=(url) target="_blank" rel="noopener noreferrer" { (url) }
+                }
+                @if let Some(token) = url.rsplit('/').next() {
+                    p { a href=(format!("/share/{token}/announce")) { "Post it on Nostr" } }
                 }
                 div.oa-dialog-footer {
                     (form(false, Button::new("Stop sharing")

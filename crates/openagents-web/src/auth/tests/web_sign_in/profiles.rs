@@ -1353,3 +1353,125 @@ async fn verse_labels_avatars_and_the_chat_never_loads_it() {
         assert!(!body.contains("everglade"), "{page} loads Verse");
     }
 }
+
+#[tokio::test]
+async fn a_signed_in_persons_verse_avatar_carries_their_profile_name() {
+    let relay = Relay::start().await;
+    let world = key_world_with(vec![relay.url.clone()]).await;
+    let pat = key(81);
+    relay.put(pat.sign(
+        100,
+        0,
+        Vec::new(),
+        json!({"name": "pat", "display_name": "Pat In Verse"}).to_string(),
+    ));
+    let mut browser = Browser::default();
+    named(&world, &mut browser, &pat, "pat-verse").await;
+    let page = browser.get(&world, "/verse").await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(
+        page.body.contains("data-name=\"Pat In Verse\""),
+        "{}",
+        page.body
+    );
+    let mut anyone = Browser::default();
+    let signed_out = anyone.get(&world, "/verse").await;
+    assert!(!signed_out.body.contains("data-name="));
+}
+
+#[tokio::test]
+async fn follows_keep_petnames_profiles_show_a_feed_and_notes_point_at_shares() {
+    let relay = Relay::start().await;
+    let world = key_world_with(vec![relay.url.clone()]).await;
+    let (pat, alice, bob) = (key(91), key(92), key(93));
+    relay.put(pat.sign(
+        100,
+        3,
+        vec![Tag::new(vec![
+            "p".into(),
+            alice.pubkey().to_string(),
+            "wss://relay.example.com".into(),
+            "alice".into(),
+        ])],
+        String::new(),
+    ));
+    relay.put(alice.sign(200, 1, Vec::new(), "Hello from Alice".into()));
+    let mut browser = Browser::default();
+    named(&world, &mut browser, &pat, "pat-feed").await;
+
+    // The profile shows what the people it follows posted.
+    let mut anyone = Browser::default();
+    let page = anyone.get(&world, "/@pat-feed").await;
+    assert!(
+        page.body.contains("From people they follow"),
+        "{}",
+        page.body
+    );
+    assert!(page.body.contains("Hello from Alice"));
+
+    // A new follow keeps the old one's petname and relay hint.
+    let bob_npub = crate::profiles::npub(bob.pubkey());
+    let follow = browser.get(&world, &format!("/@{bob_npub}/follow")).await;
+    let ticket = json!({
+        "csrf": attribute(&follow.body, "data-csrf"),
+        "request": attribute(&follow.body, "data-request"),
+    });
+    let mut draft_body = ticket.clone();
+    draft_body["fields"] = json!({"follow": bob_npub});
+    let draft_bytes = draft_body.to_string();
+    let (status, draft) = call(
+        &world,
+        &mut browser,
+        "POST",
+        "/settings/profile/draft",
+        Some(ORIGIN),
+        None,
+        Some(draft_bytes.as_bytes()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{draft}");
+    assert_eq!(
+        draft["event"]["tags"],
+        json!([
+            ["p", alice.pubkey(), "wss://relay.example.com", "alice"],
+            ["p", bob.pubkey()]
+        ])
+    );
+
+    // A note may only point at a shared chat here; an unknown share has none.
+    let mut announce = ticket.clone();
+    announce["fields"] = json!({"announce": "f".repeat(32)});
+    let announce_bytes = announce.to_string();
+    let (status, _) = call(
+        &world,
+        &mut browser,
+        "POST",
+        "/settings/profile/draft",
+        Some(ORIGIN),
+        None,
+        Some(announce_bytes.as_bytes()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let now = crate::cloud::session::now();
+    for (content, want) in [
+        ("Look: https://api.openagents.com/share/abc", StatusCode::OK),
+        ("Buy my coin https://scam.example", StatusCode::BAD_REQUEST),
+    ] {
+        let mut publish = ticket.clone();
+        publish["event"] =
+            serde_json::to_value(pat.sign(now, 1, Vec::new(), content.into())).unwrap();
+        let bytes = publish.to_string();
+        let (status, _) = call(
+            &world,
+            &mut browser,
+            "POST",
+            "/settings/profile/publish",
+            Some(ORIGIN),
+            None,
+            Some(bytes.as_bytes()),
+        )
+        .await;
+        assert_eq!(status, want, "{content}");
+    }
+}

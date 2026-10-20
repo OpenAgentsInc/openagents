@@ -206,6 +206,18 @@ pub(crate) async fn who(app: &App, text: &str) -> Result<Who, StatusCode> {
     }
 }
 
+/// A short note someone published (kind 1).
+#[derive(Clone, Debug)]
+pub(crate) struct Note {
+    pub(crate) id: String,
+    pub(crate) author: String,
+    pub(crate) content: String,
+    pub(crate) created_at: u64,
+}
+
+/// The most notes the feed shows.
+const FEED_SHOWN: usize = 20;
+
 /// What the relays hold for one key.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Loaded {
@@ -214,6 +226,11 @@ pub(crate) struct Loaded {
     /// touch.
     pub(crate) content: Option<String>,
     pub(crate) follows: Vec<String>,
+    /// The follow list's tags as signed, so a new follow keeps petnames
+    /// and relay hints (#12304).
+    pub(crate) follow_tags: Vec<Vec<String>>,
+    /// Recent notes by the first follows, newest first (#12304).
+    pub(crate) feed: Vec<Note>,
     /// Shown names of the first follows, by key.
     pub(crate) follow_names: HashMap<String, String>,
     /// Agents this key owns (NIP-AGENT kind 30187 naming it), live ones
@@ -294,8 +311,10 @@ pub(crate) async fn load(relays: &[String], pubkey: &str) -> Arc<Loaded> {
         reached |= any;
     }
     let profile = metadata::newest(pubkey, metadata::METADATA_KIND, &events);
-    let follows = metadata::newest(pubkey, metadata::FOLLOWS_KIND, &events)
-        .map(metadata::follows)
+    let follow_event = metadata::newest(pubkey, metadata::FOLLOWS_KIND, &events);
+    let follows = follow_event.map(metadata::follows).unwrap_or_default();
+    let follow_tags: Vec<Vec<String>> = follow_event
+        .map(|e| e.tags.iter().map(|t| t.as_slice().to_vec()).collect())
         .unwrap_or_default();
     let mut follow_names = HashMap::new();
     if !follows.is_empty() {
@@ -312,6 +331,30 @@ pub(crate) async fn load(relays: &[String], pubkey: &str) -> Arc<Loaded> {
                 follow_names.insert(key.clone(), name.to_string());
             }
         }
+    }
+    let mut feed = Vec::new();
+    if !follows.is_empty() {
+        let first: Vec<&String> = follows.iter().take(FOLLOWS_SHOWN).collect();
+        let (notes, _) = read_all(
+            &ours,
+            &json!({"authors": first, "kinds": [1], "limit": FEED_SHOWN * 2}),
+        )
+        .await;
+        let mut seen = std::collections::BTreeSet::new();
+        let mut notes: Vec<Note> = notes
+            .into_iter()
+            .filter(|e| e.kind == 1 && follows.contains(&e.pubkey) && seen.insert(e.id.clone()))
+            .filter(|e| !e.content.trim().is_empty())
+            .map(|e| Note {
+                id: e.id,
+                author: e.pubkey,
+                content: e.content.chars().take(280).collect(),
+                created_at: e.created_at,
+            })
+            .collect();
+        notes.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        notes.truncate(FEED_SHOWN);
+        feed = notes;
     }
     let (owned, _) = read_all(
         &ours,
@@ -336,6 +379,8 @@ pub(crate) async fn load(relays: &[String], pubkey: &str) -> Arc<Loaded> {
         metadata: profile.map(|e| Metadata::read(&e.content)),
         content: profile.map(|e| e.content.clone()),
         follows,
+        follow_tags,
+        feed,
         follow_names,
         reached: reached || profile.is_some(),
     });
@@ -461,6 +506,7 @@ fn render(
             }
         }
         (evidence::sections(evidence))
+        (feed_section(loaded))
         (follows_section(loaded))
         section.oa-card aria-labelledby="profile-key" {
             (MarkdownRoot::new(html! {
@@ -475,6 +521,28 @@ fn render(
         .scriptless()
         .content(PageColumn::new(content))
         .respond(headers)
+}
+
+fn feed_section(loaded: &Loaded) -> Markup {
+    if loaded.feed.is_empty() {
+        return html! {};
+    }
+    html! {
+        section.oa-card aria-labelledby="profile-feed" {
+            (MarkdownRoot::new(html! {
+                h2 id="profile-feed" { "From people they follow" }
+                @for note in &loaded.feed {
+                    p {
+                        a href=(href(&note.author, None)) {
+                            (loaded.follow_names.get(&note.author).cloned().unwrap_or_else(|| short_npub(&note.author)))
+                        }
+                        ": "
+                        a href=(format!("/event/{}", note.id)) { (note.content) }
+                    }
+                }
+            }))
+        }
+    }
 }
 
 fn follows_section(loaded: &Loaded) -> Markup {

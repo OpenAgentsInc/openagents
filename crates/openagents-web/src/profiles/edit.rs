@@ -46,6 +46,8 @@ pub(crate) const PUBLISH: &str = "/settings/profile/publish";
 pub(crate) const SCRIPT: &str = "/settings/profile.js";
 /// Follow a key: `/@{handle}/follow`.
 pub(crate) const FOLLOW: &str = "/@{handle}/follow";
+/// Announce a shared chat as a note: `/share/{token}/announce` (#12304).
+pub(crate) const ANNOUNCE: &str = "/share/{token}/announce";
 const NAME_SCOPE: &str = "profile-name";
 const PUBLISH_SCOPE: &str = "profile-publish";
 /// How far a signed profile's time may be from this server's.
@@ -59,6 +61,7 @@ pub(super) fn routes() -> Router<App> {
         .route(PUBLISH, post(publish))
         .route(SCRIPT, get(script))
         .route(FOLLOW, get(follow_page))
+        .route(ANNOUNCE, get(announce_page))
 }
 
 pub(super) fn owns(path: &str) -> bool {
@@ -420,6 +423,9 @@ async fn draft(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
     if let Some(target) = body["fields"]["follow"].as_str() {
         return follow_draft(&app, &key, target).await;
     }
+    if let Some(token) = body["fields"]["announce"].as_str() {
+        return announce_draft(&app, &key, token).await;
+    }
     let mut edit = edited(&body["fields"]);
     let present = |v: &Option<String>| v.clone().filter(|v| !v.is_empty());
     let check = Metadata {
@@ -470,7 +476,7 @@ async fn publish(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
         );
     };
     let now = crate::cloud::session::now();
-    if !matches!(event.kind, 0 | 3)
+    if !matches!(event.kind, 0 | 1 | 3)
         || event.validate_crypto().is_err()
         || event.created_at.abs_diff(now) > SKEW
     {
@@ -488,9 +494,15 @@ async fn publish(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
     let read = Metadata::read(&event.content);
     let follows_ok = event.kind == 3
         && event.tags.len() <= nostr::metadata::FOLLOWS_MAX
-        && nostr::metadata::follows(&event).len() == event.tags.len();
+        && event.tags.iter().all(|t| t.name() == Some("p"));
+    let note_ok = event.kind == 1
+        && event.content.chars().count() <= 1_000
+        && event
+            .content
+            .contains(&format!("{}/share/", crate::wellknown::origin(&app)));
     if (event.kind == 0 && read.check().is_err())
         || (event.kind == 3 && !follows_ok)
+        || (event.kind == 1 && !note_ok)
         || event.content.len() > 16 * 1024
     {
         return json_refusal(StatusCode::BAD_REQUEST, "Check your profile and try again.");
@@ -544,11 +556,11 @@ async fn follow_draft(app: &App, key: &str, target: &str) -> Response {
         return json_refusal(StatusCode::BAD_REQUEST, "That's your own key.");
     }
     let current = super::load(&app.config.profile_relays, key).await;
-    let mut follows = current.follows.clone();
-    if !follows.contains(&target) {
-        follows.push(target);
+    // Keep the list as signed, petnames and relay hints included.
+    let mut tags: Vec<Value> = current.follow_tags.iter().map(|t| json!(t)).collect();
+    if !current.follows.contains(&target) {
+        tags.push(json!(["p", target]));
     }
-    let tags: Vec<Value> = follows.iter().map(|k| json!(["p", k])).collect();
     protect(
         axum::Json(json!({
             "event": {
@@ -633,4 +645,76 @@ async fn follow_page(
         }
     };
     page(&headers, service, &viewer, "Follow", &back, body)
+}
+
+/// The unsigned kind 1 that points at shared chat `token`.
+async fn announce_draft(app: &App, key: &str, token: &str) -> Response {
+    let Some(title) = crate::pages::chat::share::shared_title(&app.config.chat_store, token).await
+    else {
+        return json_refusal(StatusCode::NOT_FOUND, "That chat isn't shared anymore.");
+    };
+    let url = format!("{}/share/{token}", crate::wellknown::origin(app));
+    let title: String = title.chars().take(200).collect();
+    protect(
+        axum::Json(json!({
+            "event": {
+                "kind": 1,
+                "created_at": crate::cloud::session::now(),
+                "tags": [["r", url]],
+                "content": format!("{title}\n{url}"),
+            },
+            "pubkey": key,
+        }))
+        .into_response(),
+    )
+}
+
+/// `/share/{token}/announce`: post a shared chat as a note with your key.
+async fn announce_page(
+    State(app): State<App>,
+    axum::extract::Path(token): axum::extract::Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let back = format!("/share/{token}/announce");
+    let (service, viewer) = match viewer(&app, &headers, &back).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let Some(title) = crate::pages::chat::share::shared_title(&app.config.chat_store, &token).await
+    else {
+        return problem(StatusCode::NOT_FOUND, "That chat isn't shared anymore.");
+    };
+    let mine = match mine(service, &headers).await {
+        Ok(mine) => mine,
+        Err(response) => return response,
+    };
+    let request = fresh_request();
+    let csrf = match service.csrf(&headers, &viewer, PUBLISH_SCOPE, &target(&viewer, &request)) {
+        Ok(csrf) => csrf,
+        Err(error) => return crate::cloud::refused(error),
+    };
+    let body = html! {
+        (MarkdownRoot::new(html! {
+            h1 { "Post it on Nostr" }
+            p { "Your key posts a note with the chat's title and link: " strong { (title) } }
+        }))
+        @if let Some(key) = mine.key() {
+            section class="oa-settings-group" data-oa-profile-edit="" data-pubkey=(key)
+                data-csrf=(csrf) data-request=(request) {
+                form autocomplete="off" data-oa-profile-form="" {
+                    input type="hidden" name="announce" value=(token);
+                    p data-oa-profile-publish="" hidden {
+                        (Button::new("Post").kind(ButtonType::Submit))
+                    }
+                }
+                p class="oa-settings-hint" data-oa-profile-note="" {
+                    "To post from this page, add a Nostr browser extension."
+                }
+            }
+            script src=(SCRIPT) defer {}
+        } @else {
+            p { "Your account has no Nostr key yet. Open the OpenAgents app on your phone or computer to make one, then come back." }
+        }
+    };
+    page(&headers, service, &viewer, "Post it on Nostr", &back, body)
 }
