@@ -25,6 +25,73 @@ const PRODUCTION: &[Method] = &[Method::Github, Method::Password, Method::MagicC
 struct WorkosWorld {
     world: World,
     fake: FakeWorkos,
+    mail: FakeResend,
+}
+
+#[derive(Clone, Default)]
+struct FakeResend {
+    messages: Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    down: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl FakeResend {
+    async fn start() -> (Self, String) {
+        let fake = Self::default();
+        let router = Router::new()
+            .route(
+                "/emails",
+                axum::routing::post(
+                    |AxumState(fake): AxumState<FakeResend>,
+                     headers: HeaderMap,
+                     Json(body): Json<serde_json::Value>| async move {
+                        if headers
+                            .get("authorization")
+                            .and_then(|value| value.to_str().ok())
+                            != Some("Bearer re_fake_login_mail_key")
+                        {
+                            return StatusCode::UNAUTHORIZED;
+                        }
+                        if fake.down.load(std::sync::atomic::Ordering::SeqCst) {
+                            return StatusCode::SERVICE_UNAVAILABLE;
+                        }
+                        fake.messages.lock().unwrap().push(body);
+                        StatusCode::OK
+                    },
+                ),
+            )
+            .with_state(fake.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}/emails", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        (fake, endpoint)
+    }
+
+    fn code(&self, email: &str) -> String {
+        let messages = self.messages.lock().unwrap();
+        let message = messages
+            .iter()
+            .rev()
+            .find(|message| message["to"][0] == email)
+            .unwrap();
+        assert_eq!(message["from"], "OpenAgents <no-reply@openagents.com>");
+        assert_eq!(message["subject"], "Your OpenAgents login code");
+        message["text"]
+            .as_str()
+            .unwrap()
+            .split(" is ")
+            .nth(1)
+            .unwrap()
+            .split('.')
+            .next()
+            .unwrap()
+            .to_string()
+    }
+
+    fn len(&self) -> usize {
+        self.messages.lock().unwrap().len()
+    }
 }
 
 /// The account service's `POST /v1/sessions/workos`, as the gateway runs it.
@@ -83,7 +150,17 @@ async fn workos_delete(
 }
 
 async fn workos_world(mode: Mode, methods: &[Method]) -> WorkosWorld {
+    workos_world_with_mail(mode, methods, true).await
+}
+
+async fn workos_world_with_mail(
+    mode: Mode,
+    methods: &[Method],
+    mail_key_present: bool,
+) -> WorkosWorld {
     let fake = FakeWorkos::start().await;
+    fake.set_magic_auth_emails(false);
+    let (mail, mail_endpoint) = FakeResend::start().await;
     let workos = fake.client(mode, methods);
     let root = tempfile::tempdir().unwrap();
     let stores = root.path().join("accounts");
@@ -150,6 +227,9 @@ async fn workos_world(mode: Mode, methods: &[Method]) -> WorkosWorld {
         "methods": methods.iter().map(|m| method_name(*m)).collect::<Vec<_>>(),
     }))
     .unwrap();
+    let mail_key = private.join("resend.key");
+    std::fs::write(&mail_key, "re_fake_login_mail_key").unwrap();
+    std::fs::set_permissions(&mail_key, std::fs::Permissions::from_mode(0o600)).unwrap();
     if methods.is_empty() {
         settings["methods"] = json!([]);
     }
@@ -162,6 +242,11 @@ async fn workos_world(mode: Mode, methods: &[Method]) -> WorkosWorld {
             "account_service": account_service,
             "csrf_secret": secret,
             "workos": settings,
+            "magic_auth_email": if mail_key_present {
+                json!({"api_key_file":mail_key,"endpoint":mail_endpoint})
+            } else {
+                json!({"api_key_env":"OPENAGENTS_TEST_MISSING_LOGIN_MAIL_KEY","endpoint":mail_endpoint})
+            },
         }))
         .unwrap(),
     )
@@ -184,6 +269,7 @@ async fn workos_world(mode: Mode, methods: &[Method]) -> WorkosWorld {
                 .unwrap(),
         },
         fake,
+        mail,
     }
 }
 
@@ -412,7 +498,13 @@ async fn an_emailed_code_signs_in_and_sign_out_ends_the_workos_session() {
     assert_eq!(sent.status, StatusCode::SEE_OTHER, "{}", sent.body);
     let verify = browser.get(&w.world, "/login/verify").await;
     assert!(verify.body.contains("Enter it to log in"));
-    let code = w.fake.last_email("code@example.com", "magic_auth").unwrap();
+    let code = w.mail.code("code@example.com");
+    assert!(
+        w.fake
+            .last_email("code@example.com", "magic_auth")
+            .is_none()
+    );
+    assert!(!sent.body.contains(&code));
     let done = browser
         .post(
             &w.world,
@@ -704,7 +796,7 @@ async fn an_expired_workos_session_refreshes_and_a_revoked_one_signs_out() {
         )
         .await;
     let verify = browser.get(&w.world, "/login/verify").await;
-    let code = w.fake.last_email("ref@example.com", "magic_auth").unwrap();
+    let code = w.mail.code("ref@example.com");
     browser
         .post(
             &w.world,
@@ -943,6 +1035,8 @@ async fn primary_extension_and_phone_approval_create_no_legacy_cookie_or_session
         assert!(browser.0.contains_key("oa_workos"));
         assert!(!browser.0.contains_key("oa_cloud_session"));
         assert!(signed_in(&mut browser, &w.world).await);
+        assert_eq!(w.mail.len(), 0, "key sign-in never uses our mail sender");
+        assert!(w.fake.inbox().iter().all(|mail| mail.kind != "magic_auth"));
         assert!(
             tenancy::Sessions::open(&w.world.root.path().join("accounts"))
                 .unwrap()
@@ -1189,5 +1283,103 @@ async fn app_nostr_returns_workos_tokens_in_primary_and_legacy_tokens_in_dual() 
             rows.book.sessions.len(),
             usize::from(mode == Mode::Dual || !capable)
         );
+        assert_eq!(w.mail.len(), 0, "app key sign-in never sends mail");
+        assert!(w.fake.inbox().iter().all(|mail| mail.kind != "magic_auth"));
     }
+}
+
+async fn request_login_code(w: &WorkosWorld, browser: &mut Browser, email: &str) -> Answer {
+    let page = browser.get(&w.world, "/login").await;
+    browser
+        .post(
+            &w.world,
+            "/login/code",
+            &[("csrf", &csrf(&page.body)), ("email", email)],
+        )
+        .await
+}
+
+#[tokio::test]
+async fn requested_login_codes_fail_closed_on_workos_mail_or_missing_key_failures() {
+    for failure in ["workos", "resend", "missing_key", "changed_key"] {
+        let w = workos_world_with_mail(Mode::Workos, PRODUCTION, failure != "missing_key").await;
+        if failure == "workos" {
+            w.fake.set_down(true);
+        }
+        if failure == "resend" {
+            w.mail.down.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        if failure == "changed_key" {
+            std::fs::write(
+                w.world.root.path().join("private/resend.key"),
+                "re_changed_mail_key",
+            )
+            .unwrap();
+        }
+        let mut browser = Browser::default();
+        let response = request_login_code(&w, &mut browser, "fail@example.com").await;
+        assert_eq!(
+            response.status,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{failure}: {}",
+            response.body
+        );
+        assert!(!browser.0.contains_key("oa_workos_pending"));
+        assert!(!browser.0.contains_key("oa_workos"));
+        assert!(!browser.0.contains_key("oa_cloud_session"));
+        assert!(!response.body.contains("re_fake_login_mail_key"));
+        assert_eq!(w.mail.len(), 0);
+        assert!(w.fake.inbox().is_empty());
+        if failure == "missing_key" || failure == "changed_key" {
+            assert!(
+                !w.fake
+                    .calls()
+                    .iter()
+                    .any(|call| call.contains("magic_auth"))
+            );
+        }
+        assert!(
+            tenancy::Sessions::open(&w.world.root.path().join("accounts"))
+                .unwrap()
+                .store()
+                .unwrap()
+                .book
+                .sessions
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test]
+async fn requested_login_codes_limit_email_and_ip_before_creating_or_sending_more_codes() {
+    let w = workos_world(Mode::Workos, PRODUCTION).await;
+    for _ in 0..3 {
+        let response =
+            request_login_code(&w, &mut Browser::default(), " Person@Example.com ").await;
+        assert_eq!(response.status, StatusCode::SEE_OTHER, "{}", response.body);
+    }
+    let response = request_login_code(&w, &mut Browser::default(), "person@example.com").await;
+    assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(w.mail.len(), 3);
+    for n in 0..7 {
+        let response = request_login_code(
+            &w,
+            &mut Browser::default(),
+            &format!("person{n}@example.com"),
+        )
+        .await;
+        assert_eq!(response.status, StatusCode::SEE_OTHER, "{}", response.body);
+    }
+    let response = request_login_code(&w, &mut Browser::default(), "another@example.com").await;
+    assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(w.mail.len(), 10);
+    assert_eq!(
+        w.fake
+            .calls()
+            .iter()
+            .filter(|call| call.as_str() == "POST /user_management/magic_auth")
+            .count(),
+        10
+    );
+    assert!(w.fake.inbox().is_empty(), "WorkOS automatic mail is off");
 }

@@ -198,6 +198,8 @@ pub fn signed_in_body(signed: &SignedIn, admin: bool) -> serde_json::Value {
 
 /// Issue a WorkOS session only after the caller verified this account's key.
 /// Sync first so a newly created account has its User before authentication.
+/// WorkOS automatic Magic Auth emails must be disabled for this environment;
+/// the bridge consumes the returned code on the server and never sends mail.
 pub async fn for_account(
     dir: &Path,
     workos: &Workos,

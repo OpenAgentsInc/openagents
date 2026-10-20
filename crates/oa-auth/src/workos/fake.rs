@@ -100,6 +100,8 @@ struct Inner {
     calls: Vec<String>,
     /// Make every call answer 503 (a WorkOS outage).
     down: bool,
+    /// Match an environment with WorkOS automatic Magic Auth mail off.
+    suppress_magic_auth_email: bool,
     /// The environment's role slugs.
     roles: Vec<String>,
 }
@@ -379,6 +381,11 @@ impl FakeWorkos {
     /// Make every call fail with 503 until set back.
     pub fn set_down(&self, down: bool) {
         self.with(|inner| inner.down = down);
+    }
+
+    /// Toggle automatic Magic Auth delivery, independently of code creation.
+    pub fn set_magic_auth_emails(&self, enabled: bool) {
+        self.with(|inner| inner.suppress_magic_auth_email = !enabled);
     }
 }
 
@@ -824,11 +831,13 @@ async fn magic_auth(State(inner): State<Shared>, Json(body): Json<Value>) -> Res
     }
     let code = inner.code();
     inner.magic.insert(email.clone(), code.clone());
-    inner.inbox.push(Email {
-        to: email.clone(),
-        kind: "magic_auth",
-        secret: code.clone(),
-    });
+    if !inner.suppress_magic_auth_email {
+        inner.inbox.push(Email {
+            to: email.clone(),
+            kind: "magic_auth",
+            secret: code.clone(),
+        });
+    }
     let id = inner.id("magic_auth");
     let user = inner
         .by_email(&email)

@@ -72,6 +72,10 @@ struct Configuration {
     /// or in `legacy` mode, sign-in is what it was.
     #[serde(default)]
     workos: Option<oa_auth::workos::Settings>,
+    /// Our delivery of user-requested Magic Auth codes. WorkOS automatic
+    /// Magic Auth emails must be off so key sign-ins never send mail.
+    #[serde(default)]
+    magic_auth_email: super::magic_email::Settings,
 }
 
 /// WorkOS for the website: the client, the mode, and the password the
@@ -79,6 +83,7 @@ struct Configuration {
 pub struct WebWorkos {
     pub client: oa_auth::workos::Workos,
     pub mode: oa_auth::workos::Mode,
+    pub(crate) email: super::magic_email::Sender,
     cookie_password: String,
 }
 
@@ -335,6 +340,7 @@ impl CloudSession {
                 client: oa_auth::workos::Workos::new(settings.clone())
                     .map_err(|why| format!("Cloud configuration: workos: {why}"))?,
                 mode: settings.mode(),
+                email: super::magic_email::Sender::load(declared.magic_auth_email)?,
                 cookie_password: {
                     let mut digest = Sha256::new();
                     digest.update(b"openagents-web workos cookie\0");

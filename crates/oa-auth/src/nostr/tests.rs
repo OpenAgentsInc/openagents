@@ -823,3 +823,58 @@ async fn primary_key_proofs_are_consumed_without_minting_on_a_workos_failure() {
         auth.sign_in_gated_session(None, "signup", Some(&header), BODY, now, &mut Open, false);
     assert_ne!(replay.status, 200);
 }
+
+#[cfg(feature = "fake-workos")]
+#[tokio::test]
+async fn a_verified_key_bridges_to_workos_with_automatic_email_off() {
+    let (dir, auth) = world();
+    let key = signer(34);
+    let now = now();
+    let (challenge, _) = auth.issue(Purpose::SignIn, now);
+    let header = Request {
+        signer: &key,
+        created_at: now,
+        url: SIGN_IN,
+        method: "POST",
+        challenge: Some(&challenge),
+        payload: Some(BODY),
+    }
+    .header();
+    let resolved =
+        auth.sign_in_gated_session(None, "signup", Some(&header), BODY, now, &mut Open, false);
+    assert_eq!(resolved.status, 200);
+    let account = resolved.body["account"]["id"].as_str().unwrap().to_string();
+    let fake = crate::workos::fake::FakeWorkos::start().await;
+    fake.set_magic_auth_emails(false);
+    let workos = fake.client(crate::workos::Mode::Workos, &[]);
+    let signed = crate::workos::session::complete_key(dir.path(), &workos, resolved.body, false)
+        .await
+        .unwrap();
+    let claims = workos
+        .verify(signed["token"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert!(!signed["refresh_token"].as_str().unwrap().is_empty());
+    assert_eq!(
+        tenancy::workos_links::Links::open(dir.path())
+            .user_of(&account)
+            .unwrap()
+            .as_deref(),
+        Some(claims.sub.as_str())
+    );
+    assert!(
+        fake.inbox().is_empty(),
+        "server-side MagicCode exchange sends no email"
+    );
+    assert!(
+        fake.calls()
+            .iter()
+            .any(|call| call == "POST /user_management/magic_auth")
+    );
+    let store = Sessions::open(dir.path()).unwrap().store().unwrap();
+    assert!(store.book.sessions.is_empty());
+    assert!(!store.book.nostr_proofs.is_empty());
+    let replay =
+        auth.sign_in_gated_session(None, "signup", Some(&header), BODY, now, &mut Open, false);
+    assert_ne!(replay.status, 200);
+}

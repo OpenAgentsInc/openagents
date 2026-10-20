@@ -622,8 +622,9 @@ impl Workos {
             .collect())
     }
 
-    /// Email a one-time sign-in code. WorkOS answers the code too; only a
-    /// test check against a staging environment ever reads it.
+    /// Create a one-time Magic Auth code. WorkOS automatic Magic Auth mail
+    /// must be off: key sign-ins exchange this code only on the server;
+    /// user-requested codes are delivered by the website's own sender.
     pub async fn send_code(&self, email: &str) -> Result<SecretString> {
         let made = self
             .client

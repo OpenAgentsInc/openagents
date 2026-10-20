@@ -806,6 +806,10 @@ pub(crate) struct EmailForm {
 /// `POST /login/code`: email a one-time code.
 pub(crate) async fn send_code(
     State(app): State<App>,
+    peer: Result<
+        axum::extract::ConnectInfo<std::net::SocketAddr>,
+        axum::extract::rejection::ExtensionRejection,
+    >,
     headers: HeaderMap,
     form: Result<Form<EmailForm>, FormRejection>,
 ) -> Response {
@@ -829,7 +833,10 @@ pub(crate) async fn send_code(
             StatusCode::UNPROCESSABLE_ENTITY,
         );
     }
-    if let Err(refusal) = workos.client.send_code(&email).await {
+    let ip = workos
+        .email
+        .client_ip(peer.ok().map(|peer| peer.0.ip()), &headers);
+    if let Err(refusal) = workos.email.send(&workos.client, &email, ip).await {
         return page(
             &app,
             &headers,

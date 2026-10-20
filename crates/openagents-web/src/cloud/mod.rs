@@ -16,6 +16,7 @@ pub mod custody;
 mod effects;
 #[allow(dead_code)]
 pub mod hosts;
+pub(crate) mod magic_email;
 mod private;
 pub mod session;
 #[cfg(test)]
