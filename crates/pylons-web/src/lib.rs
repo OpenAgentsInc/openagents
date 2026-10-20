@@ -16,7 +16,11 @@
 //! frame.
 
 pub mod camera;
+pub mod terminal;
 pub mod world_camera;
+
+#[cfg(target_arch = "wasm32")]
+mod terminal_web;
 
 #[cfg(target_arch = "wasm32")]
 mod web;

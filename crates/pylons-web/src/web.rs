@@ -13,6 +13,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, EventSource, HtmlElement, KeyboardEvent, MessageEvent, Window};
 
 use crate::camera::{Keep, Placed, blocked, spots};
+use crate::terminal_web::Terminal;
 use crate::world_camera::{WorldCamera, anchor};
 
 /// The page's event stream.
@@ -45,6 +46,7 @@ struct Layer {
     spots: Vec<Placed>,
     /// The exact camera of the last Verse frame; absent over the shader.
     world: Option<WorldCamera>,
+    terminal: Option<Terminal>,
     /// Boxes pylons stay out of: the list panel and anything the page marks
     /// `data-pylons-keep` (`/lander10`'s chat).
     keep: Vec<Keep>,
@@ -88,6 +90,7 @@ fn run() -> Option<()> {
         slots: Vec::new(),
         spots: Vec::new(),
         world: None,
+        terminal: Terminal::new(&document),
         keep: Vec::new(),
         leaving: Vec::new(),
         offset: 0.0,
@@ -103,21 +106,30 @@ fn run() -> Option<()> {
     // Keep each anchor fixed and move only its projection as the eye moves.
     {
         let layer = layer.clone();
-        let camera = Closure::<dyn FnMut(js_sys::Float32Array, f64, f64)>::new(
-            move |matrix: js_sys::Float32Array, width, height| {
-                if matrix.length() != 16 {
-                    return;
-                }
-                let mut columns = [0.0; 16];
-                matrix.copy_to(&mut columns);
-                let Some(camera) = WorldCamera::new(columns, width, height) else {
-                    return;
-                };
-                let mut layer = layer.borrow_mut();
-                layer.world = Some(camera);
-                layer.place_all();
-            },
-        );
+        let camera =
+            Closure::<dyn FnMut(js_sys::Float32Array, f64, f64, js_sys::Float32Array)>::new(
+                move |matrix: js_sys::Float32Array, width, height, player: js_sys::Float32Array| {
+                    if matrix.length() != 16 {
+                        return;
+                    }
+                    let mut columns = [0.0; 16];
+                    matrix.copy_to(&mut columns);
+                    let Some(camera) = WorldCamera::new(columns, width, height) else {
+                        return;
+                    };
+                    let mut layer = layer.borrow_mut();
+                    layer.world = Some(camera);
+                    layer.place_all();
+                    if let Some(terminal) = &mut layer.terminal {
+                        let position = (player.length() == 3).then(|| {
+                            let mut p = [0.0; 3];
+                            player.copy_to(&mut p);
+                            p.map(f64::from)
+                        });
+                        terminal.frame(Some(camera), position);
+                    }
+                },
+            );
         js_sys::Reflect::set(&js_sys::global(), &"pylonsCamera".into(), camera.as_ref()).ok()?;
         camera.forget();
     }
@@ -126,6 +138,9 @@ fn run() -> Option<()> {
         let fallback = Closure::<dyn FnMut()>::new(move || {
             let mut layer = layer.borrow_mut();
             layer.world = None;
+            if let Some(terminal) = &mut layer.terminal {
+                terminal.frame(None, None);
+            }
             layer.layout();
             layer.place_all();
         });

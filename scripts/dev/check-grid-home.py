@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--url", default="http://localhost:4331/home")
 parser.add_argument("--out", required=True, type=Path)
 parser.add_argument("--timeout", type=float, default=120)
+parser.add_argument("--movement", action="store_true", help="Walk to the shared terminal and check typing (fresh spawn).")
 args = parser.parse_args()
 args.out.mkdir(parents=True, exist_ok=True)
 root = Path(__file__).resolve().parents[2]
@@ -39,9 +40,9 @@ let camera;
 Object.defineProperty(globalThis,"pylonsCamera",{
     configurable:true,
     get(){return camera},
-    set(draw){camera=(matrix,width,height)=>{
-        draw(matrix,width,height);
-        globalThis.__pylonsFrame={matrix:Array.from(matrix),width,height};
+    set(draw){camera=(matrix,width,height,player)=>{
+        draw(matrix,width,height,player);
+        globalThis.__pylonsFrame={matrix:Array.from(matrix),width,height,player:Array.from(player)};
     }}
 });
 """})
@@ -107,7 +108,7 @@ assert evaluate('Number(getComputedStyle(document.getElementById("everglade-canv
 assert evaluate('document.querySelector("h1").textContent') == "OpenAgents"
 assert evaluate(
     'Array.from(document.querySelectorAll("input,textarea"))'
-    '.every(x=>getComputedStyle(x).display==="none")'
+    '.every(x=>x.disabled||getComputedStyle(x).display==="none")'
 )
 marks = evaluate('performance.getEntriesByType("mark").map(x=>({name:x.name,ms:x.startTime}))')
 times = {mark["name"]: mark["ms"] for mark in marks}
@@ -132,5 +133,69 @@ for sample in samples:
     for pylon in sample["pylons"]:
         assert anchors.setdefault(pylon["id"], pylon["anchor"]) == pylon["anchor"], pylon
 result = {"url": args.url, "state": state, "marks": marks, "world_anchors": samples}
+if args.movement:
+    assert evaluate('document.querySelectorAll("#pylons-terminal").length') == 1
+    assert evaluate('document.querySelector("#pylon-message").disabled')
+
+    def position():
+        return evaluate('globalThis.__pylonsFrame.player')
+
+    def key(code, down, text=None):
+        event = {"type": "keyDown" if down else "keyUp", "code": code,
+                 "key": {"Escape": "Escape"}.get(code, code[-1].lower())}
+        if text is not None:
+            event["text"] = text
+        cdp.call("Input.dispatchKeyEvent", event)
+
+    def walk_until(code, condition):
+        key(code, True)
+        deadline = time.monotonic() + 25
+        try:
+            while not condition(position()):
+                if time.monotonic() > deadline:
+                    raise TimeoutError(f"Walking with {code}: {position()}")
+                time.sleep(.05)
+        finally:
+            key(code, False)
+
+    start = position()
+    walk_until("KeyW", lambda p: p[2] >= 1.5)
+    time.sleep(.4)
+    assert evaluate('!document.querySelector("#pylon-message").disabled')
+    assert evaluate('getComputedStyle(document.querySelector("#pylon-composer")).opacity') == "1"
+    assert evaluate('document.querySelector("#pylon-composer").getAttribute("aria-hidden")') == "false"
+    # A and D strafe in /home, without rotating the player or the anchors.
+    x = position()[0]
+    walk_until("KeyA", lambda p: abs(p[0] - x) >= .8)
+    walk_until("KeyD", lambda p: abs(p[0] - x) <= .2)
+    # Focusing the field while W is held must release it, even before keyup.
+    key("KeyW", True)
+    evaluate('document.querySelector("#pylon-message").focus()')
+    time.sleep(.2)
+    typing_at = position()
+    cdp.call("Input.insertText", {"text": "hello pylons "})
+    for code, text in [("KeyW", "w"), ("KeyA", "a"), ("KeyS", "s"), ("KeyD", "d"), ("Space", " ")]:
+        key(code, True, text)
+        time.sleep(.1)
+        key(code, False)
+    time.sleep(.3)
+    assert all(abs(a-b) < .02 for a,b in zip(typing_at, position())), (typing_at, position())
+    draft = evaluate('document.querySelector("#pylon-message").value')
+    assert draft == "hello pylons wasd ", draft
+    png = cdp.call("Page.captureScreenshot", {"format": "png"})["data"]
+    (args.out / "home-terminal.png").write_bytes(base64.b64decode(png))
+    key("Escape", True)
+    key("Escape", False)
+    walk_until("KeyS", lambda p: p[2] <= -.5)
+    time.sleep(.4)
+    assert evaluate('document.querySelector("#pylon-message").disabled')
+    assert evaluate('document.querySelector("#pylon-composer").hasAttribute("inert")')
+    walk_until("KeyW", lambda p: p[2] >= 1.5)
+    assert evaluate('document.querySelector("#pylon-message").value') == draft
+    samples.append(sample_anchors())
+    result["terminal"] = {"start": start, "typing_at": typing_at, "returned": position(), "draft": draft}
+    evaluate('window.dispatchEvent(new Event("verse-stopped"))')
+    assert evaluate('document.querySelector("#pylon-message").disabled')
+    assert evaluate('document.querySelector("#pylon-composer").hasAttribute("inert")')
 (args.out / "home-check.json").write_text(json.dumps(result, indent=2) + "\n")
 print(json.dumps(result))

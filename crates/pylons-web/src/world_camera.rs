@@ -34,7 +34,7 @@ impl WorldCamera {
             })
     }
 
-    fn project(&self, point: [f64; 3]) -> Option<(f64, f64, f64)> {
+    pub fn project(&self, point: [f64; 3]) -> Option<(f64, f64, f64)> {
         let clip: [f64; 4] = std::array::from_fn(|row| {
             self.matrix[row] * point[0]
                 + self.matrix[4 + row] * point[1]

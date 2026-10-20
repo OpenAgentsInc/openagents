@@ -39,6 +39,8 @@ thread_local! {
     /// chat's until the page hands it over with [`verse_walk`].
     static AMBIENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static WALK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// /home starts orbiting; its first movement key hands over control.
+    static HOME: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 thread_local! {
@@ -95,7 +97,7 @@ const AMBIENT_ORBIT: f32 = 9.0;
 
 /// Project DOM pylons with the camera used to draw this Grid frame. The
 /// separately loaded layer owns fixed world anchors, the list, and cards.
-fn pylons_camera(view_proj: glam::Mat4, size: [f32; 2]) {
+fn pylons_camera(view_proj: glam::Mat4, size: [f32; 2], player: glam::Vec3) {
     let Ok(callback) = Reflect::get(&js_sys::global(), &"pylonsCamera".into()) else {
         return;
     };
@@ -103,11 +105,13 @@ fn pylons_camera(view_proj: glam::Mat4, size: [f32; 2]) {
         return;
     };
     let matrix = js_sys::Float32Array::from(view_proj.to_cols_array().as_slice());
-    let _ = callback.call3(
+    let player = js_sys::Float32Array::from(player.to_array().as_slice());
+    let _ = callback.call4(
         &JsValue::UNDEFINED,
         &matrix,
         &JsValue::from_f64(f64::from(size[0])),
         &JsValue::from_f64(f64::from(size[1])),
+        &player,
     );
 }
 
@@ -129,6 +133,18 @@ fn ambient_page(window: &Window, canvas: &HtmlCanvasElement) -> bool {
 /// On `/lander11`, whether Verse takes the keyboard and mouse now.
 fn walking() -> bool {
     !AMBIENT.with(std::cell::Cell::get) || WALK.with(std::cell::Cell::get)
+}
+
+/// Browser text controls own their keys, including WASD and space.
+fn editing() -> bool {
+    web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.active_element())
+        .is_some_and(|e| {
+            matches!(e.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+                || e.dyn_ref::<HtmlElement>()
+                    .is_some_and(HtmlElement::is_content_editable)
+        })
 }
 
 /// `/lander11`'s Walk toggle: `true` hands the keyboard and mouse to Verse,
@@ -570,6 +586,14 @@ async fn run() -> Result<(), String> {
     if ambient_page(&window, &canvas) {
         AMBIENT.with(|ambient| ambient.set(true));
     }
+    HOME.with(|home| {
+        home.set(
+            window
+                .location()
+                .pathname()
+                .is_ok_and(|p| p.trim_end_matches('/') == "/home"),
+        );
+    });
     if grid {
         return run_grid(window, document, canvas).await;
     }
@@ -1240,7 +1264,7 @@ impl Page {
                 None => {}
             }
         }
-        if super::terminal::active() {
+        if super::terminal::active() || editing() {
             self.input = super::input::Input::default();
         }
         let mut input = self.input.take();
@@ -1252,6 +1276,9 @@ impl Page {
             });
         }
         input.forward |= walking;
+        if editing() {
+            input = verse::controller::InputState::default();
+        }
         // A portal walked through, or asked for by the page: say what
         // loads, then build it a couple of frames later.
         let page_asked = PORTAL.with(|portal| portal.borrow_mut().take());
@@ -1310,7 +1337,7 @@ impl Page {
         })
         .to_string();
         WHERE.with(|w| *w.borrow_mut() = state);
-        if !self::walking() {
+        if !self::walking() && !editing() {
             // Behind the chat: no keys or drags, and the camera circles.
             input = verse::controller::InputState::default();
             let _ = self.runtime.apply(Action::Orbit {
@@ -1354,7 +1381,7 @@ impl Page {
             let view_proj = view.view_proj;
             match engine.draw(view, &dynamic, &ui, &lighting) {
                 Ok(render_ms) => {
-                    pylons_camera(view_proj, css);
+                    pylons_camera(view_proj, css, self.runtime.player.pos);
                     if let Some(presence) = &mut self.presence {
                         presence.frame_times(dt, dynamic.len(), render_ms, peers.len());
                     }
@@ -1778,6 +1805,32 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
     let key = |down: bool| {
         let page = page.clone();
         move |event: KeyboardEvent| {
+            if editing() && !super::terminal::active() {
+                page.borrow_mut().input.release();
+                return;
+            }
+            let home = HOME.with(std::cell::Cell::get);
+            if home
+                && down
+                && !event.ctrl_key()
+                && !event.alt_key()
+                && !event.meta_key()
+                && matches!(
+                    event.code().as_str(),
+                    "KeyW"
+                        | "KeyA"
+                        | "KeyS"
+                        | "KeyD"
+                        | "KeyQ"
+                        | "KeyE"
+                        | "ArrowUp"
+                        | "ArrowDown"
+                        | "ArrowLeft"
+                        | "ArrowRight"
+                )
+            {
+                WALK.with(|walk| walk.set(true));
+            }
             if !walking() {
                 return;
             }
@@ -1826,7 +1879,13 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             }
             let modifiers = [event.shift_key(), event.ctrl_key(), event.alt_key()];
             let used = page.hotbar_key(&event.code(), down, modifiers);
-            if used || (!chord && page.input.key(&event.code(), down)) {
+            let code = event.code();
+            let code = match (home, code.as_str()) {
+                (true, "KeyA") => "KeyQ",
+                (true, "KeyD") => "KeyE",
+                _ => &code,
+            };
+            if used || (!chord && page.input.key(code, down)) {
                 event.prevent_default();
             }
         }
