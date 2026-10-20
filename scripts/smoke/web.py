@@ -151,7 +151,8 @@ RESULTS = []
 GATEWAY_HELD = {
     "openapi.json",
     "alias: GET /api/v1/models answers",
-    "sign-in: /auth/github goes to GitHub with this site's callback",
+    "sign-in: GitHub authorization uses this site's callback",
+    "sign-in: WorkOS sends GitHub authorization to GitHub",
     "sign-in: GitHub answers the authorize request",
     "device: signed out goes to log in",
     "projects: signed out goes to log in",
@@ -571,9 +572,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
-    # Home: a visitor who isn't signed in sees the landing page at /, and
-    # starts a chat at /new: the composer, the four starter questions, the
-    # theme toggle.
+    # Check the default view separately from the supported HTML pages.
     if want("home"):
         visitor = Site(base)
         visitor.cookies.clear()
@@ -597,18 +596,11 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                        asset.status == 200 and expected is not None
                        and hashlib.sha256(asset.body).hexdigest() == expected.group(1),
                        f"{asset.status}, {len(asset.body)} bytes")
-        landing = site.get("/")
-        # With gpui_default on (#12226), / and /new are the GPUI chat for a
-        # browser that chose neither view; the HTML pages stay at ?ui=html.
-        gpui = 'name="openagents-chat-base"' in landing.text
-        if gpui:
-            record("home: / is the GPUI chat (gpui_default)", landing.status == 200
-                   and 'name="openagents-csrf"' in landing.text, f"{landing.status}")
-            landing = site.get("/?ui=html")
-        record("home: / is the landing page", landing.status == 200
+        landing = site.get("/?ui=html")
+        record("home: HTML landing page loads", landing.status == 200
                and 'data-slot="hero-section"' in landing.text
                and 'href="/new"' in landing.text, f"{landing.status}")
-        home = site.get("/new?ui=html" if gpui else "/new")
+        home = site.get("/new?ui=html")
         chips = re.findall(r'<form class="oa-suggestion-form"[^>]*>.*?</form>', home.text, re.S)
         questions = [hidden_fields(c).get("q", "") for c in chips]
         record("home: loads", home.status == 200, f"{home.status}")
@@ -802,7 +794,9 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
     # GitHub sign-in, as far as a script can go.
     if want("github"):
         login = site.get("/login")
-        record("sign-in: /login offers GitHub", login.status == 200 and "/auth/github" in login.text)
+        workos = "/auth/workos/github" in login.text
+        record("sign-in: /login offers GitHub", login.status == 200
+               and (workos or "/auth/github" in login.text))
         if invite_only:
             record("sign-in: /login says sign-in is invite-only",
                    "invite-only for now" in login.text)
@@ -810,17 +804,42 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
             record("sign-in: /login does not say sign-in is invite-only (open)",
                    "invite-only" not in login.text.lower())
         go = site.get("/auth/github")
+        if workos:
+            record("sign-in: old GitHub address uses WorkOS",
+                   go.status in (302, 303)
+                   and urllib.parse.urlparse(go.location()).path == "/auth/workos/github")
+            go = site.get("/auth/workos/github")
         loc = go.location()
-        q = urllib.parse.parse_qs(urllib.parse.urlparse(loc).query)
+        parsed = urllib.parse.urlparse(loc)
+        q = urllib.parse.parse_qs(parsed.query)
         redirect = (q.get("redirect_uri") or [""])[0]
-        record("sign-in: /auth/github goes to GitHub with this site's callback",
-               go.status in (302, 303) and loc.startswith("https://github.com/login/oauth/authorize")
-               and redirect == f"{base}/auth/github/callback",
-               f"client {(q.get('client_id') or ['?'])[0]}")
+        if workos:
+            valid_authorization = (
+                parsed.scheme == "https" and parsed.netloc == "api.workos.com"
+                and parsed.path == "/user_management/authorize"
+                and q.get("provider") == ["GitHubOAuth"] and bool(q.get("state"))
+                and "oa_workos_flow" in go.cookies()
+                and redirect == f"{base}/auth/callback")
+        else:
+            valid_authorization = (
+                loc.startswith("https://github.com/login/oauth/authorize")
+                and redirect == f"{base}/auth/github/callback")
+        record("sign-in: GitHub authorization uses this site's callback",
+               go.status in (302, 303) and valid_authorization,
+               "WorkOS authorization" if workos else "GitHub authorization")
+        if workos and parsed.scheme == "https" and parsed.netloc == "api.workos.com":
+            provider = site.get(loc)
+            target = urllib.parse.urlparse(provider.location())
+            record("sign-in: WorkOS sends GitHub authorization to GitHub",
+                   provider.status in (302, 303) and target.scheme == "https"
+                   and target.netloc == "github.com"
+                   and target.path == "/login/oauth/authorize")
+            loc = provider.location()
         gh = site.get(loc) if loc.startswith("https://github.com/") else None
         record("sign-in: GitHub answers the authorize request", gh is not None and gh.status in (200, 302),
                "a person approves on github.com; the callback is not scriptable")
-        cb = site.get("/auth/github/callback?code=x&state=y")
+        callback = "/auth/callback" if workos else "/auth/github/callback"
+        cb = site.get(callback + "?code=x&state=y")
         record("sign-in: a forged callback is refused", cb.status in (302, 303, 400, 403),
                f"{cb.status}")
 
