@@ -38,7 +38,11 @@ the work and why.
    checks determine the run's result.
 4. **Escalation to bare Claude Code** (`claude -p "Complete this issue…"`, a
    fresh worktree, judged the same way), recorded in the result as
-   `escalated`:
+   `escalated`, for the briefed agent on Claude only. A briefed run on
+   another engine (`briefed:codex`) stays on it: it works a low-confidence
+   briefing anyway, tries once more with a second briefing after a failed
+   attempt, and its result says what the agent said when it made no change
+   (#12296). The escalation cases are:
    - low briefing confidence (the finder found nothing, or filefind's best
      file scores under `OA_WORK_MIN_CONFIDENCE`, 0.05);
    - a missing capability (no Rust package for `verify`, or the briefed

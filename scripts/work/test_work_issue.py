@@ -255,36 +255,78 @@ class FallbackTests(unittest.TestCase):
         self.assertTrue(work.fallback_ran({"diff": {"files": []}, "agent": {"error": None}}))
         self.assertTrue(work.fallback_ran({"diff": {"files": ["a.rs"]}, "agent": {"error": "late"}}))
 
-    def test_the_run_keeps_the_briefed_attempts_checks(self):
-        briefed = {"engine": "briefed:codex", "ok": False, "outcome": "checks failed", "worktree": "/nowhere/w",
-                   "out": "/nowhere", "agent": {"usage": {"cost_usd": None}, "verify_fails": 0,
-                                                "verify_passed": True, "error": None},
-                   "checks": [{"name": "cargo test -p x", "ok": False}, {"name": "cargo fmt -p x", "ok": True}],
-                   "diff": {"files": ["crates/x/src/lib.rs"], "added": 1, "removed": 0}}
-        bare = {"engine": "bare", "ok": False, "outcome": "no change", "worktree": "/nowhere/b", "out": "/nowhere",
-                "agent": {"usage": {"cost_usd": 0}, "error": "You've hit your weekly limit"},
-                "checks": [], "diff": {"files": [], "added": 0, "removed": 0}}
+    def run_main(self, engine, attempts, briefing=None, extra=(), rebrief=None):
+        """work_issue.main() with every outside step stubbed; the result and
+        the engines `attempt` was called with."""
         issue = {"number": 1, "title": "t", "body": "", "state": "OPEN", "url": "u"}
+        briefing = briefing or {"files": [{"path": "a", "score": 1}], "finder": "lite", "checks": [],
+                                "markdown": "m"}
         with tempfile.TemporaryDirectory() as temporary:
             out = Path(temporary) / "run"
-            argv = ["work_issue.py", "--repo", "o/r", "--issue", "1", "--engine", "briefed:codex",
-                    "--out", str(out), "--land", "none", "--no-rebrief"]
-            briefing = {"files": [{"path": "a", "score": 1}], "finder": "lite", "checks": [], "markdown": "m"}
+            argv = ["work_issue.py", "--repo", "o/r", "--issue", "1", "--engine", engine,
+                    "--out", str(out), "--land", "none", *extra]
+            env = {"OA_BRIEFED_AGENT": __file__}
             with patch.object(work.sys, "argv", argv), \
                     patch.object(work, "signed_in", return_value=None), \
                     patch.object(work, "sh", return_value=Mock(stdout=__import__("json").dumps(issue))), \
                     patch.object(work, "checkout_for", return_value=Path(temporary)), \
                     patch.object(work, "default_branch_sha", return_value="base"), \
                     patch.object(work, "briefing_for", return_value=briefing), \
-                    patch.dict(work.os.environ, {"OA_BRIEFED_AGENT": __file__}), \
-                    patch.object(work, "attempt", side_effect=[briefed, bare]), \
+                    patch.dict(work.os.environ, env), \
+                    patch.object(work, "attempt", side_effect=attempts) as attempt, \
+                    patch.object(work, "rebrief_attempt", side_effect=rebrief or []) as again, \
                     patch.object(work, "drop_worktree"), \
                     patch("builtins.print"):
+                work.os.environ.pop("OA_WORK_REBRIEF", None)
                 self.assertEqual(work.main(), 1)
             result = __import__("json").loads((out / "result.json").read_text())
-        self.assertEqual(result["engine"], "briefed:codex")
+        return result, [call.args[1] for call in attempt.call_args_list], again.call_count
+
+    def attempt_of(self, engine, files, reply=None, error=None):
+        summary = {"result": {"result": reply}} if reply else {}
+        return {"engine": engine, "ok": False, "outcome": "checks failed" if files else "no change",
+                "worktree": "/nowhere/w", "out": "/nowhere",
+                "agent": {"usage": {"cost_usd": None}, "verify_fails": 0, "verify_passed": True,
+                          "error": error, "summary": summary, "secs": 50},
+                "checks": [{"name": "cargo test -p x", "ok": False}, {"name": "cargo fmt -p x", "ok": True}]
+                if files else [], "diff": {"files": files, "added": 1, "removed": 0}, "secs": 50}
+
+    def test_claude_runs_keep_the_briefed_attempts_checks(self):
+        briefed = self.attempt_of("briefed", ["crates/x/src/lib.rs"])
+        bare = self.attempt_of("bare", [], error="You've hit your weekly limit")
+        result, engines, _ = self.run_main("briefed", [briefed, bare], extra=["--no-rebrief"])
+        self.assertEqual(engines, ["briefed", "bare"])
+        self.assertEqual(result["engine"], "briefed")
         self.assertEqual(len(result["checks"]), 2)
         self.assertIn("Claude Code could not take over: You've hit your weekly limit", result["escalated"])
+
+    def test_a_codex_run_stays_on_codex_and_says_why_it_stopped(self):
+        # #12296: briefed Codex made no change, said why, and the run handed
+        # it to Claude Code, which pool hosts can't run.
+        said = "Blocked by the incomplete shared-view split. No files changed."
+        first = self.attempt_of("briefed:codex", [], reply=said)
+        again = dict(self.attempt_of("briefed:codex", [], reply=said), rebrief={"why": "no change"})
+        result, engines, rebriefs = self.run_main("briefed:codex", [first], rebrief=[again])
+        self.assertEqual(engines, ["briefed:codex"])
+        self.assertEqual(rebriefs, 1, "its fallback is a second briefed attempt on Codex")
+        self.assertEqual(result["engine"], "briefed:codex")
+        self.assertIsNone(result["escalated"])
+        self.assertIn(f"made no change and said: {said} after a re-brief", result["error"])
+
+    def test_low_confidence_keeps_a_codex_run_on_codex(self):
+        briefing = {"files": [], "finder": "lite", "checks": [], "markdown": "m"}
+        first = self.attempt_of("briefed:codex", [])
+        result, engines, _ = self.run_main("briefed:codex", [first], briefing=briefing, extra=["--no-rebrief"])
+        self.assertEqual(engines, ["briefed:codex"])
+        self.assertEqual(result["low_confidence"], "low briefing confidence: the finder found no files")
+        self.assertIsNone(result["escalated"])
+
+    def test_low_confidence_still_hands_a_claude_run_to_claude_code(self):
+        briefing = {"files": [], "finder": "lite", "checks": [], "markdown": "m"}
+        bare = self.attempt_of("bare", [])
+        result, engines, _ = self.run_main("briefed", [bare], briefing=briefing)
+        self.assertEqual(engines, ["bare"])
+        self.assertIn("low briefing confidence", result["escalated"])
 
 
 class BinaryFileBriefingTests(unittest.TestCase):

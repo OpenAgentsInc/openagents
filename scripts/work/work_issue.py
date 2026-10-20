@@ -39,7 +39,11 @@ issue", agent fleet runs, and `openagents chat work` (the default engine):
    (after the re-brief, when it ran), or a missing capability falls back to
    bare Claude Code (`claude -p`, "Complete this issue.") in a fresh
    worktree, judged the same way. The result records why, and each
-   attempt's engine, briefing digest, cost and outcome.
+   attempt's engine, briefing digest, cost and outcome. A briefed run on
+   another engine (`briefed:codex`, ...) never falls back to Claude Code:
+   it works a low-confidence briefing anyway, re-briefs once by default
+   after a failed attempt, and reports what the agent said when it made no
+   change (#12296).
 6. **Landing**: on a pass, commit; `direct` rebases onto `origin/main`,
    replays the checks, and pushes to `main`, falling back to the queue on a
    conflict, a failing check, or rewritten files (#12165); `queue` hands the
@@ -925,10 +929,32 @@ def fallback_ran(a: dict) -> bool:
     return bool(a["diff"]["files"]) or not a["agent"].get("error")
 
 
+def agent_reply(a: dict) -> str | None:
+    """The engine's last words, on one line: why it stopped, when it made no
+    change (on big UI issues briefed Codex ended in about a minute saying
+    it was blocked, and the run said only "no change", #12296)."""
+    summary = a["agent"].get("summary") or {}
+    result = summary.get("result") or {}
+    text = result.get("result") if isinstance(result, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        return None
+    line = " ".join(text.split())
+    return line if len(line) <= 300 else line[:297] + "..."
+
+
+def stays_on_engine(engine: str) -> bool:
+    """A briefed run on an engine other than Claude stays on it: the
+    caller chose that engine, and its fallback is a second briefed attempt
+    on it, never bare Claude Code (#12296: pool hosts have no Claude login,
+    so the hand-off failed in seconds)."""
+    return engine.startswith("briefed") and backend_of(engine) != "claude"
+
+
 def failure_reason(a: dict) -> str:
     ag = a["agent"]
     if not a["diff"]["files"]:
-        return "the briefed agent made no change"
+        said = agent_reply(a)
+        return "the briefed agent made no change" + (f" and said: {said}" if said else "")
     if ag["verify_fails"] >= MAX_VERIFY_FAILS and not ag["verify_passed"]:
         return f"repeated verify failures ({ag['verify_fails']})"
     return "the replayed checks failed on the briefed agent's change"
@@ -937,7 +963,8 @@ def failure_reason(a: dict) -> str:
 def rebrief_allowed(args, attempts: list[dict], started: float) -> tuple[bool, str]:
     """At most one re-brief, and only when another attempt like the first
     still fits the run's dollar and time budget."""
-    if not args.rebrief:
+    wanted = args.rebrief if args.rebrief is not None else stays_on_engine(args.engine)
+    if not wanted:
         return False, "re-brief is off"
     if any(a.get("rebrief") for a in attempts):
         return False, "already re-briefed once"
@@ -995,8 +1022,9 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=1500)
     ap.add_argument("--keep", action="store_true", help="keep the worktrees")
     ap.add_argument("--rebrief", action=argparse.BooleanOptionalAction,
-                    default=os.environ.get("OA_WORK_REBRIEF", "0") == "1",
-                    help="one re-briefed attempt before the bare fallback (#11311)")
+                    default=(os.environ["OA_WORK_REBRIEF"] == "1") if "OA_WORK_REBRIEF" in os.environ else None,
+                    help="one re-briefed attempt before the bare fallback (#11311); on by default for "
+                         "engines other than Claude, whose only fallback it is (#12296)")
     ap.add_argument("--budget-usd", type=float, default=float(os.environ.get("OA_WORK_BUDGET_USD", "8")))
     ap.add_argument("--max-secs", type=int, default=int(os.environ.get("OA_WORK_MAX_SECS", "4500")))
     ap.add_argument("--base", help="start from this commit instead of origin/main (a replay; implies --land none)")
@@ -1059,9 +1087,15 @@ def main() -> int:
             if not agent or not Path(agent).exists():
                 engine, why = "bare", "missing capability: the briefed agent isn't installed on this computer"
             elif not b["files"]:
-                engine, why = "bare", "low briefing confidence: the finder found no files"
+                why = "low briefing confidence: the finder found no files"
             elif b["finder"].startswith("filefind") and conf is not None and conf < MIN_CONFIDENCE:
-                engine, why = "bare", f"low briefing confidence ({conf:.3f} < {MIN_CONFIDENCE})"
+                why = f"low briefing confidence ({conf:.3f} < {MIN_CONFIDENCE})"
+            if why and engine != "bare":
+                if stays_on_engine(engine):
+                    run.say("briefing", f"{why}; the {engine_words(engine)} works it anyway")
+                    result["low_confidence"], why = why, None
+                else:
+                    engine = "bare"
         if why:
             run.say("escalate", why)
             result["escalated"] = why
@@ -1079,7 +1113,10 @@ def main() -> int:
                 result["rebrief_skipped"] = skip
         if engine.startswith("briefed") and not a["ok"]:
             why = failure_reason(a) + (" after a re-brief" if a.get("rebrief") else "")
-            if missing := signed_in("bare"):
+            if stays_on_engine(engine):
+                run.say("escalate", f"{why}; staying on {BACKEND_NAMES.get(backend_of(engine))}, the engine asked for")
+                result["fallback_skipped"] = why
+            elif missing := signed_in("bare"):
                 run.say("escalate", f"{why}; no fallback: {missing}")
                 result["escalated"] = f"{why}; {missing}"
             else:
@@ -1107,6 +1144,8 @@ def main() -> int:
             result["landed"] = land(run, wt, args.repo, issue, args.land, run_id, engine, a["checks"])
         else:
             result["error"] = "no change passed its checks"
+            if result.get("fallback_skipped"):
+                result["error"] += f": {result['fallback_skipped']}"
     except Exception as error:  # noqa: BLE001 - the run reports every failure as its result
         result["error"] = str(error)[-1500:]
     finally:
