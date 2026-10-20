@@ -222,6 +222,16 @@ window.addEventListener("keydown", function (event) {
 var host = "";
 var files = null;
 var filesBox = null;
+var pendingFile = null;
+function revealFile() {
+  if (!files || !pendingFile) return;
+  var parts = hostParts();
+  var hit = pendingFile;
+  pendingFile = null;
+  if (hit.device === parts[0] && hit.chat === parts[1]) {
+    files.open_file(hit.device, hit.chat, hit.path, hit.line == null ? undefined : hit.line);
+  }
+}
 function hostParts() {
   var at = host.indexOf("\n");
   return at < 0 ? ["", ""] : [host.slice(0, at), host.slice(at + 1)];
@@ -252,6 +262,7 @@ function openFiles() {
         var parts = hostParts();
         mountIn(filesBox, function () {
           module.mount(loaded[1], parts[0], parts[1]);
+          revealFile();
         });
       });
     })
@@ -262,10 +273,21 @@ function openFiles() {
     });
 }
 window.addEventListener("oa-files-toggle", openFiles);
+window.addEventListener("oa-files-open", function (event) {
+  var hit;
+  try { hit = JSON.parse(event.detail); } catch (_) { return; }
+  var parts = hostParts();
+  if (hit.device !== parts[0] || hit.chat !== parts[1] || typeof hit.path !== "string") return;
+  pendingFile = hit;
+  if (!filesBox) openFiles();
+  showFiles(true);
+  revealFile();
+});
 window.addEventListener("oa-files-close", function () {
   showFiles(false);
 });
 window.addEventListener("oa-host", function (event) {
+  pendingFile = null;
   host = event.detail || "";
   if (files) {
     var parts = hostParts();

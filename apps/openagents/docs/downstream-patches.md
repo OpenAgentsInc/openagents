@@ -2,6 +2,10 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12279: add the GPUI web command palette for actions, registry
+  chats, and paired-computer file/content searches, with browser shortcuts
+  and source-line opening in the existing file pane.
+
 - OpenAgents #12281: add cloud computer creation, stop, wake, removal, and CPU
   usage to the web chat's new-session computer picker.
 
