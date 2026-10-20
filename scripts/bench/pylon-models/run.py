@@ -99,6 +99,13 @@ def engine_memory(pid):
                 result[key.rstrip(":")+"_kib"] = int(value)
     except OSError:
         pass
+    if not result:
+        try:
+            rss = subprocess.check_output(["ps", "-p", str(pid), "-o", "rss="], text=True, timeout=5).strip()
+            if rss.isdigit():
+                result["rss_kib"] = int(rss)
+        except (OSError, subprocess.SubprocessError):
+            pass
     try:
         report = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5)
         for line in report.stdout.splitlines():
@@ -176,10 +183,13 @@ def deepseek_response_check(response, expected=None, truncated=False):
     try:
         choice = response["choices"][0]
         message = choice["message"]
-        content = message.get("content") or ""
-        reasoning = message.get("reasoning_content") or ""
-        if not isinstance(content, str) or not isinstance(reasoning, str):
+        content = message.get("content")
+        reasoning = message.get("reasoning_content")
+        if (content is not None and not isinstance(content, str)
+                or reasoning is not None and not isinstance(reasoning, str)):
             return False
+        content = content or ""
+        reasoning = reasoning or ""
         if any(marker in content for marker in ("<think>", "</think>", "<｜end▁of▁sentence｜>")):
             return False
         if truncated:
@@ -211,6 +221,102 @@ def qualify_deepseek(api, model, engine, max_tokens):
         rows.append({"name": name, "response": response,
                      "passed": deepseek_response_check(response, expected, truncated)})
     return {"passed": all(row["passed"] for row in rows), "checks": rows}
+
+
+def deepseek_boxed_response_check(response, expected):
+    """Score the boxed integer format recommended in DeepSeek's model card."""
+    try:
+        content = response["choices"][0]["message"].get("content") or ""
+        # Require one unambiguous boxed integer, not a number found in reasoning.
+        answers = re.findall(r"\\boxed\{([+-]?\d+)\}", content)
+        return (answers == [expected] and deepseek_response_check(
+            response, content.strip()))
+    except (KeyError, IndexError, TypeError):
+        return False
+
+
+def read_chat_stream(api, payload, timeout=600):
+    request = urllib.request.Request(api + "/v1/chat/completions",
+        data=json.dumps(dict(payload, stream=True)).encode(),
+        headers={"Content-Type": "application/json"})
+    events = []
+    done = False
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        for line in response:
+            if not line.startswith(b"data: "):
+                continue
+            data = line[6:].strip()
+            if data == b"[DONE]":
+                done = True
+                break
+            events.append(json.loads(data))
+    return {"events": events, "done": done}
+
+
+def qualify_deepseek_runtime(api, model, engine, max_tokens, on_check=None, sampling_profile="recommended"):
+    """Qualify text execution separately from strict instruction-following scores."""
+    instruction = "Please reason step by step, and put your final answer within \\boxed{}."
+    messages = [{"role": "user", "content": "What is 1 + 1? " + instruction}]
+    options = {"model": model, "temperature": 0.6, "top_p": 0.95, "seed": 1, "max_tokens": max_tokens}
+    if sampling_profile == "greedy":
+        instruction = "After thinking, reply with only the number."
+        messages = [{"role": "user", "content": "What is 1 + 1? " + instruction}]
+        options["temperature"] = 0
+    if engine == "psionic":
+        options["psionic_reasoning"] = {"parser": "deepseek_r1", "mode": "separate"}
+    rows = []
+
+    def check(name, payload, judge):
+        started = time.perf_counter()
+        response = read_json(api + "/v1/chat/completions", payload, timeout=600)
+        rows.append({"name": name, "request": payload, "response": response,
+                     "wall_ms": round((time.perf_counter()-started)*1000, 3), "passed": judge(response)})
+        if on_check:
+            on_check(rows[-1])
+        print(json.dumps({"event": "deepseek-check", "name": name, "passed": rows[-1]["passed"],
+                          "wall_ms": rows[-1]["wall_ms"]}), flush=True)
+        return response
+
+    def correct_answer(response, expected):
+        return (deepseek_boxed_response_check(response, expected)
+                or sampling_profile == "greedy" and deepseek_response_check(response, expected))
+
+    answer = check("answer", dict(options, messages=messages),
+                   lambda response: correct_answer(response, "2"))
+    rows[-1]["strict_numeric_only"] = deepseek_response_check(answer, "2") if sampling_profile == "greedy" else None
+    assistant = answer["choices"][0]["message"]
+    history = messages + [{"role": "assistant", "content": assistant.get("content") or "",
+                           "reasoning_content": assistant.get("reasoning_content") or ""},
+                          {"role": "user", "content": "Add one to your previous answer. " + instruction}]
+    continued = check("continuation", dict(options, messages=history),
+                      lambda response: correct_answer(response, "3"))
+    rows[-1]["strict_numeric_only"] = deepseek_response_check(continued, "3") if sampling_profile == "greedy" else None
+    truncated = check("truncation", dict(options, messages=messages, max_tokens=1),
+                      lambda response: deepseek_response_check(response, truncated=True))
+    check("cache_reset", dict(options, messages=messages, max_tokens=1),
+          lambda response: deepseek_response_check(response, truncated=True)
+          and response["choices"][0]["message"] == truncated["choices"][0]["message"])
+    check("stop_in_reasoning", dict(options, messages=messages, stop=["</think>"]),
+          lambda response: response["choices"][0]["finish_reason"] == "stop"
+          and not (response["choices"][0]["message"].get("content") or "").strip()
+          and bool((response["choices"][0]["message"].get("reasoning_content") or "").strip()))
+    started = time.perf_counter()
+    payload = dict(options, messages=messages, max_tokens=8)
+    streamed = read_chat_stream(api, payload)
+    choices = [choice for event in streamed["events"] for choice in event.get("choices", [])]
+    final_text = "".join(choice.get("delta", {}).get("content") or "" for choice in choices)
+    reasoning = "".join(choice.get("delta", {}).get("reasoning_content") or "" for choice in choices)
+    passed = (streamed["done"] and not final_text.strip() and bool(reasoning.strip())
+              and [choice["finish_reason"] for choice in choices if choice.get("finish_reason")] == ["length"])
+    rows.append({"name": "stream_truncation", "request": dict(payload, stream=True), "response": streamed,
+                 "wall_ms": round((time.perf_counter()-started)*1000, 3), "passed": passed})
+    if on_check:
+        on_check(rows[-1])
+    print(json.dumps({"event": "deepseek-check", "name": rows[-1]["name"], "passed": passed,
+                      "wall_ms": rows[-1]["wall_ms"]}), flush=True)
+    return {"scope": "text_runtime_math", "sampling_profile": sampling_profile,
+            "answer_format": "numeric_or_boxed_integer" if sampling_profile == "greedy" else "boxed_integer",
+            "passed": all(row["passed"] for row in rows), "checks": rows}
 
 
 def model_parts(row):
@@ -365,7 +471,12 @@ def qualify(row, args, output):
         engine_binary = args.llama_cpp_bin
         if engine_binary is None:
             raise RuntimeError("--llama-cpp-bin is required for the llama-cpp engine")
-        command = [str(engine_binary), "-m", str(path), "--host", "127.0.0.1", "--port", str(args.port), "--ctx-size", "4096", "--parallel", "1", "--n-gpu-layers", "auto", "--threads", str(args.threads), "--temp", str(temperature), "--top-p", str(top_p), "--seed", "1", "--chat-template-kwargs", json.dumps({"enable_thinking": thinking})]
+        layers = "all" if row.get("qualification") == "deepseek-r1" else "auto"
+        command = [str(engine_binary), "-m", str(path), "--host", "127.0.0.1", "--port", str(args.port), "--ctx-size", "4096", "--parallel", "1", "--n-gpu-layers", layers, "--threads", str(args.threads), "--temp", str(temperature), "--top-p", str(top_p), "--seed", "1", "--chat-template-kwargs", json.dumps({"enable_thinking": thinking})]
+        if args.llama_cpp_device:
+            command += ["--device", args.llama_cpp_device]
+        if row.get("qualification") == "deepseek-r1":
+            command += ["--reasoning-format", "deepseek", "--verbosity", "5"]
         if row.get("chat_template"):
             template = path.parent / "chat-template.jinja"
             if hashlib.sha256(template.read_bytes()).hexdigest() != row["chat_template_sha256"]:
@@ -383,7 +494,7 @@ def qualify(row, args, output):
         if row["id"] != "gpt-oss-20b":
             command += ["--mesh-coordination", "disabled"]
         execution_backend = row["backend"]
-    result = {"model": row, "engine": args.engine, "execution_backend": execution_backend, "server_binary": str(engine_binary), "max_output_tokens": max_tokens, "thinking": thinking, "temperature": temperature if args.engine == "llama-cpp" else None, "top_p": top_p if args.engine == "llama-cpp" else None, "server_command": command, "cases": []}
+    result = {"model": row, "engine": args.engine, "execution_backend": execution_backend, "server_binary": str(engine_binary), "max_output_tokens": max_tokens, "thinking": thinking, "temperature": temperature if args.engine == "llama-cpp" else None, "top_p": top_p if args.engine == "llama-cpp" else None, "server_command": command, "qualified": False, "cases": []}
     engine = provider = None
     engine_log = (folder/"engine.log").open("w")
     provider_log = (folder/"provider.log").open("w")
@@ -406,10 +517,26 @@ def qualify(row, args, output):
         model = inventory["data"][0]["id"]
         print(json.dumps({"event": "model-ready", "model": row["id"], "startup_ms": result["startup_ms"]}), flush=True)
         if row.get("qualification") == "deepseek-r1":
-            result["deepseek_checks"] = qualify_deepseek(api, model, args.engine, max_tokens)
+            result["deepseek_checks"] = {"passed": False, "checks": []}
+            def save_check(check):
+                result["deepseek_checks"]["checks"].append(check)
+                (folder/"results.json").write_text(json.dumps(result, indent=2))
+            result["deepseek_checks"] = qualify_deepseek_runtime(api, model, args.engine, max_tokens, save_check, args.deepseek_sampling)
             (folder/"results.json").write_text(json.dumps(result, indent=2))
             if not result["deepseek_checks"]["passed"]:
-                raise RuntimeError("DeepSeek answer, continuation, or truncation checks failed")
+                raise RuntimeError("DeepSeek runtime qualification checks failed")
+            result["memory_after_generation"] = engine_memory(engine.pid)
+            if execution_backend == "cuda":
+                if not result["memory_after_generation"].get("gpu_mib", 0):
+                    raise RuntimeError("CUDA qualification requires observed GPU memory for the model server")
+                offload = re.findall(r"offloaded (\d+)/(\d+) layers to GPU", (folder/"engine.log").read_text(errors="replace"))
+                if not offload or offload[-1] != ("29", "29"):
+                    raise RuntimeError("R1 CUDA qualification requires all 29 layers offloaded to GPU")
+                result["gpu_offload"] = {"offloaded_layers": 29, "total_layers": 29}
+            if args.direct_only:
+                result["qualified"] = True
+                result["qualification_scope"] = result["deepseek_checks"]["scope"]
+                return result
         result["direct_smoke"] = read_json(api+"/v1/chat/completions", {"model":model, "messages":[{"role":"user","content":"Reply exactly READY."}], "max_tokens":min(max_tokens, 8), "stop":row.get("stop_sequences", [])}, timeout=120)
         identity = cli(args.pylon_bin, home, ["whoami"])["response"]["data"]
         provider_command = [str(args.pylon_bin), "serve", "--engine", api, "--model", model, "--pylon", "qualification-"+re.sub(r"[^a-z0-9_-]", "-", row["id"]), "--label", row["id"]+" qualification", "--pool", "qualification", "--allow", identity["buyer"], "--rate", "600", "--slots", "2", "--max-tokens", str(max_tokens), "--dedicated", "--relay", args.relay, "--json"]
@@ -463,11 +590,12 @@ def main():
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, interrupted)
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pylon-bin",type=Path,required=True)
+    parser.add_argument("--pylon-bin",type=Path)
     parser.add_argument("--engine",choices=("psionic","llama-cpp"),default="psionic")
     parser.add_argument("--llama-cpp-bin",type=Path)
-    parser.add_argument("--psionic-bin",type=Path,required=True)
-    parser.add_argument("--gpt-oss-bin",type=Path,required=True)
+    parser.add_argument("--llama-cpp-device",help="Explicit llama.cpp device, such as CUDA0")
+    parser.add_argument("--psionic-bin",type=Path)
+    parser.add_argument("--gpt-oss-bin",type=Path)
     parser.add_argument("--model-dir",type=Path,default=Path.home()/".openagents/models")
     parser.add_argument("--output",type=Path,required=True)
     parser.add_argument("--models",nargs="*")
@@ -481,9 +609,13 @@ def main():
     parser.add_argument("--verify",action=argparse.BooleanOptionalAction,default=True)
     parser.add_argument("--download",action="store_true",help="Fetch a missing model at its pinned revision and verify its SHA-256")
     parser.add_argument("--download-only",action="store_true",help="Download and verify the selected models without stopping any service")
+    parser.add_argument("--direct-only",action="store_true",help="Run DeepSeek runtime checks over local HTTP without publishing a Pylon provider")
+    parser.add_argument("--deepseek-sampling",choices=("greedy", "recommended"),
+                        help="Defaults to greedy for the native reference, recommended sampling for llama.cpp")
     parser.add_argument("--download-reserve-gib",type=int,default=30,help="Free space to leave after download (default 30 GiB; smaller RAM-backed caches may need less)")
     parser.add_argument("--pause-unit",help="Temporarily stop this systemd user unit and restore it on exit")
     args=parser.parse_args()
+    args.deepseek_sampling = args.deepseek_sampling or ("greedy" if args.engine == "psionic" else "recommended")
     if args.max_tokens is not None and args.max_tokens < 1:
         parser.error("--max-tokens must be positive")
     if args.download_reserve_gib < 0:
@@ -498,9 +630,21 @@ def main():
             parser.error("An unknown model was requested")
     elif not args.download_only:
         rows = [row for row in rows if not row.get("engines") or args.engine in row["engines"]]
+    if not args.download_only:
+        if not args.direct_only and args.pylon_bin is None:
+            parser.error("--pylon-bin is required unless --direct-only is selected")
+        if args.engine == "llama-cpp" and args.llama_cpp_bin is None:
+            parser.error("--llama-cpp-bin is required for --engine llama-cpp")
+        if args.engine == "psionic":
+            if any(row["id"] != "gpt-oss-20b" for row in rows) and args.psionic_bin is None:
+                parser.error("--psionic-bin is required for native text models")
+            if any(row["id"] == "gpt-oss-20b" for row in rows) and args.gpt_oss_bin is None:
+                parser.error("--gpt-oss-bin is required for gpt-oss-20b")
     # Downloads can take minutes. Keep the live service running until all
     # files are present and checked, then pause only for GPU qualification.
     for row in rows:
+        if args.direct_only and row.get("qualification") != "deepseek-r1":
+            parser.error("--direct-only requires a model with DeepSeek runtime qualification checks")
         if row.get("engines") and args.engine not in row["engines"] and not args.download_only:
             parser.error(row["id"]+" needs --engine "+row["engines"][0])
         path = args.model_dir / row["id"] / row["file"]

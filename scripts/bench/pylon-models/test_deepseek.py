@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -57,6 +58,96 @@ class DeepSeekQualificationTests(unittest.TestCase):
                     "--model-dir", str(root), "--output", str(root / "output"), "--models", row["id"], "--no-verify"]
             with patch.object(sys, "argv", argv), patch.object(qualification, "qualify", return_value={"qualified": False}):
                 self.assertEqual(qualification.main(), 1)
+
+    def test_boxed_math_preserves_strict_format_failures(self):
+        boxed = response("The answer is \\boxed{2}.")
+        self.assertTrue(qualification.deepseek_boxed_response_check(boxed, "2"))
+        self.assertFalse(qualification.deepseek_response_check(boxed, "2"))
+        for candidate in [response("\\boxed{3}"), response("2"),
+                          response("\\boxed{2} \\boxed{3}"), response("\\boxed{2}", reasoning=""),
+                          response("\\boxed{2}", finish="length"), response("<think>work</think>\\boxed{2}")]:
+            self.assertFalse(qualification.deepseek_boxed_response_check(candidate, "2"))
+        self.assertFalse(qualification.deepseek_response_check(response(0, "work", "length"), truncated=True))
+
+    def test_runtime_uses_actual_history_and_recommended_sampling(self):
+        first = response("Here is \\boxed{2}", "First thought")
+        continuation = response("Result: \\boxed{3}")
+        truncated = response(None, "First", "length")
+        stopped = response(None, "First thought", "stop")
+        events = {"done": True, "events": [{"choices": [{"delta": {"reasoning_content": "First"},
+                                                         "finish_reason": "length"}]}]}
+        with patch.object(qualification, "read_json", side_effect=[first, continuation, truncated, truncated, stopped]) as read, \
+             patch.object(qualification, "read_chat_stream", return_value=events):
+            report = qualification.qualify_deepseek_runtime("http://127.0.0.1:1", "r1", "psionic", 2048)
+        self.assertTrue(report["passed"])
+        payloads = [call.args[1] for call in read.call_args_list]
+        self.assertEqual(payloads[1]["messages"][1]["content"], first["choices"][0]["message"]["content"])
+        self.assertEqual(payloads[0]["temperature"], 0.6)
+        self.assertEqual(payloads[0]["top_p"], 0.95)
+        self.assertEqual(payloads[-1]["stop"], ["</think>"])
+        self.assertEqual(len(report["checks"]), 6)
+
+    def test_runtime_rejects_stream_reasoning_leak_and_changed_request_state(self):
+        truncated = response(None, "First", "length")
+        events = {"done": True, "events": [{"choices": [{"delta": {"content": "First"}, "finish_reason": "length"}]}]}
+        with patch.object(qualification, "read_json", side_effect=[response("\\boxed{2}"), response("\\boxed{3}"),
+                          truncated, response(None, "Changed", "length"), response(None, "work")]), \
+             patch.object(qualification, "read_chat_stream", return_value=events):
+            report = qualification.qualify_deepseek_runtime("http://127.0.0.1:1", "r1", "llama-cpp", 2048)
+        self.assertFalse(report["passed"])
+        self.assertFalse(report["checks"][3]["passed"])
+        self.assertFalse(report["checks"][-1]["passed"])
+
+    def test_greedy_reference_keeps_numeric_format_failure_visible(self):
+        truncated = response(None, "First", "length")
+        events = {"done": True, "events": [{"choices": [{"delta": {"reasoning_content": "First"}, "finish_reason": "length"}]}]}
+        saved = []
+        with patch.object(qualification, "read_json", side_effect=[response("\\boxed{2}"), response("\\boxed{3}"),
+                          truncated, truncated, response(None, "work")]) as read, \
+             patch.object(qualification, "read_chat_stream", return_value=events):
+            report = qualification.qualify_deepseek_runtime("http://127.0.0.1:1", "r1", "psionic", 2048,
+                                                           saved.append, "greedy")
+        self.assertTrue(report["passed"])
+        self.assertEqual(read.call_args_list[0].args[1]["temperature"], 0)
+        self.assertFalse(report["checks"][0]["strict_numeric_only"])
+        self.assertFalse(report["checks"][1]["strict_numeric_only"])
+        self.assertEqual(len(saved), 6)
+
+    def test_gpu_qualification_refuses_unobserved_cuda_execution(self):
+        row = next(row for row in json.loads(Path(__file__).with_name("models.json").read_text())
+                   if row["id"] == "deepseek-r1-distill-qwen-1.5b")
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(model_dir=Path(directory), max_tokens=128, thinking="on", engine="llama-cpp",
+                                   llama_cpp_bin=Path("server"), llama_cpp_device="CUDA0", port=1, threads=8,
+                                   start_timeout=1, deepseek_sampling="recommended", direct_only=True)
+            engine = SimpleNamespace(pid=1, poll=lambda: None)
+            with patch.object(qualification.subprocess, "Popen", return_value=engine), \
+                 patch.object(qualification, "stop_process"), \
+                 patch.object(qualification, "read_json", return_value={"data": [{"id": "r1"}]}), \
+                 patch.object(qualification, "qualify_deepseek_runtime", return_value={"passed": True, "scope": "text_runtime_math"}), \
+                 patch.object(qualification, "engine_memory", return_value={}):
+                report = qualification.qualify(row, args, Path(directory))
+            self.assertFalse(report["qualified"])
+            self.assertIn("observed GPU memory", report["error"])
+            with patch.object(qualification.subprocess, "Popen", return_value=engine), \
+                 patch.object(qualification, "stop_process"), \
+                 patch.object(qualification, "read_json", return_value={"data": [{"id": "r1"}]}), \
+                 patch.object(qualification, "qualify_deepseek_runtime", return_value={"passed": True, "scope": "text_runtime_math"}), \
+                 patch.object(qualification, "engine_memory", return_value={"gpu_mib": 1}):
+                report = qualification.qualify(row, args, Path(directory))
+            self.assertFalse(report["qualified"])
+            self.assertIn("all 29 layers", report["error"])
+            def launch(*args, **kwargs):
+                (Path(directory)/row["id"]/"engine.log").write_text("offloaded 29/29 layers to GPU\n")
+                return engine
+            with patch.object(qualification.subprocess, "Popen", side_effect=launch), \
+                 patch.object(qualification, "stop_process"), \
+                 patch.object(qualification, "read_json", return_value={"data": [{"id": "r1"}]}), \
+                 patch.object(qualification, "qualify_deepseek_runtime", return_value={"passed": True, "scope": "text_runtime_math"}), \
+                 patch.object(qualification, "engine_memory", return_value={"gpu_mib": 1390}):
+                report = qualification.qualify(row, args, Path(directory))
+            self.assertTrue(report["qualified"])
+            self.assertEqual(report["gpu_offload"]["offloaded_layers"], 29)
 
 
 if __name__ == "__main__":

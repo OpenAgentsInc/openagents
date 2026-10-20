@@ -2540,15 +2540,20 @@ impl QuantizedMatrix {
         }
         output.clear();
         output.resize(self.rows, 0.0);
-        for row_index in 0..self.rows {
+        let project_row = |(row_index, value): (usize, &mut f32)| {
             let offset = row_index.saturating_mul(self.row_byte_len);
             let bytes = self
                 .storage
                 .read_range(offset, self.row_byte_len)
                 .map_err(model_load_runtime_error)?;
-            output[row_index] = quantized_row_dot(input, self.mode, bytes)?;
+            *value = quantized_row_dot(input, self.mode, bytes)?;
+            Ok(())
+        };
+        if self.rows >= 256 {
+            output.par_iter_mut().enumerate().try_for_each(project_row)
+        } else {
+            output.iter_mut().enumerate().try_for_each(project_row)
         }
-        Ok(())
     }
 }
 
@@ -17320,6 +17325,71 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn parallel_quantized_projection_rows_match_serial_for_r1_formats()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let rows = 259;
+        let input = (0..256)
+            .map(|i| (i as f32 - 127.0) / 128.0)
+            .collect::<Vec<_>>();
+        for (kind, block_bytes, scale_offset) in [
+            (GgufTensorType::Q4K, 144, 0),
+            (GgufTensorType::Q6K, 210, 208),
+        ] {
+            let mut bytes = Vec::new();
+            for row in 0..rows {
+                let mut block = vec![(row * 17 % 256) as u8; block_bytes];
+                block[scale_offset..scale_offset + 2].copy_from_slice(
+                    &half::f16::from_f32((row % 31 + 1) as f32 / 64.0).to_le_bytes(),
+                );
+                if kind == GgufTensorType::Q4K {
+                    block[2..4].copy_from_slice(&half::f16::from_f32(0.01).to_le_bytes());
+                }
+                bytes.extend(block);
+            }
+            let path = temp.path().join(format!("projection-{kind:?}.gguf"));
+            write_test_gguf(
+                &path,
+                &[],
+                &[TestGgufTensor::new(
+                    "projection",
+                    vec![rows, 256],
+                    kind,
+                    bytes,
+                )],
+            )?;
+            let artifact = psionic_models::GgufBlobArtifact::open_path(
+                &path,
+                super::gguf_local_blob_open_options(),
+            )?;
+            let super::ProjectionMatrix::Quantized(matrix) =
+                super::ProjectionMatrix::load(&artifact, "projection")?
+            else {
+                return Err("expected quantized projection".into());
+            };
+            let expected = (0..rows)
+                .map(|row| {
+                    let data = matrix
+                        .storage
+                        .read_range(row * matrix.row_byte_len, matrix.row_byte_len)?;
+                    Ok(super::quantized_row_dot(&input, matrix.mode, data)?)
+                })
+                .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+            assert!(expected.iter().all(|value| value.is_finite()));
+            assert!(expected.windows(2).any(|pair| pair[0] != pair[1]));
+            for threads in [1, 4] {
+                let pool = rayon::ThreadPoolBuilder::new()
+                    .num_threads(threads)
+                    .build()?;
+                let mut actual = Vec::new();
+                pool.install(|| matrix.matvec(&input, &mut actual))?;
+                assert_eq!(actual, expected, "{kind:?}, {threads} threads");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn aggregate_gemma4_sparse_execution_observation_reports_uniform_native_backend() {
         let observation = aggregate_gemma4_sparse_execution_observation([
             Gemma4SparseLayerExecutionBackends::metal_native(),
@@ -20491,6 +20561,8 @@ mod tests {
         match tensor_type {
             GgufTensorType::F32 => 0,
             GgufTensorType::Q8_0 => 8,
+            GgufTensorType::Q4K => 12,
+            GgufTensorType::Q6K => 14,
             other => panic!("unsupported synthetic gguf tensor type: {other:?}"),
         }
     }

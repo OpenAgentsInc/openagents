@@ -266,6 +266,18 @@ pub fn parse_deepseek_r1_response_text(text: &str) -> ParsedReasoningResponse {
     };
     let mut parsed = crate::parse_qwen38_thinking_text(&with_prefix);
     parsed.parser = ReasoningParser::DeepSeekR1;
+    // R1's template replays assistant content verbatim. Trimming the generated
+    // final text changes the next turn's tokens, even for leading newlines.
+    if parsed.final_content.is_some()
+        && let Some((_, final_content)) = text.split_once("</think>")
+    {
+        parsed.final_content = Some(final_content.to_string());
+        for part in &mut parsed.parts {
+            if part.kind == crate::ReasoningResponsePartKind::Final {
+                part.content = final_content.to_string();
+            }
+        }
+    }
     parsed
 }
 
@@ -330,6 +342,19 @@ mod tests {
         assert_eq!(report.token_cases_passed, 10);
         assert_eq!(report.prompt_cases_passed, 6);
         assert!(!report.tool_calling);
+        let continuation = fixture()?
+            .prompt_cases
+            .into_iter()
+            .find(|case| case.name == "continuation")
+            .ok_or("missing continuation fixture")?;
+        let mut history = continuation.messages;
+        let parsed = parse_deepseek_r1_response_text(&history[1].content);
+        history[1].content = parsed.final_content.ok_or("missing final answer")?;
+        history[1].reasoning_content = parsed.reasoning_content;
+        assert_eq!(
+            renderer.render(None, &history, true)?.text,
+            continuation.rendered
+        );
         let mut wrong = tokenizer.clone();
         wrong.add_bos = false;
         assert!(check_tokenizer(&wrong).is_err());
@@ -375,7 +400,7 @@ mod tests {
         ] {
             let parsed = parse_deepseek_r1_response_text(text);
             assert_eq!(parsed.reasoning_content.as_deref(), Some("work"));
-            assert_eq!(parsed.final_content.as_deref(), Some("2"));
+            assert_eq!(parsed.final_content.as_deref(), Some("\n\n2"));
         }
     }
 }

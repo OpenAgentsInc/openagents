@@ -1,0 +1,2050 @@
+{
+  "schema": "openagents.psionic.deepseek_r1_ds0_qualification.v1",
+  "date": "2026-10-20",
+  "model": {
+    "id": "deepseek-r1-distill-qwen-1.5b",
+    "repo": "unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+    "revision": "3cb4d15544a2a5e07439592b9a0965b6445fbd34",
+    "file": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+    "bytes": 1117321312,
+    "sha256": "f3bdf9cf31dee4b57ae4e455a1cb0d01b5c2c1b50d72d3112141c195506c2840",
+    "backend": "cpu",
+    "upstream_model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+    "upstream_revision": "ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562",
+    "qualification": "deepseek-r1",
+    "max_output_tokens": 2048,
+    "stop_sequences": [
+      "<｜end▁of▁sentence｜>"
+    ],
+    "thinking_required": true,
+    "reasoning_temperature": 0.6
+  },
+  "serving_base_commit": "ad9a289fc72aa42b7ff5c7e93c4f8d5b65fa1bb0",
+  "source_sha256": {
+    "crates/psionic/crates/psionic-models/src/deepseek_r1.rs": "8cd7fb82122c370af2912903348acadb26f5c6fc8b5e2f15c065cc8e06abdbd3",
+    "crates/psionic/crates/psionic-serve/src/gguf.rs": "54e39859b37b24c87753906a5651b621f8b78ea7eb1959d92e5e0ff9c9dc5ade",
+    "scripts/bench/pylon-models/run.py": "14add0527e726f63a35bbf7e1cee3fbd1a5f1ffd73ea1b33d3af02717c1568a6"
+  },
+  "scope": "Pinned text runtime; native CPU greedy reference; llama.cpp CUDA greedy and recommended sampling.",
+  "profiles": [
+    {
+      "engine": "psionic_native_cpu",
+      "hardware": {
+        "cpu": "Apple M5 Max",
+        "os": "macOS-26.4-arm64-arm-64bit",
+        "logical_cpus": 18,
+        "ram_bytes": 137438953472
+      },
+      "startup_ms": 10657.919,
+      "sampling_profile": "greedy",
+      "memory_after_generation": {
+        "rss_kib": 1259712
+      },
+      "gpu_offload": null,
+      "qualified": true,
+      "checks": [
+        {
+          "name": "answer",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "mode": "separate"
+            },
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ]
+          },
+          "response": {
+            "id": "psionic-chatcmpl-1a15afa5d7a-a8b-1",
+            "object": "chat.completion",
+            "created": 1792527769,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "\n\n**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+                  "reasoning_content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2."
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 22,
+              "completion_tokens": 114,
+              "total_tokens": 136
+            },
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "source": "text",
+              "final_content": "\n\n**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+              "reasoning_content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2.",
+              "parts": [
+                {
+                  "kind": "reasoning",
+                  "role": "assistant",
+                  "content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2."
+                },
+                {
+                  "kind": "final",
+                  "role": "assistant",
+                  "content": "\n\n**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]"
+                }
+              ]
+            }
+          },
+          "wall_ms": 49395.451,
+          "passed": true,
+          "strict_numeric_only": false
+        },
+        {
+          "name": "continuation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "mode": "separate"
+            },
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              },
+              {
+                "role": "assistant",
+                "content": "\n\n**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+                "reasoning_content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2."
+              },
+              {
+                "role": "user",
+                "content": "Add one to your previous answer. After thinking, reply with only the number."
+              }
+            ]
+          },
+          "response": {
+            "id": "psionic-chatcmpl-1a15afa5d7a-a8b-2",
+            "object": "chat.completion",
+            "created": 1792528043,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "\n\n3",
+                  "reasoning_content": "Okay, so I'm trying to figure out what the user is asking for here. They mentioned \"Add one to your previous answer.\" But wait, in the previous conversation, I just gave them the answer to \"What is 1 + 1?\" which was 2. Now, they're asking me to add one to that previous answer. That doesn't make sense because 2 plus one would be 3, but I'm not sure if they want me to do that or if they're trying to trick me.\n\nMaybe they're testing if I can follow through on their instructions. Let me think about this. If I follow their instruction, I would add one to 2, which would give me 3. But I'm not sure if that's what they're asking for. Alternatively, maybe they're trying to see if I can keep up with their instructions, but I'm not sure.\n\nI should probably just go ahead and add one to the previous answer, which was 2, to get 3. But I'm not entirely sure if that's what they want. I'll go with that."
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 109,
+              "completion_tokens": 229,
+              "total_tokens": 338
+            },
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "source": "text",
+              "final_content": "\n\n3",
+              "reasoning_content": "Okay, so I'm trying to figure out what the user is asking for here. They mentioned \"Add one to your previous answer.\" But wait, in the previous conversation, I just gave them the answer to \"What is 1 + 1?\" which was 2. Now, they're asking me to add one to that previous answer. That doesn't make sense because 2 plus one would be 3, but I'm not sure if they want me to do that or if they're trying to trick me.\n\nMaybe they're testing if I can follow through on their instructions. Let me think about this. If I follow their instruction, I would add one to 2, which would give me 3. But I'm not sure if that's what they're asking for. Alternatively, maybe they're trying to see if I can keep up with their instructions, but I'm not sure.\n\nI should probably just go ahead and add one to the previous answer, which was 2, to get 3. But I'm not entirely sure if that's what they want. I'll go with that.",
+              "parts": [
+                {
+                  "kind": "reasoning",
+                  "role": "assistant",
+                  "content": "Okay, so I'm trying to figure out what the user is asking for here. They mentioned \"Add one to your previous answer.\" But wait, in the previous conversation, I just gave them the answer to \"What is 1 + 1?\" which was 2. Now, they're asking me to add one to that previous answer. That doesn't make sense because 2 plus one would be 3, but I'm not sure if they want me to do that or if they're trying to trick me.\n\nMaybe they're testing if I can follow through on their instructions. Let me think about this. If I follow their instruction, I would add one to 2, which would give me 3. But I'm not sure if that's what they're asking for. Alternatively, maybe they're trying to see if I can keep up with their instructions, but I'm not sure.\n\nI should probably just go ahead and add one to the previous answer, which was 2, to get 3. But I'm not entirely sure if that's what they want. I'll go with that."
+                },
+                {
+                  "kind": "final",
+                  "role": "assistant",
+                  "content": "\n\n3"
+                }
+              ]
+            }
+          },
+          "wall_ms": 274250.237,
+          "passed": true,
+          "strict_numeric_only": true
+        },
+        {
+          "name": "truncation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 1,
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "mode": "separate"
+            },
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ]
+          },
+          "response": {
+            "id": "psionic-chatcmpl-1a15afa5d7a-a8b-3",
+            "object": "chat.completion",
+            "created": 1792528044,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "reasoning_content": "First"
+                },
+                "finish_reason": "length"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 22,
+              "completion_tokens": 1,
+              "total_tokens": 23
+            },
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "source": "text",
+              "reasoning_content": "First",
+              "parts": [
+                {
+                  "kind": "reasoning",
+                  "role": "assistant",
+                  "content": "First"
+                }
+              ]
+            }
+          },
+          "wall_ms": 959.68,
+          "passed": true
+        },
+        {
+          "name": "cache_reset",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 1,
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "mode": "separate"
+            },
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ]
+          },
+          "response": {
+            "id": "psionic-chatcmpl-1a15afa5d7a-a8b-4",
+            "object": "chat.completion",
+            "created": 1792528045,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "reasoning_content": "First"
+                },
+                "finish_reason": "length"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 22,
+              "completion_tokens": 1,
+              "total_tokens": 23
+            },
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "source": "text",
+              "reasoning_content": "First",
+              "parts": [
+                {
+                  "kind": "reasoning",
+                  "role": "assistant",
+                  "content": "First"
+                }
+              ]
+            }
+          },
+          "wall_ms": 1001.623,
+          "passed": true
+        },
+        {
+          "name": "stop_in_reasoning",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "mode": "separate"
+            },
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ],
+            "stop": [
+              "</think>"
+            ]
+          },
+          "response": {
+            "id": "psionic-chatcmpl-1a15afa5d7a-a8b-5",
+            "object": "chat.completion",
+            "created": 1792528083,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "reasoning_content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2."
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 22,
+              "completion_tokens": 45,
+              "total_tokens": 67
+            },
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "source": "text",
+              "reasoning_content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2.",
+              "parts": [
+                {
+                  "kind": "reasoning",
+                  "role": "assistant",
+                  "content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2."
+                }
+              ]
+            }
+          },
+          "wall_ms": 37820.163,
+          "passed": true
+        },
+        {
+          "name": "stream_truncation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 8,
+            "psionic_reasoning": {
+              "parser": "deepseek_r1",
+              "mode": "separate"
+            },
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ],
+            "stream": true
+          },
+          "response": {
+            "events": [
+              {
+                "id": "psionic-chatcmpl-1a15afa5d7a-a8b-6",
+                "object": "chat.completion.chunk",
+                "created": 1792528097,
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "choices": [
+                  {
+                    "index": 0,
+                    "delta": {
+                      "role": "assistant",
+                      "reasoning_content": "First, "
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "psionic-chatcmpl-1a15afa5d7a-a8b-6",
+                "object": "chat.completion.chunk",
+                "created": 1792528097,
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "choices": [
+                  {
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": "I "
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "psionic-chatcmpl-1a15afa5d7a-a8b-6",
+                "object": "chat.completion.chunk",
+                "created": 1792528097,
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "choices": [
+                  {
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": "recogniz"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "psionic-chatcmpl-1a15afa5d7a-a8b-6",
+                "object": "chat.completion.chunk",
+                "created": 1792528097,
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "choices": [
+                  {
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": "e that "
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "psionic-chatcmpl-1a15afa5d7a-a8b-6",
+                "object": "chat.completion.chunk",
+                "created": 1792528097,
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "choices": [
+                  {
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": "the "
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "psionic-chatcmpl-1a15afa5d7a-a8b-6",
+                "object": "chat.completion.chunk",
+                "created": 1792528097,
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "choices": [
+                  {
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": "question"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "psionic-chatcmpl-1a15afa5d7a-a8b-6",
+                "object": "chat.completion.chunk",
+                "created": 1792528097,
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "choices": [
+                  {
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " is"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "psionic-chatcmpl-1a15afa5d7a-a8b-6",
+                "object": "chat.completion.chunk",
+                "created": 1792528097,
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "choices": [
+                  {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "length"
+                  }
+                ]
+              }
+            ],
+            "done": true
+          },
+          "wall_ms": 13895.909,
+          "passed": true
+        }
+      ],
+      "build": {
+        "profile": "dev",
+        "opt_level": 1,
+        "rayon_threads": 8,
+        "server_sha256": "da47dd4811fdae05ecef70613566b4ca3126ba748216f2176ad3a4e3d61f1c38"
+      }
+    },
+    {
+      "engine": "llama_cpp_cuda",
+      "hardware": {
+        "source_commit": "9b05354ec6fb58b4e665e9a39ebc40285c015638",
+        "cpu_features": {
+          "avx": true,
+          "avx2": true,
+          "fma": true,
+          "f16c": true,
+          "avx_vnni": true
+        },
+        "cpu_library_sha256": "1cad44fbad1cc5ee43a7845264b4f8a519c33eeb24b2fbd597bf1d690c01f427",
+        "server_sha256": "2cdfb3a9dbfc2d8dc735617ebf83330767b94bb2486f0c8e85669c7f604db53b",
+        "cuda_backend": "Unchanged from the existing build at the same source revision",
+        "server_actual_sha256": "2cdfb3a9dbfc2d8dc735617ebf83330767b94bb2486f0c8e85669c7f604db53b",
+        "cuda_library_sha256": "15b68f9aab5cfed1da1d72382bef8cf79931d1ba1d1513d9ffda3e4a5f231c2d",
+        "cpu": "Intel(R) Core(TM) i7-14700K",
+        "os": "Linux-6.18.49-x86_64-with-glibc2.42",
+        "gpu": "NVIDIA GeForce RTX 4080, 595.71.05, 16376 MiB, 8.9",
+        "logical_cpus": 28
+      },
+      "startup_ms": 9626.766,
+      "sampling_profile": "greedy",
+      "memory_after_generation": {
+        "VmHWM_kib": 1412220,
+        "VmRSS_kib": 544708,
+        "gpu_mib": 1388
+      },
+      "gpu_offload": {
+        "offloaded_layers": 29,
+        "total_layers": 29,
+        "log_sha256": "afee02b4853f0d3b8e31c9912bf5e291650dbf309bb6d4f4fda3aaeeee58deef",
+        "log_excerpt": [
+          "0.00.842.562 I load_tensors: offloaded 29/29 layers to GPU",
+          "0.00.842.574 I load_tensors:        CUDA0 model buffer size =     0.00 MiB",
+          "0.00.842.576 I load_tensors:    CUDA_Host model buffer size =     0.00 MiB",
+          "0.00.854.081 I llama_kv_cache:      CUDA0 KV buffer size =     0.00 MiB",
+          "0.05.034.457 I load_tensors: offloaded 29/29 layers to GPU",
+          "0.05.034.464 I load_tensors:   CPU_Mapped model buffer size =   125.19 MiB",
+          "0.05.034.465 I load_tensors:        CUDA0 model buffer size =   934.70 MiB",
+          "0.05.190.706 I llama_kv_cache:      CUDA0 KV buffer size =   112.00 MiB"
+        ]
+      },
+      "qualified": true,
+      "checks": [
+        {
+          "name": "answer",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "\n\n**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+                  "reasoning_content": "\nFirst, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2.\n"
+                }
+              }
+            ],
+            "created": 1792527000,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 115,
+              "prompt_tokens": 22,
+              "total_tokens": 137,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "id": "chatcmpl-uD1OxeHUguOkRnM1GgJYUJ8Sr3mpwpia",
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 22,
+              "prompt_ms": 57.08,
+              "prompt_per_token_ms": 2.5945454545454543,
+              "prompt_per_second": 385.4239663629993,
+              "predicted_n": 115,
+              "predicted_ms": 328.933,
+              "predicted_per_token_ms": 2.885377192982456,
+              "predicted_per_second": 346.5751384020454
+            }
+          },
+          "wall_ms": 424.872,
+          "passed": true,
+          "strict_numeric_only": false
+        },
+        {
+          "name": "continuation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              },
+              {
+                "role": "assistant",
+                "content": "\n\n**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+                "reasoning_content": "\nFirst, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2.\n"
+              },
+              {
+                "role": "user",
+                "content": "Add one to your previous answer. After thinking, reply with only the number."
+              }
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "\n\n3",
+                  "reasoning_content": "\nOkay, so I'm trying to figure out what the user is asking for here. They mentioned \"Add one to your previous answer.\" But wait, in the previous conversation, I just gave them the answer to \"What is 1 + 1?\" which was 2. Now, they're asking me to add one to that previous answer. That doesn't make sense because 2 plus one would be 3, but I'm not sure if they want me to do that or if they're trying to trick me.\n\nMaybe they're testing if I can follow through on their instructions. Let me think about this. If I follow their instruction, I would add one to 2, which would give me 3. But I'm not sure if that's what they're asking for. Alternatively, maybe they're trying to see if I can keep up with their instructions, but I'm not sure.\n\nI should probably just go ahead and add one to the previous answer, which was 2, to get 3. But I'm not entirely sure if that's what they want. I'll go with that for now.\n"
+                }
+              }
+            ],
+            "created": 1792527001,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 232,
+              "prompt_tokens": 109,
+              "total_tokens": 341,
+              "prompt_tokens_details": {
+                "cached_tokens": 20
+              }
+            },
+            "id": "chatcmpl-BRHQNKKHwX4qdWf9MLhsfwipPqTO7wad",
+            "timings": {
+              "cache_n": 20,
+              "prompt_n": 89,
+              "prompt_ms": 8.141,
+              "prompt_per_token_ms": 0.09147191011235956,
+              "prompt_per_second": 10932.317897064244,
+              "predicted_n": 232,
+              "predicted_ms": 640.341,
+              "predicted_per_token_ms": 2.772038961038961,
+              "predicted_per_second": 360.7452903999588
+            }
+          },
+          "wall_ms": 656.513,
+          "passed": true,
+          "strict_numeric_only": true
+        },
+        {
+          "name": "truncation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 1,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "reasoning_content": "\nFirst"
+                }
+              }
+            ],
+            "created": 1792527001,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 1,
+              "prompt_tokens": 22,
+              "total_tokens": 23,
+              "prompt_tokens_details": {
+                "cached_tokens": 20
+              }
+            },
+            "id": "chatcmpl-NxK0Pk57X2yTjmrRv7vlmRcfpPoNpxYH",
+            "timings": {
+              "cache_n": 20,
+              "prompt_n": 2,
+              "prompt_ms": 4.309,
+              "prompt_per_token_ms": 2.1545,
+              "prompt_per_second": 464.14481318171266,
+              "predicted_n": 1,
+              "predicted_ms": 0.001,
+              "predicted_per_token_ms": 0.0,
+              "predicted_per_second": 0.0
+            }
+          },
+          "wall_ms": 15.452,
+          "passed": true
+        },
+        {
+          "name": "cache_reset",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 1,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "reasoning_content": "\nFirst"
+                }
+              }
+            ],
+            "created": 1792527001,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 1,
+              "prompt_tokens": 22,
+              "total_tokens": 23,
+              "prompt_tokens_details": {
+                "cached_tokens": 21
+              }
+            },
+            "id": "chatcmpl-FISvTri2moR7ewWW5eYpFkV4aQzaywlz",
+            "timings": {
+              "cache_n": 21,
+              "prompt_n": 1,
+              "prompt_ms": 4.425,
+              "prompt_per_token_ms": 4.425,
+              "prompt_per_second": 225.98870056497177,
+              "predicted_n": 1,
+              "predicted_ms": 0.001,
+              "predicted_per_token_ms": 0.0,
+              "predicted_per_second": 0.0
+            }
+          },
+          "wall_ms": 7.866,
+          "passed": true
+        },
+        {
+          "name": "stop_in_reasoning",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ],
+            "stop": [
+              "</think>"
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "reasoning_content": "\nFirst, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2.\n"
+                }
+              }
+            ],
+            "created": 1792527001,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 46,
+              "prompt_tokens": 22,
+              "total_tokens": 68,
+              "prompt_tokens_details": {
+                "cached_tokens": 21
+              }
+            },
+            "id": "chatcmpl-LzBgrMosGr2tyqOBEfDvJVHkxdYNklGz",
+            "timings": {
+              "cache_n": 21,
+              "prompt_n": 1,
+              "prompt_ms": 5.747,
+              "prompt_per_token_ms": 5.747,
+              "prompt_per_second": 174.00382808421784,
+              "predicted_n": 46,
+              "predicted_ms": 127.886,
+              "predicted_per_token_ms": 2.841911111111111,
+              "predicted_per_second": 351.87588946405396
+            }
+          },
+          "wall_ms": 137.747,
+          "passed": true
+        },
+        {
+          "name": "stream_truncation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 8,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? After thinking, reply with only the number."
+              }
+            ],
+            "stream": true
+          },
+          "response": {
+            "events": [
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "role": "assistant",
+                      "content": null
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": "\nFirst"
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": ","
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " I"
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " recognize"
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " that"
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " the"
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " question"
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " is"
+                    }
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "delta": {}
+                  }
+                ],
+                "created": 1792527002,
+                "id": "chatcmpl-Ix0iq0myjAu4rKP2nBQHrE858sr2HZir",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk",
+                "timings": {
+                  "cache_n": 21,
+                  "prompt_n": 1,
+                  "prompt_ms": 3.261,
+                  "prompt_per_token_ms": 3.261,
+                  "prompt_per_second": 306.65440049064705,
+                  "predicted_n": 8,
+                  "predicted_ms": 18.794,
+                  "predicted_per_token_ms": 2.684857142857143,
+                  "predicted_per_second": 372.4592955198467
+                }
+              }
+            ],
+            "done": true
+          },
+          "wall_ms": 25.081,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "engine": "llama_cpp_cuda",
+      "hardware": {
+        "source_commit": "9b05354ec6fb58b4e665e9a39ebc40285c015638",
+        "cpu_features": {
+          "avx": true,
+          "avx2": true,
+          "fma": true,
+          "f16c": true,
+          "avx_vnni": true
+        },
+        "cpu_library_sha256": "1cad44fbad1cc5ee43a7845264b4f8a519c33eeb24b2fbd597bf1d690c01f427",
+        "server_sha256": "2cdfb3a9dbfc2d8dc735617ebf83330767b94bb2486f0c8e85669c7f604db53b",
+        "cuda_backend": "Unchanged from the existing build at the same source revision",
+        "server_actual_sha256": "2cdfb3a9dbfc2d8dc735617ebf83330767b94bb2486f0c8e85669c7f604db53b",
+        "cuda_library_sha256": "15b68f9aab5cfed1da1d72382bef8cf79931d1ba1d1513d9ffda3e4a5f231c2d",
+        "cpu": "Intel(R) Core(TM) i7-14700K",
+        "os": "Linux-6.18.49-x86_64-with-glibc2.42",
+        "gpu": "NVIDIA GeForce RTX 4080, 595.71.05, 16376 MiB, 8.9",
+        "logical_cpus": 28
+      },
+      "startup_ms": 2013.357,
+      "sampling_profile": "recommended",
+      "memory_after_generation": {
+        "VmHWM_kib": 1413772,
+        "VmRSS_kib": 556952,
+        "gpu_mib": 1388
+      },
+      "gpu_offload": {
+        "offloaded_layers": 29,
+        "total_layers": 29,
+        "log_sha256": "443e54a4e9750299c6bef644c0f78a11b63424f8c489f0252b22049be780c79d",
+        "log_excerpt": [
+          "0.00.353.618 I load_tensors: offloaded 29/29 layers to GPU",
+          "0.00.353.621 I load_tensors:        CUDA0 model buffer size =     0.00 MiB",
+          "0.00.353.621 I load_tensors:    CUDA_Host model buffer size =     0.00 MiB",
+          "0.00.357.397 I llama_kv_cache:      CUDA0 KV buffer size =     0.00 MiB",
+          "0.01.233.006 I load_tensors: offloaded 29/29 layers to GPU",
+          "0.01.233.010 I load_tensors:   CPU_Mapped model buffer size =   125.19 MiB",
+          "0.01.233.011 I load_tensors:        CUDA0 model buffer size =   934.70 MiB",
+          "0.01.327.007 I llama_kv_cache:      CUDA0 KV buffer size =   112.00 MiB"
+        ]
+      },
+      "qualified": true,
+      "checks": [
+        {
+          "name": "answer",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? Please reason step by step, and put your final answer within \\boxed{}."
+              }
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "\n\n**Solution:**\n\nTo find the value of \\(1 + 1\\), follow these steps:\n\n1. **Understand the Problem:**\n   We need to add the numbers 1 and 1 together.\n\n2. **Perform the Addition:**\n   \\[\n   1 + 1 = 2\n   \\]\n\n3. **State the Final Answer:**\n   The sum of 1 and 1 is \\(\\boxed{2}\\).",
+                  "reasoning_content": "\nTo determine the value of 1 + 1, I start by recognizing that addition is a basic arithmetic operation. \n\nWhen adding 1 and 1, I can visualize it as combining two single units. This results in a total of two units.\n\nTherefore, the sum of 1 and 1 is 2.\n"
+                }
+              }
+            ],
+            "created": 1792526911,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 161,
+              "prompt_tokens": 28,
+              "total_tokens": 189,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "id": "chatcmpl-tWtZjYzkKFvMLp52ziYl9bKIfMhZ3aDh",
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 28,
+              "prompt_ms": 22.755,
+              "prompt_per_token_ms": 0.8126785714285714,
+              "prompt_per_second": 1230.4987914744013,
+              "predicted_n": 161,
+              "predicted_ms": 443.308,
+              "predicted_per_token_ms": 2.7706749999999998,
+              "predicted_per_second": 360.92287980365796
+            }
+          },
+          "wall_ms": 470.367,
+          "passed": true,
+          "strict_numeric_only": null
+        },
+        {
+          "name": "continuation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? Please reason step by step, and put your final answer within \\boxed{}."
+              },
+              {
+                "role": "assistant",
+                "content": "\n\n**Solution:**\n\nTo find the value of \\(1 + 1\\), follow these steps:\n\n1. **Understand the Problem:**\n   We need to add the numbers 1 and 1 together.\n\n2. **Perform the Addition:**\n   \\[\n   1 + 1 = 2\n   \\]\n\n3. **State the Final Answer:**\n   The sum of 1 and 1 is \\(\\boxed{2}\\).",
+                "reasoning_content": "\nTo determine the value of 1 + 1, I start by recognizing that addition is a basic arithmetic operation. \n\nWhen adding 1 and 1, I can visualize it as combining two single units. This results in a total of two units.\n\nTherefore, the sum of 1 and 1 is 2.\n"
+              },
+              {
+                "role": "user",
+                "content": "Add one to your previous answer. Please reason step by step, and put your final answer within \\boxed{}."
+              }
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "\n\nTo find the value of \\(2 + 1\\):\n\n1. **Understand the Problem:**\n   We need to add the numbers 2 and 1 together.\n\n2. **Perform the Addition:**\n   \\[\n   2 + 1 = 3\n   \\]\n\n3. **State the Final Answer:**\n   The sum of 2 and 1 is \\(\\boxed{3}\\).",
+                  "reasoning_content": "\nAlright, so the user just asked me to add one to my previous answer, which was 2. Okay, let's break this down. First, I need to figure out what the user meant by \"your previous answer.\" I think they mean the result from the last question I had them do, which was 2. \n\nSo, the user wants me to take that 2 and add one to it. That seems straightforward, but I should make sure I understand exactly what they need. Maybe they're practicing addition or working on a math problem where they have to build upon previous results. \n\nI should explain that adding one to 2 is a simple arithmetic operation. Let me write it out: 2 + 1 equals 3. That makes sense because when you add one to any number, you're essentially moving one step forward on the number line. So, starting at 2 and taking a step forward brings me to 3.\n\nI should also consider if there's any catch or if the user might be confused about the addition process. Maybe they're still learning, so it's good to be clear. I'll present the answer in a straightforward manner without any unnecessary jargon. \n\nI wonder if they're working on something like money, where adding one could represent an extra dollar, or maybe they're just practicing basic math facts. Either way, the answer is clear: 2 plus 1 equals 3. I'll make sure to present it in a way that's easy to understand and confirm with them.\n"
+                }
+              }
+            ],
+            "created": 1792526912,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 398,
+              "prompt_tokens": 147,
+              "total_tokens": 545,
+              "prompt_tokens_details": {
+                "cached_tokens": 26
+              }
+            },
+            "id": "chatcmpl-WWe42vEXaTBd2fiBMxeKLlJUKUkeHNlx",
+            "timings": {
+              "cache_n": 26,
+              "prompt_n": 121,
+              "prompt_ms": 9.327,
+              "prompt_per_token_ms": 0.07708264462809918,
+              "prompt_per_second": 12973.088881741181,
+              "predicted_n": 398,
+              "predicted_ms": 1084.963,
+              "predicted_per_token_ms": 2.732904282115869,
+              "predicted_per_second": 365.9110955857481
+            }
+          },
+          "wall_ms": 1101.017,
+          "passed": true,
+          "strict_numeric_only": null
+        },
+        {
+          "name": "truncation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 1,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? Please reason step by step, and put your final answer within \\boxed{}."
+              }
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "reasoning_content": "\nTo"
+                }
+              }
+            ],
+            "created": 1792526912,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 1,
+              "prompt_tokens": 28,
+              "total_tokens": 29,
+              "prompt_tokens_details": {
+                "cached_tokens": 26
+              }
+            },
+            "id": "chatcmpl-fX5FMkVvaYoDdkltf8POX0EiDNNgbYv9",
+            "timings": {
+              "cache_n": 26,
+              "prompt_n": 2,
+              "prompt_ms": 3.899,
+              "prompt_per_token_ms": 1.9495,
+              "prompt_per_second": 512.952038984355,
+              "predicted_n": 1,
+              "predicted_ms": 0.001,
+              "predicted_per_token_ms": 0.0,
+              "predicted_per_second": 0.0
+            }
+          },
+          "wall_ms": 13.061,
+          "passed": true
+        },
+        {
+          "name": "cache_reset",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 1,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? Please reason step by step, and put your final answer within \\boxed{}."
+              }
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "reasoning_content": "\nTo"
+                }
+              }
+            ],
+            "created": 1792526912,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 1,
+              "prompt_tokens": 28,
+              "total_tokens": 29,
+              "prompt_tokens_details": {
+                "cached_tokens": 27
+              }
+            },
+            "id": "chatcmpl-z3FaOMXtoFGgZADY5IKPxvrV4D76KwcC",
+            "timings": {
+              "cache_n": 27,
+              "prompt_n": 1,
+              "prompt_ms": 3.775,
+              "prompt_per_token_ms": 3.775,
+              "prompt_per_second": 264.90066225165566,
+              "predicted_n": 1,
+              "predicted_ms": 0.001,
+              "predicted_per_token_ms": 0.0,
+              "predicted_per_second": 0.0
+            }
+          },
+          "wall_ms": 6.716,
+          "passed": true
+        },
+        {
+          "name": "stop_in_reasoning",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 2048,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? Please reason step by step, and put your final answer within \\boxed{}."
+              }
+            ],
+            "stop": [
+              "</think>"
+            ]
+          },
+          "response": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "reasoning_content": "\nTo determine the value of 1 + 1, I start by recognizing that addition is a basic arithmetic operation. When two quantities are added together, their total is the sum.\n\nNext, I consider the numbers involved. Both numbers are 1, which are straightforward and do not require any special handling.\n\nFinally, by performing the addition, 1 + 1 equals 2. This is a fundamental result in mathematics and is universally accepted.\n"
+                }
+              }
+            ],
+            "created": 1792526912,
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "system_fingerprint": "b10433-9b05354ec",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 90,
+              "prompt_tokens": 28,
+              "total_tokens": 118,
+              "prompt_tokens_details": {
+                "cached_tokens": 27
+              }
+            },
+            "id": "chatcmpl-exQrOHQwaF19NlBAoZp1g2bkZkr2y0oO",
+            "timings": {
+              "cache_n": 27,
+              "prompt_n": 1,
+              "prompt_ms": 3.384,
+              "prompt_per_token_ms": 3.384,
+              "prompt_per_second": 295.5082742316785,
+              "predicted_n": 90,
+              "predicted_ms": 242.662,
+              "predicted_per_token_ms": 2.7265393258426966,
+              "predicted_per_second": 366.76529493699053
+            }
+          },
+          "wall_ms": 248.94,
+          "passed": true
+        },
+        {
+          "name": "stream_truncation",
+          "request": {
+            "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "seed": 1,
+            "max_tokens": 8,
+            "messages": [
+              {
+                "role": "user",
+                "content": "What is 1 + 1? Please reason step by step, and put your final answer within \\boxed{}."
+              }
+            ],
+            "stream": true
+          },
+          "response": {
+            "events": [
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "role": "assistant",
+                      "content": null
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": "\nTo"
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " determine"
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " the"
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " value"
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " of"
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " "
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": "1"
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": null,
+                    "index": 0,
+                    "delta": {
+                      "reasoning_content": " +"
+                    }
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk"
+              },
+              {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "delta": {}
+                  }
+                ],
+                "created": 1792526912,
+                "id": "chatcmpl-pI8shqKwNsdoz3ZxI00ZuxYS3MkQQjud",
+                "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                "system_fingerprint": "b10433-9b05354ec",
+                "object": "chat.completion.chunk",
+                "timings": {
+                  "cache_n": 27,
+                  "prompt_n": 1,
+                  "prompt_ms": 2.775,
+                  "prompt_per_token_ms": 2.775,
+                  "prompt_per_second": 360.36036036036035,
+                  "predicted_n": 8,
+                  "predicted_ms": 18.894,
+                  "predicted_per_token_ms": 2.699142857142857,
+                  "predicted_per_second": 370.4879856038954
+                }
+              }
+            ],
+            "done": true
+          },
+          "wall_ms": 25.905,
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "failures_and_limits": {
+    "continuation_whitespace": {
+      "engine": "psionic_native_cpu",
+      "qualified": false,
+      "check": {
+        "name": "continuation",
+        "request": {
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "temperature": 0,
+          "top_p": 0.95,
+          "seed": 1,
+          "max_tokens": 2048,
+          "psionic_reasoning": {
+            "parser": "deepseek_r1",
+            "mode": "separate"
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "What is 1 + 1? After thinking, reply with only the number."
+            },
+            {
+              "role": "assistant",
+              "content": "**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+              "reasoning_content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2."
+            },
+            {
+              "role": "user",
+              "content": "Add one to your previous answer. After thinking, reply with only the number."
+            }
+          ]
+        },
+        "response": {
+          "id": "psionic-chatcmpl-1a15aeb38c0-b1b9-2",
+          "object": "chat.completion",
+          "created": 1792526871,
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "I'm sorry, but I need to clarify that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I should focus on the next question if you have one.",
+                "reasoning_content": "Okay, so I'm trying to figure out what the user is asking for here. They mentioned \"Add one to your previous answer.\" But wait, in the previous conversation, I just provided the answer to the first question, which was \"What is 1 + 1?\" and I responded with 2. Now, they're asking me to add one to that previous answer. That doesn't make sense because 2 plus one would be 3, but I already provided 2 as the answer to the first question.\n\nMaybe they're confused or maybe they're testing if I can follow through on previous instructions. I should probably clarify that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I need to make sure I'm not making any mistakes here.\n\nAlternatively, maybe they're trying to see if I can handle multiple questions in a row. But in this case, the first question was straightforward, and the second one is a bit confusing. I should stick to the first answer and avoid adding one to it. It's important to be clear and not assume what the user is trying to achieve.\n\nI think the best course of action is to acknowledge their confusion and explain that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I should also offer to help with the next question if they have one, to keep the conversation going smoothly."
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 108,
+            "completion_tokens": 338,
+            "total_tokens": 446
+          },
+          "psionic_reasoning": {
+            "parser": "deepseek_r1",
+            "source": "text",
+            "final_content": "I'm sorry, but I need to clarify that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I should focus on the next question if you have one.",
+            "reasoning_content": "Okay, so I'm trying to figure out what the user is asking for here. They mentioned \"Add one to your previous answer.\" But wait, in the previous conversation, I just provided the answer to the first question, which was \"What is 1 + 1?\" and I responded with 2. Now, they're asking me to add one to that previous answer. That doesn't make sense because 2 plus one would be 3, but I already provided 2 as the answer to the first question.\n\nMaybe they're confused or maybe they're testing if I can follow through on previous instructions. I should probably clarify that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I need to make sure I'm not making any mistakes here.\n\nAlternatively, maybe they're trying to see if I can handle multiple questions in a row. But in this case, the first question was straightforward, and the second one is a bit confusing. I should stick to the first answer and avoid adding one to it. It's important to be clear and not assume what the user is trying to achieve.\n\nI think the best course of action is to acknowledge their confusion and explain that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I should also offer to help with the next question if they have one, to keep the conversation going smoothly.",
+            "parts": [
+              {
+                "kind": "reasoning",
+                "role": "assistant",
+                "content": "Okay, so I'm trying to figure out what the user is asking for here. They mentioned \"Add one to your previous answer.\" But wait, in the previous conversation, I just provided the answer to the first question, which was \"What is 1 + 1?\" and I responded with 2. Now, they're asking me to add one to that previous answer. That doesn't make sense because 2 plus one would be 3, but I already provided 2 as the answer to the first question.\n\nMaybe they're confused or maybe they're testing if I can follow through on previous instructions. I should probably clarify that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I need to make sure I'm not making any mistakes here.\n\nAlternatively, maybe they're trying to see if I can handle multiple questions in a row. But in this case, the first question was straightforward, and the second one is a bit confusing. I should stick to the first answer and avoid adding one to it. It's important to be clear and not assume what the user is trying to achieve.\n\nI think the best course of action is to acknowledge their confusion and explain that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I should also offer to help with the next question if they have one, to keep the conversation going smoothly."
+              },
+              {
+                "kind": "final",
+                "role": "assistant",
+                "content": "I'm sorry, but I need to clarify that I'm not supposed to add one to the previous answer because I already provided the answer to the first question. I should focus on the next question if you have one."
+              }
+            ]
+          }
+        },
+        "wall_ms": 99153.74,
+        "passed": false,
+        "strict_numeric_only": false
+      },
+      "explanation": "Trimming final-answer leading newlines changed the replay prompt from 109 to 108 tokens."
+    },
+    "sampled_cpu_timeouts": [
+      {
+        "parallel_quantized_rows": false,
+        "build": "dev opt-level 1",
+        "sampling_profile": "recommended",
+        "request_deadline_seconds": 600,
+        "qualified": false,
+        "error": "timed out"
+      },
+      {
+        "parallel_quantized_rows": true,
+        "build": "dev opt-level 1",
+        "sampling_profile": "recommended",
+        "request_deadline_seconds": 600,
+        "qualified": false,
+        "error": "timed out"
+      }
+    ],
+    "shared_gpu_capacity_retry": {
+      "qualified": false,
+      "error": "The model server exited before it became ready; see engine.log",
+      "observed_free_gpu_memory_mib_after_failure": 1305,
+      "log_excerpt": [
+        "0.01.472.654 E ggml_backend_cuda_buffer_type_alloc_buffer: allocating 112.00 MiB on device 0: cudaMalloc failed: out of memory",
+        "0.01.472.655 E alloc_tensor_range: failed to allocate CUDA0 buffer of size 117440512"
+      ]
+    }
+  },
+  "strict_format_diagnostics": {
+    "native_cpu_serial": [
+      {
+        "request": {
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "temperature": 0,
+          "seed": 1,
+          "max_tokens": 2048,
+          "psionic_reasoning": {
+            "parser": "deepseek_r1",
+            "mode": "separate"
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "What is 1 + 1? After thinking, reply with only the number."
+            }
+          ]
+        },
+        "response": {
+          "id": "psionic-chatcmpl-1a15ad2bb61-176b7-1",
+          "object": "chat.completion",
+          "created": 1792525246,
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+                "reasoning_content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2."
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 22,
+            "completion_tokens": 114,
+            "total_tokens": 136
+          },
+          "psionic_reasoning": {
+            "parser": "deepseek_r1",
+            "source": "text",
+            "final_content": "**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+            "reasoning_content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2.",
+            "parts": [
+              {
+                "kind": "reasoning",
+                "role": "assistant",
+                "content": "First, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2."
+              },
+              {
+                "kind": "final",
+                "role": "assistant",
+                "content": "**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]"
+              }
+            ]
+          }
+        },
+        "wall_seconds": 124.37179508300001,
+        "passed": false
+      },
+      {
+        "request": {
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "temperature": 0,
+          "seed": 1,
+          "max_tokens": 2048,
+          "psionic_reasoning": {
+            "parser": "deepseek_r1",
+            "mode": "separate"
+          },
+          "messages": [
+            {
+              "role": "user",
+              "content": "What is 1 + 1? After thinking, reply with only the number."
+            },
+            {
+              "role": "assistant",
+              "content": "2",
+              "reasoning_content": "One plus one is two."
+            },
+            {
+              "role": "user",
+              "content": "Add one to your previous answer. After thinking, reply with only the number."
+            }
+          ]
+        },
+        "response": {
+          "id": "psionic-chatcmpl-1a15ad2bb61-176b7-2",
+          "object": "chat.completion",
+          "created": 1792525377,
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "Sure! After adding one to your previous answer of **2**, the result is:\n\n\\[\n2 + 1 = \\boxed{3}\n\\]",
+                "reasoning_content": "Okay, so the user just asked me to add one to my previous answer. I remember that the first time I responded, I said \"2.\" Now, they want me to add one more to that. So, 2 plus 1 is 3. I should make sure to clearly show the addition and confirm the new answer. I'll write it out step by step to make it easy to understand. That way, the user can see how I arrived at the correct result."
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 42,
+            "completion_tokens": 131,
+            "total_tokens": 173
+          },
+          "psionic_reasoning": {
+            "parser": "deepseek_r1",
+            "source": "text",
+            "final_content": "Sure! After adding one to your previous answer of **2**, the result is:\n\n\\[\n2 + 1 = \\boxed{3}\n\\]",
+            "reasoning_content": "Okay, so the user just asked me to add one to my previous answer. I remember that the first time I responded, I said \"2.\" Now, they want me to add one more to that. So, 2 plus 1 is 3. I should make sure to clearly show the addition and confirm the new answer. I'll write it out step by step to make it easy to understand. That way, the user can see how I arrived at the correct result.",
+            "parts": [
+              {
+                "kind": "reasoning",
+                "role": "assistant",
+                "content": "Okay, so the user just asked me to add one to my previous answer. I remember that the first time I responded, I said \"2.\" Now, they want me to add one more to that. So, 2 plus 1 is 3. I should make sure to clearly show the addition and confirm the new answer. I'll write it out step by step to make it easy to understand. That way, the user can see how I arrived at the correct result."
+              },
+              {
+                "kind": "final",
+                "role": "assistant",
+                "content": "Sure! After adding one to your previous answer of **2**, the result is:\n\n\\[\n2 + 1 = \\boxed{3}\n\\]"
+              }
+            ]
+          }
+        },
+        "wall_seconds": 130.94479287500002,
+        "passed": false
+      }
+    ],
+    "llama_cpp_cuda": [
+      {
+        "request": {
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "temperature": 0,
+          "seed": 1,
+          "max_tokens": 2048,
+          "messages": [
+            {
+              "role": "user",
+              "content": "What is 1 + 1? After thinking, reply with only the number."
+            }
+          ]
+        },
+        "response": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "\n\n**Solution:**\n\nTo find the sum of 1 and 1, follow these simple steps:\n\n1. **Add the numbers:**\n   \n   \\[\n   1 + 1 = 2\n   \\]\n\n2. **Present the final answer:**\n   \n   \\[\n   \\boxed{2}\n   \\]",
+                "reasoning_content": "\nFirst, I recognize that the question is asking for the sum of 1 and 1.\n\nNext, I perform the addition: 1 plus 1 equals 2.\n\nFinally, I provide the answer as 2.\n"
+              }
+            }
+          ],
+          "created": 1792525244,
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "system_fingerprint": "b10433-9b05354ec",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 115,
+            "prompt_tokens": 22,
+            "total_tokens": 137,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "id": "chatcmpl-STpschMeW1yytVtnhint5a3nW0oICDvA",
+          "timings": {
+            "cache_n": 0,
+            "prompt_n": 22,
+            "prompt_ms": 42.513,
+            "prompt_per_token_ms": 1.9324090909090907,
+            "prompt_per_second": 517.4887681415097,
+            "predicted_n": 115,
+            "predicted_ms": 369.944,
+            "predicted_per_token_ms": 3.245122807017544,
+            "predicted_per_second": 308.1547477456047
+          }
+        },
+        "wall_seconds": 0.4223267359775491,
+        "passed": false
+      },
+      {
+        "request": {
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "temperature": 0,
+          "seed": 1,
+          "max_tokens": 2048,
+          "messages": [
+            {
+              "role": "user",
+              "content": "What is 1 + 1? After thinking, reply with only the number."
+            },
+            {
+              "role": "assistant",
+              "content": "2",
+              "reasoning_content": "One plus one is two."
+            },
+            {
+              "role": "user",
+              "content": "Add one to your previous answer. After thinking, reply with only the number."
+            }
+          ]
+        },
+        "response": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "\n\n3",
+                "reasoning_content": "\nOkay, so the user just asked me to add one to my previous answer. I remember that the first time I responded, I said \"2.\" Now, I need to figure out what the user wants next. They mentioned \"Add one to your previous answer,\" so I should add one to 2, which makes it 3. \n\nWait, but I should make sure I'm following the instructions correctly. The user said, \"Add one to your previous answer. After thinking, reply with only the number.\" So, I think they want me to provide the new number after adding one. \n\nI should double-check my previous response to avoid any mistakes. If the previous answer was 2, adding one would indeed make it 3. I don't see any errors in that calculation. \n\nI also need to make sure I'm only providing the number and not any additional text. The user specified to reply with only the number, so I should just write 3 without any extra words. \n\nIs there anything else I need to consider? Maybe the user wants to continue the sequence, but since they only asked to add one, I'll stick to that. I don't think they want more than one addition. \n\nI should also think about the context. The user started with \"What is 1 + 1?\" and then added one to the previous answer. So, it's a simple arithmetic problem followed by a sequential addition. \n\nI don't see any complications here. It's straightforward. I'll proceed to respond with 3.\n"
+              }
+            }
+          ],
+          "created": 1792525245,
+          "model": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+          "system_fingerprint": "b10433-9b05354ec",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 317,
+            "prompt_tokens": 42,
+            "total_tokens": 359,
+            "prompt_tokens_details": {
+              "cached_tokens": 20
+            }
+          },
+          "id": "chatcmpl-NEDg4ApT5SktBzjK3TuUsmyrpIcpEbqI",
+          "timings": {
+            "cache_n": 20,
+            "prompt_n": 22,
+            "prompt_ms": 9.075,
+            "prompt_per_token_ms": 0.4125,
+            "prompt_per_second": 2424.2424242424245,
+            "predicted_n": 317,
+            "predicted_ms": 1003.114,
+            "predicted_per_token_ms": 3.174411392405063,
+            "predicted_per_second": 315.019030738281
+          }
+        },
+        "wall_seconds": 1.0193058800068684,
+        "passed": true
+      }
+    ]
+  },
+  "limits": [
+    "Runtime checks grade the final numeric/boxed answer separately from reasoning and strict bare-number formatting.",
+    "The native recommended-sampling probe timed out; that native sampling profile is not qualified by this study.",
+    "Native CPU used an opt-level 1 development build; timing is not release-build performance.",
+    "One run per workload on shared machines under other workloads; no quiet lease or controlled speedup claim.",
+    "Different samplers and floating-point paths can produce different thoughts and token counts; this is not logit parity.",
+    "Native CPU and GPU use different hardware. Latencies include prompt processing and thinking tokens.",
+    "llama.cpp uses a 4096-token context; long context, tools, structured output, and native CUDA are not qualified.",
+    "All requests were synthetic loopback HTTP calls in scratch servers; no provider, chat account, or owner data was used."
+  ],
+  "verification": {
+    "python_tests_passed": 19,
+    "q4_k_q6_k_parallel_rows_match_serial": true,
+    "existing_cpu_decoder_tests_passed": 5,
+    "deepseek_model_tests_passed": 3,
+    "deepseek_server_tests_passed": 1
+  },
+  "live_prompt_parity": {
+    "reference": "Jinja2 3.1.6; tokenizers 0.22.2",
+    "upstream_revision": "ad9f0ae0864d7fbcd1cd905e3c6c5b069cc8b562",
+    "message_count": 3,
+    "token_count": 109,
+    "prompt_sha256": "33cc043d8e1e426f716ea440e094d36229c242c1d7505a5570e4824cd68fed74",
+    "token_ids": [
+      151646,
+      151644,
+      3838,
+      374,
+      220,
+      16,
+      488,
+      220,
+      16,
+      30,
+      4636,
+      7274,
+      11,
+      9851,
+      448,
+      1172,
+      279,
+      1372,
+      13,
+      151645,
+      271,
+      334,
+      36842,
+      25,
+      56177,
+      1249,
+      1477,
+      279,
+      2629,
+      315,
+      220,
+      16,
+      323,
+      220,
+      16,
+      11,
+      1795,
+      1493,
+      4285,
+      7354,
+      1447,
+      16,
+      13,
+      3070,
+      2212,
+      279,
+      5109,
+      25,
+      1019,
+      5872,
+      256,
+      1124,
+      9640,
+      256,
+      220,
+      16,
+      488,
+      220,
+      16,
+      284,
+      220,
+      17,
+      198,
+      256,
+      1124,
+      2533,
+      17,
+      13,
+      3070,
+      21195,
+      279,
+      1590,
+      4226,
+      25,
+      1019,
+      5872,
+      256,
+      1124,
+      9640,
+      256,
+      1124,
+      79075,
+      90,
+      17,
+      532,
+      256,
+      1124,
+      60,
+      151643,
+      151644,
+      2212,
+      825,
+      311,
+      697,
+      3681,
+      4226,
+      13,
+      4636,
+      7274,
+      11,
+      9851,
+      448,
+      1172,
+      279,
+      1372,
+      13,
+      151645,
+      151648,
+      198
+    ],
+    "matched": true
+  }
+}

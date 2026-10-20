@@ -10,17 +10,19 @@ organization, shallow-cloned 18 selected repositories, and reused the existing
 DeepInfer clone. Review depth ranges from documentation screening to the
 specific source implementations linked below. Four official checkpoint
 configurations and tokenizer configurations were downloaded at immutable
-revisions. No model weights, dependencies, vendor submodules, or device runs
-were needed. All support targets below are proposed; this change implements
-no decoder and qualifies no new model.
+revisions. The initial survey needed no model weights or device runs.
+The later [DS0 results](#ds0-full-model-qualification-2026-10-20) qualify
+the first pinned R1 distill on native CPU and llama.cpp CUDA. The remaining
+model support targets are proposed.
 
 ## Personal serving first: one generation at a time
 
 Owner direction, 2026-10-20: get DeepSeek working reliably for our own use
 before building a multiuser service. This order takes precedence over the
 broader [GCP proposal](deepinfer-lessons.md#gcp-deployment-proposal-2026-10-20)
-and its initial gateway/replica scope. This section is a plan, not a claim
-that a worker has been deployed or full-model execution has passed.
+and its initial gateway/replica scope. This section is a serving plan;
+no cloud worker has been deployed. DS0's direct full-model results are
+[recorded below](#ds0-full-model-qualification-2026-10-20).
 
 The first useful result is one pinned model, one process, and one request
 that returns a complete final answer. Begin with the existing
@@ -34,7 +36,7 @@ Larger distills and a new native GPU decoder follow a working baseline.
 
 | Owner | Work | Dependency on the other work |
 | --- | --- | --- |
-| DS0 agent | Pinned artifact/tokenizer/template, reasoning/final parsing, numerical/full-model qualification, and the existing catalog/runner's DeepSeek checks | Its first text implementation landed as `ad9a289fc7`. Token/artifact checks pass; full-model CPU and external GPU results remain pending. |
+| DS0 agent | Pinned artifact/tokenizer/template, reasoning/final parsing, numerical/full-model qualification, and the existing catalog/runner's DeepSeek checks | Its first text implementation landed as `ad9a289fc7`. Token/artifact checks and six direct runtime checks pass for native CPU greedy and llama.cpp CUDA greedy/recommended sampling; sampled CPU remains unqualified. See the [full-model results](#ds0-full-model-qualification-2026-10-20). |
 | Serving work in this chat | Serial execution, bounded requests, completion/error handling, timeout recovery, then a reproducible private worker launch and smoke check | Consume the landed DS0 profile and its qualification results. Do not rewrite tokenizer, prompt rendering, reasoning parsing, decoder math, or duplicate its qualification runner. |
 
 The first serving changes can be developed with synthetic model-server
@@ -127,13 +129,14 @@ reasoning without a final answer, tool requests, refusals and malformed
 completion envelopes are errors. Reasoning is never substituted for final
 text. Use `pylon serve --slots 1 --max-tokens 2048` with the separately
 started serial server and the normal engine/model/buyer settings; the
-2,048-token setting still needs DS0's real-model/deadline qualification.
+2,048-token setting passes DS0's direct runtime checks but still needs
+Pylon deadline qualification; the native CPU continuation took 274 seconds.
 The supervised `pylon up` path does not yet select serial mode automatically.
 
 This completes the admission and completion-validation portion of S1,
 independently of DS0. S1's operator-configured context/output caps and
-execution deadline, S2's hard stop/restart recovery, full-model qualification,
-and the cloud launch remain pending. An active generation that does not
+execution deadline, S2's hard stop/restart recovery, full-model serving-path
+checks, and the cloud launch remain pending. An active generation that does not
 finish stays busy; this change does not claim to interrupt a hung decoder.
 Worker/caller-cancellation fixtures and a tiny CPU model cover slot ownership,
 cross-endpoint refusal, error release and sequential reuse; a real HTTP
@@ -390,7 +393,7 @@ or starting a new service during this documentation task.
 
 | Step | Priority and dependencies | Existing owner to extend | Completion evidence |
 | --- | --- | --- | --- |
-| DS0: Pin and qualify the first R1 distill | P0; R0 measurements | `psionic-models` tokenizer/templates, `psionic-serve`, existing Pylon model catalog/runner | Exact artifact and prompt-token fixtures, CPU answer/continuation results, reasoning/final separation, EOS/truncation tests, and separately labeled external-engine GPU results. Tool support stays disabled until tested. |
+| DS0: Pin and qualify the first R1 distill | P0; R0 measurements | `psionic-models` tokenizer/templates, `psionic-serve`, existing Pylon model catalog/runner | Complete for the [recorded 1.5B text profiles](#ds0-full-model-qualification-2026-10-20): pinned token fixtures, native CPU reference, and separately measured llama.cpp CUDA. Sampled CPU, tools, and long context remain unqualified. |
 | DS1: Add the official Rust V4/V4.1 protocol adapter | P0; independent of a full native model | `psionic-models`, `psionic-serve`; R2 for strict constraints | Versioned rendering/token fixtures and mock streamed tool/reasoning/API tests. Report this as protocol-qualified, not native inference support. |
 | DS2: Implement a V2-Lite MLA/MoE CPU reference | P1; DS0 artifact/token contract | `psionic-models`, `psionic-runtime`, `psionic-serve`, CPU backend | Independent layer logits, compressed-versus-expanded attention, router/combine parity, cache continuation/reset, and a complete pinned-model result. |
 | DS3: Accelerate single-node MLA/MoE and add V3/R1 variants | P1; DS2; R1/R3 for batched/overlap claims | Existing CUDA backend, expert kernels, runtime memory plans | Exact layout validation, quantized/reference parity, measured total resident memory and latency/committed throughput. Metal is separately qualified. |
@@ -449,15 +452,102 @@ The [2026-10-20 artifact check](../../crates/psionic/crates/psionic-models/src/t
 passes all 16 cases on the pinned GGUF. Focused model and server tests,
 existing template and reasoning tests, 14 Python qualification/download
 tests, and formatting checks also pass.
-The Pylon catalog ID is `deepseek-r1-distill-qwen-1.5b`. This profile always
-uses the thinking prefix, with greedy sampling for qualification. The existing
-qualification runner now requires separate reasoning and exact final
-answers for an arithmetic request and a continuation, plus a one-token
-truncation with `finish_reason=length` and no final answer. Failed checks
-or failed automatic scores produce a failed report and a nonzero exit.
-Full-model CPU answers and separately labeled llama.cpp GPU runs remain
-required before marking DS0 complete; token fixtures alone do not qualify
-model quality, performance, or the advertised long context.
+The Pylon catalog ID is `deepseek-r1-distill-qwen-1.5b`. The runner's native
+reference uses greedy decoding; llama.cpp defaults to the [recommended R1
+sampling settings](https://github.com/deepseek-ai/DeepSeek-R1/blob/0cf78561f1d51c84a21b2190626b21116d5c68bb/README.md#usage-recommendations):
+temperature `0.6`, top-p `0.95`, and a boxed final answer for math. Both
+profiles keep the thinking prefix. Bare-number formatting is scored
+separately from arithmetic correctness; a boxed answer must not be reported
+as passing a numeric-only instruction.
+
+The runtime checks cover a complete answer, continuation using the actual
+previous response, one-token truncation, repeated-request state, stopping
+at `</think>`, and SSE truncation without leaking reasoning into final text.
+CUDA qualification additionally requires observed GPU memory for the server
+and a log confirming all 29 layers offloaded. Failed checks produce a
+failed report and a nonzero exit. `--direct-only` runs these checks over
+loopback HTTP without starting a Pylon provider or using an account.
+
+Two implementation fixes came from the full-model runs. The R1 parser now
+preserves final-answer whitespace: stripping the two leading newlines
+changed the next prompt from 109 to 108 tokens and led to a continuation
+refusal. A golden replay check covers the parsed response as well as the
+original inline thinking block. Quantized CPU projections now compute
+independent rows in parallel when there are at least 256 rows; Q4_K and
+Q6_K tests compare one- and four-thread results with the serial row dots.
+The arithmetic order within a row stays unchanged.
+
+Repeat the qualification after downloading the pinned model:
+
+```sh
+run_dir="$(openagents scratch)/deepseek-ds0"
+python3 scripts/bench/pylon-models/run.py \
+  --models deepseek-r1-distill-qwen-1.5b --download-only \
+  --model-dir "$run_dir/models" --output "$run_dir/download"
+python3 scripts/bench/pylon-models/run.py \
+  --models deepseek-r1-distill-qwen-1.5b --direct-only \
+  --engine psionic --psionic-bin /path/to/psionic-openai-server \
+  --deepseek-sampling greedy --model-dir "$run_dir/models" \
+  --output "$run_dir/cpu"
+python3 scripts/bench/pylon-models/run.py \
+  --models deepseek-r1-distill-qwen-1.5b --direct-only \
+  --engine llama-cpp --llama-cpp-bin /path/to/llama-server \
+  --llama-cpp-device CUDA0 --model-dir "$run_dir/models" \
+  --output "$run_dir/cuda"
+```
+
+Use `--deepseek-sampling greedy` on the GPU for the deterministic reference
+comparison. The CUDA runtime and required libraries are described in the
+[Pylon model qualification guide](../compute/pylon.md#choose-another-text-model).
+
+### DS0 full-model qualification (2026-10-20)
+
+DS0 is complete for the pinned Q4_K_M artifact in these three text profiles.
+The [full report](../../scripts/bench/pylon-models/deepseek-r1-ds0-2026-10-20.json)
+retains requests, answers, reasoning, token counts, source and binary hashes,
+GPU allocation evidence, and failed probes.
+
+| Engine and profile | Device and build | Runtime checks | Answer / continuation wall time |
+| --- | --- | --- | --- |
+| Native CPU, greedy reference | Apple M5 Max; Rust dev build, `opt-level=1`; eight Rayon threads | 6/6 | 49.395 s / 274.250 s |
+| llama.cpp CUDA, greedy reference | RTX 4080; `9b05354ec6fb58b4e665e9a39ebc40285c015638`, build 10433 | 6/6 | 0.425 s / 0.657 s |
+| llama.cpp CUDA, recommended sampling | Same RTX 4080 runtime; temperature `0.6`, top-p `0.95`, seed `1` | 6/6 | 0.470 s / 1.101 s |
+
+Both greedy profiles return the correct values, `2` and then `3`. They pass
+only **1/2 numeric-only formatting checks**: the first answer includes a
+boxed solution despite the instruction to return only a number. The
+recommended sampled GPU profile passes the boxed-answer checks. These are
+runtime checks and two arithmetic questions, not a general quality score.
+
+The corrected native continuation uses the same 109 prompt tokens as the
+GPU reference. Its complete rendered prompt and all 109 token IDs also
+match the pinned upstream Jinja template and Hugging Face tokenizer. The
+[`deepseek_r1_render` example](../../crates/psionic/crates/psionic-models/examples/deepseek_r1_render.rs)
+prints prompts and token IDs from a GGUF and a messages JSON file for
+future comparisons. The parser replay regression, Q4_K/Q6_K row checks,
+five existing CPU decoder tests, R1 model/server tests, 19 Python tests,
+and formatting checks pass.
+
+The GPU server uses 1,388 MiB of device memory and offloads 29/29 layers;
+the input embedding remains CPU-mapped. Native CPU RSS after the checks is
+about 1.20 GiB. GPU context is configured to 4,096 tokens, but these checks
+exercise at most 545 total tokens. Tools, structured output, long context,
+native CUDA for Qwen2, and other R1 checkpoints remain outside this result.
+
+The recommended sampled **native CPU** probe hit its 600-second deadline
+in both the serial and parallel development builds. That profile remains
+unqualified; use the native greedy reference for correctness work and
+llama.cpp CUDA for the measured serving route. A later GPU retry failed
+to allocate its 112 MiB KV buffer after other workloads left only about
+1,305 MiB free. The earlier completed GPU runs remain in the report; no
+running service was stopped to make room.
+
+Each timing is one observation, includes prompt processing and thinking,
+and comes from a shared machine under other workloads. The CPU and GPU
+use different hardware and build profiles. These measurements establish
+working bounded configurations, not release-build CPU speed, token-level
+numerical parity, or latency guarantees. All checks use isolated loopback
+HTTP servers and synthetic prompts, without a Pylon provider or account.
 
 ## Further infrastructure lessons and what to defer
 

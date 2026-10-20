@@ -109,6 +109,12 @@ each through Pylon on an RTX 4080 using llama.cpp. Psionic's native CUDA
 route also serves Qwen3.5 4B/9B and Gemma 4; GPT-OSS has its own server.
 The remaining catalog families use native CPU or the explicit llama.cpp
 GPU route. These checks cover text conversations, not images or tools.
+The catalog also pins DeepSeek-R1-Distill-Qwen-1.5B Q4_K_M. Its separate
+[DS0 results](../psionic/deepseek-support-plan.md#ds0-full-model-qualification-2026-10-20)
+qualify the native CPU greedy reference and llama.cpp CUDA text profiles.
+Use the CUDA route for the measured serving configuration; sampled native
+CPU timed out in the development build. The DS0 runner's `--direct-only`
+mode checks the model over loopback HTTP without publishing a provider.
 GPT-OSS passed the full suite through llama.cpp; its native server
 returned no final answer for the summary prompt even with 4,096 output
 tokens, so use the compatible route for this workload.

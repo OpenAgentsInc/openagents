@@ -189,6 +189,6 @@
       "<｜end▁of▁sentence｜>"
     ],
     "thinking_required": true,
-    "reasoning_temperature": 0.0
+    "reasoning_temperature": 0.6
   }
 ]

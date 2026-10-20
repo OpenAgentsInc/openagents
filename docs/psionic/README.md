@@ -40,8 +40,10 @@ Qwen3, current Qwen3.5, and Gemma 4 are checked against 26 independent
 Jinja-rendered fixtures. Unknown template hashes still fail closed.
 The first [DeepSeek R1 distill implementation](deepseek-support-plan.md#ds0-implementation-r1-distill-qwen-15b)
 adds pinned Qwen 1.5B tokenizer and prompt fixtures, reasoning separation,
-and qualification checks. Full-model CPU and external GPU qualification
-remain separate requirements.
+and qualification checks. [Full-model results](deepseek-support-plan.md#ds0-full-model-qualification-2026-10-20)
+pass six runtime checks on the native CPU greedy reference and on
+llama.cpp CUDA with greedy or recommended R1 sampling. Sampled native CPU
+remains unqualified after a timeout; the GPU is the measured serving route.
 Qwen3.5 CUDA accepts mixed dense/quantized projection groups and Q4_K/Q6_K
 embedding rows; Gemma 4 accepts dense per-layer projections on CUDA.
 Gemma's BPE tokenizer decodes SentencePiece spaces and literal UTF-8,
