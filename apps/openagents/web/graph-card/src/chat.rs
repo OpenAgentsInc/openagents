@@ -109,6 +109,10 @@ pub struct ChatView {
     /// The question the agent is waiting on, once it asks.
     asking: Option<(&'static str, &'static str)>,
     rng: u64,
+    /// Demo turns started from the page (`/lander9`); once there is one, the
+    /// chat stops starting over.
+    #[cfg(feature = "hands")]
+    turns: usize,
 }
 
 impl ChatView {
@@ -119,6 +123,8 @@ impl ChatView {
             phase: Phase::Still,
             asking: None,
             rng: 0x2545_f491_4f6c_dd1d,
+            #[cfg(feature = "hands")]
+            turns: 0,
         };
         if still {
             this.finished();
@@ -216,6 +222,8 @@ impl ChatView {
                 self.ask();
                 cx.notify();
             }
+            #[cfg(feature = "hands")]
+            Phase::Holding(_) if self.turns > 0 => {}
             Phase::Holding(at) if now >= at => {
                 self.ask();
                 out.reset = true;
@@ -333,6 +341,59 @@ impl ChatView {
             cx.notify();
         }
         self.phase = Phase::Streaming(stream);
+    }
+
+    /// Starts a demo turn: the person's `prompt`, then `beats` streamed as
+    /// the reply. A reply already playing finishes at once (the scripted
+    /// one jumps to its end). Returns whether the scripted reply was cut
+    /// short, so the graph can settle too.
+    #[cfg(feature = "hands")]
+    pub fn start_turn(&mut self, prompt: &'static str, beats: Vec<Beat>) -> bool {
+        let mut cut = false;
+        match std::mem::replace(&mut self.phase, Phase::Still) {
+            Phase::Opening(_) | Phase::Asking(_) | Phase::Streaming(_) if self.turns == 0 => {
+                self.finished();
+                cut = true;
+            }
+            Phase::Streaming(_) => {
+                if let Some(last) = self.entries.last_mut() {
+                    last.status = Some(MessageStatus::Complete);
+                    for part in &mut last.parts {
+                        if let MessagePart::Tool {
+                            resolved, output, ..
+                        } = part
+                            && !*resolved
+                        {
+                            *resolved = true;
+                            *output = Some(String::new());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        self.turns += 1;
+        self.asking = None;
+        let n = self.turns;
+        self.entries.push(entry(
+            &format!("graph-u{n}"),
+            MessageRole::User,
+            vec![text("t0", prompt)],
+        ));
+        let mut reply = Self::reply_entry(MessageStatus::Streaming);
+        reply.id = format!("graph-a{n}");
+        self.entries.push(reply);
+        self.sync_list();
+        let now = Instant::now();
+        self.phase = Phase::Streaming(Stream {
+            beats: beats.into(),
+            words: VecDeque::new(),
+            wait_until: now + THINK / 2,
+            started: now,
+            tool: None,
+            chunks: Vec::new(),
+        });
+        cut
     }
 
     fn veil(&self, part: usize) -> Option<Veil> {

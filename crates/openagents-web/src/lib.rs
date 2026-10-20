@@ -461,6 +461,12 @@ pub struct Config {
     /// `/lander8/build/`. Without it, `/lander8` is the Grid, the name, and
     /// a link to the home page's chat.
     pub lander8: Option<PathBuf>,
+    /// `/lander9`'s hand-tracking demo (`--lander9 DIR`, default
+    /// `/srv/lander9` when it exists): the demo's builds under `graph/`,
+    /// served at `/lander9/graph/`, and the pinned hand landmarker under
+    /// `hands/`, served at `/lander9/hands/`. Without it, `/lander9` is the
+    /// Grid and the name.
+    pub lander9: Option<PathBuf>,
     /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
     /// it exists), served under `/games/snap-station/`. Without it, the
     /// game's page says it can't be played here.
@@ -597,6 +603,7 @@ impl Config {
             pylons: None,
             pylons_relay: None,
             lander8: None,
+            lander9: None,
             snap: None,
             att: None,
             cad: None,

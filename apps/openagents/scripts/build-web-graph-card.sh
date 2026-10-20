@@ -17,9 +17,12 @@
 # backends, whose WebGPU surface also offers a premultiplied canvas. The
 # copy is written to web/graph-card/webgpu/wgpu/.
 #
+# With --hands, the builds have the `hands` feature: /lander9's hand
+# tracking (the site serves them under /lander9/graph/).
+#
 # Prerequisites: as for build-web-card.sh.
 #
-# Usage: apps/openagents/scripts/build-web-graph-card.sh OUTDIR
+# Usage: apps/openagents/scripts/build-web-graph-card.sh OUTDIR [--hands]
 set -euo pipefail
 
 app="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,8 +31,14 @@ card="$web/graph-card"
 target="wasm32-unknown-unknown"
 target_dir="${CARGO_TARGET_DIR:-$web/target}"
 out="${1:-}"
-if [ -z "$out" ] || [ "$#" -ne 1 ]; then
-  echo "usage: $0 OUTDIR" >&2
+features=()
+if [ "$#" -eq 2 ] && [ "$2" = "--hands" ]; then
+  features=(--features hands)
+elif [ "$#" -ne 1 ]; then
+  out=""
+fi
+if [ -z "$out" ]; then
+  echo "usage: $0 OUTDIR [--hands]" >&2
   exit 64
 fi
 
@@ -77,7 +86,7 @@ awk -v from="$opaque_only" '
 ' "$source_dir/src/backend/webgpu.rs" > "$backend"
 
 build() { # MANIFEST PACKAGE NAME DEST
-  cargo build --locked --manifest-path "$1" -p "$2" --release --target "$target"
+  cargo build --locked --manifest-path "$1" -p "$2" --release --target "$target" ${features[@]+"${features[@]}"}
   mkdir -p "$4"
   wasm-bindgen --target web --no-typescript --out-name openagents_web_graph_card --out-dir "$4" \
     "$target_dir/$target/release/$3.wasm"

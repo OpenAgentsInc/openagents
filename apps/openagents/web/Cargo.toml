@@ -19,6 +19,7 @@ members = [
     "graph-card",
     "pylon-card",
     "lander-chat",
+    "hands",
 ]
 
 [workspace.package]

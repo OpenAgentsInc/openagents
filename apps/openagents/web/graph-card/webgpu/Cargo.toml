@@ -21,6 +21,10 @@ license = "MIT"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# /lander9's hand tracking (see ../Cargo.toml).
+hands = ["openagents-web-graph-card/hands"]
+
 [dependencies]
 openagents-web-graph-card = { path = "..", default-features = false }
 wasm-bindgen = "=0.2.128"

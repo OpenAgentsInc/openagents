@@ -27,6 +27,13 @@ use crate::chat::ChatView;
 use crate::graph::{self, Graph};
 use crate::scene::{Geometry, Node};
 
+#[cfg(feature = "hands")]
+use crate::hands_ui::{self, Stats};
+#[cfg(feature = "hands")]
+use crate::interact::{Effect, Interact, Target};
+#[cfg(feature = "hands")]
+use openagents_web_hands::{HandView, Hands, Input, RawFrame};
+
 actions!(graph_card, [Hold]);
 
 /// The composer's placeholder.
@@ -86,7 +93,42 @@ pub struct GraphCard {
     size: (f32, f32),
     working: bool,
     dots: i64,
+    #[cfg(feature = "hands")]
+    hand: HandState,
 }
+
+/// `/lander9`'s hands and what they, or the mouse, have moved.
+#[cfg(feature = "hands")]
+struct HandState {
+    hands: Hands,
+    interact: Interact,
+    /// The page's places before anything moved.
+    home: Geometry,
+    on: bool,
+    views: Vec<HandView>,
+    /// A short line over the composer, and when it was set.
+    notice: Option<(String, u64)>,
+    /// The tool the chat just took up, and when.
+    pulse: Option<(Node, u64)>,
+    /// The last frame's time, in the page's milliseconds, and when it came.
+    last: Option<(f64, Instant)>,
+    stats: Stats,
+}
+
+/// How often the page's hand frames are read while tracking (or anything
+/// it moved) is live, and otherwise.
+#[cfg(feature = "hands")]
+const POLL: Duration = Duration::from_millis(12);
+#[cfg(feature = "hands")]
+const POLL_IDLE: Duration = Duration::from_millis(100);
+/// Without a frame this long, the hands are gone.
+#[cfg(feature = "hands")]
+const STALE_MS: f64 = 400.0;
+/// How long a notice shows and the chat glows after a drop.
+#[cfg(feature = "hands")]
+const NOTICE_MS: u64 = 2_600;
+#[cfg(feature = "hands")]
+const PULSE_MS: u64 = 1_400;
 
 impl GraphCard {
     pub fn new(still: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -104,7 +146,21 @@ impl GraphCard {
             })
             .detach();
         }
+        #[cfg(feature = "hands")]
+        cx.spawn_in(window, async move |this, cx| {
+            let mut wait = POLL_IDLE;
+            loop {
+                cx.background_executor().timer(wait).await;
+                match this.update_in(cx, |this, window, cx| this.poll(window, cx)) {
+                    Ok(next) => wait = next,
+                    Err(_) => break,
+                }
+            }
+        })
+        .detach();
         let size = window.viewport_size();
+        #[cfg(feature = "hands")]
+        let home = Geometry::new(f(size.width), f(size.height));
         Self {
             chat,
             composer,
@@ -121,6 +177,18 @@ impl GraphCard {
             size: (f(size.width), f(size.height)),
             working: !still,
             dots: 0,
+            #[cfg(feature = "hands")]
+            hand: HandState {
+                hands: Hands::new(),
+                interact: Interact::new(),
+                home,
+                on: false,
+                views: Vec::new(),
+                notice: None,
+                pulse: None,
+                last: None,
+                stats: Stats::default(),
+            },
         }
     }
 
@@ -151,6 +219,176 @@ impl GraphCard {
         }
     }
 
+    #[cfg(feature = "hands")]
+    fn on_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let p = (f(event.position.x), f(event.position.y));
+        self.feed(vec![Input::Move(p)], window, cx);
+        cx.notify();
+    }
+
+    #[cfg(feature = "hands")]
+    fn on_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let p = (f(event.position.x), f(event.position.y));
+        self.feed(vec![Input::Down(p)], window, cx);
+        cx.notify();
+    }
+
+    #[cfg(feature = "hands")]
+    fn on_up(&mut self, event: &gpui::MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let p = (f(event.position.x), f(event.position.y));
+        self.feed(vec![Input::Up(p)], window, cx);
+        cx.notify();
+    }
+
+    /// Control or Command with the wheel (and a trackpad's pinch, which
+    /// browsers send that way) spreads the parts.
+    #[cfg(feature = "hands")]
+    fn on_wheel(&mut self, event: &gpui::ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if event.modifiers.control || event.modifiers.platform {
+            let dy = f(event.delta.pixel_delta(px(16.)).y);
+            self.hand.interact.spread_by((dy * 0.004).exp());
+            cx.notify();
+        }
+    }
+
+    /// Hand frames and tracking changes from the page, the parts on their
+    /// way home, and the notice's and the glow's time.
+    #[cfg(feature = "hands")]
+    fn poll(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Duration {
+        let (frames, on, infer_ms) = hands_ui::INBOX.with(|inbox| {
+            let mut inbox = inbox.borrow_mut();
+            (
+                std::mem::take(&mut inbox.frames),
+                inbox.on.take(),
+                inbox.infer_ms,
+            )
+        });
+        let mut changed = false;
+        if let Some(on) = on {
+            self.hand.on = on;
+            if !on {
+                let inputs = self.hand.hands.clear();
+                self.feed(inputs, window, cx);
+                self.hand.views.clear();
+                self.hand.last = None;
+            }
+            changed = true;
+        }
+        let page = self.size;
+        for (frame, t) in frames {
+            if !self.hand.on {
+                // The test hook's frames turn the drawing on, as the camera
+                // would.
+                self.hand.on = true;
+            }
+            let inputs = self.hand.hands.frame(&frame, t / 1000.0, page);
+            self.hand.last = Some((t, Instant::now()));
+            self.feed(inputs, window, cx);
+            changed = true;
+        }
+        if let Some((t, at)) = self.hand.last {
+            let gone = at.elapsed().as_secs_f64() * 1000.0;
+            if gone > STALE_MS && self.hand.hands.any() {
+                let inputs = self
+                    .hand
+                    .hands
+                    .frame(&RawFrame::default(), (t + gone) / 1000.0, page);
+                self.feed(inputs, window, cx);
+                changed = true;
+            }
+            if changed {
+                self.hand.views = self
+                    .hand
+                    .hands
+                    .views((t + gone.min(STALE_MS)) / 1000.0, page);
+            }
+        }
+        let now = self.now();
+        changed |= self.hand.interact.step(now);
+        if self
+            .hand
+            .notice
+            .as_ref()
+            .is_some_and(|(_, at)| now > at + NOTICE_MS)
+        {
+            self.hand.notice = None;
+            changed = true;
+        }
+        if let Some((_, at)) = self.hand.pulse {
+            changed = true;
+            if now > at + PULSE_MS {
+                self.hand.pulse = None;
+            }
+        }
+        self.hand.stats = Stats {
+            fps: self.hand.hands.fps(),
+            frames: self.hand.hands.frames,
+            hands: self.hand.views.len(),
+            infer_ms,
+        };
+        let stats = self.hand.stats;
+        hands_ui::STATS.with(|s| *s.borrow_mut() = stats);
+        if changed {
+            cx.notify();
+        }
+        if self.hand.on || changed {
+            POLL
+        } else {
+            POLL_IDLE
+        }
+    }
+
+    /// Runs inputs through the interactions and does what they ask.
+    #[cfg(feature = "hands")]
+    fn feed(&mut self, inputs: Vec<Input>, window: &mut Window, cx: &mut Context<Self>) {
+        let now = self.now();
+        for input in inputs {
+            let effects = self.hand.interact.input(input, &self.hand.home, now);
+            for effect in effects {
+                self.effect(effect, window, cx);
+            }
+        }
+        let i = &self.hand.interact;
+        self.hovered = match (i.dragging(), i.hovered) {
+            (None, Some(Target::Node(n))) => Some(n),
+            _ => None,
+        };
+        self.selected = i.selected;
+    }
+
+    #[cfg(feature = "hands")]
+    fn effect(&mut self, effect: Effect, window: &mut Window, cx: &mut Context<Self>) {
+        let now = self.now();
+        match effect {
+            Effect::FocusComposer => window.focus(&self.composer.focus_handle(cx), cx),
+            Effect::Start(node) => {
+                if let Some((prompt, beats)) = crate::tool_turn::turn(node) {
+                    let cut = self.chat.update(cx, |chat, cx| {
+                        let cut = chat.start_turn(prompt, beats);
+                        cx.notify();
+                        cut
+                    });
+                    if cut {
+                        self.graph = Graph::settled();
+                    }
+                    self.hand.pulse = Some((node, now));
+                    self.hand.notice = Some((format!("Demo turn with {}", node.title()), now));
+                }
+            }
+            Effect::NotATool(node) => {
+                self.hand.notice = Some((
+                    format!(
+                        "{} isn't a tool. Drop a tool, like GitHub, on the chat.",
+                        node.title()
+                    ),
+                    now,
+                ));
+            }
+            Effect::LetGo => self.hand.notice = Some(("Let go".to_owned(), now)),
+        }
+    }
+
+    #[cfg(not(feature = "hands"))]
     fn on_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
         let hovered = self.geometry.hit(f(event.position.x), f(event.position.y));
         if hovered != self.hovered {
@@ -159,6 +397,7 @@ impl GraphCard {
         }
     }
 
+    #[cfg(not(feature = "hands"))]
     fn on_down(&mut self, event: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         let hit = self.geometry.hit(f(event.position.x), f(event.position.y));
         self.selected = match hit {
@@ -176,6 +415,9 @@ impl GraphCard {
         if node == Node::Wallet {
             return graph::sats(self.graph.balance(now));
         }
+        #[cfg(feature = "hands")]
+        return crate::tool_turn::compact(line).to_owned();
+        #[cfg(not(feature = "hands"))]
         crate::script::compact(line).to_owned()
     }
 
@@ -184,7 +426,12 @@ impl GraphCard {
         let color = accent(node.accent());
         let (_, busy) = self.graph.lines[node.index()];
         let active = self.graph.active(node, now);
-        let pointed = self.hovered == Some(node) || self.selected == Some(node);
+        #[allow(unused_mut)]
+        let mut pointed = self.hovered == Some(node) || self.selected == Some(node);
+        #[cfg(feature = "hands")]
+        {
+            pointed |= self.hand.interact.dragging() == Some(Target::Node(node));
+        }
         let border = if active {
             color.opacity(0.85)
         } else if pointed {
@@ -297,7 +544,7 @@ impl GraphCard {
             .overflow_hidden()
             .bg(gpui::hsla(0., 0., 0.035, 0.9))
             .border_1()
-            .border_color(theme::border_strong())
+            .border_color(self.chat_border())
             .child(
                 div()
                     .flex_none()
@@ -339,6 +586,101 @@ impl GraphCard {
                     .cached(StyleRefinement::default().flex_1().w_full().min_h_0()),
             )
             .into_any_element()
+    }
+
+    /// The chat's border: a tool's color while one is carried over it, and
+    /// a fading glow just after one is dropped.
+    fn chat_border(&self) -> Hsla {
+        #[cfg(feature = "hands")]
+        {
+            if let Some(node) = self.hand.interact.over_chat() {
+                return accent(node.accent());
+            }
+            if let Some((node, at)) = self.hand.pulse {
+                let p = (self.now().saturating_sub(at) as f32 / PULSE_MS as f32).clamp(0.0, 1.0);
+                let wave = 0.5 + 0.5 * (p * std::f32::consts::TAU * 2.0).cos();
+                return mix(
+                    theme::border_strong(),
+                    accent(node.accent()),
+                    (1.0 - p) * wave,
+                );
+            }
+        }
+        theme::border_strong()
+    }
+
+    /// What `/lander9` draws over the graph: the drop hint, the notice, the
+    /// legend, and the hands.
+    #[cfg(feature = "hands")]
+    fn hand_layer(&self) -> Vec<AnyElement> {
+        let g = &self.geometry;
+        let mut out = Vec::new();
+        if let Some(node) = self.hand.interact.over_chat() {
+            out.push(
+                div()
+                    .absolute()
+                    .left(px(g.chat.x))
+                    .w(px(g.chat.w))
+                    .top(px(g.chat.y + 54.))
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .px(px(12.))
+                            .py(px(6.))
+                            .rounded(px(8.))
+                            .bg(gpui::hsla(0., 0., 0.08, 0.96))
+                            .border_1()
+                            .border_color(accent(node.accent()))
+                            .text_size(px(12.5))
+                            .child(format!("Let go to start a demo turn with {}", node.title())),
+                    )
+                    .into_any_element(),
+            );
+        }
+        if let Some((notice, _)) = &self.hand.notice {
+            let c = g.composer;
+            out.push(
+                div()
+                    .absolute()
+                    .left(px(0.))
+                    .w(px(self.size.0))
+                    .top(px(c.y - 34.))
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .px(px(12.))
+                            .py(px(4.))
+                            .rounded(px(8.))
+                            .bg(gpui::hsla(0., 0., 0.07, 0.94))
+                            .border_1()
+                            .border_color(theme::border())
+                            .text_size(px(12.))
+                            .text_color(theme::text())
+                            .child(SharedString::from(notice.clone())),
+                    )
+                    .into_any_element(),
+            );
+        }
+        if !g.narrow {
+            let gesture = self
+                .hand
+                .views
+                .iter()
+                .find(|v| v.primary)
+                .map(|v| v.gesture);
+            out.push(hands_ui::legend(
+                self.hand.on,
+                hands_ui::status_line(self.hand.stats, gesture),
+                18.,
+                26.,
+            ));
+        }
+        if !self.hand.views.is_empty() {
+            out.push(hands_ui::overlay(self.hand.views.clone(), self.still));
+        }
+        out
     }
 
     fn popover(&self, node: Node, now: u64) -> AnyElement {
@@ -473,6 +815,14 @@ impl Render for GraphCard {
         if (w, h) != self.size {
             self.geometry = Geometry::new(w, h);
             self.size = (w, h);
+            #[cfg(feature = "hands")]
+            {
+                self.hand.home = self.geometry.clone();
+            }
+        }
+        #[cfg(feature = "hands")]
+        {
+            self.geometry = self.hand.interact.layout.apply(&self.hand.home);
         }
         let now = if self.still { 0 } else { self.now() };
         let g = &self.geometry;
@@ -618,7 +968,15 @@ impl Render for GraphCard {
         .absolute()
         .size_full();
 
-        let units: Vec<AnyElement> = Node::ALL.iter().map(|n| self.unit(*n, now)).collect();
+        #[allow(unused_mut)]
+        let mut order = Node::ALL.to_vec();
+        // The part being carried draws over the others.
+        #[cfg(feature = "hands")]
+        if let Some(Target::Node(n)) = self.hand.interact.dragging() {
+            order.retain(|o| *o != n);
+            order.push(n);
+        }
+        let units: Vec<AnyElement> = order.iter().map(|n| self.unit(*n, now)).collect();
         let shown = self.selected.or(self.hovered);
         let narrow = g.narrow;
         let note = (!narrow).then(|| {
@@ -651,6 +1009,13 @@ impl Render for GraphCard {
             .children(shown.map(|n| self.popover(n, now)))
             .child(self.composer())
             .children(note);
+        #[cfg(feature = "hands")]
+        {
+            root = root
+                .on_mouse_up(MouseButton::Left, cx.listener(Self::on_up))
+                .on_scroll_wheel(cx.listener(Self::on_wheel))
+                .children(self.hand_layer());
+        }
         root.text_style().font_fallbacks = Some(theme::fallbacks());
         if self.hovered.is_some() {
             root = root.cursor_pointer();

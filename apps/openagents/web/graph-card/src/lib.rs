@@ -16,6 +16,13 @@ pub mod graph;
 pub mod scene;
 pub mod script;
 
+#[cfg(feature = "hands")]
+mod hands_ui;
+#[cfg(feature = "hands")]
+pub mod interact;
+#[cfg(feature = "hands")]
+pub mod tool_turn;
+
 mod app;
 mod chat;
 
@@ -38,6 +45,56 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub fn mount(still: bool) {
     run(still);
+}
+
+/// A frame from the page's hand landmarker: `[aspect, count, (score, x0,
+/// y0, z0, ... x20, y20, z20) per hand]` in the frame's normalized,
+/// unmirrored coordinates, at `t_ms` (the page's clock), and how long the
+/// landmarker took. Returns false for a frame it can't read.
+#[cfg(all(target_family = "wasm", feature = "hands"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn hand_frame(data: &[f32], t_ms: f64, infer_ms: f32) -> bool {
+    hands_ui::push_frame(data, t_ms, infer_ms)
+}
+
+/// Hand tracking turned on or off on the page.
+#[cfg(all(target_family = "wasm", feature = "hands"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn hands_on(on: bool) {
+    hands_ui::set_on(on);
+}
+
+/// The test hook: made-up hands, `pose` (point, pinch, near, fist, open)
+/// with its cursor at `(x, y)` as fractions of the page; a second hand when
+/// `pose2` is given.
+#[cfg(all(target_family = "wasm", feature = "hands"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn synth_hand(
+    pose: &str,
+    x: f32,
+    y: f32,
+    pose2: Option<String>,
+    x2: f32,
+    y2: f32,
+    t_ms: f64,
+) -> bool {
+    let mut hands = vec![(pose, x, y)];
+    if let Some(pose2) = pose2.as_deref() {
+        hands.push((pose2, x2, y2));
+    }
+    hands_ui::push_synth(&hands, t_ms)
+}
+
+/// How tracking is going, as JSON: frames a second, frames read, hands in
+/// view, and the landmarker's milliseconds for the last frame.
+#[cfg(all(target_family = "wasm", feature = "hands"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn hand_stats() -> String {
+    let s = hands_ui::STATS.with(|s| *s.borrow());
+    format!(
+        "{{\"fps\":{:.1},\"frames\":{},\"hands\":{},\"infer_ms\":{:.2}}}",
+        s.fps, s.frames, s.hands, s.infer_ms
+    )
 }
 
 /// [`mount`], for a build that exports it itself.

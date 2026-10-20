@@ -1,0 +1,14 @@
+# Hand input for openagents.com/lander9: landmarks from the browser's hand
+# landmarker become smoothed hands, gestures (point, pinch, grab, open palm,
+# two-hand pinch), and pointer input. Pure Rust with no GPUI or browser
+# dependency, so its tests replay landmark sequences natively. The pose rules
+# and their measured constants come from `crates/coder-hands`.
+[package]
+name = "openagents-web-hands"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[dependencies]
+coder-hands = { path = "../../../../crates/coder-hands", default-features = false }

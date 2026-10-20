@@ -1981,6 +1981,75 @@ async fn the_lander8_page_has_the_chat_and_serves_its_builds() {
     }
 }
 
+/// `/lander9`: `/lander7` with the hand button, the demo's hand-tracking
+/// builds from `--lander9 DIR/graph`, and the pinned landmarker's four
+/// files from `DIR/hands`; nothing else is served.
+#[tokio::test]
+async fn the_lander9_page_has_the_hand_button_and_serves_the_landmarker() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("lander9");
+    for variant in ["webgpu", "webgl"] {
+        let build = dir.join("graph").join(variant);
+        std::fs::create_dir_all(&build).unwrap();
+        std::fs::write(build.join(pages::LANDER7_GLUE), "export function mount() {}").unwrap();
+        std::fs::write(build.join(pages::LANDER7_WASM), b"\0asm\x01\0\0\0").unwrap();
+    }
+    let hands = dir.join("hands");
+    std::fs::create_dir_all(hands.join("wasm")).unwrap();
+    std::fs::write(hands.join("vision_bundle.mjs"), "export {}").unwrap();
+    std::fs::write(hands.join("hand_landmarker.task"), b"model").unwrap();
+    std::fs::write(hands.join("hand_landmarker.task.br"), b"brotli model").unwrap();
+    std::fs::write(hands.join("wasm/vision_wasm_internal.js"), "var x").unwrap();
+    std::fs::write(hands.join("wasm/vision_wasm_internal.wasm"), b"\0asm").unwrap();
+    std::fs::write(hands.join("NOTICE"), "notice").unwrap();
+    let mut config = config(root.path().join("tasks"));
+    config.lander9 = Some(dir);
+
+    let (status, headers, html) = get_with(router(config.clone()), pages::LANDER9_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<button id=\"hand-toggle\""), "{html}");
+    assert!(html.contains("/lander9/graph/"));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"), "{policy}");
+    crate::copy_guard::assert_plain(pages::LANDER9_PATH, &html);
+    assert!(crate::upstream::owned(pages::LANDER9_PATH));
+    assert!(crate::upstream::owned("/lander9/hands/hand_landmarker.task"));
+
+    for (uri, content_type) in [
+        ("/lander9/graph/webgpu/openagents_web_graph_card.js", "text/javascript; charset=utf-8"),
+        ("/lander9/graph/webgl/openagents_web_graph_card_bg.wasm", "application/wasm"),
+        ("/lander9/hands/vision_bundle.mjs", "text/javascript; charset=utf-8"),
+        ("/lander9/hands/hand_landmarker.task", "application/octet-stream"),
+        ("/lander9/hands/wasm/vision_wasm_internal.js", "text/javascript; charset=utf-8"),
+        ("/lander9/hands/wasm/vision_wasm_internal.wasm", "application/wasm"),
+    ] {
+        let (status, headers, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+    }
+    let response = router(config.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/lander9/hands/hand_landmarker.task")
+                .header(header::HOST, LOCAL)
+                .header(header::ACCEPT_ENCODING, "br")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+    for uri in [
+        "/lander9/hands/NOTICE",
+        "/lander9/hands/wasm/vision_wasm_nosimd_internal.wasm",
+        "/lander9/hands/../graph/webgpu/openagents_web_graph_card.js",
+        "/lander9/graph/other/openagents_web_graph_card.js",
+    ] {
+        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+}
+
 /// A server started with `--layertree DIR` holding a stand-in LayerTree
 /// demo build.
 fn with_layertree(root: &std::path::Path) -> Config {

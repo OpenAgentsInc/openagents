@@ -289,7 +289,13 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/pylons-card/webgl/openagents_web_pylon_card_bg.wasm.br \
     && oa-kache run apps/openagents/scripts/build-web-lander-chat.sh /build/lander8 \
     && test -s /build/lander8/webgpu/openagents_web_lander_chat_bg.wasm.br \
-    && test -s /build/lander8/webgl/openagents_web_lander_chat_bg.wasm.br
+    && test -s /build/lander8/webgl/openagents_web_lander_chat_bg.wasm.br \
+    && oa-kache run apps/openagents/scripts/build-web-graph-card.sh /build/lander9/graph --hands \
+    && test -s /build/lander9/graph/webgpu/openagents_web_graph_card_bg.wasm.br \
+    && test -s /build/lander9/graph/webgl/openagents_web_graph_card_bg.wasm.br \
+    && scripts/fetch-hand-landmarker.sh /build/lander9/hands \
+    && test -s /build/lander9/hands/hand_landmarker.task.br \
+    && test -s /build/lander9/hands/wasm/vision_wasm_internal.wasm.br
 
 # Every dependency layer, and nothing else: cloudbuild.yaml builds this
 # target first and exports it to the registry cache.
@@ -332,6 +338,7 @@ COPY --from=gpuiweb /build/lander7 /srv/lander7
 COPY --from=everglade /build/pylons-layer /srv/pylons/layer
 COPY --from=gpuiweb /build/pylons-card /srv/pylons/card
 COPY --from=gpuiweb /build/lander8 /srv/lander8
+COPY --from=gpuiweb /build/lander9 /srv/lander9
 
 USER 10001:10001
 EXPOSE 8080

@@ -42,6 +42,7 @@
 !/scripts/build-att-web.sh
 !/scripts/build-cad-web.sh
 !/scripts/build-robot-web.sh
+!/scripts/fetch-hand-landmarker.sh
 !/scripts/build-sand-garden.sh
 !/scripts/build-layertree-web.sh
 !/scripts/build-lander5-web.sh

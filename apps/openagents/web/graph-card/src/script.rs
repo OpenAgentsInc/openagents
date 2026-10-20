@@ -56,7 +56,7 @@ pub enum Beat {
     },
 }
 
-fn mcp(server: &str, tool: &str) -> ToolCall {
+pub(crate) fn mcp(server: &str, tool: &str) -> ToolCall {
     ToolCall::Mcp {
         server: server.into(),
         tool: tool.into(),
@@ -67,7 +67,7 @@ fn mcp(server: &str, tool: &str) -> ToolCall {
 const TRAVEL: u64 = crate::graph::TRAVEL_MS;
 
 /// A call to one part: data out, the part busy, data back, and its new line.
-fn call(
+pub(crate) fn call(
     node: Node,
     call: ToolCall,
     run_ms: u64,

@@ -21,6 +21,12 @@ default = ["export"]
 # Exports `mount` to the page. The WebGPU-only build (`webgpu/`) links this
 # crate without it and exports its own.
 export = []
+# /lander9: hand tracking. The page runs the hand landmarker and hands its
+# landmarks to `hand_frame`; `openagents-web-hands` smooths them and reads
+# the gestures, and this crate draws the hands and lets a hand (or the
+# mouse) move the parts and the chat and drop a tool on the chat to start a
+# demo turn. /lander7's build leaves it out.
+hands = ["dep:openagents-web-hands"]
 
 [dependencies]
 gpui.workspace = true
@@ -29,6 +35,7 @@ openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
 agent-graph = { path = "../../../../crates/agent-graph", default-features = false }
 web-time.workspace = true
+openagents-web-hands = { path = "../hands", optional = true }
 
 [dev-dependencies]
 # The step test reads each streamed prefix as the chat views parse it.
