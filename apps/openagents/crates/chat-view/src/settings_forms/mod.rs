@@ -15,6 +15,7 @@ pub mod account;
 pub mod appearance;
 /// Earn on a paired computer (#12294).
 pub mod earn;
+pub mod providers;
 pub mod shortcuts;
 
 use rust_native::style::{Color, Style, TextWeight};
@@ -31,6 +32,8 @@ pub use shortcuts::{Keymap, Shortcut};
 pub enum Page {
     #[default]
     General,
+    /// Each computer's agents, updates, and accounts (#12283).
+    Providers,
     Appearance,
     Notifications,
     Shortcuts,
@@ -43,8 +46,9 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 8] = [
+    pub const ALL: [Page; 9] = [
         Page::General,
+        Page::Providers,
         Page::Appearance,
         Page::Notifications,
         Page::Shortcuts,
@@ -58,6 +62,7 @@ impl Page {
     pub fn label(self) -> &'static str {
         match self {
             Page::General => "General",
+            Page::Providers => "Providers",
             Page::Appearance => "Appearance",
             Page::Notifications => "Notifications",
             Page::Shortcuts => "Shortcuts",
@@ -73,6 +78,7 @@ impl Page {
     pub fn slug(self) -> &'static str {
         match self {
             Page::General => "general",
+            Page::Providers => "providers",
             Page::Appearance => "appearance",
             Page::Notifications => "notifications",
             Page::Shortcuts => "shortcuts",
@@ -318,6 +324,8 @@ pub enum Intent {
     Account(account::Action),
     /// Earn (#12294).
     Earn(earn::Action),
+    /// Providers (#12283).
+    Providers(providers::Action),
 }
 
 /// The theme's colors for the forms, which the host reads from its theme
@@ -427,6 +435,8 @@ pub struct Remote {
     pub account: account::State,
     /// Earn on the chosen computer (#12294).
     pub earn: earn::State,
+    /// Providers: the chosen computer's agents and accounts (#12283).
+    pub providers: providers::State,
     /// The browser lets the page show notifications (`Notification`
     /// permission), or `None` when it asks first.
     pub notifications_allowed: Option<bool>,
@@ -450,6 +460,12 @@ pub fn page(page: Page, prefs: &Prefs, remote: &Remote, paints: &Paints) -> Node
         Page::Archived => archived(remote, paints),
         Page::Earn => earn::page(remote, paints),
         Page::Account => account::page(&remote.account, paints),
+        Page::Providers => providers::page(
+            &remote.providers,
+            &remote.computers,
+            remote.computer.as_deref(),
+            paints,
+        ),
     };
     column(&format!("settings-{}", page.slug()), body)
 }

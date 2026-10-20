@@ -80,6 +80,10 @@ pub const ALLOWED: &[&str] = &[
     openagents_rpc::pylon::PYLON_STATUS,
     openagents_rpc::pylon::PYLON_EARNINGS,
     openagents_rpc::pylon::PYLON_SETTINGS,
+    // Settings → Providers' reads (#12283).
+    methods::LIST_AGENT_ACCOUNTS,
+    methods::WATCH_HARNESS_UPDATES,
+    methods::POLL_AGENT_LOGIN,
 ];
 
 /// The engine methods a browser may call under its grant's run right
@@ -120,6 +124,19 @@ pub const OPERATE: &[&str] = &[
     openagents_rpc::dictation::DICTATION_APPEND,
     openagents_rpc::dictation::DICTATION_FINISH,
     openagents_rpc::dictation::DICTATION_CANCEL,
+    // Settings → Providers: agents, their updates, and accounts (#12283).
+    methods::INSTALL_HARNESS,
+    methods::CANCEL_INSTALL,
+    methods::SET_HARNESS_ENABLED,
+    methods::SET_HARNESS_UPDATE_POLICY,
+    methods::CHECK_HARNESS_UPDATES,
+    methods::APPLY_HARNESS_UPDATE,
+    methods::CANCEL_HARNESS_UPDATE,
+    methods::START_AGENT_LOGIN,
+    methods::COMPLETE_AGENT_LOGIN,
+    methods::CANCEL_AGENT_LOGIN,
+    methods::ACTIVATE_AGENT_ACCOUNT,
+    methods::FORGET_AGENT_ACCOUNT,
 ];
 
 /// Parameters a browser never sets: forwarding to another computer under
@@ -141,6 +158,11 @@ pub fn sanitize(method: &str, mut params: serde_json::Value) -> serde_json::Valu
                 request.remove("mcp");
                 request.remove("attachments");
             }
+        }
+        // A sign-in's callback is this computer's own; a browser never
+        // asks for it to be served to another device.
+        if method == methods::START_AGENT_LOGIN {
+            map.remove("requesterDeviceId");
         }
         if method == methods::QUEUE_MESSAGE {
             map.remove("attachments");

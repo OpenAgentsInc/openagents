@@ -166,6 +166,9 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
         openagents_rpc::moves::APPROVE_MOVE,
         openagents_rpc::moves::MOVE_STATUS,
         openagents_rpc::moves::BRING_BACK,
+        methods::LIST_AGENT_ACCOUNTS,
+        methods::SET_HARNESS_ENABLED,
+        methods::FORGET_AGENT_ACCOUNT,
     ] {
         assert_eq!(value(tab.handle(method, json!({})).await)["ran"], method);
     }
@@ -190,6 +193,15 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
         json!({"chatId": "c1", "command": {"kind": "run", "messageId": "m1",
             "request": {"prompt": "Hi", "cwd": "~"}}})
     );
+    // A sign-in started from a browser is never served to another device.
+    let started = value(
+        tab.handle(
+            methods::START_AGENT_LOGIN,
+            json!({"harness": "claude-code", "requesterDeviceId": "other-mac"}),
+        )
+        .await,
+    );
+    assert_eq!(started["params"], json!({"harness": "claude-code"}));
     // A project on this computer, and nothing else of Mutate (#12318).
     let project = json!({"op": "createSpace", "spaceId": "s1", "deviceId": "mac-1",
         "path": "/work/site", "gitDetected": true});

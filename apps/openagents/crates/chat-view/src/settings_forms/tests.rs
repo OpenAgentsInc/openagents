@@ -517,3 +517,83 @@ fn earn_reads_the_computer_and_turns_sharing_off() {
     assert!(out.iter().any(|w| w == earn::NOT_AVAILABLE));
     assert_eq!(Page::from_slug("earn"), Some(Page::Earn));
 }
+
+/// #12283: Providers lists the computer's agents with their updates and
+/// accounts, and each control asks for its own action.
+#[test]
+fn providers_show_agents_updates_and_accounts() {
+    use openagents_proto::HarnessId;
+    use providers::{Action, Agent, State};
+    let agents: Vec<Agent> = serde_json::from_value(serde_json::json!([
+        {"id": "claude-code", "name": "Claude Code", "installed": true, "enabled": true},
+        {"id": "codex", "name": "Codex", "installed": false, "canInstall": true},
+    ]))
+    .unwrap();
+    let updates = serde_json::from_value(serde_json::json!([
+        {"harness": "claude-code", "installedVersion": "2.1.0", "latestVersion": "2.2.0",
+         "policy": "notify", "phase": "available", "canApply": true}
+    ]))
+    .unwrap();
+    let accounts = serde_json::from_value(serde_json::json!([
+        {"id": "a1", "harness": "claude-code", "email": "test@example.com", "planLabel": "Max",
+         "active": false, "usageWindows": [{"label": "5-hour", "usedFraction": 0.4, "resetsAt": null}]}
+    ]))
+    .unwrap();
+    let remote = Remote {
+        computers: vec![Named::new("mac-1", "Studio Mac")],
+        computer: Some("mac-1".into()),
+        providers: State {
+            agents: Load::Ready(agents),
+            updates,
+            accounts: Load::Ready(accounts),
+            ..State::default()
+        },
+        ..Remote::default()
+    };
+    let root = page(
+        Page::Providers,
+        &Prefs::default(),
+        &remote,
+        &Paints::default(),
+    );
+    let json = serde_json::to_string(&root).unwrap();
+    assert!(json.contains("Update available: 2.2.0"), "{json}");
+    assert!(json.contains("5-hour 40%"));
+    assert!(json.contains("Not installed"));
+    let intents = intents(&root);
+    for want in [
+        Intent::Providers(Action::Install(HarnessId::Codex)),
+        Intent::Providers(Action::Apply(HarnessId::ClaudeCode)),
+        Intent::Providers(Action::Enable(HarnessId::ClaudeCode, false)),
+        Intent::Providers(Action::Activate(HarnessId::ClaudeCode, "a1".into())),
+        Intent::Providers(Action::AddAccount(HarnessId::ClaudeCode)),
+        Intent::Providers(Action::Check(None)),
+    ] {
+        assert!(intents.contains(&want), "{want:?}");
+    }
+    assert_eq!(Page::from_slug("providers"), Some(Page::Providers));
+}
+
+fn intents(node: &Node<Intent>) -> Vec<Intent> {
+    let mut out = Vec::new();
+    let json = serde_json::to_value(node).unwrap();
+    collect(&json, &mut out);
+    out
+}
+
+fn collect(value: &serde_json::Value, out: &mut Vec<Intent>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, v) in map {
+                if key == "intent" || key == "on_change" || key == "onChange" {
+                    if let Ok(intent) = serde_json::from_value::<Intent>(v.clone()) {
+                        out.push(intent);
+                    }
+                }
+                collect(v, out);
+            }
+        }
+        serde_json::Value::Array(items) => items.iter().for_each(|v| collect(v, out)),
+        _ => {}
+    }
+}

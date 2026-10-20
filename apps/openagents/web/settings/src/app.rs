@@ -23,6 +23,9 @@ use serde_json::{Value, json};
 use wasm_bindgen::{JsCast, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 
+/// Settings → Providers over host RPC (#12283).
+mod providers;
+
 /// What the chat knows that a page shows: the account's computers and
 /// archived chats, from its registry, and whether it's signed in.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -91,10 +94,28 @@ pub struct SettingsApp {
     /// Earn's reads of the computer (#12294), and the wait before the next.
     earn_task: Option<Task<()>>,
     earn_timer: Option<Task<()>>,
+    /// Providers: the computer's update statuses, and a sign-in's poll.
+    providers_watch: Option<Task<()>>,
+    providers_login: Option<Task<()>>,
+    /// Providers: where a sign-in's code is pasted.
+    login_code: gpui::Entity<openagents_web_chat_view::composer::TextInput>,
 }
 
 impl SettingsApp {
     pub fn new(page: Page, shared: Shared, cx: &mut Context<Self>) -> Self {
+        let login_code =
+            cx.new(|cx| openagents_web_chat_view::composer::TextInput::new("Paste the code", cx));
+        cx.subscribe(
+            &login_code,
+            |this, field, event: &openagents_web_chat_view::composer::Submitted, cx| {
+                field.update(cx, |field, cx| {
+                    field.take(cx);
+                });
+                this.complete_login(event.0.clone(), cx);
+                cx.notify();
+            },
+        )
+        .detach();
         let mut this = Self {
             client: Client::from_page(),
             page,
@@ -113,6 +134,9 @@ impl SettingsApp {
             account_task: None,
             earn_task: None,
             earn_timer: None,
+            providers_watch: None,
+            providers_login: None,
+            login_code,
         };
         openagents_chat_view::motion::init(
             this.prefs.appearance.reduce_motion,
@@ -182,6 +206,7 @@ impl SettingsApp {
                 self.remote.earn = earn::State::default();
                 self.load_earn(cx);
             }
+            Page::Providers => self.load_providers(cx),
             Page::Account => self.load_account(cx),
             Page::Notifications => self.remote.notifications_allowed = notifications_allowed(),
             _ => {}
@@ -534,11 +559,14 @@ impl SettingsApp {
                 if self.page == Page::Earn {
                     self.remote.earn = earn::State::default();
                     self.load_earn(cx);
+                } else if self.page == Page::Providers {
+                    self.load_providers(cx);
                 } else {
                     self.load_computer_settings(cx);
                 }
             }
             Intent::Earn(action) => self.earn_action(action, cx),
+            Intent::Providers(action) => self.providers_action(action, cx),
             Intent::TitleHarness(harness) => {
                 self.save_titles(json!({ "harness": harness, "model": null }), cx)
             }
@@ -1019,9 +1047,37 @@ impl Render for SettingsApp {
                         .min_w_0()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .child(div().w_full().max_w(px(760.)).mx_auto().child(body)),
+                        .child(
+                            div()
+                                .w_full()
+                                .max_w(px(760.))
+                                .mx_auto()
+                                .child(body)
+                                .children(self.code_field()),
+                        ),
                 ),
         )
+    }
+}
+
+impl SettingsApp {
+    /// Providers: the field a sign-in's code is pasted into.
+    fn code_field(&self) -> Option<gpui::AnyElement> {
+        let login = self.remote.providers.login.as_ref()?;
+        (self.page == Page::Providers && login.code).then(|| {
+            div()
+                .mx(px(24.))
+                .mb(px(24.))
+                .px(px(12.))
+                .py(px(8.))
+                .rounded(px(10.))
+                .border_1()
+                .border_color(theme::border_strong())
+                .bg(theme::input_bg())
+                .text_size(px(13.5))
+                .child(self.login_code.clone())
+                .into_any_element()
+        })
     }
 }
 

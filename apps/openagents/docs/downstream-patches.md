@@ -1495,3 +1495,8 @@ master delegation audit.
   (`SearchHomeFolders`, `ReleaseHomeFolderSearch`, `ListDrives`, beside
   `ListFolders`) and call `Mutate` only for `createSpace` on this computer
   (`browser_devices::project_on`), under its run right.
+- #12283 lets a browser read a computer's agent accounts, update statuses,
+  and a sign-in's progress, and, under its run right, install, turn on or
+  off, set the update policy of, check, apply, and cancel agents and their
+  updates, and add, switch, and remove agent accounts. A browser's
+  `StartAgentLogin` never names another device to serve its callback.
