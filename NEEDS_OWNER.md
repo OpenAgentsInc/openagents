@@ -3070,3 +3070,11 @@ Decision 3 in `docs/audits/2026-10-17-spark-wallet.md`: Breez-hosted
 `name@openagents.com` through a CNAME (fast; Breez's server issues our users'
 invoices), or our own LNURL server (more work; we hold that trust). The
 Lightning address part of #12307 waits on this.
+
+## Try hand input on /verse with a real camera (#12309)
+
+Headless checks used made-up hands. Once a staging image carries the Verse
+build and `/lander9`'s landmarker, open `/verse` in Chrome on your Mac, press
+**Hands**, allow the camera, and check that pinching and moving looks around,
+pointing walks forward, and an open palm lets go. The camera's picture stays
+in the browser.
