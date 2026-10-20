@@ -194,9 +194,8 @@ pub fn resolve_inline_code_path(
         // target the link grammar rejects, turning the span into a dead link,
         // so it keeps its inline-code look instead.
         let path = path.to_string_lossy();
-        path.starts_with('/').then(|| {
-            InlineCodePath::File(format!("file://{}{anchor}", percent_encode_path(&path)))
-        })
+        path.starts_with('/')
+            .then(|| InlineCodePath::File(format!("file://{}{anchor}", percent_encode_path(&path))))
     };
     if let Some(rest) = decoded.strip_prefix("~/") {
         let home = std::env::var_os("HOME").filter(|home| !home.is_empty())?;
@@ -319,7 +318,10 @@ fn classify_file_link(target: &str) -> Option<ClassifiedLink> {
 
     // `openagents-file:` mentions keep their strict canonical spelling: the whole
     // path decodes once and must re-encode to the identical string.
-    if let Some(encoded) = target.strip_prefix(FILE_MENTION_SCHEME).or_else(|| target.strip_prefix("zeron-file:")) {
+    if let Some(encoded) = target
+        .strip_prefix(FILE_MENTION_SCHEME)
+        .or_else(|| target.strip_prefix("zeron-file:"))
+    {
         let decoded = percent_decode_path(encoded)?;
         if percent_encode_path(&decoded) != encoded
             || decoded.ends_with('/')
