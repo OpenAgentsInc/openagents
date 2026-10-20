@@ -539,6 +539,245 @@ async fn deleting_an_account_deletes_its_user() {
 }
 
 #[tokio::test]
+async fn tombstone_sync_deletes_and_unlinks_without_recreating_users() {
+    for linked in [false, true] {
+        for externally_deleted in [false, true] {
+            let fake = FakeWorkos::start().await;
+            let workos = fake.client(Mode::Dual, ALL);
+            let (dir, accounts) = store();
+            let account = accounts.create_account("Ada", &[]).unwrap();
+            sync::account(dir.path(), &workos, &account.id, Options::default())
+                .await
+                .unwrap();
+            let links = Links::open(dir.path());
+            let user = links.user_of(&account.id).unwrap().unwrap();
+            if !linked {
+                links.unlink_account(&account.id).unwrap();
+            }
+            if externally_deleted {
+                workos.delete_user(&user).await.unwrap();
+            }
+            accounts.delete_account(&account.id).unwrap();
+            let tombstone = accounts.store().unwrap().accounts[&account.id].clone();
+            assert_eq!(tombstone.label, tenancy::accounts::deletion::DELETED_LABEL);
+            assert!(tombstone.principals.is_empty());
+
+            let dry = sync::account(
+                dir.path(),
+                &workos,
+                &account.id,
+                Options {
+                    apply: false,
+                    test: false,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(dry.users_deleted, u32::from(!externally_deleted));
+            assert_eq!(dry.users_created, 0);
+            assert_eq!(fake.user_count(), usize::from(!externally_deleted));
+            assert_eq!(links.user_of(&account.id).unwrap().is_some(), linked);
+
+            let applied = sync::account(dir.path(), &workos, &account.id, Options::default())
+                .await
+                .unwrap();
+            assert_eq!(applied.users_deleted, dry.users_deleted);
+            assert_eq!(applied.users_created, 0);
+            assert_eq!(fake.user_count(), 0);
+            assert!(links.user_of(&account.id).unwrap().is_none());
+            let again = sync::account(dir.path(), &workos, &account.id, Options::default())
+                .await
+                .unwrap();
+            assert!(!again.wrote(), "{again:?}");
+            assert_eq!(accounts.store().unwrap().accounts[&account.id], tombstone);
+        }
+    }
+}
+
+#[tokio::test]
+async fn backfill_and_reconcile_exclude_tombstones_and_preserve_new_accounts() {
+    let fake = FakeWorkos::start().await;
+    let workos = fake.client(Mode::Dual, ALL);
+    let (dir, accounts) = store();
+    // Neither a new account without principals nor the label alone means deleted.
+    let new = accounts.create_account("New", &[]).unwrap();
+    let named = accounts
+        .create_account(
+            tenancy::accounts::deletion::DELETED_LABEL,
+            &["key:aaaaaaaaaaaaaaaa".into()],
+        )
+        .unwrap();
+    let agent = accounts
+        .register_agent("Bot", "signup", "bbbbbbbbbbbbbbbb", &"c".repeat(64), 1000)
+        .unwrap()
+        .account;
+    let gone = accounts.create_account("Gone", &[]).unwrap();
+    let unlinked = accounts.create_account("Also gone", &[]).unwrap();
+    sync::account(dir.path(), &workos, &gone.id, Options::default())
+        .await
+        .unwrap();
+    let links = Links::open(dir.path());
+    let user = links.user_of(&gone.id).unwrap().unwrap();
+    workos.delete_user(&user).await.unwrap();
+    accounts.delete_account(&gone.id).unwrap();
+    accounts.delete_account(&unlinked.id).unwrap();
+    let before_store = accounts.store().unwrap();
+    let before = sync::reconcile(dir.path()).unwrap();
+    assert_eq!(before.accounts, 3);
+    assert_eq!(before.agent_accounts, 1);
+    assert_eq!(before.linked_accounts, 0);
+    let mut missing = vec![new.id.clone(), named.id.clone()];
+    missing.sort();
+    assert_eq!(before.accounts_without_user, missing);
+    assert_eq!(before.links_without_account, vec![gone.id.clone()]);
+
+    for apply in [false, true] {
+        let mut visited = Vec::new();
+        let report = sync::all(
+            dir.path(),
+            &workos,
+            Options { apply, test: false },
+            None,
+            || async {},
+            |id, _| visited.push(id.to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report.users_created, 2, "{report:?}");
+        assert!(report.failed.is_empty(), "{report:?}");
+        assert!(visited.contains(&new.id) && visited.contains(&named.id));
+        assert!(visited.contains(&agent.id));
+        assert!(!visited.contains(&gone.id) && !visited.contains(&unlinked.id));
+        assert_eq!(fake.user_count(), if apply { 2 } else { 0 });
+    }
+    let after = sync::reconcile(dir.path()).unwrap();
+    assert_eq!(after.accounts, 3);
+    assert_eq!(after.agent_accounts, 1);
+    assert_eq!(after.linked_accounts, 2);
+    assert!(after.accounts_without_user.is_empty());
+    assert_eq!(after.links_without_account, vec![gone.id]);
+    assert_eq!(
+        serde_json::to_value(accounts.store().unwrap()).unwrap(),
+        serde_json::to_value(before_store).unwrap()
+    );
+}
+
+#[tokio::test]
+async fn workspace_sync_removes_a_deleted_members_membership_in_dry_run_and_apply() {
+    let fake = FakeWorkos::start().await;
+    let workos = fake.client(Mode::Dual, ALL);
+    let (dir, accounts) = store();
+    let owner = accounts.create_account("Owner", &[]).unwrap();
+    let member = accounts.create_account("Member", &[]).unwrap();
+    let team = accounts
+        .create_workspace(
+            &owner.id,
+            "Team",
+            WorkspaceKind::Organization,
+            "signup",
+            None,
+        )
+        .unwrap();
+    let invite = accounts
+        .invite(&owner.id, &team.id, Role::Member, 3600)
+        .unwrap();
+    accounts.accept(&member.id, &invite.token).unwrap();
+    sync::workspace(dir.path(), &workos, &team.id, Options::default())
+        .await
+        .unwrap();
+    let user = Links::open(dir.path())
+        .user_of(&member.id)
+        .unwrap()
+        .unwrap();
+    accounts.delete_account(&member.id).unwrap();
+    let dry = sync::workspace(
+        dir.path(),
+        &workos,
+        &team.id,
+        Options {
+            apply: false,
+            test: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(dry.memberships_removed, 1);
+    assert_eq!(dry.memberships_added, 0);
+    assert_eq!(fake.memberships().len(), 2);
+    let applied = sync::workspace(dir.path(), &workos, &team.id, Options::default())
+        .await
+        .unwrap();
+    assert_eq!(applied.memberships_removed, 1);
+    assert_eq!(fake.memberships().len(), 1);
+    assert!(fake.memberships().iter().all(|(id, _, _)| id != &user));
+    sync::account(dir.path(), &workos, &member.id, Options::default())
+        .await
+        .unwrap();
+    assert!(fake.user(&user).is_none());
+    assert_eq!(fake.organizations().len(), 1);
+}
+
+#[tokio::test]
+async fn a_tombstone_owner_does_not_keep_a_workos_organization_or_membership() {
+    let fake = FakeWorkos::start().await;
+    let workos = fake.client(Mode::Dual, ALL);
+    let (dir, accounts) = store();
+    let owner = accounts.create_account("Owner", &[]).unwrap();
+    let team = accounts
+        .create_workspace(
+            &owner.id,
+            "Team",
+            WorkspaceKind::Organization,
+            "signup",
+            None,
+        )
+        .unwrap();
+    sync::account(dir.path(), &workos, &owner.id, Options::default())
+        .await
+        .unwrap();
+    assert_eq!(fake.memberships().len(), 1);
+    accounts.delete_account(&owner.id).unwrap();
+    let dry = sync::workspace(
+        dir.path(),
+        &workos,
+        &team.id,
+        Options {
+            apply: false,
+            test: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(dry.orgs_deleted, 1);
+    assert_eq!(fake.memberships().len(), 1);
+    let counts = sync::reconcile(dir.path()).unwrap();
+    assert_eq!(counts.accounts, 0);
+    assert_eq!(counts.organization_workspaces, 0);
+    assert_eq!(counts.linked_workspaces, 0);
+    let report = sync::account(dir.path(), &workos, &owner.id, Options::default())
+        .await
+        .unwrap();
+    assert_eq!(report.users_deleted, 1);
+    assert_eq!(report.orgs_deleted, 1);
+    assert!(fake.organizations().is_empty());
+    assert!(fake.memberships().is_empty());
+    assert!(Links::open(dir.path()).org_of(&team.id).unwrap().is_none());
+    let rerun = sync::all(
+        dir.path(),
+        &workos,
+        Options::default(),
+        None,
+        || async {},
+        |_, _| {},
+    )
+    .await
+    .unwrap();
+    assert!(!rerun.wrote(), "{rerun:?}");
+    assert_eq!(fake.user_count(), 0);
+    assert!(fake.organizations().is_empty());
+}
+
+#[tokio::test]
 async fn sso_starts_from_the_organization_for_an_email_domain() {
     let fake = FakeWorkos::start().await;
     let workos = fake.client(Mode::Dual, ALL);

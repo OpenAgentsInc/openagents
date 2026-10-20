@@ -14,8 +14,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
+use tenancy::accounts::deletion::DELETED_LABEL;
 use tenancy::workos_links::Links;
-use tenancy::{Accounts, MemberStatus, Store, WorkspaceKind};
+use tenancy::{Account, Accounts, MemberStatus, Store, Workspace, WorkspaceKind};
 
 use super::client::{NewUser, Refusal, UserChange, Workos};
 
@@ -128,7 +129,11 @@ pub async fn workspace(
     let store = load(dir)?;
     let links = Links::open(dir);
     let mut report = Report::default();
-    let Some(record) = store.workspaces.get(workspace) else {
+    let Some(record) = store
+        .workspaces
+        .get(workspace)
+        .filter(|record| !deleted_workspace(&store, record))
+    else {
         if let Some(org) = links.org_of(workspace).map_err(unavailable)? {
             report.orgs_deleted += 1;
             if options.apply {
@@ -173,11 +178,13 @@ pub async fn workspace(
     };
     // Everyone active needs a User before they can be a member.
     let mut wanted: BTreeMap<String, String> = BTreeMap::new();
-    for member in record
-        .members
-        .values()
-        .filter(|member| member.status == MemberStatus::Active)
-    {
+    for member in record.members.values().filter(|member| {
+        member.status == MemberStatus::Active
+            && store
+                .accounts
+                .get(&member.account)
+                .is_some_and(|account| !deleted(account))
+    }) {
         let mut inner = Report::default();
         user(dir, workos, &store, &member.account, options, &mut inner).await?;
         report.add(inner);
@@ -234,7 +241,11 @@ async fn user(
 ) -> Result<(), Refusal> {
     let links = Links::open(dir);
     let linked = links.user_of(account).map_err(unavailable)?;
-    let Some(record) = store.accounts.get(account) else {
+    let Some(record) = store
+        .accounts
+        .get(account)
+        .filter(|record| !deleted(record))
+    else {
         // Deleted here: delete its User, when it is still ours.
         let user = match &linked {
             Some(id) => workos.user(id).await?,
@@ -393,7 +404,9 @@ where
     let mut total = Report::default();
     for id in store
         .accounts
-        .keys()
+        .iter()
+        .filter(|(_, record)| !deleted(record))
+        .map(|(id, _)| id)
         .filter(|id| after.is_none_or(|after| id.as_str() > after))
     {
         let mut report = Report::default();
@@ -442,7 +455,7 @@ pub struct Reconcile {
     pub linked_workspaces: usize,
     /// Accounts (people, not agents) with no linked User.
     pub accounts_without_user: Vec<String>,
-    /// Links to an account we no longer hold.
+    /// Links to a missing or deleted account.
     pub links_without_account: Vec<String>,
 }
 
@@ -453,10 +466,17 @@ pub fn reconcile(dir: &Path) -> Result<Reconcile, Refusal> {
     let users: BTreeMap<String, _> = links.users().map_err(unavailable)?.into_iter().collect();
     let orgs: BTreeMap<String, _> = links.orgs().map_err(unavailable)?.into_iter().collect();
     let mut out = Reconcile {
-        accounts: store.accounts.len(),
+        accounts: store
+            .accounts
+            .values()
+            .filter(|account| !deleted(account))
+            .count(),
         ..Reconcile::default()
     };
     for (id, account) in &store.accounts {
+        if deleted(account) {
+            continue;
+        }
         if account.agent.is_some() {
             out.agent_accounts += 1;
         } else if users.contains_key(id) {
@@ -467,20 +487,32 @@ pub fn reconcile(dir: &Path) -> Result<Reconcile, Refusal> {
     }
     out.links_without_account = users
         .keys()
-        .filter(|id| !store.accounts.contains_key(*id))
+        .filter(|id| store.accounts.get(*id).is_none_or(deleted))
         .cloned()
         .collect();
-    for workspace in store
-        .workspaces
-        .values()
-        .filter(|workspace| workspace.kind == WorkspaceKind::Organization)
-    {
+    for workspace in store.workspaces.values().filter(|workspace| {
+        workspace.kind == WorkspaceKind::Organization && !deleted_workspace(&store, workspace)
+    }) {
         out.organization_workspaces += 1;
         if orgs.contains_key(&workspace.id) {
             out.linked_workspaces += 1;
         }
     }
     Ok(out)
+}
+
+// Deletion retains the row; an empty principal list alone also occurs on new accounts.
+fn deleted(account: &Account) -> bool {
+    account.label == DELETED_LABEL && account.principals.is_empty()
+}
+
+fn deleted_workspace(store: &Store, workspace: &Workspace) -> bool {
+    workspace.kind == WorkspaceKind::Organization
+        && workspace
+            .members
+            .values()
+            .filter(|member| member.status == MemberStatus::Active)
+            .all(|member| store.accounts.get(&member.account).is_none_or(deleted))
 }
 
 fn load(dir: &Path) -> Result<Store, Refusal> {
