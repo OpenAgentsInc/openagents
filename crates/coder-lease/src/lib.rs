@@ -45,8 +45,9 @@
 //! it the `cargo` shim only when `OPENAGENTS_LEASE_CARGO` opts the
 //! machine's builds back into `build` leases; without it a delegate's
 //! `cargo` runs directly. [`screen_refusal`] is the same rule for a
-//! program about to open a window: an agent environment needs a `screen`
-//! lease.
+//! program about to open a window: an unattended agent needs a `screen`
+//! lease, and an agent the owner asked for a window passes
+//! `OPENAGENTS_OWNER_ASKED=1` instead, which [`screen_check`] logs.
 //!
 //! [`agent_builds`] is the build gate the desktop app gives its agent
 //! chats: a `cargo` shim that builds in one shared target folder per Cargo
@@ -106,7 +107,9 @@ pub use observe::{Observed, observe};
 pub use resource::{NAMED, Resource, Shape};
 pub use root::{ROOT_VAR, refuse_real_home, root_from, root_from_env};
 pub use screen::{
-    SCREENCAPTURE_SHIM, agent_marker, holds_screen, screen_refusal, screen_refusal_here,
+    OWNER_ASKED_VAR, SCREEN_LOG_FILE, SCREEN_LOG_SCHEMA, SCREENCAPTURE_SHIM, agent_marker,
+    holds_screen, log_launch, owner_asked, screen_check, screen_check_here, screen_refusal,
+    screen_refusal_here,
 };
 pub use table::{Entry, PRIORITY_VAR, Priority, State, TABLE_SCHEMA};
 pub use usage::{

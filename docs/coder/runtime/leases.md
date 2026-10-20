@@ -658,20 +658,26 @@ grant; a screen lease already held runs until its command ends, and new ones
 are refused.
 
 Agents capture offscreen by default, such as with `verse --capture
-FILE.png`. Two checks keep them off the real screen without a `screen`
-lease (`OPENAGENTS_LEASES` names `screen`):
+FILE.png`. When the owner asks for a visible window or a desktop test, the
+agent runs it directly (AGENTS.md): it sets `OPENAGENTS_OWNER_ASKED=1`, or
+passes `verse --owner-asked`, and needs no lease or grant. Each such launch
+is a line in `screen-launches.jsonl` in the lease root, with the program,
+the session, and the agent. Without that ask, two checks keep an unattended
+agent off the real screen without a `screen` lease (`OPENAGENTS_LEASES`
+names `screen`):
 
 - A windowed program such as `verse` calls `coder_lease::screen_refusal`
   before it opens a window. In an agent environment, it refuses and points
-  to `--capture` and `openagents lease screen -- CMD`. An agent environment
+  to `--capture`, `OPENAGENTS_OWNER_ASKED=1`, and `openagents lease screen
+  -- CMD`. An agent environment
   is one where `OPENAGENTS_SESSION` names an agent's session or an agent
   variable such as `CLAUDECODE` or `CODEX_THREAD_ID` is set.
   `OPENAGENTS_LEASE_ID` alone, and a session named `process:PID`, which a
   lease records when no agent holds it, don't count, so a person running
   `verse` by hand or under a lease is unaffected.
 - Coder puts a `screencapture` shim beside the `cargo` shim. It refuses
-  without a `screen` lease, and under one it runs the real `screencapture`
-  further along `PATH`.
+  without a `screen` lease or `OPENAGENTS_OWNER_ASKED=1`, and otherwise runs
+  the real `screencapture` further along `PATH`.
 
 `openagents lease list` shows who holds the screen.
 

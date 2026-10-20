@@ -82,8 +82,11 @@
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
 //!
-//! An agent (`OPENAGENTS_SESSION`, `CLAUDECODE`, and the like) opens no
-//! window without a `screen` lease; it renders offscreen with `--capture`.
+//! An unattended agent (`OPENAGENTS_SESSION`, `CLAUDECODE`, and the like)
+//! opens no window without a `screen` lease; it renders offscreen with
+//! `--capture`. When the owner asked to see the window, the agent passes
+//! `--owner-asked` (or sets `OPENAGENTS_OWNER_ASKED=1`), and the launch is
+//! logged in the lease root's `screen-launches.jsonl`.
 //!
 //! `verse --capture <file.png>` renders the spawn view to a PNG without a
 //! window; `--orbit <degrees>`, `--pitch <degrees>`, `--distance <meters>`,
@@ -97,14 +100,20 @@ use verse::app::Options;
 use verse::camera::FollowCamera;
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // `--owner-asked`: an agent opens the window because the owner asked
+    // to see it (AGENTS.md, issue #12238). It may appear anywhere.
+    let before = args.len();
+    args.retain(|arg| arg != "--owner-asked");
+    let owner_asked = args.len() != before;
     if args.first().map(String::as_str) == Some("--seed-rooms") {
         return seed(&args[1..]);
     }
-    // Every path but a capture opens a window: an agent needs a screen
-    // lease for one (`coder_lease::screen_refusal`, issue #10762).
+    // Every path but a capture opens a window: an unattended agent needs a
+    // screen lease for one, and an agent the owner asked passes
+    // `--owner-asked` (`coder_lease::screen_check`, issues #10762, #12238).
     if !args.iter().any(|arg| arg == "--capture")
-        && let Some(refusal) = coder_lease::screen_refusal_here("verse")
+        && let Err(refusal) = coder_lease::screen_check_here("verse", owner_asked)
     {
         eprintln!("verse: {refusal}");
         return ExitCode::FAILURE;
