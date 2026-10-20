@@ -2,6 +2,10 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12285: mount Agent Lab's shared Rust Native workbench in the
+  GPUI web chat, with Agent, Tests, and Results tabs, account API actions,
+  and trial conversations through the paired computer's device room.
+
 - OpenAgents #12295: wrap web chat table cells within their columns, including
   long links and identifiers. Keep left, center, and right text alignment.
   The desktop transcript already wraps cells and scrolls wide tables.

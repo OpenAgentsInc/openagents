@@ -209,7 +209,8 @@ impl Client {
         self.send("GET", path, None::<&()>).await
     }
 
-    async fn send<T: DeserializeOwned>(
+    /// Sends a same-origin JSON request with the page's CSRF value on writes.
+    pub async fn send<T: DeserializeOwned>(
         &self,
         method: &str,
         path: &str,
