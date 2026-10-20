@@ -193,3 +193,62 @@ async fn a_pylon_whose_choice_disagrees_with_its_probabilities_fails() {
         assert_eq!(result.verdict, Verdict::Fail, "{result:?}");
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_rate_limited_round_publishes_no_verdict() {
+    let (url, hub) = pylon::fixture::relay().await.unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let pylon_key = Identity::generate();
+    let checker = Checker {
+        relay: url.clone(),
+        checker: Identity::generate(),
+        buyer: Identity::generate(),
+        home: home.path().to_path_buf(),
+        wait: Duration::from_secs(10),
+    };
+    let mut config = Config::new(&url, "test-decide", home.path().join("pylon"));
+    config.allow = Some(BTreeSet::from([checker.buyer.pubkey().to_string()]));
+    // Two jobs a minute: the round's eight items run into the limit.
+    config.rate_per_minute = 2;
+    let provider = Provider::deciding(
+        config,
+        pylon_key.clone(),
+        None,
+        Arc::new(Tilted {
+            identity: served(),
+            tilt: 0.8,
+            liar: false,
+        }),
+        Arc::new(Dedicated),
+    )
+    .unwrap();
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let running = tokio::spawn(Arc::clone(&provider).run(async {
+        let _ = stop_rx.await;
+    }));
+    for _ in 0..100 {
+        if hub.lock().await.stored.iter().any(|e| e.kind == 30_200) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let reference = Tilted {
+        identity: served(),
+        tilt: 0.8,
+        liar: false,
+    };
+    let error = check_decide::round(
+        &checker,
+        pylon_key.pubkey(),
+        &reference,
+        &verify::CLEF_FLASH,
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("rate-limiting"), "{error}");
+    // No receipt and no verdict reached the relay.
+    let stored = hub.lock().await.stored.clone();
+    assert!(!stored.iter().any(|e| e.kind == 1985 || e.kind == 3201));
+    let _ = stop_tx.send(());
+    let _ = running.await;
+}

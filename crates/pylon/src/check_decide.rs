@@ -296,6 +296,18 @@ pub async fn round_with(
         )
         .await;
         ms.push(at.elapsed().as_millis() as u64);
+        // A pylon that is rate-limiting this buyer says so; the round
+        // could not run, which is not the pylon answering wrong (#12190's
+        // rule: a round the checker could not run is never a strike).
+        if let Ok(Reply::Refused(code)) = &reply
+            && code == "rate_limited"
+        {
+            return Err(format!(
+                "the pylon is rate-limiting this buyer (item {} of {}); nothing was published, try again in a minute",
+                answers.len() + 1,
+                batch.len()
+            ));
+        }
         answers.push(match reply {
             Ok(Reply::Answered(body)) => Some(body),
             _ => None,
