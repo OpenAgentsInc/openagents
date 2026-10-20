@@ -663,3 +663,43 @@ fn traces_list_and_open_one_with_share_and_delete() {
         Some(Intent::Traces(Action::Open("t1".into(), Some("a2".into()))))
     );
 }
+
+#[test]
+fn cloud_pages_hide_subscription_and_require_save_and_delete_confirmation() {
+    let mut remote = Remote::default();
+    remote.account.signed_in = true;
+    remote.cloud.loaded = true;
+    remote.cloud.available = true;
+    let render = |p, remote: &Remote| page(p, &Prefs::default(), remote, &Paints::default());
+    let root = render(Page::Claude, &remote);
+    assert!(find(&root, "claude-save").is_none());
+    let mut text = Vec::new();
+    words(&root, &mut text);
+    assert!(!text.join(" ").contains("Claude subscription"));
+    remote.cloud.subscription_allowed = true;
+    remote.cloud.provider = "claude_subscription_token".into();
+    remote.cloud.pasted = true;
+    assert!(find(&render(Page::Claude, &remote), "claude-save").is_none());
+    remote.cloud.consent = true;
+    assert_eq!(
+        intent_of(&render(Page::Claude, &remote), "claude-save"),
+        &Intent::Cloud(cloud::Action::Save)
+    );
+    remote.cloud.confirm_delete = true;
+    let root = render(Page::Data, &remote);
+    assert_eq!(
+        intent_of(&root, "data-delete-confirm"),
+        &Intent::Cloud(cloud::Action::Delete)
+    );
+    remote.cloud.confirm_delete = false;
+    assert!(find(&render(Page::Data, &remote), "data-delete-confirm").is_none());
+    for p in [Page::Claude, Page::Data] {
+        let root = render(p, &remote);
+        View::new_v3("cloud-settings", 1, root.clone())
+            .validate()
+            .unwrap();
+        let mut text = Vec::new();
+        words(&root, &mut text);
+        assert_eq!(oa_copy::violations(&text.join("\n"), &[]), vec![]);
+    }
+}

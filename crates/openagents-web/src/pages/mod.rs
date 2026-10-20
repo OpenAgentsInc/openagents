@@ -18,7 +18,7 @@ pub(crate) mod efficiency;
 mod everglade;
 mod first_frame;
 pub(crate) mod foreman;
-mod gpui_build;
+pub(crate) mod gpui_build;
 pub(crate) mod gpui_chat;
 mod gpui_demo;
 pub(crate) mod gpui_fonts;

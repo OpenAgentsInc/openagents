@@ -1503,3 +1503,7 @@ master delegation audit.
   off, set the update policy of, check, apply, and cancel agents and their
   updates, and add, switch, and remove agent accounts. A browser's
   `StartAgentLogin` never names another device to serve its callback.
+
+- 2026-10-20 (#12325): shared Rust Native Claude and Data settings forms,
+  loaded in the existing separate web Settings module; `/settings` opens
+  it on WebGPU with the HTML fallback retained.

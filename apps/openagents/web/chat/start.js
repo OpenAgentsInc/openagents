@@ -2,7 +2,8 @@
 // It needs WebGPU; without it, the page goes to the regular
 // chat. Otherwise the module and the fonts download together,
 // and the canvas replaces the page's outline once the app has started.
-import init, { launch, gpuiRecordedFrame } from "./openagents_web_chat.js";
+var chatModule = null;
+function gpuiRecordedFrame() { return chatModule && chatModule.gpuiRecordedFrame(); }
 
 const FONTS = [
   "Geist.ttf",
@@ -137,10 +138,23 @@ function start() {
       });
   }, { once: true });
   loadedFonts = fonts;
+  if (document.querySelector('meta[name="openagents-settings"]')) {
+    var page = new URLSearchParams(location.search).get("page") || "general";
+    openSettings({ detail: JSON.stringify({ page: page, shared: { signedIn: true } }) });
+    window.addEventListener("oa-settings-close", function () { location.assign("/?ui=gpui"); });
+    window.addEventListener("oa-settings-page", function (event) {
+      history.replaceState(null, "", "/settings?ui=gpui&page=" + encodeURIComponent(event.detail));
+    });
+    return;
+  }
   openAddressedPage();
-  Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
+  var initialized = import("./openagents_web_chat.js").then(function (module) {
+    chatModule = module;
+    return module.default({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) });
+  });
+  Promise.all([initialized, fonts])
     .then(function (loaded) {
-      launch(loaded[1]);
+      chatModule.launch(loaded[1]);
     })
     .catch(function (error) {
       say("The chat couldn't start. Reload the page to try again.");
@@ -446,6 +460,11 @@ function mountIn(box, mount) {
 // storage and tells the chat (`oa-settings-changed`); its Back goes
 // through the chat (`oa-settings-close`), which hides the box
 // (`oa-settings-hide`).
+var settingsDataDeleted = false;
+window.addEventListener("oa-settings-data-deleted", function () { settingsDataDeleted = true; });
+window.addEventListener("oa-settings-close", function () {
+  if (settingsDataDeleted) { location.assign("/?ui=gpui"); }
+});
 var settings = null;
 var settingsBox = null;
 var settingsWanted = null;
@@ -472,6 +491,9 @@ function openSettings(event) {
   settingsBox.id = settingsBox.dataset.box = "gpui-settings";
   settingsBox.setAttribute("aria-label", "Settings");
   settingsBox.style.cssText = "position:fixed;inset:0;z-index:7;";
+  if (document.querySelector('meta[name="openagents-settings"]')) {
+    settingsBox.style.zIndex = "100";
+  }
   document.body.appendChild(settingsBox);
   var glue = new URL("./openagents_web_settings.js", import.meta.url);
   Promise.all([import(glue.href), loadedFonts])
