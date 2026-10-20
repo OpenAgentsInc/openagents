@@ -260,6 +260,10 @@ Teachers can keep the simulation paused for discussion at any point.
 
 ## Art, audio, and interface
 
+The [homepage preview](assets/community-conservation-cleanup-homepage.png),
+captured on 2026-10-20 before deployment, shows the concept alongside the other
+Blue Rush games. It uses an existing studio image while the game is in design.
+
 Use an illustrated overhead town with a cutaway view for underground flow.
 Keep the Blue Rush coastal palette while giving the creek and neighborhood
 their own recognizable landmarks. Students should see a believable town,
