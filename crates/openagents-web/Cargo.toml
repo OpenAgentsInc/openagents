@@ -51,7 +51,8 @@ markdown-stream = { path = "../markdown-stream" }
 openui-lang = { path = "../openui-lang" }
 axum = "0.8"
 base64 = "0.22"
-# /lander4 and /lander5 send their one document brotli-compressed.
+# /lander4, /lander5, and the live Foreman page (which carries its graph
+# and first frame inline) send their document brotli-compressed.
 brotli = { version = "8", default-features = false, features = ["std"] }
 flate2 = "1"
 # /lander5's shaders (crates/lander5-web, built from Shader Skills, MIT).

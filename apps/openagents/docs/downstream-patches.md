@@ -1284,3 +1284,32 @@ copies it to `/srv/gpui-demo`, which the server uses without a flag.
 Build with `scripts/build-web-demo.sh --app agent-graph OUTDIR`;
 `openagents-web --agent-graph OUTDIR` serves it under `/agent-graph/`, and
 the image copies it to `/srv/agent-graph`.
+
+### AgentGraph's first frame
+
+- `web/gpui-web` announces the first frame it draws at the canvas's size:
+  a `gpui-first-frame` event that bubbles from the canvas, and a
+  performance mark of the same name (`announce_first_frame` in
+  `window.rs`). A page swaps its first-frame snapshot out in the event's
+  handler.
+- `web/agent-graph` builds natively too (`gpui` is no longer wasm-only), so
+  the capture can run its view. It moves data only for real agent events,
+  so a frame without recent events doesn't depend on when it draws.
+- `web/first-frame` (`openagents-first-frame`) is the scene format: GPUI's
+  quads, shadows, path triangles, and glyph sprites in draw order, colors as
+  the shaders compute them, and the glyph pixels the frame uses.
+- `web/first-frame-capture` lays out and paints the view on GPUI's
+  headless test platform (`HeadlessAppContext`, `test-support`) with the web
+  build's `CosmicTextSystem` and fonts, and records the frame through its
+  own `PlatformHeadlessRenderer` and sprite atlas. The atlas also
+  rasterizes each glyph for subpixel rendering, as the browser's WebGPU
+  renderer draws them. It refuses any primitive the painter can't draw the
+  same way.
+- `web/first-frame-paint` (Apache-2.0) ports `shaders.wgsl`'s quad,
+  shadow, path rasterization, and mono and subpixel sprite math from zui's
+  `gpui_wgpu` to GLSL ES 3.0, and draws a scene with WebGL2. Subpixel
+  glyphs blend a channel at a time with color masks instead of dual-source
+  blending.
+
+The build script writes them to `OUTDIR/first-frame/`; the site inlines
+them in `/agent/foreman` (`pages/first_frame.rs` in `openagents-web`).

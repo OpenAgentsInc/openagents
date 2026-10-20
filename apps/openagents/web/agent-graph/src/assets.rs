@@ -1,8 +1,6 @@
 //! The fonts the graph draws with, bundled into the module: the desktop's
 //! Geist and Geist Mono, the same files `/demo/gpui` ships.
 
-#![cfg_attr(not(target_family = "wasm"), allow(dead_code))]
-
 use std::borrow::Cow;
 
 macro_rules! font {

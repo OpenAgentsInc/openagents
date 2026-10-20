@@ -10,12 +10,11 @@
 
 use agent_graph::GraphSpec;
 
-#[cfg(target_family = "wasm")]
 mod app;
-#[cfg(target_family = "wasm")]
-mod assets;
-#[cfg(target_family = "wasm")]
-mod theme;
+pub mod assets;
+pub mod theme;
+
+pub use app::GraphView;
 
 /// A graph from the page, checked before anything draws it.
 pub fn parse(json: &str) -> Result<GraphSpec, String> {

@@ -10,6 +10,13 @@
 #   start.js         the page's one script: imports the glue
 #   *.gz, *.br       gzip and brotli copies, sent when asked
 #
+# For AgentGraph it also writes `first-frame/`: the first-frame painter
+# (`painter.js`, wasm-bindgen's `--target no-modules` glue, `painter.wasm`,
+# and `boot.js`), Foreman's first frame for each size class
+# (`foreman-*.ffs.gz`, captured natively by `first-frame-capture`), and
+# `manifest.json`. The site carries these inline in /agent/foreman, so the
+# graph shows before the module has downloaded.
+#
 # openagents.com's server shows the demo at /demo/gpui when started with
 # `openagents-web --gpui-demo OUTDIR`, and the graph at /agent/foreman with
 # `--agent-graph OUTDIR`. With `--with-page`, also writes `index.html`, so
@@ -77,6 +84,27 @@ for file in "$name.js" "${name}_bg.wasm" start.js; do
     brotli -q 11 -f -o "$out/$file.br" "$out/$file"
   fi
 done
+if [ "$app_name" = agent-graph ]; then
+  first="$out/first-frame"
+  mkdir -p "$first"
+  cargo build --locked --manifest-path "$web/Cargo.toml" -p openagents-first-frame-paint \
+    --release --target "$target"
+  wasm-bindgen --target no-modules --no-typescript --out-dir "$first" \
+    "$target_dir/$target/release/openagents_first_frame_paint.wasm"
+  mv "$first/openagents_first_frame_paint.js" "$first/painter.js"
+  mv "$first/openagents_first_frame_paint_bg.wasm" "$first/painter.wasm"
+  if command -v wasm-opt >/dev/null 2>&1; then
+    wasm-opt -Oz --strip-debug --strip-producers --enable-bulk-memory \
+      --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals \
+      --enable-reference-types "$first/painter.wasm" -o "$first/painter.wasm"
+  fi
+  gzip -9 -n -c "$first/painter.wasm" > "$first/painter.wasm.gz"
+  cp "$web/first-frame-paint/boot.js" "$first/boot.js"
+  # Native, no GPU: GPUI's headless platform lays out and paints the view.
+  cargo run --locked --manifest-path "$web/Cargo.toml" -p openagents-first-frame-capture \
+    --bin first-frame-capture \
+    -- "$first"
+fi
 if [ "$with_page" = true ]; then
   cp "$crate/index.html" "$out/index.html"
 fi

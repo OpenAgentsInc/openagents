@@ -214,8 +214,10 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/cad/cad.css
 
 # The desktop chat UI for the browser, which /demo/gpui serves,
-# AgentGraph, which /agent/foreman draws with, and the signed-in GPUI web
-# chat at /gpui
+# AgentGraph, which /agent/foreman draws with (and its first frame: the
+# paint-only painter for wasm32, and Foreman's frames, captured by the
+# native `first-frame-capture` on GPUI's headless platform, no GPU), and
+# the signed-in GPUI web chat at /gpui
 # (apps/openagents/web, its own Cargo workspace and lock). GPUI needs the
 # app's pinned compiler, 1.98.1, so this stage has its own base: the wasm32
 # target, binaryen, brotli, and wasm-bindgen-cli at the version
@@ -246,7 +248,11 @@ FROM gpuiweb-base AS gpuiweb-deps
 COPY --from=gpuiweb-skeleton /skeleton/ ./
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run \
     cargo build --locked --manifest-path /build/apps/openagents/web/Cargo.toml \
-        -p openagents-web-demo -p openagents-web-agent-graph -p openagents-web-chat --release --target wasm32-unknown-unknown
+        -p openagents-web-demo -p openagents-web-agent-graph -p openagents-web-chat --release --target wasm32-unknown-unknown \
+    && oa-kache run cargo build --locked --manifest-path /build/apps/openagents/web/Cargo.toml \
+        -p openagents-first-frame-paint --release --target wasm32-unknown-unknown \
+    && oa-kache run cargo build --locked --manifest-path /build/apps/openagents/web/Cargo.toml \
+        -p openagents-first-frame-capture --bin first-frame-capture
 
 FROM gpuiweb-deps AS gpuiweb
 COPY . .
@@ -259,6 +265,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/agent-graph/openagents_web_agent_graph.js \
     && test -s /build/agent-graph/openagents_web_agent_graph_bg.wasm \
     && test -s /build/agent-graph/start.js \
+    && test -s /build/agent-graph/first-frame/manifest.json \
+    && test -s /build/agent-graph/first-frame/painter.wasm.gz \
+    && test -s /build/agent-graph/first-frame/foreman-desktop.ffs.gz \
     && oa-kache run apps/openagents/scripts/build-web-chat.sh /build/gpui-chat \
     && test -s /build/gpui-chat/openagents_web_chat.js \
     && test -s /build/gpui-chat/openagents_web_chat_bg.wasm \

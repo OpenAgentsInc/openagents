@@ -60,6 +60,8 @@ pub(crate) struct WebWindowInner {
     pub(crate) is_composing: Cell<bool>,
     mql_handle: RefCell<Option<MqlHandle>>,
     pending_physical_size: Cell<Option<(u32, u32)>>,
+    /// Whether the first frame at the canvas's size has been drawn.
+    presented: Cell<bool>,
 }
 
 pub struct WebWindow {
@@ -193,6 +195,7 @@ impl WebWindow {
             is_composing: Cell::new(false),
             mql_handle: RefCell::new(None),
             pending_physical_size: Cell::new(None),
+            presented: Cell::new(false),
         });
 
         let raf_closure = inner.create_raf_closure();
@@ -344,6 +347,22 @@ impl WebWindowInner {
         *raf_handle.borrow_mut() = Some(js_func);
 
         closure
+    }
+
+    /// Tells the page the app has drawn its first frame at the canvas's
+    /// size: a `gpui-first-frame` event that bubbles from the canvas, and a
+    /// performance mark of the same name. A page showing a first-frame
+    /// snapshot swaps it out in the event's handler, in this same task, so
+    /// the browser composites the swap and this frame together.
+    fn announce_first_frame(&self) {
+        if let Some(performance) = self.browser_window.performance() {
+            performance.mark("gpui-first-frame").ok();
+        }
+        let init = web_sys::EventInit::new();
+        init.set_bubbles(true);
+        if let Ok(event) = web_sys::Event::new_with_event_init_dict("gpui-first-frame", &init) {
+            self.canvas.dispatch_event(&event).ok();
+        }
     }
 
     fn schedule_raf(&self, closure: &Closure<dyn FnMut()>) {
@@ -697,6 +716,14 @@ impl PlatformWindow for WebWindow {
         }
 
         self.inner.state.borrow_mut().renderer.draw(scene);
+        if !self.inner.presented.get()
+            && self.inner.canvas.width() > 1
+            && self.inner.canvas.height() > 1
+            && scene.len() > 0
+        {
+            self.inner.presented.set(true);
+            self.inner.announce_first_frame();
+        }
     }
 
     fn completed_frame(&self) {

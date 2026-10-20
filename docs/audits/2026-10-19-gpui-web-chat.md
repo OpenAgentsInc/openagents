@@ -294,6 +294,131 @@ routing change in `crates/openagents-web`:
 3. To undo, remove the check; nothing else changes, because both views
    read the same chats through the same API.
 
+## The first-frame painter (2026-10-19)
+
+`/agent/foreman` now shows AgentGraph's first frame after one round trip,
+instead of after the 1.5 MB module. A measured grid benchmark showed that
+first paint on a real network is set by bytes and round trips, not by
+compiling, so the page carries a tiny painter and one captured frame inline.
+
+### How it works
+
+- **Scene format.** `apps/openagents/web/first-frame`
+  (`openagents-first-frame`) holds one frame as GPUI's own primitives, in
+  draw order: quads (backgrounds, borders, rounded corners), shadows, path
+  triangles, and glyph sprites, with colors as GPUI's shaders compute them
+  and only the glyph pixels the frame uses. It has no dependencies. Decoding
+  refuses a wrong header, a truncated or padded buffer, a count longer than
+  the bytes left, an index past its table, a non-finite number, a tile
+  outside the atlas, and a draw command past its primitives.
+- **Capture.** `apps/openagents/web/first-frame-capture` runs the AgentGraph
+  view natively on GPUI's headless test platform (`HeadlessAppContext`)
+  with the web build's `CosmicTextSystem` and fonts, so layout and glyphs
+  match the browser. No GPU and no browser: the window's renderer records
+  the frame, and its sprite atlas keeps each glyph's pixels. The browser's
+  WebGPU renderer draws subpixel text where dual-source blending exists, so
+  the atlas also rasterizes each glyph for subpixel rendering. The capture
+  refuses any primitive the painter can't draw the same way (gradients,
+  dashed borders, images, underlines, blurs, fades). `build-web-demo.sh
+  --app agent-graph` runs it, and the website image's `gpuiweb` stage
+  builds it.
+- **Painter.** `apps/openagents/web/first-frame-paint` is a paint-only
+  WebGL2 module. It ports `gpui_wgpu`'s quad SDF (rounded corners and
+  borders), shadow, path rasterization, and mono and subpixel sprite math
+  to GLSL ES 3.0. Paths go through a 4× multisampled layer, as in GPUI.
+  Subpixel glyphs blend one color channel at a time instead of with
+  dual-source blending. It's 18.5 KB brotli, and 23.5 KB with its
+  wasm-bindgen glue and boot script.
+- **Page.** `pages/first_frame.rs` in `openagents-web` inlines the painter
+  and one frame (gzipped, base64, in inert script elements) and the glue
+  and boot script as one inline script that the page's policy allows by
+  hash. A phone's user agent gets the phone frame, anything else the
+  desktop frame. The page is brotli-compressed. A build whose graph digest
+  isn't the server's graph is left out.
+- **Handoff.** The boot script paints only when the graph box measures
+  exactly what the frame was captured at (990 × 736 or 356 × 605.67 layout
+  pixels, at device pixel ratio 2), over the app's canvas with a progress
+  cursor and no input. `gpui-web` announces the app's first frame at the
+  canvas's size (a `gpui-first-frame` event and performance mark), and the
+  snapshot goes in that same task, so both change in one composited frame.
+  AgentGraph moves data only for real agent events (#12229), so without
+  recent events its first frame is the captured one whenever it draws. Without script, the server's map and cards stay; if
+  the module fails, the page goes back to them.
+
+### Measured
+
+Headless Chrome 155 through `openagents browser run`, cache off, brotli
+HTML and module, 5 runs, the box's viewport at DPR 2. Medians; "baseline"
+is the same build without the first frame. The graph is visible at the
+snapshot's frame, or at the app's first frame without it.
+
+| Profile | Class | Graph visible, snapshot | Graph visible, baseline | App's first frame, snapshot / baseline | HTML (brotli), snapshot / baseline |
+| --- | --- | --- | --- | --- | --- |
+| Loopback | Desktop | 59 ms | 159 ms | 159 / 159 ms | 101 / 17 KB |
+| Loopback | Phone | 59 ms | 153 ms | 130 / 153 ms | 88 / 17 KB |
+| 20 Mbit/s, 40 ms | Desktop | 349 ms | 1,102 ms | 1,059 / 1,102 ms | 101 / 17 KB |
+| 20 Mbit/s, 40 ms | Phone | 349 ms | 1,098 ms | 1,092 / 1,098 ms | 88 / 17 KB |
+| 9 Mbit/s, 150 ms | Desktop | 834 ms | 2,442 ms | 2,418 / 2,442 ms | 101 / 17 KB |
+| 9 Mbit/s, 150 ms | Phone | 834 ms | 2,438 ms | 2,407 / 2,438 ms | 88 / 17 KB |
+| 4× CPU, loopback | Desktop | 179 ms | 399 ms | 441 / 399 ms | 101 / 17 KB |
+| 4× CPU, loopback | Phone | 184 ms | 374 ms | 413 / 374 ms | 88 / 17 KB |
+
+- The snapshot's frame lands 11 to 48 ms after first contentful paint on
+  every profile (the most with a 4× slower CPU). What holds first paint is the render-blocking site
+  stylesheet, `ui.css`, which is served uncompressed: 352 KB, against
+  43 KB with brotli (#12241). Bytes before first paint are the HTML plus
+  that stylesheet: 453 KB with the snapshot (439 KB on phone), 369 KB
+  without.
+- The app's own first frame doesn't get later on a network. With a 4×
+  slower CPU and no network wait, the snapshot's work delays it by about
+  40 ms.
+- The frame is 58.5 KB gzipped on desktop and 44.5 KB on phone, mostly
+  subpixel glyph pixels (722 and 383 glyph tiles).
+
+Pixel diff of the snapshot's frame against the app's first frame, each read
+back from its canvas in the same task it drew (`first-frame-diff`):
+
+| Class | Identical pixels | Over 8/255 | Largest channel difference | PSNR |
+| --- | --- | --- | --- | --- |
+| Desktop, 1980 × 1472 | 99.86% | 0.13% | 33 | 53.0 dB |
+| Phone, 712 × 1211 | 99.79% | 0.20% | 27 | 50.5 dB |
+
+Every differing pixel is on a curve's antialiased edge, where WebGL's and
+WebGPU's multisample resolve differ by at most a sample. Quads, shadows,
+and text match exactly. Grayscale text against the app's subpixel text was
+the larger difference (96.9% identical on phone) before the capture added
+subpixel glyphs.
+
+### What `/gpui` would take from it
+
+Generalizes as is:
+
+- The format, the painter, and the handoff: `gpui-web` already announces
+  the first frame for any app, and the painter draws any scene made of the
+  primitives above.
+- Capture by recording: any GPUI view runs on the headless platform with
+  the web text system, and the recording atlas and scene conversion don't
+  know about AgentGraph.
+- The page contract: inert data elements, a hashed inline script, an exact
+  size and DPR check, and the server HTML as the fallback.
+
+Doesn't:
+
+- A chat is per-person content, so its frame can't be captured at build
+  time or cached for everyone. It has to come from the server per request
+  (a capture service with the account's data) or, more simply, from the
+  last visit: the app records its own settled frame in the browser and
+  keeps it for the next load (#12244).
+- Size classes. A frame is right only at the exact box size and DPR it was
+  captured at. Chat layouts fill the window, so classes would rarely
+  match; the last visit's frame has the device's own size (#12243).
+- Primitives the chat draws and AgentGraph doesn't: emoji and images
+  (polychrome sprites), link underlines, and edge fades. The painter and
+  the capture refuse these today.
+- Glyph rendering mode: the frames carry subpixel text. A browser where the
+  app falls back to WebGL2 draws grayscale text, so its text's color
+  fringes change at the swap (#12243).
+
 ## Deploy note for `/demo/gpui`
 
 The website image now builds the demo in the `gpuiweb` stages of

@@ -1,0 +1,13 @@
+# The first-frame scene: one frame of a GPUI view as flat primitives (quads,
+# shadows, path triangles, glyph sprites) plus the glyph pixels they use, in
+# a small binary format. A native capture writes it at build time; the
+# paint-only painter (`first-frame-paint`) draws it in WebGL2 before the
+# full app has loaded. No dependencies, so the painter stays small.
+[package]
+name = "openagents-first-frame"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[dependencies]

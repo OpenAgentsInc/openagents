@@ -1,0 +1,32 @@
+# The first-frame painter: a paint-only WebGL2 module that draws a captured
+# GPUI frame (`openagents-first-frame`) into a canvas, so a page shows its
+# app's first frame before the full module has downloaded. It ports GPUI's
+# quad, shadow, path and glyph shader math to GLSL ES 3.0, and nothing else:
+# no layout, no text shaping, no input. The page carries it inline.
+[package]
+name = "openagents-first-frame-paint"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openagents-first-frame.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen.workspace = true
+web-sys = { version = "0.3", features = [
+    "HtmlCanvasElement",
+    "WebGl2RenderingContext",
+    "WebGlBuffer",
+    "WebGlContextAttributes",
+    "WebGlFramebuffer",
+    "WebGlProgram",
+    "WebGlRenderbuffer",
+    "WebGlShader",
+    "WebGlTexture",
+    "WebGlUniformLocation",
+] }

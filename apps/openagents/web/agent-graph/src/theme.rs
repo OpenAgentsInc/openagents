@@ -1,8 +1,6 @@
 //! The graph's colors: the site's dark palette (`tokens-semantic.css` and
 //! `tokens-primitive.css` in `openagents-ui`), and the desktop's fonts.
 
-#![cfg_attr(not(target_family = "wasm"), allow(dead_code))]
-
 use agent_graph::Accent;
 use gpui::{Hsla, hsla, rgb};
 

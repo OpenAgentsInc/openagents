@@ -14,13 +14,15 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 agent-graph = { path = "../../../../crates/agent-graph", default-features = false }
 serde_json = "1"
+# The view builds natively too, so `first-frame-capture` can lay out and
+# paint its first frame without a browser.
+gpui.workspace = true
+web-time.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-gpui.workspace = true
 anyhow.workspace = true
 openagents-gpui-web.workspace = true
 wasm-bindgen.workspace = true
-web-time.workspace = true
 console_error_panic_hook = "0.1.7"
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }

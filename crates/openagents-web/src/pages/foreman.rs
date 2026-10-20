@@ -30,6 +30,7 @@ use agent_graph::lab::{
 };
 use agent_lab::{Check, Experiment, replay, templates};
 
+use super::first_frame::FirstFrame;
 use crate::App;
 use crate::ui_page::UiPage;
 
@@ -88,28 +89,82 @@ fn graph_build(app: &App) -> Option<&std::path::Path> {
 }
 
 async fn foreman_page(State(app): State<App>, headers: HeaderMap) -> Response {
-    page(&headers, graph_build(&app).is_some())
+    live_page(&headers, graph_build(&app))
 }
 
 /// The page, with the GPUI graph over the server map when `live`.
 pub(crate) fn page(headers: &HeaderMap, live: bool) -> Response {
+    live_page_with(headers, live, None)
+}
+
+/// The page for a server with the AgentGraph `build`, if any: the graph,
+/// and its first frame when the build has one for this graph.
+fn live_page(headers: &HeaderMap, build: Option<&std::path::Path>) -> Response {
+    let first = build.and_then(|build| {
+        let json = serde_json::to_string(&agent_graph::foreman::graph()).ok()?;
+        FirstFrame::cached(build, &json)
+    });
+    live_page_with(headers, build.is_some(), first.as_deref())
+}
+
+fn live_page_with(headers: &HeaderMap, live: bool, first: Option<&FirstFrame>) -> Response {
     let ui = UiPage::new("Foreman").path(PATH).description(
         "Foreman, the agent that keeps the whole picture of OpenAgents work, \
          as Agent Lab defines it.",
     );
     if !live {
-        return ui.scriptless().content(body(None)).respond(headers);
+        return ui.scriptless().content(body(None, None)).respond(headers);
     }
     let graph = agent_graph::foreman::graph();
-    let mut response = ui
+    let frame = first.and_then(|f| f.class(headers).map(|class| f.markup(class)));
+    let policy = match (first, &frame) {
+        (Some(first), Some(_)) => first.policy(GRAPH_POLICY),
+        _ => GRAPH_POLICY.to_owned(),
+    };
+    let html = ui
         .head(graph_script())
-        .content(body(Some(&graph)))
-        .respond(headers);
-    response.headers_mut().insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(GRAPH_POLICY),
-    );
+        .content(body(Some(&graph), frame))
+        .render(headers)
+        .into_string();
+    let mut response = compressed(headers, html);
+    if let Ok(policy) = HeaderValue::from_str(&policy) {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_SECURITY_POLICY, policy);
+    }
     response
+}
+
+/// The page, brotli-compressed when the request accepts it. The live page
+/// carries the graph, and with a first frame the painter and the frame, as
+/// text; compressed, that's a fraction of the bytes before first paint.
+fn compressed(headers: &HeaderMap, html: String) -> Response {
+    use std::io::Write;
+    if super::everglade::accepts(headers, "br") {
+        let mut out = Vec::with_capacity(html.len() / 3);
+        let written = {
+            let mut writer = brotli::CompressorWriter::new(&mut out, 16 * 1024, 6, 22);
+            writer
+                .write_all(html.as_bytes())
+                .and_then(|_| writer.flush())
+        };
+        if written.is_ok() {
+            return (
+                [
+                    (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                    (header::CONTENT_ENCODING, "br"),
+                    (header::VARY, "accept-encoding"),
+                ],
+                out,
+            )
+                .into_response();
+        }
+    }
+    (
+        [(header::VARY, "accept-encoding")],
+        axum::response::Html(html),
+    )
+        .into_response()
 }
 
 /// The start script, which loads the module and hands it the graph.
@@ -128,8 +183,14 @@ fn graph_data(graph: &agent_graph::GraphSpec) -> Markup {
     html! { script type="application/json" id="agent-graph-spec" { (PreEscaped(json)) } }
 }
 
-/// The box the graph draws in, holding the server's own view until it does.
-fn graph_box(id: &str, graph: Option<&agent_graph::GraphSpec>, fallback: Markup) -> Markup {
+/// The box the graph draws in, holding the server's own view until it does,
+/// and then the graph's first frame when the page carries one.
+fn graph_box(
+    id: &str,
+    graph: Option<&agent_graph::GraphSpec>,
+    fallback: Markup,
+    first: Option<Markup>,
+) -> Markup {
     match graph {
         None => html! {
             (tools(id, false))
@@ -142,6 +203,7 @@ fn graph_box(id: &str, graph: Option<&agent_graph::GraphSpec>, fallback: Markup)
                 (fallback)
             }
             (graph_data(graph))
+            @if let Some(first) = first { (first) }
         },
     }
 }
@@ -281,7 +343,7 @@ fn generic_body(id: &str, graph: &agent_graph::GraphSpec, live: bool) -> Markup 
                 h1 id="agent-title" { (graph.title) }
                 p.oa-page-lead { (graph.description) }
             }))
-            (graph_box(id, live.then_some(graph), html! {}))
+            (graph_box(id, live.then_some(graph), html! {}, None))
             (parts)
         }
     })
@@ -723,7 +785,7 @@ fn parts(foreman: &Experiment) -> Vec<Part> {
     ]
 }
 
-fn body(graph: Option<&agent_graph::GraphSpec>) -> Markup {
+fn body(graph: Option<&agent_graph::GraphSpec>, first: Option<Markup>) -> Markup {
     let foreman = templates::foreman();
     let parts = parts(&foreman);
     let spec = &foreman.draft.spec;
@@ -739,7 +801,7 @@ fn body(graph: Option<&agent_graph::GraphSpec>) -> Markup {
                      it, what it reads, what it may do, and how we test it."
                 }
             }))
-            (graph_box("foreman", graph, map(&parts, &spec.runtime, spec.model.as_deref().unwrap_or(""))))
+            (graph_box("foreman", graph, map(&parts, &spec.runtime, spec.model.as_deref().unwrap_or("")), first))
             div.oa-agent-map-cards {
                 @for part in &parts {
                     article.oa-agent-map-card id=(format!("part-{}", part.id)) data-accent=(part.accent) {
@@ -898,7 +960,7 @@ mod tests {
 
     #[test]
     fn the_map_draws_every_part_from_the_definition() {
-        let html = body(None).into_string();
+        let html = body(None, None).into_string();
         assert!(html.contains("<svg viewBox=\"0 0 1100 1000\""));
         let foreman = templates::foreman();
         assert!(html.contains(&foreman.draft.spec.runtime));
@@ -920,7 +982,7 @@ mod tests {
     #[test]
     fn the_live_page_hands_the_graph_to_the_canvas_and_keeps_the_map() {
         let graph = agent_graph::foreman::graph();
-        let html = body(Some(&graph)).into_string();
+        let html = body(Some(&graph), None).into_string();
         assert!(html.contains("data-graph-action=\"fullscreen\""));
         assert!(html.contains("data-graph-action=\"copy\""));
         assert!(

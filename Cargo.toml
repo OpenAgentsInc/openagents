@@ -85,8 +85,9 @@ incremental = true
 [profile.dev.package.sha2]
 opt-level = 3
 
-# /lander5 compresses its page at brotli's best quality once per build;
-# unoptimized that takes seconds in tests and local servers.
+# /lander5 compresses its page at brotli's best quality once per build, and
+# the live Foreman page on each request; unoptimized that takes seconds in
+# tests and local servers.
 [profile.dev.package.brotli]
 opt-level = 3
 [profile.dev.package.brotli-decompressor]

@@ -1,0 +1,35 @@
+# Captures an app's first frame natively, at build time: GPUI lays out and
+# paints the AgentGraph view on its headless test platform with the web
+# build's own text system and fonts, and this tool turns the frame's scene
+# and the glyphs it uses into an `openagents-first-frame` scene. No GPU and
+# no browser. `build-web-demo.sh --app agent-graph` runs it.
+[package]
+name = "openagents-first-frame-capture"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[[bin]]
+name = "first-frame-capture"
+path = "src/main.rs"
+
+# Compares two PNG frames (the snapshot's and the app's) pixel by pixel.
+[[bin]]
+name = "first-frame-diff"
+path = "src/diff.rs"
+
+[dependencies]
+# `lab` derives Foreman's graph here, as the site does.
+agent-graph = { path = "../../../../crates/agent-graph" }
+anyhow.workspace = true
+flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+openagents-first-frame.workspace = true
+openagents-web-agent-graph = { path = "../agent-graph" }
+serde_json = "1"
+sha2 = "0.10"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+gpui_wgpu.workspace = true

@@ -17,6 +17,7 @@ pub(crate) mod download;
 pub(crate) mod efficiency;
 pub(crate) mod foreman;
 mod everglade;
+mod first_frame;
 mod gpui_chat;
 mod gpui_demo;
 pub(crate) mod home;
