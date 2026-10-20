@@ -485,6 +485,11 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12375: rebuild the website with its wallet builder included in the upload.
+  The Cloud Build file chooser includes the executable script, and the build
+  checks it before compilation. The production image and live checks continue
+  under #12307.
+
 - #12374: after the #12307 website deployment, repeat the funded browser wallet
   send, forget, and seed-only restore. Refresh must sync the SDK and show the
   received amount minus completed sends and their quoted fees. The isolated
