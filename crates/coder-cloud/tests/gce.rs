@@ -91,8 +91,8 @@ impl Transport for Fake {
         if self.lost {
             return Err("disconnected".into());
         }
-        if script.starts_with("n=0") {
-            return Ok("0".into());
+        if script.contains("place.lock") && script.contains("echo full") {
+            return Ok("ok".into());
         }
         if script.contains("base64") {
             use base64::Engine;

@@ -163,18 +163,29 @@ impl<T: Transport> Backend for Gce<T> {
         }
         let hosts = self.transport.hosts(&p)?;
         let mut selected = None;
+        // Each host takes the slot under its placement lock, so runs placed
+        // at once spread over the hosts (#12245) and none lands on a host
+        // that is deleting itself for being idle (#12253).
+        let script = pool::reserve_script(&directory(r), p.slots_per_host.max(1));
+        let mut full = None;
         for h in hosts.iter().filter(|h| h.status == "RUNNING") {
-            let script = "n=0; for p in ~/.oa-pool/runs/*/pid; do [ ! -f \"$p\" ] || ! kill -0 \"$(cat \"$p\")\" 2>/dev/null || n=$((n+1)); done; echo $n";
-            if let Ok(n) = self.transport.execute(&p, h, script, None).await {
-                if n.trim().parse::<u64>().unwrap_or(u64::MAX) < p.slots_per_host {
-                    selected = Some(h.clone());
-                    break;
+            if let Ok(answer) = self.transport.execute(&p, h, &script, None).await {
+                match answer.trim() {
+                    "ok" => {
+                        selected = Some(h.clone());
+                        break;
+                    }
+                    "full" if full.is_none() => full = Some(h.clone()),
+                    _ => {}
                 }
             }
         }
         let h = match selected {
             Some(h) => h,
             None if (hosts.len() as u64) < p.max_hosts => self.transport.start(&p)?,
+            // Every slot is taken and no host may be added: wait for a slot
+            // on a host that stays, never on one that is leaving.
+            None if full.is_some() => full.clone().ok_or("No GCE pool host stays up.")?,
             None => {
                 return Err(
                     "All GCE pool slots are occupied and the grant's host limit is reached.".into(),

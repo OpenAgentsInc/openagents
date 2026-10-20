@@ -448,7 +448,9 @@ fn follow(
         }),
         None => {
             let code = exit.unwrap_or_else(|| "unknown".into());
-            if code == "75" {
+            // 75: every slot is taken; 76: the host is deleting itself for
+            // being idle (#12253). Nothing ran: try another host.
+            if code == "75" || code == cloud::LEAVING.to_string() {
                 return Err(FollowError::Failed("busy".into()));
             }
             let tail = errors.into_iter().collect::<Vec<_>>().join("\n");
@@ -1247,6 +1249,44 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
             assert_eq!(calls[0], cloud::start_remote("r1"));
             assert_eq!(calls[1], cloud::follow_remote("r1", 2));
         }
+    }
+
+    struct Leaving;
+    impl Backend for Leaving {
+        fn ssh(&self, _: &str, _: &Host, _: &str) -> std::process::Command {
+            let mut command = std::process::Command::new("bash");
+            command.args(["-c", "cat >/dev/null; echo 'OA_POOL_END 76'"]);
+            command
+        }
+        fn hosts(&self, _: &Pool) -> Result<Vec<Host>, String> {
+            Ok(vec![host("spot")])
+        }
+        fn start(&self, _: &Pool, _: Output) -> Result<Host, String> {
+            panic!("following a run never starts a host")
+        }
+        fn granted(&self, _: &Pool) -> Result<(), String> {
+            Ok(())
+        }
+        fn record(&self, _: &Value) {}
+        fn comment(&self, _: &str, _: u64, _: &str) {}
+    }
+
+    #[test]
+    fn a_host_deleting_itself_sends_the_run_elsewhere() {
+        // #12253: the run never started there, so it is a full host, not a
+        // failed run.
+        let followed = follow(
+            &Leaving,
+            &pool(),
+            &host("spot"),
+            "r1",
+            "script",
+            42,
+            Output::new(true),
+            &AtomicBool::new(false),
+            &Mutex::new(BTreeMap::new()),
+        );
+        assert!(matches!(followed, Err(FollowError::Failed(m)) if m == "busy"));
     }
 
     #[test]

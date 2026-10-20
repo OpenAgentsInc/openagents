@@ -758,6 +758,12 @@ pub const HOST_AGENT: &str = r#"#!/bin/bash
 set -u
 install -d -o coder -g coder /home/coder/.oa-pool /home/coder/.oa-pool/runs /home/coder/.oa-pool/bin
 touch /home/coder/.oa-pool/busy && chown coder:coder /home/coder/.oa-pool/busy
+# Placement and the idle delete take turns under one lock (#12253): a run
+# starts only on a host that isn't deleting itself, and a host deletes
+# itself only when no run started since it last looked. A host that powered
+# off instead of deleting boots without the old mark.
+rm -f /home/coder/.oa-pool/deleting
+[ -f /home/coder/.oa-pool/place.lock ] || install -o coder -g coder -m 644 /dev/null /home/coder/.oa-pool/place.lock
 # A pool host: stale Coder worktree pruning ships on (#10292). Images baked
 # before that lack the marker the setup script now writes.
 install -d -m 0755 /etc/openagents && touch /etc/openagents/pool-host
@@ -767,19 +773,29 @@ cat >/usr/local/bin/oa-pool-idle <<'IDLE'
 set -u
 md() { curl -sf -H Metadata-Flavor:Google "http://metadata.google.internal/computeMetadata/v1/$1"; }
 d=/home/coder/.oa-pool
-for p in "$d"/runs/*/pid; do
-  [ -f "$p" ] || continue
-  if kill -0 "$(cat "$p" 2>/dev/null)" 2>/dev/null; then touch "$d/busy"; exit 0; fi
+exec 7>>"$d/place.lock"; flock 7
+for r in "$d"/runs/*/; do
+  # A run with an exit receipt is over, whatever its old pid now names.
+  [ ! -f "$r/exit" ] || continue
+  if [ -f "$r/pid" ] && kill -0 "$(cat "$r/pid" 2>/dev/null)" 2>/dev/null; then touch "$d/busy"; exit 0; fi
+  # A place taken for a run that is still being prepared.
+  if [ -f "$r/reserved" ] && [ -n "$(find "$r/reserved" -mmin -30 2>/dev/null)" ]; then touch "$d/busy"; exit 0; fi
 done
-# An open ssh session is work too: a coordinator building or testing over
-# ssh starts no pool run.
-if pgrep -f '^sshd(-session)?: [^ ]+@' >/dev/null; then touch "$d/busy"; exit 0; fi
+# An ssh session open for two minutes is work too: a coordinator building
+# or testing over ssh starts no pool run. A status read or a poll lasts
+# seconds and never counts, or the idle clock never runs out (#12252).
+for s in $(pgrep -f '^sshd(-session)?: [^ ]+@'); do
+  age=$(ps -o etimes= -p "$s" 2>/dev/null | tr -d ' ')
+  if [ -n "$age" ] && [ "$age" -ge 120 ]; then touch "$d/busy"; exit 0; fi
+done
 idle=$(md instance/attributes/oa-pool-idle-minutes || echo 10)
 case "$idle" in ''|*[!0-9]*) idle=10 ;; esac
 age=$(( $(date +%s) - $(stat -c %Y "$d/busy" 2>/dev/null || date +%s) ))
 [ "$age" -ge $(( idle * 60 )) ] || exit 0
 name=$(md instance/name); zone=$(md instance/zone); zone=${zone##*/}; project=$(md project/project-id)
 token=$(md instance/service-accounts/default/token | jq -r .access_token)
+# From here no run starts here: placement reads this mark under the lock.
+touch "$d/deleting"
 echo "OA_POOL_IDLE_DELETE idle_seconds=$age" >/dev/ttyS0
 code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $token" \
   "https://compute.googleapis.com/compute/v1/projects/$project/zones/$zone/instances/$name")
@@ -942,9 +958,38 @@ pub fn start_remote(run: &str) -> String {
     let dir = run_dir(run);
     format!(
         "set -e; d={dir}; mkdir -p \"$d\"; umask 077; cat >\"$d/run.sh\"; cd \"$HOME\"; \
-         setsid nohup bash \"$d/run.sh\" >\"$d/out\" 2>\"$d/err\" </dev/null & echo $! >\"$d/pid\"; \
-         {}",
+         exec 7>>\"$HOME/.oa-pool/place.lock\"; flock 7; \
+         if [ -e \"$HOME/.oa-pool/deleting\" ]; then echo {LEAVING} >\"$d/exit\"; echo \"OA_POOL_END {LEAVING}\"; exit 0; fi; \
+         touch \"$HOME/.oa-pool/busy\"; \
+         setsid nohup bash \"$d/run.sh\" >\"$d/out\" 2>\"$d/err\" </dev/null 7>&- & echo $! >\"$d/pid\"; \
+         flock -u 7; exec 7>&-; {}",
         follow_remote(run, 1)
+    )
+}
+
+/// The exit a run gets on a host that is deleting itself for being idle
+/// (#12253): nothing ran, so the run goes to another host.
+pub const LEAVING: u8 = 76;
+
+/// The host command that takes one of a host's `slots` for the run whose
+/// directory is `dir`, under the placement lock the idle delete takes too:
+/// `ok`, `full` (every slot is running or taken by a run being prepared),
+/// or `leaving` (the host is deleting itself). Two runs placed at once
+/// never take the same last slot (#12245).
+pub fn reserve_script(dir: &str, slots: u64) -> String {
+    format!(
+        r#"d="$HOME/.oa-pool"; mine={dir}; mkdir -p "$d/runs"
+exec 7>>"$d/place.lock"; flock 7
+if [ -e "$d/deleting" ]; then echo leaving; exit 0; fi
+n=0
+for r in "$d"/runs/*/; do
+  r=${{r%/}}; [ "$r" != "$mine" ] || continue; [ ! -f "$r/exit" ] || continue
+  if [ -f "$r/pid" ]; then kill -0 "$(cat "$r/pid" 2>/dev/null)" 2>/dev/null && n=$((n+1))
+  elif [ -f "$r/reserved" ] && [ -n "$(find "$r/reserved" -mmin -30 2>/dev/null)" ]; then n=$((n+1)); fi
+done
+if [ "$n" -ge {slots} ]; then echo full; exit 0; fi
+mkdir -p "$mine" && touch "$mine/reserved" "$d/busy" && echo ok"#,
+        dir = boat::shell_quote(dir),
     )
 }
 
@@ -1378,8 +1423,8 @@ pub struct Activity {
     pub error: Option<String>,
 }
 
-const ACTIVITY: &str = "n=0; for p in ~/.oa-pool/runs/*/pid; do [ -f \"$p\" ] && \
-    kill -0 \"$(cat \"$p\")\" 2>/dev/null && n=$((n+1)); done; \
+const ACTIVITY: &str = "n=0; for r in ~/.oa-pool/runs/*/; do [ ! -f \"$r/exit\" ] && [ -f \"$r/pid\" ] && \
+    kill -0 \"$(cat \"$r/pid\")\" 2>/dev/null && n=$((n+1)); done; \
     echo \"$n $(( $(date +%s) - $(stat -c %Y ~/.oa-pool/busy 2>/dev/null || date +%s) ))\"";
 
 pub fn activity(project: &str, hosts: &[Host]) -> Vec<Activity> {
@@ -1790,5 +1835,185 @@ mod issue_command_tests {
                 .unwrap()
                 .contains("--land")
         );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod placement_tests {
+    //! The host scripts themselves, run under a temporary home with stubs
+    //! for the machine's GCE-only commands.
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::path::Path;
+    use std::process::Command;
+
+    fn stub(bin: &Path, name: &str, body: &str) {
+        let path = bin.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn run(home: &Path, dir: &str, live: &mut Vec<std::process::Child>) {
+        let d = home.join(".oa-pool/runs").join(dir);
+        std::fs::create_dir_all(&d).unwrap();
+        let child = Command::new("sleep").arg("30").spawn().unwrap();
+        std::fs::write(d.join("pid"), child.id().to_string()).unwrap();
+        live.push(child);
+    }
+
+    fn reserve(home: &Path, slots: u64) -> String {
+        let mine = home.join(".oa-pool/runs/mine");
+        let out = Command::new("bash")
+            .args([
+                "-c",
+                &super::reserve_script(&mine.display().to_string(), slots),
+            ])
+            .env("HOME", home)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    }
+
+    #[test]
+    fn a_slot_is_taken_once_and_never_on_a_leaving_host() {
+        let home = tempfile::tempdir().unwrap();
+        let mut live = vec![];
+        run(home.path(), "running", &mut live);
+        // An ended run whose old pid now names another process.
+        run(home.path(), "ended", &mut live);
+        std::fs::write(home.path().join(".oa-pool/runs/ended/exit"), "0").unwrap();
+        let prepared = home.path().join(".oa-pool/runs/preparing");
+        std::fs::create_dir_all(&prepared).unwrap();
+        std::fs::write(prepared.join("reserved"), "").unwrap();
+        assert_eq!(
+            reserve(home.path(), 2),
+            "full",
+            "a run being prepared holds its slot"
+        );
+        assert_eq!(reserve(home.path(), 3), "ok");
+        assert!(home.path().join(".oa-pool/runs/mine/reserved").exists());
+        assert_eq!(
+            reserve(home.path(), 3),
+            "ok",
+            "its own place doesn't count against it"
+        );
+        std::fs::write(home.path().join(".oa-pool/deleting"), "").unwrap();
+        assert_eq!(reserve(home.path(), 9), "leaving");
+        for mut child in live {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    #[test]
+    fn a_run_never_starts_on_a_host_deleting_itself() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join(".oa-pool")).unwrap();
+        std::fs::write(home.path().join(".oa-pool/deleting"), "").unwrap();
+        let mut child = Command::new("bash")
+            .args(["-c", &super::start_remote("r1")])
+            .env("HOME", home.path())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"touch \"$HOME/ran\"\n")
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert!(String::from_utf8_lossy(&out.stdout).contains("OA_POOL_END 76"));
+        let dir = home.path().join(".oa-pool/runs/r1");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("exit")).unwrap().trim(),
+            "76"
+        );
+        assert!(!dir.join("pid").exists() && !home.path().join("ran").exists());
+    }
+
+    /// The idle check of the host agent, pointed at `home`, with GCE's
+    /// metadata, `stat`, `pgrep` and `ps` stubbed. Returns whether it
+    /// decided to delete the host, and whether it touched the busy mark.
+    fn idle_check(home: &Path, ssh_age: Option<u64>) -> (bool, bool) {
+        let agent = super::HOST_AGENT;
+        let start = agent.find("<<'IDLE'\n").unwrap() + "<<'IDLE'\n".len();
+        let end = agent[start..].find("\nIDLE\n").unwrap() + start;
+        let d = home.join(".oa-pool");
+        let script = agent[start..end]
+            .replace("d=/home/coder/.oa-pool", &format!("d={}", d.display()))
+            .replace("/dev/ttyS0", "/dev/null");
+        let bin = home.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        stub(
+            &bin,
+            "curl",
+            "case \"$*\" in *DELETE*) printf 200;; *token*) echo '{\"access_token\":\"t\"}';; \
+             *idle-minutes*) echo 10;; *) echo x;; esac",
+        );
+        // The busy mark is an hour old.
+        stub(&bin, "stat", "echo $(( $(date +%s) - 3600 ))");
+        stub(&bin, "sleep", "exit 0");
+        stub(&bin, "systemctl", "exit 0");
+        match ssh_age {
+            Some(age) => {
+                stub(&bin, "pgrep", "echo 4242");
+                stub(&bin, "ps", &format!("echo {age}"));
+            }
+            None => stub(&bin, "pgrep", "exit 1"),
+        }
+        std::fs::write(d.join("busy"), "").unwrap();
+        let before = std::fs::metadata(d.join("busy"))
+            .unwrap()
+            .modified()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let status = Command::new("bash")
+            .args(["-c", &script])
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let after = std::fs::metadata(d.join("busy"))
+            .unwrap()
+            .modified()
+            .unwrap();
+        (d.join("deleting").exists(), after != before)
+    }
+
+    fn pool_home() -> tempfile::TempDir {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join(".oa-pool/runs")).unwrap();
+        home
+    }
+
+    #[test]
+    fn short_ssh_reads_never_reset_the_idle_clock() {
+        // #12252: a status read lasts seconds; the host still goes.
+        let home = pool_home();
+        assert_eq!(idle_check(home.path(), Some(5)), (true, false));
+        // A coordinator's long session keeps it (595f995341).
+        let home = pool_home();
+        assert_eq!(idle_check(home.path(), Some(300)), (false, true));
+    }
+
+    #[test]
+    fn an_ended_run_whose_pid_was_reused_is_not_work() {
+        let home = pool_home();
+        let mut live = vec![];
+        run(home.path(), "ended", &mut live);
+        std::fs::write(home.path().join(".oa-pool/runs/ended/exit"), "0").unwrap();
+        assert_eq!(idle_check(home.path(), None), (true, false));
+        let home = pool_home();
+        run(home.path(), "running", &mut live);
+        assert_eq!(idle_check(home.path(), None), (false, true));
+        for mut child in live {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
