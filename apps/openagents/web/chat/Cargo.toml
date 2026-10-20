@@ -26,6 +26,7 @@ decision-panel = { path = "../../../../crates/decision-panel" }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 openagents-voice-session = { path = "../../crates/voice-session", default-features = false }
 openagents-orb = { path = "../../crates/orb" }
+openagents-veil = { path = "../../crates/veil" }
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
 serde = { version = "1", features = ["derive"] }

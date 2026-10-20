@@ -4495,6 +4495,7 @@ dependencies = [
  "openagents-orb",
  "openagents-proto",
  "openagents-theme",
+ "openagents-veil",
  "openagents-voice-session",
  "openagents-web-chat-view",
  "openagents-web-client",
