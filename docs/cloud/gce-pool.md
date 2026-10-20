@@ -148,6 +148,11 @@ every call and the roles behind it is in
   `openagents` and `microcoder` on the warm target into `~/.oa-pool/bin`
   (one package per Cargo invocation, as the image runbook says). Later runs
   rebuild only when `origin/main` moved.
+  Each host also builds the context finder's index with `filefind index`
+  once per revision (about 90 seconds for a cold index and 10 seconds for a
+  newer commit), so pool briefings use filefind instead of the lite finder.
+  If needed, the briefing builds the index on first use with the same stamp
+  and lock.
 - **Self-delete.** The VM's startup script is the host agent
   (`cloud::HOST_AGENT`). A one-minute timer keeps `~/.oa-pool/busy` fresh
   while a run is active or being placed, or an SSH session has been open
