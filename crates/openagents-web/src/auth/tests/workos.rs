@@ -489,12 +489,12 @@ async fn provider_callback_failures_are_distinct_from_cancellations() {
         (
             "oauth_failed",
             "provider_failed",
-            "Sign-in didn&#39;t finish. Try again.",
+            "Sign-in didn't finish. Try again.",
         ),
         (
             "server_error",
             "provider_failed",
-            "Sign-in didn&#39;t finish. Try again.",
+            "Sign-in didn't finish. Try again.",
         ),
     ] {
         let mut browser = Browser::default();
