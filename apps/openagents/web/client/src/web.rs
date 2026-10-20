@@ -128,6 +128,18 @@ impl Client {
         .map(drop)
     }
 
+    /// The running work Coder reports for the account's computers.
+    pub async fn agents(&self) -> Result<Boards> {
+        self.get("/v1/agents").await
+    }
+
+    /// Approve, deny, stop, or message running work.
+    pub async fn act(&self, action: &ItemAction<'_>) -> Result<()> {
+        self.send::<serde_json::Value>("POST", "/v1/agents/actions", Some(action))
+            .await
+            .map(drop)
+    }
+
     pub async fn delete(&self, id: &str) -> Result<()> {
         self.send::<serde_json::Value>(
             "DELETE",
@@ -202,6 +214,30 @@ impl Client {
             body["id"] = id.into();
         }
         self.send("POST", "/v1/sync/room-tokens", Some(&body)).await
+    }
+
+    /// A ping each time something in the chat list changes
+    /// (`/chats/events?format=json`), so the list is read again only then.
+    /// Dropping the [`Follow`] closes the connection.
+    pub fn watch_rows(&self) -> Result<(Follow, mpsc::UnboundedReceiver<()>)> {
+        let after = (js_sys::Date::now() / 1000.) as u64;
+        let source = web_sys::EventSource::new(&format!("/chats/events?format=json&after={after}"))
+            .map_err(js_error)?;
+        let (sender, receiver) = mpsc::unbounded();
+        let listener =
+            Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |_: web_sys::MessageEvent| {
+                let _ = sender.unbounded_send(());
+            });
+        source
+            .add_event_listener_with_callback("rows", listener.as_ref().unchecked_ref())
+            .map_err(js_error)?;
+        Ok((
+            Follow {
+                source,
+                _listeners: vec![listener],
+            },
+            receiver,
+        ))
     }
 
     /// Reads `path` on this site as JSON.

@@ -1516,6 +1516,38 @@
         },
         {
           "kind": "struct",
+          "name": "Board",
+          "doc": "One computer's running work.",
+          "declaration": "pub struct Board {\n    pub name: String,\n    pub online: bool,\n    pub items: Vec<BoardItem>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "BoardItem",
+          "doc": "One piece of running work: a chat's turn or a background agent.",
+          "declaration": "pub struct BoardItem {\n    pub id: String,\n    pub kind: String,\n    pub title: String,\n    pub status: String,\n    pub session: Option<String>,\n    pub question: Option<ItemQuestion>,\n    pub line: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Boards",
+          "doc": "`GET /v1/agents`: the running work Coder reports, by computer.",
+          "declaration": "pub struct Boards {\n    pub computers: Vec<Board>,\n}",
+          "methods": [
+            {
+              "name": "asking",
+              "doc": "The question the chat with Coder session `session` waits on: its\ncomputer, the item, and the question.",
+              "declaration": "pub fn asking(&self, session: &str) -> Option<(&str, &BoardItem, &ItemQuestion)>",
+              "calls": []
+            },
+            {
+              "name": "agents",
+              "doc": "The background agents of the chat with Coder session `session`,\nwith their computer.",
+              "declaration": "pub fn agents(&self, session: &str) -> Vec<(&str, &BoardItem)>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
           "name": "Change",
           "doc": "The body of `PATCH /v1/threads/{id}`: only what changes.",
           "declaration": "pub struct Change {\n    pub title: Option<String>,\n    pub pinned: Option<bool>,\n    pub archived: Option<bool>,\n    pub project: Option<Option<String>>,\n}"
@@ -1592,6 +1624,18 @@
         },
         {
           "kind": "struct",
+          "name": "ItemAction",
+          "doc": "The body of `POST /v1/agents/actions`: Stop, Approve, Deny, or Message.",
+          "declaration": "pub struct ItemAction<'a> {\n    pub request_id: &'a str,\n    pub computer: &'a str,\n    pub item: &'a str,\n    pub action: &'a str,\n    pub question: Option<&'a str>,\n    pub text: Option<&'a str>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ItemQuestion",
+          "doc": "A question running work waits on.",
+          "declaration": "pub struct ItemQuestion {\n    pub id: String,\n    pub text: String,\n}"
+        },
+        {
+          "kind": "struct",
           "name": "MessageBody",
           "doc": "The body of `POST /v1/threads` and `POST /v1/threads/{id}/messages`.",
           "declaration": "pub struct MessageBody<'a> {\n    pub request_id: &'a str,\n    pub text: &'a str,\n    pub project: Option<&'a str>,\n}"
@@ -1650,7 +1694,7 @@
           "kind": "struct",
           "name": "Thread",
           "doc": "One chat in `GET /v1/threads`, and the row of `GET /v1/threads/{id}`.",
-          "declaration": "pub struct Thread {\n    pub id: String,\n    pub request_id: Option<String>,\n    pub outcome: Option<String>,\n    pub title: String,\n    pub line: String,\n    pub surface: String,\n    pub computer: Option<String>,\n    pub updated_unix: u64,\n    pub working: bool,\n    pub online: bool,\n    pub can_reply: bool,\n    pub pinned: bool,\n    pub project: Option<String>,\n    pub messages: usize,\n}",
+          "declaration": "pub struct Thread {\n    pub id: String,\n    pub request_id: Option<String>,\n    pub outcome: Option<String>,\n    pub title: String,\n    pub line: String,\n    pub surface: String,\n    pub computer: Option<String>,\n    pub session: Option<String>,\n    pub updated_unix: u64,\n    pub working: bool,\n    pub online: bool,\n    pub can_reply: bool,\n    pub pinned: bool,\n    pub project: Option<String>,\n    pub messages: usize,\n}",
           "methods": [
             {
               "name": "pending",

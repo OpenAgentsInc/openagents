@@ -222,6 +222,8 @@ pub struct Thread {
     pub surface: String,
     /// The computer a terminal chat runs on.
     pub computer: Option<String>,
+    /// A terminal chat's Coder session, which its running work names.
+    pub session: Option<String>,
     #[serde(deserialize_with = "nullable")]
     pub updated_unix: u64,
     /// An answer is being written.
@@ -377,6 +379,99 @@ pub struct Change {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project: Option<Option<String>>,
 }
+/// `GET /v1/agents`: the running work Coder reports, by computer.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct Boards {
+    #[serde(deserialize_with = "nullable")]
+    pub computers: Vec<Board>,
+}
+/// One computer's running work.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct Board {
+    #[serde(deserialize_with = "nullable")]
+    pub name: String,
+    #[serde(deserialize_with = "nullable")]
+    pub online: bool,
+    #[serde(deserialize_with = "nullable")]
+    pub items: Vec<BoardItem>,
+}
+/// One piece of running work: a chat's turn or a background agent.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct BoardItem {
+    #[serde(deserialize_with = "nullable")]
+    pub id: String,
+    /// `chat`, `agent`, or `landing`.
+    #[serde(deserialize_with = "nullable")]
+    pub kind: String,
+    #[serde(deserialize_with = "nullable")]
+    pub title: String,
+    /// `working`, `asking`, `done`, `failed`, or `stopped`.
+    #[serde(deserialize_with = "nullable")]
+    pub status: String,
+    /// The Coder session it belongs to.
+    pub session: Option<String>,
+    /// What it waits on while `asking`.
+    pub question: Option<ItemQuestion>,
+    /// Its latest line.
+    pub line: Option<String>,
+}
+/// A question running work waits on.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct ItemQuestion {
+    #[serde(deserialize_with = "nullable")]
+    pub id: String,
+    #[serde(deserialize_with = "nullable")]
+    pub text: String,
+}
+impl Boards {
+    /// The question the chat with Coder session `session` waits on: its
+    /// computer, the item, and the question.
+    pub fn asking(&self, session: &str) -> Option<(&str, &BoardItem, &ItemQuestion)> {
+        self.computers.iter().find_map(|board| {
+            board.items.iter().find_map(|item| {
+                let mine = item.id == session || item.session.as_deref() == Some(session);
+                let question = item.question.as_ref()?;
+                (item.kind == "chat" && item.status == "asking" && mine).then_some((
+                    board.name.as_str(),
+                    item,
+                    question,
+                ))
+            })
+        })
+    }
+    /// The background agents of the chat with Coder session `session`,
+    /// with their computer.
+    pub fn agents(&self, session: &str) -> Vec<(&str, &BoardItem)> {
+        self.computers
+            .iter()
+            .flat_map(|board| {
+                board
+                    .items
+                    .iter()
+                    .map(move |item| (board.name.as_str(), item))
+            })
+            .filter(|(_, item)| item.kind == "agent" && item.session.as_deref() == Some(session))
+            .collect()
+    }
+}
+/// The body of `POST /v1/agents/actions`: Stop, Approve, Deny, or Message.
+#[derive(Clone, Debug, Serialize)]
+pub struct ItemAction<'a> {
+    pub request_id: &'a str,
+    pub computer: &'a str,
+    pub item: &'a str,
+    /// `stop`, `approve`, `deny`, or `message`.
+    pub action: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub question: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<&'a str>,
+}
+
 /// The service's answer to a stop request.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Stopped {
@@ -464,6 +559,38 @@ mod tests {
         assert!(!row.synced());
         assert_eq!(row.title, "");
         assert_eq!(row.project, None);
+    }
+
+    #[test]
+    fn boards_find_a_chat_question_and_its_agents() {
+        let boards: Boards = serde_json::from_str(
+            r#"{"computers":[{"name":"mac","online":true,"items":[
+                {"id":"s1","kind":"chat","title":"t","status":"asking","question":{"id":"q1","text":"Deploy?"}},
+                {"id":"a1","kind":"agent","title":"fix","status":"working","session":"s1","line":"tests"},
+                {"id":"a2","kind":"agent","title":"other","status":"working","session":"s2"}]}]}"#,
+        )
+        .unwrap();
+        let (computer, item, question) = boards.asking("s1").unwrap();
+        assert_eq!(
+            (computer, item.id.as_str(), question.id.as_str()),
+            ("mac", "s1", "q1")
+        );
+        assert!(boards.asking("s2").is_none());
+        let agents = boards.agents("s1");
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].1.id, "a1");
+        let action = ItemAction {
+            request_id: "r",
+            computer: "mac",
+            item: "s1",
+            action: "approve",
+            question: Some("q1"),
+            text: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&action).unwrap(),
+            r#"{"request_id":"r","computer":"mac","item":"s1","action":"approve","question":"q1"}"#
+        );
     }
 
     #[test]

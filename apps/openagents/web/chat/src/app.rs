@@ -41,8 +41,10 @@ mod move_sheet;
 /// A new session on a computer (#12266).
 mod new_session;
 
-/// How often the sidebar re-reads the account's chats.
-const REFRESH: Duration = Duration::from_secs(5);
+/// How often the sidebar re-reads the chats when the feed says nothing.
+const REFRESH: Duration = Duration::from_secs(60);
+/// How often the list is read when the change feed couldn't open.
+const FALLBACK: Duration = Duration::from_secs(5);
 /// The composer's longest message, as the site takes it.
 const MAX_CHARS: usize = 4_000;
 
@@ -75,6 +77,8 @@ enum Menu {
 
 pub struct ChatApp {
     client: Client,
+    /// The open Coder chat's question and agents (#12316).
+    work: Entity<crate::work::Work>,
     check_ins: Entity<crate::check_ins::CheckIns>,
     /// Signed in, or chatting as the browser's visitor (the page's
     /// `openagents-signed-in`).
@@ -150,6 +154,8 @@ impl ChatApp {
         )
         .detach();
         let client = Client::from_page();
+        let work = cx.new(|cx| crate::work::Work::new(client.clone(), cx));
+        cx.observe(&work, |_, _, cx| cx.notify()).detach();
         let compose = cx.new(|cx| Compose::new(composer.clone(), client.clone(), cx));
         cx.observe(&compose, |this, compose, cx| {
             if let Some(notice) = compose.update(cx, |compose, _| compose.take_notice()) {
@@ -177,6 +183,16 @@ impl ChatApp {
         .detach();
 
         let refresh = cx.spawn(async move |this, cx| {
+            // The list is read again when the site says it changed
+            // (`/chats/events?format=json`), and every minute regardless.
+            let watch = this
+                .read_with(cx, |this, _| this.client.watch_rows().ok())
+                .ok()
+                .flatten();
+            let (_follow, mut changed) = match watch {
+                Some((follow, changed)) => (Some(follow), Some(changed)),
+                None => (None, None),
+            };
             loop {
                 let Ok(client) = this.read_with(cx, |this, _| this.client.clone()) else {
                     break;
@@ -196,7 +212,19 @@ impl ChatApp {
                 {
                     break;
                 }
-                cx.background_executor().timer(REFRESH).await;
+                match changed.as_mut() {
+                    Some(changed) => {
+                        let timer = cx.background_executor().timer(REFRESH);
+                        let ping = changed.next();
+                        futures::future::select(Box::pin(timer), ping).await;
+                        // A burst of changes reads the list once.
+                        cx.background_executor()
+                            .timer(Duration::from_millis(300))
+                            .await;
+                        while changed.try_recv().is_ok() {}
+                    }
+                    None => cx.background_executor().timer(FALLBACK).await,
+                }
             }
         });
         // Frames while an answer streams: the veil's fade and the pulse.
@@ -230,6 +258,7 @@ impl ChatApp {
             .unwrap_or_default();
         let mut this = Self {
             client,
+            work,
             check_ins: cx.new(crate::check_ins::CheckIns::new),
             signed_in: route::signed_in(),
             origin,
@@ -376,6 +405,7 @@ impl ChatApp {
         self.composer
             .update(cx, |composer, _| composer.set_placeholder(placeholder));
         let Some(id) = chat else {
+            self.work.update(cx, |work, cx| work.show(None, cx));
             self.set_host_chat(None, cx);
             route::set_title("New chat");
             self.loading_chat = false;
@@ -423,6 +453,8 @@ impl ChatApp {
                     Ok((detail, rows)) => {
                         let thread = detail.thread.clone();
                         route::set_title(&thread.title);
+                        let session = thread.session.clone().filter(|_| thread.synced());
+                        this.work.update(cx, |work, cx| work.show(session, cx));
                         match this.web_threads.iter_mut().find(|t| t.id == thread.id) {
                             Some(row) => *row = thread.clone(),
                             None => this.web_threads.insert(0, thread.clone()),
@@ -1885,6 +1917,7 @@ impl Render for ChatApp {
                     .children(notice)
                     .children(self.render_move_sheet(cx))
                     .child(transcript)
+                    .child(self.work.clone())
                     .child(self.render_composer(cx)),
             );
         let mut root = div()

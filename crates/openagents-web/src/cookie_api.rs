@@ -62,6 +62,9 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/notify",
     "/v1/land",
     "/v1/files",
+    // The running work Coder reports, and Approve, Deny, and Stop on it:
+    // the GPUI chat's approval and agents (#12316).
+    "/v1/agents",
     // The browser's phone-approved wallet requests (#12258).
     "/v1/wallet/browser",
     // The browser's Verse key and its owner tag (#12313).

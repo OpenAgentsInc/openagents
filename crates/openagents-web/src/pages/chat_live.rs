@@ -108,7 +108,14 @@ struct Resume {
     current: String,
     #[serde(default)]
     hx: String,
+    /// `json`: each change is a `rows` event the GPUI chat answers by
+    /// reading `/v1/threads` again (#12316), instead of HTML.
+    #[serde(default)]
+    format: String,
 }
+
+/// The JSON variant's one event body: something in the list changed.
+const ROWS_CHANGED: &str = r#"{"changed":true}"#;
 
 /// What the stream knows: each chat's status as last sent or drawn. A chat
 /// missing from the map has an unknown status and is sent when next read.
@@ -161,12 +168,15 @@ async fn events(
     watch.current = Some(resume.current).filter(|id| valid_id(id));
     watch.hx = resume.hx == "1";
     watch.headers = headers;
-    let stream = futures_util::stream::unfold(watch, |mut watch| async move {
+    let json = resume.format == "json";
+    let stream = futures_util::stream::unfold(watch, move |mut watch| async move {
         let body = watch.next().await?;
-        let event = Event::default()
-            .id(watch.cursor.to_string())
-            .event("status")
-            .data(body);
+        let event = Event::default().id(watch.cursor.to_string());
+        let event = if json {
+            event.event("rows").data(ROWS_CHANGED)
+        } else {
+            event.event("status").data(body)
+        };
         Some((Ok::<_, Infallible>(event), watch))
     });
     crate::chat_html::protect(
@@ -606,6 +616,13 @@ mod tests {
             .await
             .expect("a status in time")
             .expect("the connection is open")
+    }
+
+    #[test]
+    fn the_json_variant_is_asked_for_by_format() {
+        let resume: Resume = serde_json::from_str(r#"{"after":5,"format":"json"}"#).unwrap();
+        assert_eq!(resume.format, "json");
+        assert!(serde_json::from_str::<serde_json::Value>(ROWS_CHANGED).is_ok());
     }
 
     #[tokio::test]

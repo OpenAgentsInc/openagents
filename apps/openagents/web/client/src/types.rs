@@ -8,8 +8,9 @@ use serde::{Deserialize, Deserializer};
 
 pub use openagents_sdk::MessageRole;
 pub use openagents_sdk::chats::wire::{
-    BadEvent, Change, Content, Event, FileRef, MessageBody, MessageRow, Page, Started, Thread,
-    ThreadDetail, ThreadList, ThreadMessage, is_request_id, message_ok, title,
+    BadEvent, Board, BoardItem, Boards, Change, Content, Event, FileRef, ItemAction, ItemQuestion,
+    MessageBody, MessageRow, Page, Started, Thread, ThreadDetail, ThreadList, ThreadMessage,
+    is_request_id, message_ok, title,
 };
 /// Why the service refused or ended a turn, as an [`Event::Error`] carries it.
 pub use openagents_sdk::chats::wire::{Refusal as TurnRefusal, RefusalCode};

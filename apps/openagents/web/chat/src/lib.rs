@@ -20,6 +20,8 @@ pub mod route;
 
 #[cfg(target_family = "wasm")]
 mod app;
+#[cfg(target_family = "wasm")]
+mod work;
 
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;

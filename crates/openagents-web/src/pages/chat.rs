@@ -1305,21 +1305,17 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
 /// What the GPUI chat (`super::gpui_chat`) shows beside its canvas for
 /// `chat` (#12223): the pieces of this page the canvas doesn't draw yet,
 /// as this page draws them, so they post and refresh exactly as here. A
-/// Coder chat's question waiting for an answer while its computer is
-/// online; its agents; and its asks to the computer. [`gpui_files`] is the
-/// composer that adds files.
+/// web chat's Claude Code agents and a Coder chat's asks to the computer.
+/// [`gpui_files`] is the composer that adds files.
 pub(crate) async fn gpui_side(app: &App, headers: &HeaderMap, chat: &Conversation) -> Markup {
     let viewer = reader(app, headers)
         .await
         .unwrap_or_else(|| chat.owner.clone());
     let owner = viewer == chat.owner;
-    let approval = match &chat.terminal {
-        Some(_) if owner && continued::online(app, chat).await => {
-            Some(approval::current(app, chat).await)
-        }
-        _ => None,
-    };
-    let agents = if owner {
+    // A Coder chat's question and background agents draw in the canvas
+    // itself (#12316, from `/v1/agents`); a web chat's Claude Code agents
+    // still show here.
+    let agents = if owner && chat.terminal.is_none() {
         let rows = agents::rows(app, headers, chat).await;
         (!rows.is_empty()).then(|| agents::render(&chat.id, &csrf(app, &chat.owner), &rows, None))
     } else {
@@ -1335,7 +1331,6 @@ pub(crate) async fn gpui_side(app: &App, headers: &HeaderMap, chat: &Conversatio
         _ => Vec::new(),
     };
     html! {
-        @if let Some(approval) = approval { (approval) }
         @if let Some(agents) = agents { (agents) }
         @if !asks.is_empty() {
             section.g-side-asks aria-label="Asks to the computer" {

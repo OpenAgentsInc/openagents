@@ -21,6 +21,9 @@ openagents-web-chat-view.workspace = true
 # The composer's tokens and the question wizard (#12267, #12268).
 openagents-chat-view.workspace = true
 openagents-web-client.workspace = true
+# A Coder chat's question in the canvas (#12316).
+decision-panel = { path = "../../../../crates/decision-panel" }
+rust-native = { path = "../../../../crates/rust-native", default-features = false }
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
 serde_json = "1"
