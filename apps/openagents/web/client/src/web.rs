@@ -20,6 +20,7 @@ pub const CSRF_META: &str = "openagents-csrf";
 #[derive(Clone)]
 pub struct Client {
     csrf: String,
+    chat_surface: Option<String>,
 }
 
 impl Client {
@@ -34,13 +35,25 @@ impl Client {
             })
             .and_then(|e| e.get_attribute("content"))
             .unwrap_or_default();
-        Self { csrf }
+        Self {
+            csrf,
+            chat_surface: None,
+        }
     }
 
     /// A client whose writes carry `csrf`, for a page that reads its CSRF
     /// value after it loads (`/lander8`).
     pub fn with_csrf(csrf: impl Into<String>) -> Self {
-        Self { csrf: csrf.into() }
+        Self {
+            csrf: csrf.into(),
+            chat_surface: None,
+        }
+    }
+
+    /// Identifies the public chat page, for its visitor policy.
+    pub fn with_chat_surface(mut self, surface: &str) -> Self {
+        self.chat_surface = Some(surface.to_owned());
+        self
     }
 
     pub async fn voice_agent(&self) -> Result<serde_json::Value> {
@@ -287,6 +300,11 @@ impl Client {
             .set("content-type", "application/x-www-form-urlencoded")
             .map_err(js_error)?;
         headers.set(CSRF_HEADER, &self.csrf).map_err(js_error)?;
+        if let Some(surface) = &self.chat_surface {
+            headers
+                .set("x-openagents-chat-surface", surface)
+                .map_err(js_error)?;
+        }
         init.set_headers(&headers);
         init.set_body(&JsValue::from_str(body));
         let request = web_sys::Request::new_with_str_and_init(path, &init).map_err(js_error)?;
@@ -323,6 +341,11 @@ impl Client {
             .map_err(js_error)?;
         if method != "GET" {
             headers.set(CSRF_HEADER, &self.csrf).map_err(js_error)?;
+            if let Some(surface) = &self.chat_surface {
+                headers
+                    .set("x-openagents-chat-surface", surface)
+                    .map_err(js_error)?;
+            }
         }
         if let Some(body) = body {
             headers

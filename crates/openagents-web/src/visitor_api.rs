@@ -22,7 +22,9 @@
 //!
 //! The site's own `/lander8` chat uses these routes the same way: its
 //! requests carry the browser's `oa_visitor` cookie, which
-//! [`crate::cookie_api`] turns into that visitor's token.
+//! [`crate::cookie_api`] turns into that visitor's token. `/home` identifies
+//! its requests with `x-openagents-chat-surface: home` and offers free text
+//! chat without the account-conversion message and chat limits.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -138,6 +140,15 @@ async fn used(app: &App, visitor: &str) -> Result<(usize, usize), Response> {
     Ok((chats.iter().map(|c| c.requests.len()).sum(), chats.len()))
 }
 
+/// `/home` offers free text chat without requiring an account. This is a
+/// public page policy, not an authentication credential; ownership and
+/// request validation still apply to every message.
+pub(crate) fn home_surface(headers: &HeaderMap) -> bool {
+    headers
+        .get("x-openagents-chat-surface")
+        .is_some_and(|v| v == "home")
+}
+
 fn limited() -> Response {
     refused(StatusCode::CONFLICT, "sign_in_required", SIGN_IN)
 }
@@ -222,12 +233,14 @@ pub(crate) async fn start(app: &App, headers: &HeaderMap, visitor: &str, body: &
     };
     let store = &app.config.chat_store;
     let existed = matches!(store.load(visitor, &id).await, Ok(Some(_)));
-    let left = if existed {
+    let left = if home_surface(headers) {
+        Ok(None)
+    } else if existed {
         used(app, visitor)
             .await
-            .map(|(sent, _)| MESSAGES.saturating_sub(sent))
+            .map(|(sent, _)| Some(MESSAGES.saturating_sub(sent)))
     } else {
-        admit(app, visitor, true).await
+        admit(app, visitor, true).await.map(Some)
     };
     let left = match left {
         Ok(left) => left,
@@ -252,11 +265,11 @@ pub(crate) async fn start(app: &App, headers: &HeaderMap, visitor: &str, body: &
     } else {
         StatusCode::CREATED
     };
-    sent(
-        outcome,
-        status,
-        json!({"id": id, "answering": true, "left": left}),
-    )
+    let mut body = json!({"id": id, "answering": true});
+    if let Some(left) = left {
+        body["left"] = json!(left);
+    }
+    sent(outcome, status, body)
 }
 
 /// `POST /v1/threads/{id}/messages` as a visitor.
@@ -281,12 +294,14 @@ pub(crate) async fn reply(
         Ok(_) => return refused(StatusCode::NOT_FOUND, "not_found", "No such chat."),
         Err(e) => return crate::coder_sync::stored(&e),
     };
-    let left = if resent {
+    let left = if home_surface(headers) {
+        Ok(None)
+    } else if resent {
         used(app, visitor)
             .await
-            .map(|(sent, _)| MESSAGES.saturating_sub(sent))
+            .map(|(sent, _)| Some(MESSAGES.saturating_sub(sent)))
     } else {
-        admit(app, visitor, false).await
+        admit(app, visitor, false).await.map(Some)
     };
     let left = match left {
         Ok(left) => left,
@@ -304,11 +319,11 @@ pub(crate) async fn reply(
         headers,
     )
     .await;
-    sent(
-        outcome,
-        StatusCode::ACCEPTED,
-        json!({"answering": true, "left": left}),
-    )
+    let mut body = json!({"answering": true});
+    if let Some(left) = left {
+        body["left"] = json!(left);
+    }
+    sent(outcome, StatusCode::ACCEPTED, body)
 }
 
 /// The sender's address for the hourly limit: the first forwarded hop.

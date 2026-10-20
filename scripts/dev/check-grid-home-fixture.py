@@ -17,6 +17,7 @@ parser.add_argument("--upstream", default="http://localhost:4331")
 parser.add_argument("--out", required=True, type=Path)
 parser.add_argument("--check-script", type=Path, default=Path(__file__).with_name("check-grid-home.py"))
 parser.add_argument("--browser")
+parser.add_argument("--refuse-followup", action="store_true", help="Inject an auth error to check that the page never navigates automatically.")
 parser.add_argument("--webgl", action="store_true", help="Use Verse's WebGL backend.")
 parser.add_argument("--allow-context-loss", action="store_true", help="Input/API diagnosis on a software GPU only.")
 args = parser.parse_args()
@@ -50,13 +51,19 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("X-OpenAgents-Csrf") != csrf:
             self.send_error(403)
             return
+        if self.headers.get("X-OpenAgents-Chat-Surface") != "home":
+            self.send_error(400, "Home chat surface required")
+            return
         length = int(self.headers.get("Content-Length", "0"))
         if not 0 < length <= 64 * 1024:
             self.send_error(400)
             return
         message = json.loads(self.rfile.read(length))
         requests.append(message)
-        self.reply(b'{"id":"fixture-chat","answering":true}', status=201)
+        if args.refuse_followup and self.path.endswith("/messages"):
+            self.reply(b'{"error":{"code":"sign_in_required","message":"Log in to keep chatting."}}', status=401)
+        else:
+            self.reply(b'{"id":"fixture-chat","answering":true}', status=201)
 
     def do_GET(self):
         path = urlsplit(self.path)
@@ -116,6 +123,8 @@ if args.browser:
     command += ["--browser", args.browser]
 command += ["--", "python3", str(args.check_script), "--url", url, "--out", str(args.out),
             "--movement", "--chat", "--timeout", "180"]
+if args.refuse_followup:
+    command += ["--auth-refusal"]
 if args.allow_context_loss:
     command += ["--allow-context-loss"]
 print(f"Fixture at {url}; page and assets from {args.upstream}; chat replies stay here.", flush=True)

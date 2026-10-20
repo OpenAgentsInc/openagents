@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--url", default="http://localhost:4331/home")
 parser.add_argument("--out", required=True, type=Path)
 parser.add_argument("--timeout", type=float, default=120)
+parser.add_argument("--auth-refusal", action="store_true", help="Fixture only: the next reply must refuse sign-in without navigation.")
 parser.add_argument("--chat", action="store_true", help="Submit a test chat; use only a local fixture or dedicated test account.")
 parser.add_argument("--allow-context-loss", action="store_true", help="Check input/API behavior despite a software GPU failure; does not verify rendering.")
 parser.add_argument("--movement", action="store_true", help="Walk to the shared terminal and check typing (fresh spawn).")
@@ -114,7 +115,8 @@ assert evaluate(
 )
 marks = evaluate('performance.getEntriesByType("mark").map(x=>({name:x.name,ms:x.startTime}))')
 times = {mark["name"]: mark["ms"] for mark in marks}
-assert times["lander5-presented"] < times["pylons-layer"] < times["verse-start"]
+assert not any(mark["name"].startswith("lander5-") for mark in marks), "Preliminary shader still loads."
+assert times["pylons-layer"] < times["verse-start"]
 assert times["verse-start"] <= times["verse-first-frame"] <= times["verse-visible"]
 assert not [e for e in cdp.events if e.get("method") == "Network.webSocketCreated"]
 samples = []
@@ -144,7 +146,7 @@ if args.movement:
         return evaluate('globalThis.__pylonsFrame.player')
 
     def key(code, down, text=None, repeat=False):
-        name = {"Escape": "Escape", "Enter": "Enter", "Space": " "}.get(code, code[-1].lower())
+        name = {"Escape": "Escape", "Enter": "Enter", "Space": " ", "Backspace": "Backspace"}.get(code, code[-1].lower())
         event = {"type": "keyDown" if down else "keyUp", "code": code, "key": name, "autoRepeat": repeat}
         if text is not None:
             event["text"] = text
@@ -167,6 +169,9 @@ if args.movement:
     def draft_chars():
         return evaluate('Number(document.querySelector("#pylon-composer").dataset.draftChars)')
 
+    wait_for(lambda: evaluate('performance.getEntriesByName("home-chat-ready").length > 0'), "Background chat preparation")
+    assert evaluate('document.activeElement?.id !== "pylon-message"'), "Background chat stole focus."
+    assert evaluate('!document.querySelector("#everglade-canvas").hasAttribute("data-composing")')
     start = position()
     x = start[0]
     walk_until("KeyA", lambda p: abs(p[0] - x) >= .8)
@@ -194,6 +199,43 @@ if args.movement:
     assert all(abs(a-b) < .02 for a,b in zip(typing_at, position())), (typing_at, position())
     png = cdp.call("Page.captureScreenshot", {"format": "png"})["data"]
     (args.out / "home-terminal.png").write_bytes(base64.b64decode(png))
+    # The visible chat must release the world on click, without Escape.
+    point = evaluate("""(()=>{
+        for(const y of [180,260,340])for(const x of [40,100,innerWidth-40])
+            if(document.elementFromPoint(x,y)?.id==="everglade-canvas")return {x,y};
+        return null;
+    })()""")
+    assert point, "No world area receives pointer events."
+    def mouse(kind, x, y, **extra):
+        cdp.call("Input.dispatchMouseEvent", dict(type=kind, x=x, y=y, **extra))
+    mouse("mouseMoved", **point)
+    mouse("mousePressed", **point, button="left", buttons=1, clickCount=1)
+    wait_for(lambda: evaluate('document.activeElement?.id === "everglade-canvas" && !document.querySelector("#everglade-canvas").hasAttribute("data-composing")'), "Click away from GPUI")
+    drag_matrices = [evaluate('globalThis.__pylonsFrame.matrix')]
+    for step in range(1, 9):
+        mouse("mouseMoved", point["x"]+step*5, point["y"], button="left", buttons=1)
+        time.sleep(.08)
+        drag_matrices.append(evaluate('globalThis.__pylonsFrame.matrix'))
+    mouse("mouseReleased", point["x"]+40, point["y"], button="left", buttons=0, clickCount=1)
+    changes = sum(a != b for a,b in zip(drag_matrices, drag_matrices[1:]))
+    assert changes >= 6, ("Camera stopped during drag", changes)
+    assert evaluate('document.querySelector("#pylon-composer").classList.contains("open")'), "Click-away hid the chat."
+    walking_at = position()
+    key("KeyA", True)
+    time.sleep(.2)
+    key("KeyA", False)
+    assert sum((a-b)**2 for a,b in zip(walking_at, position())) > .02, "WASD stayed captured."
+    assert draft_chars() == len(draft), "Movement changed the GPUI draft."
+    text_point = evaluate("""(()=>{const r=document.querySelector("#lander-chat-keep").getBoundingClientRect();return {x:r.x+r.width/2,y:r.bottom-40}})()""")
+    mouse("mouseMoved", **text_point)
+    mouse("mousePressed", **text_point, button="left", buttons=1, clickCount=1)
+    mouse("mouseReleased", **text_point, button="left", buttons=0, clickCount=1)
+    wait_for(lambda: evaluate('document.activeElement?.id === "pylon-message" && document.querySelector("#everglade-canvas").hasAttribute("data-composing")'), "Return to typing")
+    key("KeyX", True, "x");key("KeyX", False)
+    wait_for(lambda: draft_chars() == len(draft)+1, "Typing after world drag")
+    key("Backspace", True);key("Backspace", False)
+    wait_for(lambda: draft_chars() == len(draft), "Draft preserved after click away")
+    result["focus_handoff"] = {"continuous_drag_frames": changes, "walking_after_click": position()}
     key("Escape", True)
     key("Escape", False)
     assert evaluate('document.querySelector("#pylon-composer").hasAttribute("inert")')
@@ -215,6 +257,33 @@ if args.movement:
         result["chat"] = {"submitted": json.loads(posts[0]["postData"]), "messages": evaluate('Number(document.querySelector("#pylon-composer").dataset.messageCount)')}
         png = cdp.call("Page.captureScreenshot", {"format": "png"})["data"]
         (args.out / "home-chat.png").write_bytes(base64.b64decode(png))
+        for post in posts:
+            assert {k.lower():v for k,v in post["headers"].items()}.get("x-openagents-chat-surface") == "home", "Home did not select free guest chat."
+        if not args.auth_refusal:
+            followup = "another free reply"
+            for char in followup:
+                code = "Space" if char == " " else "Key" + char.upper()
+                key(code, True, char);key(code, False)
+            wait_for(lambda: draft_chars() == len(followup), "Free follow-up draft")
+            key("Enter", True);key("Enter", False)
+            wait_for(lambda: evaluate('Number(document.querySelector("#pylon-composer").dataset.messageCount)>=4 && document.querySelector("#pylon-composer").dataset.chatState === "ready"'), "Free signed-out follow-up reply")
+            assert evaluate('location.pathname') == "/home"
+            assert draft_chars() == 0
+            result["free_followup"] = {"messages": evaluate('Number(document.querySelector("#pylon-composer").dataset.messageCount)'), "path":evaluate('location.pathname')}
+        if args.auth_refusal:
+            followup = "keep this draft"
+            for char in followup:
+                code = "Space" if char == " " else "Key" + char.upper()
+                key(code, True, char);key(code, False)
+            wait_for(lambda: draft_chars() == len(followup), "Second draft")
+            key("Enter", True);key("Enter", False)
+            wait_for(lambda: evaluate('document.querySelector("#pylon-composer")?.dataset.chatState === "notice"'), "Inline sign-in notice")
+            assert evaluate('location.pathname') == "/home", "Sending redirected to sign-in."
+            assert draft_chars() == len(followup), "Refusal lost the draft."
+            time.sleep(.2)
+            png = cdp.call("Page.captureScreenshot", {"format": "png"})["data"]
+            (args.out / "home-auth-notice.png").write_bytes(base64.b64decode(png))
+            result["auth_refusal"] = {"path": evaluate('location.pathname'), "draft_chars": draft_chars()}
     evaluate('window.dispatchEvent(new Event("verse-stopped"))')
     assert evaluate('document.querySelector("#pylon-composer").hasAttribute("inert")')
 losses = [e["params"]["entry"]["text"] for e in cdp.events

@@ -67,6 +67,7 @@ pub struct LanderChat {
     notice: Option<Notice>,
     composer: Entity<TextInput>,
     scroll: ScrollHandle,
+    notice_bounds: ScrollHandle,
     /// The open chat as the desktop's transcript reads it.
     shared: Entity<WebTranscript>,
     /// The desktop's transcript, drawing `shared` (#12216).
@@ -133,6 +134,7 @@ impl LanderChat {
             notice: None,
             composer,
             scroll: ScrollHandle::new(),
+            notice_bounds: ScrollHandle::new(),
             shared,
             transcript,
             published: None,
@@ -154,7 +156,12 @@ impl LanderChat {
                 let done = this
                     .update(cx, |this, cx| match read {
                         Ok(session) => {
-                            this.client = Some(Client::with_csrf(session.csrf.clone()));
+                            let client = Client::with_csrf(session.csrf.clone());
+                            this.client = Some(if base() == model::HOME_BASE {
+                                client.with_chat_surface("home")
+                            } else {
+                                client
+                            });
                             this.session = Some(session);
                             if matches!(this.notice, Some(Notice { sign_in: false, .. })) {
                                 this.notice = None;
@@ -228,12 +235,18 @@ impl LanderChat {
         };
         let shows_card = !self.entries.is_empty() || self.live.is_some() || self.sending;
         let transcript = self.scroll.bounds();
-        let top = if shows_card && f32::from(transcript.size.height) > 0. {
+        let mut top = if shows_card && f32::from(transcript.size.height) > 0. {
             let above = if self.current.is_some() { 42. } else { 0. };
             f32::from(transcript.origin.y) - 1. - above
         } else {
             layout.composer.y
         };
+        if self.notice.is_some() {
+            let notice = self.notice_bounds.bounds();
+            if f32::from(notice.size.height) > 0. {
+                top = top.min(f32::from(notice.origin.y));
+            }
+        }
         let area = (
             layout.room.x,
             top.max(0.),
@@ -317,8 +330,7 @@ impl LanderChat {
         cx.notify();
     }
 
-    /// Says what went wrong, or sends the person to sign in when the site
-    /// asks for it, keeping `draft` for when they come back.
+    /// Shows failures inline and keeps the draft; signing in is an explicit action.
     fn refused(&mut self, error: &anyhow::Error, draft: Option<&str>, cx: &mut Context<Self>) {
         log::warn!("lander8 request failed: {error:#}");
         match error.downcast_ref::<Refusal>() {
@@ -330,7 +342,6 @@ impl LanderChat {
                 if let Some(draft) = draft {
                     keep_draft(draft);
                 }
-                sign_in(self.current.as_deref());
             }
             Some(refusal) => {
                 self.notice = Some(Notice {
@@ -754,6 +765,9 @@ impl LanderChat {
     fn render_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let notice = self.notice.as_ref()?;
         let line = div()
+            .id("lander8-notice")
+            .track_scroll(&self.notice_bounds)
+            .flex_none()
             .flex()
             .flex_row()
             .items_center()

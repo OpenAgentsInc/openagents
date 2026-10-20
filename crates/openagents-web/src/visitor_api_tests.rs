@@ -39,6 +39,17 @@ async fn call(
     path: &str,
     body: Option<Value>,
 ) -> (u16, Value) {
+    call_surface(world, token, method, path, body, None).await
+}
+
+async fn call_surface(
+    world: &crate::projects::tests::World,
+    token: Option<&str>,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+    surface: Option<&str>,
+) -> (u16, Value) {
     let mut request = Request::builder()
         .method(method)
         .uri(path)
@@ -47,6 +58,9 @@ async fn call(
         // Each call its own address: the hourly visitor limit is shared by
         // every test in the process, and is checked by its own unit test.
         .header("x-forwarded-for", next_address());
+    if let Some(surface) = surface {
+        request = request.header("x-openagents-chat-surface", surface);
+    }
     if let Some(token) = token {
         request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
     }
@@ -892,4 +906,129 @@ async fn a_signed_in_page_reads_the_account_api_with_its_cookie() {
     )
     .await;
     assert_eq!(status, 401, "{body}");
+}
+
+// The saved answer can become visible just before the worker releases its slot.
+async fn home_post(
+    world: &crate::projects::tests::World,
+    token: &str,
+    path: &str,
+    body: Value,
+) -> (u16, Value) {
+    for _ in 0..400 {
+        let result = call_surface(
+            world,
+            Some(token),
+            "POST",
+            path,
+            Some(body.clone()),
+            Some("home"),
+        )
+        .await;
+        if result.1["error"]["code"] != "busy" {
+            return result;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("Previous home answer stayed busy");
+}
+
+#[tokio::test]
+async fn home_guests_keep_getting_answers_past_message_and_chat_allowances() {
+    let world = world_with(Options {
+        chat: Some(Arc::new(Worker)),
+        ..Options::default()
+    })
+    .await;
+    let (_, minted) = call(&world, None, "POST", "/v1/visitors", None).await;
+    let token = minted["token"].as_str().unwrap();
+    // More conversations than the old account-conversion allowance.
+    for n in 0..=CHATS {
+        let chat = id(800 + n);
+        let (status, result) = home_post(
+            &world,
+            token,
+            "/v1/threads",
+            json!({"request_id":chat,"text":format!("home chat {n}")}),
+        )
+        .await;
+        assert_eq!(status, 201, "{result}");
+        assert!(
+            result.get("left").is_none(),
+            "A free chat must not report an account-conversion allowance"
+        );
+        answered(&world, token, &chat).await;
+    }
+    let chat = id(800 + CHATS);
+    // Follow-ups keep reaching the worker after the total message allowance.
+    for n in 0..=MESSAGES {
+        let (status, result) = home_post(
+            &world,
+            token,
+            &format!("/v1/threads/{chat}/messages"),
+            json!({"request_id":id(900+n),"text":format!("free follow-up {n}")}),
+        )
+        .await;
+        assert_eq!(status, 202, "{result}");
+        answered(&world, token, &chat).await;
+    }
+    let last = answered(&world, token, &chat).await;
+    assert!(
+        last["messages"].as_array().unwrap().last().unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .contains("Answer to free follow-up")
+    );
+    let (status, refusal) = call(
+        &world,
+        Some(token),
+        "POST",
+        &format!("/v1/threads/{chat}/messages"),
+        Some(json!({"request_id":id(999),"text":"app policy"})),
+    )
+    .await;
+    assert_eq!(status, 409, "{refusal}");
+    assert_eq!(refusal["error"]["code"], "sign_in_required");
+    let (status, result) = home_post(
+        &world,
+        token,
+        &format!("/v1/threads/{chat}/messages"),
+        json!({"request_id":id(1000),"text":"already exhausted, still free at home"}),
+    )
+    .await;
+    assert_eq!(status, 202, "{result}");
+    answered(&world, token, &chat).await;
+}
+
+#[tokio::test]
+async fn signed_in_home_chat_uses_the_existing_free_account_chat() {
+    let world = world_with(Options {
+        chat: Some(Arc::new(Worker)),
+        ..Options::default()
+    })
+    .await;
+    let mut alice = Browser::default();
+    alice.sign_in(&world, "octo-local").await;
+    let session = alice.0["oa_cloud_session"].clone();
+    let chat = id(1001);
+    let (status, result) = call_surface(
+        &world,
+        Some(&session),
+        "POST",
+        "/v1/threads",
+        Some(json!({"request_id":chat,"text":"signed in at home"})),
+        Some("home"),
+    )
+    .await;
+    assert_eq!(status, 201, "{result}");
+    answered(&world, &session, &chat).await;
+    let (status, result) = home_post(
+        &world,
+        &session,
+        &format!("/v1/threads/{chat}/messages"),
+        json!({"request_id":id(1002),"text":"free follow-up"}),
+    )
+    .await;
+    assert_eq!(status, 202, "{result}");
+    answered(&world, &session, &chat).await;
 }

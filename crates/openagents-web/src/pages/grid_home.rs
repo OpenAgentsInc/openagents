@@ -1,21 +1,9 @@
 //! `/home`: the Grid homepage. The production `/` route stays unchanged.
 //!
-//! One response paints the page: `/lander5`'s Grid shader inline (held
-//! still, black and white, facing straight down the Grid, as `/pylons`
-//! draws it), a top bar with the mark and the name and Log in and Sign up,
-//! and the list of pylons online now as HTML, which is what screen readers
-//! and a visitor without script read. Then, each in its own module and in
-//! idle moments, so a slow computer keeps its frames:
-//!
-//! 1. the shader moves to a worker (as on `/lander6`);
-//! 2. `/pylons`' layer (`/pylons/layer/`, about 60 KB) stands a pillar per
-//!    pylon online, fed by `/pylons/live` (the server's one relay
-//!    subscription, every event checked); a click opens the pylon's GPUI
-//!    card (`/pylons/card/`, loaded on the first click);
-//! 3. the Verse web build `/verse` serves (`/everglade/`), at low priority:
-//!    on this page (its canvas carries `data-ambient`) it opens the Grid
-//!    with its camera circling the plaza until WASD takes over, and joins no one;
-//!    it cross-fades in behind the pillars and the shader stops.
+//! The header and accessible pylon list are HTML. The live pylons and Verse
+//! load in separate chunks; only Verse draws the world. Once it paints,
+//! the page prepares the GPUI chat so approaching the shared terminal
+//! does not wait for its download and first frame.
 //!
 //! Approaching the shared terminal opens the GPUI lander chat. [`me`] (`GET /home/me`) tells the top
 //! bar who is signed in, so the page itself stays one cached document:
@@ -25,7 +13,6 @@
 //! `/home` used to be the classic home page; that moved to
 //! [`super::home::HOME`].
 
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -35,7 +22,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::json;
 
-use super::lander5::{Addition, BuildKey, Document, assemble_page, build, build_key, send};
+use super::lander5::{Addition, Document, assemble_page, send};
 use super::pylons_field::{field, list_html};
 use crate::App;
 
@@ -52,15 +39,16 @@ const BACK: &str = "%2Fhome";
 /// The chat entry point respects the feature flags and saved UI choice.
 const CHAT: &str = super::home::NEW;
 
-/// The Grid's stand-in, the top bar, the pylons' list (visible without
+/// The top bar, the pylons' list (visible without
 /// script, read by screen readers with it), the pillars, the pylon card,
 /// and Verse's canvas, hidden until its first frame. The pillars' look is
 /// `/pylons`'.
 const STYLE: &str = "\
 :root{color-scheme:dark}\
 html,body{margin:0;height:100%}\
-body{background:#0a0a0a linear-gradient(180deg,#090909 0%,#0c0c0c 22%,#151515 36%,#262626 41.6%,#0f0f0f 42.2%,#0b0b0b 60%,#0a0a0a 100%);color:#e5e5e5;font-family:Geist,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Inter,Roboto,\"Helvetica Neue\",Arial,sans-serif;overflow:hidden}\
+body{background:#0a0a0a;color:#e5e5e5;font-family:Geist,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Inter,Roboto,\"Helvetica Neue\",Arial,sans-serif;overflow:hidden}\
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}\
+#lander5-canvas{display:none}\
 #everglade-canvas{opacity:0;transition:opacity 1.2s ease;outline:none}\
 #everglade-canvas.ready{opacity:1}\
 .sr,.js #pylons-panel{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}\
@@ -79,7 +67,8 @@ header nav a.solid:hover{background:#fff}\
 #pylons-panel li{padding:4px 0;font-size:13px}\
 #pylons-panel .d{display:block;color:#9a9a9a;font-size:12px}\
 #pylons-panel button{all:unset}\
-#pylons-field{position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}\
+#pylons-field{visibility:hidden;position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}\
+.world-ready #pylons-field{visibility:visible}\
 .pylon{all:unset;position:absolute;left:0;top:0;box-sizing:border-box;cursor:pointer;pointer-events:auto;width:var(--hw);height:var(--h);transform:translate3d(calc(var(--x) - var(--hw) / 2),calc(var(--y) - var(--h)),0);opacity:0;transition:opacity .7s ease,transform .6s cubic-bezier(.2,.8,.2,1)}\
 .pylon.in{opacity:1}\
 .pylon.out,.pylon.hid{opacity:0;pointer-events:none}\
@@ -190,14 +179,8 @@ const AFTER_LIST: &str = "\
 \
 ";
 
-/// The loader asks who is signed in and after the Grid's first full
-/// frame hands the Grid to a worker. Then, in idle moments: the pylons'
-/// layer; once it runs, the Verse build at low priority, which fades in
-/// behind the pillars on its first frame and stops the shader. The layer
-/// calls `pylonsCard.show(json)` and `pylonsCard.hide()`; the first `show`
-/// loads the card's build and mounts it. GPUI focuses a text field of its
-/// own when the card starts; the card takes no typing, so that field is
-/// hidden and focus goes back where it was.
+/// Loads the pylons, Verse, and GPUI chat as separate modules. The pylon
+/// card loads on click. Only the focused GPUI input pauses world controls.
 const LOADER: &str = "\
 const still=matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\
 const idle=t=>new Promise(r=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(r,{timeout:t}));\
@@ -214,26 +197,6 @@ chat.href=me.chat;\
 chat.textContent=\"Open chat\";\
 nav.append(chat)}).catch(()=>{});\
 const box=document.getElementById(\"pylon-card\"),mount=document.getElementById(\"pylon-card-mount\");\
-let handed=null;\
-const handoff=()=>handed||(handed=new Promise(done=>{const runner=globalThis.lander5Runner,main=document.getElementById(\"lander5-canvas\");\
-if(still||!runner||!main||!main.transferControlToOffscreen||!window.Worker)return done();\
-setTimeout(done,2000);\
-runner.ready.then(()=>{const grid=document.createElement(\"canvas\");\
-grid.id=\"home-grid\";\
-grid.setAttribute(\"aria-hidden\",\"true\");\
-main.after(grid);\
-const offscreen=grid.transferControlToOffscreen();\
-const source=document.querySelector(\"script[type=module]\").textContent;\
-const worker=new Worker(URL.createObjectURL(new Blob([source],{type:\"text/javascript\"})),{type:\"module\"});\
-const view=()=>({w:innerWidth,h:innerHeight,dpr:devicePixelRatio});\
-worker.addEventListener(\"message\",e=>{if(e.data===\"presented\"){performance.mark(\"grid-worker-presented\");\
-runner.pause();\
-done()}});\
-worker.addEventListener(\"error\",()=>{grid.remove();\
-done()});\
-worker.postMessage({canvas:offscreen,sky:document.getElementById(\"lander5-sky\").textContent,grid:document.getElementById(\"lander5-grid\").textContent,...view(),time:runner.scene_time()},[offscreen]);\
-addEventListener(\"resize\",()=>worker.postMessage({resize:1,...view()}));\
-globalThis.homeGridWorker=worker}).catch(done)}));\
 let chosen;\
 const variant=()=>chosen||(chosen=(async()=>{try{return navigator.gpu&&await navigator.gpu.requestAdapter()?\"webgpu\":\"webgl\"}catch(e){return \"webgl\"}})());\
 let mounting=Promise.resolve();\
@@ -241,57 +204,68 @@ const onMount=f=>{const next=mounting.then(f);\
 mounting=next.catch(()=>{});\
 return next};\
 \nconst chatBox=document.getElementById(\"home-chat-mount\"),composer=document.getElementById(\"pylon-composer\"),keep=document.getElementById(\"lander-chat-keep\"),chatStatus=document.getElementById(\"home-chat-status\");\
-\nlet terminalNear=false,chatReady=false,chatField=null,chatLoad=null;\
-const held=new Set(),blocked=new Set();\
-\nconst syncChat=()=>{const show=terminalNear&&chatReady;\
-composer.classList.toggle(\"open\",show);\
-composer.setAttribute(\"aria-hidden\",String(!show));\
-composer.inert=!show;\
-keep.style.display=show?\"block\":\"none\";\
-\nif(chatField){chatField.disabled=!show;\
-if(show){for(const code of held)blocked.add(code);\
-requestAnimationFrame(()=>{if(terminalNear)chatField.focus({preventScroll:true})})}else if(document.activeElement===chatField)chatField.blur()}\nqueueMicrotask(()=>document.dispatchEvent(new Event(\"pylons-keep\")))};\
-\ndocument.addEventListener(\"pylons-keep\",()=>{const r=keep.getBoundingClientRect();\
-chatBox.style.clipPath=`inset(${Math.max(0,r.top)}px ${Math.max(0,innerWidth-r.right)}px ${Math.max(0,innerHeight-r.bottom)}px ${Math.max(0,r.left)}px)`});\
-\nconst loadChat=()=>chatLoad||(chatLoad=(async()=>{chatStatus.textContent=\"Opening chat…\";\
-const dir=\"/lander8/build/\"+await variant()+\"/\";\
-\nconst [module,glue]=await Promise.all([WebAssembly.compileStreaming(fetch(dir+\"openagents_web_lander_chat_bg.wasm\",{priority:\"low\"})),import(dir+\"openagents_web_lander_chat.js\")]);\
-await idle(300);\
-await glue.default({module_or_path:module});\
-\nawait onMount(()=>new Promise((ok,no)=>{const fields=new Set(document.querySelectorAll(\"body>input\"));\
-chatBox.id=\"gpui-mount\";\
-\nchatBox.addEventListener(\"gpui-failed\",()=>{chatBox.id=\"home-chat-mount\";\
-no(new Error(\"Chat couldn't open\"))},{once:true});\
-\nchatBox.addEventListener(\"gpui-first-frame\",()=>{chatBox.id=\"home-chat-mount\";\
-chatReady=true;\
-setTimeout(()=>{chatField=Array.from(document.querySelectorAll(\"body>input\")).find(f=>!fields.has(f));\
-if(chatField){chatField.id=\"pylon-message\";\
-chatField.setAttribute(\"aria-label\",\"Message the pylons\")}chatStatus.textContent=\"\";\
-performance.mark(\"home-chat-ready\");\
-syncChat();\
-ok()})},{once:true});\
-glue.mount(still)}));\
-return glue})().catch(error=>{chatStatus.textContent=\"Chat couldn't open. Reload to try again.\";\
-console.warn(error);\
-const canvas=document.getElementById(\"everglade-canvas\");\
-canvas.removeAttribute(\"data-composing\");\
-throw error}));\
-\nglobalThis.homeTerminal=near=>{terminalNear=near;if(near)for(const code of held)blocked.add(code);\
-const canvas=document.getElementById(\"everglade-canvas\");\
-canvas.toggleAttribute(\"data-composing\",near);\
-syncChat();\
-if(near)loadChat().catch(()=>{})};\
-\naddEventListener(\"keydown\",e=>{if(e.key===\"Escape\"&&terminalNear){e.preventDefault();\
-e.stopImmediatePropagation();\
-homeTerminal(false);\
-document.getElementById(\"everglade-canvas\").focus();\
-return}if(blocked.has(e.code)&&terminalNear){e.preventDefault();\
-e.stopImmediatePropagation();\
-return}held.add(e.code)},true);\
-\naddEventListener(\"keyup\",e=>{held.delete(e.code);\
-blocked.delete(e.code)},true);\
-addEventListener(\"blur\",()=>{held.clear();\
-blocked.clear()});\
+let terminalNear=false,chatReady=false,chatField=null,chatLoad=null,chatAssets=null,focusPending=false;\n\
+const held=new Set(),blocked=new Set();\n\
+const world=document.getElementById(\"everglade-canvas\");\n\
+const syncFocus=()=>world.toggleAttribute(\"data-composing\",chatReady&&terminalNear&&document.activeElement===chatField);\n\
+const syncChat=()=>{const show=terminalNear&&chatReady;\n\
+composer.classList.toggle(\"open\",show);\n\
+composer.setAttribute(\"aria-hidden\",String(!show));\n\
+composer.inert=!show;\n\
+keep.style.display=show?\"block\":\"none\";\n\
+if(chatField){chatField.disabled=!show;\n\
+if(show&&focusPending)requestAnimationFrame(()=>{if(focusPending&&terminalNear&&chatReady){focusPending=false;\n\
+for(const code of held)blocked.add(code);\n\
+chatField.focus({preventScroll:true});syncFocus()}});\n\
+else if(!show&&document.activeElement===chatField)chatField.blur()}\n\
+syncFocus();\n\
+queueMicrotask(()=>document.dispatchEvent(new Event(\"pylons-keep\")))};\n\
+document.addEventListener(\"pylons-keep\",()=>{const r=keep.getBoundingClientRect();\n\
+chatBox.style.clipPath=`inset(${Math.max(0,r.top)}px ${Math.max(0,innerWidth-r.right)}px ${Math.max(0,innerHeight-r.bottom)}px ${Math.max(0,r.left)}px)`});\n\
+const prepareChat=()=>chatAssets||(chatAssets=(async()=>{const dir=\"/lander8/build/\"+await variant()+\"/\";\n\
+return Promise.all([WebAssembly.compileStreaming(fetch(dir+\"openagents_web_lander_chat_bg.wasm\",{priority:\"low\"})),import(dir+\"openagents_web_lander_chat.js\")])})());\n\
+const loadChat=()=>chatLoad||(chatLoad=(async()=>{performance.mark(\"home-chat-start\");\n\
+if(terminalNear)chatStatus.textContent=\"Opening chat…\";\n\
+const [module,glue]=await prepareChat();\n\
+await idle(300);\n\
+await glue.default({module_or_path:module});\n\
+await onMount(()=>new Promise((ok,no)=>{const fields=new Set(document.querySelectorAll(\"body>input\")),before=document.activeElement;\n\
+const captureField=()=>{if(chatField)return;\n\
+chatField=Array.from(document.querySelectorAll(\"body>input\")).find(f=>!fields.has(f));\n\
+if(!chatField)return;\n\
+const tookFocus=document.activeElement===chatField;\n\
+chatField.id=\"pylon-message\";\n\
+chatField.setAttribute(\"aria-label\",\"Message the pylons\");\n\
+chatField.disabled=true;\n\
+chatField.addEventListener(\"focus\",syncFocus);\n\
+chatField.addEventListener(\"blur\",syncFocus);\n\
+if(tookFocus)(before&&before!==document.body?before:world).focus({preventScroll:true});\n\
+observer.disconnect()};\n\
+const observer=new MutationObserver(captureField);\n\
+observer.observe(document.body,{childList:true});\n\
+chatBox.id=\"gpui-mount\";\n\
+chatBox.addEventListener(\"gpui-failed\",()=>{observer.disconnect();chatBox.id=\"home-chat-mount\";\n\
+no(new Error(\"Chat couldn't open\"))},{once:true});\n\
+chatBox.addEventListener(\"gpui-first-frame\",()=>{chatBox.id=\"home-chat-mount\";\n\
+captureField();observer.disconnect();chatReady=true;\n\
+chatStatus.textContent=\"\";\n\
+performance.mark(\"home-chat-ready\");\n\
+syncChat();ok()},{once:true});\n\
+glue.mount(still)}));\n\
+return glue})().catch(error=>{chatStatus.textContent=\"Chat couldn't open. Reload to try again.\";\n\
+console.warn(error);focusPending=false;syncFocus();throw error}));\n\
+globalThis.homeTerminal=near=>{near=near&&world.classList.contains(\"ready\");terminalNear=near;focusPending=near;\n\
+syncChat();\n\
+if(near)loadChat().catch(()=>{})};\n\
+world.addEventListener(\"pointerdown\",()=>{focusPending=false;\n\
+if(chatField&&document.activeElement===chatField)chatField.blur();\n\
+world.focus({preventScroll:true});syncFocus()},true);\n\
+addEventListener(\"keydown\",e=>{if(e.key===\"Escape\"&&terminalNear){e.preventDefault();\n\
+e.stopImmediatePropagation();homeTerminal(false);world.focus();return}\n\
+if(blocked.has(e.code)&&document.activeElement===chatField){e.preventDefault();e.stopImmediatePropagation();return}\n\
+held.add(e.code)},true);\n\
+addEventListener(\"keyup\",e=>{held.delete(e.code);blocked.delete(e.code)},true);\n\
+addEventListener(\"blur\",()=>{held.clear();blocked.clear()});\n\
 \nlet card=null,latest=\"\";\
 const loadCard=()=>card||(card=(async()=>{const dir=\"/pylons/card/\"+await variant()+\"/\";\
 const [module,glue]=await Promise.all([WebAssembly.compileStreaming(fetch(dir+\"openagents_web_pylon_card_bg.wasm\")),import(dir+\"openagents_web_pylon_card.js\")]);\
@@ -326,46 +300,33 @@ const drawn=new Promise(r=>new MutationObserver((list,observer)=>{if(status.styl
 r()}}).observe(status,{attributes:true,attributeFilter:[\"style\"]}));\
 const [module,glue]=await Promise.all([WebAssembly.compileStreaming(fetch(\"/everglade/everglade_web_bg.wasm\",{priority:\"low\"})),import(\"/everglade/everglade_web.js\")]);\
 performance.mark(\"verse-compiled\");\
+prepareChat().catch(()=>{});\
 await idle(600);\
 await glue.default({module_or_path:module});\
 performance.mark(\"verse-instantiated\");\
 await drawn;\
 await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));\
 performance.mark(\"verse-first-frame\");\
-canvas.addEventListener(\"transitionend\",()=>{performance.mark(\"verse-visible\");\
-const worker=globalThis.homeGridWorker;\
-if(worker)worker.terminate();\
-const runner=globalThis.lander5Runner;\
-if(runner)runner.pause();\
-const grid=document.getElementById(\"home-grid\");\
-if(grid)grid.remove()},{once:true});\
+canvas.addEventListener(\"transitionend\",()=>performance.mark(\"verse-visible\"),{once:true});\
 canvas.classList.add(\"ready\");\
-addEventListener(\"verse-stopped\",()=>canvas.classList.remove(\"ready\"),{once:true})}catch(e){}};\
-let started=false;\
-const go=async()=>{if(started)return;\
-started=true;\
+document.documentElement.classList.add(\"world-ready\");\
+idle(1200).then(()=>loadChat()).catch(()=>{});\
+addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");document.documentElement.classList.remove(\"world-ready\");homeTerminal(false)},{once:true})}catch(e){}};\
 account();\
-await handoff();\
-await idle(400);\
-await loadLayer();\
-verse()};\
-if(performance.getEntriesByName(\"lander5-presented\").length)go();\
-else{new PerformanceObserver((list,observer)=>{if(list.getEntriesByName(\"lander5-presented\").length){observer.disconnect();\
-go()}}).observe({type:\"mark\"});\
-addEventListener(\"load\",()=>setTimeout(go,1500))}\
+loadLayer().then(verse);\
 ";
 
 const ADDITION: Addition = Addition {
     style: STYLE,
     in_main: "",
     script: LOADER,
-    runner_tail: super::lander6::RUNNER_TAIL,
+    runner_tail: "",
     main: None,
-    grid: Some(super::pylons::still_gray_grid),
+    grid: None,
 };
 
-/// The last document made: the runner build and the list it came from.
-static KEPT: Mutex<Option<(BuildKey, String, Arc<Document>)>> = Mutex::new(None);
+/// The last document and the live list it came from.
+static KEPT: Mutex<Option<(String, Arc<Document>)>> = Mutex::new(None);
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -382,23 +343,21 @@ fn main_html(list: &str) -> String {
     )
 }
 
-fn document(directory: Option<&Path>, list: String) -> Arc<Document> {
-    let key = build_key(directory);
+fn document(list: String) -> Arc<Document> {
     if let Ok(kept) = KEPT.lock()
-        && let Some((kept_key, kept_list, document)) = kept.as_ref()
-        && *kept_key == key
+        && let Some((kept_list, document)) = kept.as_ref()
         && *kept_list == list
     {
         return document.clone();
     }
     let document = Arc::new(assemble_page(
-        build(directory),
+        None,
         Some(&ADDITION),
         Some(&main_html(&list)),
         (TITLE, DESCRIPTION),
     ));
     if let Ok(mut kept) = KEPT.lock() {
-        *kept = Some((key, list, document.clone()));
+        *kept = Some((list, document.clone()));
     }
     document
 }
@@ -411,17 +370,8 @@ async fn page(State(app): State<App>, request: HeaderMap) -> Response {
         Some(relay) => list_html(&field(relay).current()),
         None => UNAVAILABLE.to_owned(),
     };
-    // The runner built with its worker exports, as /lander6 serves it.
-    let directory = app.config.lander5.as_deref().map(|directory| {
-        let worker = directory.join("worker");
-        if worker.join(super::lander5::LANDER5_WASM).is_file() {
-            worker
-        } else {
-            directory.to_path_buf()
-        }
-    });
     let fallback = list.clone();
-    let document = tokio::task::spawn_blocking(move || document(directory.as_deref(), list))
+    let document = tokio::task::spawn_blocking(move || document(list))
         .await
         .unwrap_or_else(|_| {
             Arc::new(assemble_page(
@@ -523,9 +473,10 @@ mod tests {
         let pylons = LOADER.find("/pylons/layer/pylons_web_bg.wasm").unwrap();
         let verse = LOADER.find("/everglade/everglade_web_bg.wasm").unwrap();
         assert!(pylons < verse);
-        assert!(LOADER.contains("await loadLayer();verse()"));
-        assert!(LOADER.contains("transferControlToOffscreen"));
-        assert!(LOADER.contains("worker.terminate()"));
+        assert!(LOADER.contains("loadLayer().then(verse)"));
+        assert!(!LOADER.contains("lander5Runner"));
+        assert!(!LOADER.contains("transferControlToOffscreen"));
+        assert!(!document(UNAVAILABLE.to_owned()).html.contains("x-shader"));
         assert!(LOADER.contains("globalThis.pylonsCard"));
         assert!(LOADER.contains(super::super::pylons::CARD_WASM));
         assert!(LOADER.contains("/home/me"));

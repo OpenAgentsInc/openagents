@@ -1531,3 +1531,4 @@ master delegation audit.
 
 - #12346: Saved agents carry a bounded handoff when switching runtimes, with complete conversation and decision-log archives. Agent Lab and the desktop chat header offer explicit runtime choices over the existing revision-checked agent API.
 - CAD pages in the GPUI shell (#12334): shared Rust Native document and configurator forms, a separate lazy `web/cad` module over `web/page-host`, and the existing CAD viewer in a same-origin frame. HTML pages and public design links keep answering.
+- #12362: `/home` identifies its GPUI chat requests as the free public Home surface, so visitors can keep chatting without an account; API errors stay inline with the draft, and only an explicit sign-in action navigates. The world overlay includes measured notice bounds and releases movement focus on click-away.
