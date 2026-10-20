@@ -274,6 +274,15 @@ fn shortcuts_record_refuse_and_restore() {
         assert_eq!(keymap.refusal(s, combo, true), None, "{s:?}");
     }
     assert!(browser_keeps("mod-n") && browser_keeps("mod-3") && browser_keeps("ctrl-tab"));
+    assert!(browser_keeps("mod-shift-a"));
+    assert_eq!(keymap.get(Shortcut::CommandPalette), "mod-k");
+    assert!(
+        keymap
+            .refusal(Shortcut::NewSession, "mod-k", false)
+            .is_some()
+    );
+    let old = Prefs::from_json(Some(r#"{"keymap":{"archive_session":"mod-shift-a"}}"#));
+    assert_eq!(old.keymap.get(Shortcut::ArchiveSession), "mod-alt-a");
     assert_eq!(
         keymap
             .refusal(Shortcut::NewSession, "mod-b", true)
@@ -304,9 +313,9 @@ fn shortcuts_record_refuse_and_restore() {
 
     prefs.apply(&Intent::Shortcut(Change::Set(
         Shortcut::NewSession,
-        "mod-k".into(),
+        "mod-alt-k".into(),
     )));
-    assert_eq!(prefs.keymap.get(Shortcut::NewSession), "mod-k");
+    assert_eq!(prefs.keymap.get(Shortcut::NewSession), "mod-alt-k");
     let mut remote = Remote::default();
     remote.recording = Some(Shortcut::ToggleFiles);
     let root = page(Page::Shortcuts, &prefs, &remote, &Paints::default());
@@ -319,7 +328,7 @@ fn shortcuts_record_refuse_and_restore() {
         &Intent::Shortcut(Change::StopRecording)
     );
     let back = Prefs::from_json(Some(&prefs.to_json()));
-    assert_eq!(back.keymap.get(Shortcut::NewSession), "mod-k");
+    assert_eq!(back.keymap.get(Shortcut::NewSession), "mod-alt-k");
     prefs.apply(&Intent::RestoreShortcuts);
     assert!(!prefs.keymap.customized());
 }

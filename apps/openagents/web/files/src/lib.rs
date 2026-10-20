@@ -91,3 +91,17 @@ pub fn show(device: String, chat: String) {
         }
     });
 }
+
+/// Open the file selected in the command palette, optionally at a 1-based line.
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen]
+pub fn open_file(device: String, chat: String, path: String, line: Option<u32>) {
+    PANEL.with(|panel| {
+        if let Some((entity, cx)) = panel.borrow().as_ref() {
+            let _ = entity.update(&mut cx.clone(), |files, cx| {
+                files.show(target(device, chat), cx);
+                files.open_at(path, line.map(u64::from), cx);
+            });
+        }
+    });
+}

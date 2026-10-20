@@ -167,6 +167,17 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
         ),
         json!({"entries": ["src"]})
     );
+    // The palette's warmup and searches use only the browser's observe right.
+    for method in [
+        methods::WARM_WORKSPACE_SEARCH,
+        methods::SEARCH_WORKSPACE_FILES,
+        methods::SEARCH_WORKSPACE_CONTENT,
+    ] {
+        assert_eq!(
+            value(tab.handle(method, json!({"chatId": "scratch"})).await)["ran"],
+            method
+        );
+    }
     // The run right covers the queue, answers, and file edits (#12268, #12272).
     for method in [
         methods::QUEUE_MESSAGE,

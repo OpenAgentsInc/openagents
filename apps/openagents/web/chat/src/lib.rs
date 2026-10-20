@@ -16,6 +16,7 @@ mod complete;
 mod compose;
 pub mod model;
 mod notifications;
+pub mod palette;
 pub mod route;
 
 #[cfg(target_family = "wasm")]

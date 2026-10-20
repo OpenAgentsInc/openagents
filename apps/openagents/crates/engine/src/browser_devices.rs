@@ -51,6 +51,7 @@ pub const ALLOWED: &[&str] = &[
     methods::READ_WORKSPACE_BYTES,
     methods::SEARCH_WORKSPACE_FILES,
     methods::SEARCH_WORKSPACE_CONTENT,
+    methods::WARM_WORKSPACE_SEARCH,
     // The composer's @ mentions (#12267).
     methods::SEARCH_FILES,
     // The queue panel's view of a chat's queue, and the question wizard's

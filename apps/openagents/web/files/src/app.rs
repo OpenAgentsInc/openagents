@@ -96,6 +96,8 @@ struct Tab {
     /// Its editor, when the computer lets us write it (#12272).
     edit: Option<edit::Editing>,
     _task: Option<Task<()>>,
+    reveal_line: Option<u64>,
+    scroll: gpui::UniformListScrollHandle,
 }
 
 enum Found {
@@ -391,10 +393,30 @@ impl FilesApp {
             downloading: None,
             edit: None,
             _task: None,
+            reveal_line: None,
+            scroll: gpui::UniformListScrollHandle::new(),
         });
         let at = self.tabs.len() - 1;
         self.active = Some(at);
         self.load(at, cx);
+        cx.notify();
+    }
+
+    /// A palette hit opens the source at its matching line, even for Markdown.
+    pub fn open_at(&mut self, path: String, line: Option<u64>, cx: &mut Context<Self>) {
+        self.open(path, None, cx);
+        if let Some(tab) = self.active.and_then(|at| self.tabs.get_mut(at)) {
+            tab.reveal_line = line;
+            if let Some(line) = line {
+                if let Body::Text { rendered, .. } = &mut tab.body {
+                    *rendered = false;
+                }
+                tab.scroll.scroll_to_item(
+                    line.saturating_sub(1) as usize,
+                    gpui::ScrollStrategy::Center,
+                );
+            }
+        }
         cx.notify();
     }
 
@@ -424,6 +446,11 @@ impl FilesApp {
                     tab.body = body;
                     if let (Some(keep), Body::Text { rendered, .. }) = (keep, &mut tab.body) {
                         *rendered = keep;
+                    }
+                    if tab.reveal_line.is_some() {
+                        if let Body::Text { rendered, .. } = &mut tab.body {
+                            *rendered = false;
+                        }
                     }
                     if let Body::Text { file, .. } = &tab.body {
                         tab.size = Some(file.size);
@@ -1077,6 +1104,16 @@ impl FilesApp {
                     )
                 },
             )
+            .when(tab.reveal_line.is_some(), |header| {
+                header.child(button("leave-search-line", "Back to file", false).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        if let Some(tab) = this.tabs.get_mut(at) {
+                            tab.reveal_line = None;
+                        }
+                        cx.notify();
+                    }),
+                ))
+            })
             .children(self.render_save_state(at, cx))
             .child(self.download_button(at, tab, cx));
         let body: AnyElement = match &tab.body {
@@ -1121,7 +1158,7 @@ impl FilesApp {
                     ),
                 )
                 .into_any_element(),
-            Body::Text { .. } if tab.edit.is_some() => {
+            Body::Text { .. } if tab.edit.is_some() && tab.reveal_line.is_none() => {
                 let editor = tab.edit.as_ref().map(|edit| edit.editor.clone());
                 div()
                     .flex()
@@ -1137,6 +1174,7 @@ impl FilesApp {
             Body::Text { lines, file, .. } => {
                 let lines = lines.clone();
                 let truncated = file.truncated;
+                let reveal = tab.reveal_line;
                 let digits = lines.len().to_string().len();
                 div()
                     .flex()
@@ -1151,6 +1189,7 @@ impl FilesApp {
                                         .flex()
                                         .flex_row()
                                         .h(px(LINE))
+                                        .when(reveal == Some(ix as u64 + 1), |d| d.bg(theme::element_hover()))
                                         .px(px(12.))
                                         .gap(px(12.))
                                         .font_family(theme::MONO)
@@ -1172,6 +1211,7 @@ impl FilesApp {
                                 })
                                 .collect::<Vec<_>>()
                         })
+                        .track_scroll(&tab.scroll)
                         .flex_1(),
                     )
                     .when(truncated, |view| {
