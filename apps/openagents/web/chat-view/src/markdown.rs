@@ -275,13 +275,7 @@ impl Markdown {
                     counter: &mut usize| {
             let justify = align.get(col).copied().unwrap_or_default();
             let content = this.inline(runs, weight, None, counter);
-            let cell = div().flex().flex_1().min_w_0().px(px(12.)).py(px(7.));
-            match justify {
-                TableAlign::Left => cell.justify_start(),
-                TableAlign::Center => cell.justify_center(),
-                TableAlign::Right => cell.justify_end(),
-            }
-            .child(content)
+            table_cell(content, justify)
         };
         row_elements.push(
             div()
@@ -416,6 +410,18 @@ impl Markdown {
     }
 }
 
+fn table_cell(content: AnyElement, align: TableAlign) -> gpui::Div {
+    // Block layout measures the text against the column's content width.
+    // A flex row lets the text keep its intrinsic minimum and overflow.
+    let cell = div().flex_1().min_w_0().px(px(12.)).py(px(7.));
+    match align {
+        TableAlign::Left => cell.text_left(),
+        TableAlign::Center => cell.text_center(),
+        TableAlign::Right => cell.text_right(),
+    }
+    .child(content)
+}
+
 fn checkbox(checked: bool) -> impl IntoElement {
     let base = div()
         .size(px(14.))
@@ -481,5 +487,68 @@ fn split_at(runs: &mut Vec<TextRun>, at: usize) {
             return;
         }
         offset += len;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{AvailableSpace, TestAppContext, point, size};
+
+    #[gpui::test]
+    fn table_cells_wrap_at_phone_width(cx: &mut TestAppContext) {
+        let cx = cx.add_empty_window();
+        cx.simulate_resize(size(px(390.), px(844.)));
+        cx.update(|window, cx| {
+            let sources = [
+                "A long table cell with several words that must wrap inside its column.",
+                "https://example.com/averylongunbrokenpaththatmuststayinsideitscolumn",
+                "averylongunbrokenidentifierthatmustwrapwithoutlosinganycharacters",
+            ];
+            let aligns = [TableAlign::Left, TableAlign::Center, TableAlign::Right];
+            let mut layouts = Vec::new();
+            let mut row = div().flex().w_full();
+            for (ix, source) in sources.iter().enumerate() {
+                let styled = StyledText::new(*source);
+                layouts.push(styled.layout().clone());
+                let content = if ix == 1 {
+                    InteractiveText::new("table-link", styled)
+                        .on_click(vec![0..source.len()], |_, _, _| {})
+                        .into_any_element()
+                } else {
+                    styled.into_any_element()
+                };
+                row = row.child(table_cell(content, aligns[ix]));
+            }
+            // The card has the same side inset as a phone transcript.
+            let mut card = div()
+                .w(px(390.))
+                .px(px(16.))
+                .text_size(px(theme::BODY))
+                .line_height(px(theme::BODY_LINE))
+                .child(row)
+                .into_any_element();
+            card.prepaint_as_root(
+                point(px(0.), px(0.)),
+                size(
+                    AvailableSpace::Definite(px(390.)),
+                    AvailableSpace::MaxContent,
+                ),
+                window,
+                cx,
+            );
+            let column_width = (390. - 32.) / 3.;
+            for (ix, layout) in layouts.iter().enumerate() {
+                let left = px(16. + ix as f32 * column_width + 12.);
+                let right = left + px(column_width - 24.);
+                assert!(layout.bounds().size.height > px(theme::BODY_LINE));
+                assert_eq!(layout.wrapped_text().replace('\n', ""), sources[ix]);
+                for (index, _) in sources[ix].char_indices() {
+                    let position = layout.position_for_index(index).expect("visible character");
+                    assert!(position.x >= left - px(1.), "column {ix}: {position:?}");
+                    assert!(position.x <= right + px(1.), "column {ix}: {position:?}");
+                }
+            }
+        });
     }
 }

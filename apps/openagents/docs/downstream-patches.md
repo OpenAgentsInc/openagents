@@ -2,6 +2,10 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12295: wrap web chat table cells within their columns, including
+  long links and identifiers. Keep left, center, and right text alignment.
+  The desktop transcript already wraps cells and scrolls wide tables.
+
 - OpenAgents #12077: make the Coder UI Rust Native syntax feature optional
   while preserving its default, so the Android app can keep its existing
   Tree-sitter version. Resolve the app lockfile without changing existing pins.

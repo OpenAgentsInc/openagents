@@ -25,3 +25,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 chrono = { version = "0.4", features = ["wasmbind"] }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
