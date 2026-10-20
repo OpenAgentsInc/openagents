@@ -101,7 +101,7 @@ Two cautions the archive teaches about itself:
 | [Issue velocity](2026-10-19-issue-velocity.md) | Throughput is high; the lost time is operations. Keep phases small and issue-sized. |
 | [Agent identity and engrams](../verse/agent-identity-and-engrams.md) | "An agent is a Nostr key the owner attests," with NIP-OA. Built for Verse agents (#10807). |
 | [`docs/compute/pylon-1.0.md`](../compute/pylon-1.0.md) | A device goes online with a Nostr identity and sells compute and MCP. Turning it on waits on the owner. |
-| Desktop and web parity inventory (`2026-10-20-desktop-web-parity.md`) | Being written by another agent; not on `main` at this revision. This plan links its issues once they land and does not duplicate them. |
+| [Desktop and web parity](2026-10-20-desktop-web-parity.md) | The browser drives the user's computers as a paired client over `coder-sync`, the way the phone does; phases 7 to 13 after the GPUI chat plan (#12262 to #12294). Wallet, profiles, and agent identity defer to U1, U2, and U5. |
 
 **Where they agree:** the Nostr key is the person's ID; Rust Native is the
 one card layer; domain crates are linked, never rebuilt; sessions are Loro
@@ -216,7 +216,7 @@ the relay can't give, or is billing.
 | --- | --- | --- |
 | Front door | One lander at `/` with the first-frame painter: the last visit's frame, or a static one, paints before any wasm loads | `apps/openagents/web/first-frame*`, #12244, U7 |
 | Shell | The GPUI web app, built from the desktop's crates, takes over once its module is ready | GPUI web chat #12216 to #12226 |
-| Desktop parity | Everything the desktop app does, phase by phase | GPUI phases 3 to 5, plus the parity inventory's issues |
+| Desktop parity | Everything the desktop app does, phase by phase | GPUI phases 3 to 5, plus the [parity plan](2026-10-20-desktop-web-parity.md)'s phases 7 to 13 (#12262 to #12294) |
 | Public pages | Profiles, agents, shares, docs, `/explore`: server HTML, readable with no JavaScript, indexable | `crates/openagents-web`, `crates/openagents-ui` |
 | Cards | Rust Native, one implementation per card across desktop, phone, and web | #12218 |
 | Spatial layer | Verse and the Grid at `/verse`, loaded on demand; hand tracking opt-in | `crates/everglade-web`, `web/hands`, U8 |
@@ -275,8 +275,9 @@ Existing work this plan builds on, not refiled:
 
 - GPUI web chat 0a to 6: #12216 to #12226. Related: #12237, #12244.
 - AgentGraph: #12229 to #12233, #12243.
-- Desktop and web parity: the inventory agent's issues, linked here when
-  they land.
+- Desktop and web parity: [phases 7 to 13](2026-10-20-desktop-web-parity.md),
+  #12262 to #12294. Earn for a paired computer (#12294) links to U5; the
+  identity sheet (#12290) links to U1 and U5; Agent Lab (#12285) links to U2.
 
 New epics, all on the OpenAgents board (project 19):
 
