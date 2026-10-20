@@ -233,7 +233,8 @@ def ask(base, question, stream=False):
     site = Site(base)
     # A visitor who isn't signed in starts a chat at /new (/ is the
     # landing page for them).
-    home = site.get("/new")
+    # The HTML chat's form (the GPUI chat may be the default, #12226).
+    home = site.get("/new?ui=html")
     if home.status != 200 or "oa_visitor" not in site.cookies:
         return None, False, f"GET /new {home.status}, visitor cookie {'oa_visitor' in site.cookies}"
     fields = hidden_fields(home.text)
@@ -572,10 +573,17 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
     # theme toggle.
     if want("home"):
         landing = site.get("/")
+        # With gpui_default on (#12226), / and /new are the GPUI chat for a
+        # browser that chose neither view; the HTML pages stay at ?ui=html.
+        gpui = 'name="openagents-chat-base"' in landing.text
+        if gpui:
+            record("home: / is the GPUI chat (gpui_default)", landing.status == 200
+                   and 'name="openagents-csrf"' in landing.text, f"{landing.status}")
+            landing = site.get("/?ui=html")
         record("home: / is the landing page", landing.status == 200
                and 'data-slot="hero-section"' in landing.text
                and 'href="/new"' in landing.text, f"{landing.status}")
-        home = site.get("/new")
+        home = site.get("/new?ui=html" if gpui else "/new")
         chips = re.findall(r'<form class="oa-suggestion-form"[^>]*>.*?</form>', home.text, re.S)
         questions = [hidden_fields(c).get("q", "") for c in chips]
         record("home: loads", home.status == 200, f"{home.status}")

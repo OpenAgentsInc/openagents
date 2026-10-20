@@ -126,6 +126,8 @@ def main():
         "ports": [{"containerPort": 8080, "name": "http1"}],
         "env": [
             plain("PUBLIC_ORIGIN", ORIGIN),
+            # The GPUI chat by default (#12226, crates/openagents-web/src/features.rs).
+            plain("OPENAGENTS_WEB_FEATURES", "gpui_default"),
             plain("WEB_STATE", "/state"),
             plain("ALT_HOST", ALT_HOST),
             plain("RUN_HOST", RUN_HOST),
