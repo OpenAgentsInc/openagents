@@ -621,7 +621,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "fails after the native harness move: #12228"]
     async fn the_recorded_replay_reproduces_the_checked_in_report() {
         let dir = crate::component::cli::monitor_dir();
         let jev = ReplayJev {
@@ -670,10 +669,16 @@ mod tests {
         assert!(report.totals["triggers"].as_u64().unwrap() > 500);
         // Every live answer the replay recorded replays; the rest miss.
         assert!(report.compared["jev_answered"].as_u64().unwrap() >= 100);
+        // Parse both sides through the same JSON number representation.
+        let actual = serde_json::to_string_pretty(&report).unwrap();
+        if std::env::var_os("CODER_ONE_UPDATE_MONITOR_REPLAY").is_some() {
+            std::fs::write(dir.join("replay.json"), format!("{actual}\n")).unwrap();
+            return;
+        }
         assert_eq!(
-            serde_json::to_value(&report).unwrap(),
+            serde_json::from_str::<Value>(&actual).unwrap(),
             checked_in,
-            "rerun `coder-one component replay control.monitor --out bench/terminal-bench/monitor/replay.json`"
+            "rerun `CODER_ONE_UPDATE_MONITOR_REPLAY=1 cargo test -p coder-one the_recorded_replay_reproduces_the_checked_in_report`"
         );
     }
 

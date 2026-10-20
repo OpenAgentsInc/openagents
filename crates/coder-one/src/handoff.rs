@@ -2139,16 +2139,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "fails after the native harness move: #12228"]
     fn a_policy_runs_only_what_its_adapters_demonstrated() {
         let codex = Tier::new("codex", "gpt-6-luna");
         let claude = Tier::new("claude-code", "claude-opus-5-5");
-        assert!(
-            policy(Pattern::Steer)
-                .validate(&codex)
-                .unwrap_err()
-                .contains("steering")
-        );
+        assert!(policy(Pattern::Steer).validate(&codex).is_ok());
         assert!(policy(Pattern::Steer).validate(&claude).is_ok());
         let mut race = policy(Pattern::Race);
         race.isolation = None;

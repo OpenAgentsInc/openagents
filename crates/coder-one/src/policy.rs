@@ -1392,7 +1392,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "fails after the native harness move: #12228"]
     fn a_policy_may_use_only_the_session_capabilities_its_adapter_demonstrated() {
         use crate::session::{Steer, Trigger};
         let steer = SessionPolicy {
@@ -1417,16 +1416,10 @@ mod tests {
             env: Vec::new(),
         });
         assert_eq!(cli.control.controls.unwrap().steer, steer.steer);
-        // Codex has not, so the same session policy is refused.
+        // Codex confirms steering through its app protocol.
         let mut codex = luna();
         codex.policy.executor.session = Some(steer);
-        let error = codex.validate().unwrap_err();
-        assert!(
-            error.contains(
-                "executor.session uses steer, which the codex adapter has not demonstrated"
-            ),
-            "{error}"
-        );
+        codex.validate().unwrap();
         // Stop and resume are demonstrated by both.
         codex.policy.executor.session = Some(SessionPolicy {
             steer: None,
@@ -2061,24 +2054,48 @@ mod tests {
 
     /// A scripted executor: it records its arguments, environment, and
     /// standard input, then prints a stream both parsers read as an answer.
-    const FAKE_AGENT: &str = r#"#!/bin/sh
-printf '%s\n' "$@" > "$CANARY_DIR/args"
-env > "$CANARY_DIR/env"
-cat > "$CANARY_DIR/stdin"
-for a in "$@"; do
-  case "$a" in
-    *.system.md) cp "$a" "$CANARY_DIR/system" ;;
-    model_instructions_file=*) f=${a#model_instructions_file=\"}; cp "${f%\"}" "$CANARY_DIR/system" ;;
-  esac
-done
-[ -n "$CANARY_SLEEP" ] && sleep "$CANARY_SLEEP"
-echo '{"type":"thread.started","thread_id":"t-canary"}'
-echo '{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"done"}}'
-echo '{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}'
-echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"done","total_cost_usd":0.0,"usage":{"input_tokens":10,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":1}}'
+    const FAKE_AGENT: &str = r#"#!/usr/bin/env python3
+import json, os, sys, time
+from pathlib import Path
+d = Path(os.environ["CANARY_DIR"])
+args = sys.argv[1:]
+(d / "args").write_text("\n".join(args))
+(d / "env").write_text("\n".join(k + "=" + v for k, v in os.environ.items()))
+for i, arg in enumerate(args):
+    if arg.startswith("model_instructions_file="):
+        (d / "system").write_text(Path(json.loads(arg.split("=", 1)[1])).read_text())
+    if arg in ("--system-prompt-file", "--append-system-prompt-file"):
+        (d / "system").write_text(Path(args[i + 1]).read_text())
+def emit(v):
+    print(json.dumps(v), flush=True)
+for line in sys.stdin:
+    request = json.loads(line)
+    if "app-server" not in args:
+        if request.get("type") == "control_request":
+            continue
+        content = request["message"]["content"]
+        (d / "stdin").write_text(content if isinstance(content, str) else "".join(i.get("text", "") for i in content))
+        time.sleep(float(os.environ.get("CANARY_SLEEP", "0")))
+        emit({"type":"result","subtype":"success","is_error":False,"num_turns":1,"result":"done","total_cost_usd":0.0})
+        break
+    method = request.get("method")
+    params = request.get("params", {})
+    if method == "thread/start":
+        (d / "thread").write_text(json.dumps(params))
+    result = {"thread":{"id":"canary"}} if method == "thread/start" else {}
+    if method == "turn/start":
+        result = {"turn":{"id":"turn-canary"}}
+    if "id" in request:
+        emit({"id":request["id"],"result":result})
+    if method == "turn/start":
+        (d / "stdin").write_text(" ".join(i.get("text", "") for i in params["input"]))
+        time.sleep(float(os.environ.get("CANARY_SLEEP", "0")))
+        emit({"method":"item/completed","params":{"item":{"type":"agentMessage","id":"answer","text":"done"}}})
+        emit({"method":"turn/completed","params":{"turn":{"id":"turn-canary"}}})
 "#;
 
     struct Seen {
+        thread: Value,
         invoked: bool,
         args: Vec<String>,
         env: BTreeMap<String, String>,
@@ -2223,6 +2240,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
         .await;
         let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap_or_default();
         let seen = Seen {
+            thread: serde_json::from_str(&read("thread")).unwrap_or(Value::Null),
             invoked: dir.join("args").exists(),
             args: read("args").lines().map(str::to_string).collect(),
             env: read("env")
@@ -2255,18 +2273,15 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
     }
 
     #[tokio::test]
-    #[ignore = "fails after the native harness move: #12228"]
     async fn canary_policy_executor_agent() {
         let claude = observe(&opus(), &[]).await;
-        assert_eq!(claude.args.first().map(String::as_str), Some("-p"));
+        assert_eq!(claude.args.first().map(String::as_str), Some("--print"));
         let codex = observe(&luna(), &[]).await;
-        assert_eq!(codex.args.first().map(String::as_str), Some("exec"));
-        assert!(codex.args.contains(&"--json".to_string()));
+        assert_eq!(codex.args.first().map(String::as_str), Some("app-server"));
         assert_eq!(codex.status.as_deref(), Some("answered"));
     }
 
     #[tokio::test]
-    #[ignore = "fails after the native harness move: #12228"]
     async fn canary_policy_executor_model() {
         let seen = observe(
             &with(|m| m.policy.executor.model = "claude-canary-1".into()),
@@ -2278,7 +2293,7 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             Some("claude-canary-1")
         );
         let seen = observe(&luna(), &[]).await;
-        assert_eq!(follows(&seen.args, "-m").as_deref(), Some("gpt-6-luna"));
+        assert_eq!(seen.thread["model"], "gpt-6-luna");
     }
 
     #[tokio::test]
@@ -2342,7 +2357,6 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
     }
 
     #[tokio::test]
-    #[ignore = "fails after the native harness move: #12228"]
     async fn canary_policy_executor_system() {
         use crate::system::{Mode as SystemMode, Policy as SystemPolicy};
         let security = crate::system::section(Agent::ClaudeCode, "security")
@@ -2378,13 +2392,6 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
         codex.policy.executor.system = SystemPolicy::preset("core-select");
         codex.validate().unwrap();
         let seen = observe(&codex, &[]).await;
-        assert!(
-            seen.args
-                .iter()
-                .any(|arg| arg.starts_with("model_instructions_file=\"")),
-            "{:?}",
-            seen.args
-        );
         assert!(seen.system.contains(security));
         codex.policy.executor.system = Some(SystemPolicy {
             mode: SystemMode::Append,
@@ -2393,18 +2400,12 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
         });
         codex.validate().unwrap();
         let seen = observe(&codex, &[]).await;
-        let developer = seen
-            .args
-            .iter()
-            .find_map(|arg| arg.strip_prefix("developer_instructions="))
-            .expect("developer_instructions reaches codex");
-        let text: String = serde_json::from_str(developer).unwrap();
+        let text = seen.thread["developerInstructions"].as_str().unwrap();
         assert!(text.contains(security));
         assert!(text.contains("An automated checker grades"));
     }
 
     #[tokio::test]
-    #[ignore = "fails after the native harness move: #12228"]
     async fn canary_policy_brief_cap() {
         let seen = observe(&with(|m| m.policy.brief.cap = 2_000), &[]).await;
         assert!(seen.stdin.chars().count() <= 2_000, "{}", seen.stdin.len());
@@ -2477,7 +2478,6 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
     }
 
     #[tokio::test]
-    #[ignore = "fails after the native harness move: #12228"]
     async fn canary_policy_brief_pack_item_max() {
         let output = report();
         let whole = observe_with(&packed(12_000, PackPolicy::default()), &[], Some(&output)).await;
@@ -2492,7 +2492,6 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
     }
 
     #[tokio::test]
-    #[ignore = "fails after the native harness move: #12228"]
     async fn canary_policy_brief_pack_slice() {
         // Twelve long commands and the report compete for a tight cap.
         // The fill grants a slice at a time in rank order, so a large

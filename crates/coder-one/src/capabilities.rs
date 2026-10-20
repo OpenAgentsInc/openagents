@@ -61,7 +61,7 @@ pub fn tests(adapter: &str, capability: Capability) -> &'static [&'static str] {
         }
         ("claude-code" | "codex", Capability::Start | Capability::Observe) => &[
             "adapter::tests::claude_code_starts_under_the_hosts_session_id_and_is_observed_as_it_runs",
-            "adapter::tests::codex_refuses_a_steer_it_has_not_demonstrated_and_still_runs",
+            "adapter::tests::codex_steers_through_the_shared_app_server",
             "tail::tests::chunks_of_any_size_read_the_same_events_as_the_whole_stream",
         ],
         ("claude-code" | "codex", Capability::Stop) => &[
@@ -75,7 +75,7 @@ pub fn tests(adapter: &str, capability: Capability) -> &'static [&'static str] {
             &["adapter::tests::claude_code_is_steered_through_its_stream_json_input"]
         }
         ("codex", Capability::Steer) => &[
-            "adapter::tests::codex_refuses_a_steer_it_has_not_demonstrated_and_still_runs",
+            "adapter::tests::codex_steers_through_the_shared_app_server",
             "policy::tests::a_policy_may_use_only_the_session_capabilities_its_adapter_demonstrated",
         ],
         _ => &[],
@@ -607,7 +607,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "fails after the native harness move: #12228"]
     fn every_demonstrated_cell_names_its_tests_and_every_refused_cell_says_so() {
         let document = document(&[]);
         let adapters = document["adapters"].as_array().unwrap();
@@ -624,10 +623,10 @@ mod tests {
             }
         }
         let codex = adapters.iter().find(|a| a["adapter"] == "codex").unwrap();
-        assert_eq!(codex["capabilities"]["steer"]["demonstrated"], false);
+        assert_eq!(codex["capabilities"]["steer"]["demonstrated"], true);
         let text = lines(&document).join("\n");
         assert!(text.contains("codex"));
-        assert!(text.contains("refused"));
+        assert!(text.contains("demonstrated"));
     }
 
     #[test]
