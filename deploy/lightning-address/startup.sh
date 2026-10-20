@@ -26,7 +26,7 @@ cat > /etc/openagents-lnurl/Caddyfile <<'CADDY'
 {
     email operations@openagents.com
     log default {
-        level ERROR
+        output discard
     }
 }
 lnurl-hooks.openagents.com {
@@ -38,7 +38,7 @@ lnurl-hooks.openagents.com {
         request_body {
             max_size 64KB
         }
-        reverse_proxy 127.0.0.1:8181 {
+        reverse_proxy 127.0.0.1:8182 {
             header_up Host openagents.com
             transport http {
                 dial_timeout 3s
@@ -56,8 +56,33 @@ http://:8180 {
     }
 }
 CADDY
+cat > /etc/openagents-lnurl/webhook-rate.conf <<'NGINX'
+worker_processes 1;
+error_log /dev/null crit;
+events { worker_connections 1024; }
+http {
+    access_log off;
+    limit_req_zone $binary_remote_addr zone=hooks:1m rate=20r/s;
+    server {
+        listen 127.0.0.1:8182;
+        set_real_ip_from 127.0.0.1;
+        real_ip_header X-Forwarded-For;
+        client_max_body_size 64k;
+        location = /webhook {
+            if ($request_method != POST) { return 404; }
+            limit_req zone=hooks burst=40 nodelay;
+            limit_req_status 429;
+            proxy_set_header Host openagents.com;
+            proxy_connect_timeout 3s;
+            proxy_read_timeout 10s;
+            proxy_pass http://127.0.0.1:8181;
+        }
+        location / { return 404; }
+    }
+}
+NGINX
 # Docker's restart policy restores the services after a host restart.
-docker rm -f lnurl cloud-sql-proxy lnurl-webhook >/dev/null 2>&1 || true
+docker rm -f lnurl cloud-sql-proxy lnurl-webhook lnurl-rate-limit >/dev/null 2>&1 || true
 docker run -d --name cloud-sql-proxy --restart unless-stopped --network host \
     gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.26.2 \
     --address=127.0.0.1 --port=5432 --quiet \
@@ -70,6 +95,8 @@ image=$(cat /etc/openagents-lnurl/image)
 docker pull "$image"
 docker run -d --name lnurl --restart unless-stopped --network host \
     --env-file /etc/openagents-lnurl/runtime.env "$image"
+docker run -d --name lnurl-rate-limit --restart unless-stopped --network host \
+    -v /etc/openagents-lnurl/webhook-rate.conf:/etc/nginx/nginx.conf:ro nginx:1.30.6-alpine
 docker run -d --name lnurl-webhook --restart unless-stopped --network host \
     -v /etc/openagents-lnurl/Caddyfile:/etc/caddy/Caddyfile:ro \
     -v /var/lib/openagents-lnurl/caddy:/data caddy:2.10.2
