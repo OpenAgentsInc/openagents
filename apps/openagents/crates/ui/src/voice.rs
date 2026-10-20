@@ -108,12 +108,17 @@ impl VoiceController {
         self.codex_check = Some(cx.spawn(async move |this, cx| {
             let ready = engine
                 .client()
-                .call(openagents_rpc::methods::LIST_HARNESSES, serde_json::json!({}))
+                .call(
+                    openagents_rpc::methods::LIST_HARNESSES,
+                    serde_json::json!({}),
+                )
                 .await
                 .ok()
                 .and_then(|value| {
-                    serde_json::from_value::<Vec<openagents_engine::registry::HarnessDescriptor>>(value)
-                        .ok()
+                    serde_json::from_value::<Vec<openagents_engine::registry::HarnessDescriptor>>(
+                        value,
+                    )
+                    .ok()
                 })
                 .map(|list| {
                     list.iter().any(|d| {

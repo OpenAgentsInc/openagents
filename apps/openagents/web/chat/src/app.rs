@@ -324,6 +324,11 @@ impl ChatApp {
             let app = cx.entity().downgrade();
             transcript.update(cx, |transcript, _| {
                 transcript.media.origin = Some(origin);
+                #[cfg(target_family = "wasm")]
+                {
+                    transcript.media.visual_reader =
+                        Some(openagents_web_chat_view::visuals::browser_reader());
+                }
                 transcript.media.after_entry = Some(Rc::new(move |entry, _, cx| {
                     app.upgrade()?.read(cx).render_cards(entry)
                 }));

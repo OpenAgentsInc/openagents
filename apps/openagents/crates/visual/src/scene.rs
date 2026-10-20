@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use mlua::{Function, Table, UserData, UserDataMethods, Value};
+use crate::runtime::{Function, Table, UserData, UserDataMethods, Value};
 
 use crate::draw::lua_error;
 use crate::node::{parse_color, value_text};
@@ -84,7 +84,7 @@ pub struct Sprite {
 
 /// The degrees `{x, y, z}` (or one number, about y) as a rotation, applied
 /// about x, then y, then z.
-fn rotation_of(value: Value) -> mlua::Result<[V3; 3]> {
+fn rotation_of(value: Value) -> crate::runtime::Result<[V3; 3]> {
     let [x, y, z] = match value {
         Value::Nil => return Ok([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
         Value::Integer(n) => [0.0, n as f32, 0.0],
@@ -337,13 +337,13 @@ impl Scene {
     }
 
     /// The asset `name` as a texture.
-    fn asset_texture(&mut self, name: &str) -> mlua::Result<u32> {
+    fn asset_texture(&mut self, name: &str) -> crate::runtime::Result<u32> {
         let bytes = self.assets.require(name).map_err(lua_error)?;
         Ok(self.texture_index(format!("asset:{name}"), || TextureData::Encoded(bytes)))
     }
 
     /// The asset `name` parsed as a glTF model, once per visual.
-    fn model(&self, name: &str) -> mlua::Result<Arc<crate::model::Model>> {
+    fn model(&self, name: &str) -> crate::runtime::Result<Arc<crate::model::Model>> {
         let bytes = self.assets.require(name).map_err(lua_error)?;
         let mut models = self
             .assets
@@ -386,7 +386,7 @@ impl Scene {
         color: Color,
         outward: Option<V3>,
         two_sided: bool,
-    ) -> mlua::Result<()> {
+    ) -> crate::runtime::Result<()> {
         if self.faces.len() >= MAX_FACES {
             return Err(lua_error(format!(
                 "a scene draws at most {MAX_FACES} faces"
@@ -433,7 +433,7 @@ impl Scene {
         corners: &[V3],
         normals: &[V3],
         color: Color,
-    ) -> mlua::Result<()> {
+    ) -> crate::runtime::Result<()> {
         let outward = normals.iter().fold([0.0; 3], |acc, n| add(acc, *n));
         self.face(corners, color, Some(outward), false)?;
         let mut n = [[0.0; 3]; 4];
@@ -452,7 +452,7 @@ impl Scene {
         color: Color,
         outward: Option<V3>,
         two_sided: bool,
-    ) -> mlua::Result<()> {
+    ) -> crate::runtime::Result<()> {
         match corners.len() {
             0..=2 => Ok(()),
             3 | 4 => self.face(corners, color, outward, two_sided),
@@ -474,7 +474,7 @@ impl Scene {
         self.lines.len() + self.points.len() + self.labels.len() + self.sprites.len()
     }
 
-    fn check_items(&self) -> mlua::Result<()> {
+    fn check_items(&self) -> crate::runtime::Result<()> {
         if self.items() >= MAX_ITEMS {
             return Err(lua_error(format!(
                 "a scene draws at most {MAX_ITEMS} lines, points, and labels"
@@ -696,10 +696,10 @@ impl Scene {
     }
 }
 
-fn v3(value: Value, what: &str) -> mlua::Result<V3> {
+fn v3(value: Value, what: &str) -> crate::runtime::Result<V3> {
     match value {
         Value::Table(t) => {
-            let get = |i: usize, key: &str| -> mlua::Result<f32> {
+            let get = |i: usize, key: &str| -> crate::runtime::Result<f32> {
                 match t.raw_get::<Option<f64>>(i)? {
                     Some(n) => Ok(n as f32),
                     None => Ok(t.raw_get::<Option<f64>>(key)?.unwrap_or(0.0) as f32),
@@ -714,12 +714,12 @@ fn v3(value: Value, what: &str) -> mlua::Result<V3> {
 
 /// A primitive's material options: roughness, metal, glow, glass (true or
 /// 0-1), ior, dispersion.
-fn material_of(options: &Table) -> mlua::Result<Material> {
+fn material_of(options: &Table) -> crate::runtime::Result<Material> {
     material_over(Material::default(), options)
 }
 
 /// `base` with whichever material options `options` sets.
-fn material_over(mut m: Material, options: &Table) -> mlua::Result<Material> {
+fn material_over(mut m: Material, options: &Table) -> crate::runtime::Result<Material> {
     let number = |key: &str| options.raw_get::<Option<f32>>(key);
     if let Some(v) = number("roughness")? {
         m.roughness = v.clamp(0.02, 1.0);
@@ -749,22 +749,22 @@ fn material_over(mut m: Material, options: &Table) -> mlua::Result<Material> {
 }
 
 /// A primitive's `texture = "asset name"`, registered with the scene.
-fn texture_of(scene: &mut Scene, options: &Table) -> mlua::Result<Option<u32>> {
+fn texture_of(scene: &mut Scene, options: &Table) -> crate::runtime::Result<Option<u32>> {
     match options.raw_get::<Option<String>>("texture")? {
         Some(name) => scene.asset_texture(&name).map(Some),
         None => Ok(None),
     }
 }
 
-fn color_of(options: &Table, default: Token) -> mlua::Result<Color> {
+fn color_of(options: &Table, default: Token) -> crate::runtime::Result<Color> {
     Ok(scene_color(options.raw_get::<Value>("color")?)?.unwrap_or(Color::token(default)))
 }
 
 /// A scene color: a theme token like everywhere else, or, for physical
 /// materials, `"#rrggbb"`.
-pub(crate) fn scene_color(value: Value) -> mlua::Result<Option<Color>> {
+pub(crate) fn scene_color(value: Value) -> crate::runtime::Result<Option<Color>> {
     if let Value::String(s) = &value {
-        let text = s.to_string_lossy();
+        let text = crate::runtime::string_text(&s);
         if let Some(hex) = text.strip_prefix('#') {
             let rgb = match hex.len() {
                 6 => u32::from_str_radix(hex, 16).ok(),
@@ -798,7 +798,7 @@ fn ramp(colors: &[Color], t: f32) -> Color {
     }
 }
 
-fn colors_of(options: &Table) -> mlua::Result<Vec<Color>> {
+fn colors_of(options: &Table) -> crate::runtime::Result<Vec<Color>> {
     let Some(list) = options.raw_get::<Option<Table>>("colors")? else {
         return Ok(vec![color_of(options, Token::Accent)?]);
     };
@@ -812,12 +812,12 @@ fn colors_of(options: &Table) -> mlua::Result<Vec<Color>> {
 }
 
 impl UserData for Scene {
-    fn add_fields<F: mlua::UserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("time", |_, s| Ok(s.time));
+    fn add_fields<F: crate::runtime::UserDataFields<Self>>(fields: &mut F) {
+        crate::runtime::field!(fields, "time", |_, s| Ok(s.time));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method_mut("box", |_, s, o: Table| {
+        crate::runtime::method!(methods, "box", |_, s, o: Table| {
             s.material = material_of(&o)?;
             s.texture = texture_of(s, &o)?;
             let at = v3(o.raw_get("at")?, "box at")?;
@@ -894,7 +894,7 @@ impl UserData for Scene {
             }
             Ok(())
         });
-        methods.add_method_mut("sphere", |_, s, o: Table| {
+        crate::runtime::method!(methods, "sphere", |_, s, o: Table| {
             s.material = material_of(&o)?;
             s.texture = texture_of(s, &o)?;
             let at = v3(o.raw_get("at")?, "sphere at")?;
@@ -939,7 +939,7 @@ impl UserData for Scene {
             }
             Ok(())
         });
-        methods.add_method_mut("cylinder", |_, s, o: Table| {
+        crate::runtime::method!(methods, "cylinder", |_, s, o: Table| {
             s.material = material_of(&o)?;
             s.texture = texture_of(s, &o)?;
             let at = v3(o.raw_get("at")?, "cylinder at")?;
@@ -971,10 +971,10 @@ impl UserData for Scene {
             s.polygon(&bottom, color, Some([0.0, -h.signum(), 0.0]), false)
         });
         // A height field: y = f(x, z) over a grid, or `values` rows.
-        methods.add_method_mut("surface", |_, s, o: Table| {
+        crate::runtime::method!(methods, "surface", |_, s, o: Table| {
             s.material = material_of(&o)?;
             s.texture = texture_of(s, &o)?;
-            let range = |key: &str| -> mlua::Result<(f32, f32)> {
+            let range = |key: &str| -> crate::runtime::Result<(f32, f32)> {
                 match o.raw_get::<Option<Table>>(key)? {
                     Some(t) => Ok((t.raw_get::<f32>(1)?, t.raw_get::<f32>(2)?)),
                     None => Ok((-1.0, 1.0)),
@@ -987,7 +987,10 @@ impl UserData for Scene {
             let mut grid: Vec<Vec<f32>> = Vec::new();
             if let Some(values) = o.raw_get::<Option<Table>>("values")? {
                 for row in values.sequence_values::<Table>() {
-                    grid.push(row?.sequence_values::<f32>().collect::<mlua::Result<_>>()?);
+                    grid.push(
+                        row?.sequence_values::<f32>()
+                            .collect::<crate::runtime::Result<_>>()?,
+                    );
                 }
             } else {
                 let f: Function = o
@@ -1062,7 +1065,7 @@ impl UserData for Scene {
             }
             Ok(())
         });
-        methods.add_method_mut("mesh", |_, s, o: Table| {
+        crate::runtime::method!(methods, "mesh", |_, s, o: Table| {
             s.material = material_of(&o)?;
             s.texture = texture_of(s, &o)?;
             let color = color_of(&o, Token::Accent)?;
@@ -1070,7 +1073,7 @@ impl UserData for Scene {
                 .raw_get::<Table>("vertices")?
                 .sequence_values::<Value>()
                 .map(|v| v.and_then(|v| v3(v, "mesh vertex")))
-                .collect::<mlua::Result<_>>()?;
+                .collect::<crate::runtime::Result<_>>()?;
             let uvs: Option<Vec<[f32; 2]>> = match o.raw_get::<Option<Table>>("uvs")? {
                 Some(list) => Some(
                     list.sequence_values::<Table>()
@@ -1078,14 +1081,14 @@ impl UserData for Scene {
                             let uv = uv?;
                             Ok([uv.raw_get::<f32>(1)?, uv.raw_get::<f32>(2)?])
                         })
-                        .collect::<mlua::Result<_>>()?,
+                        .collect::<crate::runtime::Result<_>>()?,
                 ),
                 None => None,
             };
             for face in o.raw_get::<Table>("faces")?.sequence_values::<Table>() {
                 let indices: Vec<usize> = face?
                     .sequence_values::<usize>()
-                    .collect::<mlua::Result<_>>()?;
+                    .collect::<crate::runtime::Result<_>>()?;
                 let corners: Vec<V3> = indices
                     .iter()
                     .map(|&i| {
@@ -1093,7 +1096,7 @@ impl UserData for Scene {
                             lua_error(format!("mesh face index {i} is out of range"))
                         })
                     })
-                    .collect::<mlua::Result<_>>()?;
+                    .collect::<crate::runtime::Result<_>>()?;
                 match &uvs {
                     Some(uvs) if corners.len() >= 3 => {
                         let uv = |i: usize| {
@@ -1112,13 +1115,23 @@ impl UserData for Scene {
             }
             Ok(())
         });
-        methods.add_method_mut("line", |_, s, (a, b, o): (Value, Value, Option<Table>)| {
+        crate::runtime::method!(methods, "line", |_,
+                                                  s,
+                                                  (a, b, o): (
+            Value,
+            Value,
+            Option<Table>
+        )| {
             s.check_items()?;
             let (a, b, o) = match (&a, &b) {
                 (Value::Table(t), Value::Nil)
                     if t.raw_get::<Value>("from").is_ok_and(|v| !v.is_nil()) =>
                 {
-                    (t.raw_get("from")?, t.raw_get("to")?, Some(t.clone()))
+                    (
+                        t.raw_get("from")?,
+                        t.raw_get("to")?,
+                        Some(crate::runtime::clone_table(&t)?),
+                    )
                 }
                 _ => (a, b, o),
             };
@@ -1131,24 +1144,28 @@ impl UserData for Scene {
             });
             Ok(())
         });
-        methods.add_method_mut("path", |_, s, (points, o): (Table, Option<Table>)| {
-            let (color, width) = line_style(o)?;
-            let pts: Vec<V3> = points
-                .sequence_values::<Value>()
-                .map(|v| v.and_then(|v| v3(v, "path point")))
-                .collect::<mlua::Result<_>>()?;
-            for pair in pts.windows(2) {
-                s.check_items()?;
-                s.lines.push(Line3 {
-                    a: pair[0],
-                    b: pair[1],
-                    color,
-                    width,
-                });
+        crate::runtime::method!(
+            methods,
+            "path",
+            |_, s, (points, o): (Table, Option<Table>)| {
+                let (color, width) = line_style(o)?;
+                let pts: Vec<V3> = points
+                    .sequence_values::<Value>()
+                    .map(|v| v.and_then(|v| v3(v, "path point")))
+                    .collect::<crate::runtime::Result<_>>()?;
+                for pair in pts.windows(2) {
+                    s.check_items()?;
+                    s.lines.push(Line3 {
+                        a: pair[0],
+                        b: pair[1],
+                        color,
+                        width,
+                    });
+                }
+                Ok(())
             }
-            Ok(())
-        });
-        methods.add_method_mut("point", |_, s, (at, o): (Value, Option<Table>)| {
+        );
+        crate::runtime::method!(methods, "point", |_, s, (at, o): (Value, Option<Table>)| {
             s.check_items()?;
             let (at, o) = options_form(at, o)?;
             let (color, radius, hint) = match o {
@@ -1170,44 +1187,51 @@ impl UserData for Scene {
             });
             Ok(())
         });
-        methods.add_method_mut(
-            "label",
-            |_, s, (at, text, o): (Value, Value, Option<Table>)| {
-                s.check_items()?;
-                let (at, text, o) = match (&at, &text) {
-                    (Value::Table(t), Value::Nil)
-                        if t.raw_get::<Value>("at").is_ok_and(|v| !v.is_nil()) =>
-                    {
-                        (t.raw_get("at")?, t.raw_get("text")?, Some(t.clone()))
-                    }
-                    _ => (at, text, o),
-                };
-                let (color, size) = match o {
-                    Some(o) => (
-                        color_of(&o, Token::Muted)?,
-                        match o.raw_get::<Option<String>>("size")? {
-                            Some(size) => {
-                                TextSize::parse(&size).map_err(|e| lua_error(e.to_string()))?
-                            }
-                            None => TextSize::Xs,
-                        },
-                    ),
-                    None => (Color::token(Token::Muted), TextSize::Xs),
-                };
-                s.labels.push(Label3 {
-                    at: v3(at, "label")?,
-                    text: value_text(&text),
-                    color,
-                    size,
-                });
-                Ok(())
-            },
-        );
+        crate::runtime::method!(methods, "label", |_,
+                                                   s,
+                                                   (at, text, o): (
+            Value,
+            Value,
+            Option<Table>
+        )| {
+            s.check_items()?;
+            let (at, text, o) = match (&at, &text) {
+                (Value::Table(t), Value::Nil)
+                    if t.raw_get::<Value>("at").is_ok_and(|v| !v.is_nil()) =>
+                {
+                    (
+                        t.raw_get("at")?,
+                        t.raw_get("text")?,
+                        Some(crate::runtime::clone_table(&t)?),
+                    )
+                }
+                _ => (at, text, o),
+            };
+            let (color, size) = match o {
+                Some(o) => (
+                    color_of(&o, Token::Muted)?,
+                    match o.raw_get::<Option<String>>("size")? {
+                        Some(size) => {
+                            TextSize::parse(&size).map_err(|e| lua_error(e.to_string()))?
+                        }
+                        None => TextSize::Xs,
+                    },
+                ),
+                None => (Color::token(Token::Muted), TextSize::Xs),
+            };
+            s.labels.push(Label3 {
+                at: v3(at, "label")?,
+                text: value_text(&text),
+                color,
+                size,
+            });
+            Ok(())
+        });
         // A glTF model from the visual's assets: placed at `at`, turned by
         // `rotate` (degrees), scaled by `scale`, or centered and sized so its
         // longest side is `fit`. Its own materials and textures apply; any
         // material option or `color` given here overrides them.
-        methods.add_method_mut("model", |_, s, o: Table| {
+        crate::runtime::method!(methods, "model", |_, s, o: Table| {
             let name = o
                 .raw_get::<Option<String>>("asset")?
                 .ok_or_else(|| lua_error("s:model needs asset = \"name.glb\""))?;
@@ -1282,7 +1306,7 @@ impl UserData for Scene {
         });
         // An environment map (an equirectangular image asset, ideally HDR):
         // what metal and glass reflect, and the light around the scene.
-        methods.add_method_mut("environment", |_, s, o: Table| {
+        crate::runtime::method!(methods, "environment", |_, s, o: Table| {
             let name = o
                 .raw_get::<Option<String>>("asset")?
                 .ok_or_else(|| lua_error("s:environment needs asset = \"name.hdr\""))?;
@@ -1299,40 +1323,46 @@ impl UserData for Scene {
         });
         // A camera-facing glow (a flare, a glint), `size` pixels across: an
         // image asset, or a soft round light without one.
-        methods.add_method_mut("sprite", |_, s, (at, o): (Value, Option<Table>)| {
-            s.check_items()?;
-            let (at, o) = options_form(at, o)?;
-            let at = v3(at, "sprite")?;
-            let sprite = match o {
-                Some(o) => Sprite {
-                    at,
-                    size: o
-                        .raw_get::<Option<f32>>("size")?
-                        .unwrap_or(48.0)
-                        .clamp(1.0, 2048.0),
-                    texture: texture_of(s, &o)?.or(match o.raw_get::<Option<String>>("asset")? {
-                        Some(name) => Some(s.asset_texture(&name)?),
-                        None => None,
-                    }),
-                    color: color_of(&o, Token::Accent)?,
-                    glow: o
-                        .raw_get::<Option<f32>>("glow")?
-                        .unwrap_or(1.0)
-                        .clamp(0.0, 16.0),
-                },
-                None => Sprite {
-                    at,
-                    size: 48.0,
-                    texture: None,
-                    color: Color::token(Token::Accent),
-                    glow: 1.0,
-                },
-            };
-            s.sprites.push(sprite);
-            Ok(())
-        });
+        crate::runtime::method!(
+            methods,
+            "sprite",
+            |_, s, (at, o): (Value, Option<Table>)| {
+                s.check_items()?;
+                let (at, o) = options_form(at, o)?;
+                let at = v3(at, "sprite")?;
+                let sprite = match o {
+                    Some(o) => Sprite {
+                        at,
+                        size: o
+                            .raw_get::<Option<f32>>("size")?
+                            .unwrap_or(48.0)
+                            .clamp(1.0, 2048.0),
+                        texture: texture_of(s, &o)?.or(
+                            match o.raw_get::<Option<String>>("asset")? {
+                                Some(name) => Some(s.asset_texture(&name)?),
+                                None => None,
+                            },
+                        ),
+                        color: color_of(&o, Token::Accent)?,
+                        glow: o
+                            .raw_get::<Option<f32>>("glow")?
+                            .unwrap_or(1.0)
+                            .clamp(0.0, 16.0),
+                    },
+                    None => Sprite {
+                        at,
+                        size: 48.0,
+                        texture: None,
+                        color: Color::token(Token::Accent),
+                        glow: 1.0,
+                    },
+                };
+                s.sprites.push(sprite);
+                Ok(())
+            }
+        );
         // A floor grid on y = 0 in hairlines.
-        methods.add_method_mut("grid", |_, s, o: Option<Table>| {
+        crate::runtime::method!(methods, "grid", |_, s, o: Option<Table>| {
             let (size, step, y) = match &o {
                 Some(o) => (
                     o.raw_get::<Option<f32>>("size")?
@@ -1369,7 +1399,7 @@ impl UserData for Scene {
             Ok(())
         });
         // x/y/z axes from the origin, with optional names.
-        methods.add_method_mut("axes", |_, s, o: Option<Table>| {
+        crate::runtime::method!(methods, "axes", |_, s, o: Option<Table>| {
             let size = match &o {
                 Some(o) => o.raw_get::<Option<f32>>("size")?.unwrap_or(1.0),
                 None => 1.0,
@@ -1411,17 +1441,20 @@ impl UserData for Scene {
 }
 
 /// `s:point(at, options)` or `s:point { at = ..., ... }`.
-fn options_form(at: Value, o: Option<Table>) -> mlua::Result<(Value, Option<Table>)> {
+fn options_form<'lua>(
+    at: Value<'lua>,
+    o: Option<Table<'lua>>,
+) -> crate::runtime::Result<(Value<'lua>, Option<Table<'lua>>)> {
     if let Value::Table(t) = &at
         && o.is_none()
         && let at_field @ Value::Table(_) = t.raw_get::<Value>("at")?
     {
-        return Ok((at_field, Some(t.clone())));
+        return Ok((at_field, Some(crate::runtime::clone_table(&t)?)));
     }
     Ok((at, o))
 }
 
-fn line_style(o: Option<Table>) -> mlua::Result<(Color, f32)> {
+fn line_style(o: Option<Table>) -> crate::runtime::Result<(Color, f32)> {
     match o {
         Some(o) => Ok((
             color_of(&o, Token::Muted)?,

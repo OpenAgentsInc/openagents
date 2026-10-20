@@ -1,12 +1,12 @@
 //! Invoked repeatedly by test-browser-storage.py with one stable HTTP origin.
 use gpui::{AsyncApp, Entity, WindowHandle};
-use std::{
-    path::Path,
-    time::{Duration, Instant},
-};
 use openagents_ui::{
     browser::{BrowserContext, BrowserSurface},
     shell::Shell,
+};
+use std::{
+    path::Path,
+    time::{Duration, Instant},
 };
 
 async fn loaded(browser: &Entity<BrowserSurface>, cx: &mut AsyncApp) -> anyhow::Result<()> {
@@ -60,10 +60,15 @@ pub async fn exercise(
     #[cfg(target_os = "macos")]
     if openagents_brand::env_var_os("OPENAGENTS_BROWSER_STORAGE_DIAGNOSTICS").is_some() {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        browser.read_with(cx, |browser, _| browser.fixture_cookies(move |cookies| {
-            let _ = tx.send(cookies);
-        }));
-        eprintln!("Storage native cookies before close ({url}): {:?}", rx.await?);
+        browser.read_with(cx, |browser, _| {
+            browser.fixture_cookies(move |cookies| {
+                let _ = tx.send(cookies);
+            })
+        });
+        eprintln!(
+            "Storage native cookies before close ({url}): {:?}",
+            rx.await?
+        );
     }
     loaded_result?;
     window.update(cx, |shell, window, cx| {
@@ -71,13 +76,17 @@ pub async fn exercise(
     })?;
     drop(browser);
     eprintln!("Storage lifecycle: closed page and dropped browser ({url})");
-    if url.ends_with("/delete") && openagents_brand::env_var_os("OPENAGENTS_BROWSER_STORAGE_REOPEN").is_some() {
+    if url.ends_with("/delete")
+        && openagents_brand::env_var_os("OPENAGENTS_BROWSER_STORAGE_REOPEN").is_some()
+    {
         let empty = format!("{}/empty", url.strip_suffix("/delete").unwrap());
         let (id, reopened) = window.update(cx, |shell, window, cx| {
             shell.fixture_open_browser(Some(empty), window, cx)
         })?;
         loaded(&reopened, cx).await?;
-        window.update(cx, |shell, window, cx| shell.fixture_close_browser(id, window, cx))?;
+        window.update(cx, |shell, window, cx| {
+            shell.fixture_close_browser(id, window, cx)
+        })?;
         eprintln!("Storage diagnostic: empty after closing and reopening the deleted page");
     }
     if url.ends_with("/write") {

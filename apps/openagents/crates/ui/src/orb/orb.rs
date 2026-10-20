@@ -13,12 +13,12 @@ use gpui::{
     Bounds, Context, IntoElement, ParentElement, Pixels, Render, Styled, Task, Window, canvas, div,
     px,
 };
-use std::time::Instant;
 use openagents_orb::{
     OrbAnimator, OrbSize, OrbState, OrbTheme,
     engine::{Frame, draw_mode_into},
     resolve_preset,
 };
+use std::time::Instant;
 
 use crate::orb::paint::paint_frame;
 

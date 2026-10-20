@@ -98,13 +98,15 @@ impl Transcriber for Native {
                     self.finished = true;
                     return Some(Event::Cancelled);
                 }
-                _ => match openagents_voice::Session::start(self.dir.clone(), self.device.clone()) {
-                    Ok(s) => self.session = Some(s),
-                    Err(e) => {
-                        self.finished = true;
-                        return Some(Event::Failed(e.to_string()));
+                _ => {
+                    match openagents_voice::Session::start(self.dir.clone(), self.device.clone()) {
+                        Ok(s) => self.session = Some(s),
+                        Err(e) => {
+                            self.finished = true;
+                            return Some(Event::Failed(e.to_string()));
+                        }
                     }
-                },
+                }
             }
         }
         self.session.as_mut()?.poll().map(|event| match event {
