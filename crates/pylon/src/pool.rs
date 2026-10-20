@@ -17,12 +17,15 @@ use crate::relay::{self, LIFETIME};
 /// The default number of rate slices per window.
 pub const SLICES: u32 = 12;
 
-/// The window ending at the next whole minute and `minutes` long. The end
-/// rounds up so the newest beacon, which replaced any older one on the
-/// relay, was sampled inside the window.
+/// The window ending at the next whole minute after `at` and `minutes`
+/// long. The end is always later than `at`, so the newest beacon, which
+/// replaced any older one on the relay, was sampled inside the window, and
+/// a receipt that finished in the second `at` counts: a receipt counts only
+/// while `finished_at < to`, and rounding `at` up left `to == at` on a
+/// whole minute (#12236).
 #[must_use]
 pub fn window(at: u64, minutes: u64) -> Window {
-    let to = at.div_ceil(60) * 60;
+    let to = (at / 60 + 1) * 60;
     Window {
         from: to - minutes.clamp(1, 60) * 60,
         to,
@@ -153,4 +156,26 @@ pub async fn verify(
             checks: &checks,
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::window;
+
+    /// #12236: on a whole minute the window still ends after `at`, so a
+    /// receipt that finished in that very second (`finished_at == at`)
+    /// is inside it (`finished_at < to`). Rounding up left `to == at`.
+    #[test]
+    fn the_window_always_ends_after_now() {
+        let minute = 1_800_000_000; // a whole minute
+        for at in [minute, minute + 1, minute + 59] {
+            let w = window(at, 60);
+            assert!(w.to > at, "{at} -> {}", w.to);
+            assert_eq!(w.to, minute + 60);
+            assert_eq!(w.to - w.from, 3_600);
+            assert_eq!(w.to % 60, 0);
+        }
+        assert_eq!(window(minute + 60, 5).to, minute + 120);
+        assert_eq!(window(minute, 5).to - window(minute, 5).from, 300);
+    }
 }

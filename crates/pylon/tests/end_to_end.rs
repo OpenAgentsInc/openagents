@@ -234,9 +234,9 @@ async fn a_free_job_runs_end_to_end_and_the_pool_counts_it() {
         .await
         .unwrap();
     assert!(event.is_some());
-    assert_eq!(aggregate.totals.pylons_online, 1);
-    assert_eq!(aggregate.totals.jobs.accepted, 2);
-    assert_eq!(aggregate.totals.jobs.failed, 2);
+    assert_eq!(aggregate.totals.pylons_online, 1, "{aggregate:?}");
+    assert_eq!(aggregate.totals.jobs.accepted, 2, "{aggregate:?}");
+    assert_eq!(aggregate.totals.jobs.failed, 2, "{aggregate:?}");
     let verified = pool::verify(&Identity::generate(), &url, aggregator.pubkey(), &policy)
         .await
         .unwrap();
@@ -421,7 +421,7 @@ async fn an_owned_pylon_yields_to_the_owner_and_never_counts_their_receipts() {
     let (aggregate, _) = pool::aggregate(&aggregator, &url, &policy, 60, true)
         .await
         .unwrap();
-    assert_eq!(aggregate.totals.jobs.accepted, 1);
+    assert_eq!(aggregate.totals.jobs.accepted, 1, "{aggregate:?}");
     let verified = pool::verify(&Identity::generate(), &url, aggregator.pubkey(), &policy)
         .await
         .unwrap();
@@ -633,15 +633,15 @@ async fn a_pylon_with_wrong_canary_answers_is_marked_check_fail_and_leaves_the_p
     let (aggregate, _) = pool::aggregate(&Identity::generate(), &url, &checked, 60, false)
         .await
         .unwrap();
-    assert_eq!(aggregate.totals.pylons_online, 2);
-    assert_eq!(aggregate.totals.checks.pass, 3);
-    assert_eq!(aggregate.totals.checks.fail, 3);
-    assert_eq!(aggregate.totals.jobs.accepted, 3);
+    assert_eq!(aggregate.totals.pylons_online, 2, "{aggregate:?}");
+    assert_eq!(aggregate.totals.checks.pass, 3, "{aggregate:?}");
+    assert_eq!(aggregate.totals.checks.fail, 3, "{aggregate:?}");
+    assert_eq!(aggregate.totals.jobs.accepted, 3, "{aggregate:?}");
     let open = PoolPolicy::open("everglade", pool::SLICES);
     let (aggregate, _) = pool::aggregate(&Identity::generate(), &url, &open, 60, false)
         .await
         .unwrap();
-    assert_eq!(aggregate.totals.pylons_online, 3);
+    assert_eq!(aggregate.totals.pylons_online, 3, "{aggregate:?}");
     let aggregator = Identity::generate();
     pool::aggregate(&aggregator, &url, &checked, 60, true)
         .await
