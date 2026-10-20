@@ -81,6 +81,9 @@ pub struct TextLane {
     /// llama.cpp metadata fixes for GGUFs with incorrect tokenizer settings.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub metadata_overrides: Vec<String>,
+    /// Explicit GPU layer count; None lets llama.cpp choose automatically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu_layers: Option<u32>,
 }
 
 /// What the owner chose for this computer's shared compute.

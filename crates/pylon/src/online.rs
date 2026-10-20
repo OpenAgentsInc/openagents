@@ -71,6 +71,7 @@ pub struct LaneSpec {
     pub chat_template: Option<PathBuf>,
     pub stop: Vec<String>,
     pub metadata_overrides: Vec<String>,
+    pub gpu_layers: Option<u32>,
     pub port: u16,
     pub model_file: PathBuf,
     /// The device (`metal`, `cuda`, `cpu`), selected separately for text
@@ -108,6 +109,7 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
             chat_template: None,
             stop: Vec::new(),
             metadata_overrides: Vec::new(),
+            gpu_layers: None,
             port: lane.port,
             model_file: lane.model_file.clone(),
             device: Some(lane.device.clone()),
@@ -121,6 +123,7 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
             chat_template: lane.chat_template.clone(),
             stop: lane.stop.clone(),
             metadata_overrides: lane.metadata_overrides.clone(),
+            gpu_layers: lane.gpu_layers,
             port: lane.port,
             model_file: lane.model_file.clone(),
             device: lane
@@ -144,6 +147,12 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
         &lane.port.to_string(),
     ]);
     if lane.engine == TextEngine::LlamaCpp {
+        let gpu_layers = if lane.device.as_deref() == Some("cpu") {
+            "0".to_string()
+        } else {
+            lane.gpu_layers
+                .map_or_else(|| "auto".to_string(), |n| n.to_string())
+        };
         command.args([
             "--ctx-size",
             "4096",
@@ -153,11 +162,7 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
             "--chat-template-kwargs",
             "{\"enable_thinking\":false}",
             "--n-gpu-layers",
-            if lane.device.as_deref() == Some("cpu") {
-                "0"
-            } else {
-                "auto"
-            },
+            &gpu_layers,
         ]);
         if let Some(template) = &lane.chat_template {
             command.arg("--chat-template-file").arg(template);
@@ -1074,6 +1079,8 @@ pub struct Up {
     pub text_stop: Option<Vec<String>>,
     /// llama.cpp metadata overrides; a single `off` clears saved values.
     pub text_override_kv: Option<Vec<String>>,
+    /// llama.cpp GPU layer count, or auto.
+    pub text_gpu_layers: Option<String>,
     pub device: Option<String>,
     pub port: Option<u16>,
     /// `--text-port`: the text engine's loopback port.
@@ -1113,6 +1120,7 @@ impl Up {
         let text_stop = (!stops.is_empty()).then_some(stops);
         let overrides = share::take_values(&mut words, "--text-override-kv")?;
         let text_override_kv = (!overrides.is_empty()).then_some(overrides);
+        let text_gpu_layers = share::take_values(&mut words, "--text-gpu-layers")?.pop();
         let text_device = share::take_values(&mut words, "--text-device")?.pop();
         let text_engine = share::take_values(&mut words, "--text-engine")?
             .pop()
@@ -1151,6 +1159,7 @@ impl Up {
             text_chat_template,
             text_stop,
             text_override_kv,
+            text_gpu_layers,
             device,
             port,
             text_port,
@@ -1298,6 +1307,22 @@ pub fn settings_for_up(
                     .map(|held| held.metadata_overrides.clone())
                     .unwrap_or_default(),
             };
+            let gpu_layers = match up.text_gpu_layers.as_deref() {
+                Some("auto") => None,
+                Some(value) => Some(
+                    value
+                        .parse::<u32>()
+                        .map_err(|_| "--text-gpu-layers takes a nonnegative count or auto")?,
+                ),
+                None => settings
+                    .text
+                    .as_ref()
+                    .filter(|held| held.model_file == file && held.engine == engine)
+                    .and_then(|held| held.gpu_layers),
+            };
+            if gpu_layers.is_some() && engine != TextEngine::LlamaCpp {
+                return Err("--text-gpu-layers needs --text-engine llama-cpp".into());
+            }
             if !metadata_overrides.is_empty() && engine != TextEngine::LlamaCpp {
                 return Err("--text-override-kv needs --text-engine llama-cpp".into());
             }
@@ -1324,6 +1349,7 @@ pub fn settings_for_up(
                 chat_template,
                 stop,
                 metadata_overrides,
+                gpu_layers,
             })
         }
     } else {

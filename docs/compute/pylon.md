@@ -76,6 +76,9 @@ seconds. The provider logs no job content.
 cpu|cuda|metal` selects its device independently of Clef's decision device.
 `--text-engine openai|gpt-oss|llama-cpp` selects the local server; choices
 persist across restarts. The default is Psionic's general OpenAI server.
+For a shared GPU, `--text-gpu-layers N` limits llama.cpp offload; `auto`
+restores automatic selection. CPU text always uses zero GPU layers. The
+limit clears when selecting a different model or engine.
 For llama.cpp, `--text-chat-template FILE` overrides the GGUF's template,
 and repeatable `--text-stop TEXT` stops before another transcript turn.
 Stops are sent as an HTTP array; direct `serve` accepts repeatable `--stop`.
@@ -143,6 +146,17 @@ than newer Nemotron releases. It uses substantial CPU/RAM offload.
 The [selection evidence](../../scripts/bench/pylon-models/nemotron-selection-2026-10-20.json)
 records the compared versions and exact revisions.
 
+The [Nemotron measurements](../../scripts/bench/pylon-models/nemotron-rtx4080-2026-10-20.json)
+retain five completed Pylon jobs: 34.9 s median round trip, 2/5 exact
+checks passed, and 0.55 tokens/s generation. The separate 16-token HTTP
+probe took 59.0 s including prompt processing (0.27 output tokens/s).
+Model startup took 48.1 s in this run. Resident memory after generation
+was 76.3 GiB RAM plus 13.8 GiB VRAM; peak resident RAM was 85.7 GiB.
+These checks used a 32-token output limit and paused Clef. Both arithmetic
+checks failed; grounding acknowledged the missing time but failed the
+requested exact format and reached the output limit. Keep this low-bit
+model for capacity experiments; the much faster Gemma default remains.
+
 Download it first using the runner's `--models nemotron4-340b
 --download-only`; this keeps the running pylon online. Downloads resume,
 verify each part, and join in place without a second full model copy.
@@ -157,16 +171,19 @@ prepend its `bin` folder to `LD_LIBRARY_PATH`; `LLAMA_ARG_THREADS=16` sets
 the thread count used on this host. Then select it:
 
 ```sh
-pylon up --text-engine llama-cpp --text-device cuda \
+pylon up --text-engine llama-cpp --text-device cuda --text-gpu-layers 4 \
   --text-model "$HOME/.openagents/models/nemotron4-340b/Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf" \
   --text-chat-template "$HOME/.openagents/models/nemotron4-340b/chat-template.jinja" \
   --text-stop '<extra_id_1>' --text-stop '<extra_id_0>' \
   --text-stop '<|endoftext|>' --text-stop $'\x11' \
-  --text-override-kv tokenizer.ggml.add_bos_token=bool:false --max-tokens 32
+  --text-override-kv tokenizer.ggml.add_bos_token=bool:false --max-tokens 32 --slots 1
 ```
 
 Use `pylon-net` on the configured RTX 4080 host to select its existing
-service home. The original eight-model benchmark uses 2,048 output tokens
+service home. Four GPU layers leave room for Clef on this shared 16 GiB
+GPU. Automatic fitting attempted a 12.5 GiB allocation beside Clef's
+7 GiB and failed; the isolated benchmark's automatic fit was measured
+with Clef paused. The original eight-model benchmark uses 2,048 output tokens
 and a 128-token throughput probe; the large Nemotron profile uses a
 smaller budget and probe, recorded with each result. `--cases` selects
 individual benchmark prompts. These budgets do not extend the provider's

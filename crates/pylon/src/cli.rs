@@ -48,6 +48,8 @@ Commands:
                             the decision engine (default: its device).
       --text-engine NAME    openai (default), gpt-oss, or llama-cpp.
                             Runs the chosen local model server.
+      --text-gpu-layers N|auto
+                            Limit llama.cpp GPU layers (default auto).
       --text-chat-template FILE|off
                             Override llama.cpp's chat template, or clear it.
       --text-stop TEXT       Stop llama.cpp's answer at TEXT (repeatable;
@@ -2129,6 +2131,7 @@ async fn start(
             chat_template: None,
             stop: Vec::new(),
             metadata_overrides: Vec::new(),
+            gpu_layers: None,
             port,
             model_file: model,
             device: Some(device),

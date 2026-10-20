@@ -679,6 +679,8 @@ fn chat_template_override_persists_and_clears_when_switching_models() {
         "llama-cpp".into(),
         "--text-model".into(),
         model.display().to_string(),
+        "--text-gpu-layers".into(),
+        "4".into(),
         "--text-chat-template".into(),
         template.display().to_string(),
         "--text-stop".into(),
@@ -713,6 +715,7 @@ fn chat_template_override_persists_and_clears_when_switching_models() {
         restarted.text.as_ref().unwrap().metadata_overrides,
         ["tokenizer.ggml.add_bos_token=bool:false"]
     );
+    assert_eq!(restarted.text.as_ref().unwrap().gpu_layers, Some(4));
     let specs = online::lanes(&restarted);
     let text = specs
         .iter()
@@ -728,12 +731,14 @@ fn chat_template_override_persists_and_clears_when_switching_models() {
         args.windows(2)
             .any(|pair| pair == ["--override-kv", "tokenizer.ggml.add_bos_token=bool:false"])
     );
+    assert!(args.windows(2).any(|pair| pair == ["--n-gpu-layers", "4"]));
     let next = dir.path().join("other.gguf");
     std::fs::write(&next, b"gguf").unwrap();
     up.text_model = Some(next);
     up.text_chat_template = None;
     up.text_stop = None;
     up.text_override_kv = None;
+    up.text_gpu_layers = None;
     let (changed, _) = online::settings_for_up(
         Some(restarted.clone()),
         "box",
@@ -747,16 +752,19 @@ fn chat_template_override_persists_and_clears_when_switching_models() {
     assert!(changed.chat_template.is_none());
     assert!(changed.stop.is_empty());
     assert!(changed.metadata_overrides.is_empty());
+    assert_eq!(changed.gpu_layers, None);
     up.text_model = Some(model);
     up.text_chat_template = Some("off".into());
     up.text_stop = Some(vec!["off".into()]);
     up.text_override_kv = Some(vec!["off".into()]);
+    up.text_gpu_layers = Some("auto".into());
     let (cleared, _) =
         online::settings_for_up(Some(restarted), "box", "wss://r", &up, "cuda", Ok(())).unwrap();
     let cleared = cleared.text.unwrap();
     assert!(cleared.chat_template.is_none());
     assert!(cleared.stop.is_empty());
     assert!(cleared.metadata_overrides.is_empty());
+    assert_eq!(cleared.gpu_layers, None);
     up.text_chat_template = Some(template);
     up.text_engine = Some(pylon::share::TextEngine::Openai);
     assert!(
@@ -765,6 +773,13 @@ fn chat_template_override_persists_and_clears_when_switching_models() {
             .contains("llama-cpp")
     );
     up.text_engine = Some(pylon::share::TextEngine::LlamaCpp);
+    up.text_gpu_layers = Some("-1".into());
+    assert!(
+        online::settings_for_up(None, "box", "wss://r", &up, "cuda", Ok(()))
+            .unwrap_err()
+            .contains("--text-gpu-layers")
+    );
+    up.text_gpu_layers = Some("auto".into());
     up.text_chat_template = Some(dir.path().join("missing.jinja"));
     assert!(
         online::settings_for_up(None, "box", "wss://r", &up, "cuda", Ok(()))
