@@ -87,9 +87,30 @@ pub fn user_bubble(id: &str, body: &str, attachments: Vec<AnyElement>) -> AnyEle
                 .bg(theme::surface_raised())
                 .text_size(px(theme::BODY))
                 .line_height(px(theme::BODY_LINE))
-                .child(markdown.render(body, false, None)),
+                .child(markdown.render(&hard_breaks(body), false, None)),
         )
         .into_any_element()
+}
+
+/// A person's message keeps the line breaks they typed: outside code
+/// fences, each one becomes a Markdown hard break.
+pub fn hard_breaks(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut fenced = false;
+    let mut lines = text.split('\n').peekable();
+    while let Some(line) = lines.next() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+        }
+        out.push_str(line);
+        if lines.peek().is_some() {
+            if !fenced && !line.trim().is_empty() && !line.ends_with("  ") {
+                out.push_str("  ");
+            }
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// An attached image as the user bubble shows it.
@@ -706,6 +727,14 @@ pub fn reasoning_label(level: ReasoningLevel) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typed_line_breaks_stay_outside_code() {
+        assert_eq!(hard_breaks("one\ntwo"), "one  \ntwo");
+        assert_eq!(hard_breaks("one\n\ntwo"), "one  \n\ntwo");
+        assert_eq!(hard_breaks("```\na\nb\n```"), "```\na\nb\n```");
+        assert_eq!(hard_breaks("single"), "single");
+    }
 
     #[test]
     fn labels_read_plainly() {
