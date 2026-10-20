@@ -52,6 +52,7 @@
 
 mod land;
 mod moves;
+mod pylon;
 mod run_commands;
 mod voice_chat;
 mod voice_remote;
@@ -1937,6 +1938,9 @@ impl RpcService for EngineRpc {
         }
         if moves::handles(method) {
             return self.handle_move(method, params).await;
+        }
+        if pylon::handles(method) {
+            return pylon::handle(method, params).await;
         }
         if AuthRpc::handles(method) {
             return AuthRpc::new(self.auth()?.clone())

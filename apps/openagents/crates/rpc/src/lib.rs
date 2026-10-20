@@ -25,6 +25,8 @@ pub mod connect_phone;
 pub mod device_room;
 /// Moving running chats to a cloud computer (#11933).
 pub mod moves;
+/// Earn on a paired computer (#12294).
+pub mod pylon;
 mod server;
 
 pub use client::{RpcClient, RpcSubscription, connect_ws};

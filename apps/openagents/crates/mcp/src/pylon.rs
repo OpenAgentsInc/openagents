@@ -80,7 +80,7 @@ pub async fn call(name: &str, args: Value) -> Result<Value, String> {
 
 /// Where the `openagents` command is: [`CLI_ENV`], then the installer's
 /// `~/.openagents/bin` and `~/.local/bin`, then `PATH`.
-fn cli() -> Option<PathBuf> {
+pub fn cli() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os(CLI_ENV).filter(|p| !p.is_empty()) {
         return Some(PathBuf::from(path));
     }
@@ -105,8 +105,15 @@ fn cli() -> Option<PathBuf> {
 
 /// Run `EXE --json pylon COMMAND` and shape its answer.
 pub async fn run(exe: &Path, command: &str, timeout: Duration) -> Result<Value, String> {
+    run_args(exe, &[command], timeout).await
+}
+
+/// Run `EXE --json pylon ARGS...` and shape its answer like [`run`].
+pub async fn run_args(exe: &Path, args: &[&str], timeout: Duration) -> Result<Value, String> {
+    let command = args.join(" ");
     let child = tokio::process::Command::new(exe)
-        .args(["--json", "pylon", command])
+        .args(["--json", "pylon"])
+        .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -125,7 +132,15 @@ pub async fn run(exe: &Path, command: &str, timeout: Duration) -> Result<Value, 
     let stdout = bounded(&output.stdout);
     let stderr = redact(bounded(&output.stderr).trim());
     let exit_code = output.status.code().unwrap_or(1);
-    let Ok(document) = serde_json::from_str::<Value>(stdout.trim()) else {
+    // A long command, such as `up`, prints progress lines before its answer.
+    let document = serde_json::from_str::<Value>(stdout.trim()).ok().or_else(|| {
+        stdout
+            .lines()
+            .rev()
+            .find_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
+            .filter(Value::is_object)
+    });
+    let Some(document) = document else {
         let text = redact(format!("{}\n{stderr}", stdout.trim()).trim());
         return Err(if text.is_empty() {
             format!("`openagents pylon {command}` exited {exit_code} with no answer")

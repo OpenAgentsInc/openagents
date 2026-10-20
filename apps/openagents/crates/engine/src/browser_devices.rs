@@ -14,7 +14,8 @@
 //! harnesses, models, skills, commands, and workspace files under the
 //! grant's observe right, and [`OPERATE`], the changes its run right
 //! covers: the chat queue, answers to an agent's questions, edits to
-//! workspace files, and a new session's checkout (#12266). A chat's
+//! workspace files, a new session's checkout (#12266), and turning sharing
+//! on the Earn page on and off (#12294). A chat's
 //! transcript and the new-session pickers' repository reads are reads.
 //! [`sanitize`] strips what only this computer's own app may set before a
 //! call reaches the engine. Later work widens them method by method.
@@ -75,6 +76,10 @@ pub const ALLOWED: &[&str] = &[
     methods::READ_CHAT_WINDOW,
     // A move's progress (#12282).
     openagents_rpc::moves::MOVE_STATUS,
+    // The Earn page (#12294).
+    openagents_rpc::pylon::PYLON_STATUS,
+    openagents_rpc::pylon::PYLON_EARNINGS,
+    openagents_rpc::pylon::PYLON_SETTINGS,
 ];
 
 /// The engine methods a browser may call under its grant's run right
@@ -104,6 +109,11 @@ pub const OPERATE: &[&str] = &[
     // Settings → General's thread naming and worktree folder (#12288).
     methods::SET_TITLE_SETTINGS,
     methods::SET_WORKTREE_SETTINGS,
+    // Sharing this computer on the Earn page (#12294). Where payouts go is
+    // set only at the computer.
+    openagents_rpc::pylon::PYLON_UP,
+    openagents_rpc::pylon::PYLON_DOWN,
+    openagents_rpc::pylon::PYLON_SET_PAUSE,
 ];
 
 /// Parameters a browser never sets: forwarding to another computer under
