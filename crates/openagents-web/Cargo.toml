@@ -172,6 +172,8 @@ oa-auth = { path = "../oa-auth", features = ["fake", "local", "fake-workos"] }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+# The in-process pylon relay for the pylon router's tests (#12366).
+pylon = { path = "../pylon", default-features = false, features = ["fixture"] }
 
 [lints]
 workspace = true

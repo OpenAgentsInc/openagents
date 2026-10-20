@@ -2825,6 +2825,12 @@ async fn answer(
         }
         _ => None,
     };
+    // The Grid terminal on /home asks the live pylons first; the hosted
+    // chat answers when none does (#12366).
+    let pylons = match (&door, parts.is_empty()) {
+        (Some(_), true) => crate::pylon_door::door(&app, &headers, &payer),
+        _ => None,
+    };
     // Images or PDFs go to the door that takes them; the hosted chat
     // answers with the words only when it can't (#11174).
     // Whether the Drive door answers: it may look at videos, which takes
@@ -2875,10 +2881,17 @@ async fn answer(
                 None => door,
             };
             agents_door = agents.is_some();
-            match agents {
+            let door: Box<dyn openagents_chat::basic_coder::Door> = match agents {
                 Some(mut agents) => {
                     agents.fallback = Some(door);
-                    Some(Box::new(agents))
+                    Box::new(agents)
+                }
+                None => door,
+            };
+            match pylons {
+                Some(mut pylons) => {
+                    pylons.fallback = Some(door);
+                    Some(Box::new(pylons))
                 }
                 None => Some(door),
             }

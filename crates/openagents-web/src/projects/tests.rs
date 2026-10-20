@@ -89,6 +89,9 @@ pub(crate) struct Options {
     pub analytics: Option<Arc<crate::analytics::Analytics>>,
     /// The room-token key (#12263); none, as in production without one.
     pub room_token_key: Option<String>,
+    /// The pylon relay (`--pylons-relay`); none by default, so no test
+    /// reaches a live relay.
+    pub pylons_relay: Option<String>,
 }
 
 /// The `ask_salt` a world with its own [`Options::chat`] uses.
@@ -170,6 +173,7 @@ async fn world_at(port: u16, options: Options) -> World {
     config.everglade = options.everglade;
     config.port = port;
     config.room_token_key = options.room_token_key;
+    config.pylons_relay = options.pylons_relay;
     let store = Arc::new(Store::local(root.path().join("chats")));
     config.chat_store = store.clone();
     config.cloud = Some(Arc::new(

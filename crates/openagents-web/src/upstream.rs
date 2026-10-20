@@ -365,6 +365,11 @@ impl Upstream {
         }
     }
 
+    /// The upstream's base URL, `http://HOST:PORT`, for a client of its own.
+    pub fn base_url(&self) -> String {
+        format!("http://{}", self.authority)
+    }
+
     /// Proxies `request` and streams the answer back.
     pub async fn forward(&self, mut request: Request) -> Response {
         let upgrade = request.headers().contains_key(header::UPGRADE);

@@ -150,6 +150,7 @@ mod project_openapi;
 pub mod projects;
 #[doc(hidden)]
 pub mod purchases;
+mod pylon_door;
 mod repo_snapshot;
 mod robot_lab;
 mod room_tokens;

@@ -680,6 +680,21 @@ appends it to `~/.openagents/compute/receipts.jsonl`. `--no-receipt` skips
 publication. A job that fails or times out still gets a receipt with that
 outcome.
 
+### The pylon router (`/home` terminal)
+
+A message typed at the Grid terminal on `/home` goes to the pylons first
+(#12366). `pylon::router` admits the pylons that can take a free
+conversation job now (fresh, online, a free slot, `free-v1`, not failing a
+trusted check) and ranks them by tier, then free slots. When a live pylon
+serves decisions (Clef), one typed Choice through `POST /v1/decisions`
+(`openagents/decide`, `X-Decision-Order: pylon`) picks a pylon or
+`default`; otherwise the ranking picks. The chosen pylon answers over
+NIP-CJ, the next one if it refuses or times out (3 tries, 50 s), and the
+hosted chat answers when none does or when the model picks `default` with
+confidence of at least 0.6. The website's door is
+`crates/openagents-web/src/pylon_door.rs`; `OPENAGENTS_WEB_PYLON_ROUTER=off`
+turns it off, and `OPENAGENTS_WEB_PYLON_HOME` sets where its receipts go.
+
 ## Drive a pylon from an agent
 
 `openagents pylon mcp` lets another agent (Claude Code, Codex, or anything
