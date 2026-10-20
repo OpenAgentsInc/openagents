@@ -530,7 +530,10 @@ var PAGES = {
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
   "agent-lab": ["./openagents_web_agent_lab.js", "./openagents_web_agent_lab_bg.wasm"],
   labs: ["./openagents_web_lab.js", "./openagents_web_lab_bg.wasm"],
+  voice: ["./openagents_web_voice.js", "./openagents_web_voice_bg.wasm"],
 };
+// Pages a reload shouldn't reopen: a call starts only from its button.
+var UNADDRESSED = { voice: true };
 var pageBoxes = {};
 var pageModules = {};
 function pageParam(path) {
@@ -549,7 +552,9 @@ function openPage(path) {
     return;
   }
   var rest = path.slice(name.length + 1);
-  pageParam(path);
+  if (!UNADDRESSED[name]) {
+    pageParam(path);
+  }
   Object.keys(pageBoxes).forEach(function (other) {
     if (other !== name && pageBoxes[other]) {
       pageBoxes[other].hidden = true;
@@ -598,12 +603,14 @@ window.addEventListener("oa-page-close", function (event) {
   if (box) {
     box.hidden = true;
   }
-  pageParam("");
+  if (!UNADDRESSED[event.detail || ""]) {
+    pageParam("");
+  }
 });
 function openAddressedPage() {
   var params = new URL(window.location.href).searchParams;
   var path = params.get("page");
-  if (path) {
+  if (path && !UNADDRESSED[path.split("/")[0]]) {
     openPage(path);
   }
   var work = params.get("work");

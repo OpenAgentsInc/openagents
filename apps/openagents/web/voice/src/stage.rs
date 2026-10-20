@@ -128,6 +128,8 @@ impl Stage {
         self.task = None;
         self.view.phase = VoicePhase::Closed;
         self.open = false;
+        #[cfg(target_family = "wasm")]
+        crate::signal("oa-page-close", crate::NAME);
         cx.notify();
     }
 }

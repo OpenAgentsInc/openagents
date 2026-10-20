@@ -46,4 +46,5 @@ pub use gpui::svg;
 #[cfg(target_family = "wasm")]
 pub use icon::svg;
 
+#[cfg(feature = "visuals")]
 pub mod visuals;

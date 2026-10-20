@@ -4803,10 +4803,8 @@ dependencies = [
  "openagents-chat-view",
  "openagents-doc",
  "openagents-gpui-web",
- "openagents-orb",
  "openagents-proto",
  "openagents-theme",
- "openagents-voice-session",
  "openagents-web-chat-view",
  "openagents-web-client",
  "postcard",
@@ -5138,6 +5136,28 @@ dependencies = [
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "openagents-web-voice"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "openagents-gpui-web",
+ "openagents-orb",
+ "openagents-proto",
+ "openagents-voice-session",
+ "openagents-web-chat-view",
+ "openagents-web-client",
+ "uuid",
+ "wasm-bindgen",
+ "web-sys",
+ "web-time",
 ]
 
 [[package]]

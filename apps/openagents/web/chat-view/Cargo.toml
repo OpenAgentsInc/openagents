@@ -11,10 +11,16 @@ edition.workspace = true
 publish.workspace = true
 license = "MIT"
 
+[features]
+# Agent charts and 3D visuals drawn inline (#12287): Luau and the visual
+# runtime, about 1 MB raw. Off for the chat and the demo, which stay under
+# their size budgets; a visual there shows as a line naming it.
+visuals = ["dep:openagents-visual", "openagents-chat-view/visuals"]
+
 [dependencies]
-openagents-visual = { path = "../../crates/visual" }
+openagents-visual = { path = "../../crates/visual", optional = true }
 gpui.workspace = true
-openagents-chat-view = { workspace = true, features = ["visuals"] }
+openagents-chat-view.workspace = true
 anyhow.workspace = true
 serde_json = "1"
 openagents-doc = { path = "../../crates/doc" }

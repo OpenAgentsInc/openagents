@@ -187,7 +187,9 @@ pub struct WebMedia {
     pub origin: Option<String>,
     pub after_entry: Option<AfterEntry>,
     /// Bundled demo files or authenticated attachment reads supplied by the app.
+    #[cfg(feature = "visuals")]
     pub visual_reader: Option<crate::visuals::Read>,
+    #[cfg(feature = "visuals")]
     pub(crate) visuals: crate::visuals::Frames,
 }
 
@@ -250,8 +252,9 @@ impl TranscriptMedia for WebMedia {
 
     fn released(_this: &mut Transcript, _cx: &mut App) {}
 
-    fn chat_changed(this: &mut Transcript, _cx: &mut Context<Transcript>) {
-        this.media.visuals.clear();
+    fn chat_changed(_this: &mut Transcript, _cx: &mut Context<Transcript>) {
+        #[cfg(feature = "visuals")]
+        _this.media.visuals.clear();
     }
 
     fn rows_built(_this: &mut Transcript, _rows: &[Row]) {}
@@ -325,6 +328,30 @@ impl TranscriptMedia for WebMedia {
             .unwrap_or_else(|| div().into_any_element())
     }
 
+    #[cfg(not(feature = "visuals"))]
+    fn visual(
+        _this: &mut Transcript,
+        _row_id: &SharedString,
+        _owner: &str,
+        _path: &str,
+        title: &str,
+        _cx: &mut Context<Transcript>,
+    ) -> AnyElement {
+        // Visuals aren't in this build (its size budget); say what is there.
+        let title = if title.trim().is_empty() {
+            "A chart"
+        } else {
+            title
+        };
+        div()
+            .py(gpui::px(6.))
+            .text_size(gpui::px(13.))
+            .text_color(crate::theme::text_faint())
+            .child(format!("{title} (opens in the OpenAgents desktop app)"))
+            .into_any_element()
+    }
+
+    #[cfg(feature = "visuals")]
     fn visual(
         this: &mut Transcript,
         row_id: &SharedString,

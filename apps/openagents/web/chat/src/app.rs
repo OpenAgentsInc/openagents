@@ -130,7 +130,6 @@ pub struct ChatApp {
     transcript: Entity<desktop_transcript::Transcript>,
     published: Option<Published>,
     composer: Entity<TextInput>,
-    voice: Entity<crate::voice::Stage>,
     /// The composer's drafts, send key, completions, queue, and question
     /// wizard (#12267, #12268).
     compose: Entity<Compose>,
@@ -324,11 +323,6 @@ impl ChatApp {
             let app = cx.entity().downgrade();
             transcript.update(cx, |transcript, _| {
                 transcript.media.origin = Some(origin);
-                #[cfg(target_family = "wasm")]
-                {
-                    transcript.media.visual_reader =
-                        Some(openagents_web_chat_view::visuals::browser_reader());
-                }
                 transcript.media.after_entry = Some(Rc::new(move |entry, _, cx| {
                     app.upgrade()?.read(cx).render_cards(entry)
                 }));
@@ -364,7 +358,6 @@ impl ChatApp {
             transcript,
             published: None,
             composer,
-            voice: cx.new(crate::voice::Stage::new),
             compose,
             search,
             filter: String::new(),
@@ -385,7 +378,6 @@ impl ChatApp {
             settings: settings::Settings::load(),
         };
         this.start_settings(cx);
-        cx.observe(&this.voice, |_, _, cx| cx.notify()).detach();
         if this.signed_in {
             let weak = cx.entity().downgrade();
             let mut async_cx = cx.to_async();
@@ -1650,9 +1642,10 @@ impl ChatApp {
                         .cursor_pointer()
                         .text_size(px(13.))
                         .child("Voice")
-                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                            this.voice.update(cx, |voice, cx| voice.start(None, cx));
-                        })),
+                        // The call stage is its own module (its size budget).
+                        .on_click(|_: &ClickEvent, _, _| {
+                            crate::compose::page_event("oa-page-open", "voice");
+                        }),
                 )
             })
             .children(project.map(|p| chip("icons/folder.svg", p, theme::text_muted())))
@@ -1944,9 +1937,6 @@ impl Focusable for ChatApp {
 
 impl Render for ChatApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.voice.read(cx).open {
-            return self.voice.clone().into_any_element();
-        }
         // Once the chats and the open chat have arrived, this frame is the
         // one a page snapshot shows until the app draws (`gpui-ready`), and
         // the one it keeps for the next visit (#12244).
