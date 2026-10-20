@@ -296,6 +296,9 @@ pub async fn code(
         prompt.push_str(notes);
     }
     prompt.push_str(&so_far(base, round));
+    if let Some(member) = &options.channel {
+        prompt.push_str(&member.notes());
+    }
     prompt.push_str(
         "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles the changed crates (`check:` entries, and `wasm:` for a browser build's wasm32 half); run it after your edits and fix what fails before you finish. The Tester runs the full checks and tests after you.",
     );

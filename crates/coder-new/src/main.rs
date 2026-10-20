@@ -63,6 +63,25 @@ fn run() -> io::Result<()> {
     {
         return account_command(command, &args[1..]);
     }
+    // The scripted chat, delegations and plugin switches, as
+    // `openagents coder` runs them: `coder chat --mode microclaude -p ..`.
+    if args
+        .first()
+        .is_some_and(|command| matches!(command.as_str(), "chat" | "delegate" | "plugins" | "status"))
+    {
+        let json = args.iter().any(|arg| arg == "--json");
+        let rest: Vec<String> = args.iter().filter(|arg| *arg != "--json").cloned().collect();
+        let code = coder_new::programmatic::run(&rest, json);
+        io::stdout().flush()?;
+        std::process::exit(i32::from(code));
+    }
+    // The agent channel from a delegate's shell (#11346).
+    if args.first().is_some_and(|command| command == "comms") {
+        let text = coder_new::comms::cli::run(&args[1..])
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+        println!("{text}");
+        return Ok(());
+    }
     if args.first().is_some_and(|command| command == "trace") {
         return trace_command(&args[1..]);
     }

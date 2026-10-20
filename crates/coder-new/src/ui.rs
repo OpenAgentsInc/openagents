@@ -1040,6 +1040,20 @@ fn entry_rows(
                 fill_copy(&lines, &mut copy);
                 return (lines, copy);
             }
+            if name == crate::comms::view::CHANNEL {
+                lines.extend(crate::comms::view::channel_lines(input, output, width));
+                lines.push(Line::default());
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
+            }
+            if name == crate::comms::view::SWARM {
+                lines.extend(crate::comms::view::swarm_lines(
+                    output, *running, width, phase,
+                ));
+                lines.push(Line::default());
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
+            }
             if name == crate::issue_run::SUMMARY {
                 lines.extend(crate::issue_run::cards::summary_lines(input, output, width));
                 lines.push(Line::default());

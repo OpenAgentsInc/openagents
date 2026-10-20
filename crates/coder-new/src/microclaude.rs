@@ -4,9 +4,9 @@
 //!
 //! It is a small agent rather than a full one: a turn is one SDK session
 //! pinned to [`MODEL`], with the basic file tools ([`TOOLS`]) and no
-//! settings files or outside MCP servers. While the Solver plugin is on, one
-//! in-process tool beside them hands an issue to Solver
-//! ([`run_with_solver`]). A tool call is drawn with Coder's own
+//! settings files or outside MCP servers. While the Solver, Solver swarm or
+//! Agent channel plugins are on, in-process tools beside them hand issues
+//! to Solver and read the session's channel ([`run_with_delegates`]). A tool call is drawn with Coder's own
 //! widgets, the same shapes the briefed agent makes
 //! (`crate::issue_run::agent`), so a Read shows a line count, an Edit shows
 //! a diff, and Grep and Glob show their matches.
@@ -80,17 +80,14 @@ pub fn allows(tool: &str) -> bool {
 /// conversation, within [`TASK_LIMIT`].
 #[must_use]
 pub fn task(messages: &[Message]) -> String {
-    task_with(messages, false)
+    task_with(messages, &crate::comms::tools::Delegates::default())
 }
 
-/// [`task`], telling the model about the solver tool when `solver` is on.
+/// [`task`], telling the model about the delegation tools and the channel
+/// that are on.
 #[must_use]
-pub fn task_with(messages: &[Message], solver: bool) -> String {
-    let tools = if solver {
-        crate::solver_plugin::instructions()
-    } else {
-        ""
-    };
+pub fn task_with(messages: &[Message], delegates: &crate::comms::tools::Delegates) -> String {
+    let tools = delegates.instructions();
     let prefix = format!(
         "{}\n{tools}The conversation:\n",
         crate::identity::prompt(MODEL)
@@ -306,22 +303,24 @@ pub async fn run_with(
     run_inner(prompt, cwd, tools, server, None, cancel, emit).await
 }
 
-/// Runs one turn like [`run`], with the Solver plugin's tool beside the
-/// file tools: an issue the model hands it runs as a delegation whose
-/// progress reaches `emit` while the turn waits, and stopping the turn
-/// stops the run ([`crate::solver_plugin`]).
+/// Runs one turn like [`run`], with the delegation tools that are on and
+/// the channel beside the file tools: an issue the model hands Solver (or
+/// several, to the swarm) runs as a delegation whose progress reaches
+/// `emit` while the turn waits, and stopping the turn stops the runs
+/// ([`crate::comms::tools::mcp_server`]).
 ///
 /// # Errors
 /// As [`run`].
-pub async fn run_with_solver(
+pub async fn run_with_delegates(
     prompt: &str,
     cwd: &Path,
+    delegates: &crate::comms::tools::Delegates,
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
     let stop = std::sync::Arc::new(AtomicBool::new(false));
-    let server = crate::solver_plugin::mcp_server(cwd.to_owned(), sender, stop.clone());
+    let server = crate::comms::tools::mcp_server(cwd.to_owned(), sender, stop.clone(), delegates);
     let delegations = Delegations { receiver, stop };
     run_inner(
         prompt,
@@ -473,7 +472,7 @@ async fn run_inner(
                         Some("tool_use") => {
                             let name = block["name"].as_str().unwrap_or_default();
                             // The delegation's own entry stands for this call.
-                            if crate::solver_plugin::is_mcp_tool(name) {
+                            if crate::comms::tools::is_delegation_mcp_tool(name) {
                                 continue;
                             }
                             let sdk_input = block["input"].clone();

@@ -275,6 +275,10 @@ pub struct Options {
     /// `--coder-model` was given; `None` when the Coder's model is fixed.
     /// A hand-back always goes to the full Coder model.
     pub small_coder: Option<String>,
+    /// The session's channel, as this run's member, when it runs among
+    /// other agents (#11346): its Coder hand reads what the channel says
+    /// about it ([`crate::comms::Member::notes`]).
+    pub channel: Option<crate::comms::Member>,
 }
 
 impl Options {
@@ -336,6 +340,7 @@ impl Options {
             briefer_model,
             tester_model,
             small_coder,
+            channel: None,
         })
     }
 }

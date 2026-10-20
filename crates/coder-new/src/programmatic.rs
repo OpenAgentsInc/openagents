@@ -37,7 +37,10 @@ macro_rules! command_usage {
        [--credential-env NAME] [--timeout SECONDS]
        [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]
                                       Run Microcoder, Solver (--task \"#N [--no-pr]\"),
+                                      the solver swarm (solver-swarm --task \"#A #B [--no-pr]\"),
                                       or an enabled ACP subagent.
+  comms --channel DIR --as NAME read|post|intent|agree|lease|members
+                                      The agent channel delegates share (comms --help).
   remote list                         List saved remote jobs.
   remote status ID                    Read one saved remote job.
   remote follow ID                    Observe a remote job to completion.
@@ -173,6 +176,19 @@ fn check_demo(arguments: &[String], available: bool) -> Result<(), Error> {
 
 /// Dispatch one CLI call. JSON mode streams events, followed by a result document.
 pub fn run(arguments: &[String], json_mode: bool) -> u8 {
+    // `coder comms`: the agent channel from a delegate's shell (#11346).
+    if arguments.first().is_some_and(|command| command == "comms") {
+        return match crate::comms::cli::run(&arguments[1..]) {
+            Ok(text) => {
+                println!("{text}");
+                0
+            }
+            Err(error) => {
+                eprintln!("{error}");
+                2
+            }
+        };
+    }
     if let Err(error) = check_demo(arguments, crate::DEMO_AVAILABLE) {
         return print_error(error, json_mode);
     }
@@ -963,6 +979,7 @@ pub(crate) fn chat(
     app.model_owned_input = context.environment.contains_key(MODEL_INPUT_ENV);
     let mut args = args.to_vec();
     let session = take_option(&mut args, "--session")?.unwrap_or_else(new_id);
+    crate::comms::tools::set_session(&session);
     let delegation = take_option(&mut args, "--delegation")?;
     // microclaude: turns on this computer's Claude Code login, as Shift+Tab
     // picks in the terminal.
@@ -1337,6 +1354,7 @@ fn delegate(
         trajectory::restore_app(app, &lease.read()?)?;
     }
     let agent = args.remove(0);
+    crate::comms::tools::set_session(&session);
     let execution = app.plugins.execution_settings(context.cwd.clone());
     let provider = app
         .plugins
@@ -1362,6 +1380,17 @@ fn delegate(
     };
     let (name, arguments) = if agent == "microcoder" {
         ("microcoder", json!({"task":task}))
+    } else if agent == crate::comms::swarm::PLUGIN || agent == crate::comms::swarm::TOOL {
+        // `delegate solver-swarm --task "#A #B #C [--no-pr]"`.
+        let no_pr = task.split_whitespace().any(|word| word == "--no-pr");
+        let issues: Vec<&str> = task
+            .split([' ', ','])
+            .filter(|word| !word.is_empty() && *word != "--no-pr")
+            .collect();
+        (
+            crate::comms::swarm::TOOL,
+            json!({"issues": issues, "no_pr": no_pr}),
+        )
     } else if agent == crate::solver_plugin::TOOL {
         // `delegate solver --task "#N"`; `--task "#N --no-pr"` opens none.
         let no_pr = task.split_whitespace().any(|word| word == "--no-pr");
@@ -1391,6 +1420,8 @@ fn delegate(
         .map_or_else(|| agent.clone(), |registered| registered.name.clone());
     let delegated_name = if agent == crate::solver_plugin::TOOL {
         crate::solver_plugin::NAME.to_owned()
+    } else if name == crate::comms::swarm::TOOL {
+        crate::comms::swarm::NAME.to_owned()
     } else {
         execution.redact_text(&delegated_name)
     };

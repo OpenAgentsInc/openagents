@@ -460,6 +460,12 @@ impl Plugins {
             cli: self.bundled.cli,
             acp: self.bundled.acp,
             solver: self.bundled.solver,
+            comms: self
+                .bundled
+                .comms
+                .then(|| crate::comms::tools::session_channel(self.bundled.store_root()))
+                .flatten(),
+            swarm: self.bundled.swarm,
             jev_enabled: self.bundled.jev_enabled,
             jev_key: self.bundled.jev_key(),
             jev_model: self.bundled.jev_model().into(),

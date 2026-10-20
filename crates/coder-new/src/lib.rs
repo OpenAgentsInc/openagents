@@ -16,6 +16,7 @@ pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
 mod codex_usage;
+pub mod comms;
 mod composer_history;
 pub mod composer_state;
 pub mod computer_tool;
@@ -385,7 +386,8 @@ impl App {
             } if tool == "microcoder"
                 || tool == "acp_subagent"
                 || tool == "remote_delegate"
-                || tool == solver_plugin::TOOL =>
+                || tool == solver_plugin::TOOL
+                || tool == comms::swarm::TOOL =>
             {
                 child.running = running;
                 child.chat.busy = running;
@@ -1535,7 +1537,18 @@ impl App {
             kind: live::Work::Microclaude {
                 messages,
                 cwd,
-                solver: self.plugins.bundled.solver,
+                delegates: crate::comms::tools::Delegates {
+                    solver: self.plugins.bundled.solver,
+                    swarm: self.plugins.bundled.swarm,
+                    comms: self
+                        .plugins
+                        .bundled
+                        .comms
+                        .then(|| {
+                            crate::comms::tools::session_channel(self.plugins.bundled.store_root())
+                        })
+                        .flatten(),
+                },
             },
         });
     }

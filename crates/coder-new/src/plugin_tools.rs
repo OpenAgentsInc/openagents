@@ -29,6 +29,11 @@ pub struct ExecutionSettings {
     /// The Solver plugin: an issue handed to a four-hand run that ends in
     /// a pull request ([`crate::solver_plugin`]).
     pub solver: bool,
+    /// The agent channel (#11346): the session's channel every delegation
+    /// joins, or `None` when the plugin is off ([`crate::comms`]).
+    pub comms: Option<crate::comms::Channel>,
+    /// The Solver swarm plugin ([`crate::comms::swarm`]).
+    pub swarm: bool,
     pub jev_enabled: bool,
     pub jev_key: Option<ApiKey>,
     pub redaction_keys: Vec<ApiKey>,
@@ -157,6 +162,8 @@ impl ExecutionSettings {
             ToolBinding::OpenAgentsCli | ToolBinding::Github => self.cli,
             ToolBinding::AcpSubagent => self.acp,
             ToolBinding::Solver => self.solver,
+            ToolBinding::Channel => self.comms.is_some(),
+            ToolBinding::SolverSwarm => self.swarm,
             ToolBinding::Jev => self.jev_enabled,
             ToolBinding::BrainstormSearch | ToolBinding::BrainstormRank => self
                 .brainstorm
@@ -223,6 +230,8 @@ impl ExecutionSettings {
                     ToolBinding::AcpSubagent => bundled_runtime::acp_tool_definition(&self.agents),
                     ToolBinding::Jev => Some(jev_plugin::tool_definition()),
                     ToolBinding::Solver => Some(crate::solver_plugin::tool_definition()),
+                    ToolBinding::Channel => Some(crate::comms::tools::tool_definition()),
+                    ToolBinding::SolverSwarm => Some(crate::comms::swarm::tool_definition()),
                     ToolBinding::BrainstormSearch => {
                         Some(crate::brainstorm::tool_definition(false))
                     }
@@ -299,6 +308,12 @@ impl ExecutionSettings {
         }
         if self.registered(ToolBinding::Solver) {
             guidance.push_str(crate::solver_plugin::instructions());
+        }
+        if self.registered(ToolBinding::SolverSwarm) {
+            guidance.push_str(crate::comms::swarm::instructions());
+        }
+        if self.registered(ToolBinding::Channel) {
+            guidance.push_str(crate::comms::tools::instructions());
         }
         if self.fleet.is_some() && !crate::fleet::engines(self).is_empty() {
             guidance.push_str(crate::fleet::INSTRUCTIONS);
@@ -386,7 +401,79 @@ impl ExecutionSettings {
             event.redact(&keys);
             emit(event);
         };
-        let result = match name {
+        // A delegation joins the session's channel while the plugin is on:
+        // an engine running as its own process reads how in its task, and
+        // its child chat shows what the channel says to it (#11346).
+        let delegates = match name {
+            "acp_subagent" => self.registered(ToolBinding::AcpSubagent),
+            "microcoder" => self.registered(ToolBinding::Microcoder),
+            crate::solver_plugin::TOOL => self.registered(ToolBinding::Solver),
+            _ => false,
+        };
+        let member = self
+            .comms
+            .as_ref()
+            .filter(|_| delegates)
+            .and_then(|channel| {
+                let (kind, label) =
+                    crate::comms::tools::delegation_label(name, &arguments, &self.agents)?;
+                channel.join(&kind, &label).ok()
+            });
+        let mut arguments = arguments;
+        if let Some(member) = &member {
+            if matches!(name, "acp_subagent" | "microcoder") {
+                if let Some(task) = arguments.get("task").and_then(Value::as_str) {
+                    arguments["task"] = json!(format!("{}{task}", member.preamble()));
+                }
+            }
+        }
+        let result = match &member {
+            None => {
+                self.dispatch(name, arguments, provider, cancel, None, &mut emit)
+                    .await
+            }
+            Some(member) => {
+                let shared = crate::comms::tools::Shared::new(&mut emit);
+                let mut forward = |event: RuntimeEvent| shared.send(event);
+                let result = crate::comms::tools::attend(
+                    member,
+                    &shared,
+                    self.dispatch(
+                        name,
+                        arguments,
+                        provider,
+                        cancel,
+                        Some(member),
+                        &mut forward,
+                    ),
+                )
+                .await;
+                let _ = member.finish(&crate::comms::tools::finished_words(&result));
+                result
+            }
+        };
+        result
+            .map(|mut value| {
+                self.redact(&mut value);
+                value
+            })
+            .map_err(|error| self.redact_text(&error))
+    }
+
+    /// Runs one tool call; [`ExecutionSettings::execute`] has checked it
+    /// and joined a delegation to the channel as `member`.
+    #[allow(clippy::too_many_lines)]
+    async fn dispatch(
+        &self,
+        name: &str,
+        arguments: Value,
+        provider: Option<GenerationProvider>,
+        cancel: &Arc<AtomicBool>,
+        member: Option<&crate::comms::Member>,
+        emit: &mut (dyn FnMut(RuntimeEvent) + Send),
+    ) -> Result<Value, String> {
+        let mut emit = |event: RuntimeEvent| emit(event);
+        match name {
             crate::plan::TOOL if self.shell => crate::plan::execute(arguments),
             name if crate::memory::Memory::is_tool(name) && self.memory.is_some() => self
                 .memory
@@ -574,7 +661,28 @@ impl ExecutionSettings {
                 .await
             }
             crate::solver_plugin::TOOL if self.registered(ToolBinding::Solver) => {
-                crate::solver_plugin::execute(&arguments, &self.cwd, cancel, &mut emit).await
+                crate::solver_plugin::execute_with(
+                    &arguments,
+                    &self.cwd,
+                    member.cloned(),
+                    cancel,
+                    &mut emit,
+                )
+                .await
+            }
+            crate::comms::swarm::TOOL if self.registered(ToolBinding::SolverSwarm) => {
+                crate::comms::swarm::execute(
+                    &arguments,
+                    &self.cwd,
+                    self.comms.as_ref(),
+                    cancel,
+                    &mut emit,
+                )
+                .await
+            }
+            crate::comms::tools::TOOL if self.registered(ToolBinding::Channel) => {
+                let channel = self.comms.as_ref().ok_or("The agent channel is off.")?;
+                crate::comms::tools::execute(channel, &arguments)
             }
             "microcoder" if self.registered(ToolBinding::Microcoder) => {
                 let args: TaskArguments = serde_json::from_value(arguments)
@@ -657,13 +765,7 @@ impl ExecutionSettings {
                 }
             }
             _ => Err("This tool is unknown or its plugin is turned off.".into()),
-        };
-        result
-            .map(|mut value| {
-                self.redact(&mut value);
-                value
-            })
-            .map_err(|error| self.redact_text(&error))
+        }
     }
 
     pub fn redact(&self, value: &mut Value) {
@@ -890,6 +992,8 @@ mod tests {
             cli: false,
             acp: false,
             solver: false,
+            comms: None,
+            swarm: false,
             jev_enabled: false,
             jev_key: None,
             redaction_keys: vec![],

@@ -15,10 +15,7 @@
 //! offered and a call is refused.
 
 use std::path::{Path, PathBuf};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -164,8 +161,24 @@ pub async fn execute(
     cancel: &AtomicBool,
     emit: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Result<Value, String> {
-    let options = options(arguments, cwd)?;
-    run(crate::solver::start(options), cancel, emit).await
+    execute_with(arguments, cwd, None, cancel, emit).await
+}
+
+/// [`execute`] as `member` of the session's channel: the run's intents are
+/// posted for it and its Coder hand reads what the channel says about it.
+///
+/// # Errors
+/// As [`execute`].
+pub async fn execute_with(
+    arguments: &Value,
+    cwd: &Path,
+    member: Option<crate::comms::Member>,
+    cancel: &AtomicBool,
+    emit: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Result<Value, String> {
+    let mut options = options(arguments, cwd)?;
+    options.channel.clone_from(&member);
+    run_with(crate::solver::start(options), member.as_ref(), cancel, emit).await
 }
 
 /// Follows a started run's `feed` to its end.
@@ -177,11 +190,32 @@ pub async fn run(
     cancel: &AtomicBool,
     emit: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Result<Value, String> {
+    run_with(feed, None, cancel, emit).await
+}
+
+/// [`run`], posting the run's intents as `member`.
+///
+/// # Errors
+/// As [`run`].
+pub async fn run_with(
+    feed: issue_run::Feed,
+    member: Option<&crate::comms::Member>,
+    cancel: &AtomicBool,
+    emit: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Result<Value, String> {
     let mut mapper = Mapper::default();
+    let mut watch = crate::comms::watch::SolverWatch::default();
     let mut stopped: Option<Instant> = None;
     loop {
         let (events, ended) = feed.poll();
         for event in events {
+            if let Some(member) = member {
+                for change in watch.see(&event) {
+                    if let crate::comms::watch::Change::Intent { files, note } = change {
+                        let _ = member.intent(&files, &[], &[], note);
+                    }
+                }
+            }
             mapper.apply(event, emit);
         }
         if ended {
@@ -376,73 +410,6 @@ fn after(text: &str, label: &str) -> Option<String> {
     let rest = &text[text.find(label)? + label.len()..];
     let word = rest.split_whitespace().next()?;
     Some(word.trim_end_matches('.').to_owned()).filter(|word| !word.is_empty())
-}
-
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-
-/// The in-process tool server a microclaude turn gets while the plugin is
-/// on: one `solver` tool whose progress reaches `events` as a delegation,
-/// stopped when `stop` is set.
-#[must_use]
-pub fn mcp_server(
-    cwd: PathBuf,
-    events: tokio::sync::mpsc::UnboundedSender<RuntimeEvent>,
-    stop: Arc<AtomicBool>,
-) -> claude_agent_sdk::SdkMcpServer {
-    claude_agent_sdk::SdkMcpServer::new(MCP_SERVER, "1.0.0")
-        // A run takes many minutes; the tool call must not time out first.
-        .timeout_ms(6 * 60 * 60 * 1000)
-        .tool(TOOL, DESCRIPTION, schema(), move |input: Value| {
-            let cwd = cwd.clone();
-            let events = events.clone();
-            let stop = stop.clone();
-            async move {
-                let id = format!(
-                    "solver-{}-{}",
-                    std::process::id(),
-                    NEXT_ID.fetch_add(1, Ordering::Relaxed)
-                );
-                let task = task(&input).unwrap_or_else(|| "Solve an issue.".into());
-                let mut emit = |event: RuntimeEvent| {
-                    let _ = events.send(RuntimeEvent::Delegation {
-                        id: id.clone(),
-                        name: NAME.into(),
-                        task: task.clone(),
-                        event: Box::new(event),
-                    });
-                };
-                emit(RuntimeEvent::Tool {
-                    name: TOOL.into(),
-                    input: input.clone(),
-                    output: Value::Null,
-                    running: true,
-                });
-                let result = execute(&input, &cwd, &stop, &mut emit).await;
-                let output = match &result {
-                    Ok(value) => value.clone(),
-                    Err(error) => json!({"error": error}),
-                };
-                emit(RuntimeEvent::Tool {
-                    name: TOOL.into(),
-                    input: Value::Null,
-                    output: output.clone(),
-                    running: false,
-                });
-                Ok(match result {
-                    Ok(value) => claude_agent_sdk::ToolResult::text(value.to_string()),
-                    Err(error) => claude_agent_sdk::ToolResult::error(error),
-                })
-            }
-        })
-}
-
-/// The tool server's name: its tool is `mcp__coder__solver` to the engine.
-pub const MCP_SERVER: &str = "coder";
-
-/// Whether `name` is the solver tool as a microclaude turn's engine names it.
-#[must_use]
-pub fn is_mcp_tool(name: &str) -> bool {
-    name == format!("mcp__{MCP_SERVER}__{TOOL}")
 }
 
 #[cfg(test)]

@@ -331,9 +331,9 @@ pub enum Work {
     Microclaude {
         messages: Vec<Message>,
         cwd: std::path::PathBuf,
-        /// Whether the Solver plugin is on: the turn may then hand an
-        /// issue to it ([`crate::solver_plugin`]).
-        solver: bool,
+        /// The delegations that are on (Solver, the swarm) and the agent
+        /// channel: the turn may hand issues to them ([`crate::comms`]).
+        delegates: crate::comms::tools::Delegates,
     },
     /// A turn of solver's conversational Intaker: Haiku with a read-only
     /// `gh`, helping the person find or pick the issue to solve.
@@ -626,8 +626,8 @@ fn run_with_provider(
                 Work::Microcoder { messages, execution } => {
                     local_turn(id, messages, execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
-                Work::Microclaude { messages, cwd, solver } => {
-                    microclaude_turn(id, messages, cwd, solver, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                Work::Microclaude { messages, cwd, delegates } => {
+                    microclaude_turn(id, messages, cwd, delegates, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
                 Work::SolverIntake { messages, cwd, github } => {
                     let prompt = crate::solver::intake_task(&messages, &github);
@@ -842,20 +842,20 @@ async fn microclaude_turn(
     id: u64,
     messages: Vec<Message>,
     cwd: std::path::PathBuf,
-    solver: bool,
+    delegates: crate::comms::tools::Delegates,
     cancel: &Arc<AtomicBool>,
     text_callback: &mut (dyn FnMut(&str) + Send),
     model_callback: &mut (dyn FnMut(&str) + Send),
     event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
 ) -> Update {
-    let prompt = crate::microclaude::task_with(&messages, solver);
+    let prompt = crate::microclaude::task_with(&messages, &delegates);
     let mut events = |event: RuntimeEvent| match event {
         RuntimeEvent::Text(text) => text_callback(&text),
         RuntimeEvent::Model(model) => model_callback(&model),
         event => event_callback(event),
     };
-    let result = if solver {
-        crate::microclaude::run_with_solver(&prompt, &cwd, cancel, &mut events).await
+    let result = if delegates.any() {
+        crate::microclaude::run_with_delegates(&prompt, &cwd, &delegates, cancel, &mut events).await
     } else {
         crate::microclaude::run(&prompt, &cwd, cancel, &mut events).await
     };

@@ -624,6 +624,12 @@ impl Provider {
                                 && crate::solver_plugin::task(arguments).is_some())
                             .then(|| crate::solver_plugin::NAME.to_owned());
                         }
+                        // So does the swarm, each solver a child chat inside.
+                        if call.name == crate::comms::swarm::TOOL {
+                            return (execution.swarm
+                                && crate::comms::swarm::task(arguments).is_some())
+                            .then(|| crate::comms::swarm::NAME.to_owned());
+                        }
                         let object = arguments.as_object()?;
                         arguments["task"]
                             .as_str()
@@ -653,6 +659,8 @@ impl Provider {
                 };
                 let delegation_task = if call.name == crate::solver_plugin::TOOL {
                     crate::solver_plugin::task(&safe_input).unwrap_or_default()
+                } else if call.name == crate::comms::swarm::TOOL {
+                    crate::comms::swarm::task(&safe_input).unwrap_or_default()
                 } else {
                     safe_input["task"].as_str().unwrap_or_default().to_owned()
                 };
@@ -1427,6 +1435,8 @@ mod tests {
             cli: false,
             acp: false,
             solver: false,
+            comms: None,
+            swarm: false,
             jev_enabled: true,
             jev_key: key,
             redaction_keys: vec![],
