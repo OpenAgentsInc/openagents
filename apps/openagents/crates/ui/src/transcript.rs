@@ -47,7 +47,9 @@ use gpui::{
     list, point, prelude::*, px, size,
 };
 
-use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
+use openagents_doc::{
+    MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus,
+};
 use openagents_proto::ToolCall;
 
 use self::host::TranscriptHost;
@@ -1834,8 +1836,9 @@ fn is_compact_work_part(ix: usize, part: &MessagePart, reply_start: Option<usize
 /// the smoothness measurement knob. Off by default; zero cost when off.
 fn frame_stats_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED
-        .get_or_init(|| openagents_brand::env_var("OPENAGENTS_FRAME_STATS").is_ok_and(|v| !v.is_empty() && v != "0"))
+    *ENABLED.get_or_init(|| {
+        openagents_brand::env_var("OPENAGENTS_FRAME_STATS").is_ok_and(|v| !v.is_empty() && v != "0")
+    })
 }
 
 const FRAME_STATS_WINDOW: usize = 240;
@@ -1873,7 +1876,8 @@ pub(crate) fn record_view_frame(view: &'static str) -> bool {
 fn render_cache_disabled() -> bool {
     static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *DISABLED.get_or_init(|| {
-        openagents_brand::env_var("OPENAGENTS_NO_RENDER_CACHE").is_ok_and(|v| !v.is_empty() && v != "0")
+        openagents_brand::env_var("OPENAGENTS_NO_RENDER_CACHE")
+            .is_ok_and(|v| !v.is_empty() && v != "0")
     })
 }
 
@@ -2617,7 +2621,9 @@ impl TranscriptPreparation {
             historical,
             fully_historical,
             bytes,
-            navigation_baseline: Arc::new(openagents_doc::TranscriptBaseline::capture(&self.entries)),
+            navigation_baseline: Arc::new(openagents_doc::TranscriptBaseline::capture(
+                &self.entries,
+            )),
         }))
     }
 }
@@ -7328,10 +7334,16 @@ fn previous_agent_messages_keep_their_display() {
         let prompt = format!(
             "[Message from {brand} chat Helper (chat-1). Reply to it with the {brand} `send_message` tool, chat chat-1.]\n\nDone."
         );
-        assert_eq!(agent_message_display(&prompt), "Message from Helper\n\nDone.");
+        assert_eq!(
+            agent_message_display(&prompt),
+            "Message from Helper\n\nDone."
+        );
     }
     let prompt = "[Message from OpenAgents chat Helper (chat-1). Reply only if it asks you something or you need something from it, with the OpenAgents `send_message` tool, chat chat-1.]\n\nDone.";
-    assert_eq!(agent_message_display(prompt), "Message from Helper\n\nDone.");
+    assert_eq!(
+        agent_message_display(prompt),
+        "Message from Helper\n\nDone."
+    );
 }
 
 /// The bubble text's runs: body text in the sans font, chips as labels in it
@@ -7714,7 +7726,11 @@ fn error_chip(message: SharedString, theme: &Theme) -> AnyElement {
 
 /// A quiet fork seam. The source gets its own constrained line so long
 /// titles cannot widen a narrow side-chat pane. No message metadata lane.
-fn fork_marker(source_chat_id: SharedString, source_title: SharedString, theme: &Theme) -> AnyElement {
+fn fork_marker(
+    source_chat_id: SharedString,
+    source_title: SharedString,
+    theme: &Theme,
+) -> AnyElement {
     let rule = || div().flex_1().min_w_0().h(px(1.0)).bg(theme.border_strong);
     div()
         .py(px(14.0))
@@ -9531,7 +9547,9 @@ mod tests {
                         openagents_doc::TranscriptUpdate {
                             frame,
                             context_usage: None,
-                            replay_baseline: Some(openagents_doc::TranscriptBaseline::capture(&history)),
+                            replay_baseline: Some(openagents_doc::TranscriptBaseline::capture(
+                                &history,
+                            )),
                         },
                         cx,
                     )
@@ -9680,7 +9698,10 @@ mod tests {
             }
             state.update(cx, |state, cx| {
                 let frame = openagents_doc::diff_transcript(&state.transcript, &live);
-                assert!(matches!(&frame, openagents_doc::TranscriptFrame::Reset { .. }));
+                assert!(matches!(
+                    &frame,
+                    openagents_doc::TranscriptFrame::Reset { .. }
+                ));
                 state
                     .receive_transcript_update(
                         openagents_doc::TranscriptUpdate {
@@ -11861,9 +11882,9 @@ mod tests {
                                 openagents_doc::TranscriptUpdate {
                                     frame: openagents_doc::TranscriptFrame::reset(&history),
                                     context_usage: None,
-                                    replay_baseline: Some(openagents_doc::TranscriptBaseline::capture(
-                                        &history,
-                                    )),
+                                    replay_baseline: Some(
+                                        openagents_doc::TranscriptBaseline::capture(&history),
+                                    ),
                                 },
                                 cx,
                             )
@@ -11891,9 +11912,9 @@ mod tests {
                                     context_usage: None,
                                     // The RPC must retain its opening cutoff when
                                     // publishing subsequent changed-part history.
-                                    replay_baseline: Some(openagents_doc::TranscriptBaseline::capture(
-                                        &cutoff,
-                                    )),
+                                    replay_baseline: Some(
+                                        openagents_doc::TranscriptBaseline::capture(&cutoff),
+                                    ),
                                 },
                                 cx,
                             )
@@ -11944,9 +11965,9 @@ mod tests {
                                 openagents_doc::TranscriptUpdate {
                                     frame: openagents_doc::TranscriptFrame::reset(&history),
                                     context_usage: None,
-                                    replay_baseline: Some(openagents_doc::TranscriptBaseline::capture(
-                                        &history,
-                                    )),
+                                    replay_baseline: Some(
+                                        openagents_doc::TranscriptBaseline::capture(&history),
+                                    ),
                                 },
                                 cx,
                             )
@@ -12006,9 +12027,9 @@ mod tests {
                                 openagents_doc::TranscriptUpdate {
                                     frame: openagents_doc::diff_transcript(&live, &next),
                                     context_usage: None,
-                                    replay_baseline: Some(openagents_doc::TranscriptBaseline::capture(
-                                        &next_history,
-                                    )),
+                                    replay_baseline: Some(
+                                        openagents_doc::TranscriptBaseline::capture(&next_history),
+                                    ),
                                 },
                                 cx,
                             )
@@ -12107,7 +12128,8 @@ mod tests {
                         this.spring_kick = true;
                         updated.push(prompt(&format!("history-{}", updated.len())));
                         this.state.update(cx, |state, cx| {
-                            let frame = openagents_doc::diff_transcript(&state.transcript, &updated);
+                            let frame =
+                                openagents_doc::diff_transcript(&state.transcript, &updated);
                             state
                                 .receive_transcript_update(
                                     openagents_doc::TranscriptUpdate {

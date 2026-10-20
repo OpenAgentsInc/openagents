@@ -580,14 +580,14 @@ impl Render for LabCard {
         let player_url = self.text("player");
         if !player_url.is_empty() {
             links = links.child(
-                link("Open in the Lab player and timeline".into(), "player").on_click(
-                    cx.listener(move |this, _, window, cx| {
+                link("Open in the Lab player and timeline".into(), "player").on_click(cx.listener(
+                    move |this, _, window, cx| {
                         let url = player_url.clone();
                         this.with_lab(window, cx, move |this, window, cx| {
                             this.open(&url, window, cx)
                         });
-                    }),
-                ),
+                    },
+                )),
             );
         }
         if !cfg!(target_os = "macos")
