@@ -431,6 +431,7 @@ pub fn init(
         availability,
         generation: 0,
     });
+    crate::settings::install_transcript_settings(cx);
 }
 
 pub fn requested(cx: &App) -> UiFontFamily {

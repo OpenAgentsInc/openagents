@@ -63,6 +63,51 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Prefs)) {
     }
 }
 
+/// The transcript column's width when the host keeps no choice.
+pub const TRANSCRIPT_WIDTH_DEFAULT: f32 = 736.0;
+
+/// What a transcript reads from the host's settings while it draws. The
+/// desktop installs readers over its saved settings and fonts; without
+/// them a transcript uses the defaults.
+#[derive(Clone, Copy)]
+pub struct TranscriptSettings {
+    /// The conversation column's width.
+    pub width: fn(&App) -> f32,
+    /// Each turn's work folds into one collapsed row.
+    pub compact_mode: fn(&App) -> bool,
+    /// Changes whenever the code-fence layout choice changes.
+    pub code_fences_generation: fn(&App) -> u64,
+    /// Changes whenever the interface font or size changes.
+    pub type_generation: fn(&App) -> u32,
+}
+
+impl Global for TranscriptSettings {}
+
+/// Use `settings` for every later transcript read.
+pub fn install_transcript(settings: TranscriptSettings, cx: &mut App) {
+    cx.set_global(settings);
+}
+
+pub fn transcript_width(cx: &App) -> f32 {
+    cx.try_global::<TranscriptSettings>()
+        .map_or(TRANSCRIPT_WIDTH_DEFAULT, |settings| (settings.width)(cx))
+}
+
+pub fn transcript_compact_mode(cx: &App) -> bool {
+    cx.try_global::<TranscriptSettings>()
+        .is_some_and(|settings| (settings.compact_mode)(cx))
+}
+
+pub fn code_fences_generation(cx: &App) -> u64 {
+    cx.try_global::<TranscriptSettings>()
+        .map_or(0, |settings| (settings.code_fences_generation)(cx))
+}
+
+pub fn type_generation(cx: &App) -> u32 {
+    cx.try_global::<TranscriptSettings>()
+        .map_or(0, |settings| (settings.type_generation)(cx))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

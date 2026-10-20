@@ -3590,11 +3590,11 @@ impl Transcript {
             file_link_roots: Default::default(),
             inline_code_links: Default::default(),
             rendered_rows: HashSet::new(),
-            typography_generation: crate::typography::generation(cx),
-            content_width: crate::settings::transcript_width(cx),
+            typography_generation: crate::prefs::type_generation(cx),
+            content_width: crate::prefs::transcript_width(cx),
             right_reserve: 0.0,
-            code_fences_generation: crate::settings::code_fences_generation(cx),
-            compact_mode: crate::settings::transcript_compact_mode(cx),
+            code_fences_generation: crate::prefs::code_fences_generation(cx),
+            compact_mode: crate::prefs::transcript_compact_mode(cx),
             compact_live_entries: HashSet::new(),
             compact_last_elapsed: HashMap::new(),
             compact_worked_fade_at: HashMap::new(),
@@ -7517,7 +7517,7 @@ impl Transcript {
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.copy_message(entry_id.clone(), text.clone(), cx)
                     }))
-                    .tooltip(crate::settings::widgets::text_tooltip("Copy message"))
+                    .tooltip(crate::tooltip::text_tooltip("Copy message"))
                     .child(
                         crate::icons::icon(if copied_message {
                             crate::icons::CHECK
@@ -7743,7 +7743,7 @@ impl Transcript {
         let runtime = self.code_fences.entry(key.clone()).or_default();
         render::code_ui_for(
             key,
-            crate::settings::current(cx).code_fences_fit_content,
+            crate::prefs::current(cx).code_fences_fit_content,
             runtime,
             cx.weak_entity(),
             |transcript| &mut transcript.code_fences,
@@ -10091,7 +10091,7 @@ impl Render for Transcript {
             .borrow_mut()
             .retain_rows(&self.rendered_rows);
         self.rendered_rows.clear();
-        let compact_mode = crate::settings::transcript_compact_mode(cx);
+        let compact_mode = crate::prefs::transcript_compact_mode(cx);
         if self.compact_mode != compact_mode {
             self.compact_mode = compact_mode;
             // The row SPLIT differs by mode (one work fold vs per-segment
@@ -10100,7 +10100,7 @@ impl Render for Transcript {
             self.last_source = None;
             self.sync(cx);
         }
-        let code_fences_generation = crate::settings::code_fences_generation(cx);
+        let code_fences_generation = crate::prefs::code_fences_generation(cx);
         if self.code_fences_generation != code_fences_generation {
             self.code_fences_generation = code_fences_generation;
             // Horizontal positions are ephemeral. Reset every block owned by
@@ -10118,7 +10118,7 @@ impl Render for Transcript {
                 self.own_turn_kick = true;
             }
         }
-        let content_width = crate::settings::transcript_width(cx);
+        let content_width = crate::prefs::transcript_width(cx);
         if self.content_width != content_width {
             self.content_width = content_width;
             // The outer list viewport may not resize when only max-width
@@ -10132,7 +10132,7 @@ impl Render for Transcript {
                 self.own_turn_kick = true;
             }
         }
-        let typography_generation = crate::typography::generation(cx);
+        let typography_generation = crate::prefs::type_generation(cx);
         if self.typography_generation != typography_generation {
             self.typography_generation = typography_generation;
             // `refresh_windows` re-lays out visible rows, but ListState keeps

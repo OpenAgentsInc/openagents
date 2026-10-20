@@ -260,7 +260,7 @@ impl Default for GitHistoryColumnWidths {
 
 pub const TRANSCRIPT_WIDTH_MIN: f32 = 560.0;
 pub const TRANSCRIPT_WIDTH_MAX: f32 = 1200.0;
-pub const TRANSCRIPT_WIDTH_DEFAULT: f32 = 736.0;
+pub const TRANSCRIPT_WIDTH_DEFAULT: f32 = openagents_chat_view::prefs::TRANSCRIPT_WIDTH_DEFAULT;
 pub const TRANSCRIPT_WIDTH_STEP: f32 = 16.0;
 
 pub fn normalize_transcript_width(width: f32) -> f32 {
@@ -373,6 +373,20 @@ pub fn init(settings: UiSettings, data_dir: impl Into<PathBuf>, cx: &mut App) {
         openagents_chat_view::prefs::Store {
             read: view_prefs,
             write: save_view_prefs,
+        },
+        cx,
+    );
+    install_transcript_settings(cx);
+}
+
+/// Point the transcript at these settings and the interface fonts.
+pub(crate) fn install_transcript_settings(cx: &mut App) {
+    openagents_chat_view::prefs::install_transcript(
+        openagents_chat_view::prefs::TranscriptSettings {
+            width: transcript_width,
+            compact_mode: transcript_compact_mode,
+            code_fences_generation,
+            type_generation: crate::typography::generation,
         },
         cx,
     );
