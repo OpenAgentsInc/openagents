@@ -62,7 +62,7 @@ pub(crate) const ANSWER_BYTES: usize = 12 * 1024;
 /// The composer's script for files; its styles are in `/static/ui.css`.
 pub(crate) const SCRIPT_PATH: &str = "/chat/files.js";
 /// The header an upload or removal carries the composer's form token in.
-const TOKEN_HEADER: &str = "x-openagents-csrf";
+pub(crate) const TOKEN_HEADER: &str = "x-openagents-csrf";
 const SCHEMA: &str = "openagents.web.chat.file.v1";
 
 /// What a file is, read from its first bytes ([`Kind::sniff`]).

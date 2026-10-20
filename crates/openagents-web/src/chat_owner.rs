@@ -101,7 +101,8 @@ fn decide(browser: Option<String>, checked: Option<Result<String, SessionError>>
     }
 }
 
-fn session(headers: &HeaderMap) -> Option<String> {
+/// The sign-in cookie's value, when the request carries one.
+pub(crate) fn session(headers: &HeaderMap) -> Option<String> {
     headers
         .get_all(header::COOKIE)
         .iter()

@@ -52,6 +52,7 @@ mod chat_vision;
 pub mod cloud;
 mod cloud_host;
 mod coder_sync;
+mod cookie_api;
 mod components;
 mod composer;
 mod composer_row;
@@ -420,6 +421,10 @@ pub struct Config {
     /// `/srv/agent-graph` when it exists), served under `/agent-graph/`.
     /// Without it, agent pages show the server's map alone.
     pub agent_graph: Option<PathBuf>,
+    /// The signed-in GPUI web chat's build (`--gpui-chat DIR`, default
+    /// `/srv/gpui-chat` when it exists), served at `/gpui`. Without it,
+    /// `/gpui` says it isn't available and points to the regular chat.
+    pub gpui_chat: Option<PathBuf>,
     /// The Ice Cream Man web build (`--icecream DIR`, default
     /// `/srv/icecream` when it exists), served under
     /// `/games/the-ice-cream-man/`. Without it, the game's page says it
@@ -556,6 +561,7 @@ impl Config {
             bunny: None,
             gpui_demo: None,
             agent_graph: None,
+            gpui_chat: None,
             icecream: None,
             layertree: None,
             snap: None,
@@ -718,6 +724,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(attribution::routes())
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
+        .layer(middleware::from_fn_with_state(app.clone(), cookie_api::layer))
         .layer(middleware::from_fn_with_state(
             app.clone(),
             work_runs::computers::guard,

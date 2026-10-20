@@ -206,8 +206,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/cad/start.js \
     && test -s /build/cad/cad.css
 
-# The desktop chat UI for the browser, which /demo/gpui serves, and
-# AgentGraph, which /agent/foreman draws with
+# The desktop chat UI for the browser, which /demo/gpui serves,
+# AgentGraph, which /agent/foreman draws with, and the signed-in GPUI web
+# chat at /gpui
 # (apps/openagents/web, its own Cargo workspace and lock). GPUI needs the
 # app's pinned compiler, 1.98.1, so this stage has its own base: the wasm32
 # target, binaryen, brotli, and wasm-bindgen-cli at the version
@@ -238,7 +239,7 @@ FROM gpuiweb-base AS gpuiweb-deps
 COPY --from=gpuiweb-skeleton /skeleton/ ./
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run \
     cargo build --locked --manifest-path /build/apps/openagents/web/Cargo.toml \
-        -p openagents-web-demo -p openagents-web-agent-graph --release --target wasm32-unknown-unknown
+        -p openagents-web-demo -p openagents-web-agent-graph -p openagents-web-chat --release --target wasm32-unknown-unknown
 
 FROM gpuiweb-deps AS gpuiweb
 COPY . .
@@ -250,7 +251,12 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && oa-kache run apps/openagents/scripts/build-web-demo.sh --app agent-graph /build/agent-graph \
     && test -s /build/agent-graph/openagents_web_agent_graph.js \
     && test -s /build/agent-graph/openagents_web_agent_graph_bg.wasm \
-    && test -s /build/agent-graph/start.js
+    && test -s /build/agent-graph/start.js \
+    && oa-kache run apps/openagents/scripts/build-web-chat.sh /build/gpui-chat \
+    && test -s /build/gpui-chat/openagents_web_chat.js \
+    && test -s /build/gpui-chat/openagents_web_chat_bg.wasm \
+    && test -s /build/gpui-chat/start.js \
+    && test -s /build/gpui-chat/fonts/Geist.ttf
 
 # Every dependency layer, and nothing else: cloudbuild.yaml builds this
 # target first and exports it to the registry cache.
@@ -286,6 +292,7 @@ COPY --from=everglade /build/sand /srv/sand
 COPY --from=everglade /build/layertree /srv/layertree
 COPY --from=gpuiweb /build/gpui-demo /srv/gpui-demo
 COPY --from=gpuiweb /build/agent-graph /srv/agent-graph
+COPY --from=gpuiweb /build/gpui-chat /srv/gpui-chat
 
 USER 10001:10001
 EXPOSE 8080

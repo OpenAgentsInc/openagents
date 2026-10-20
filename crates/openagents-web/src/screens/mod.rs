@@ -92,6 +92,14 @@ pub(crate) struct Screen {
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     (
+        "/gpui*",
+        "the GPUI web chat: a canvas drawn in the browser, its build files, and its chats",
+    ),
+    (
+        "/demo/gpui*",
+        "the desktop chat UI's demo: a canvas drawn in the browser and its build files",
+    ),
+    (
         "/login/key/{request}/qr.svg",
         "the QR code image on the sign-in card, not a page",
     ),
