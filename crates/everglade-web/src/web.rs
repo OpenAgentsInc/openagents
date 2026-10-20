@@ -41,6 +41,54 @@ thread_local! {
     static WALK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+thread_local! {
+    /// A portal the page asked to go through ([`verse_portal`]).
+    static PORTAL: RefCell<Option<zones::ZoneId>> = const { RefCell::new(None) };
+    /// Where the page is, for [`verse_where`]: the zone's label, the
+    /// renderer's state, and the last error.
+    static WHERE: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+/// Goes through the Grid's portal to `name` (`lagrange1`, `lagrange2`,
+/// `everglade`) on the next frame, as walking into it does, or back to the
+/// Grid from a zone (`grid`). `false` for a name with no portal.
+#[wasm_bindgen]
+pub fn verse_portal(name: &str) -> bool {
+    let zone = match name {
+        "lagrange1" => zones::ZoneId::Lagrange1,
+        "lagrange2" => zones::ZoneId::Lagrange2,
+        "everglade" => zones::ZoneId::Everglade,
+        "grid" => zones::ZoneId::Plaza,
+        _ => return false,
+    };
+    PORTAL.with(|portal| *portal.borrow_mut() = Some(zone));
+    true
+}
+
+/// Whether the browser opens `zone` from the Grid: the generated stations
+/// do; a zone that needs a pack or a renderer this build doesn't carry is
+/// only in the desktop app.
+fn web_support(zone: zones::ZoneId) -> crate::transit::Support {
+    match zone {
+        zones::ZoneId::Lagrange1 | zones::ZoneId::Lagrange2 => crate::transit::Support::Web,
+        _ => crate::transit::Support::DesktopOnly,
+    }
+}
+
+/// Tells the page Verse stopped (`verse-stopped` on the window), so it can
+/// say so and offer a reload instead of leaving a still canvas.
+fn stopped_event() {
+    if let (Some(window), Ok(event)) = (web_sys::window(), web_sys::Event::new("verse-stopped")) {
+        let _ = window.dispatch_event(&event);
+    }
+}
+
+/// Where the page is now, as JSON: `{zone, draw, stopped}`.
+#[wasm_bindgen]
+pub fn verse_where() -> String {
+    WHERE.with(|w| w.borrow().clone())
+}
+
 /// How fast the ambient camera circles the plaza, in orbit-drag CSS pixels
 /// a second.
 const AMBIENT_ORBIT: f32 = 9.0;
@@ -105,7 +153,12 @@ pub fn verse_hand_moves() -> u32 {
 /// Starts Everglade when the module's `init` finishes.
 #[wasm_bindgen(start)]
 pub fn start() {
-    console_error_panic_hook::set_once();
+    // A panic is logged and the page is told, so it doesn't sit on a dead
+    // canvas.
+    std::panic::set_hook(Box::new(|info| {
+        console_error_panic_hook::hook(info);
+        stopped_event();
+    }));
     if let Some(document) = web_sys::window().and_then(|window| window.document()) {
         let _ = crate::theme::install(&document);
     }
@@ -341,6 +394,8 @@ pub(crate) struct Page {
     /// open the next one when a Grid page walks into a zone and back.
     backends: wgpu::Backends,
     draw_atlas: Option<Atlas>,
+    /// A Grid portal's zone on its way ([`crate::transit`]).
+    transit: crate::transit::Transit<zones::ZoneId>,
 }
 
 /// Frame times over the current second, for `?frames`.
@@ -648,6 +703,7 @@ async fn run() -> Result<(), String> {
         water_dry: query_has(&window, "frames") && query_has(&window, "water-dry"),
         backends,
         draw_atlas: None,
+        transit: Default::default(),
     }));
     listen(&window, &page)?;
     crate::cad_sync::start(window.clone(), page.clone());
@@ -663,6 +719,9 @@ async fn run_grid(
 ) -> Result<(), String> {
     status("Opening the Grid…");
     let mut runtime = WorldRuntime::bare();
+    // The page opens a portal's zone itself: it says what loads first, and
+    // refuses a zone this build can't open ([`crate::transit`]).
+    runtime.defer_grid_portals(true);
     runtime.interact_hint = verse::runtime::InteractHint::None;
     // `?at=X,Z` or `?at=X,Z,YAW` stands the player there, as on the
     // Everglade page, for captures (an arch's approach).
@@ -740,6 +799,7 @@ async fn run_grid(
         water_dry: false,
         backends,
         draw_atlas: Some(atlas.clone()),
+        transit: Default::default(),
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -1050,6 +1110,21 @@ impl Page {
                     // big for Lagrange 2's factory, #11651.)
                     self.rendered_revision = revision;
                 }
+                Some(Err(error)) if !self.runtime.is_plaza() && self.draw_atlas.is_some() => {
+                    // A zone's renderer didn't open: back to the Grid, with a
+                    // line saying so, rather than a stopped page.
+                    web_sys::console::warn_1(&JsValue::from_str(&format!(
+                        "Verse: {} did not open: {error}",
+                        self.runtime.zone_label()
+                    )));
+                    let label = self.runtime.zone_label();
+                    let step = self.transit.failed(label, now);
+                    self.show(step);
+                    let _ = self.runtime.zone_intent(zones::Intent::Return);
+                    self.rendered_revision = self.runtime.zone_revision;
+                    self.reopen(true);
+                    return;
+                }
                 Some(Err(error)) => {
                     self.fail(&error);
                     return;
@@ -1069,6 +1144,64 @@ impl Page {
             });
         }
         input.forward |= walking;
+        // A portal walked through, or asked for by the page: say what
+        // loads, then build it a couple of frames later.
+        let page_asked = PORTAL.with(|portal| portal.borrow_mut().take());
+        if page_asked == Some(zones::ZoneId::Plaza) && !self.runtime.is_plaza() {
+            let _ = self.runtime.zone_intent(zones::Intent::Return);
+        }
+        let asked = self
+            .runtime
+            .take_portal_asked()
+            .or(page_asked)
+            .filter(|zone| self.runtime.grid_portal_zones().contains(zone));
+        if let Some(zone) = asked {
+            let step = self.transit.ask(zone, web_support(zone), zone.label(), now);
+            self.show(step);
+        }
+        let opening = matches!(self.renderer, Draw::Opening { .. });
+        let step = self.transit.frame(now, opening);
+        if let crate::transit::Step::Build(zone) = step {
+            let clock = web_sys::window().and_then(|w| w.performance());
+            let began = clock.as_ref().map_or(0.0, |p| p.now());
+            let entered = self.runtime.enter_grid_portal(zone);
+            let took = clock.as_ref().map_or(0.0, |p| p.now()) - began;
+            web_sys::console::info_1(&JsValue::from_str(&format!(
+                "Verse: built {zone:?} in {took:.0} ms"
+            )));
+            if !entered {
+                let step = self.transit.failed(zone.label(), now);
+                self.show(step);
+            }
+        } else {
+            self.show(step);
+        }
+        // A packed zone this build can't load: refused, back to idle.
+        if self.runtime.zone_load_state() == zones::LoadState::Failed {
+            self.runtime.zone_cancel_loading();
+            let step = self.transit.ask(
+                self.runtime.zone,
+                crate::transit::Support::DesktopOnly,
+                "",
+                now,
+            );
+            self.show(step);
+        }
+        if self.transit.busy() {
+            input = verse::controller::InputState::default();
+        }
+        let state = serde_json::json!({
+            "zone": self.runtime.zone_label(),
+            "draw": match &self.renderer {
+                Draw::Legacy(_) => "legacy",
+                Draw::Grid(_) => "grid",
+                Draw::Opening { .. } => "opening",
+            },
+            "load": format!("{:?}", self.runtime.zone_load_state()),
+            "stopped": self.stopped,
+        })
+        .to_string();
+        WHERE.with(|w| *w.borrow_mut() = state);
         if !self::walking() {
             // Behind the chat: no keys or drags, and the camera circles.
             input = verse::controller::InputState::default();
@@ -1486,7 +1619,21 @@ impl Page {
         });
     }
 
+    /// Puts a portal's line on screen, or takes it down.
+    fn show(&self, step: crate::transit::Step<zones::ZoneId>) {
+        match step {
+            crate::transit::Step::Say(text) => status(&text),
+            crate::transit::Step::Clear => {
+                if let Some(document) = web_sys::window().and_then(|w| w.document()) {
+                    hide_status(&document);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn fail(&mut self, error: &str) {
+        stopped_event();
         self.stopped = true;
         web_sys::console::error_1(&JsValue::from_str(error));
         status(&format!("Everglade stopped: {error}"));

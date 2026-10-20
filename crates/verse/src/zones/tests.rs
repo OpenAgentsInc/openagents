@@ -591,3 +591,39 @@ fn walking_through_the_grid_portal_enters_lagrange_2_and_flying_back_returns() {
     assert!(runtime.lagrange2().is_none());
     assert!(runtime.player.pos.distance(gate.at) < 6.0);
 }
+
+/// The web build opens a Grid portal's zone itself (#12319's freeze): with
+/// portals deferred, walking through the Lagrange 2 arch keeps the player on
+/// the Grid and hands the page the crossing once; the page then enters it.
+#[test]
+fn a_deferred_grid_portal_waits_for_the_application() {
+    let mut runtime = WorldRuntime::bare();
+    runtime.defer_grid_portals(true);
+    assert_eq!(runtime.grid_portal_zones(), vec![ZoneId::Lagrange2]);
+    let gate = runtime.lagrange2_gate().unwrap();
+    let (front, away) = gate.front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    let walk = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let mut asked = None;
+    for _ in 0..90 {
+        runtime.tick(&walk, 1.0 / 30.0);
+        if let Some(zone) = runtime.take_portal_asked() {
+            asked = Some(zone);
+            break;
+        }
+    }
+    assert_eq!(asked, Some(ZoneId::Lagrange2));
+    assert!(runtime.is_plaza());
+    assert_eq!(runtime.take_portal_asked(), None);
+    // No portal to a zone the Grid doesn't show, and none twice at once.
+    assert!(!runtime.enter_grid_portal(ZoneId::Everglade));
+    assert!(runtime.enter_grid_portal(ZoneId::Lagrange2));
+    assert_eq!(runtime.zone, ZoneId::Lagrange2);
+    assert!(runtime.grid_portal_zones().is_empty());
+    assert!(!runtime.enter_grid_portal(ZoneId::Lagrange2));
+}

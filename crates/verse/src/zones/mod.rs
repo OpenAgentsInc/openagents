@@ -471,6 +471,12 @@ pub(crate) struct State {
     ritual: Option<std::path::PathBuf>,
     /// A RITUAL crossing the application has not taken yet.
     ritual_crossed: bool,
+    /// Whether a walk through a Grid portal waits for the application to
+    /// open the zone ([`WorldRuntime::defer_grid_portals`]): the web build
+    /// says what it loads first, and refuses what it cannot load.
+    defer_portals: bool,
+    /// A Grid portal walked through and not yet taken.
+    portal_asked: Option<ZoneId>,
     /// The tops of the world's blockers the camera sees ([`sight`]), and the
     /// zone revision and blocker count they were measured for.
     sight_tops: (u64, usize, Vec<f32>),
@@ -535,6 +541,8 @@ impl Default for State {
             grid_portal: gate::GRID_PORTAL_OPEN,
             ritual: None,
             ritual_crossed: false,
+            defer_portals: false,
+            portal_asked: None,
             sight_tops: (u64::MAX, 0, Vec::new()),
             #[cfg(not(target_arch = "wasm32"))]
             private_home: None,

@@ -3105,17 +3105,13 @@ impl WorldRuntime {
             else {
                 return;
             };
-            self.cancel_navigation();
-            self.doors.cancel_transient();
-            self.zone_state.destination = zone;
-            self.zone_state.gate_cooldown = super::gate::COOLDOWN;
-            if zone == ZoneId::Lagrange1 {
-                self.install_lagrange();
-            } else if zone == ZoneId::Lagrange2 {
-                self.install_lagrange2();
-            } else if let Err(error) = self.start_zone_load(zone) {
-                // The zone panel offers Retry and Dismiss.
-                self.zone_load_failed(&error);
+            if self.zone_state.defer_portals {
+                self.cancel_navigation();
+                self.doors.cancel_transient();
+                self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+                self.zone_state.portal_asked = Some(zone);
+            } else {
+                self.pass_grid_portal(zone);
             }
         } else if self
             .zone
@@ -3125,6 +3121,61 @@ impl WorldRuntime {
         {
             let _ = self.zone_intent(Intent::Return);
         }
+    }
+
+    /// What walking through the Grid portal to `zone` does: the generated
+    /// zones install now, and a packed zone starts loading.
+    fn pass_grid_portal(&mut self, zone: ZoneId) {
+        self.cancel_navigation();
+        self.doors.cancel_transient();
+        self.zone_state.destination = zone;
+        self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+        if zone == ZoneId::Lagrange1 {
+            self.install_lagrange();
+        } else if zone == ZoneId::Lagrange2 {
+            self.install_lagrange2();
+        } else if let Err(error) = self.start_zone_load(zone) {
+            // The zone panel offers Retry and Dismiss.
+            self.zone_load_failed(&error);
+        }
+    }
+
+    /// Makes a walk through a Grid portal wait for the application: the
+    /// crossing is kept for [`Self::take_portal_asked`] instead of opening
+    /// the zone, and the application opens it with
+    /// [`Self::enter_grid_portal`] when it is ready to (the web build first
+    /// says what it is loading, and refuses a zone it cannot load).
+    pub fn defer_grid_portals(&mut self, defer: bool) {
+        self.zone_state.defer_portals = defer;
+        self.zone_state.portal_asked = None;
+    }
+
+    /// The Grid portal walked through since the last call, once.
+    pub fn take_portal_asked(&mut self) -> Option<ZoneId> {
+        self.zone_state.portal_asked.take()
+    }
+
+    /// The zones the Grid's portals lead to, here and now.
+    #[must_use]
+    pub fn grid_portal_zones(&self) -> Vec<ZoneId> {
+        if !self.is_bare() || !self.is_plaza() {
+            return Vec::new();
+        }
+        self.grid_gates()
+            .into_iter()
+            .map(|(zone, _)| zone)
+            .collect()
+    }
+
+    /// Goes through the Grid's portal to `zone` as walking through it does,
+    /// for a page that offers the portals another way (and for checks).
+    /// `false` when there is no such portal here, or a load is under way.
+    pub fn enter_grid_portal(&mut self, zone: ZoneId) -> bool {
+        if self.zone_loading() || !self.grid_portal_zones().contains(&zone) {
+            return false;
+        }
+        self.pass_grid_portal(zone);
+        true
     }
 
     /// Start loading Everglade from the plaza without walking to its

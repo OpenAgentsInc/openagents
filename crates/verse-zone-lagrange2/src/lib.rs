@@ -38,7 +38,7 @@ use verse_lagrange2::{
 use crate::{
     controller::{InputState, PlayerController, TURN_SPEED},
     mesh::Mesh,
-    pbr::{Camera, GlowVertex, LitVertex, bake},
+    pbr::{Camera, GlowVertex, LitVertex},
     world::World,
 };
 
@@ -576,8 +576,15 @@ fn structure() -> &'static [LitVertex] {
     BAKED.get_or_init(|| {
         let mut fixed = Vec::new();
         scene::structure(&mut fixed, &verse_lagrange2::Spacecraft::sample());
-        let bvh = bake::Bvh::new(&fixed);
-        bake::bake_occlusion(&mut fixed, &bvh, 3.0, 16);
+        // The ambient-occlusion bake is 1.7 million vertices of ray casts:
+        // about 24 s on one native core and minutes in a browser's single
+        // thread, so the web draws the factory without it.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use crate::pbr::bake;
+            let bvh = bake::Bvh::new(&fixed);
+            bake::bake_occlusion(&mut fixed, &bvh, 3.0, 16);
+        }
         fixed
     })
 }

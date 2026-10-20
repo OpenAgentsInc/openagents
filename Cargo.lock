@@ -6630,6 +6630,7 @@ dependencies = [
  "js-sys",
  "log",
  "nostr",
+ "oa-copy",
  "openagents-web-hands",
  "openagents-workspace-hack",
  "raw-window-handle",

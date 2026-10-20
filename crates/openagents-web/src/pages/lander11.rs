@@ -63,6 +63,16 @@ color:#e5e5e5;font-family:inherit;font-size:13px;font-weight:500;line-height:18p
 #lander11-walk:hover{background:rgba(30,30,30,.7)}#lander11-walk:focus-visible{outline:2px solid #fff;outline-offset:2px}\
 #lander11-walk[aria-pressed=true]{background:#ededed;color:#0a0a0a}\
 #lander11-walk[hidden]{display:none}\
+.verse-line{position:fixed;z-index:3;left:50%;top:calc(16px + env(safe-area-inset-top));transform:translateX(-50%);\
+max-width:calc(100vw - 180px);padding:7px 14px;border-radius:999px;background:rgba(10,10,10,.7);\
+border:1px solid rgba(255,255,255,.14);color:#ededed;font-size:13px;line-height:18px;text-align:center;\
+-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);pointer-events:none}\
+#lander11-stopped{position:fixed;z-index:3;left:50%;top:calc(16px + env(safe-area-inset-top));transform:translateX(-50%);\
+display:flex;align-items:center;gap:10px;padding:5px 6px 5px 14px;border-radius:999px;background:rgba(10,10,10,.75);\
+border:1px solid rgba(255,255,255,.14);font-size:13px;line-height:18px}\
+#lander11-stopped[hidden]{display:none}\
+#lander11-stopped button{all:unset;cursor:pointer;padding:4px 12px;border-radius:999px;background:#ededed;color:#0a0a0a;font-weight:600}\
+#lander11-stopped button:focus-visible{outline:2px solid #fff;outline-offset:2px}\
 #lander11-fallback{position:fixed;z-index:2;left:50%;bottom:calc(32px + env(safe-area-inset-bottom));transform:translateX(-50%);\
 padding:13px 26px;border-radius:999px;background:#ededed;color:#0a0a0a;font-size:15px;font-weight:600;text-decoration:none}\
 #lander11-fallback[hidden]{display:none}\
@@ -78,6 +88,7 @@ const MAIN: &str = "<h1><svg viewBox=\"0 0 386 386\" fill=\"currentColor\" aria-
 <p id=\"everglade-status\" class=\"sr\" aria-live=\"polite\"></p>\
 <div id=\"gpui-mount\" role=\"region\" aria-label=\"Chat with OpenAgents\"></div>\
 <button id=\"lander11-walk\" type=\"button\" aria-pressed=\"false\" hidden>Walk</button>\
+<p id=\"lander11-stopped\" role=\"status\" hidden>The Grid stopped.<button type=\"button\">Reload</button></p>\
 <a id=\"lander11-fallback\" href=\"/\" hidden>Chat with OpenAgents</a>";
 
 /// The loader: `/lander8`'s for the chat, then Verse. After the shader's
@@ -139,7 +150,14 @@ const worker=globalThis.lander11GridWorker;if(worker)worker.terminate();\
 const runner=globalThis.lander5Runner;if(runner)runner.pause();\
 for(const id of [\"lander5-canvas\",\"lander11-grid\"]){const c=document.getElementById(id);if(c)c.remove()}},{once:true});\
 canvas.classList.add(\"ready\");\
+status.classList.remove(\"sr\");status.classList.add(\"verse-line\");\
 const walk=document.getElementById(\"lander11-walk\");\
+addEventListener(\"verse-stopped\",()=>{\
+try{glue.verse_walk(false)}catch(e){}\
+document.body.classList.remove(\"walking\");walk.hidden=true;\
+status.classList.remove(\"verse-line\");status.classList.add(\"sr\");canvas.classList.remove(\"ready\");\
+const stopped=document.getElementById(\"lander11-stopped\");stopped.hidden=false;\
+stopped.querySelector(\"button\").onclick=()=>location.reload()},{once:true});\
 const set=on=>{glue.verse_walk(on);walk.setAttribute(\"aria-pressed\",String(on));\
 document.body.classList.toggle(\"walking\",on);\
 if(on){const now=document.activeElement;if(now&&now!==walk)now.blur();canvas.focus({preventScroll:true})}};\
