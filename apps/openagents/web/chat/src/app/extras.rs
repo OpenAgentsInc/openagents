@@ -33,6 +33,7 @@ pub(super) struct Extras {
     pub connected: bool,
     connectivity: Option<Connectivity>,
     accounts: AgentAccountsSnapshot,
+    accounts_revision: u64,
     account_error: Option<String>,
     accounts_open: bool,
     context_open: bool,
@@ -45,6 +46,7 @@ pub(super) struct Extras {
     outputs: HashMap<String, String>,
     images: HashMap<String, Arc<Image>>,
     loading: HashSet<String>,
+    versions: HashMap<String, u64>,
     errors: HashMap<String, String>,
 }
 
@@ -65,6 +67,10 @@ impl ChatApp {
         let device = chat.device_id.clone();
         self.extras._accounts = Some(cx.spawn(async move |this, cx| {
             loop {
+                let Ok(revision) = this.read_with(cx, |this, _| this.extras.accounts_revision)
+                else {
+                    break;
+                };
                 let result = async {
                     let host = computer::connect(&client, &device, || {}).await?;
                     serde_json::from_value::<AgentAccountsSnapshot>(
@@ -75,7 +81,10 @@ impl ChatApp {
                 .await;
                 if this
                     .update(cx, |this, cx| {
-                        if this.generation != generation {
+                        if this.generation != generation
+                            || this.extras.accounts_revision != revision
+                            || this.extras.busy
+                        {
                             return;
                         }
                         match result {
@@ -415,6 +424,7 @@ impl ChatApp {
             return;
         };
         self.extras.busy = true;
+        self.extras.accounts_revision = self.extras.accounts_revision.wrapping_add(1);
         let client = self.client.clone();
         let generation = self.generation;
         cx.spawn(async move |this, cx| {
@@ -622,13 +632,21 @@ impl ChatApp {
             // Release decoded images on collapse, like the desktop's tool tray.
             self.extras.images.clear();
             self.extras.outputs.clear();
+            self.extras.versions.clear();
             self.extras.errors.remove(&key);
         } else {
             self.expanded.insert(key.clone());
             self.load_tool_group(key, cx);
         }
+        self.refresh_tool_groups(cx);
         self.list_state.remeasure();
         cx.notify();
+    }
+
+    pub(super) fn refresh_tool_groups(&mut self, cx: &mut Context<Self>) {
+        for key in self.expanded.iter().cloned().collect::<Vec<_>>() {
+            self.load_tool_group(key, cx);
+        }
     }
 
     fn load_tool_group(&mut self, key: String, cx: &mut Context<Self>) {
@@ -652,11 +670,24 @@ impl ChatApp {
             .iter()
             .skip(index)
             .take_while(|p| matches!(p, MessagePart::Tool { .. } | MessagePart::Reasoning { .. }))
+            .filter(|p| matches!(p, MessagePart::Tool { .. }))
             .cloned()
             .collect();
-        if !self.extras.loading.insert(key.clone()) {
+        if parts.is_empty() {
             return;
         }
+        use std::hash::{Hash as _, Hasher as _};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        serde_json::to_vec(&parts)
+            .unwrap_or_default()
+            .hash(&mut hasher);
+        let version = hasher.finish();
+        if self.extras.versions.get(&key) == Some(&version)
+            || !self.extras.loading.insert(key.clone())
+        {
+            return;
+        }
+        self.extras.versions.insert(key.clone(), version);
         let cwd = self.selected_chat().and_then(|c| c.cwd);
         let client = self.client.clone();
         let generation = self.generation;
@@ -741,6 +772,7 @@ impl ChatApp {
                         this.extras.errors.insert(key, error.to_string());
                     }
                 }
+                this.refresh_tool_groups(cx);
                 this.list_state.remeasure();
                 cx.notify();
             })

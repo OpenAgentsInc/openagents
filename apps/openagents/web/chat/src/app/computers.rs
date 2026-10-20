@@ -101,6 +101,13 @@ impl ChatApp {
                 computer_threads.push(thread);
             }
         }
+        if self
+            .pending_fork
+            .as_ref()
+            .is_some_and(|chat| meta.contains_key(&chat.id))
+        {
+            self.pending_fork = None;
+        }
         if let Some(chat) = self
             .pending_fork
             .as_ref()
@@ -221,6 +228,9 @@ impl ChatApp {
 
     pub(super) fn computer_delete(&mut self, id: String, cx: &mut Context<Self>) {
         self.menu = None;
+        if self.pending_fork.as_ref().is_some_and(|chat| chat.id == id) {
+            self.pending_fork = None;
+        }
         if self.current.as_deref() == Some(&id) {
             super::route::push(None);
             self.load(None, cx);
@@ -427,6 +437,7 @@ impl ChatApp {
                             this.extras.context = context;
                             this.extras.connected = true;
                             this.entries = shown;
+                            this.refresh_tool_groups(cx);
                             this.sync_list();
                             let entries = &this.entries;
                             this.compose
