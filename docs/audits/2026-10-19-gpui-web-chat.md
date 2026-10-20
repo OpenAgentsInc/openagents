@@ -321,8 +321,8 @@ the canvas, with `""` as its base, when the request says `?ui=gpui` or
 carries the `oa_chat_ui=gpui` cookie that `?ui=gpui` sets for a year;
 `?ui=html` shows the HTML chat once, and `?ui=off` shows it and clears the
 cookie (`gpui_chat::choice`). The HTML chat stays the default and the fallback
-(an HTMX swap, a server without the build, a browser without WebGPU,
-and JavaScript off all keep it), and the canvas links to it with
+(an HTMX swap, a server without the build, a browser without a WebGPU
+adapter, and JavaScript off all keep it), and the canvas links to it with
 `?ui=html`. Signed out, the canvas chats as the browser's visitor, as
 `/lander8` does: `GET /v1/threads`, `GET /v1/threads/{id}/messages`,
 `PATCH` (title, pin, archive), and `DELETE /v1/threads/{id}` now take a
@@ -330,6 +330,20 @@ visitor token too; moving a chat to a project still needs an account.
 The chat API's values and rules (`openagents_sdk::chats::wire`) are now
 the SDK's own, which builds for the browser without its `transport`
 feature; `web/client` is the browser transport over them.
+
+Parity with the HTML chat at `/chat/{id}` with the flag on (2026-10-20):
+
+| Feature | GPUI chat |
+| --- | --- |
+| Transcript, streaming, Stop, reload during an answer | Done |
+| Rename, pin, archive, move, delete | Done (move needs an account) |
+| New chat at `/` and the sidebar, signed in and signed out | Done; the sidebar polls every 5 s instead of a JSON `/chats/events` |
+| Multi-line composer, IME, paste | Done (Chrome checked) |
+| Coder chats | Read-only, as before; live rooms wait on #12224 |
+| Cards | Named cards that open the HTML chat (`?ui=html`); Rust Native cards wait on #12218 |
+| Approvals, file uploads, the agents panel, computer asks | Not yet (#12223); the sidebar's "Open the regular chat" covers them |
+| Find in page, screen-reader mirror | Not yet (#12220) |
+| Browsers | Chrome checked; without a WebGPU adapter the page goes to the HTML chat (#12237 dropped WebGL2) |
 
 ## The first-frame painter (2026-10-19)
 

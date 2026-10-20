@@ -1,3 +1,18 @@
+## Check the GPUI web chat in Safari and Firefox (#12221)
+
+The GPUI chat at `/`, `/new`, and `/chat/{id}` is on in production for
+anyone who opens `https://openagents.com/new?ui=gpui` (a cookie keeps it;
+`?ui=off` turns it off). Chrome passed with a visitor and with staging's
+test account: streaming, reload during an answer, Stop, a two-line message
+(Shift+Enter), an IME commit, paste, rename, pin, archive, and delete. The
+test browsers for Safari and Firefox have no WebGPU, so there the page went
+to the HTML chat as designed; the real browsers weren't checked. In Safari
+26 and in Firefox with WebGPU, as a test account or signed out: send a
+two-line message, type Japanese with the system IME, paste text with line
+breaks, reload while the answer streams, and press Stop. Delete the chats
+afterward. Safari automation needs **Develop > Allow Remote Automation**
+(or `safaridriver --enable`) if you'd like an agent to run it instead.
+
 ## Decide two SPACE qualification gaps (#11816)
 
 The final SPACE qualification run passed 31 of 33 required cases, but the named
