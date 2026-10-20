@@ -33,6 +33,32 @@ pub struct Snapshot {
     pub has_more: bool,
     pub more_projects: bool,
 }
+impl Snapshot {
+    /// The same saved-chat ordering on desktop and mobile.
+    pub fn visible_rows(&self, archived: bool) -> Vec<ChatSummary> {
+        let mut rows = self
+            .rows
+            .iter()
+            .filter(|r| r.archived_unix.is_some() == archived)
+            .cloned()
+            .collect::<Vec<_>>();
+        rows.sort_by(|a, b| {
+            a.pinned_unix
+                .is_none()
+                .cmp(&b.pinned_unix.is_none())
+                .then_with(|| {
+                    if a.pinned_unix.is_some() && b.pinned_unix.is_some() {
+                        b.pinned_unix.cmp(&a.pinned_unix)
+                    } else {
+                        a.project.cmp(&b.project)
+                    }
+                })
+                .then_with(|| b.updated_unix.cmp(&a.updated_unix))
+                .then_with(|| a.chat.id().cmp(b.chat.id()))
+        });
+        rows
+    }
+}
 /// An existing chat in the account that supplied the row. It grants no execution authority.
 #[derive(Clone)]
 pub struct ExistingChat {

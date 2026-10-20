@@ -379,27 +379,7 @@ impl Render for HistoryPanel {
                 SharedString::from(format!("{} chats loaded", self.snapshot.rows.len())),
             ));
         }
-        let mut rows = self
-            .snapshot
-            .rows
-            .iter()
-            .filter(|r| r.archived_unix.is_some() == self.archived)
-            .cloned()
-            .collect::<Vec<_>>();
-        rows.sort_by(|a, b| {
-            a.pinned_unix
-                .is_none()
-                .cmp(&b.pinned_unix.is_none())
-                .then_with(|| {
-                    if a.pinned_unix.is_some() && b.pinned_unix.is_some() {
-                        b.pinned_unix.cmp(&a.pinned_unix)
-                    } else {
-                        a.project.cmp(&b.project)
-                    }
-                })
-                .then_with(|| b.updated_unix.cmp(&a.updated_unix))
-                .then_with(|| a.chat.id().cmp(b.chat.id()))
-        });
+        let rows = self.snapshot.visible_rows(self.archived);
         let mut group = None;
         for row in rows {
             let next = (

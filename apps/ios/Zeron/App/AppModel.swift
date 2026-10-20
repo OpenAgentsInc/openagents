@@ -38,6 +38,9 @@ final class AppModel {
     }
 
     @MainActor lazy var voice = RemoteVoiceController(app: self)
+    private(set) var savedHistory: CoreSavedHistory?
+    private(set) var savedSnapshot: SavedHistorySnapshot?
+    private lazy var savedBridge = SavedHistoryBridge(app: self)
     private(set) var client: CoreClient?
     private(set) var frontPage = FrontPage()
     private(set) var archived: [SessionRowVM] = []
@@ -176,6 +179,8 @@ final class AppModel {
                 do {
                     let config = CoreConfig(edgeUrl: Self.edgeURL, dataDir: Self.coreDir.path, deviceId: Self.deviceId, deviceName: UIDevice.current.name, platform: "ios", appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0")
                     install(try account.connect(config: config, listener: bridge))
+                    savedHistory = try account.savedHistory(listener: savedBridge)
+                    handleSavedHistory()
                     AccountProfile(name: name, email: nil, orgName: nil).save()
                     #if DEBUG
                     fixtureSignedIn = true
@@ -201,6 +206,11 @@ final class AppModel {
         }
         observers.values.forEach { $0() }
     }
+    fileprivate func handleSavedHistory() {
+        savedSnapshot = savedHistory?.snapshot()
+        observers.values.forEach { $0() }
+    }
+
     private func reportAccountFixture() {
         #if DEBUG
         guard ProcessInfo.processInfo.arguments.contains("-account-fixture"), fixtureSignedIn, fixtureSignOut else { return }
@@ -332,6 +342,9 @@ final class AppModel {
         voice.stop()
         endDeliveryBackgroundTask()
         lastDeliveryActivity = .distantPast
+        savedHistory?.shutdown()
+        savedHistory = nil
+        savedSnapshot = nil
         client?.shutdown()
         client = nil
         AccountProfile.clear()
@@ -400,6 +413,7 @@ final class AppModel {
     /// workspace has updated — at least `minimum` so the spinner doesn't
     /// flicker, at most `maximum` if nothing changes.
     func refresh(minimum: TimeInterval = 0.6, maximum: TimeInterval = 3, completion: @escaping () -> Void) {
+        try? savedHistory?.action(action: .refreshChats)
         let started = Date()
         var finished = false
         var token: AnyObject?
@@ -829,4 +843,12 @@ struct AccountProfile: Codable {
 
 extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
+}
+
+private final class SavedHistoryBridge: SavedHistoryListener {
+    weak var app: AppModel?
+    init(app: AppModel) { self.app = app }
+    func onSavedHistoryChanged() {
+        DispatchQueue.main.async { [weak self] in self?.app?.handleSavedHistory() }
+    }
 }

@@ -3,6 +3,7 @@ use crate::{
     markdown::{self, BlockTree, render},
     theme::Theme,
 };
+use coder_account::reader::text_part;
 use coder_account::{
     Controller,
     history::{ExistingChat, LoadState},
@@ -817,20 +818,6 @@ fn has_details(message: &SavedMessage) -> bool {
             && !v.as_array().is_some_and(Vec::is_empty)
             && !v.as_object().is_some_and(serde_json::Map::is_empty)
     })
-}
-fn text_part(text: &str, part: usize) -> (String, usize, usize) {
-    const SIZE: usize = 64 * 1024;
-    let count = text.len().div_ceil(SIZE).max(1);
-    let part = part.min(count - 1);
-    let mut start = (part * SIZE).min(text.len());
-    let mut end = ((part + 1) * SIZE).min(text.len());
-    while !text.is_char_boundary(start) {
-        start -= 1;
-    }
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    (text[start..end].to_owned(), count, part)
 }
 
 #[cfg(test)]
