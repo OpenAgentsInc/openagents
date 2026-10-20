@@ -34,6 +34,7 @@ use crate::route;
 
 /// Every computer's chats from the registry (#12265).
 mod computers;
+mod extras;
 /// A new session on a computer (#12266).
 mod new_session;
 
@@ -70,6 +71,8 @@ enum Menu {
 }
 
 pub struct ChatApp {
+    extras: extras::Extras,
+    pending_fork: Option<openagents_proto::Chat>,
     client: Client,
     check_ins: Entity<crate::check_ins::CheckIns>,
     /// Signed in, or chatting as the browser's visitor (the page's
@@ -202,6 +205,13 @@ impl ChatApp {
                         let at = this.entries.len();
                         this.list_state.remeasure_items(at..at + 1);
                         cx.notify();
+                    } else if this.computer_working()
+                        && this.extras.progress_second != now_ms() / 1000
+                    {
+                        this.extras.progress_second = now_ms() / 1000;
+                        let end = this.entries.len();
+                        this.list_state.remeasure_items(end.saturating_sub(1)..end);
+                        cx.notify();
                     }
                 }) else {
                     break;
@@ -221,6 +231,8 @@ impl ChatApp {
             .and_then(|w| w.location().origin().ok())
             .unwrap_or_default();
         let mut this = Self {
+            extras: extras::Extras::default(),
+            pending_fork: None,
             client,
             check_ins: cx.new(crate::check_ins::CheckIns::new),
             signed_in: route::signed_in(),
@@ -353,6 +365,7 @@ impl ChatApp {
         }
         self.current = chat.clone();
         self.watching = None;
+        self.extras = extras::Extras::default();
         self.entries.clear();
         self.expanded.clear();
         self.list_state.reset(0);
@@ -388,7 +401,7 @@ impl ChatApp {
             return;
         }
         if on_computer {
-            self.loading_chat = false;
+            self.load_computer(id, generation, cx);
             cx.notify();
             return;
         }
@@ -1054,6 +1067,16 @@ impl ChatApp {
     fn render_row(&self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
         let thread = &self.threads[ix];
         let id = thread.id.clone();
+        let saved_agent = self
+            .registry
+            .as_ref()
+            .and_then(|r| r.read(|r| r.chat(&id)))
+            .and_then(|chat| {
+                openagents_proto::saved_agent::agent_name(
+                    chat.config.as_ref(),
+                    chat.title.as_deref(),
+                )
+            });
         let selected = self.current.as_deref() == Some(id.as_str());
         let live_here = self.live.as_ref().is_some_and(|l| l.chat == id);
         let dot: Option<Hsla> = if thread.working || live_here {
@@ -1103,6 +1126,14 @@ impl ChatApp {
                     this.open(Some(open_id.clone()), window, cx);
                 }
             }))
+            .when(saved_agent.is_some(), |row| {
+                row.child(
+                    svg()
+                        .path("icons/openagents-logo.svg")
+                        .size(px(16.))
+                        .text_color(theme::text_muted()),
+                )
+            })
             .child(
                 div()
                     .flex_none()
@@ -1433,6 +1464,7 @@ impl ChatApp {
                     .font_weight(FontWeight::MEDIUM)
                     .child(title),
             )
+            .children(self.render_identity())
             .children(project.map(|p| chip("icons/folder.svg", p, theme::text_muted())))
             .children(computer.map(|c| chip("icons/laptop.svg", c, theme::text_muted())))
             // The file panel, for a chat on a computer (#12271).
@@ -1526,6 +1558,7 @@ impl ChatApp {
             .pt(px(6.))
             .gap(px(8.))
             .children(blocked.map(|line| footer_text(line)))
+            .children(self.render_todos(cx))
             .children(queue)
             .children(completion)
             .child(
@@ -1554,6 +1587,8 @@ impl ChatApp {
                     .child(send),
             )
             .child(send_key)
+            .children(self.render_extras(cx))
+            .child(self.render_tool_errors())
             .into_any_element()
     }
 
@@ -1711,11 +1746,7 @@ impl ChatApp {
                 let key = key.clone();
                 entity
                     .update(cx, |this: &mut ChatApp, cx| {
-                        if !this.expanded.remove(&key) {
-                            this.expanded.insert(key);
-                        }
-                        this.list_state.remeasure();
-                        cx.notify();
+                        this.toggle_tool_group(key, cx);
                     })
                     .ok();
             })
@@ -1723,13 +1754,24 @@ impl ChatApp {
         // Web chats ask no questions of their own.
         let mut questions =
             |_: usize, _: &[openagents_proto::UserInputQuestion], _: bool| div().into_any_element();
-        let body = transcript::assistant_body(view, &toggle, &mut questions);
+        let progress = (entry.status == Some(MessageStatus::Streaming))
+            .then(|| self.render_progress())
+            .flatten();
+        let body = transcript::assistant_body_with_tools(
+            view,
+            &toggle,
+            &mut questions,
+            &|part| self.render_tool_part(part),
+            progress,
+        );
         let copy = entry.status != Some(MessageStatus::Streaming);
         let text = entry
             .parts
             .iter()
             .filter_map(|p| match p {
-                MessagePart::Text { id, text } if id.starts_with('m') => Some(text.as_str()),
+                MessagePart::Text { id, text } if !id.starts_with(transcript::NOTICE_PREFIX) => {
+                    Some(text.as_str())
+                }
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -1785,6 +1827,13 @@ impl Render for ChatApp {
         if self.loaded && !self.loading_chat {
             openagents_gpui_web::announce_ready();
         }
+        self.install_links(cx);
+        let rail_width = f32::from(window.viewport_size().width)
+            - if window.viewport_size().width > px(820.) {
+                SIDEBAR_WIDTH
+            } else {
+                0.
+            };
         let wide = window.viewport_size().width > px(820.);
         let rows = self.entries.len() + usize::from(self.live.is_some());
         let transcript: AnyElement = if self.current.is_none() && rows == 0 {
@@ -1801,6 +1850,7 @@ impl Render for ChatApp {
             div()
                 .flex_1()
                 .w_full()
+                .relative()
                 .flex()
                 .flex_col()
                 .child(markdown::selection_reset())
@@ -1817,6 +1867,7 @@ impl Render for ChatApp {
                     .flex_1()
                     .w_full(),
                 )
+                .children(self.render_rail(rail_width, cx))
                 .into_any_element()
         };
         let notice = self.notice.clone().map(|line| {

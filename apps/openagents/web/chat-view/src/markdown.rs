@@ -49,6 +49,15 @@ pub fn selection_reset() -> impl IntoElement {
     render::selection_frame_reset()
 }
 
+thread_local! {
+    static LINKS: RefCell<Option<render::LinkUi>> = const { RefCell::new(None) };
+}
+
+/// Routing for the chat being drawn; other web views leave it empty.
+pub fn set_links(links: Option<render::LinkUi>) {
+    LINKS.with(|current| *current.borrow_mut() = links);
+}
+
 pub struct Markdown {
     /// Prefix for element ids, unique per text part.
     pub id: SharedString,
@@ -64,6 +73,7 @@ impl Markdown {
         };
         let mut options = RenderOptions::settled(self.id.clone());
         options.veil = veil.cloned();
+        options.link = LINKS.with(|links| links.borrow().clone());
         WithWindow(Some(Box::new(move |window, _| {
             let element = render::render_tree(&tree, &options, theme::desktop(), window, &|_| None);
             // Text already on screen when a seeded veil attached stays put;

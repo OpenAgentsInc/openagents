@@ -38,6 +38,10 @@ pub const MAX_WAITING: usize = 8;
 /// The engine methods a browser may call.
 pub const ALLOWED: &[&str] = &[
     methods::ENGINE_INFO,
+    // Transcript extras (#12270).
+    methods::FETCH_TOOL_BLOB,
+    methods::LIST_AGENT_ACCOUNTS,
+    methods::WATCH_CONNECTIVITY,
     methods::LIST_HARNESSES,
     methods::LIST_MODELS,
     methods::LIST_SKILLS,
@@ -72,6 +76,10 @@ pub const ALLOWED: &[&str] = &[
 /// The engine methods a browser may call under its grant's run right
 /// ([`Right::Operate`]).
 pub const OPERATE: &[&str] = &[
+    // Transcript extras (#12270).
+    methods::FORK_CHAT,
+    methods::RETRY_DELIVERY,
+    methods::ACTIVATE_AGENT_ACCOUNT,
     // The queue panel and the question wizard (#12268).
     methods::QUEUE_MESSAGE,
     methods::UPDATE_QUEUED_MESSAGE,

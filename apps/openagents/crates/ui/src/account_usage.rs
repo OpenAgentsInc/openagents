@@ -28,14 +28,7 @@ const FORCE_MIN_INTERVAL: Duration = Duration::from_secs(30);
 /// Background re-probe while a composer is alive: usage moves as turns run.
 const POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
-/// The binding limit: the most-used window of the account. Pure.
-pub fn used_fraction(account: &AgentAccount) -> Option<f32> {
-    account
-        .usage_windows
-        .iter()
-        .map(|window| window.used_fraction.clamp(0.0, 1.0))
-        .reduce(f32::max)
-}
+pub use openagents_chat_view::account_usage::used_fraction;
 
 /// The harness's live account, when it reports usage. Pure.
 pub fn active_account(

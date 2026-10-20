@@ -222,6 +222,7 @@ window.addEventListener("keydown", function (event) {
 var host = "";
 var files = null;
 var filesBox = null;
+var filesLoading = null;
 function hostParts() {
   var at = host.indexOf("\n");
   return at < 0 ? ["", ""] : [host.slice(0, at), host.slice(at + 1)];
@@ -231,10 +232,10 @@ function showFiles(open) {
     filesBox.hidden = !open;
   }
 }
-function openFiles() {
+function openFiles(force) {
   if (filesBox) {
-    showFiles(filesBox.hidden);
-    return;
+    showFiles(force === true ? true : filesBox.hidden);
+    return filesLoading || Promise.resolve(files);
   }
   filesBox = document.createElement("div");
   filesBox.id = "gpui-mount";
@@ -242,7 +243,7 @@ function openFiles() {
   filesBox.style.cssText = "position:fixed;top:8px;right:8px;bottom:8px;width:min(560px,46vw);z-index:5;border-radius:14px;overflow:hidden;";
   document.body.appendChild(filesBox);
   var glue = new URL("./openagents_web_files.js", import.meta.url);
-  Promise.all([import(glue.href), loadedFonts])
+  filesLoading = Promise.all([import(glue.href), loadedFonts])
     .then(function (loaded) {
       var module = loaded[0];
       return module.default({
@@ -251,15 +252,28 @@ function openFiles() {
         files = module;
         var parts = hostParts();
         module.mount(loaded[1], parts[0], parts[1]);
+        return module;
       });
     })
     .catch(function (error) {
       console.error("the file panel couldn't start", error);
       filesBox.remove();
       filesBox = null;
+      filesLoading = null;
     });
+  return filesLoading;
 }
-window.addEventListener("oa-files-toggle", openFiles);
+window.addEventListener("oa-files-toggle", function () { openFiles(); });
+window.addEventListener("oa-file-open", function (event) {
+  var source = host;
+  if (!source || typeof event.detail !== "string") return;
+  var path = event.detail;
+  openFiles(true).then(function (module) {
+    if (!module || host !== source) return;
+    var parts = hostParts();
+    module.open_file(parts[0], parts[1], path);
+  });
+});
 window.addEventListener("oa-files-close", function () {
   showFiles(false);
 });

@@ -91,3 +91,18 @@ pub fn show(device: String, chat: String) {
         }
     });
 }
+
+/// Opens a transcript link on the linking chat's computer (#12270).
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen]
+pub fn open_file(device: String, chat: String, path: String) {
+    let target = target(device, chat);
+    PANEL.with(|panel| {
+        if let Some((entity, cx)) = panel.borrow().as_ref() {
+            let _ = entity.update(&mut cx.clone(), |files, cx| {
+                files.show(target, cx);
+                files.open_link(path, cx);
+            });
+        }
+    });
+}

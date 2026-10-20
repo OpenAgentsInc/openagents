@@ -24,6 +24,8 @@ openagents-web-client.workspace = true
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
 serde_json = "1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["wasmbind"] }
 web-time.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]

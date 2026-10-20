@@ -1484,3 +1484,9 @@ master delegation audit.
   `QueueCommand`, `QueueMessage`). `browser_devices::sanitize` drops what
   only this computer's app may set: `targetDeviceId`, `originChatId`,
   attachment transfers and paths, and a run's OpenAgents tools (`mcp`).
+
+- #12270 shares the desktop's context indicator, checklist model, prompt-rail
+  model, and safe tool-image paths with the browser. The web transcript keeps
+  host context frames, loads expanded tool sidecars and images on demand,
+  routes file links into Files, and exposes account usage/switch, fork, retry,
+  connection state, and saved-agent identity through the paired-device gate.

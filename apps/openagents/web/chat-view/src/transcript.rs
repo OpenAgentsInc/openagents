@@ -131,6 +131,17 @@ pub fn assistant_body(
     toggle: &dyn Fn(String) -> OnClick,
     questions: &mut dyn FnMut(usize, &[UserInputQuestion], bool) -> AnyElement,
 ) -> AnyElement {
+    assistant_body_with_tools(view, toggle, questions, &tool_row, None)
+}
+
+/// A host chat supplies its lazy tool output and image previews.
+pub fn assistant_body_with_tools(
+    view: TurnView<'_>,
+    toggle: &dyn Fn(String) -> OnClick,
+    questions: &mut dyn FnMut(usize, &[UserInputQuestion], bool) -> AnyElement,
+    tool: &dyn Fn(&MessagePart) -> AnyElement,
+    working: Option<AnyElement>,
+) -> AnyElement {
     let mut blocks: Vec<AnyElement> = Vec::new();
     let parts = view.parts;
     let mut ix = 0;
@@ -149,7 +160,13 @@ pub fn assistant_body(
                 let key = format!("{}/{start}", view.key);
                 let expanded = view.expanded.contains(&key);
                 let on_click = toggle(key.clone());
-                blocks.push(tool_group(&key, &parts[start..ix], expanded, on_click));
+                blocks.push(tool_group_with(
+                    &key,
+                    &parts[start..ix],
+                    expanded,
+                    on_click,
+                    tool,
+                ));
                 continue;
             }
             MessagePart::Text { id, text } if id.starts_with(NOTICE_PREFIX) => {
@@ -189,7 +206,11 @@ pub fn assistant_body(
                 ..
             } => blocks.push(questions(ix, asked, *resolved)),
             MessagePart::Error { message, .. } => blocks.push(error_block(message)),
-            MessagePart::Fork { source_title, .. } => blocks.push(
+            MessagePart::Fork {
+                source_chat_id,
+                source_title,
+                ..
+            } => blocks.push(
                 div()
                     .flex()
                     .flex_row()
@@ -198,7 +219,23 @@ pub fn assistant_body(
                     .text_size(px(12.))
                     .text_color(theme::text_faint())
                     .child(div().flex_1().h(px(1.)).bg(theme::border()))
-                    .child(format!("Forked from {source_title}"))
+                    .child(
+                        Markdown {
+                            id: format!("fork-{}", view.key).into(),
+                        }
+                        .render(
+                            &format!(
+                                "[Forked from {}](openagents-chat:{})",
+                                source_title
+                                    .replace('\\', "\\\\")
+                                    .replace('[', "\\[")
+                                    .replace(']', "\\]"),
+                                source_chat_id
+                            ),
+                            false,
+                            None,
+                        ),
+                    )
                     .child(div().flex_1().h(px(1.)).bg(theme::border()))
                     .into_any_element(),
             ),
@@ -206,7 +243,9 @@ pub fn assistant_body(
         ix += 1;
     }
     let footer: Option<AnyElement> = match view.status {
-        Some(MessageStatus::Streaming) => Some(working_label().into_any_element()),
+        Some(MessageStatus::Streaming) => {
+            Some(working.unwrap_or_else(|| working_label().into_any_element()))
+        }
         Some(MessageStatus::Aborted) => Some(footer_text("Stopped").into_any_element()),
         _ => view.duration_ms.map(|ms| {
             footer_text(format!("Worked for {}", duration(ms.max(0) as u64))).into_any_element()
@@ -229,6 +268,16 @@ pub fn tool_group(
     parts: &[MessagePart],
     expanded: bool,
     on_click: OnClick,
+) -> AnyElement {
+    tool_group_with(key, parts, expanded, on_click, &tool_row)
+}
+
+fn tool_group_with(
+    key: &str,
+    parts: &[MessagePart],
+    expanded: bool,
+    on_click: OnClick,
+    tool: &dyn Fn(&MessagePart) -> AnyElement,
 ) -> AnyElement {
     let mut pairs: Vec<(ToolCall, bool)> = Vec::new();
     let mut thoughts = 0usize;
@@ -321,7 +370,7 @@ pub fn tool_group(
                 .flex_col()
                 .gap(px(8.))
                 .py(px(4.))
-                .children(parts.iter().map(tool_row)),
+                .children(parts.iter().map(tool)),
         );
     }
     group.into_any_element()
@@ -631,9 +680,10 @@ pub fn working_label() -> impl IntoElement {
 /// A pill button: solid when `primary`, outlined otherwise.
 pub fn button(
     id: impl Into<SharedString>,
-    label: &'static str,
+    label: impl Into<SharedString>,
     primary: bool,
 ) -> gpui::Stateful<gpui::Div> {
+    let label: SharedString = label.into();
     div()
         .id(id.into())
         .px(px(14.))

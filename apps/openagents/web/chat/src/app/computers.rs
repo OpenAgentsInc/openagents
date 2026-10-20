@@ -101,6 +101,33 @@ impl ChatApp {
                 computer_threads.push(thread);
             }
         }
+        if let Some(chat) = self
+            .pending_fork
+            .as_ref()
+            .filter(|chat| !meta.contains_key(&chat.id))
+        {
+            let computer = self
+                .meta
+                .get(&chat.id)
+                .map(|m| m.computer.clone())
+                .unwrap_or_else(|| (chat.device_id.clone(), "Computer".into()));
+            meta.insert(
+                chat.id.clone(),
+                model::Meta {
+                    computer: computer.clone(),
+                    ..Default::default()
+                },
+            );
+            computer_threads.push(Thread {
+                id: chat.id.clone(),
+                title: chat.title.clone().unwrap_or_default(),
+                surface: model::COMPUTER.into(),
+                computer: Some(computer.1),
+                online: true,
+                can_reply: true,
+                ..Default::default()
+            });
+        }
         let ids: HashSet<&str> = meta.keys().map(String::as_str).collect();
         let mut threads: Vec<Thread> = self
             .web_threads
@@ -137,6 +164,7 @@ impl ChatApp {
             .registry
             .as_ref()
             .and_then(|r| r.read(|r| r.chat(id)))
+            .or_else(|| self.pending_fork.clone().filter(|chat| chat.id == id))
             .and_then(|chat| chat.config)
             .and_then(|config| serde_json::to_value(config.harness).ok())
             .and_then(|v| v.as_str().map(str::to_owned));
@@ -288,7 +316,12 @@ impl ChatApp {
     /// Opens computer chat `id`: connects to its computer, asking for this
     /// browser's access the first time, and follows its transcript.
     pub(super) fn load_computer(&mut self, id: String, generation: u64, cx: &mut Context<Self>) {
-        let Some(chat) = self.registry.as_ref().and_then(|r| r.read(|r| r.chat(&id))) else {
+        let Some(chat) = self.selected_chat().or_else(|| {
+            let host = self.compose.read(cx).host()?;
+            serde_json::from_value(json!({"id": id, "deviceId": host.device, "archived": false,
+                "createdAt": chrono::Utc::now()}))
+            .ok()
+        }) else {
             return;
         };
         let name = self
@@ -300,6 +333,7 @@ impl ChatApp {
             registry.write(|r| r.seen(&id, now_ms()));
         }
         self.loading_chat = true;
+        self.start_extras(&chat, cx);
         let client = self.client.clone();
         let (asked_tx, mut asked) = futures::channel::mpsc::unbounded::<()>();
         let asking = cx.spawn({
@@ -342,6 +376,7 @@ impl ChatApp {
                         this.update(cx, |this, cx| {
                             if this.generation == generation {
                                 this.loading_chat = false;
+                                this.extras.connected = false;
                                 this.notice = Some(error.to_string());
                                 cx.notify();
                             }
@@ -358,6 +393,7 @@ impl ChatApp {
                             computer::disconnect(&device);
                             this.update(cx, |this, cx| {
                                 if this.generation == generation {
+                                    this.extras.connected = false;
                                     this.notice = Some(error.to_string());
                                     cx.notify();
                                 }
@@ -369,6 +405,7 @@ impl ChatApp {
                     let Some(update) = update else {
                         continue;
                     };
+                    let context = update.context_usage;
                     if apply_transcript_frame(&mut entries, update.frame).is_err() {
                         desync = true;
                         break;
@@ -387,6 +424,8 @@ impl ChatApp {
                             {
                                 this.notice = None;
                             }
+                            this.extras.context = context;
+                            this.extras.connected = true;
                             this.entries = shown;
                             this.sync_list();
                             let entries = &this.entries;
@@ -404,6 +443,7 @@ impl ChatApp {
                     this.update(cx, |this, cx| {
                         if this.generation == generation {
                             this.loading_chat = false;
+                            this.extras.connected = false;
                             cx.notify();
                         }
                     })

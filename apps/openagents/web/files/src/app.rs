@@ -115,6 +115,7 @@ pub struct FilesApp {
     contents: bool,
     found: Option<Found>,
     notice: Option<String>,
+    pending_link: Option<String>,
     _search: Option<Task<()>>,
     _watch: Option<Task<()>>,
     _git: Option<Task<()>>,
@@ -151,6 +152,7 @@ impl FilesApp {
             contents: false,
             found: None,
             notice: None,
+            pending_link: None,
             _search: None,
             _watch: None,
             _git: None,
@@ -166,6 +168,7 @@ impl FilesApp {
         }
         self.target = target;
         self.checkout = None;
+        self.pending_link = None;
         self.listed.clear();
         self.loading.clear();
         self.expanded.clear();
@@ -246,6 +249,11 @@ impl FilesApp {
                             this.checkout = checkout;
                         }
                         this.listed.insert(dir, entries);
+                        if this.checkout.is_some() {
+                            if let Some(path) = this.pending_link.take() {
+                                this.open(path, None, cx);
+                            }
+                        }
                     }
                     Err(error) => this.notice = Some(error.to_string()),
                 }
@@ -366,6 +374,18 @@ impl FilesApp {
             cx.notify();
         } else {
             self.open(row.path.clone(), row.size, cx);
+        }
+    }
+
+    /// A transcript file link may arrive while the initial folder read runs.
+    pub fn open_link(&mut self, path: String, cx: &mut Context<Self>) {
+        if self.target.is_none() {
+            return;
+        }
+        if self.checkout.is_some() {
+            self.open(path, None, cx);
+        } else {
+            self.pending_link = Some(path);
         }
     }
 
