@@ -377,7 +377,7 @@ async fn run() -> Result<(), String> {
         .location()
         .pathname()
         .is_ok_and(|path| path.trim_end_matches('/').ends_with("/druid"));
-    // `?zone=grid`, or the `/grid` page, opens the shared Grid, the spawn
+    // `?zone=grid`, or the `/grid` or `/verse` page (#12261), opens the shared Grid, the spawn
     // plaza, on the engine renderer with the pack built into this module;
     // nothing downloads.
     let grid = window.location().search().is_ok_and(|query| {
@@ -385,10 +385,10 @@ async fn run() -> Result<(), String> {
             .trim_start_matches('?')
             .split('&')
             .any(|part| part.eq_ignore_ascii_case("zone=grid"))
-    }) || window
-        .location()
-        .pathname()
-        .is_ok_and(|path| path.trim_end_matches('/').ends_with("/grid"));
+    }) || window.location().pathname().is_ok_and(|path| {
+        let path = path.trim_end_matches('/');
+        path.ends_with("/grid") || path.ends_with("/verse")
+    });
     if grid {
         return run_grid(window, document, canvas).await;
     }

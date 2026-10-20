@@ -247,6 +247,7 @@ pub fn owned(path: &str) -> bool {
         || crate::profiles::owns(path)
         || crate::wallet_browser::owns(path)
         || path == crate::pages::home::HOME
+        || path == "/verse"
         // A GitHub login's profile, which moves to `/@{name}` (#12254).
         || path
             .strip_prefix("/u/")

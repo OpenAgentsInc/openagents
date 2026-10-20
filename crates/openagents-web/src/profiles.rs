@@ -55,6 +55,11 @@ use serde_json::{Value, json};
 use crate::App;
 use crate::ui_page::{UiPage, action_link, problem};
 
+/// The names Verse labels avatars with (#12261).
+pub(crate) const NAMES: &str = "/verse/names";
+/// The most keys one names question asks about.
+const NAMES_MAX: usize = 50;
+
 /// NIP-05's document.
 pub(crate) const WELL_KNOWN: &str = "/.well-known/nostr.json";
 /// The profile page.
@@ -77,6 +82,7 @@ pub(crate) fn routes() -> Router<App> {
         .route(PICTURE, get(picture::serve))
         .route("/event/{id}", get(evidence::event_page))
         .route(explore::PAGE, get(explore::page))
+        .route(NAMES, get(names))
         .merge(edit::routes())
 }
 
@@ -87,6 +93,7 @@ pub(crate) fn owns(path: &str) -> bool {
         || path.starts_with("/@")
         || path.starts_with("/event/")
         || path == explore::PAGE
+        || path == NAMES
         || edit::owns(path)
 }
 
@@ -545,6 +552,40 @@ async fn nostr_json(State(app): State<App>, Query(query): Query<NameQuery>) -> R
         } else {
             "no-store"
         }),
+    );
+    response
+}
+
+#[derive(Deserialize)]
+struct KeysQuery {
+    keys: Option<String>,
+}
+
+/// `GET /verse/names?keys=HEX,HEX`: each key's shown name from its kind 0,
+/// and its `name@openagents.com` name when it has one, for Verse to label
+/// avatars. Keys without a profile are left out.
+async fn names(State(app): State<App>, Query(query): Query<KeysQuery>) -> Response {
+    let keys: Vec<String> = query
+        .keys
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|k| match handle(k.trim())? {
+            Handle::Key(key) => Some(key),
+            Handle::Name(_) => None,
+        })
+        .take(NAMES_MAX)
+        .collect();
+    let loaded = join_all(keys.iter().map(|k| load(&app.config.profile_relays, k))).await;
+    let mut out = serde_json::Map::new();
+    for (key, profile) in keys.iter().zip(loaded) {
+        if let Some(shown) = profile.metadata.as_ref().and_then(Metadata::shown_name) {
+            out.insert(key.clone(), json!({"name": shown}));
+        }
+    }
+    let mut response = axum::Json(json!({"names": out})).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=60"),
     );
     response
 }

@@ -272,6 +272,7 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/everglade*", "a canvas world"),
     ("/druid", "a canvas world"),
     ("/grid", "a canvas world"),
+    ("/verse", "a canvas world: the Grid, as the website's spatial layer"),
     ("/lander3*", "a canvas world"),
     ("/lander5", "a canvas world"),
     ("/lander4", "a canvas page"),

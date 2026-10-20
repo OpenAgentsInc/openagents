@@ -94,6 +94,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/everglade", get(everglade))
         .route("/druid", get(druid))
         .route("/grid", get(grid))
+        .route("/verse", get(verse))
         .route("/everglade/{file}", get(build_file))
         .route("/everglade/pack/{file}", get(pack_file))
         .route("/everglade/kit/{file}", get(kit_file))
@@ -136,6 +137,15 @@ const GRID: Stage = Stage {
     title: "Grid",
     path: "/grid",
     label: "The Grid, where players meet",
+    loading: "the Grid",
+    policy: GRID_POLICY,
+};
+
+/// `/verse` (#12261): the shared Grid, as the website's spatial layer.
+const VERSE: Stage = Stage {
+    title: "Verse",
+    path: "/verse",
+    label: "The Grid, where people, agents, and pylons meet",
     loading: "the Grid",
     policy: GRID_POLICY,
 };
@@ -192,6 +202,12 @@ async fn everglade(State(app): State<App>, headers: HeaderMap) -> Response {
 /// `/druid`: the same build, which starts in the Grove on this path.
 async fn druid(State(app): State<App>, headers: HeaderMap) -> Response {
     stage(&app, &DRUID, &headers).await
+}
+
+/// `/verse`: the same build as `/grid`, which opens the shared Grid on
+/// this path too. Only this page loads the module; the chat never does.
+async fn verse(State(app): State<App>, headers: HeaderMap) -> Response {
+    stage(&app, &VERSE, &headers).await
 }
 
 /// `/grid`: the same build, which opens the shared Grid on this path.

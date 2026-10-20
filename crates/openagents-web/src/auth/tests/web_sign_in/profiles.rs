@@ -1316,3 +1316,40 @@ async fn the_browser_asks_and_the_phone_approves_and_pays() {
 fn phone_other() -> &'static str {
     "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
 }
+
+#[tokio::test]
+async fn verse_labels_avatars_and_the_chat_never_loads_it() {
+    let relay = Relay::start().await;
+    let world = key_world_with(vec![relay.url.clone()]).await;
+    let (pat, nobody) = (key(71), key(72));
+    relay.put(pat.sign(
+        100,
+        0,
+        Vec::new(),
+        json!({"name": "pat", "display_name": "Pat Verse"}).to_string(),
+    ));
+    let mut anyone = Browser::default();
+    let (status, names) = call(
+        &world,
+        &mut anyone,
+        "GET",
+        &format!(
+            "/verse/names?keys={},{},not-a-key",
+            pat.pubkey(),
+            crate::profiles::npub(nobody.pubkey())
+        ),
+        None,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(names["names"][pat.pubkey()]["name"], "Pat Verse");
+    assert!(names["names"].get(nobody.pubkey()).is_none());
+    let verse = anyone.get(&world, "/verse").await;
+    assert_eq!(verse.status, StatusCode::OK);
+    for page in ["/", "/home", "/lander10", "/explore"] {
+        let body = anyone.get(&world, page).await.body;
+        assert!(!body.contains("everglade"), "{page} loads Verse");
+    }
+}
