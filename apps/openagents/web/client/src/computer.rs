@@ -175,14 +175,29 @@ impl Key {
     }
 }
 
-/// A call waiting for its answer: one value, or a stream's items until it
-/// ends (`{id, item}` frames, then `{id, done: true}`).
-enum Waiting {
-    Once(oneshot::Sender<Result<Value>>),
-    Items(mpsc::UnboundedSender<Result<Value>>),
-}
+use crate::replies::{self, Reply};
+type Pending = Rc<RefCell<HashMap<u64, Reply>>>;
 
-type Pending = Rc<RefCell<HashMap<u64, Waiting>>>;
+/// Dropping a request cancels its host task, including a stream owner.
+pub struct Subscription {
+    pub items: mpsc::Receiver<Result<Value>>,
+    id: u64,
+    socket: web_sys::WebSocket,
+    pending: Pending,
+}
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        self.pending.borrow_mut().remove(&self.id);
+        if let Ok(payload) = serde_json::to_vec(&json!({"id": self.id, "cancel": true})) {
+            let _ = send(&self.socket, &payload);
+        }
+    }
+}
+fn send(socket: &web_sys::WebSocket, payload: &[u8]) -> Result<()> {
+    let frame = device_frame::encode(&DeviceFrameHeader::new(RPC_KIND, RPC_KIND), payload)
+        .map_err(|e| anyhow!(e))?;
+    socket.send_with_u8_array(&frame).map_err(js)
+}
 
 /// One open device-room connection to a computer.
 pub struct Computer {
@@ -202,16 +217,7 @@ impl Drop for Computer {
 }
 
 fn fail_all(pending: &Pending, message: &str) {
-    for (_, waiting) in pending.borrow_mut().drain() {
-        match waiting {
-            Waiting::Once(tx) => {
-                let _ = tx.send(Err(anyhow!("{message}")));
-            }
-            Waiting::Items(tx) => {
-                let _ = tx.unbounded_send(Err(anyhow!("{message}")));
-            }
-        }
-    }
+    replies::fail_all(&mut pending.borrow_mut(), message);
 }
 
 impl Computer {
@@ -235,6 +241,7 @@ impl Computer {
         };
         let on_message = {
             let pending = pending.clone();
+            let socket = socket.clone();
             Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |event: web_sys::MessageEvent| {
                 let Ok(buffer) = event.data().dyn_into::<js_sys::ArrayBuffer>() else {
                     return;
@@ -263,37 +270,11 @@ impl Computer {
                 let Ok(frame) = serde_json::from_slice::<Value>(&payload) else {
                     return;
                 };
-                let Some(id) = frame["id"].as_u64() else {
-                    return;
-                };
-                let error = frame
-                    .get("err")
-                    .and_then(Value::as_str)
-                    .map(|error| anyhow!("{}", error.strip_prefix("failed: ").unwrap_or(error)));
-                let mut pending = pending.borrow_mut();
-                match pending.get(&id) {
-                    None => {}
-                    Some(Waiting::Items(tx)) => {
-                        if let Some(item) = frame.get("item") {
-                            if tx.unbounded_send(Ok(item.clone())).is_err() {
-                                pending.remove(&id);
-                            }
-                        } else if let Some(error) = error {
-                            let _ = tx.unbounded_send(Err(error));
-                            pending.remove(&id);
-                        } else if frame["done"] == true {
-                            pending.remove(&id);
-                        }
-                    }
-                    Some(Waiting::Once(_)) => {
-                        let Some(Waiting::Once(tx)) = pending.remove(&id) else {
-                            return;
-                        };
-                        let _ = tx.send(match error {
-                            Some(error) => Err(error),
-                            None => Ok(frame.get("ok").cloned().unwrap_or(Value::Null)),
-                        });
-                    }
+                if let Some(id) = replies::route(&mut pending.borrow_mut(), &frame) {
+                    let _ = send(
+                        &socket,
+                        &serde_json::to_vec(&json!({"id":id,"cancel":true})).unwrap(),
+                    );
                 }
             })
         };
@@ -323,47 +304,57 @@ impl Computer {
         })
     }
 
-    fn next_id(&self) -> u64 {
-        let mut next = self.next.borrow_mut();
-        *next += 1;
-        *next
-    }
-
-    fn send(&self, frame: &Value) -> Result<()> {
-        let payload = serde_json::to_vec(frame)?;
-        let frame = device_frame::encode(&DeviceFrameHeader::new(RPC_KIND, RPC_KIND), &payload)
-            .map_err(|e| anyhow!(e))?;
-        self.socket.send_with_u8_array(&frame).map_err(js)
-    }
-
     /// One host RPC call.
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
-        let id = self.next_id();
+        let id = {
+            let mut next = self.next.borrow_mut();
+            *next += 1;
+            *next
+        };
+        let payload = serde_json::to_vec(&json!({"id": id, "method": method, "params": params}))?;
         let (tx, rx) = oneshot::channel();
-        self.pending.borrow_mut().insert(id, Waiting::Once(tx));
-        if let Err(error) = self.send(&json!({"id": id, "method": method, "params": params})) {
-            self.pending.borrow_mut().remove(&id);
-            return Err(error);
-        }
+        self.pending.borrow_mut().insert(id, Reply::Value(tx));
+        // The guard removes a pending reply and cancels the host on timeout
+        // or when its caller leaves before the reply arrives.
+        let (_tx, items) = mpsc::channel(1);
+        let _guard = Subscription {
+            items,
+            id,
+            socket: self.socket.clone(),
+            pending: self.pending.clone(),
+        };
+        send(&self.socket, &payload)?;
         rx.await
             .map_err(|_| anyhow!("The connection to this computer closed."))?
     }
 
-    /// A streaming host RPC call (`WatchQueue`, `WatchWorkspaceFiles`, ...):
-    /// its items until the computer ends it. Dropping the [`Watch`] tells
-    /// the computer to stop.
-    pub fn watch(self: &Rc<Self>, method: &str, params: Value) -> Result<Watch> {
-        let id = self.next_id();
-        let (tx, rx) = mpsc::unbounded();
-        self.pending.borrow_mut().insert(id, Waiting::Items(tx));
-        if let Err(error) = self.send(&json!({"id": id, "method": method, "params": params})) {
-            self.pending.borrow_mut().remove(&id);
-            return Err(error);
-        }
-        Ok(Watch {
-            computer: self.clone(),
+    /// An ephemeral stream. Keep the returned owner until the call ends.
+    pub fn subscribe(&self, method: &str, params: Value) -> Result<Subscription> {
+        let id = {
+            let mut next = self.next.borrow_mut();
+            *next += 1;
+            *next
+        };
+        let (tx, items) = mpsc::channel(64);
+        self.pending.borrow_mut().insert(id, Reply::Stream(tx));
+        let subscription = Subscription {
+            items,
             id,
-            items: rx,
+            socket: self.socket.clone(),
+            pending: self.pending.clone(),
+        };
+        send(
+            &self.socket,
+            &serde_json::to_vec(&json!({"id":id,"method":method,"params":params}))?,
+        )?;
+        Ok(subscription)
+    }
+
+    /// A stream from a computer, cancelled when the caller drops it.
+    pub fn watch(self: &Rc<Self>, method: &str, params: Value) -> Result<Watch> {
+        Ok(Watch {
+            subscription: self.subscribe(method, params)?,
+            _computer: self.clone(),
         })
     }
 
@@ -418,33 +409,16 @@ impl Computer {
 /// A stream from [`Computer::watch`]. Each item is the computer's JSON, or
 /// the error that ended it.
 pub struct Watch {
-    computer: Rc<Computer>,
-    id: u64,
-    items: mpsc::UnboundedReceiver<Result<Value>>,
+    subscription: Subscription,
+    _computer: Rc<Computer>,
 }
-
 impl futures::Stream for Watch {
     type Item = Result<Value>;
-
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        std::pin::Pin::new(&mut self.items).poll_next(cx)
-    }
-}
-
-impl Drop for Watch {
-    fn drop(&mut self) {
-        if self
-            .computer
-            .pending
-            .borrow_mut()
-            .remove(&self.id)
-            .is_some()
-        {
-            let _ = self.computer.send(&json!({"id": self.id, "cancel": true}));
-        }
+        std::pin::Pin::new(&mut self.subscription.items).poll_next(cx)
     }
 }
 
@@ -497,7 +471,10 @@ pub async fn connect(
     waiting: impl FnOnce(),
 ) -> Result<Rc<Computer>> {
     if let Some(open) = OPEN.with(|open| open.borrow().get(device).cloned()) {
-        return Ok(open);
+        if open.socket.ready_state() == web_sys::WebSocket::OPEN {
+            return Ok(open);
+        }
+        disconnect(device);
     }
     let key = Key::load_or_create().await?;
     let computer = Rc::new(Computer::open(client, device).await?);

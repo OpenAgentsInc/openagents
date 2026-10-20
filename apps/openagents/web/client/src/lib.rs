@@ -39,3 +39,9 @@ pub mod store;
 pub mod registry;
 
 pub use types::*;
+
+#[cfg(any(target_family = "wasm", test))]
+mod replies;
+
+#[cfg(target_family = "wasm")]
+pub mod voice;
