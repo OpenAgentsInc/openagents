@@ -2,7 +2,7 @@
 // It needs WebGPU; without it, the page goes to the regular
 // chat. Otherwise the module and the fonts download together,
 // and the canvas replaces the page's outline once the app has started.
-import init, { launch, paletteShortcut, gpuiRecordedFrame } from "./openagents_web_chat.js";
+import init, { launch, chatShortcut, gpuiRecordedFrame } from "./openagents_web_chat.js";
 
 const FONTS = [
   "Geist.ttf",
@@ -279,14 +279,16 @@ function openFiles() {
       filesReady = false;
     });
 }
-// Other GPUI canvases have their own inputs. Forward an unhandled palette
-// chord to the chat, whose Rust keymap decides whether it is assigned.
+// Other GPUI canvases have their own inputs. Forward an unhandled app
+// shortcut to the chat, whose Rust keymap decides whether it is assigned.
 window.addEventListener("keydown", function (event) {
   if (!chatInput || event.defaultPrevented || event.isComposing || event.repeat) return;
-  if (!(event.ctrlKey || event.metaKey || event.altKey)) return;
-  if (paletteShortcut(event.ctrlKey, event.altKey, event.shiftKey, event.metaKey, event.key)) {
+  if (chatShortcut(event.ctrlKey, event.altKey, event.shiftKey, event.metaKey, event.key)) {
     event.preventDefault();
   }
+});
+window.addEventListener("oa-chat-focus", function () {
+  queueMicrotask(function () { if (chatInput) chatInput.focus(); });
 });
 var paletteFilesWereOpen = false;
 window.addEventListener("oa-palette-open", function () {

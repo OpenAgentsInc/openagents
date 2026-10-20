@@ -271,10 +271,24 @@ fn shortcuts_record_refuse_and_restore() {
     for s in Shortcut::ALL {
         let combo = keymap.get(s);
         assert!(!browser_keeps(combo), "{s:?}");
+        assert_eq!(keymap.shortcut_for(combo), Some(s));
         assert_eq!(keymap.refusal(s, combo, true), None, "{s:?}");
     }
     assert!(browser_keeps("mod-n") && browser_keeps("mod-3") && browser_keeps("ctrl-tab"));
     assert!(browser_keeps("mod-shift-a"));
+    assert_eq!(keymap.shortcut_for("x"), None);
+    for (key, shortcut) in [
+        ("ArrowDown", Shortcut::NextSession),
+        ("ArrowUp", Shortcut::PrevSession),
+    ] {
+        let combo = combo_from_keystroke_on(false, false, true, false, false, key).unwrap();
+        assert_eq!(keymap.shortcut_for(&combo), Some(shortcut));
+    }
+    assert_eq!(
+        combo_from_keystroke_on(true, false, false, false, true, "Meta"),
+        None
+    );
+    assert_eq!(keymap.shortcut_for("mod-shift-a"), None);
     assert_eq!(keymap.get(Shortcut::CommandPalette), "mod-k");
     assert!(
         keymap
@@ -316,6 +330,11 @@ fn shortcuts_record_refuse_and_restore() {
         "mod-alt-k".into(),
     )));
     assert_eq!(prefs.keymap.get(Shortcut::NewSession), "mod-alt-k");
+    assert_eq!(
+        prefs.keymap.shortcut_for("mod-alt-k"),
+        Some(Shortcut::NewSession)
+    );
+    assert_eq!(prefs.keymap.shortcut_for("mod-alt-n"), None);
     let mut remote = Remote::default();
     remote.recording = Some(Shortcut::ToggleFiles);
     let root = page(Page::Shortcuts, &prefs, &remote, &Paints::default());

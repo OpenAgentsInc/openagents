@@ -43,7 +43,7 @@ pub(super) struct Palette {
 }
 
 impl ChatApp {
-    pub(crate) fn palette_key(
+    pub(crate) fn shortcut_key(
         &mut self,
         ctrl: bool,
         alt: bool,
@@ -55,10 +55,13 @@ impl ChatApp {
     ) -> bool {
         let combo =
             shortcuts::combo_from_keystroke_on(self.settings.mac, ctrl, alt, shift, cmd, key);
-        if combo.as_deref() != Some(self.settings.prefs.keymap.get(Shortcut::CommandPalette)) {
+        let Some(shortcut) = combo
+            .as_deref()
+            .and_then(|combo| self.settings.prefs.keymap.shortcut_for(combo))
+        else {
             return false;
-        }
-        self.toggle_palette(window, cx);
+        };
+        self.run_shortcut(shortcut, window, cx);
         true
     }
 
@@ -126,7 +129,7 @@ impl ChatApp {
         self.search_palette(cx);
     }
 
-    fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(p) = self.palette.take() {
             crate::compose::page_event("oa-palette-close", "");
             if let Some(focus) = p.previous_focus {
@@ -365,27 +368,7 @@ impl ChatApp {
                     );
                 }
             }
-            Pick::Action(shortcut) => match shortcut {
-                Shortcut::ToggleSidebar => {
-                    window.dispatch_action(Box::new(super::settings::ToggleSidebar), cx)
-                }
-                Shortcut::ToggleFiles => {
-                    window.dispatch_action(Box::new(super::settings::ToggleFiles), cx)
-                }
-                Shortcut::NewSession => {
-                    window.dispatch_action(Box::new(super::settings::NewSession), cx)
-                }
-                Shortcut::NextSession => {
-                    window.dispatch_action(Box::new(super::settings::NextSession), cx)
-                }
-                Shortcut::PrevSession => {
-                    window.dispatch_action(Box::new(super::settings::PrevSession), cx)
-                }
-                Shortcut::ArchiveSession => {
-                    window.dispatch_action(Box::new(super::settings::ArchiveSession), cx)
-                }
-                Shortcut::CommandPalette => {}
-            },
+            Pick::Action(shortcut) => self.run_shortcut(shortcut, window, cx),
         }
     }
 

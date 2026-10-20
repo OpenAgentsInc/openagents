@@ -104,6 +104,11 @@ impl Keymap {
             .unwrap_or(shortcut.default_combo())
     }
 
+    /// The command assigned to a stored, platform-neutral chord.
+    pub fn shortcut_for(&self, combo: &str) -> Option<Shortcut> {
+        Shortcut::ALL.into_iter().find(|&s| self.get(s) == combo)
+    }
+
     pub fn customized(&self) -> bool {
         Shortcut::ALL
             .into_iter()
@@ -214,6 +219,16 @@ pub fn combo_from_keystroke_on(
     cmd: bool,
     key: &str,
 ) -> Option<String> {
+    // GPUI names arrows without the browser's `Arrow` prefix.
+    let key = match key {
+        "ArrowUp" => "up",
+        "ArrowDown" => "down",
+        "ArrowLeft" => "left",
+        "ArrowRight" => "right",
+        " " => "space",
+        "Meta" => "platform",
+        other => other,
+    };
     let key = key.trim().to_lowercase();
     if key.is_empty()
         || matches!(

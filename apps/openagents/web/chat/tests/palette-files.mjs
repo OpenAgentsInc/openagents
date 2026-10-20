@@ -14,7 +14,7 @@ const context = vm.createContext({
   window: { addEventListener(name, callback) { listeners.set(name, callback); } },
   document: { activeElement: otherInput },
   queueMicrotask(fn) { fn(); },
-  paletteShortcut() { forwarded++; return true; },
+  chatShortcut() { forwarded++; return true; },
 });
 vm.runInContext(source.slice(source.indexOf('var chatInput = null;'), source.indexOf('// A computer chat\'s live transcript')).replaceAll('import.meta.url', '"https://example.test/gpui/build/start.js"'), context);
 context.chatInput = mainInput;
@@ -53,6 +53,8 @@ assert.equal(shown.at(-1), "main");
 emit("oa-palette-close");
 assert.equal(context.filesBox.hidden, false);
 assert.equal(shown.at(-1), "other");
+emit("oa-chat-focus");
+assert.equal(shown.at(-1), "main");
 const key = { ctrlKey: true, key: "k", preventDefault() { this.prevented = true; } };
 listeners.get("keydown")(key);
 assert.equal(key.prevented, true);

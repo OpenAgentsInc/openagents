@@ -33,16 +33,16 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-/// A palette chord from another canvas, such as the file pane. The keymap
+/// An app shortcut from another canvas, such as the file pane. The keymap
 /// stays in Rust; the page only forwards a key the focused canvas did not use.
 #[cfg(target_family = "wasm")]
-#[wasm_bindgen(js_name = paletteShortcut)]
-pub fn palette_shortcut(ctrl: bool, alt: bool, shift: bool, cmd: bool, key: String) -> bool {
+#[wasm_bindgen(js_name = chatShortcut)]
+pub fn chat_shortcut(ctrl: bool, alt: bool, shift: bool, cmd: bool, key: String) -> bool {
     CHAT.with(|chat| {
         chat.borrow().as_ref().is_some_and(|(window, cx)| {
             window
                 .update(&mut cx.clone(), |chat, window, cx| {
-                    chat.palette_key(ctrl, alt, shift, cmd, &key, window, cx)
+                    chat.shortcut_key(ctrl, alt, shift, cmd, &key, window, cx)
                 })
                 .unwrap_or(false)
         })
