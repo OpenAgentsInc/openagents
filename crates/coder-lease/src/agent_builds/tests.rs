@@ -25,6 +25,33 @@ impl Machine {
     fn new() -> Machine {
         let dir = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        // NixOS keeps shell utilities outside /usr/bin and /bin. Include
+        // only these tools so a fixture never finds the real openagents.
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        for name in [
+            "awk",
+            "basename",
+            "cksum",
+            "df",
+            "dirname",
+            "git",
+            "mkdir",
+            "mv",
+            "sed",
+            "shasum",
+            "sha256sum",
+            "touch",
+            "tr",
+            "uname",
+        ] {
+            if let Some(program) = std::env::split_paths(&path)
+                .map(|dir| dir.join(name))
+                .find(|program| program.is_file())
+            {
+                std::os::unix::fs::symlink(program, root.join("real").join(name)).unwrap();
+            }
+        }
         script(
             &root.join("real/cargo"),
             "#!/bin/sh\necho \"real $* incremental=${CARGO_INCREMENTAL:-} build_dir=${CARGO_BUILD_BUILD_DIR:-} target=${CARGO_TARGET_DIR:-}\"\n",

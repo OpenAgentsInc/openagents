@@ -26,6 +26,12 @@ fn scratch() -> Scratch {
     coder_lease::shim::install(&shims, true).unwrap();
     let tools = dir.path().join("tools");
     std::fs::create_dir(&tools).unwrap();
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let dirname = std::env::split_paths(&path)
+        .map(|dir| dir.join("dirname"))
+        .find(|program| program.is_file())
+        .expect("dirname on PATH");
+    std::os::unix::fs::symlink(dirname, tools.join("dirname")).unwrap();
     script(
         &tools.join("cargo"),
         "echo \"real cargo $* leases=${OPENAGENTS_LEASES:-none} incremental=${CARGO_INCREMENTAL:-}\"",

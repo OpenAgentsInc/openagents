@@ -452,7 +452,7 @@ mod tests {
 
     #[test]
     fn watchdog_kills_its_process_group_and_reaps_the_worker() {
-        let mut command = Command::new("/bin/cat");
+        let mut command = Command::new("cat");
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::null())

@@ -30,6 +30,29 @@ impl Fixture {
         for directory in [&root, &home.join(".cargo/bin"), &bin] {
             fs::create_dir_all(directory).unwrap();
         }
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        for name in [
+            "awk",
+            "basename",
+            "bash",
+            "cat",
+            "dirname",
+            "env",
+            "grep",
+            "mkdir",
+            "mv",
+            "sed",
+            "shasum",
+            "sha256sum",
+            "touch",
+        ] {
+            if let Some(program) = std::env::split_paths(&path)
+                .map(|dir| dir.join(name))
+                .find(|program| program.is_file())
+            {
+                std::os::unix::fs::symlink(program, home.join(".cargo/bin").join(name)).unwrap();
+            }
+        }
         fs::create_dir_all(root.join("scripts/ios")).unwrap();
         fs::write(
             root.join("Cargo.toml"),
@@ -142,7 +165,7 @@ esac
         );
         let script = self.root.join(relative_script);
         fs::write(&script, source).unwrap();
-        let mut command = self.command("/bin/bash");
+        let mut command = self.command("bash");
         command.arg(script).current_dir(caller);
         if let Some(custom_target) = custom_target {
             command.env("CARGO_TARGET_DIR", custom_target);

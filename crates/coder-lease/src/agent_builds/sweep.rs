@@ -488,32 +488,39 @@ pub trait Host {
     }
 }
 
-/// This Mac: `ps` and `lsof`, `statvfs`, and the clock.
+/// This machine: `ps`, `/proc` on Linux or `lsof` on macOS, and the clock.
 pub struct System;
 
 impl Host for System {
     fn processes(&self) -> Result<Vec<Proc>, String> {
-        let run = |program: &str, args: &[&str]| -> Result<String, String> {
-            bounded_output(program, args, Duration::from_secs(10))
-        };
-        let plain = run("ps", &["-axww", "-o", "pid=,command="])?;
-        if plain.trim().is_empty() {
-            return Err("ps listed nothing".into());
+        #[cfg(target_os = "linux")]
+        {
+            linux_processes("ps", Path::new("/proc"))
         }
-        let with_env = run("ps", &["-axww", "-E", "-o", "pid=,command="])?;
-        let mut procs = parse_ps(&plain, &with_env);
-        if !procs.is_empty() {
-            let pids: Vec<String> = procs.iter().map(|proc| proc.pid.to_string()).collect();
-            // `-a` ANDs the filters: only these processes' working
-            // directories. Without it lsof ORs them.
-            let lsof = run("lsof", &["-a", "-d", "cwd", "-p", &pids.join(","), "-Fpn"])?;
-            add_cwds(&mut procs, &lsof);
-            // lsof returns 1 when one of the short-lived rustc processes has
-            // already exited. Keep valid cwd rows and discard only dead PIDs;
-            // a live process with an unreadable cwd still protects all targets.
-            finish_processes(&mut procs, process_alive)?;
+        #[cfg(not(target_os = "linux"))]
+        {
+            let run = |program: &str, args: &[&str]| -> Result<String, String> {
+                bounded_output(program, args, Duration::from_secs(10))
+            };
+            let plain = run("ps", &["-axww", "-o", "pid=,command="])?;
+            if plain.trim().is_empty() {
+                return Err("ps listed nothing".into());
+            }
+            let with_env = run("ps", &["-axww", "-E", "-o", "pid=,command="])?;
+            let mut procs = parse_ps(&plain, &with_env);
+            if !procs.is_empty() {
+                let pids: Vec<String> = procs.iter().map(|proc| proc.pid.to_string()).collect();
+                // `-a` ANDs the filters: only these processes' working
+                // directories. Without it lsof ORs them.
+                let lsof = run("lsof", &["-a", "-d", "cwd", "-p", &pids.join(","), "-Fpn"])?;
+                add_cwds(&mut procs, &lsof);
+                // lsof returns 1 when one of the short-lived rustc processes has
+                // already exited. Keep valid cwd rows and discard only dead PIDs;
+                // a live process with an unreadable cwd still protects all targets.
+                finish_processes(&mut procs, process_alive)?;
+            }
+            Ok(procs)
         }
-        Ok(procs)
     }
 
     fn free(&self, path: &Path) -> std::io::Result<u64> {
@@ -542,6 +549,59 @@ impl Host for System {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn linux_processes(ps: &str, proc_root: &Path) -> Result<Vec<Proc>, String> {
+    use std::os::unix::ffi::OsStringExt as _;
+
+    let plain = bounded_output(
+        ps,
+        &["-e", "-ww", "-o", "pid=,args="],
+        Duration::from_secs(10),
+    )?;
+    if plain.trim().is_empty() {
+        return Err("ps listed nothing".into());
+    }
+    let mut found = Vec::new();
+    for mut process in parse_ps(&plain, "") {
+        let dir = proc_root.join(process.pid.to_string());
+        let metadata = || -> std::io::Result<_> {
+            Ok((
+                std::fs::read_link(dir.join("cwd"))?,
+                std::fs::read(dir.join("environ"))?,
+                std::fs::read(dir.join("cmdline"))?,
+            ))
+        };
+        let (cwd, env, cmdline) = match metadata() {
+            Ok(metadata) => metadata,
+            Err(_) if !process_alive(process.pid) => continue,
+            Err(error) => {
+                return Err(format!(
+                    "a live build process ({}) has unreadable /proc metadata: {error}",
+                    process.pid
+                ));
+            }
+        };
+        let variable = |name: &[u8]| {
+            env.split(|byte| *byte == 0)
+                .filter_map(|entry| entry.strip_prefix(name))
+                .next_back()
+                .filter(|value| !value.is_empty())
+                .map(|value| PathBuf::from(std::ffi::OsString::from_vec(value.to_vec())))
+        };
+        process.target_dir = variable(b"CARGO_TARGET_DIR=");
+        process.build_dir = variable(b"CARGO_BUILD_BUILD_DIR=");
+        process.cwd = Some(cwd);
+        process.args = cmdline
+            .split(|byte| *byte == 0)
+            .filter(|arg| !arg.is_empty())
+            .map(|arg| String::from_utf8_lossy(arg).into_owned())
+            .collect();
+        found.push(process);
+    }
+    Ok(found)
+}
+
+#[cfg(any(test, not(target_os = "linux")))]
 fn finish_processes(procs: &mut Vec<Proc>, alive: impl Fn(u32) -> bool) -> Result<(), String> {
     procs.retain(|process| process.cwd.is_some() || alive(process.pid));
     if procs.iter().any(|process| process.cwd.is_none()) {
@@ -552,6 +612,15 @@ fn finish_processes(procs: &mut Vec<Proc>, alive: impl Fn(u32) -> bool) -> Resul
 
 #[cfg(unix)]
 fn process_alive(pid: u32) -> bool {
+    // Linux keeps a zombie's PID until its parent reaps it, but the exited
+    // builder no longer has a working directory or holds any target.
+    #[cfg(target_os = "linux")]
+    if std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+        stat.rsplit_once(") ")
+            .is_some_and(|(_, state)| state.starts_with("Z ") || state.starts_with("X "))
+    }) {
+        return false;
+    }
     let Ok(pid) = libc::pid_t::try_from(pid) else {
         return true;
     };

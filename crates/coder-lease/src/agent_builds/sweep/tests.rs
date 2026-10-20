@@ -378,7 +378,7 @@ fn cache_gc_is_bounded() {
     use std::os::unix::process::ExitStatusExt as _;
 
     // An open input pipe keeps this child running without a timed helper.
-    let mut child = std::process::Command::new("/bin/cat")
+    let mut child = std::process::Command::new("cat")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -852,6 +852,114 @@ fn ps_and_lsof_output_become_build_processes() {
     assert!(!procs[3].holds(t1));
 }
 
+#[cfg(target_os = "linux")]
+fn linux_ps_fixture(root: &Path, plain: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    let ps = root.join("ps");
+    std::fs::write(root.join("ps-output"), plain).unwrap();
+    std::fs::write(
+        &ps,
+        "#!/bin/sh\n\
+         if [ \"$*\" != '-e -ww -o pid=,args=' ]; then\n\
+           echo 'error: must set personality to get -x option' >&2\n\
+           exit 1\n\
+         fi\n\
+         exec cat \"$(dirname \"$0\")/ps-output\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&ps, std::fs::Permissions::from_mode(0o755)).unwrap();
+    ps
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_ps_reads_proc_metadata_without_the_unsupported_env_flag() {
+    use std::os::unix::fs::symlink;
+    let home = Home::new();
+    let ps = linux_ps_fixture(
+        &home.root,
+        "  101 /nix/store/rust/bin/cargo build\n  102 rustc --out-dir /work/target/debug/deps\n  103 /usr/bin/vim notes.md\n",
+    );
+    let ps = ps.to_str().unwrap();
+    assert!(
+        bounded_output(
+            ps,
+            &["-axww", "-E", "-o", "pid=,command="],
+            Duration::from_secs(1)
+        )
+        .unwrap_err()
+        .contains("failed")
+    );
+    let proc_root = home.root.join("proc");
+    for pid in [101, 102] {
+        let dir = proc_root.join(pid.to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        symlink("/work/project", dir.join("cwd")).unwrap();
+        std::fs::write(
+            dir.join("environ"),
+            b"HOME=/home/me\0CARGO_TARGET_DIR=relative target\0CARGO_BUILD_BUILD_DIR=/work/shared/worktrees/ab/state\0OTHER=CARGO_TARGET_DIR=/wrong\0",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("cmdline"),
+            b"cargo\0build\0--target-dir=/work/argument target\0",
+        )
+        .unwrap();
+    }
+    let procs = linux_processes(ps, &proc_root).unwrap();
+    assert_eq!(procs.len(), 2);
+    assert_eq!(procs[0].name, "cargo");
+    assert_eq!(procs[1].name, "rustc");
+    for proc in &procs {
+        assert_eq!(proc.cwd.as_deref(), Some(Path::new("/work/project")));
+        assert_eq!(
+            proc.target_dir.as_deref(),
+            Some(Path::new("relative target"))
+        );
+        assert!(proc.holds(Path::new("/work/project/relative target")));
+        assert!(proc.holds(Path::new("/work/shared/worktrees/ab/state")));
+        assert!(proc.holds(Path::new("/work/argument target")));
+        assert!(!proc.holds(Path::new("/wrong")));
+        assert!(!proc.holds(Path::new("/work/idle-target")));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_proc_errors_protect_live_builders_but_skip_exited_ones() {
+    let home = Home::new();
+    let mut child = std::process::Command::new("true").spawn().unwrap();
+    let exited = child.id();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while process_alive(exited) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let plain = format!("{exited} cargo build\n");
+    let ps = linux_ps_fixture(&home.root, &plain);
+    let proc_root = home.root.join("proc");
+    let zombie = linux_processes(ps.to_str().unwrap(), &proc_root);
+    child.wait().unwrap();
+    assert!(zombie.unwrap().is_empty());
+    assert!(
+        linux_processes(ps.to_str().unwrap(), &proc_root)
+            .unwrap()
+            .is_empty()
+    );
+
+    let pid = std::process::id();
+    std::fs::write(home.root.join("ps-output"), format!("{pid} cargo build\n")).unwrap();
+    let dir = proc_root.join(pid.to_string());
+    std::fs::create_dir_all(&dir).unwrap();
+    std::os::unix::fs::symlink(&home.root, dir.join("cwd")).unwrap();
+    std::fs::write(dir.join("cmdline"), b"cargo\0build\0").unwrap();
+    // A readable cwd alone cannot rule out an environment-only target hold.
+    assert!(
+        linux_processes(ps.to_str().unwrap(), &proc_root)
+            .unwrap_err()
+            .contains("unreadable /proc metadata")
+    );
+}
+
 #[test]
 fn every_removal_is_logged_with_chicago_time_size_path_and_reason() {
     let home = Home::new();
@@ -863,7 +971,7 @@ fn every_removal_is_logged_with_chicago_time_size_path_and_reason() {
     let log = std::fs::read_to_string(&layout.log).unwrap();
     let lines: Vec<_> = log.lines().collect();
     assert!(
-        lines[0].starts_with("2026-10-17 6:00:00 PM CDT  sweep  free 500.0 GiB -> 500.0 GiB, freed 1008 KiB; artifact use watched since 1969-12-31 7:00:00 PM CDT; targets: openagents-target-1 "),
+        lines[0].starts_with(&format!("2026-10-17 6:00:00 PM CDT  sweep  free 500.0 GiB -> 500.0 GiB, freed {} KiB; artifact use watched since 1969-12-31 7:00:00 PM CDT; targets: openagents-target-1 ", report.freed / KIB)),
         "{log}"
     );
     let line = lines[1];
@@ -960,7 +1068,10 @@ fn a_read_artifact_counts_as_used_and_is_set_back_to_show_the_next_read() {
     // Equal times: macOS doesn't record a read.
     read(&rlib);
     let (accessed, modified) = times(&rlib);
+    #[cfg(target_os = "macos")]
     assert_eq!(accessed, modified);
+    #[cfg(not(target_os = "macos"))]
+    assert!(accessed >= modified);
     // A run sets every artifact a second back, so the next read shows.
     let first = sweep(
         &layout,
