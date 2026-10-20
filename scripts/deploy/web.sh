@@ -483,6 +483,21 @@ if {"coder-serve", "gateway"} <= names:
 if "gateway" in names:
     gw = next(c for c in spec["containers"] if c["name"] == "gateway")
     gw_env = gw.setdefault("env", [])
+    backend = os.environ.get("LIGHTNING_ADDRESS_BACKEND")
+    if backend:
+        from urllib.parse import urlsplit
+        import ipaddress
+        parsed = urlsplit(backend)
+        if not stack_image or parsed.scheme != "http" or not ipaddress.ip_address(parsed.hostname).is_private or parsed.path or parsed.query or parsed.fragment or parsed.username:
+            sys.exit("Lightning addresses need a new stack image and a private HTTP backend address.")
+        additions = [
+            {"name": "OPENAGENTS_LIGHTNING_ADDRESS_BACKEND", "value": backend},
+            {"name": "OPENAGENTS_BREEZ_API_KEY", "valueFrom": {"secretKeyRef": {
+                "name": "openagents-lnurl-breez-api-key", "key": "latest"}}},
+        ]
+        names_to_set = {entry["name"] for entry in additions}
+        gw_env[:] = [entry for entry in gw_env if entry["name"] not in names_to_set] + additions
+        sys.stderr.write("  gateway Lightning address backend configured\n")
     if not any(e["name"] == "SMOKE_SIGNUP_TOKEN" for e in gw_env):
         gw_env.append({"name": "SMOKE_SIGNUP_TOKEN",
                        "valueFrom": {"secretKeyRef": {

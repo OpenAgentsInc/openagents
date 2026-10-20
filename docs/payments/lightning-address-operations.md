@@ -140,3 +140,31 @@ It preserves the received zap JSON string in both the invoice description hash
 and receipt description; reserializing a signed event changes that hash even
 when its Nostr signature remains valid. This is a local public-source patch,
 not a change to customer signatures or the payment validation rules.
+
+## Production host
+
+The production backend uses `oa-lnurl-1` in `openagentsgemini`, zone
+`us-central1-a`, with private address `10.128.0.130`. Only the production and
+staging website egress subnets can reach port 8180. The underlying backend binds
+to loopback on port 8181. Public ports 80 and 443 serve Caddy's certificate
+challenge and the restricted `lnurl-hooks.openagents.com/webhook` route.
+
+The dedicated `lnurl` database and non-administrator login use the existing
+`openagents-production-pg` instance, including its 30 retained backups and
+seven-day point-in-time recovery. The existing `oa-vertex-inference` runtime
+identity reads `openagents-lnurl-runtime`; the gateway reads the separate
+`openagents-lnurl-breez-api-key` secret. No wallet seed is stored in either.
+
+For initial provisioning, start a Cloud SQL Auth Proxy on localhost port 15434
+using the automation account, then run
+`python3 deploy/lightning-address/provision.py`. The script reads the existing
+Cloudflare DNS credential without printing it. Install `startup.sh` as the
+host's startup script and set its `lnurl-image` metadata to the immutable
+Artifact Registry digest built by `cloudbuild.yaml`.
+
+To activate receiving in a production candidate, set
+`LIGHTNING_ADDRESS_BACKEND=http://10.128.0.130:8180` when running
+`scripts/deploy/web.sh promote --stack STACK_DIGEST WEB_DIGEST`, then use the
+normal candidate checks and traffic shift. Later promotions preserve the
+configuration. Staging receiving stays off because staging accounts must not
+register names in the production payment namespace.
