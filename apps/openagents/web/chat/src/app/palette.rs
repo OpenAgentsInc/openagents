@@ -43,11 +43,34 @@ pub(super) struct Palette {
 }
 
 impl ChatApp {
+    pub(crate) fn palette_key(
+        &mut self,
+        ctrl: bool,
+        alt: bool,
+        shift: bool,
+        cmd: bool,
+        key: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let combo =
+            shortcuts::combo_from_keystroke_on(self.settings.mac, ctrl, alt, shift, cmd, key);
+        if combo.as_deref() != Some(self.settings.prefs.keymap.get(Shortcut::CommandPalette)) {
+            return false;
+        }
+        self.toggle_palette(window, cx);
+        true
+    }
+
     pub(super) fn toggle_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.palette.is_some() {
             self.close_palette(window, cx);
             return;
         }
+        if self.settings.page.is_some() {
+            self.close_settings(cx);
+        }
+        crate::compose::page_event("oa-palette-open", "");
         let search = cx.new(|cx| {
             let mut input = TextInput::new("Search actions, chats, files and content", cx);
             input.set_completing(true);
@@ -105,6 +128,7 @@ impl ChatApp {
 
     fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(p) = self.palette.take() {
+            crate::compose::page_event("oa-palette-close", "");
             if let Some(focus) = p.previous_focus {
                 window.focus(&focus, cx);
             }
