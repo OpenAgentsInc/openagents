@@ -1,9 +1,10 @@
 //! What a client-media call shows: phase, live caption, levels and the orb's
 //! state, reduced from the owner stream. Renderer-agnostic so every platform
 //! presents the orchestrator the same way.
-use std::time::{Duration, Instant};
 use openagents_orb::OrbState;
 use openagents_proto::voice::*;
+use std::time::Duration;
+use web_time::Instant;
 
 /// The orb for a voice phase and host snapshot. Speaking wins over work and
 /// mute, so a muted user still sees the assistant answer.

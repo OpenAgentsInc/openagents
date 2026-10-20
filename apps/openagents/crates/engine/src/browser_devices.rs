@@ -38,6 +38,8 @@ pub const MAX_WAITING: usize = 8;
 
 /// The engine methods a browser may call.
 pub const ALLOWED: &[&str] = &[
+    methods::VOICE_CAPABILITIES_V2,
+    methods::GET_VOICE_AGENT,
     methods::ENGINE_INFO,
     methods::LIST_HARNESSES,
     methods::LIST_MODELS,
@@ -89,6 +91,14 @@ pub const ALLOWED: &[&str] = &[
 /// The engine methods a browser may call under its grant's run right
 /// ([`Right::Operate`]).
 pub const OPERATE: &[&str] = &[
+    methods::CANCEL_VOICE_ATTEMPT_V2,
+    methods::STOP_VOICE_V2,
+    methods::UPDATE_VOICE_CONTEXT_V2,
+    methods::REPORT_VOICE_MEDIA_V2,
+    methods::CONFIRM_VOICE_MEDIA_V2,
+    methods::NEGOTIATE_VOICE_V2,
+    methods::OWN_VOICE_V2,
+    methods::PREPARE_VOICE_V2,
     // The queue panel and the question wizard (#12268).
     methods::QUEUE_MESSAGE,
     methods::UPDATE_QUEUED_MESSAGE,
@@ -139,12 +149,32 @@ pub const OPERATE: &[&str] = &[
     methods::FORGET_AGENT_ACCOUNT,
 ];
 
+fn voice_method(method: &str) -> bool {
+    matches!(
+        method,
+        methods::VOICE_CAPABILITIES_V2
+            | methods::GET_VOICE_AGENT
+            | methods::PREPARE_VOICE_V2
+            | methods::OWN_VOICE_V2
+            | methods::NEGOTIATE_VOICE_V2
+            | methods::CONFIRM_VOICE_MEDIA_V2
+            | methods::REPORT_VOICE_MEDIA_V2
+            | methods::UPDATE_VOICE_CONTEXT_V2
+            | methods::STOP_VOICE_V2
+            | methods::CANCEL_VOICE_ATTEMPT_V2
+    )
+}
+
 /// Parameters a browser never sets: forwarding to another computer under
 /// this one's authority (`targetDeviceId`), an agent's grants
 /// (`originChatId`), attachments staged on this computer (`transfers`,
 /// `attachments`), and the run's OpenAgents tools, which this engine
-/// injects itself (`command.request.mcp`).
+/// injects itself (`command.request.mcp`). Client-media voice keeps its
+/// envelope; the connection checks its target before dispatch.
 pub fn sanitize(method: &str, mut params: serde_json::Value) -> serde_json::Value {
+    if voice_method(method) {
+        return params;
+    }
     if let Some(map) = params.as_object_mut() {
         map.remove("targetDeviceId");
         map.remove("originChatId");
@@ -545,6 +575,15 @@ impl RpcService for Connection {
                 if !right.is_some_and(|right| Rights::browser().contains(right)) {
                     return Err(RpcError::Failed(
                         "A browser can't do that on this computer yet.".into(),
+                    ));
+                }
+                if voice_method(method)
+                    && value
+                        .get("targetDeviceId")
+                        .is_some_and(|id| id.as_str() != Some(&browsers.device))
+                {
+                    return Err(RpcError::Failed(
+                        "Choose this computer to use it from this browser.".into(),
                     ));
                 }
                 browsers.inner.handle(method, sanitize(method, value)).await

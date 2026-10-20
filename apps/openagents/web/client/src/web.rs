@@ -43,6 +43,10 @@ impl Client {
         Self { csrf: csrf.into() }
     }
 
+    pub async fn voice_agent(&self) -> Result<serde_json::Value> {
+        self.get("/v1/voice-agent").await
+    }
+
     pub async fn threads(&self) -> Result<ThreadList> {
         self.get("/v1/threads").await
     }
