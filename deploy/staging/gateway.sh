@@ -348,6 +348,15 @@ cat > "$private/gateway.json" << EOF
 }
 EOF
 
+# The backend is reachable only from the website egress subnets.
+if [ -n "${OPENAGENTS_LIGHTNING_ADDRESS_BACKEND:-}" ]; then
+    : "${OPENAGENTS_BREEZ_API_KEY:?Lightning addresses need the Breez validation key}"
+    export OPENAGENTS_LIGHTNING_ADDRESS_CONFIG="$private/lightning-address.json"
+    cat > "$OPENAGENTS_LIGHTNING_ADDRESS_CONFIG" << EOF
+{"backend":"$OPENAGENTS_LIGHTNING_ADDRESS_BACKEND","public_origin":"https://openagents.com","min_msat":1000,"max_msat":100000000}
+EOF
+fi
+
 cd "$state/gateway"
 gateway --config "$private/gateway.json" &
 child=$!
