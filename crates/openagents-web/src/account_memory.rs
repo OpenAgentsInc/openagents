@@ -645,10 +645,9 @@ async fn memory_page(
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
-    let body = html! { (body) (crate::settings_memory_schedules::entry(&app, &headers, query.as_deref(), "memory")) };
-    let mut response = page(&headers, service, &viewer, "Memory", PAGE, body);
-    crate::pages::gpui_chat::choice(&headers, query.as_deref()).remember(&app, &mut response);
-    response
+    let body = html! { (body) (crate::settings_memory_schedules::entry(&app, &headers, query.as_deref(), &viewer, "memory")) };
+    let response = page(&headers, service, &viewer, "Memory", PAGE, body);
+    crate::settings_memory_schedules::finish(&app, &headers, query.as_deref(), response)
 }
 
 /// The note's fields, filled in for an edit or empty for a new one.

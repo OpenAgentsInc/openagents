@@ -1131,10 +1131,9 @@ async fn schedules_page(
             (&tickets[2].0, &tickets[2].1),
         ],
     );
-    let body = html! { (body) (crate::settings_memory_schedules::entry(&app, &headers, query.as_deref(), "schedules")) };
-    let mut response = page(&headers, service, &viewer, "Scheduled prompts", PAGE, body);
-    crate::pages::gpui_chat::choice(&headers, query.as_deref()).remember(&app, &mut response);
-    response
+    let body = html! { (body) (crate::settings_memory_schedules::entry(&app, &headers, query.as_deref(), &viewer, "schedules")) };
+    let response = page(&headers, service, &viewer, "Scheduled prompts", PAGE, body);
+    crate::settings_memory_schedules::finish(&app, &headers, query.as_deref(), response)
 }
 
 /// The intervals the page offers, in seconds and words.

@@ -1,20 +1,12 @@
-//! Progressive GPUI entry for account memory and schedules. The HTML forms
-//! remain usable without JavaScript or a WebGPU adapter.
-use crate::App;
+//! Progressive GPUI entry for memory and schedules. The HTML forms stay
+//! usable without JavaScript or a WebGPU adapter; chat is never loaded here.
+use crate::{App, cloud::session::Viewer};
 use axum::http::{HeaderMap, header};
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use maud::{Markup, html};
 
 const SCRIPT: &str = "/settings/account-prompts.js";
-const SOURCE: &str = r#"
-const page = new URL(import.meta.url).searchParams.get('page');
-if ((page === 'memory' || page === 'schedules') && navigator.gpu) {
-  navigator.gpu.requestAdapter().then(adapter => {
-    if (adapter) location.replace('/gpui?ui=gpui&settings=' + page);
-  }).catch(() => {});
-}
-"#;
 
 pub(crate) fn routes() -> axum::Router<App> {
     axum::Router::new().route(
@@ -22,28 +14,75 @@ pub(crate) fn routes() -> axum::Router<App> {
         get(|| async {
             (
                 [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
-                SOURCE,
+                include_str!("../static/gpui-memory-schedules.js"),
             )
                 .into_response()
         }),
     )
 }
 
-pub(crate) fn entry(app: &App, headers: &HeaderMap, query: Option<&str>, page: &str) -> Markup {
-    if crate::pages::gpui_chat::choice(headers, query).serves(app, headers) {
-        html! { script type="module" src=(format!("{SCRIPT}?page={page}")) {} }
-    } else {
-        html! {}
+pub(crate) fn entry(
+    app: &App,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    viewer: &Viewer,
+    page: &str,
+) -> Markup {
+    if !crate::pages::gpui_chat::choice(headers, query).serves(app, headers) {
+        return html! {};
+    }
+    let Some(directory) = app
+        .config
+        .gpui_chat
+        .as_deref()
+        .filter(|d| d.join("openagents_web_settings.js").is_file())
+    else {
+        return html! {};
+    };
+    let url = |file| crate::pages::gpui_build::url(Some(directory), "/gpui/build", file);
+    let fonts: Vec<_> = [
+        "Geist.ttf",
+        "Geist-Italic.ttf",
+        "Geist-Medium.ttf",
+        "Geist-SemiBold.ttf",
+        "Geist-SemiBoldItalic.ttf",
+        "Geist-Bold.ttf",
+        "Geist-BoldItalic.ttf",
+        "GeistMono.ttf",
+        "GeistMono-Medium.ttf",
+        "GeistMono-SemiBold.ttf",
+    ]
+    .iter()
+    .map(|f| format!("/gpui/build/fonts/{f}"))
+    .collect();
+    let owner = crate::chat_store::account_owner(&viewer.account_id);
+    html! {
+        meta name="openagents-csrf" content=(crate::pages::chat::csrf(app, &owner));
+        meta name="openagents-features" content=(app.config.features.meta());
+        script #gpui-account-prompts-entry type="module" src=(SCRIPT)
+            data-page=(page) data-module=(url("openagents_web_settings.js"))
+            data-wasm=(url("openagents_web_settings_bg.wasm")) data-fonts=(serde_json::to_string(&fonts).unwrap_or_default()) {}
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn enhancement_keeps_the_html_form_as_fallback() {
-        assert!(SOURCE.contains("navigator.gpu.requestAdapter()"));
-        assert!(SOURCE.contains("/gpui?ui=gpui&settings="));
-        assert!(!SOURCE.contains("document.body"));
+pub(crate) fn finish(
+    app: &App,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    mut response: Response,
+) -> Response {
+    crate::pages::gpui_chat::choice(headers, query).remember(app, &mut response);
+    if let Some(policy) = response
+        .headers()
+        .get(header::CONTENT_SECURITY_POLICY)
+        .and_then(|v| v.to_str().ok())
+    {
+        let policy = policy.replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'");
+        if let Ok(policy) = policy.parse() {
+            response
+                .headers_mut()
+                .insert(header::CONTENT_SECURITY_POLICY, policy);
+        }
     }
+    response
 }
