@@ -1391,6 +1391,16 @@ The build script writes them, and the capture tool, to
   arrived, and keeps the recorded frame in Cache Storage for the next
   visit. `web/first-frame-paint` draws polychrome sprites too.
 
+### Browser-drawn text (#12299)
+
+- `web/gpui-web`'s `browser-text` feature: a `PlatformTextSystem`
+  (`src/text.rs`) that registers the app's fonts as `FontFace`s, shapes by
+  grapheme cluster with Canvas `measureText`, and rasterizes glyphs with
+  `fillText` on an `OffscreenCanvas`, in place of cosmic-text and swash.
+  Grayscale text only; no kerning between clusters. The chat, the demo,
+  and the landers' chat use it; AgentGraph keeps cosmic-text for its
+  build-time first frame.
+
 ### Shared font files (#12233)
 
 - `web/gpui-web`'s `WebFonts::from_js` takes the faces a page fetched, one

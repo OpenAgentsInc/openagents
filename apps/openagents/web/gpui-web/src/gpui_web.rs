@@ -9,6 +9,8 @@ mod keyboard;
 mod logging;
 mod platform;
 mod ready;
+#[cfg(feature = "browser-text")]
+mod text;
 mod window;
 
 pub use dispatcher::WebDispatcher;
@@ -21,4 +23,6 @@ pub use platform::{WebFonts, WebPlatform};
 pub use ready::announce_ready;
 #[cfg(feature = "first-frame")]
 pub use ready::recorded_frame;
+#[cfg(feature = "browser-text")]
+pub use text::BrowserTextSystem;
 pub use window::WebWindow;

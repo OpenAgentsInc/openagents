@@ -79,6 +79,11 @@ impl WebPlatform {
         ));
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
         let foreground_executor = ForegroundExecutor::new(dispatcher);
+        // The browser's own shaping and glyphs (`browser-text`, #12299), or
+        // cosmic-text with the app's fonts.
+        #[cfg(feature = "browser-text")]
+        let text_system = Arc::new(crate::text::BrowserTextSystem::new(fonts.fallback_family));
+        #[cfg(not(feature = "browser-text"))]
         let text_system = Arc::new(gpui_wgpu::CosmicTextSystem::new_without_system_fonts(
             fonts.fallback_family,
         ));
@@ -129,6 +134,13 @@ impl Platform for WebPlatform {
     fn run(&self, on_finish_launching: Box<dyn 'static + FnOnce()>) {
         let wgpu_context = self.wgpu_context.clone();
         wasm_bindgen_futures::spawn_local(async move {
+            // The page's fonts must be ready before anything measures text.
+            #[cfg(feature = "browser-text")]
+            if let Err(error) =
+                wasm_bindgen_futures::JsFuture::from(crate::text::fonts_loaded()).await
+            {
+                log::error!("a font didn't load: {error:?}");
+            }
             match WgpuContext::new_web().await {
                 Ok(context) => {
                     log::info!("WebGPU context initialized successfully");

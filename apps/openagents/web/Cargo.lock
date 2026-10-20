@@ -4080,6 +4080,7 @@ dependencies = [
  "parking_lot",
  "raw-window-handle",
  "smallvec",
+ "unicode-segmentation",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",

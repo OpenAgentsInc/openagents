@@ -28,7 +28,8 @@ serde_json = "1"
 web-time.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-openagents-gpui-web.workspace = true
+# The browser shapes and draws text (#12299): no cosmic-text or swash.
+openagents-gpui-web = { workspace = true, features = ["browser-text"] }
 wasm-bindgen.workspace = true
 console_error_panic_hook = "0.1.7"
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }

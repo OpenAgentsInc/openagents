@@ -25,7 +25,8 @@ serde_json = "1"
 web-time.workspace = true
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-openagents-gpui-web = { workspace = true, features = ["first-frame"] }
+# The browser shapes and draws text (#12299): no cosmic-text or swash.
+openagents-gpui-web = { workspace = true, features = ["first-frame", "browser-text"] }
 wasm-bindgen.workspace = true
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1.7"

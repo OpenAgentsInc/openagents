@@ -37,7 +37,8 @@ oa-copy = { path = "../../../../crates/oa-copy" }
 serde_json = "1"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-openagents-gpui-web.workspace = true
+# The browser shapes and draws text (#12299): no cosmic-text or swash.
+openagents-gpui-web = { workspace = true, features = ["browser-text"] }
 wasm-bindgen.workspace = true
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1.7"

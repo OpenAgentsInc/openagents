@@ -19,6 +19,10 @@ multithreaded = ["dep:wasm_thread"]
 # `openagents-first-frame` scene, which a page keeps and paints before the
 # module on the next visit (`recorded_frame`).
 first-frame = ["dep:openagents-first-frame", "dep:openagents-first-frame-record"]
+# Shape, measure, and draw text with the browser instead of cosmic-text,
+# swash, and the module's own font database (#12299): about 360 KB less
+# with brotli, grayscale text, no kerning between clusters.
+browser-text = ["dep:unicode-segmentation"]
 
 [lib]
 path = "src/gpui_web.rs"
@@ -43,6 +47,7 @@ js-sys = "0.3"
 raw-window-handle.workspace = true
 wasm_thread = { version = "0.3", features = ["es_modules"], optional = true }
 openagents-first-frame = { workspace = true, optional = true }
+unicode-segmentation = { version = "1.10", optional = true }
 openagents-first-frame-record = { workspace = true, optional = true }
 web-sys = { version = "0.3", features = [
     "Blob",
@@ -61,6 +66,13 @@ web-sys = { version = "0.3", features = [
     "Element",
     "Event",
     "EventInit",
+    "FontFace",
+    "FontFaceDescriptors",
+    "FontFaceSet",
+    "ImageData",
+    "OffscreenCanvas",
+    "OffscreenCanvasRenderingContext2d",
+    "TextMetrics",
     "EventTarget",
     "File",
     "FileList",

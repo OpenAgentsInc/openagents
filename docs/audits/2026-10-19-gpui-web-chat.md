@@ -500,6 +500,60 @@ Pixel diff of the snapshot against the app's first frame, loopback:
 | 390 × 844 at 3× | 92 ms | 99.86% | 52.2 dB |
 | 412 × 915 at 2.625× | 100 ms | 99.86% | 52.2 dB |
 
+## Browser-drawn text (2026-10-20, #12299)
+
+`gpui-web`'s `browser-text` feature replaces cosmic-text, swash, and the
+module's font database with the browser's own text stack
+(`gpui-web/src/text.rs`):
+
+- **Fonts.** The app's font files go to the page as `FontFace`s; the
+  system reads each file's family, weight, and style from its `name` and
+  `OS/2` tables, and waits for them to load before the app lays anything
+  out. Characters the fonts lack (CJK, Korean, emoji) fall back to the
+  browser's fonts.
+- **Shaping.** Text splits into grapheme clusters; each cluster gets a
+  glyph ID and advances by its Canvas `measureText` width, measured at
+  1000 px (1000 units per em). There's no kerning between clusters: the
+  placeholder "What should we work on?" comes out about 1% wider.
+- **Glyphs.** Each glyph is drawn with `fillText` into an
+  `OffscreenCanvas`, and its coverage (or, for emoji, its colors) goes to
+  GPUI's atlas. A canvas only draws grayscale coverage, so the system asks
+  for grayscale text: the color fringes of subpixel text are gone. Text
+  looks like the browser's own text on the page, a little heavier than
+  cosmic-text's subpixel rendering.
+
+The chat, the demo, and `/lander8` and `/lander10`'s chat use it.
+AgentGraph keeps cosmic-text: its first frame is captured natively at
+build time, with cosmic-text, and against browser-drawn text that frame
+matched only 97.96% of pixels on desktop and 92.26% on phone (PSNR 26.6
+and 21.2 dB), a visible jump at the swap. The chat's first frame is
+recorded in the browser, with the browser's text, so kept and ready
+frames stay identical (100% of pixels).
+
+| Module | cosmic-text | browser text | Saved |
+| --- | --- | --- | --- |
+| Chat (`/gpui`) | 1,498,424 B | 1,179,549 B | 318,875 B (21%) |
+| AgentGraph, for comparison | about 1.29 MB | 975,927 B | about 320 KB |
+
+Measured with brotli 11 after `wasm-opt -Os`. The demo is 1,148,643
+bytes and `/lander8`'s WebGPU chat 1,203,543 bytes with browser text.
+
+The chat's first frame (`gpui-first-frame`), headless Chrome, cache off,
+5 runs, medians:
+
+| Profile | Class | cosmic-text | browser text |
+| --- | --- | --- | --- |
+| 20 Mbit/s, 40 ms | Desktop | 1,003 ms | 898 ms |
+| 20 Mbit/s, 40 ms | Phone | 993 ms | 859 ms |
+| 9 Mbit/s, 150 ms | Desktop | 2,238 ms | 1,971 ms |
+| 9 Mbit/s, 150 ms | Phone | 2,228 ms | 1,942 ms |
+
+Checked in headless Chrome at 1440 × 900 and 390 × 844: `/gpui`,
+`/demo/gpui` (including its Japanese, Chinese, Korean, and emoji chat, with
+a skin-tone ZWJ sequence and a flag), `/lander8`, `/lander10`, and
+`/agent/foreman`. Typing couldn't be driven through the DevTools protocol
+in headless Chrome, with either text system.
+
 ## The chat's first frame from the last visit (2026-10-20, #12244)
 
 A chat is the signed-in person's own content, so its frame can't be
