@@ -62,6 +62,13 @@ async fn gpui_settings_routes_and_cookie_google_connect_remove() {
         assert_eq!(page.status, StatusCode::OK, "{}", page.body);
         assert!(page.body.contains("/gpui/build/start.js"), "{path}");
         assert!(
+            page.body.contains(&format!(
+                "name=\"openagents-settings\" content=\"{}\"",
+                path.rsplit('/').next().unwrap()
+            )),
+            "standalone module for {path}"
+        );
+        assert!(
             page.body.contains(&format!("{path}?ui=html")),
             "fallback for {path}"
         );
@@ -69,6 +76,25 @@ async fn gpui_settings_routes_and_cookie_google_connect_remove() {
         assert_eq!(fallback.status, StatusCode::OK);
         assert!(!fallback.body.contains("/gpui/build/start.js"));
     }
+    let terminal = browser
+        .get(
+            &world,
+            "/settings/terminal?computer=Scratch&since=123&ui=gpui",
+        )
+        .await;
+    assert!(
+        terminal
+            .body
+            .contains("/settings/terminal?computer=Scratch&amp;since=123&amp;ui=html")
+    );
+    let connections = browser
+        .get(&world, "/settings/connections?problem=denied&ui=gpui")
+        .await;
+    assert!(
+        connections
+            .body
+            .contains("/settings/connections?problem=denied&amp;ui=html")
+    );
     let page = browser.get(&world, "/new?ui=html").await;
     let csrf = csrf(&page.body);
     let request = |method, path| {

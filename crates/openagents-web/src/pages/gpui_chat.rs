@@ -421,8 +421,8 @@ pub(crate) async fn page(
     page_with_fallback(app, headers, chat, base, None).await
 }
 
-pub(crate) async fn settings_page(app: &App, headers: &HeaderMap, path: &str) -> Response {
-    page_with_fallback(app, headers, None, "", Some(format!("{path}?ui=html"))).await
+pub(crate) async fn settings_page(app: &App, headers: &HeaderMap, fallback: &str) -> Response {
+    page_with_fallback(app, headers, None, "", Some(fallback.to_owned())).await
 }
 async fn page_with_fallback(
     app: &App,
@@ -581,6 +581,13 @@ fn shell(page: &Shell<'_>) -> Markup {
         ref first,
         features,
     } = *page;
+    let settings_page = match regular.split('?').next().unwrap_or_default() {
+        "/settings/connections" => Some("connections"),
+        "/settings/terminal" => Some("terminal"),
+        "/settings/vault" => Some("vault"),
+        path if path.starts_with("/projects/") && path.ends_with("/vault") => Some("vault"),
+        _ => None,
+    };
     let new_chat = if base.is_empty() { "/" } else { base };
     html! {
         (DOCTYPE)
@@ -594,6 +601,9 @@ fn shell(page: &Shell<'_>) -> Markup {
                 meta name="openagents-csrf" content=(csrf);
                 meta name="openagents-chat-base" content=(base);
                 meta name="openagents-signed-in" content=(if signed_in { "1" } else { "0" });
+                @if let Some(page) = settings_page {
+                    meta name="openagents-settings" content=(page);
+                }
                 meta name=(crate::features::META) content=(features.meta());
                 title { (title) " \u{b7} OpenAgents" }
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";

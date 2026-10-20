@@ -45,8 +45,8 @@ function unsupported() {
     note.hidden = false;
     var link = note.querySelector("a");
     if (link) {
-      var section = settingsSection();
-      location.replace(section ? location.pathname + "?ui=html" : link.href);
+      if (settingsSection()) htmlSettings();
+      else location.replace(link.href);
     }
   }
 }
@@ -545,10 +545,22 @@ var settingsBox = null;
 var settingsWanted = null;
 function settingsSection() {
   var path = location.pathname;
+  if (path === "/settings") return new URLSearchParams(location.search).get("page") || "general";
   if (path === "/settings/connections") return "connections";
   if (path === "/settings/terminal") return "terminal";
   if (path === "/settings/vault" || /^\/projects\/[^/]+\/vault$/.test(path)) return "vault";
   return null;
+}
+
+function htmlSettings() {
+  var url = new URL(location.href);
+  var page = url.searchParams.get("page");
+  if (url.pathname === "/settings" && ["connections", "vault", "terminal"].indexOf(page) !== -1) {
+    url.pathname += "/" + page;
+  }
+  url.searchParams.set("ui", "html");
+  url.searchParams.delete("page");
+  location.replace(url.pathname + url.search + url.hash);
 }
 
 function openSettings(event) {
@@ -595,7 +607,7 @@ function openSettings(event) {
       console.error("Settings couldn't start", error);
       settingsBox.remove();
       settingsBox = null;
-      if (settingsSection()) location.replace(location.pathname + "?ui=html");
+      if (settingsSection()) htmlSettings();
     });
 }
 window.addEventListener("oa-settings-open", openSettings);
@@ -782,8 +794,8 @@ function openPage(path) {
       console.error("the page couldn't start", error);
       box.remove();
       delete pageBoxes[name];
-      pageParam("");
-      if (settingsSection()) location.replace(location.pathname + "?ui=html");
+      if (settingsSection()) htmlSettings();
+      else pageParam("");
     });
 }
 window.addEventListener("oa-page-open", function (event) {
@@ -823,7 +835,6 @@ function openAddressedPage() {
 window.addEventListener("oa-settings-hide", function () {
   if (settingsBox) {
     settingsBox.hidden = true;
-
   }
 });
 
@@ -850,7 +861,8 @@ window.addEventListener("oa-vault-open", function () {
   frame.src = (project ? location.pathname : "/settings/vault") + "?ui=html&embed=1";
   vaultBox.appendChild(frame);
   document.body.appendChild(vaultBox);
-  close.focus();
+  // Leave GPUI's click callback before changing its input's focus.
+  setTimeout(function () { if (close.isConnected) close.focus(); }, 0);
 });
 window.addEventListener("keydown", function (event) {
   if (event.key === "Escape") closeVault();

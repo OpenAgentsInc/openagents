@@ -35,7 +35,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use axum::Router;
-use axum::extract::{Form, Path, Query, State};
+use axum::extract::{Form, Path, Query, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post};
@@ -336,21 +336,20 @@ pub(crate) fn settings_row(app: &App, viewer: &Viewer) -> Markup {
 struct PageQuery {
     #[serde(default)]
     problem: Option<String>,
-    ui: Option<String>,
 }
 
 async fn page(
     State(app): State<App>,
     headers: HeaderMap,
     Query(query): Query<PageQuery>,
+    RawQuery(raw_query): RawQuery,
 ) -> Response {
     let (service, viewer) = match access::page_viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
-    let ui_query = query.ui.as_ref().map(|ui| format!("ui={ui}"));
     if let Some(response) =
-        crate::terminal_connect::gpui::shell(&app, &headers, ui_query.as_deref(), PAGE).await
+        crate::terminal_connect::gpui::shell(&app, &headers, raw_query.as_deref(), PAGE).await
     {
         return response;
     }

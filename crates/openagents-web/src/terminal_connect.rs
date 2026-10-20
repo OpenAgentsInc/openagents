@@ -31,7 +31,7 @@ pub(crate) mod gpui;
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{Form, Query, State};
+use axum::extract::{Form, Query, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -351,7 +351,6 @@ struct PageQuery {
     computer: Option<String>,
     problem: Option<String>,
     since: Option<u64>,
-    ui: Option<String>,
 }
 
 /// Where the person stands: the computer the page knows (or one signed
@@ -450,14 +449,14 @@ async fn page(
     State(app): State<App>,
     headers: HeaderMap,
     query: Result<Query<PageQuery>, axum::extract::rejection::QueryRejection>,
+    RawQuery(raw_query): RawQuery,
 ) -> Response {
     let query = query.map(|q| q.0).unwrap_or_default();
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
-    let ui_query = query.ui.as_ref().map(|ui| format!("ui={ui}"));
-    if let Some(response) = gpui::shell(&app, &headers, ui_query.as_deref(), PAGE).await {
+    if let Some(response) = gpui::shell(&app, &headers, raw_query.as_deref(), PAGE).await {
         return response;
     }
     let since = query.since.unwrap_or_else(crate::cloud::session::now);

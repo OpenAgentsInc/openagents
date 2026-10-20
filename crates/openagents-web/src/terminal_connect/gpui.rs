@@ -190,9 +190,22 @@ pub(crate) async fn shell(
     if !choice.serves(app, headers) {
         return None;
     }
-    let mut response = crate::pages::gpui_chat::settings_page(app, headers, path).await;
+    let fallback = html_fallback(path, query);
+    let mut response = crate::pages::gpui_chat::settings_page(app, headers, &fallback).await;
     choice.remember(app, &mut response);
     Some(response)
+}
+
+fn html_fallback(path: &str, query: Option<&str>) -> String {
+    let mut fallback = url::form_urlencoded::Serializer::new(String::new());
+    if let Some(query) = query {
+        fallback.extend_pairs(
+            url::form_urlencoded::parse(query.as_bytes())
+                .filter(|(key, _)| key != "ui" && key != "page"),
+        );
+    }
+    fallback.append_pair("ui", "html");
+    format!("{path}?{}", fallback.finish())
 }
 
 #[cfg(test)]

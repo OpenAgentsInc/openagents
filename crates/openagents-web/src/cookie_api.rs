@@ -48,7 +48,6 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/account/export",
     "/v1/connections",
     "/v1/terminal",
-    "/v1/settings/connection-features",
     "/v1/threads",
     "/v1/projects",
     "/v1/history",
