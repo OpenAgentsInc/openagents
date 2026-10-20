@@ -485,6 +485,15 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12366: after `27e05e78cf` is deployed to staging, open `/home` signed out in a
+  fresh browser profile, walk to the terminal, and send one message. The answer
+  shows a live pylon's name and model over it, and the website log has one
+  `pylon router:` line naming the pylon. With a Clef pylon online, that line reads
+  `decided pN … by pylon:<slug>`; without one, `ranked (no decision model online)`.
+  Then set `OPENAGENTS_WEB_PYLON_ROUTER=off` on staging (or stop every
+  conversation pylon) and confirm the same message gets the hosted chat's answer.
+  Delete the test chats afterward.
+
 - #12307: deploy the self-hosted LNURL backend, gateway, website, and native
   wallet/profile integration following `docs/payments/lightning-address-operations.md`.
   With the dedicated test account and a separately funded test wallet, receive
