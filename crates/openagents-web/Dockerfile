@@ -56,9 +56,12 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
 # Cargo.lock pins (the CLI refuses a module built by another version).
 FROM rust:1.97.1-slim-trixie AS wasm-base
 
+# The wallet SDK generates Rust from protobuf files during its Wasm build.
+ARG PROTOBUF_VERSION=3.21.12-11+deb13u1
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         --no-install-recommends build-essential pkg-config clang llvm binaryen brotli curl \
+        protobuf-compiler="$PROTOBUF_VERSION" libprotobuf-dev="$PROTOBUF_VERSION" \
     && rm -rf /var/lib/apt/lists/*
 COPY scripts/deploy/oa-kache.sh /usr/local/bin/oa-kache
 RUN oa-kache install
@@ -73,8 +76,12 @@ RUN rustup target add wasm32-unknown-unknown \
 # own; naming them keeps the dependencies' build scripts from rerunning
 # between a script that sets them and a command that doesn't.
 ENV CC_wasm32_unknown_unknown=/usr/bin/clang \
-    AR_wasm32_unknown_unknown=/usr/bin/llvm-ar
-RUN test -x "$CC_wasm32_unknown_unknown" && test -x "$AR_wasm32_unknown_unknown"
+    AR_wasm32_unknown_unknown=/usr/bin/llvm-ar \
+    PROTOC=/usr/bin/protoc \
+    PROTOC_INCLUDE=/usr/include
+RUN test -x "$CC_wasm32_unknown_unknown" && test -x "$AR_wasm32_unknown_unknown" \
+    && test "$("$PROTOC" --version)" = "libprotoc 3.21.12" \
+    && test -r "$PROTOC_INCLUDE/google/protobuf/descriptor.proto"
 
 # The dependencies of every browser build in the everglade stage, one
 # command each.
