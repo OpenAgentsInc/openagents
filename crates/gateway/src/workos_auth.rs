@@ -30,12 +30,9 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{MethodRouter, get, post};
 use oa_auth::workos::client::Refusal;
-use oa_auth::workos::link::{ResolveError, resolve};
 use oa_auth::workos::sync::{self, Options};
 use oa_auth::workos::{Mode, Workos};
 use serde_json::{Value, json};
-use tenancy::sessions::{self};
-use tenancy::workspaces::UserId;
 use tokio::sync::mpsc;
 
 use crate::accounts::{Principal, answered, refused};
@@ -121,6 +118,7 @@ pub(crate) fn resume(state: &Arc<ServeState>) {
     let Some(mut receiver) = workos.receiver.lock().ok().and_then(|mut slot| slot.take()) else {
         return;
     };
+    startup_backfill(state);
     let keys = workos.client.keys().clone();
     tokio::spawn(async move {
         loop {
@@ -145,6 +143,91 @@ pub(crate) fn resume(state: &Arc<ServeState>) {
                 run(&state, &job).await;
             }
         }
+    });
+}
+
+/// The environment variable that runs the backfill once at start:
+/// `dry-run` reports what it would write, `apply` writes it. Each value
+/// runs once per store: its report is kept as `workos-backfill-<value>.json`
+/// beside the stores, and a start that finds it doesn't run again.
+pub const BACKFILL_ENV: &str = "OPENAGENTS_WORKOS_BACKFILL";
+
+fn startup_backfill(state: &Arc<ServeState>) {
+    let Ok(value) = std::env::var(BACKFILL_ENV) else {
+        return;
+    };
+    let apply = match value.trim() {
+        "apply" => true,
+        "dry-run" => false,
+        _ => {
+            eprintln!("workos: {BACKFILL_ENV} must be dry-run or apply; not running the backfill");
+            return;
+        }
+    };
+    let report_path = state
+        .dir
+        .join(format!("workos-backfill-{}.json", value.trim()));
+    if report_path.exists() {
+        eprintln!(
+            "workos: the {} backfill already ran ({}); remove that file to run it again",
+            value.trim(),
+            report_path.display()
+        );
+        return;
+    }
+    let state = state.clone();
+    tokio::spawn(async move {
+        let Some(workos) = state.workos.as_ref() else {
+            return;
+        };
+        eprintln!("workos: backfill starting ({})", value.trim());
+        let options = Options { apply, test: false };
+        let mut done = 0u64;
+        let report = sync::all(
+            &state.dir,
+            &workos.client,
+            options,
+            None,
+            || tokio::time::sleep(Duration::from_millis(100)),
+            |_, _| {
+                done += 1;
+                if done % 100 == 0 {
+                    eprintln!("workos: backfill at {done}");
+                }
+            },
+        )
+        .await;
+        let reconcile = sync::reconcile(&state.dir).ok();
+        let body = match &report {
+            Ok(report) => json!({"applied": apply, "report": report, "reconcile": reconcile}),
+            Err(error) => json!({"applied": apply, "error": error.code()}),
+        };
+        let text = serde_json::to_string_pretty(&body).unwrap_or_default();
+        if report.is_ok() {
+            std::fs::write(&report_path, &text).ok();
+        }
+        // The log line holds counts only; the file holds the lists.
+        let summary = match (&report, &reconcile) {
+            (Ok(report), Some(reconcile)) => format!(
+                "users created {}, linked {}, updated {}; organizations created {}; memberships added {}; failed {}; accounts {}, linked {}, without a user {}",
+                report.users_created,
+                report.users_linked,
+                report.users_updated,
+                report.orgs_created,
+                report.memberships_added,
+                report.failed.len(),
+                reconcile.accounts,
+                reconcile.linked_accounts,
+                reconcile.accounts_without_user.len(),
+            ),
+            (Err(error), _) => format!("stopped: {}", error.code()),
+            _ => "finished; the reconcile report couldn't be read".to_string(),
+        };
+        eprintln!(
+            "workos: backfill ({}) {summary}; report at {}",
+            value.trim(),
+            report_path.display()
+        );
     });
 }
 
@@ -273,120 +356,31 @@ async fn sign_in(
             "Send `access_token`.",
         );
     };
-    let claims = match workos.client.verify(token).await {
-        Ok(claims) => claims,
-        Err(Refusal::Unavailable) => return refusal(&Refusal::Unavailable),
-        Err(_) => {
-            return refused(
-                StatusCode::UNAUTHORIZED,
-                "sign_in_denied",
-                "That sign-in didn't go through. Try again.",
-            );
-        }
-    };
-    let user = match workos.client.user(&claims.sub).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return refused(
-                StatusCode::UNAUTHORIZED,
-                "sign_in_denied",
-                "That sign-in didn't go through. Try again.",
-            );
-        }
-        Err(error) => return refusal(&error),
-    };
     let config = state.config.accounts.as_ref();
-    let invite = config.and_then(|accounts| accounts.invite_only.as_ref());
-    // A closed invite list lets in its GitHub people and existing accounts.
-    let mut tenant = config.and_then(|accounts| accounts.signup_tenant.clone());
-    if invite.is_some_and(|list| list.closed()) {
-        let identities = workos.client.identities(&user.id).await.unwrap_or_default();
-        let invited = oa_auth::workos::link::github_id(&identities)
-            .is_some_and(|id| oa_auth::invite::allowed(invite, id, ""));
-        if !invited {
-            tenant = None;
-        }
-    }
-    let resolved = match resolve(&state.dir, &workos.client, &user, tenant.as_deref()).await {
-        Ok(resolved) => resolved,
-        Err(ResolveError::SignupClosed) => {
-            return if invite.is_some_and(|list| list.closed()) {
-                refused(
-                    StatusCode::FORBIDDEN,
-                    "invite_only",
-                    "Sign-in is invite-only for now.",
-                )
-            } else {
-                refused(
-                    StatusCode::FORBIDDEN,
-                    "signup_disabled",
-                    "This service doesn't make new accounts.",
-                )
-            };
-        }
-        Err(ResolveError::Conflict) => {
+    let signed = match oa_auth::workos::session::sign_in(
+        &state.dir,
+        &workos.client,
+        token,
+        config.and_then(|accounts| accounts.signup_tenant.as_deref()),
+        config.and_then(|accounts| accounts.invite_only.as_ref()),
+    )
+    .await
+    {
+        Ok(signed) => signed,
+        Err(error) => {
             return refused(
-                StatusCode::CONFLICT,
-                "identity_taken",
-                "That sign-in is already used by another OpenAgents account.",
+                StatusCode::from_u16(error.status()).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+                error.code(),
+                error.message(),
             );
         }
-        Err(ResolveError::Unavailable) => return refusal(&Refusal::Unavailable),
     };
-    if resolved.account.agent.is_some() {
-        return refused(
-            StatusCode::FORBIDDEN,
-            "agent_account",
-            "An agent account uses its API key directly; it can't sign in to the website.",
-        );
-    }
-    let sessions = match crate::accounts::sessions_store(&state) {
-        Ok(sessions) => sessions,
-        Err(response) => return response,
-    };
-    let account = resolved.account.id.clone();
-    let created = resolved.created;
-    let workspace = resolved.workspace.as_ref().map(|w| w.id.clone());
-    let issued = match sessions.mutate(|book, access, now| {
-        let issued = book.issue(UserId::from(account.as_str()), now)?;
-        sessions::push_access(
-            access,
-            sessions::Access {
-                at: now,
-                actor: account.clone(),
-                action: if created { "sign-up" } else { "sign-in" }.to_string(),
-                workspace: workspace.clone(),
-                session: Some(issued.session.id.as_str().to_string()),
-                detail: Some(format!("workos:{}", user.id)),
-            },
-        );
-        Ok(issued)
-    }) {
-        Ok(issued) => issued,
-        Err(refusal) => return crate::accounts::sessions_refusal(refusal),
-    };
+    let account = signed.resolved.account.id.clone();
     workos.enqueue(&account, crate::accounts::test_run(&headers));
     let admin = crate::accounts::account_is_site_admin(&state, &account);
     answered(
         StatusCode::OK,
-        json!({
-            "session": {
-                "id": issued.session.id.as_str(),
-                "kind": "user",
-                "account": account,
-                "created_at": issued.session.created_at,
-                "expires_at": issued.session.expires_at,
-            },
-            "token": issued.once,
-            "created": created,
-            "admin": admin,
-            "github": resolved.github.map(|id| json!({"id": id, "login": ""})),
-            "workos": {
-                "user_id": user.id,
-                "session_id": claims.sid,
-                "linked_by": resolved.by.as_str(),
-            },
-        }),
+        oa_auth::workos::session::signed_in_body(&signed, admin),
     )
 }
 

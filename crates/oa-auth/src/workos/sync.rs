@@ -182,10 +182,7 @@ pub async fn workspace(
         user(dir, workos, &store, &member.account, options, &mut inner).await?;
         report.add(inner);
         if let Some(user_id) = links.user_of(&member.account).map_err(unavailable)? {
-            wanted.insert(
-                user_id,
-                workos.settings().roles.slug(member.role).to_string(),
-            );
+            wanted.insert(user_id, workos.role_slug(member.role).await);
         } else if options.apply {
             report.skipped.push(format!("{}: no user", member.account));
         }

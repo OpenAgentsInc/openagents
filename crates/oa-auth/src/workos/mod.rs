@@ -15,6 +15,8 @@
 //! - [`token`]: access-token checks against the environment's JWKS.
 //! - [`link`]: which account a WorkOS User signs in to, linking an
 //!   existing account by email or GitHub before making a new one.
+//! - [`session`]: the account service's sign-in from a WorkOS access
+//!   token, shared by the gateway and the local fixture.
 //! - [`sync`]: the dual-write and backfill of accounts, workspaces, and
 //!   memberships to WorkOS, idempotent by external ID.
 //! - `fake` (feature `fake-workos`): an in-process WorkOS API for tests.
@@ -23,11 +25,14 @@ pub mod client;
 #[cfg(feature = "fake-workos")]
 pub mod fake;
 pub mod link;
+pub mod session;
 pub mod sync;
 pub mod token;
 
 pub use client::{Authenticated, Grant, Refusal, User, Workos};
 pub use token::Claims;
+/// The official SDK, for its sealed-session helpers.
+pub use workos as sdk;
 
 use serde::Deserialize;
 

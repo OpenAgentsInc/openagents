@@ -617,3 +617,33 @@ async fn follow(url: &str) -> String {
     );
     code
 }
+
+#[tokio::test]
+async fn an_owner_is_an_admin_where_the_environment_has_no_owner_role() {
+    let fake = FakeWorkos::start().await;
+    fake.set_roles(&["member", "admin"]);
+    let workos = fake.client(Mode::Dual, ALL);
+    let (dir, accounts) = store();
+    let owner = accounts
+        .sign_in_nostr(&"03".repeat(32), "signup")
+        .unwrap()
+        .account;
+    accounts
+        .create_workspace(
+            &owner.id,
+            "Crew",
+            WorkspaceKind::Organization,
+            "signup",
+            None,
+        )
+        .unwrap();
+    let first = sync::account(dir.path(), &workos, &owner.id, Options::default())
+        .await
+        .unwrap();
+    assert_eq!(first.memberships_added, 1);
+    assert_eq!(fake.memberships()[0].2, "admin");
+    let again = sync::account(dir.path(), &workos, &owner.id, Options::default())
+        .await
+        .unwrap();
+    assert!(!again.wrote(), "no drift: {again:?}");
+}

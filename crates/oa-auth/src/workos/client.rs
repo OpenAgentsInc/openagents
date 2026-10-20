@@ -347,6 +347,8 @@ pub struct Workos {
     client: Arc<workos::Client>,
     keys: Keys,
     settings: Arc<Settings>,
+    /// The environment's organization role slugs, read once.
+    roles: Arc<tokio::sync::OnceCell<Vec<String>>>,
 }
 
 impl std::fmt::Debug for Workos {
@@ -385,6 +387,7 @@ impl Workos {
             client,
             keys,
             settings: Arc::new(settings),
+            roles: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
@@ -397,6 +400,52 @@ impl Workos {
     #[must_use]
     pub fn sdk(&self) -> &workos::Client {
         &self.client
+    }
+
+    /// The organization role slug for `role`: the configured one when the
+    /// environment has it, else the nearest it has (an owner is an admin
+    /// where there's no `owner` role), so memberships don't drift.
+    pub async fn role_slug(&self, role: tenancy::Role) -> String {
+        let wanted = self.settings.roles.slug(role).to_string();
+        let have = self
+            .roles
+            .get_or_try_init(|| async {
+                let list = self
+                    .client
+                    .authorization()
+                    .list_environment_roles()
+                    .await
+                    .map_err(|error| Refusal::from_sdk(&error))?;
+                let value = serde_json::to_value(list).map_err(|_| Refusal::Unavailable)?;
+                Ok::<_, Refusal>(
+                    value["data"]
+                        .as_array()
+                        .map(|roles| {
+                            roles
+                                .iter()
+                                .filter_map(|role| role["slug"].as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                )
+            })
+            .await;
+        let Ok(have) = have else {
+            return wanted;
+        };
+        if have.is_empty() || have.contains(&wanted) {
+            return wanted;
+        }
+        let fallback = match role {
+            tenancy::Role::Owner => [&self.settings.roles.admin, &self.settings.roles.member],
+            tenancy::Role::Admin => [&self.settings.roles.member, &self.settings.roles.member],
+            tenancy::Role::Member => return wanted,
+        };
+        fallback
+            .into_iter()
+            .find(|slug| have.contains(slug))
+            .cloned()
+            .unwrap_or(wanted)
     }
 
     /// The JWKS cache behind [`Self::verify`].

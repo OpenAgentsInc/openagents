@@ -100,6 +100,8 @@ struct Inner {
     calls: Vec<String>,
     /// Make every call answer 503 (a WorkOS outage).
     down: bool,
+    /// The environment's role slugs.
+    roles: Vec<String>,
 }
 
 impl Inner {
@@ -168,14 +170,17 @@ pub fn mint(user: &str, sid: &str, org: Option<&str>, seconds: i64) -> String {
         .map_or(0, |d| d.as_secs() as i64);
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
     header.kid = Some(KID.to_string());
-    let claims = json!({
+    let mut claims = json!({
         "iss": format!("https://fake.workos/user_management/{CLIENT_ID}"),
         "sub": user,
         "sid": sid,
-        "org_id": org,
         "iat": now,
         "exp": now + seconds,
     });
+    // WorkOS leaves `org_id` out when the session has no organization.
+    if let Some(org) = org {
+        claims["org_id"] = Value::String(org.to_string());
+    }
     jsonwebtoken::encode(
         &header,
         &claims,
@@ -208,7 +213,10 @@ impl Drop for FakeWorkos {
 impl FakeWorkos {
     /// Start the fake on a free loopback port.
     pub async fn start() -> Self {
-        let inner: Shared = Arc::new(Mutex::new(Inner::default()));
+        let inner: Shared = Arc::new(Mutex::new(Inner {
+            roles: ROLES.iter().map(|role| role.to_string()).collect(),
+            ..Inner::default()
+        }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind the fake WorkOS");
@@ -362,6 +370,12 @@ impl FakeWorkos {
         self.with(|inner| inner.calls.clone())
     }
 
+    /// The environment's role slugs, as a production environment without
+    /// an `owner` role has them.
+    pub fn set_roles(&self, roles: &[&str]) {
+        self.with(|inner| inner.roles = roles.iter().map(|role| role.to_string()).collect());
+    }
+
     /// Make every call fail with 503 until set back.
     pub fn set_down(&self, down: bool) {
         self.with(|inner| inner.down = down);
@@ -375,6 +389,7 @@ fn error(status: StatusCode, code: &str, message: &str) -> Response {
 fn router(inner: Shared) -> Router {
     Router::new()
         .route("/sso/jwks/{client}", get(|| async { Json(jwks()) }))
+        .route("/authorization/roles", get(roles))
         .route("/user_management/authorize", get(authorize))
         .route("/user_management/authenticate", post(authenticate))
         .route("/user_management/users", get(list_users).post(create_user))
@@ -1068,6 +1083,23 @@ async fn list_memberships(
 /// environment with `owner` and `admin` added.
 const ROLES: &[&str] = &["owner", "admin", "member"];
 
+async fn roles(State(inner): State<Shared>) -> Response {
+    let inner = inner.lock().expect("fake state");
+    let data: Vec<Value> = inner
+        .roles
+        .iter()
+        .enumerate()
+        .map(|(priority, slug)| {
+            json!({
+                "object": "role", "id": format!("role_01FAKE{priority:020}"), "slug": slug, "name": slug,
+                "description": null, "type": "EnvironmentRole", "resource_type_slug": "environment", "permissions": [],
+                "created_at": STAMP, "updated_at": STAMP,
+            })
+        })
+        .collect();
+    Json(json!({"object": "list", "data": data})).into_response()
+}
+
 async fn create_membership(State(inner): State<Shared>, Json(body): Json<Value>) -> Response {
     let mut inner = inner.lock().expect("fake state");
     let user = body["user_id"].as_str().unwrap_or_default().to_string();
@@ -1076,7 +1108,7 @@ async fn create_membership(State(inner): State<Shared>, Json(body): Json<Value>)
         .unwrap_or_default()
         .to_string();
     let role = body["role_slug"].as_str().unwrap_or("member").to_string();
-    if !ROLES.contains(&role.as_str()) {
+    if !inner.roles.contains(&role) {
         return error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_role",
@@ -1115,7 +1147,7 @@ async fn update_membership(
 ) -> Response {
     let mut inner = inner.lock().expect("fake state");
     let role = body["role_slug"].as_str().unwrap_or("member").to_string();
-    if !ROLES.contains(&role.as_str()) {
+    if !inner.roles.contains(&role) {
         return error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_role",
