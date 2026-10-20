@@ -30,3 +30,6 @@ pub mod theme;
 pub mod typography;
 pub mod web_address;
 pub mod workspace_links;
+
+#[cfg(feature = "visuals")]
+pub mod visuals;
