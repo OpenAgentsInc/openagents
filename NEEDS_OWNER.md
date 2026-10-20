@@ -570,12 +570,15 @@ audio, or frame-time behavior.
 ## Show cloud environment issue runs on openagents.com and the phone (#11228)
 
 `openagents chat work` on `oa-dev-env-1` reports each issue run to the
-account's agent list once it is signed in. Sign in once with `coder login` on
-the environment, or store an app sign-in token as the Secret Manager secret
-`dev-openagents-app-token` (project `openagentsgemini`), which
-`scripts/cloud/dev-env-session.sh` exports as `OPENAGENTS_APP_TOKEN`. Then
-start an issue run there and check that it shows on `/settings/agents` and on
-the phone's Agents screen, and that Stop from each ends it.
+account's agent list once it is signed in. Since #12251 the environment is
+signed in as its own service account (`acct_711fc0446cf0b234`, not the
+owner's): the Secret Manager secret `dev-openagents-app-token` holds that
+account's login key, which `scripts/cloud/dev-env-session.sh` exports as
+`OPENAGENTS_APP_TOKEN` (docs/cloud/land-queue.md). Its rows show on that
+account's lists, not the owner's. To see them, sign in to that account on a
+device (its Nostr key is `~/work/.secrets/land-integrator-nostr.key`), start
+an issue run there, and check that it shows on `/settings/agents` and on the
+phone's Agents screen, and that Stop from each ends it.
 
 ## Qualify working-computer checkpoints on real Boat (#11007)
 

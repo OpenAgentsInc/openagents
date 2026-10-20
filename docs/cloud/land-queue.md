@@ -236,6 +236,28 @@ sit beside the issue runs `chat work` reports from the same computer
 landing rows). They take no Stop or Message: the website answers with the
 `openagents land withdraw ID` to run instead.
 
+### The integrator's sign-in
+
+The integrator signs in as its own service account, never the owner's
+(AGENTS.md; [#12251](https://github.com/OpenAgentsInc/openagents/issues/12251)).
+The account is a Nostr key's: a key that signs in through
+`POST /v1/device/nostr` with a proof of work makes a new account
+(`openagents_sdk::Client::sign_in_with_key_on`,
+[Nostr sign-in](../auth/README.md#sign-in-with-a-nostr-key)). The key is
+kept off the environment, in `~/work/.secrets/land-integrator-nostr.key`
+on the owner's Mac. From that account's session, `openagents keys create
+--name "Land integrator" --expires never` mints the login key (`oa_sk_…`)
+the integrator uses. It lives in the Secret Manager secret
+`dev-openagents-app-token`, which `scripts/cloud/dev-env-session.sh` writes
+to `~/.openagents/dev-env.env` as `OPENAGENTS_APP_TOKEN` at each start of
+`oa-land-worker`. `dev-env-session.sh --check` says whether it is set.
+
+The landing rows then show on that account's Settings > Agents and phone
+Agents screen, under the computer `oa-dev-env-1`. To rotate the key, run
+`openagents keys rotate "Land integrator"` as that account, add the new key
+as a new version of the secret, and restart the worker after draining it
+(below).
+
 ## Deploying a new integrator
 
 The worker never loses an entry on a restart: one it was landing is still

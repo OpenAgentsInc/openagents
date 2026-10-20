@@ -17,7 +17,7 @@
 # | CLAUDE_CODE_OAUTH_TOKEN  | dev-claude-code-oauth-token (claude setup-token) |
 # | TYPESAFE_API_KEY         | dev-typesafe-api-key (Jev)    |
 # | OPENROUTER_API_KEY       | openagents-openrouter-api-key |
-# | OPENAGENTS_APP_TOKEN     | dev-openagents-app-token (the owner's app sign-in: issue runs show on openagents.com and the phone) |
+# | OPENAGENTS_APP_TOKEN     | dev-openagents-app-token (the land integrator's own service account, never the owner's: its queue and issue runs show on that account's openagents.com and phone lists; docs/cloud/land-queue.md) |
 #
 # Google Cloud itself (deploys, Cloud Run, logs) needs nothing: gcloud on
 # the VM already acts as the attached service account.
