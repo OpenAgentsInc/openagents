@@ -188,7 +188,9 @@ pub(super) fn fits_in_script(text: &str) -> bool {
 
 /// What another page adds to this one (`/lander6`'s demo card): its own
 /// stylesheet, markup after the Download link, and a module script that
-/// runs after the runner's, loading files from this site.
+/// runs after the runner's, loading files from this site. `main`, when
+/// given, is the whole of `<main>` instead (`/lander7` has no Download
+/// link).
 pub(super) struct Addition {
     pub style: &'static str,
     pub in_main: &'static str,
@@ -196,6 +198,7 @@ pub(super) struct Addition {
     /// Appended to the runner's script, after its start; the runner's
     /// start promise is `ready` there.
     pub runner_tail: &'static str,
+    pub main: Option<&'static str>,
 }
 
 /// The page, with the runner when a build is given.
@@ -210,6 +213,10 @@ pub(super) fn assemble_with(
 ) -> Document {
     let style = addition.map_or(STYLE, |addition| addition.style);
     let in_main = addition.map_or("", |addition| addition.in_main);
+    let main = match addition.and_then(|addition| addition.main) {
+        Some(main) => main.to_owned(),
+        None => format!("<h1>{TITLE}</h1><a href=\"{DOWNLOAD}\">Download</a>{in_main}"),
+    };
     let scene = build.and_then(|(glue, wasm)| {
         let sky = lander5_web::shaders::minify(&lander5_web::shaders::sky_source());
         let grid = lander5_web::shaders::minify(&lander5_web::shaders::grid_source());
@@ -241,7 +248,7 @@ for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);const ready=__wbg_init({{module_
 <link rel=\"icon\" type=\"image/svg+xml\" href=\"{ICON}\">\
 <style>{style}</style></head><body>\
 <canvas id=\"{canvas}\" aria-hidden=\"true\"></canvas>\
-<main><h1>{TITLE}</h1><a href=\"{DOWNLOAD}\">Download</a>{in_main}</main>",
+<main>{main}</main>",
         canvas = lander5_web::shaders::CANVAS_ID,
     );
     let mut script_hash = None;

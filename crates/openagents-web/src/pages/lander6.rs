@@ -156,7 +156,7 @@ addEventListener(\"load\",()=>setTimeout(go,1500))}";
 /// Grid on the transferred canvas instead and answers the page's messages:
 /// the canvas and shaders to start, a new view size, or a request for its
 /// recent frame times.
-const RUNNER_TAIL: &str = "\
+pub(super) const RUNNER_TAIL: &str = "\
 if(typeof WorkerGlobalScope!==\"undefined\"){self.onmessage=async e=>{await ready;const d=e.data;\
 if(d.canvas)start_worker(d.canvas,d.sky,d.grid,d.w,d.h,d.dpr,d.time);\
 else if(d.resize)resize_worker(d.w,d.h,d.dpr);\
@@ -168,6 +168,7 @@ const ADDITION: Addition = Addition {
     in_main: CARD,
     script: LOADER,
     runner_tail: RUNNER_TAIL,
+    main: None,
 };
 
 /// The last document made, and the background build it came from.

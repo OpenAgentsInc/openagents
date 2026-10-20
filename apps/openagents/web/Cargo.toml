@@ -16,6 +16,7 @@ members = [
     "first-frame-paint",
     "first-frame-capture",
     "card",
+    "graph-card",
 ]
 
 [workspace.package]

@@ -443,6 +443,10 @@ pub struct Config {
     /// when it exists): its WebGPU-only and WebGL2 builds, served under
     /// `/lander6/card/`. Without it, `/lander6` is `/lander5` with no card.
     pub lander6: Option<PathBuf>,
+    /// `/lander7`'s AgentGraph demo (`--lander7 DIR`, default `/srv/lander7`
+    /// when it exists): its WebGPU-only and WebGL2 builds, served under
+    /// `/lander7/graph/`. Without it, `/lander7` is the Grid and the name.
+    pub lander7: Option<PathBuf>,
     /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
     /// it exists), served under `/games/snap-station/`. Without it, the
     /// game's page says it can't be played here.
@@ -575,6 +579,7 @@ impl Config {
             layertree: None,
             lander5: None,
             lander6: None,
+            lander7: None,
             snap: None,
             att: None,
             cad: None,

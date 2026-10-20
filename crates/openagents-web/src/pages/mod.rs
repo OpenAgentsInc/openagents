@@ -27,6 +27,7 @@ mod lander3;
 mod lander5;
 pub(crate) mod lander4;
 mod lander6;
+mod lander7;
 mod landing;
 mod layertree;
 pub(crate) mod live;
@@ -70,6 +71,8 @@ pub(crate) use lander3::LANDER3_POLICY;
 pub(crate) use lander5::{LANDER5_GLUE, LANDER5_PATH, LANDER5_WASM};
 #[cfg(test)]
 pub(crate) use lander6::{LANDER6_GLUE, LANDER6_PATH, LANDER6_WASM};
+#[cfg(test)]
+pub(crate) use lander7::{LANDER7_GLUE, LANDER7_PATH, LANDER7_WASM};
 pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
 #[cfg(test)]
 pub(crate) use icecream::{
@@ -107,6 +110,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(lander5::routes())
         .merge(lander4::routes())
         .merge(lander6::routes())
+        .merge(lander7::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())
         .merge(gpui_chat::routes())

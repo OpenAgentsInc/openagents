@@ -1854,6 +1854,65 @@ async fn the_lander6_page_adds_the_card_and_serves_its_builds() {
     }
 }
 
+/// `/lander7`: `/lander5`'s one response with the name in the corner, no
+/// Download link, and the AgentGraph demo's box and loader, and the demo's
+/// two builds served from `--lander7 DIR`; nothing else is served.
+#[tokio::test]
+async fn the_lander7_page_has_the_corner_name_and_serves_the_graph_builds() {
+    let root = tempfile::tempdir().unwrap();
+    let builds = root.path().join("lander7");
+    for variant in ["webgpu", "webgl"] {
+        let dir = builds.join(variant);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(pages::LANDER7_GLUE), "export function mount() {}").unwrap();
+        std::fs::write(dir.join(pages::LANDER7_WASM), b"\0asm\x01\0\0\0").unwrap();
+        std::fs::write(dir.join(format!("{}.br", pages::LANDER7_WASM)), b"brotli wasm").unwrap();
+    }
+    std::fs::write(builds.join("secret.js"), "outside the builds").unwrap();
+    let mut config = config(root.path().join("tasks"));
+    config.lander7 = Some(builds);
+
+    let (status, headers, html) = get_with(router(config.clone()), pages::LANDER7_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("</svg>OpenAgents</h1><div id=\"gpui-mount\""), "{html}");
+    assert!(!html.contains("href=\"/download\""), "{html}");
+    assert!(html.contains("/lander7/graph/"));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"), "{policy}");
+    crate::copy_guard::assert_plain(pages::LANDER7_PATH, &html);
+    assert!(crate::upstream::owned(pages::LANDER7_PATH));
+    assert!(crate::upstream::owned("/lander7/graph/webgpu/openagents_web_graph_card.js"));
+
+    for variant in ["webgpu", "webgl"] {
+        let uri = format!("/lander7/graph/{variant}/{}", pages::LANDER7_GLUE);
+        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], "text/javascript; charset=utf-8");
+        let response = router(config.clone())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/lander7/graph/{variant}/{}", pages::LANDER7_WASM))
+                    .header(header::HOST, LOCAL)
+                    .header(header::ACCEPT_ENCODING, "br")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/wasm");
+    }
+    for uri in [
+        "/lander7/graph/webgpu/secret.js",
+        "/lander7/graph/other/openagents_web_graph_card.js",
+        "/lander7/graph/webgpu/openagents_web_card.js",
+        "/lander7/graph/webgpu/../secret.js",
+    ] {
+        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+}
+
 /// A server started with `--layertree DIR` holding a stand-in LayerTree
 /// demo build.
 fn with_layertree(root: &std::path::Path) -> Config {

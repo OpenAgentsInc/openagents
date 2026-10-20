@@ -275,7 +275,10 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/gpui-chat/fonts/Geist.ttf \
     && oa-kache run apps/openagents/scripts/build-web-card.sh /build/lander6 \
     && test -s /build/lander6/webgpu/openagents_web_card_bg.wasm.br \
-    && test -s /build/lander6/webgl/openagents_web_card_bg.wasm.br
+    && test -s /build/lander6/webgl/openagents_web_card_bg.wasm.br \
+    && oa-kache run apps/openagents/scripts/build-web-graph-card.sh /build/lander7 \
+    && test -s /build/lander7/webgpu/openagents_web_graph_card_bg.wasm.br \
+    && test -s /build/lander7/webgl/openagents_web_graph_card_bg.wasm.br
 
 # Every dependency layer, and nothing else: cloudbuild.yaml builds this
 # target first and exports it to the registry cache.
@@ -314,6 +317,7 @@ COPY --from=gpuiweb /build/gpui-demo /srv/gpui-demo
 COPY --from=gpuiweb /build/agent-graph /srv/agent-graph
 COPY --from=gpuiweb /build/gpui-chat /srv/gpui-chat
 COPY --from=gpuiweb /build/lander6 /srv/lander6
+COPY --from=gpuiweb /build/lander7 /srv/lander7
 
 USER 10001:10001
 EXPOSE 8080
