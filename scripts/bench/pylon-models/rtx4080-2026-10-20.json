@@ -17,7 +17,6 @@
     "temperature": 0,
     "seed": 1,
     "max_output_tokens": 2048,
-    "thinking": false,
     "relay": "wss://relay.openagents.com",
     "decision_model_paused": true,
     "repetitions_per_prompt": 1,
@@ -27,8 +26,12 @@
       "128-token direct HTTP throughput includes prompt processing and any reasoning tokens; it is not pure decode speed.",
       "Five exact checks include formatting: extraction, arithmetic, percentages, unknown fact, embedded instruction.",
       "Prose reviewed manually. Generated code inspected, then checked on five string-list examples.",
-      "These are small diagnostic samples, not general model accuracy estimates."
-    ]
+      "These are small diagnostic samples, not general model accuracy estimates.",
+      "Templates interpret enable_thinking differently; GPT-OSS still generates reasoning tokens, included in its output-token usage."
+    ],
+    "chat_template_kwargs": {
+      "enable_thinking": false
+    }
   },
   "models": [
     {

@@ -95,6 +95,11 @@ GPU route. These checks cover text conversations, not images or tools.
 GPT-OSS passed the full suite through llama.cpp; its native server
 returned no final answer for the summary prompt even with 4,096 output
 tokens, so use the compatible route for this workload.
+Native Gemma returned readable text for all nine jobs but passed only
+one exact check, versus four through llama.cpp; use llama.cpp for Gemma
+too. [Native measurements](../../scripts/bench/pylon-models/native-rtx4080-2026-10-20.json)
+retain both gaps; [#12341](https://github.com/OpenAgentsInc/openagents/issues/12341)
+tracks native parity separately from the working compatible routes.
 Models are switched one at a time; Clef also needs room when serving
 decisions beside text. llama.cpp can move layers to host memory to fit.
 
