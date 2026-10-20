@@ -127,6 +127,7 @@ pub(crate) fn notice_for(code: &str) -> &'static str {
         "sign_in_unsupported" => "This account needs a sign-in step we don't offer yet.",
         "no_sso" => "Single sign-on isn't set up for that email's domain.",
         "canceled" => "Login was canceled. Nothing changed.",
+        "provider_failed" => "Sign-in didn't finish. Try again.",
         "expired" => "That login expired. Start again from this browser.",
         "invite_only" => "Login is invite-only for now.",
         "taken" => "That login is already used by another OpenAgents account.",
@@ -415,6 +416,7 @@ pub(crate) struct Callback {
     code: Option<String>,
     state: Option<String>,
     error: Option<String>,
+    error_description: Option<String>,
 }
 
 /// `GET /auth/callback`: WorkOS sends the browser back here with a code.
@@ -435,8 +437,23 @@ pub(crate) async fn callback(
     let clear = service.clear_cookie(FLOW_COOKIE);
     let mut response = match (query.ok().map(|q| q.0), flow) {
         (_, None) => problem_redirect("/", "expired"),
-        (Some(Callback { error: Some(_), .. }), Some(flow)) => {
-            problem_redirect(&flow.return_to, "canceled")
+        (
+            Some(Callback {
+                error: Some(error),
+                error_description,
+                ..
+            }),
+            Some(flow),
+        ) => {
+            let code = if matches!(error.as_str(), "access_denied" | "canceled") {
+                "canceled"
+            } else {
+                eprintln!(
+                    "openagents-web: WorkOS callback failed: error={error:?} description={error_description:?}"
+                );
+                "provider_failed"
+            };
+            problem_redirect(&flow.return_to, code)
         }
         (
             Some(Callback {

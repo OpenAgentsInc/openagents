@@ -473,6 +473,77 @@ async fn github_through_workos_returns_to_the_page() {
 }
 
 #[tokio::test]
+async fn provider_callback_failures_are_distinct_from_cancellations() {
+    let w = workos_world(Mode::Dual, PRODUCTION).await;
+    for (error, notice, copy) in [
+        (
+            "access_denied",
+            "canceled",
+            "Login was canceled. Nothing changed.",
+        ),
+        (
+            "canceled",
+            "canceled",
+            "Login was canceled. Nothing changed.",
+        ),
+        (
+            "oauth_failed",
+            "provider_failed",
+            "Sign-in didn&#39;t finish. Try again.",
+        ),
+        (
+            "server_error",
+            "provider_failed",
+            "Sign-in didn&#39;t finish. Try again.",
+        ),
+    ] {
+        let mut browser = Browser::default();
+        let start = browser
+            .get(&w.world, "/auth/workos/github?return_to=%2Fsettings")
+            .await;
+        let state = url::Url::parse(start.location())
+            .unwrap()
+            .query_pairs()
+            .find(|(k, _)| k == "state")
+            .unwrap()
+            .1
+            .into_owned();
+        let mut callback = url::Url::parse(&format!("{ORIGIN}/auth/callback")).unwrap();
+        callback.query_pairs_mut().extend_pairs([
+            ("error", error),
+            ("state", state.as_str()),
+            (
+                "error_description",
+                "Unable to exchange authorization code with Github.",
+            ),
+        ]);
+        let done = browser
+            .get(
+                &w.world,
+                &format!("{}?{}", callback.path(), callback.query().unwrap()),
+            )
+            .await;
+        assert_eq!(done.status, StatusCode::SEE_OTHER);
+        let location = done.location();
+        assert!(
+            location.starts_with(&format!("/login?error={notice}")),
+            "{location}"
+        );
+        assert!(location.contains("return_to=%2Fsettings"));
+        assert!(!location.contains("exchange"));
+        assert!(!browser.0.contains_key("oa_workos_flow"));
+        assert!(!browser.0.contains_key("oa_workos"));
+        assert!(!browser.0.contains_key("oa_cloud_session"));
+        let page = browser.get(&w.world, location).await;
+        assert!(page.body.contains(copy), "{}", page.body);
+        assert!(!page.body.contains("Unable to exchange"));
+        if notice == "provider_failed" {
+            assert!(!page.body.contains("Login was canceled"));
+        }
+    }
+}
+
+#[tokio::test]
 async fn sso_starts_for_the_organization_with_that_domain() {
     let w = workos_world(Mode::Dual, STAGING).await;
     let org = w.fake.add_sso_organization("Acme", "acme.test");
