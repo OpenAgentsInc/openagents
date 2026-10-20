@@ -14,4 +14,10 @@ RUN cargo build --locked --release -p openagents-web-site --bin openagents-web -
     && strip target/release/openagents-web
 
 FROM ${LIVE_WEB_IMAGE} AS site
+USER 0:0
 COPY --from=builder /build/target/release/openagents-web /usr/local/bin/openagents-web
+
+# Repair private source modes in retained browser assets too.
+RUN chmod -R a+rX /srv
+USER 10001:10001
+RUN unreadable="$(find /srv ! -readable -print -quit)" && test -z "$unreadable"

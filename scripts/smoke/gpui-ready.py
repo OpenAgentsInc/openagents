@@ -13,6 +13,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 import websocket
@@ -116,6 +117,12 @@ def main():
                 if "gpui_default" not in state["features"].split(",") and not state.get("shell"):
                     skipped = True
                     break
+            for event in browser.events:
+                path = urllib.parse.urlsplit(event.get("url") or "").path
+                if path.startswith(("/gpui/build/", "/gpui-fonts/")) and (
+                    event.get("status", 0) >= 400 or event["event"] == "Network.loadingFailed"
+                ):
+                    raise RuntimeError(f"Startup asset failed: {event['url']} ({event.get('status', 'network error')})")
             if any(event["event"] == "Runtime.exceptionThrown" for event in browser.events):
                 raise RuntimeError("The page raised an uncaught exception")
             time.sleep(0.25)

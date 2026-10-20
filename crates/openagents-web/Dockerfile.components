@@ -46,7 +46,13 @@ RUN cargo build --locked --release --target wasm32-unknown-unknown \
     && test -s /build/cloud/coder_browser_web_bg.wasm
 
 FROM ${LIVE_WEB_IMAGE} AS site
+USER 0:0
 COPY --from=builder /build/target/release/openagents-web /usr/local/bin/openagents-web
 COPY --from=components /build/components /srv/components
 COPY --from=components /build/cloud /srv/cloud
 COPY --from=components /build/chat /srv/chat
+
+# Repair private source modes in retained browser assets too.
+RUN chmod -R a+rX /srv
+USER 10001:10001
+RUN unreadable="$(find /srv ! -readable -print -quit)" && test -z "$unreadable"

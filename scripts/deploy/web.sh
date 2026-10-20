@@ -134,6 +134,12 @@ wait_candidate() {
     return 1
 }
 
+export_context() {
+    # A private agent umask must not make browser assets unreadable by the
+    # image's web user. Keep the caller's umask outside this export.
+    (umask 022; git -C "$ROOT" archive "$1" | tar -x -C "$2")
+}
+
 stage() {
     keep=
     if [ "${1:-}" = --keep-spec ]; then keep=1; shift; fi
@@ -143,7 +149,7 @@ stage() {
     full=$(git -C "$ROOT" rev-parse "$ref^{commit}")
     sha=$(printf '%s' "$full" | cut -c1-10)
     ctx=$(mktemp -d "${TMPDIR:-/tmp}/oa-stage-$sha.XXXXXX")
-    git -C "$ROOT" archive "$full" | tar -x -C "$ctx"
+    export_context "$full" "$ctx"
     say "stage $sha ($ref) from $ctx"
     web=$REPO/openagents-web:stg-$sha
     stack=$REPO/openagents-stack:$sha

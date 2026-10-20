@@ -348,7 +348,11 @@ COPY --from=gpuiweb /build/pylons-card /srv/pylons/card
 COPY --from=gpuiweb /build/lander8 /srv/lander8
 COPY --from=gpuiweb /build/lander9 /srv/lander9
 
+# Build contexts can carry private file modes. The runtime user must read
+# every browser asset, including fonts and their compressed copies.
+RUN chmod -R a+rX /srv
 USER 10001:10001
+RUN unreadable="$(find /srv ! -readable -print -quit)" && test -z "$unreadable"
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/openagents-web"]
 CMD ["--listen", "0.0.0.0:8080", "--public-host", "openagents.com", "--everglade", "/srv/everglade", "--components-build", "/srv/components", "--cloud-build", "/srv/cloud", "--chat-build", "/srv/chat", "--bunny", "/srv/bunny"]

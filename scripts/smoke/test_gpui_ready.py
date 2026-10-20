@@ -21,7 +21,7 @@ class StartupGate(unittest.TestCase):
     def probe(self, page, expected, *flags):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
-                self.send_response(200 if self.path == "/" else 404)
+                self.send_response(200 if self.path == "/" else 500 if self.path.startswith("/gpui-fonts/") else 404)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(page.encode() if self.path == "/" else b"Missing asset")
@@ -55,6 +55,13 @@ class StartupGate(unittest.TestCase):
             '<div id="gpui-shell">Loading</div><script type="module" src="/missing-start.js"></script>', 1)
         self.assertTrue(any(event.get("status") == 404
                             and event.get("url", "").endswith("/missing-start.js") for event in events))
+
+    def test_a_caught_font_failure_still_blocks_startup(self):
+        _, events = self.probe(
+            '<div id="gpui-shell">Loading</div><script>fetch("/gpui-fonts/Geist.ttf")'
+            '.then(r=>{if(!r.ok)throw new Error("font: "+r.status)}).catch(console.error)</script>', 1)
+        self.assertTrue(any(event.get("status") == 500
+                            and event.get("url", "").endswith("/gpui-fonts/Geist.ttf") for event in events))
 
     def test_a_startup_exception_fails_and_is_saved(self):
         _, events = self.probe('<script>throw new Error("startup fixture exception")</script>', 1)
