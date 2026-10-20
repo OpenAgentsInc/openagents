@@ -286,6 +286,11 @@ pub struct Session {
     display_name: Option<String>,
     /// Display names by pubkey.
     names: HashMap<String, String>,
+    /// The person each player's key belongs to, from a valid owner tag on
+    /// its state (#12313).
+    owners: HashMap<String, String>,
+    /// This player's owner tag, carried on its states.
+    owner_tag: Option<nostr::domain::Tag>,
     asked_names: HashSet<String>,
     want_names: Vec<String>,
     last_name_ask: Option<Instant>,
@@ -472,6 +477,8 @@ impl Session {
             log: chat::Log::default(),
             bubbles: Vec::new(),
             names: HashMap::new(),
+            owners: HashMap::new(),
+            owner_tag: None,
             asked_names: HashSet::new(),
             want_names: Vec::new(),
             last_name_ask: None,
@@ -1023,7 +1030,13 @@ impl Session {
                 b: None,
                 look: None,
             };
-            let event = mv::state_event(&self.id.signer, self.world, &state, unix_now());
+            let event = mv::state_event_owned(
+                &self.id.signer,
+                self.world,
+                &state,
+                unix_now(),
+                self.owner_tag.as_ref(),
+            );
             self.publish_now(event);
         }
     }
@@ -1133,6 +1146,11 @@ impl Session {
                 }
             }
             In::Event { event, .. } => {
+                if let Some(owner) = mv::state_owner(&event)
+                    && (self.owners.len() < MAX_PEOPLE || self.owners.contains_key(&event.pubkey))
+                {
+                    self.owners.insert(event.pubkey.clone(), owner);
+                }
                 if let Ok(received) = mv::decode(&event, self.world) {
                     let Some(received) = self.take_bodies(received) else {
                         return;
@@ -1321,6 +1339,25 @@ impl Session {
             }
         }
         true
+    }
+
+    /// Carry `tag`, the NIP-OA tag by which a person's key owns this
+    /// player's, on this player's states from the next one on (#12313).
+    pub fn set_owner_tag(&mut self, tag: Option<nostr::domain::Tag>) {
+        self.owner_tag = tag;
+    }
+
+    /// The person who owns `pubkey`'s key, from a valid owner tag.
+    #[must_use]
+    pub fn owner_of(&self, pubkey: &str) -> Option<&str> {
+        if pubkey == self.pubkey() {
+            return self
+                .owner_tag
+                .as_ref()
+                .and_then(|t| t.as_slice().get(1))
+                .map(String::as_str);
+        }
+        self.owners.get(pubkey).map(String::as_str)
     }
 
     /// The name `pubkey`'s own frames gave, when they gave one.

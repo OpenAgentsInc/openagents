@@ -3838,6 +3838,28 @@
               ]
             },
             {
+              "name": "verse_key",
+              "doc": "The account's browser Verse key, if a browser offered one.",
+              "declaration": "pub async fn verse_key(&self, session: &Session) -> Result<Option<VerseKey>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/verse/key"
+                }
+              ]
+            },
+            {
+              "name": "own_verse_key",
+              "doc": "Own the browser's Verse key with `auth`, the NIP-OA tag this\naccount's key signed over it.",
+              "declaration": "pub async fn own_verse_key(\n    &self,\n    session: &Session,\n    auth: &[String],\n) -> Result<VerseKey, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/verse/key"
+                }
+              ]
+            },
+            {
               "name": "runs",
               "doc": "Access runs belonging to the session's account.",
               "declaration": "pub fn runs<'a>(&'a self, session: &'a Session) -> Result<Runs<'a>, Error>",
@@ -4442,6 +4464,12 @@
           "name": "OwnerSet",
           "doc": "The answer after the owner's tag was accepted.",
           "declaration": "pub struct OwnerSet {\n    pub agent: String,\n    pub npub: String,\n    pub owner: String,\n    pub published: u64,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "VerseKey",
+          "doc": "A browser's Verse key waiting for, or carrying, the owner tag the\nperson's own key signs (#12313).",
+          "declaration": "pub struct VerseKey {\n    pub pubkey: String,\n    pub conditions: String,\n    pub preimage: String,\n    pub auth: Option<Vec<String>>,\n}"
         }
       ],
       "reexports": []

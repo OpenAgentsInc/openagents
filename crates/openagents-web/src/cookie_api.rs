@@ -64,6 +64,8 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/files",
     // The browser's phone-approved wallet requests (#12258).
     "/v1/wallet/browser",
+    // The browser's Verse key and its owner tag (#12313).
+    "/v1/verse/key",
     // Room tokens for the registry, device, and chat rooms (#12263).
     crate::room_tokens::PATH,
     // Their handlers read the cookie themselves; this layer checks it first.

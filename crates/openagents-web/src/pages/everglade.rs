@@ -158,7 +158,13 @@ base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// The page is the canvas, filling the window, with the status line over its
 /// foot. The heading is for screen readers only.
-fn body(stage: &Stage, wasm_bytes: u64, name: Option<&str>, hands: bool) -> String {
+fn body(
+    stage: &Stage,
+    wasm_bytes: u64,
+    name: Option<&str>,
+    hands: bool,
+    csrf: Option<&str>,
+) -> String {
     let Stage {
         title,
         label,
@@ -168,7 +174,7 @@ fn body(stage: &Stage, wasm_bytes: u64, name: Option<&str>, hands: bool) -> Stri
     format!(
         "<h1 class=\"unseen\">{title}</h1>\
 <div class=\"glade\" id=\"everglade\" data-module=\"/everglade/{GLUE}\" \
-data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PACK_PATH}\"{name}>\
+data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PACK_PATH}\"{name}{csrf}>\
 <canvas id=\"{CANVAS_ID}\" tabindex=\"0\" aria-label=\"{label}\"></canvas>\
 <p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading {loading}…</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to open {loading}.</p></noscript></div>\
@@ -176,6 +182,9 @@ data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PA
         hand_bar = if hands { HAND_BAR } else { "" },
         name = name
             .map(|n| format!(" data-name=\"{}\"", crate::layout::escape(n)))
+            .unwrap_or_default(),
+        csrf = csrf
+            .map(|c| format!(" data-csrf=\"{}\"", crate::layout::escape(c)))
             .unwrap_or_default(),
     )
 }
@@ -244,9 +253,19 @@ async fn stage(app: &App, stage: &Stage, headers: &HeaderMap) -> Response {
         None
     };
     let hands = stage.path == VERSE.path && hand_files(app);
+    // A signed-in person's browser asks for its Verse key's owner tag with
+    // the page's own write value (#12313).
+    let csrf = if stage.path == VERSE.path && name.is_some() {
+        match crate::chat_owner::who(app, headers).await {
+            crate::chat_owner::Who::Account(owner) => Some(super::chat::csrf(app, &owner)),
+            _ => None,
+        }
+    } else {
+        None
+    };
     let mut response = fullscreen(
         stage.title,
-        &body(stage, wasm_bytes, name.as_deref(), hands),
+        &body(stage, wasm_bytes, name.as_deref(), hands, csrf.as_deref()),
     );
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,

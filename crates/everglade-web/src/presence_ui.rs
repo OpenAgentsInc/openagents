@@ -76,6 +76,50 @@ pub fn read_names(json: &str) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
+/// An agent or pylon the Grid shows (#12313), from `/verse/places`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Place {
+    pub label: String,
+    /// Where it stands on the plaza, in meters: `[x, z]`.
+    pub at: [f32; 2],
+}
+
+/// The places in the site's answer, agents on an inner ring and pylons on
+/// an outer one, each at an angle its id fixes, so every visitor sees them
+/// in the same spots.
+#[must_use]
+pub fn read_places(json: &str) -> Vec<Place> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let ring = |list: &serde_json::Value, radius: f32, kind: &str| -> Vec<Place> {
+        list.as_array()
+            .into_iter()
+            .flatten()
+            .take(64)
+            .filter_map(|entry| {
+                let id = entry["id"].as_str()?;
+                let name = entry["name"].as_str()?.trim();
+                if name.is_empty() || name.chars().count() > 64 {
+                    return None;
+                }
+                let turn = id.bytes().fold(2_166_136_261_u32, |h, b| {
+                    (h ^ u32::from(b)).wrapping_mul(16_777_619)
+                }) as f32
+                    / u32::MAX as f32;
+                let angle = turn * std::f32::consts::TAU;
+                Some(Place {
+                    label: format!("{kind} {name}"),
+                    at: [radius * angle.cos(), radius * angle.sin()],
+                })
+            })
+            .collect()
+    };
+    let mut places = ring(&value["agents"], 24.0, "Agent");
+    places.extend(ring(&value["pylons"], 36.0, "Pylon"));
+    places
+}
+
 /// The tag over a player: the name their own frames gave, else their
 /// profile's, else `fallback` (a short key).
 #[must_use]
@@ -144,6 +188,19 @@ pub fn card_hit(size: [f32; 2], at: [f32; 2]) -> Option<Button> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn places_stand_on_rings_where_their_ids_put_them() {
+        let json = r#"{"agents":[{"id":"aa","name":"Helper"},{"id":"bb","name":" "}],"pylons":[{"id":"30200:k:box","name":"box-1"}]}"#;
+        let places = read_places(json);
+        assert_eq!(places.len(), 2);
+        assert_eq!(places[0].label, "Agent Helper");
+        let r0 = places[0].at[0].hypot(places[0].at[1]);
+        let r1 = places[1].at[0].hypot(places[1].at[1]);
+        assert!((r0 - 24.0).abs() < 0.01 && (r1 - 36.0).abs() < 0.01);
+        assert_eq!(read_places(json), places, "the same spots every time");
+        assert!(read_places("nope").is_empty());
+    }
 
     #[test]
     fn profile_names_fill_tags_only_where_frames_gave_none() {

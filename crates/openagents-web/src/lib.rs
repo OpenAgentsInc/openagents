@@ -146,6 +146,7 @@ pub mod ui_page;
 pub mod upstream;
 mod vault;
 mod visitor_api;
+mod verse_key;
 mod wallet_browser;
 mod web_sign_in;
 mod wellknown;
@@ -785,6 +786,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(published_agents::routes())
         .merge(profiles::routes())
         .merge(wallet_browser::routes())
+        .merge(verse_key::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())
         .merge(agent_lab_page::routes())

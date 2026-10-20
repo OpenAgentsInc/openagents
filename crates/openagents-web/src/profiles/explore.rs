@@ -216,3 +216,31 @@ pub(super) async fn page(State(app): State<App>, headers: HeaderMap) -> Response
         .content(PageColumn::new(content))
         .respond(&headers)
 }
+
+/// `GET /verse/places`: the agents and pylons the Verse Grid draws
+/// (#12313), from the same reads as this page.
+pub(super) async fn places(State(app): State<App>) -> Response {
+    use axum::response::IntoResponse;
+    let directory = load(&app.config.profile_relays).await;
+    let pylons: Vec<serde_json::Value> = match app.config.pylons_relay.as_deref() {
+        Some(relay) => crate::pages::pylons_field(relay)
+            .current()
+            .pylons
+            .iter()
+            .take(SHOWN)
+            .map(|p| json!({"id": p.id, "name": p.name}))
+            .collect(),
+        None => Vec::new(),
+    };
+    let agents: Vec<serde_json::Value> = directory
+        .agents
+        .iter()
+        .map(|a| json!({"id": a.id, "name": a.name}))
+        .collect();
+    let mut response = axum::Json(json!({"agents": agents, "pylons": pylons})).into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("public, max-age=60"),
+    );
+    response
+}

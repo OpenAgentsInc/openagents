@@ -363,3 +363,25 @@ fn the_form_copy_reads_plainly() {
         assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
     }
 }
+
+#[test]
+fn a_verse_key_is_owned_by_a_tag_the_site_can_check() {
+    let me = identity(7);
+    let browser = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+    let key = openagents::profiles::VerseKey {
+        pubkey: browser.into(),
+        conditions: "created_at<1800002592".into(),
+        preimage: String::new(),
+        auth: None,
+    };
+    let tag = verse_tag(&me, &key).unwrap();
+    assert_eq!(
+        nostr::agent_public::check_owner_tag_for(browser, &tag, 1_800_000_000).unwrap(),
+        me.pubkey_hex()
+    );
+    let bad = openagents::profiles::VerseKey {
+        conditions: "kind=1".into(),
+        ..key
+    };
+    assert!(verse_tag(&me, &bad).is_err());
+}

@@ -37,6 +37,8 @@ verse-content = { path = "../verse-content" }
 coder-reach = { path = "../coder-reach" }
 glam = "0.30.10"
 serde_json = "1"
+# The owner tag a person's key signs for the browser's Grid key (#12313).
+nostr = { path = "../nostr" }
 web-time = "1.1.0"
 # The browser display handle wgpu's WebGL2 backend needs on its instance.
 raw-window-handle = "0.6"

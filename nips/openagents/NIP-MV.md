@@ -263,6 +263,22 @@ The durable record of one entity. Relays store the latest per publisher and
 | `b` | A `bodies` snapshot's rest poses. Required for `bodies`, absent otherwise. |
 | `look` | Optional, for `avatar`: how to draw it, `{"rig":"<rig id>","shade":<n>}`. The world names its rigs and what a shade means (Grow Little Bunny's `bunny-v1` rig has shades 0 to 20). Clients MUST ignore a `look` whose rig they do not know, and MUST accept a state without one. |
 
+### Owned players
+
+A player's key is often not the person's own: a browser signs its frames
+about ten times a second with a key the page keeps, which a browser
+extension can't do. The person's key MAY own that player key with a
+[NIP-OA](../block/NIP-OA.md) `auth` tag, signed by the person's key over
+the player key, whose only condition is `created_at<T` at most a year
+ahead. The player carries the tag on its avatar's entity state (kind
+`33301`), not on pose frames.
+
+A reader verifies the tag under NIP-OA before using it, and then MAY show
+the owner's kind 0 name over the avatar in place of the state's own
+`name`. It MUST NOT treat the owner as the author: the player key signs
+every frame. openagents.com's `/verse` gets the tag from the person's app
+(`/v1/verse/key`, #12313).
+
 ### Object state
 
 A world whose places form a world tree (Verse's

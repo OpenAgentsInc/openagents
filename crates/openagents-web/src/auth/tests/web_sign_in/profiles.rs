@@ -1475,3 +1475,109 @@ async fn follows_keep_petnames_profiles_show_a_feed_and_notes_point_at_shares() 
         assert_eq!(status, want, "{content}");
     }
 }
+
+#[tokio::test]
+async fn a_browsers_verse_key_is_owned_by_the_persons_key_and_the_grid_lists_places() {
+    let relay = Relay::start().await;
+    let world = key_world_with(vec![relay.url.clone()]).await;
+    let pat = key(0x61);
+    let mut browser = Browser::default();
+    let token = named(&world, &mut browser, &pat, "pat-grid").await;
+    let bearer = format!("Bearer {token}");
+
+    // The signed-in page carries the write value the module asks with.
+    let page = browser.get(&world, "/verse").await;
+    assert!(page.body.contains("data-csrf=\""), "{}", page.body);
+
+    // The browser offers its key; the app signs; a stranger's tag is refused.
+    let grid = key(0x62);
+    let mut api = Browser::default();
+    let offer = serde_json::to_vec(&json!({"pubkey": grid.pubkey()})).unwrap();
+    let (status, offered) = call(
+        &world,
+        &mut api,
+        "POST",
+        "/v1/verse/key",
+        None,
+        Some(&bearer),
+        Some(&offer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{offered}");
+    assert_eq!(offered["auth"], Value::Null);
+    let conditions = offered["conditions"].as_str().unwrap().to_string();
+    let mint = |byte: u8| {
+        let secret = secp256k1::SecretKey::from_byte_array([byte; 32]).unwrap();
+        nostr::domain::mint_owner_attestation(&secret, grid.pubkey(), &conditions)
+            .unwrap()
+            .tag()
+            .as_slice()
+            .to_vec()
+    };
+    let theirs = serde_json::to_vec(&json!({"auth": mint(0x63)})).unwrap();
+    let (status, _) = call(
+        &world,
+        &mut api,
+        "PUT",
+        "/v1/verse/key",
+        None,
+        Some(&bearer),
+        Some(&theirs),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let mine = serde_json::to_vec(&json!({"auth": mint(0x61)})).unwrap();
+    let (status, owned) = call(
+        &world,
+        &mut api,
+        "PUT",
+        "/v1/verse/key",
+        None,
+        Some(&bearer),
+        Some(&mine),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{owned}");
+    let tag = Tag::new(serde_json::from_value(owned["auth"].clone()).unwrap());
+    assert_eq!(
+        nostr::agent_public::check_owner_tag_for(grid.pubkey(), &tag, crate::cloud::session::now())
+            .unwrap(),
+        pat.pubkey()
+    );
+    let (_, read) = call(
+        &world,
+        &mut api,
+        "GET",
+        "/v1/verse/key",
+        None,
+        Some(&bearer),
+        None,
+    )
+    .await;
+    assert_eq!(read["auth"], owned["auth"]);
+
+    // The Grid's places come from the same relay events /explore reads.
+    let agent = key(0x64);
+    let agent_tag = nostr::domain::mint_owner_attestation(
+        &secp256k1::SecretKey::from_byte_array([0x61; 32]).unwrap(),
+        agent.pubkey(),
+        &nostr::agent_public::conditions_until(4_000_000_000),
+    )
+    .unwrap()
+    .tag();
+    relay.put(
+        nostr::agent_public::definition_event(
+            &agent,
+            &agent_tag,
+            pat.pubkey(),
+            &"c".repeat(64),
+            "https://example.com/d.json",
+            &json!({"experiment": {"title": "Grid Helper"}}).to_string(),
+            1_790_000_000,
+        )
+        .unwrap(),
+    );
+    let (status, places) = call(&world, &mut api, "GET", "/verse/places", None, None, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(places["agents"][0]["name"], "Grid Helper");
+}

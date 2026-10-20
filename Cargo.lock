@@ -6629,6 +6629,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "log",
+ "nostr",
  "openagents-web-hands",
  "openagents-workspace-hack",
  "raw-window-handle",

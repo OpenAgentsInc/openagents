@@ -61,6 +61,13 @@ pub struct Presence {
     profiles: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, Option<String>>>>,
     /// When the site was last asked for names.
     asked: Option<Instant>,
+    /// The owner tag the person's own key signed for this player's key,
+    /// once the site has it (#12313).
+    owner_tag: std::rc::Rc<std::cell::RefCell<Option<Vec<String>>>>,
+    /// Whether the session carries it yet.
+    owned: bool,
+    /// Agents and pylons drawn on the plaza, from the site (#12313).
+    places: std::rc::Rc<std::cell::RefCell<Vec<crate::presence_ui::Place>>>,
 }
 
 impl Presence {
@@ -123,6 +130,16 @@ impl Presence {
         {
             session.set_blocklist(lists);
         }
+        // Signed in: ask the site for this key's owner tag, which the
+        // person's phone or computer signs (#12313).
+        let owner_tag: std::rc::Rc<std::cell::RefCell<Option<Vec<String>>>> = Default::default();
+        if let Some(csrf) = window
+            .document()
+            .and_then(|d| d.get_element_by_id("everglade"))
+            .and_then(|e| e.get_attribute("data-csrf"))
+        {
+            ask_owner(session.pubkey().to_owned(), csrf, owner_tag.clone());
+        }
         session.begin_spawn(SPAWN_WAIT);
         web_sys::console::info_1(&JsValue::from_str(&format!(
             "Grid: joining {} on {relay} as {}",
@@ -137,6 +154,9 @@ impl Presence {
             card: None,
             profiles: Default::default(),
             asked: None,
+            owner_tag,
+            owned: false,
+            places: load_places(),
         }))
     }
 
@@ -158,6 +178,13 @@ impl Presence {
                 let _ = runtime.set_spawn(spawn.pos, spawn.yaw);
             }
             self.spawn_pending = false;
+        }
+        if !self.owned
+            && let Some(tag) = self.owner_tag.borrow().clone()
+        {
+            self.session
+                .set_owner_tag(Some(nostr::domain::Tag::new(tag)));
+            self.owned = true;
         }
         self.session.tick_world(now, runtime);
         self.ask_names(now);
@@ -187,8 +214,13 @@ impl Presence {
     /// The tag over `pubkey`: its own frames' name, else its profile's.
     fn label(&self, pubkey: &str) -> String {
         let profiles = self.profiles.borrow();
+        // A verified owner's profile name comes first (#12313).
+        let owner = self
+            .session
+            .owner_of(pubkey)
+            .and_then(|owner| profiles.get(owner).and_then(Option::as_deref));
         crate::presence_ui::label(
-            self.session.shown_name(pubkey),
+            owner.or(self.session.shown_name(pubkey)),
             profiles.get(pubkey).and_then(Option::as_deref),
             self.session.name_of(pubkey),
         )
@@ -210,8 +242,21 @@ impl Presence {
                 .shown(now)
                 .into_iter()
                 .filter(|shown| shown.role == "avatar")
-                .map(|shown| shown.pubkey)
-                .filter(|key| self.session.shown_name(key).is_none() && !profiles.contains_key(key))
+                .flat_map(|shown| match self.session.owner_of(&shown.pubkey) {
+                    // A verified owner's profile names the avatar; else the
+                    // key's own profile, when its frames gave no name.
+                    Some(owner) => vec![owner.to_owned()],
+                    None if self.session.shown_name(&shown.pubkey).is_none() => {
+                        vec![shown.pubkey]
+                    }
+                    None => Vec::new(),
+                })
+                .chain(
+                    self.session
+                        .owner_of(self.session.pubkey())
+                        .map(str::to_owned),
+                )
+                .filter(|key| !profiles.contains_key(key))
                 .take(crate::presence_ui::NAMES_MAX)
                 .collect()
         };
@@ -286,6 +331,24 @@ impl Presence {
                 self.session.pubkey().to_owned(),
                 runtime.player.pos + Vec3::Y * TAG_LIFT,
             ));
+        }
+        // Agents and pylons, where the site's directory puts them.
+        for place in self.places.borrow().iter() {
+            let at = Vec3::new(place.at[0], TAG_LIFT, place.at[1]);
+            if at.distance(runtime.player.pos) > TAG_RANGE * 1.5 {
+                continue;
+            }
+            let Some([x, y]) = verse::hud::project(view_proj, size, at) else {
+                continue;
+            };
+            let width = atlas.measure(&place.label);
+            ui.text(
+                atlas,
+                x - width / 2.0,
+                y - atlas.line,
+                &place.label,
+                crate::theme::linear(coder_ui::coder_noir::CONTENT, 0.7),
+            );
         }
         for (pubkey, head) in tags {
             let Some([x, y]) = verse::hud::project(view_proj, size, head) else {
@@ -472,4 +535,114 @@ fn log_frames(times: &FrameTimes, players: usize, session: &Session) {
         "last_refusal": session.last_refusal(),
     });
     web_sys::console::info_1(&JsValue::from_str(&format!("Grid frames {line}")));
+}
+
+/// Offer this player's key to the site and wait for its owner tag, which
+/// the person's phone or computer signs; at most an hour of asking.
+fn ask_owner(
+    pubkey: String,
+    csrf: String,
+    into: std::rc::Rc<std::cell::RefCell<Option<Vec<String>>>>,
+) {
+    wasm_bindgen_futures::spawn_local(async move {
+        use wasm_bindgen::JsCast;
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let call = |method: &str, body: Option<String>| {
+            let init = web_sys::RequestInit::new();
+            init.set_method(method);
+            init.set_credentials(web_sys::RequestCredentials::SameOrigin);
+            let headers = web_sys::Headers::new().ok()?;
+            headers.set("content-type", "application/json").ok()?;
+            headers.set("x-openagents-csrf", &csrf).ok()?;
+            init.set_headers(&headers);
+            if let Some(body) = body {
+                init.set_body(&JsValue::from_str(&body));
+            }
+            Some(window.fetch_with_str_and_init("/v1/verse/key", &init))
+        };
+        let read = |promise: js_sys::Promise| async move {
+            let response = wasm_bindgen_futures::JsFuture::from(promise)
+                .await
+                .ok()?
+                .dyn_into::<web_sys::Response>()
+                .ok()?;
+            if !response.ok() {
+                return None;
+            }
+            let text = wasm_bindgen_futures::JsFuture::from(response.text().ok()?)
+                .await
+                .ok()?
+                .as_string()?;
+            serde_json::from_str::<serde_json::Value>(&text).ok()
+        };
+        let tag_of = |answer: &Option<serde_json::Value>| {
+            answer
+                .as_ref()
+                .and_then(|a| a["auth"].as_array())
+                .map(|t| {
+                    t.iter()
+                        .filter_map(|v| v.as_str().map(str::to_owned))
+                        .collect::<Vec<_>>()
+                })
+                .filter(|t| t.len() == 4)
+        };
+        let offer = serde_json::json!({ "pubkey": pubkey }).to_string();
+        let Some(offered) = call("POST", Some(offer)) else {
+            return;
+        };
+        let mut answer = read(offered).await;
+        for _ in 0..180 {
+            if let Some(tag) = tag_of(&answer) {
+                web_sys::console::info_1(&JsValue::from_str(
+                    "Grid: this avatar is owned by your key",
+                ));
+                *into.borrow_mut() = Some(tag);
+                return;
+            }
+            gloo_timers::future::TimeoutFuture::new(20_000).await;
+            let Some(again) = call("GET", None) else {
+                return;
+            };
+            answer = read(again).await;
+        }
+    });
+}
+
+/// The agents and pylons the site's directory lists, read once.
+fn load_places() -> std::rc::Rc<std::cell::RefCell<Vec<crate::presence_ui::Place>>> {
+    let places: std::rc::Rc<std::cell::RefCell<Vec<crate::presence_ui::Place>>> =
+        Default::default();
+    let into = places.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        use wasm_bindgen::JsCast;
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Ok(answer) =
+            wasm_bindgen_futures::JsFuture::from(window.fetch_with_str("/verse/places")).await
+        else {
+            return;
+        };
+        let Ok(response) = answer.dyn_into::<web_sys::Response>() else {
+            return;
+        };
+        if !response.ok() {
+            return;
+        }
+        let Ok(text) = response.text() else {
+            return;
+        };
+        let Ok(text) = wasm_bindgen_futures::JsFuture::from(text).await else {
+            return;
+        };
+        let found = crate::presence_ui::read_places(&text.as_string().unwrap_or_default());
+        web_sys::console::info_1(&JsValue::from_str(&format!(
+            "Grid: {} agents and pylons on the plaza",
+            found.len()
+        )));
+        *into.borrow_mut() = found;
+    });
+    places
 }

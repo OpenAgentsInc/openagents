@@ -62,6 +62,64 @@ pub fn check_owner_tag(agent: &RelaySigner, tag: &Tag, now: u64) -> Result<Strin
     }
 }
 
+/// The owner's `auth` tag for `agent_pubkey` (hex), checked without the
+/// agent's signer: a valid NIP-OA signature over the agent key whose only
+/// condition is `created_at<T`, `now < T <= now + ATTESTATION_MAX_SECS`.
+/// Answers the owner's key. Used for keys the checking side doesn't hold,
+/// such as a browser's Verse key (#12313).
+///
+/// # Errors
+///
+/// A sentence saying what's wrong with the tag.
+pub fn check_owner_tag_for(agent_pubkey: &str, tag: &Tag, now: u64) -> Result<String, String> {
+    use secp256k1::{Secp256k1, XOnlyPublicKey, schnorr::Signature};
+    use sha2::{Digest, Sha256};
+    let values = tag.as_slice();
+    if values.len() != 4 || values[0] != "auth" {
+        return Err("the owner tag must be [\"auth\", owner, conditions, signature]".into());
+    }
+    let until = values[2]
+        .strip_prefix("created_at<")
+        .and_then(|t| t.parse::<u64>().ok())
+        .filter(|t| t.to_string() == values[2]["created_at<".len()..])
+        .ok_or("the owner tag's only condition must be created_at<T")?;
+    if until <= now || until > now.saturating_add(ATTESTATION_MAX_SECS) {
+        return Err("the owner tag must stand for at most a year from now".into());
+    }
+    let hex32 = |text: &str| -> Option<[u8; 32]> {
+        (text.len() == 64 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))).then(
+            || {
+                let mut out = [0u8; 32];
+                for (i, byte) in out.iter_mut().enumerate() {
+                    *byte = u8::from_str_radix(&text[2 * i..2 * i + 2], 16).unwrap_or(0);
+                }
+                out
+            },
+        )
+    };
+    let owner_bytes = hex32(&values[1]).ok_or("the owner key is malformed")?;
+    hex32(agent_pubkey).ok_or("the agent key is malformed")?;
+    if values[1] == agent_pubkey {
+        return Err("an owner tag can't name its own key".into());
+    }
+    let owner =
+        XOnlyPublicKey::from_byte_array(owner_bytes).map_err(|_| "the owner key is malformed")?;
+    let sig = &values[3];
+    if sig.len() != 128 || !sig.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err("the owner signature is malformed".into());
+    }
+    let mut sig_bytes = [0u8; 64];
+    for (i, byte) in sig_bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&sig[2 * i..2 * i + 2], 16).unwrap_or(0);
+    }
+    let digest: [u8; 32] =
+        Sha256::digest(format!("nostr:agent-auth:{agent_pubkey}:{}", values[2]).as_bytes()).into();
+    Secp256k1::verification_only()
+        .verify_schnorr(&Signature::from_byte_array(sig_bytes), &digest, &owner)
+        .map_err(|_| "the owner signature doesn't check out".to_string())?;
+    Ok(values[1].clone())
+}
+
 /// What an agent's profile says.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Profile {
@@ -271,6 +329,18 @@ mod tests {
         assert!(check_owner_tag(&agent, &long, NOW).is_err(), "too long");
         let bad = Tag::new(vec!["auth".into(), owner.pubkey().into()]);
         assert!(check_owner_tag(&agent, &bad, NOW).is_err());
+    }
+
+    #[test]
+    fn a_tag_checks_against_a_key_the_checker_does_not_hold() {
+        let (owner, agent, other) = (signer(1), signer(2), signer(3));
+        let tag = owner_tag(1, &agent, NOW + 3600);
+        assert_eq!(
+            check_owner_tag_for(agent.pubkey(), &tag, NOW).unwrap(),
+            owner.pubkey()
+        );
+        assert!(check_owner_tag_for(other.pubkey(), &tag, NOW).is_err());
+        assert!(check_owner_tag_for(agent.pubkey(), &tag, NOW + 7200).is_err());
     }
 
     #[test]

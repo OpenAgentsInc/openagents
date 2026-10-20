@@ -461,6 +461,8 @@ struct FormState {
     shown: Option<YourProfile>,
     notice: Option<String>,
     busy: bool,
+    /// A browser's Verse key waiting for this key's owner tag (#12313).
+    verse: Option<openagents::profiles::VerseKey>,
 }
 
 /// Settings > Your ID's public profile form: name, picture, and about, and
@@ -486,6 +488,10 @@ pub mod copy {
     pub const LOADING: &str = "Loading your profile…";
     pub const SAVED: &str = "Saved. Your profile is on your page.";
     pub const NOT_READY: &str = "Your account isn't ready yet. Try again in a moment.";
+    pub const VERSE_ASKS: &str =
+        "A browser you're logged in on wants to show your name over your avatar in the Verse.";
+    pub const VERSE_LINK: &str = "Show my name there";
+    pub const VERSE_LINKED: &str = "Done. Your avatar in the Verse shows your name.";
 }
 
 impl ProfileForm {
@@ -594,6 +600,20 @@ impl ProfileForm {
         if let Some(shown) = &state.shown {
             children.push(text("page", shown.page.clone(), TextRole::Body));
         }
+        if state.verse.is_some() {
+            children.push(text("verse", copy::VERSE_ASKS.into(), TextRole::Body));
+            children.push(Node {
+                key: "verse-link".into(),
+                style: Default::default(),
+                element: Element::Button {
+                    label: copy::VERSE_LINK.into(),
+                    enabled: !state.busy,
+                    icon: None,
+                    shortcut: None,
+                    intent: "verse-link".into(),
+                },
+            });
+        }
         View::new_v3(
             &self.instance,
             state.revision,
@@ -648,10 +668,23 @@ impl ProfileForm {
         let _gate = self.io.lock().await;
         let result = async {
             let (lease, identity) = self.signed_in()?;
-            load(lease.client(), lease.session(), &identity, &self.relay).await
+            let shown = load(lease.client(), lease.session(), &identity, &self.relay).await?;
+            // A browser waiting for its Verse key's owner tag, if any.
+            let verse = lease
+                .client()
+                .verse_key(lease.session())
+                .await
+                .ok()
+                .flatten()
+                .filter(|key| key.auth.is_none());
+            Ok::<_, String>((shown, verse))
         }
         .await;
         let mut state = self.state.lock().unwrap();
+        let result = result.map(|(shown, verse)| {
+            state.verse = verse;
+            shown
+        });
         match &result {
             Ok(shown) => {
                 state.edit = ProfileEdit {
@@ -681,6 +714,9 @@ impl ProfileForm {
             .activate(event)
             .map_err(|_| "This view changed. Try that again.".to_owned())?
             .clone();
+        if intent == "verse-link" {
+            return self.link_verse().await;
+        }
         if intent != "save" {
             return Err("Choose an action.".into());
         }
@@ -717,6 +753,54 @@ impl ProfileForm {
         self.changed(&mut state);
         result.map(|_| ())
     }
+}
+
+impl ProfileForm {
+    /// Sign the waiting browser Verse key's owner tag with this key.
+    async fn link_verse(&self) -> Result<(), String> {
+        let _gate = self.io.lock().await;
+        let Some(key) = self.state.lock().unwrap().verse.clone() else {
+            return Err("No browser is waiting.".into());
+        };
+        let result = async {
+            let (lease, identity) = self.signed_in()?;
+            let tag = verse_tag(&identity, &key)?;
+            lease
+                .client()
+                .own_verse_key(lease.session(), tag.as_slice())
+                .await
+                .map_err(|_| "We couldn't show your name there. Try again.".to_owned())
+        }
+        .await;
+        let mut state = self.state.lock().unwrap();
+        match &result {
+            Ok(_) => {
+                state.verse = None;
+                state.notice = Some(copy::VERSE_LINKED.into());
+            }
+            Err(message) => state.notice = Some(message.clone()),
+        }
+        self.changed(&mut state);
+        result.map(|_| ())
+    }
+}
+
+/// The NIP-OA tag by which `identity` owns a browser's Verse key, over the
+/// conditions the site named, which must stand for at most a year.
+///
+/// # Errors
+///
+/// A sentence for the person.
+pub fn verse_tag(
+    identity: &Identity,
+    key: &openagents::profiles::VerseKey,
+) -> Result<nostr::domain::Tag, String> {
+    until_of(&key.conditions).ok_or("We couldn't sign for that browser.")?;
+    Ok(
+        nostr::domain::mint_owner_attestation(&identity.secret_key(), &key.pubkey, &key.conditions)
+            .map_err(|_| "We couldn't sign for that browser.".to_owned())?
+            .tag(),
+    )
 }
 
 #[cfg(test)]

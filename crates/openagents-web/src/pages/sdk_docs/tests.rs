@@ -155,6 +155,9 @@ fn every_public_sdk_item_is_described_and_its_calls_resolve() {
         "GET /v1/wallet/browser",
         "PUT /v1/wallet/browser/grant",
         "POST /v1/wallet/browser/requests/*/receipt",
+        // A browser's Verse key and its owner tag (#12313).
+        "GET /v1/verse/key",
+        "PUT /v1/verse/key",
     ];
     let unknown: Vec<&String> = unresolved
         .iter()

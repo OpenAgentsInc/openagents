@@ -27,8 +27,8 @@
 
 mod edit;
 pub(crate) mod evidence;
-pub(crate) mod gym;
 mod explore;
+pub(crate) mod gym;
 pub(crate) use edit::PAGE as SETTINGS_PAGE;
 mod picture;
 pub(crate) mod relays;
@@ -56,6 +56,8 @@ use serde_json::{Value, json};
 use crate::App;
 use crate::ui_page::{UiPage, action_link, problem};
 
+/// The agents and pylons Verse draws in the Grid (#12313).
+pub(crate) const PLACES: &str = "/verse/places";
 /// The names Verse labels avatars with (#12261).
 pub(crate) const NAMES: &str = "/verse/names";
 /// The most keys one names question asks about.
@@ -84,6 +86,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/event/{id}", get(evidence::event_page))
         .route(explore::PAGE, get(explore::page))
         .route(NAMES, get(names))
+        .route(PLACES, get(explore::places))
         .merge(edit::routes())
 }
 
@@ -95,6 +98,7 @@ pub(crate) fn owns(path: &str) -> bool {
         || path.starts_with("/event/")
         || path == explore::PAGE
         || path == NAMES
+        || path == PLACES
         || edit::owns(path)
 }
 

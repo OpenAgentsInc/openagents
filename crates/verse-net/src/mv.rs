@@ -422,14 +422,42 @@ pub fn frame_event(signer: &RelaySigner, world: &str, frame: &Frame, now: u64) -
 /// Never in practice: serializing owned plain data cannot fail.
 #[must_use]
 pub fn state_event(signer: &RelaySigner, world: &str, state: &State, now: u64) -> Event {
+    state_event_owned(signer, world, state, now, None)
+}
+
+/// [`state_event`] carrying `owner`, the NIP-OA `auth` tag by which a
+/// person's key owns this player's key (NIP-MV, "Owned players"; #12313).
+#[must_use]
+pub fn state_event_owned(
+    signer: &RelaySigner,
+    world: &str,
+    state: &State,
+    now: u64,
+    owner: Option<&Tag>,
+) -> Event {
     let mut tags = vec![
         tag(&["d", &state_address(world, &state.id)]),
         tag(&["w", world]),
         tag(&["role", &state.role]),
     ];
     tags.extend(cell_tags(std::iter::once(Vec3::from(state.p))));
+    tags.extend(owner.cloned());
     let content = serde_json::to_string(state).expect("a state serializes");
     signer.sign(now, STATE_KIND, tags, content)
+}
+
+/// The person who owns the key that signed state `event`, when it carries
+/// a valid NIP-OA `auth` tag.
+#[must_use]
+pub fn state_owner(event: &Event) -> Option<String> {
+    (event.kind == STATE_KIND)
+        .then(|| {
+            nostr::domain::verify_owner_attestation(event)
+                .ok()
+                .flatten()
+        })
+        .flatten()
+        .map(|a| a.owner_pubkey)
 }
 
 /// Signs a gesture at `pos`.
@@ -822,6 +850,39 @@ mod tests {
             decode(&event, WORLD),
             Ok(Received::State { state: got, .. }) if got == state
         ));
+    }
+
+    #[test]
+    fn an_owned_state_names_its_owner_and_still_decodes() {
+        let state = State {
+            v: 1,
+            id: "avatar".into(),
+            role: "avatar".into(),
+            p: [0.0, 0.0, 0.0],
+            q: [0.0, 0.0, 0.0, 1.0],
+            t: 5,
+            online: true,
+            follows: None,
+            name: Some("Pat".into()),
+            set: None,
+            b: None,
+            look: None,
+        };
+        let player = signer();
+        let owner = secp256k1::SecretKey::from_byte_array([0x22; 32]).unwrap();
+        let tag =
+            nostr::domain::mint_owner_attestation(&owner, player.pubkey(), "created_at<4000000000")
+                .unwrap();
+        let event = state_event_owned(&player, WORLD, &state, 1_790_000_000, Some(&tag.tag()));
+        assert_eq!(
+            state_owner(&event).as_deref(),
+            Some(tag.owner_pubkey.as_str())
+        );
+        assert!(decode(&event, WORLD).is_ok());
+        assert_eq!(
+            state_owner(&state_event(&player, WORLD, &state, 1_790_000_000)),
+            None
+        );
     }
 
     fn snapshot() -> State {

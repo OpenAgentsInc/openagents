@@ -142,3 +142,57 @@ impl Client {
         .await
     }
 }
+
+/// A browser's Verse key waiting for, or carrying, the owner tag the
+/// person's own key signs (#12313).
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct VerseKey {
+    /// The browser's Verse key, 64 lowercase hex characters.
+    pub pubkey: String,
+    /// The NIP-OA conditions to sign, such as `created_at<1800000000`.
+    pub conditions: String,
+    /// The exact text the owner's signature covers.
+    pub preimage: String,
+    /// The signed tag, once there is one.
+    #[serde(default)]
+    pub auth: Option<Vec<String>>,
+}
+
+impl Client {
+    /// The account's browser Verse key, if a browser offered one.
+    pub async fn verse_key(&self, session: &Session) -> Result<Option<VerseKey>, Error> {
+        self.check_session(session)?;
+        match self
+            .request(
+                Method::GET,
+                &["verse", "key"],
+                &[],
+                None,
+                Some(session.token()),
+            )
+            .await
+        {
+            Ok(key) => Ok(Some(key)),
+            Err(Error::NotFound | Error::Refused { status: 404, .. }) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Own the browser's Verse key with `auth`, the NIP-OA tag this
+    /// account's key signed over it.
+    pub async fn own_verse_key(
+        &self,
+        session: &Session,
+        auth: &[String],
+    ) -> Result<VerseKey, Error> {
+        self.check_session(session)?;
+        self.request(
+            Method::PUT,
+            &["verse", "key"],
+            &[],
+            Some(json!({ "auth": auth })),
+            Some(session.token()),
+        )
+        .await
+    }
+}
