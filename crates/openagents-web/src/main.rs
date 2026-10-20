@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--api-host HOST] [--studio-host HOST]... [--upstream http://HOST:PORT] \
-[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--lander5 DIRECTORY] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads] \
@@ -85,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--icecream" => config.icecream = Some(PathBuf::from(value)),
             "--snap" => config.snap = Some(PathBuf::from(value)),
             "--layertree" => config.layertree = Some(PathBuf::from(value)),
+            "--lander5" => config.lander5 = Some(PathBuf::from(value)),
             "--att" => config.att = Some(PathBuf::from(value)),
             "--cad" => config.cad = Some(PathBuf::from(value)),
             "--components-build" => config.components_build = Some(PathBuf::from(value)),
@@ -199,6 +200,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The LayerTree demo's build ships at /srv/layertree in the image.
     if config.layertree.is_none() && std::path::Path::new("/srv/layertree/start.js").is_file() {
         config.layertree = Some(PathBuf::from("/srv/layertree"));
+    }
+    // /lander5's runner ships at /srv/lander5 in the image.
+    if config.lander5.is_none()
+        && std::path::Path::new("/srv/lander5/lander5_web_bg.wasm").is_file()
+    {
+        config.lander5 = Some(PathBuf::from("/srv/lander5"));
     }
     // The CAD engine's browser build ships at /srv/cad in the image.
     if config.cad.is_none() && std::path::Path::new("/srv/cad/start.js").is_file() {

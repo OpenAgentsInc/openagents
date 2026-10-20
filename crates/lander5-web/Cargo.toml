@@ -1,0 +1,36 @@
+[package]
+name = "lander5-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "/lander5's procedural background: two GLSL passes (a sky-view table and the Grid at twilight) and a tiny raw WebGL2 runner, built from Shader Skills (MIT)."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# The shaders and their minifier build natively, for the site that inlines
+# them and for the tests; only the runner is browser-only.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The `wasm-bindgen` CLI that `scripts/build-lander5-web.sh` runs must be
+# the version Cargo.lock resolves here; the script checks.
+wasm-bindgen = "0.2.128"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "MediaQueryList",
+    "Node",
+    "Performance",
+    "WebGl2RenderingContext",
+    "WebGlFramebuffer",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlTexture",
+    "WebGlUniformLocation",
+    "Window",
+] }
+
+[lints]
+workspace = true

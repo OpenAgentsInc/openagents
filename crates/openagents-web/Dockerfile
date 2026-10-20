@@ -92,7 +92,8 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && cargo build --release --locked --target $w -p snap-web \
     && cargo build --release --locked --target $w -p att-web \
     && cargo build --locked --release --target $w -p sand-garden \
-    && cargo build --release --locked --target $w -p layertree-web'
+    && cargo build --release --locked --target $w -p layertree-web \
+    && cargo build --locked --profile wasm-tiny --target $w -p lander5-web'
 
 # The Everglade web build (#10524) that /everglade serves (#10525):
 # scripts/build-everglade-web.sh writes the JS glue and the wasm into the
@@ -187,6 +188,12 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && test -s /build/layertree/layertree_web.js \
     && test -s /build/layertree/layertree_web_bg.wasm \
     && test -s /build/layertree/start.js
+
+# /lander5's WebGL2 runner, which the page inlines, found at /srv/lander5
+# without a flag.
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-lander5-web.sh /build/lander5 \
+    && test -s /build/lander5/lander5_web.js \
+    && test -s /build/lander5/lander5_web_bg.wasm
 
 # The CAD engine for the browser (crates/cad-wasm), which /cad loads
 # (#11649): its own stage, so it builds beside the others. wasm-opt
@@ -290,6 +297,7 @@ COPY --from=everglade /build/att /srv/att
 COPY --from=cadweb /build/cad /srv/cad
 COPY --from=everglade /build/sand /srv/sand
 COPY --from=everglade /build/layertree /srv/layertree
+COPY --from=everglade /build/lander5 /srv/lander5
 COPY --from=gpuiweb /build/gpui-demo /srv/gpui-demo
 COPY --from=gpuiweb /build/agent-graph /srv/agent-graph
 COPY --from=gpuiweb /build/gpui-chat /srv/gpui-chat

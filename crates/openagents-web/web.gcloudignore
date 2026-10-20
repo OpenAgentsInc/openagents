@@ -40,6 +40,7 @@
 !/scripts/build-robot-web.sh
 !/scripts/build-sand-garden.sh
 !/scripts/build-layertree-web.sh
+!/scripts/build-lander5-web.sh
 !/scripts/film/
 /scripts/film/*
 !/scripts/film/lab_words.json

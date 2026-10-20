@@ -434,6 +434,10 @@ pub struct Config {
     /// `/srv/layertree` when it exists), served under `/layertree/`.
     /// Without it, `/layertree` says the demo is unavailable.
     pub layertree: Option<PathBuf>,
+    /// `/lander5`'s WebGL2 runner (`--lander5 DIR`, default `/srv/lander5`
+    /// when it exists), inlined into the page. Without it, `/lander5` shows
+    /// its title and link over a still background.
+    pub lander5: Option<PathBuf>,
     /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
     /// it exists), served under `/games/snap-station/`. Without it, the
     /// game's page says it can't be played here.
@@ -564,6 +568,7 @@ impl Config {
             gpui_chat: None,
             icecream: None,
             layertree: None,
+            lander5: None,
             snap: None,
             att: None,
             cad: None,

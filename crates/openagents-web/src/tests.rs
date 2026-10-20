@@ -1682,6 +1682,77 @@ async fn the_bunny_page_says_it_cannot_be_played_without_the_build() {
     }
 }
 
+/// `/lander5`: one response holding the title, the Download link, both
+/// shaders and the runner, under a policy that admits its inline style and
+/// script by hash; without the build, the same title and link and no
+/// script.
+#[tokio::test]
+async fn the_lander5_page_is_one_document_with_its_title_and_link() {
+    let root = tempfile::tempdir().unwrap();
+    let build = root.path().join("lander5");
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(
+        build.join(pages::LANDER5_GLUE),
+        "export function start() {}\nasync function __wbg_init(m) { return m; }\n\
+export { initSync, __wbg_init as default };\n",
+    )
+    .unwrap();
+    std::fs::write(build.join(pages::LANDER5_WASM), b"\0asm\x01\0\0\0").unwrap();
+    let mut with_build = config(root.path().join("tasks"));
+    with_build.lander5 = Some(build);
+    let mut without_build = config(root.path().join("tasks"));
+    without_build.lander5 = Some(root.path().join("nowhere"));
+
+    for (config, runs) in [(with_build, true), (without_build, false)] {
+        let (status, headers, html) =
+            get_with(router(config.clone()), pages::LANDER5_PATH, LOCAL).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(html.contains("<title>OpenAgents</title>"), "{html}");
+        assert!(html.contains("<h1>OpenAgents</h1>"));
+        assert!(html.contains("<a href=\"/download\">Download</a>"));
+        assert!(html.contains("<canvas id=\"lander5-canvas\" aria-hidden=\"true\">"));
+        // One request: no stylesheet, script, icon, or font from anywhere.
+        let lower = html.to_ascii_lowercase();
+        assert!(!lower.contains(" src=") && !lower.contains("<link rel=\"stylesheet\""));
+        assert!(lower.contains("<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:"));
+        let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert!(
+            policy.starts_with("default-src 'none'; style-src 'sha256-"),
+            "{policy}"
+        );
+        assert!(!policy.contains("unsafe-inline"));
+        assert_eq!(lower.contains("<script type=\"module\">"), runs);
+        assert_eq!(policy.contains("'wasm-unsafe-eval'"), runs);
+        assert_eq!(html.contains("id=\"lander5-grid\""), runs);
+        assert_eq!(html.contains("Copyright (c) 2026 gokayfem"), runs);
+        crate::copy_guard::assert_plain(pages::LANDER5_PATH, &html);
+        assert_eq!(
+            oa_copy::violations(&oa_copy::visible_text(&html), &[]),
+            vec![]
+        );
+
+        // brotli when asked, with the same page inside
+        let response = router(config.clone())
+            .oneshot(
+                Request::builder()
+                    .uri(pages::LANDER5_PATH)
+                    .header(header::HOST, LOCAL)
+                    .header(header::ACCEPT_ENCODING, "gzip, deflate, br")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+        assert_eq!(response.headers()[header::VARY], "accept-encoding");
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let mut page = Vec::new();
+        brotli::BrotliDecompress(&mut &bytes[..], &mut page).unwrap();
+        assert_eq!(page, html.as_bytes());
+    }
+    assert!(crate::upstream::owned(pages::LANDER5_PATH));
+}
+
 /// A server started with `--layertree DIR` holding a stand-in LayerTree
 /// demo build.
 fn with_layertree(root: &std::path::Path) -> Config {

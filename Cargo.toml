@@ -85,6 +85,13 @@ incremental = true
 [profile.dev.package.sha2]
 opt-level = 3
 
+# /lander5 compresses its page at brotli's best quality once per build;
+# unoptimized that takes seconds in tests and local servers.
+[profile.dev.package.brotli]
+opt-level = 3
+[profile.dev.package.brotli-decompressor]
+opt-level = 3
+
 # The code graph (#11622) parses every Rust file of a checkout on a local
 # build; unoptimized it would take most of a minute instead of seconds.
 [profile.dev.package.code-graph]
@@ -188,6 +195,18 @@ opt-level = 3
 # guests are checked in and inlined into `programs/evidence-guests.json`,
 # so size is a review cost. No native build uses it.
 [profile.guest]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+
+# The landing pages' raw WebGL2 runners (scripts/build-lander5-web.sh): a
+# page inlines its module in the HTML, so every byte is on the first
+# response. No native build uses it.
+[profile.wasm-tiny]
 inherits = "release"
 opt-level = "z"
 lto = true

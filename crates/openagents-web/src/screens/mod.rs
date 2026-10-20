@@ -253,6 +253,7 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/druid", "a canvas world"),
     ("/grid", "a canvas world"),
     ("/lander3*", "a canvas world"),
+    ("/lander5", "a canvas world"),
     ("/games/*", "a game"),
     ("/att*", "a canvas app"),
     ("/layertree*", "a canvas world"),

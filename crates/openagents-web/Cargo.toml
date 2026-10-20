@@ -51,6 +51,11 @@ markdown-stream = { path = "../markdown-stream" }
 openui-lang = { path = "../openui-lang" }
 axum = "0.8"
 base64 = "0.22"
+# /lander5 sends its one document brotli- or gzip-compressed.
+brotli = { version = "8", default-features = false, features = ["std"] }
+flate2 = "1"
+# /lander5's shaders (crates/lander5-web, built from Shader Skills, MIT).
+lander5-web = { path = "../lander5-web" }
 coder = { path = "../coder" }
 coder-lease = { path = "../coder-lease" }
 coder-access = { path = "../coder-access", default-features = false }
