@@ -234,7 +234,9 @@ impl Host<'_> {
                 }
                 Kind::Invoke => self.invoke(step)?,
                 Kind::Decide => self.decide(step)?,
-                Kind::Program | Kind::Module => return Err(End("refused".into())),
+                Kind::Program | Kind::Module | Kind::Parallel => {
+                    return Err(End("refused".into()));
+                }
             };
             self.produced.insert(step.name.clone(), output);
         }
