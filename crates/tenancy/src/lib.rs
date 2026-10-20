@@ -89,6 +89,7 @@ pub mod skills;
 mod store_lock;
 pub mod training;
 pub mod workspaces;
+pub mod workos_links;
 
 pub use accounts::{
     ACCOUNTS_SCHEMA, Account, Accounts, Invitation, InviteStatus, Invited, MemberRef, MemberStatus,

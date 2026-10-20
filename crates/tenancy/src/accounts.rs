@@ -50,6 +50,7 @@ pub mod team_capabilities;
 mod team_capabilities_tests;
 pub mod team_policies;
 pub mod team_reports;
+pub mod workos;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};

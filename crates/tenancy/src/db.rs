@@ -56,6 +56,11 @@ pub const MIGRATIONS: &[(i32, &str, &str)] = &[
         "shared_projects",
         include_str!("../migrations/0003_shared_projects.sql"),
     ),
+    (
+        4,
+        "workos_links",
+        include_str!("../migrations/0004_workos_links.sql"),
+    ),
 ];
 
 /// The advisory lock key migrations run under.
