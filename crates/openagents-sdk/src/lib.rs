@@ -11,6 +11,7 @@ pub mod agent_lab;
 pub mod agents;
 #[cfg(feature = "transport")]
 pub mod attention;
+#[cfg(feature = "transport")]
 pub mod browser_wallet;
 #[cfg(feature = "transport")]
 mod auth;
