@@ -35134,7 +35134,7 @@
                 ]
               }
             ],
-            "summary": "Make this computer a pylon and keep it one: read it (doctor), download the decision model if it is missing, then run Psionic's decision engine (and a text engine when memory allows), self-check it, and serve. The host service keeps it running, restarts a crashed engine, and brings it back after a restart; without the host service it runs here. Admits any key unless --allow names some (rate limits apply). Takes serve's options. --yes                 Download the model without asking. --foreground          Run it in this terminal, not the host service. --text off            Serve decisions only. --text-model FILE     The text engine's GGUF (default ~/.openagents/models/Qwen3.5-0.8B-Q8_0.gguf). --device NAME         metal, cuda, or cpu (default: what doctor picks). --port N              The decision engine's loopback port (default 18096). --dedicated           Ignore this computer's lease table.",
+            "summary": "Make this computer a pylon and keep it one: read it (doctor), download the decision model if it is missing, then run Psionic's decision engine (and a text engine when memory allows), self-check it, and serve. The host service keeps it running, restarts a crashed engine, and brings it back after a restart; without the host service it runs here. Admits any key unless --allow names some (rate limits apply). Takes serve's options. --yes                 Download the model without asking. --foreground          Run it in this terminal, not the host service. --text off            Serve decisions only. --text-model FILE     The text engine's GGUF (default ~/.openagents/models/Qwen3.5-0.8B-Q8_0.gguf). --device NAME         metal, cuda, or cpu (default: what doctor picks). --port N              The decision engine's loopback port (default 18096). --text-port N         The text engine's loopback port (default 18097), for a second pylon on one computer. --dedicated           Ignore this computer's lease table. --allow-slow          Serve decisions on the CPU anyway (refused by default: seconds a decision).",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -35966,6 +35966,37 @@
           }
         },
         {
+          "name": "decide",
+          "leaf": {
+            "path": [
+              "pylon",
+              "decide"
+            ],
+            "usage": [
+              "decide --questions JSON"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "decide"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "questions",
+                    "value": "JSON",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Send one free decision job (NIP-DEC) to a pylon and print its answers. --state JSON          The state the questions are about (default {}). --questions JSON      The questions, keyed by id, as /v1/systemone takes them. --pylon NPUB          Use this pylon instead of the best fresh one. --wait SECS           How long to wait for the answer (default 60, at most 118).",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "check",
           "children": [
             {
@@ -36107,6 +36138,41 @@
                 ],
                 "summary": "Send the pylon fresh decision items (a new seed each round) as ordinary decision jobs, recompute the items drawn after the answers arrive on a reference server running the same pinned model, and sign a verdict: pass, fail (a strike), or inconclusive (a small miss). Items come from this checker's private seed (checker-seed, made on first use) and each round from a new buyer key, so a pylon can neither rebuild the items nor recognise the checker. --reference URL       The reference decision server (default http://127.0.0.1:18096). --rounds N            Rounds to run (default 1). --seed N              Public items from seed N (counting up per round), for reproducible calibration runs. --own-buyer           Send from the stored buyer key (for a pylon that admits only allowlisted keys).",
                 "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "canary",
+          "children": [
+            {
+              "name": "make",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "canary",
+                  "make"
+                ],
+                "usage": [
+                  "canary make"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "canary"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "make"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Make a checker-private pool of hidden decision canaries: items from the generator under a seed from a secret file, each with the reference server's probabilities, written as JSON lines (owner-only) for the gateway's decisions.canaries. --seed-file FILE      The secret seed file (keep it private). --reference URL       The reference decision server running the pinned model (default http://127.0.0.1:18096). --count N             How many canaries (default 200). --out FILE            Where to write the pool.",
+                "effect": "local_write",
                 "runs_on": "connected_computer"
               }
             }
@@ -36259,7 +36325,21 @@
         },
         {
           "kind": "option",
+          "name": "text-port",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "dedicated",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "allow-slow",
           "optional": true,
           "repeated": true
         },
@@ -36294,12 +36374,6 @@
         {
           "kind": "option",
           "name": "rehash",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "allow-slow",
           "optional": true,
           "repeated": true
         },
@@ -36669,6 +36743,22 @@
         },
         {
           "kind": "option",
+          "name": "questions",
+          "value": "JSON",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "state",
+          "value": "JSON",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "award",
           "optional": true,
           "repeated": true
@@ -36729,6 +36819,14 @@
           "kind": "option",
           "name": "poll",
           "value": "SECS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "seed-file",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true
