@@ -674,6 +674,11 @@ async fn a_published_agent_gets_its_own_key_an_owner_and_a_page() {
             .body
             .contains("Chosen and published by the owner.")
     );
+    assert!(
+        agent_page
+            .body
+            .contains(&format!("href=\"/event/{}\"", rebuild.id))
+    );
     let before = relay.events.lock().unwrap().len();
     let gpui = anyone.get(&world, &format!("/agent/{id}?ui=gpui")).await;
     assert_eq!(gpui.status, StatusCode::OK);

@@ -196,7 +196,7 @@ fn render(evidence: &Evidence) -> Markup {
         @if let Some((release, publisher)) = &evidence.release {
             section.oa-card aria-labelledby="agent-attestations" {
                 (MarkdownRoot::new(html! {
-                    h2 id="agent-attestations" { "Attestations" }
+                    h2 id="agent-attestations" { "Software checks" }
                     ul {
                         li {
                             a href=(format!("/event/{release}")) { "Release" }
