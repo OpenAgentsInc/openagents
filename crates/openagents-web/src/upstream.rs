@@ -257,6 +257,9 @@ pub fn owned(path: &str) -> bool {
         || crate::wallet_browser::owns(path)
         || crate::verse_key::owns(path)
         || path == crate::pages::home::HOME
+        // The Grid homepage and its account answer (crate::pages::grid_home).
+        || path == "/home"
+        || path == "/home/me"
         || path == "/verse"
         // A GitHub login's profile, which moves to `/@{name}` (#12254).
         || path

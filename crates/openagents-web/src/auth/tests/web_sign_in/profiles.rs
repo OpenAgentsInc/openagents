@@ -184,6 +184,17 @@ async fn a_key_names_itself_publishes_its_profile_and_shows_it_publicly() {
     assert_eq!(reserved.status, StatusCode::BAD_REQUEST);
     assert!(reserved.body.contains("reserved"));
 
+    // The Grid home links the signed-in person to their named profile.
+    let me = browser.get(&world, "/home/me").await;
+    assert_eq!(me.status, StatusCode::OK);
+    assert_eq!(me.headers[header::CACHE_CONTROL], "no-store");
+    let me: Value = serde_json::from_str(&me.body).unwrap();
+    assert_eq!(me["signed_in"], true);
+    assert_eq!(me["name"], "pat-test");
+    assert_eq!(me["profile"], "/@pat-test");
+    // /new applies the chat feature flags and the person's saved UI choice.
+    assert_eq!(me["chat"], "/new");
+
     // NIP-05 answers the name with the key and our relay.
     let mut anyone = Browser::default();
     let (status, nip05) = call(
@@ -1518,7 +1529,7 @@ async fn verse_labels_avatars_and_the_chat_never_loads_it() {
     assert!(names["names"].get(nobody.pubkey()).is_none());
     let verse = anyone.get(&world, "/verse").await;
     assert_eq!(verse.status, StatusCode::OK);
-    for page in ["/", "/home", "/lander10", "/explore"] {
+    for page in ["/", "/home/classic", "/lander10", "/explore"] {
         let body = anyone.get(&world, page).await.body;
         assert!(!body.contains("everglade"), "{page} loads Verse");
     }

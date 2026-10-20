@@ -96,9 +96,11 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "Post a shared chat on Nostr: its states need a share, a relay, and a browser extension, which its own tests drive",
     ),
     (
-        "/home",
+        "/home/classic",
         "the home page as it was before the front door: the same page as `/`, already in the gallery",
     ),
+    ("/home", "a canvas world"),
+    ("/home/me", "the Grid homepage's account answer, JSON"),
     (
         "/@{handle}/follow",
         "Follow: its states need a relay, the account service, and a browser extension, which its own tests drive",

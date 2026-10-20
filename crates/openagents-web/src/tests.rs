@@ -2222,6 +2222,48 @@ async fn the_lander11_page_has_the_chat_over_verse() {
     }
 }
 
+/// `/home`: the Grid homepage: one response with the heading, Log in and
+/// Sign up back to `/home`, the pylons' list, and Verse's ambient canvas;
+/// `/home/me` answers a visitor as signed out; the classic home page moved
+/// to `/home/classic`.
+#[tokio::test]
+async fn the_grid_homepage_is_at_home_and_the_classic_one_moved() {
+    let root = tempfile::tempdir().unwrap();
+    let config = config(root.path().join("tasks"));
+    let (status, headers, html) = get_with(router(config.clone()), "/home", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("</svg>OpenAgents</h1>"), "{html}");
+    assert!(html.contains("href=\"/login?return_to=%2Fhome\""));
+    assert!(html.contains("href=\"/signup?return_to=%2Fhome\""));
+    assert!(html.contains("id=\"pylons-panel\"") && html.contains("data-ambient"));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(
+        policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"),
+        "{policy}"
+    );
+    crate::copy_guard::assert_plain("/home", &html);
+    let (status, headers, me) = get_with(router(config.clone()), "/home/me", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    assert_eq!(me, "{\"signed_in\":false}");
+    let (status, _, classic) = get_with(router(config.clone()), "/home/classic", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!classic.contains("data-ambient"));
+    // The new page is independent of the chat UI default and hidden features.
+    let mut off = config.clone();
+    off.features = crate::features::Features::none();
+    let (status, _, no_features) = get_with(router(off), "/home", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(no_features, html);
+    assert!(!html.contains("<input") && !html.contains("<textarea"));
+    let (status, _, home) = get_with(router(config.clone()), "/", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(home, classic);
+    for path in ["/home", "/home/me", "/home/classic"] {
+        assert!(crate::upstream::owned(path), "{path}");
+    }
+}
+
 /// A server started with `--layertree DIR` holding a stand-in LayerTree
 /// demo build.
 fn with_layertree(root: &std::path::Path) -> Config {
@@ -5198,7 +5240,7 @@ async fn the_front_door_is_lander10_only_when_turned_on() {
     let (status, _, _) = get_with(off.clone(), "/lander5", LOCAL).await;
     assert_ne!(status, StatusCode::TEMPORARY_REDIRECT);
     assert!(!home.contains("lander-chat-keep"));
-    let (status, _, classic) = get_with(off.clone(), "/home", LOCAL).await;
+    let (status, _, classic) = get_with(off.clone(), "/home/classic", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(classic, home);
     for link in ["href=\"/explore\"", "href=\"/pylons\""] {
@@ -5227,7 +5269,7 @@ async fn the_front_door_is_lander10_only_when_turned_on() {
         headers[header::LOCATION],
         format!("/lander10/chat/{id}").as_str()
     );
-    let (status, _, classic) = get_with(on.clone(), "/home", LOCAL).await;
+    let (status, _, classic) = get_with(on.clone(), "/home/classic", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(classic, home);
 }

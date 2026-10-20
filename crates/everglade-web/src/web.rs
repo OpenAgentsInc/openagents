@@ -98,6 +98,16 @@ fn ambient_path(path: &str) -> bool {
     path == "/lander11" || path.starts_with("/lander11/")
 }
 
+/// Whether the page draws the Grid behind its own content: `/lander11`,
+/// or any page whose canvas carries `data-ambient` (`/home`).
+fn ambient_page(window: &Window, canvas: &HtmlCanvasElement) -> bool {
+    canvas.has_attribute("data-ambient")
+        || window
+            .location()
+            .pathname()
+            .is_ok_and(|path| ambient_path(path.trim_end_matches('/')))
+}
+
 /// On `/lander11`, whether Verse takes the keyboard and mouse now.
 fn walking() -> bool {
     !AMBIENT.with(std::cell::Cell::get) || WALK.with(std::cell::Cell::get)
@@ -537,13 +547,9 @@ async fn run() -> Result<(), String> {
             .any(|part| part.eq_ignore_ascii_case("zone=grid"))
     }) || window.location().pathname().is_ok_and(|path| {
         let path = path.trim_end_matches('/');
-        path.ends_with("/grid") || path.ends_with("/verse") || ambient_path(path)
-    });
-    if window
-        .location()
-        .pathname()
-        .is_ok_and(|path| ambient_path(path.trim_end_matches('/')))
-    {
+        path.ends_with("/grid") || path.ends_with("/verse")
+    }) || ambient_page(&window, &canvas);
+    if ambient_page(&window, &canvas) {
         AMBIENT.with(|ambient| ambient.set(true));
     }
     if grid {

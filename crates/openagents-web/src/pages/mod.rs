@@ -22,6 +22,7 @@ mod gpui_build;
 pub(crate) mod gpui_chat;
 pub(crate) mod gpui_demo;
 pub(crate) mod gpui_fonts;
+mod grid_home;
 pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
@@ -133,6 +134,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(lander8::routes())
         .merge(lander10::routes())
         .merge(lander11::routes())
+        .merge(grid_home::routes())
         .merge(lander9::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())

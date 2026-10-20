@@ -63,8 +63,8 @@ struct Home {
 }
 
 /// The home page as it was before the one front door (#12260), whatever
-/// `/` shows.
-pub(crate) const HOME: &str = "/home";
+/// `/` shows. `/home` is the new Grid homepage ([`super::grid_home`]).
+pub(crate) const HOME: &str = "/home/classic";
 
 /// A new chat for anyone, signed in or not: the homepage's chat when the
 /// homepage shows the landing page instead.
