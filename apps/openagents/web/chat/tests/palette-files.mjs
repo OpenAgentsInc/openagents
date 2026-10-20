@@ -19,6 +19,7 @@ const context = vm.createContext({
 vm.runInContext(source.slice(source.indexOf('var chatInput = null;'), source.indexOf('// A computer chat\'s live transcript')).replaceAll('import.meta.url', '"https://example.test/gpui/build/start.js"'), context);
 context.chatInput = mainInput;
 context.filesBox = { hidden: true };
+context.filesReady = true;
 context.files = { show(...args) { shown.push(args); }, open_file(...args) { opened.push(args); } };
 const emit = (name, detail) => listeners.get(name)({ detail });
 emit("oa-host", "computer-a\nchat-a");
@@ -29,19 +30,18 @@ assert.deepEqual(opened.pop(), ["computer-a", "chat-a", "src/lib.rs", 42]);
 emit("oa-files-open", JSON.stringify({ device: "computer-a", chat: "chat-a", path: "README.md" }));
 assert.equal(context.filesBox.hidden, false);
 assert.deepEqual(opened.pop(), ["computer-a", "chat-a", "README.md", undefined]);
-// While the pane's module loads, keep the hit until mount is ready.
-const module = context.files;
-context.files = null;
+// mount returns before its GPUI window exists. Keep the hit until ready.
+context.filesReady = false;
 emit("oa-files-open", JSON.stringify({ device: "computer-a", chat: "chat-a", path: "src/main.rs", line: 9 }));
-context.files = module;
-context.revealFile();
+assert.equal(opened.length, 0);
+emit("oa-files-ready");
 assert.equal(opened.pop()[3], 9);
 // Switching chats during a module load discards the old result.
-context.files = null;
+context.filesReady = false;
 emit("oa-files-open", JSON.stringify({ device: "computer-a", chat: "chat-a", path: "old.rs" }));
 emit("oa-host", "computer-b\nchat-b");
-context.files = module;
-context.revealFile();
+emit("oa-files-ready");
+assert.deepEqual(shown.at(-1), ["computer-b", "chat-b"]);
 assert.equal(opened.length, 0);
 emit("oa-files-open", JSON.stringify({ device: "computer-a", chat: "chat-a", path: "wrong.rs" }));
 assert.equal(opened.length, 0);
