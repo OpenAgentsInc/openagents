@@ -176,6 +176,20 @@ def build():
         shutil.rmtree(context)
 
 
+# The websites' room-token public keys (#12263), as each site prints them at
+# startup from its OPENAGENTS_WEB_ROOM_TOKEN_KEY (Secret Manager:
+# openagents-web-room-token-key and openagents-web-room-token-key-staging).
+# Staging's site uses sync.openagents.com too, so production takes both keys.
+ROOM_TOKEN_KEY_PRODUCTION = "32fe90bce31dd05b8e44c2a5f67c5234b8471242380f0b61d22cede55118211a"
+ROOM_TOKEN_KEY_STAGING = "ad13ffb72964d8b3a7fd5a43740a4dc93363e011eacda7505635782e5047f91f"
+
+
+def room_token_keys(staging):
+    if staging:
+        return ROOM_TOKEN_KEY_STAGING
+    return f"{ROOM_TOKEN_KEY_PRODUCTION},{ROOM_TOKEN_KEY_STAGING}"
+
+
 def deploy(staging):
     commit = revision()
     suffix = "-staging" if staging else ""
@@ -185,6 +199,7 @@ def deploy(staging):
         "CODER_SYNC_AUTH": "openagents",
         "CODER_SYNC_BUCKET": f"{PROJECT}-coder-sync{suffix}",
         "CODER_SYNC_REVISION": commit,
+        "CODER_SYNC_ROOM_TOKEN_KEYS": room_token_keys(staging),
         # One log line per request blocked the runtime on a backed-up stdout
         # under reconnect floods (#12120); warnings and errors only.
         "RUST_LOG": "warn",
@@ -215,7 +230,8 @@ def deploy(staging):
             "--liveness-probe=httpGet.path=/health,httpGet.port=8080,periodSeconds=10,timeoutSeconds=3,failureThreshold=3", "--cpu=1", "--memory=512Mi", "--allow-unauthenticated",
             f"--add-cloudsql-instances={PROJECT}:{REGION}:{INSTANCE}",
             f"--update-secrets=CODER_SYNC_DATABASE_URL=coder-sync{suffix}-database-url:latest",
-            "--update-env-vars=" + ",".join(f"{key}={value}" for key, value in environment.items()),
+            # `^|^` sets the delimiter: the room-token keys are comma-separated.
+            "--update-env-vars=^|^" + "|".join(f"{key}={value}" for key, value in environment.items()),
             "--args="]
     g(*args)
     # `run deploy` leaves a pinned traffic split alone: on 2026-10-18 traffic
@@ -268,6 +284,7 @@ def vm_environment(commit):
         "CODER_SYNC_BUCKET": f"{PROJECT}-coder-sync",
         "CODER_SYNC_REVISION": commit,
         "CODER_SYNC_PUBLIC_ORIGIN": f"https://{DOMAIN}",
+        "CODER_SYNC_ROOM_TOKEN_KEYS": room_token_keys(False),
         "RUST_LOG": "warn",
     }
     return "\n".join(f"{key}={value}" for key, value in environment.items()) + "\n"

@@ -373,7 +373,11 @@ for e in ({"name": "STACK_STATE", "value": "/stack"},
           {"name": "OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE", "value": "1"},
           # The contact form's mail to us, through Resend (/contact).
           {"name": "OPENAGENTS_RESEND_API_KEY",
-           "valueFrom": {"secretKeyRef": {"name": "openagents-resend-api-key", "key": "latest"}}}):
+           "valueFrom": {"secretKeyRef": {"name": "openagents-resend-api-key", "key": "latest"}}},
+          # Room tokens for the browser's rooms on coder-sync (#12263); the
+          # key's public half is in scripts/coder-sync/deploy.py.
+          {"name": "OPENAGENTS_WEB_ROOM_TOKEN_KEY",
+           "valueFrom": {"secretKeyRef": {"name": "openagents-web-room-token-key", "key": "latest"}}}):
     if e["name"] not in env:
         envs.append(e)
         sys.stderr.write(f"  web env {e['name']} added\n")

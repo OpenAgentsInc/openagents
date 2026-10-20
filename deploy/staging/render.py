@@ -138,6 +138,9 @@ def main():
             secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
             secret("openagents-web-1-staging-csrf-key", "CSRF_KEY"),
+            # Room tokens for the browser's rooms on coder-sync (#12263);
+            # the key's public half is in scripts/coder-sync/deploy.py.
+            secret("openagents-web-room-token-key-staging", "OPENAGENTS_WEB_ROOM_TOKEN_KEY"),
             secret("openagents-web-1-staging-byo-keys", "OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
             secret("openagents-web-1-staging-ask-salt", "OPENAGENTS_WEB_ASK_SALT"),
             # First-party analytics (#11153, docs/deployment/analytics.md).
