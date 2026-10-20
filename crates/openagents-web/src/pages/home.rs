@@ -88,7 +88,7 @@ async fn new_chat(
 ) -> Response {
     let choice = super::gpui_chat::choice(app.config.features, &headers, raw.as_deref());
     let mut response = if choice.serves(&app, &headers) {
-        super::gpui_chat::page(&app, &headers, None, "").await
+        super::gpui_chat::new_page(&app, &headers, raw.as_deref()).await
     } else {
         let query = query.map(|q| q.0).unwrap_or_default();
         page(&app, &headers, query.project.as_deref(), None).await
@@ -111,7 +111,7 @@ async fn home(
     // it on (#12222); it takes the landing page's place too.
     let choice = super::gpui_chat::choice(app.config.features, &headers, raw.as_deref());
     if choice.serves(&app, &headers) {
-        let mut response = super::gpui_chat::page(&app, &headers, None, "").await;
+        let mut response = super::gpui_chat::new_page(&app, &headers, raw.as_deref()).await;
         choice.remember(&app, &mut response);
         return response;
     }

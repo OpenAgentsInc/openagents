@@ -545,7 +545,12 @@ print(json.dumps({'doc': doc, 'version': 1, 'saved': sys.argv[2] == 'cad_from_js
     async fn checked_child_versions_cards_and_exports_share_the_store() {
         let root = tempfile::tempdir().unwrap();
         let program = root.path().join("child");
-        std::fs::write(&program, CHILD).unwrap();
+        let python = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|directory| directory.join("python3"))
+            .find(|path| path.is_file())
+            .expect("the CAD child fixture needs Python 3");
+        let child = CHILD.replacen("#!/usr/bin/python3", &format!("#!{}", python.display()), 1);
+        std::fs::write(&program, child).unwrap();
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
         let mut engine = Engine::new(program);
         engine.cache = root.path().join("cache");

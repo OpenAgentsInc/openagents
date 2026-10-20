@@ -25,7 +25,7 @@
 use std::path::Path;
 
 use axum::Router;
-use axum::extract::{Path as UrlPath, Query, State};
+use axum::extract::{Path as UrlPath, Query, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::Response;
 use axum::routing::get;
@@ -162,7 +162,12 @@ fn unavailable(headers: &HeaderMap) -> Response {
         .respond(headers)
 }
 
-async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn page(State(app): State<App>, headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
+    if crate::cad_gate::viewer(&app, &headers).await.is_some() {
+        if let Some(page) = crate::cad_web::gpui_page(&app, &headers, query.as_deref(), "cad") {
+            return page;
+        }
+    }
     // CAD Lab is part of Pro (#11693): without it, the upsell and the
     // person's own designs, which stay theirs to open and download.
     let plan = crate::cad_gate::plan(&app, &headers).await;

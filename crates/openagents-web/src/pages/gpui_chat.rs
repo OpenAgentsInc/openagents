@@ -189,6 +189,53 @@ async fn moved(OriginalUri(uri): OriginalUri) -> Redirect {
     Redirect::permanent(&to)
 }
 
+#[derive(serde::Deserialize, Default)]
+struct PageQuery {
+    page: Option<String>,
+}
+
+/// The new-chat shell, including the selected CAD page's HTML fallback.
+pub(crate) async fn new_page(app: &App, headers: &HeaderMap, query: Option<&str>) -> Response {
+    let fallback = query
+        .and_then(|query| format!("/?{query}").parse::<axum::http::Uri>().ok())
+        .and_then(|uri| axum::extract::Query::<PageQuery>::try_from_uri(&uri).ok())
+        .and_then(|query| query.page.as_deref().and_then(cad_fallback));
+    page_with_fallback(app, headers, None, "", fallback).await
+}
+
+/// Keep a CAD page's document, version, and project in the HTML fallback.
+fn cad_fallback(path: &str) -> Option<String> {
+    if path == "cad" || path == "cad/" {
+        return Some("/cad?ui=html".into());
+    }
+    let rest = path.strip_prefix("cad/")?;
+    let mut parts = rest.split('/');
+    let doc = parts.next()?;
+    if doc == "_world" {
+        return Some("/cad-world?ui=html".into());
+    }
+    if !crate::cad_web::valid_doc(doc) {
+        return None;
+    }
+    let version = parts
+        .next()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
+    let project = parts.next().unwrap_or("");
+    if !project
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    {
+        return None;
+    }
+    let config = parts.next() == Some("configurator");
+    let query = format!("ui=html&v={version}&project={project}");
+    Some(format!(
+        "/cad/{doc}{}?{query}",
+        if config { "/configurator" } else { "" }
+    ))
+}
+
 /// What the person chose for the chat's view at `/` and `/chat/{id}`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Choice {
@@ -358,16 +405,26 @@ pub(crate) async fn page(
     chat: Option<String>,
     base: &str,
 ) -> Response {
+    page_with_fallback(app, headers, chat, base, None).await
+}
+
+async fn page_with_fallback(
+    app: &App,
+    headers: &HeaderMap,
+    chat: Option<String>,
+    base: &str,
+    fallback: Option<String>,
+) -> Response {
     let path = match &chat {
         Some(id) => format!("{base}/chat/{id}"),
         None if base.is_empty() => "/".to_owned(),
         None => base.to_owned(),
     };
-    // The HTML chat, for a browser that can't draw the canvas.
-    let regular = match &chat {
+    // The HTML page, for a browser that can't draw the canvas.
+    let regular = fallback.unwrap_or_else(|| match &chat {
         Some(id) => format!("/chat/{id}?{UI_QUERY}=html"),
         None => format!("/new?{UI_QUERY}=html"),
-    };
+    });
     if build(app).is_none() {
         return unavailable(headers, &path, &regular);
     }
@@ -689,6 +746,17 @@ mod tests {
                 title: String::new(),
             },
         ]
+    }
+
+    #[test]
+    fn cad_fallback_keeps_the_document_version_and_project() {
+        assert_eq!(cad_fallback("cad"), Some("/cad?ui=html".into()));
+        assert_eq!(
+            cad_fallback("cad/bracket/2/prj_1/configurator"),
+            Some("/cad/bracket/configurator?ui=html&v=2&project=prj_1".into())
+        );
+        assert!(cad_fallback("cad/../2/").is_none());
+        assert!(cad_fallback("cad/bracket/2/evil?x=1").is_none());
     }
 
     #[test]

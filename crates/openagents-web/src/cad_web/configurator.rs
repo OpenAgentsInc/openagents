@@ -106,6 +106,25 @@ async fn settings(
     UrlPath(doc): UrlPath<String>,
     Query(query): Query<PageQuery>,
 ) -> Response {
+    settings_page(app, headers, doc, query, false).await
+}
+
+pub(super) async fn data(
+    State(app): State<App>,
+    headers: HeaderMap,
+    UrlPath(doc): UrlPath<String>,
+    Query(query): Query<PageQuery>,
+) -> Response {
+    settings_page(app, headers, doc, query, true).await
+}
+
+async fn settings_page(
+    app: App,
+    headers: HeaderMap,
+    doc: String,
+    query: PageQuery,
+    json: bool,
+) -> Response {
     let Some(scope) = page_scope(&app, &headers, query.project.as_deref())
         .await
         .filter(private)
@@ -122,6 +141,20 @@ async fn settings(
         .v
         .filter(|v| *v > 0 && *v <= entry.versions)
         .unwrap_or(entry.versions);
+    let path = format!(
+        "cad/{doc}/{version}/{}/configurator",
+        query.project.as_deref().unwrap_or("")
+    );
+    if !json
+        && let Some(page) = gpui::page_for(
+            &app,
+            &headers,
+            query.ui.as_ref().map(|ui| format!("ui={ui}")).as_deref(),
+            &path,
+        )
+    {
+        return page;
+    }
     // Sharing or selling a design with sliders is part of CAD Lab, so of
     // Pro (#11693); links and listings already made can still be stopped.
     let plan = crate::cad_gate::plan(&app, &headers).await;
@@ -155,6 +188,9 @@ async fn settings(
     let links = tokens(&app.config.chat_store, &scope, &doc)
         .await
         .unwrap_or_default();
+    if json {
+        return axum::Json(json!({"title":entry.title,"version":version,"options":options,"links":links,"pro":plan.pro()})).into_response();
+    }
     let shop = app.config.features.on(crate::features::Feature::CadShop);
     let offers = if shop {
         super::sales::listings(&app.config.chat_store, &scope, &doc)
@@ -217,7 +253,7 @@ async fn settings(
     response
 }
 #[derive(Deserialize)]
-struct Publish {
+pub(super) struct Publish {
     csrf: String,
     #[serde(default)]
     project: String,
@@ -230,7 +266,7 @@ struct Publish {
     #[serde(default)]
     lightning: String,
 }
-async fn publish(
+pub(super) async fn publish(
     State(app): State<App>,
     headers: HeaderMap,
     UrlPath(doc): UrlPath<String>,
@@ -361,13 +397,13 @@ async fn save(store: &Store, scope: &Scope, doc: &str, data: Value) -> Result<St
     Ok(token)
 }
 #[derive(Deserialize)]
-struct Revoke {
+pub(super) struct Revoke {
     csrf: String,
     #[serde(default)]
     project: String,
     token: String,
 }
-async fn revoke(
+pub(super) async fn revoke(
     State(app): State<App>,
     headers: HeaderMap,
     UrlPath(doc): UrlPath<String>,

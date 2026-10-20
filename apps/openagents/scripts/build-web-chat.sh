@@ -23,6 +23,7 @@
 #   openagents_web_projects.js    Projects, at `?page=projects` (#12331),
 #   openagents_web_voice.js       the voice call stage, from the Voice button,
 #   openagents_web_agent_lab.js   Agent Lab, at `?page=agent-lab` (#12285),
+#   openagents_web_cad.js         CAD designs, at `?page=cad` (#12334),
 #   openagents_web_lab.js         a Lab document, at `?page=labs` (#12333),
 #                                 each with its _bg.wasm module
 #   start.js                      the page's one script: checks, loads, launches
@@ -121,7 +122,7 @@ wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     "$out/openagents_web_settings_bg.wasm" -o "$out/openagents_web_settings_bg.wasm"
 # The account's pages (#12329, #12330, #12331): each its own module, which
 # start.js loads at `?page=NAME`.
-for page in traces agents projects agent-lab lab voice; do
+for page in traces agents projects agent-lab lab voice cad; do
   cargo build --locked --manifest-path "$web/Cargo.toml" -p "openagents-web-$page" \
     --release --target "$target"
   wasm-bindgen --target web --no-typescript --out-dir "$out" \
@@ -145,7 +146,7 @@ compress() {
 # The first-frame painter: the page paints the frame this browser kept
 # from the last visit before the module loads (#12244).
 "$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
-WEB_BUILD_NAMES_DIR="$target_dir/$target/release" python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces openagents_web_agents openagents_web_projects openagents_web_agent_lab openagents_web_lab openagents_web_voice
+WEB_BUILD_NAMES_DIR="$target_dir/$target/release" python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces openagents_web_agents openagents_web_projects openagents_web_agent_lab openagents_web_lab openagents_web_voice openagents_web_cad
 for font in $fonts; do
   compress "$out/fonts/$font"
 done

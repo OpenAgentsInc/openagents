@@ -15,6 +15,8 @@ pub mod account;
 /// Agents and the landing queue (#12330).
 pub mod agents;
 pub mod appearance;
+/// CAD documents and configurators (#12334).
+pub mod cad;
 /// Earn on a paired computer (#12294).
 pub mod earn;
 /// A Lab document (#12333).
@@ -342,6 +344,8 @@ pub enum Intent {
     Projects(projects::Action),
     /// A Lab document (#12333).
     Lab(lab::Action),
+    /// CAD documents and configurators (#12334).
+    Cad(cad::Action),
 }
 
 /// The theme's colors for the forms, which the host reads from its theme

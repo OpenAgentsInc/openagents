@@ -39,7 +39,9 @@
 //! person.
 
 mod api;
+mod gpui;
 pub(crate) use api::CadApi;
+pub(crate) use gpui::page_for as gpui_page;
 mod configurator;
 mod handoff;
 mod imports;
@@ -1242,6 +1244,8 @@ pub(crate) struct PageQuery {
     #[serde(default)]
     v: Option<u64>,
     #[serde(default)]
+    ui: Option<String>,
+    #[serde(default)]
     project: Option<String>,
     #[serde(default)]
     name: Option<String>,
@@ -1285,6 +1289,7 @@ async fn page_scope(app: &App, headers: &HeaderMap, project: Option<&str>) -> Op
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(gpui::routes())
         .merge(configurator::routes())
         .merge(imports::routes())
         .merge(handoff::routes())
@@ -1609,6 +1614,19 @@ pub(crate) async fn doc_page(
         .v
         .filter(|v| (1..=entry.versions).contains(v))
         .unwrap_or(entry.versions);
+    let path = format!(
+        "cad/{doc}/{}/{}",
+        query.v.unwrap_or(0),
+        query.project.as_deref().unwrap_or("")
+    );
+    if let Some(page) = gpui::page_for(
+        app,
+        headers,
+        query.ui.as_ref().map(|ui| format!("ui={ui}")).as_deref(),
+        &path,
+    ) {
+        return page;
+    }
     let plan = crate::cad_gate::plan(app, headers).await;
     let mut record = read_file(store, &scope, doc, version, "version.json")
         .await
