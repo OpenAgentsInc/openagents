@@ -235,6 +235,7 @@ impl ChatApp {
         let bind = |shortcut: Shortcut| shortcuts::platform_combo_on(mac, keymap.get(shortcut));
         cx.clear_key_bindings();
         composer::bind_keys(cx);
+        openagents_web_chat_view::message_input::bind_keys(cx);
         selection::bind_keys(cx);
         super::palette::bind_keys(cx);
         cx.bind_keys([

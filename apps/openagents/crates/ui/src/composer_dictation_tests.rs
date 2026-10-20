@@ -38,7 +38,7 @@ fn deliver(
     cx: &mut Context<ComposerInput>,
 ) {
     fake.borrow_mut().events.extend(events);
-    input.poll_dictation(input.dictation.generation, cx);
+    input.poll_dictation(input.platform.dictation.generation, cx);
 }
 
 #[gpui::test]
@@ -85,7 +85,7 @@ fn dictation_manual_edit_stops_before_replacing_partial(cx: &mut TestAppContext)
             input.set_text("before after", cx);
             input.selected_range = 7..7;
             let fake = start(input, cx);
-            let old_generation = input.dictation.generation;
+            let old_generation = input.platform.dictation.generation;
             deliver(input, &fake, [Event::Partial("speech ".into())], cx);
             input.replace_text_in_range(Some(7..13), "typed", window, cx);
             assert_eq!(input.content, "before typed after");
@@ -170,7 +170,7 @@ fn dictation_send_finalizes_once_and_keeps_latest_final(cx: &mut TestAppContext)
             cx,
         );
         assert_eq!(input.content, "hello");
-        assert_eq!(input.dictation.phase, Phase::Idle);
+        assert_eq!(input.platform.dictation.phase, Phase::Idle);
         assert_eq!(fake.borrow().drops, 1);
     });
     let mut sends = 0;
@@ -192,7 +192,10 @@ fn dictation_failure_cancels_send_and_retry_preserves_draft(cx: &mut TestAppCont
         input.finish_dictation(true, cx);
         deliver(input, &fake, [Event::Failed("Disconnected".into())], cx);
         assert_eq!(input.content, "keep me");
-        assert_eq!(input.dictation.phase, Phase::Failed("Disconnected".into()));
+        assert_eq!(
+            input.platform.dictation.phase,
+            Phase::Failed("Disconnected".into())
+        );
         assert_eq!(fake.borrow().drops, 1);
         for error in [
             Event::Denied("Permission denied".into()),
@@ -201,7 +204,7 @@ fn dictation_failure_cancels_send_and_retry_preserves_draft(cx: &mut TestAppCont
             let fake = start(input, cx);
             deliver(input, &fake, [error], cx);
             assert_eq!(input.content, "keep me");
-            assert!(!input.dictation.phase.active());
+            assert!(!input.platform.dictation.phase.active());
             assert_eq!(fake.borrow().drops, 1);
         }
         let fake = start(input, cx);
@@ -250,7 +253,7 @@ fn dictation_draft_swap_invalidates_permissions_finalization_and_stale_results(
         for finalizing in [false, true] {
             input.set_text("original", cx);
             let fake = start(input, cx);
-            let generation = input.dictation.generation;
+            let generation = input.platform.dictation.generation;
             if finalizing {
                 input.finish_dictation(true, cx);
             }
@@ -280,7 +283,7 @@ fn dictation_cancelled_native_capture_drops_pending_send(cx: &mut TestAppContext
         deliver(input, &fake, [Event::Cancelled], cx);
         assert_eq!(fake.borrow().drops, 1);
         assert_eq!(input.content, "keep draft");
-        assert_eq!(input.dictation.phase, Phase::Idle);
+        assert_eq!(input.platform.dictation.phase, Phase::Idle);
     });
     while let Ok(event) = events.try_recv() {
         assert!(!matches!(event, DictationInputEvent::Submit(_)));
@@ -326,9 +329,10 @@ fn dictation_timeout_preserves_latest_partial_without_sending(cx: &mut TestAppCo
         deliver(input, &fake, [Event::Partial("latest".into())], cx);
         // Drive the same deadline without a wall-clock sleep or real audio.
         input
+            .platform
             .dictation
             .finish(true, Instant::now() - crate::dictation::FINALIZE_TIMEOUT);
-        let generation = input.dictation.generation;
+        let generation = input.platform.dictation.generation;
         assert!(!input.poll_dictation(generation, cx));
         assert!(!input.poll_dictation(generation, cx));
         assert_eq!(input.content, "latest");
@@ -481,7 +485,10 @@ fn dictation_shortcut_holds_until_its_modifier_is_released(cx: &mut TestAppConte
     handle
         .update(cx, |composer, window, cx| {
             assert!(composer.input.read(cx).focus_handle.is_focused(window));
-            assert_eq!(composer.input.read(cx).dictation.phase, Phase::Finalizing);
+            assert_eq!(
+                composer.input.read(cx).platform.dictation.phase,
+                Phase::Finalizing
+            );
             composer.input.update(cx, |input, cx| {
                 deliver(input, &fake, [Event::Final("keyboard".into())], cx)
             });
@@ -524,7 +531,7 @@ fn dictation_pointer_hold_finishes_on_release_even_outside_the_button(cx: &mut T
         handle
             .update(cx, |composer, _, cx| {
                 composer.input.update(cx, |input, cx| {
-                    assert_eq!(input.dictation.phase, Phase::Finalizing);
+                    assert_eq!(input.platform.dictation.phase, Phase::Finalizing);
                     deliver(input, &fake, [Event::Final("Bonjour".into())], cx);
                 });
             })
@@ -566,7 +573,7 @@ fn dictation_tap_explains_hold_to_talk_without_transcribing(cx: &mut TestAppCont
     handle
         .read_with(cx, |composer, cx| {
             let input = composer.input.read(cx);
-            assert_eq!(input.dictation.phase, Phase::Tapped);
+            assert_eq!(input.platform.dictation.phase, Phase::Tapped);
             assert_eq!(input.text(), "keep");
             assert!(composer.dictation_hold.is_none());
         })
@@ -604,7 +611,10 @@ fn dictation_switching_windows_releases_capture_and_retains_draft(cx: &mut TestA
     handle
         .read_with(cx, |composer, cx| {
             assert_eq!(composer.input.read(cx).text(), "keep on switch");
-            assert_eq!(composer.input.read(cx).dictation.phase, Phase::Idle);
+            assert_eq!(
+                composer.input.read(cx).platform.dictation.phase,
+                Phase::Idle
+            );
             assert!(composer.failure.is_none());
         })
         .unwrap();
@@ -690,7 +700,7 @@ fn dictation_pointer_stop_keeps_capture_until_final_result(cx: &mut TestAppConte
     handle
         .update(cx, |composer, _, cx| {
             composer.input.update(cx, |input, cx| {
-                assert_eq!(input.dictation.phase, Phase::Finalizing);
+                assert_eq!(input.platform.dictation.phase, Phase::Finalizing);
                 deliver(input, &fake, [Event::Final("Bonjour".into())], cx);
                 assert_eq!(input.text(), "Bonjour");
             })
@@ -735,7 +745,7 @@ fn dictation_pointer_send_waits_for_final_and_submits_once(cx: &mut TestAppConte
         })
         .unwrap();
     input.update(cx, |input, cx| {
-        assert_eq!(input.dictation.phase, Phase::Finalizing);
+        assert_eq!(input.platform.dictation.phase, Phase::Finalizing);
         deliver(input, &fake, [Event::Final("send this once".into())], cx);
     });
     let mut sends = 0;
@@ -758,7 +768,7 @@ fn dictation_silence_explains_empty_result_and_never_sends_existing_draft(cx: &m
         input.finish_dictation(true, cx);
         deliver(input, &fake, [Event::Final(String::new())], cx);
         assert_eq!(input.text(), "keep my draft");
-        assert_eq!(input.dictation.phase, Phase::NoSpeech);
+        assert_eq!(input.platform.dictation.phase, Phase::NoSpeech);
     });
     while let Ok(event) = events.try_recv() {
         assert!(!matches!(event, DictationInputEvent::Submit(_)));
@@ -824,7 +834,7 @@ fn dictation_focus_within_composer_keeps_capture_but_leaving_cancels(cx: &mut Te
     handle
         .update(cx, |composer, window, cx| {
             window.focus(&elsewhere, cx);
-            assert!(composer.input.read(cx).dictation.phase.active());
+            assert!(composer.input.read(cx).platform.dictation.phase.active());
         })
         .unwrap();
     cx.update_window(handle.into(), |_, window, cx| window.draw(cx).clear())
@@ -833,7 +843,10 @@ fn dictation_focus_within_composer_keeps_capture_but_leaving_cancels(cx: &mut Te
     assert_eq!(fake.borrow().drops, 1);
     handle
         .read_with(cx, |composer, cx| {
-            assert_eq!(composer.input.read(cx).dictation.phase, Phase::Idle)
+            assert_eq!(
+                composer.input.read(cx).platform.dictation.phase,
+                Phase::Idle
+            )
         })
         .unwrap();
 }
@@ -862,7 +875,7 @@ fn dictation_cancel_control_preserves_draft_and_clears_pending_send(cx: &mut Tes
     assert_eq!(fake.borrow().drops, 1);
     input.read_with(cx, |input, _| {
         assert_eq!(input.text(), "Keep this draft");
-        assert_eq!(input.dictation.phase, Phase::Idle);
+        assert_eq!(input.platform.dictation.phase, Phase::Idle);
     });
     while let Ok(event) = events.try_recv() {
         assert!(!matches!(event, DictationInputEvent::Submit(_)));
@@ -903,7 +916,10 @@ fn dictation_cancel_control_is_keyboard_operable(cx: &mut TestAppContext) {
     handle
         .read_with(cx, |composer, cx| {
             assert_eq!(composer.input.read(cx).text(), "Keep this draft");
-            assert_eq!(composer.input.read(cx).dictation.phase, Phase::Idle);
+            assert_eq!(
+                composer.input.read(cx).platform.dictation.phase,
+                Phase::Idle
+            );
         })
         .unwrap();
 }
@@ -962,7 +978,10 @@ fn dictation_escape_from_composer_controls_cancels_pending_send(cx: &mut TestApp
     assert_eq!(fake.borrow().drops, 1);
     handle
         .read_with(cx, |composer, cx| {
-            assert_eq!(composer.input.read(cx).dictation.phase, Phase::Idle);
+            assert_eq!(
+                composer.input.read(cx).platform.dictation.phase,
+                Phase::Idle
+            );
             assert_eq!(composer.input.read(cx).text(), "Keep this draft");
             assert!(composer.failure.is_none());
         })
@@ -989,7 +1008,7 @@ fn dictation_empty_undo_and_redo_notify_cancellation(cx: &mut TestAppContext) {
                 } else {
                     input.undo(&Undo, window, cx);
                 }
-                assert_eq!(input.dictation.phase, Phase::Idle);
+                assert_eq!(input.platform.dictation.phase, Phase::Idle);
             })
             .unwrap();
         assert_eq!(fake.borrow().drops, 1);
@@ -1017,7 +1036,7 @@ fn dictation_blank_results_preserve_partial_and_pending_send(cx: &mut TestAppCon
         input.finish_dictation(true, cx);
         deliver(input, &fake, [Event::Final(" \n\t ".into())], cx);
         assert_eq!(input.text(), "Keep these words");
-        assert_eq!(input.dictation.phase, Phase::Idle);
+        assert_eq!(input.platform.dictation.phase, Phase::Idle);
     });
     let mut sends = 0;
     while let Ok(event) = events.try_recv() {
@@ -1054,13 +1073,13 @@ fn dictation_stop_while_loading_keeps_selection_until_final_and_sends_once(
         input.set_text("keep selected suffix", cx);
         input.selected_range = 5..13;
         let fake = start(input, cx);
-        assert_eq!(input.dictation.phase, Phase::Requesting);
+        assert_eq!(input.platform.dictation.phase, Phase::Requesting);
         deliver(input, &fake, [Event::Listening], cx);
         input.finish_dictation(false, cx);
         input.finish_dictation(true, cx);
         // A queued readiness event cannot put a stopped session back in Listening.
         deliver(input, &fake, [Event::Listening, Event::Finalizing], cx);
-        assert_eq!(input.dictation.phase, Phase::Finalizing);
+        assert_eq!(input.platform.dictation.phase, Phase::Finalizing);
         assert_eq!(input.content, "keep selected suffix");
         assert_eq!(input.selected_range, 5..13);
         assert_eq!(fake.borrow().finishes, 1);
@@ -1071,7 +1090,7 @@ fn dictation_stop_while_loading_keeps_selection_until_final_and_sends_once(
             cx,
         );
         assert_eq!(input.content, "keep speech suffix");
-        assert_eq!(input.dictation.phase, Phase::Idle);
+        assert_eq!(input.platform.dictation.phase, Phase::Idle);
         assert_eq!(fake.borrow().drops, 1);
     });
     let mut sends = 0;
@@ -1092,10 +1111,11 @@ fn dictation_load_failure_or_timeout_preserves_selected_draft_and_rejects_late_f
             input.set_text("keep my draft", cx);
             input.selected_range = 0..13;
             let fake = start(input, cx);
-            let generation = input.dictation.generation;
+            let generation = input.platform.dictation.generation;
             deliver(input, &fake, [Event::Listening], cx);
             if timeout {
                 input
+                    .platform
                     .dictation
                     .finish(true, Instant::now() - crate::dictation::FINALIZE_TIMEOUT);
                 fake.borrow_mut().events.push_back(Event::Finalizing);
@@ -1109,7 +1129,7 @@ fn dictation_load_failure_or_timeout_preserves_selected_draft_and_rejects_late_f
                     cx,
                 );
             }
-            assert!(matches!(input.dictation.phase, Phase::Failed(_)));
+            assert!(matches!(input.platform.dictation.phase, Phase::Failed(_)));
             fake.borrow_mut()
                 .events
                 .push_back(Event::Final("late speech".into()));
@@ -1135,7 +1155,7 @@ fn dictation_microphone_key_hold_keeps_focus_and_queue_lease_blocks_start(cx: &m
             // or its key-up never reaches the hold.
             composer.focus_pending = false;
             composer.press_dictation(HoldSource::Button, cx);
-            assert!(composer.input.read(cx).dictation.phase.active());
+            assert!(composer.input.read(cx).platform.dictation.phase.active());
             assert!(!composer.focus_pending);
             composer
                 .input
@@ -1144,7 +1164,7 @@ fn dictation_microphone_key_hold_keeps_focus_and_queue_lease_blocks_start(cx: &m
             // An edit lease still in flight is about to replace the draft.
             composer.queue_edit_pending_id = Some("row".into());
             composer.press_dictation(HoldSource::Pointer, cx);
-            assert!(!composer.input.read(cx).dictation.phase.active());
+            assert!(!composer.input.read(cx).platform.dictation.phase.active());
             assert!(composer.dictation_hold.is_none());
         })
         .unwrap();
@@ -1197,7 +1217,7 @@ fn dictation_shortcut_falls_through_while_dictation_is_off(cx: &mut TestAppConte
     handle
         .read_with(cx, |composer, cx| {
             assert!(composer.dictation_hold.is_none());
-            assert!(composer.input.read(cx).dictation_key.is_none());
+            assert!(composer.input.read(cx).platform.dictation_key.is_none());
         })
         .unwrap();
 }

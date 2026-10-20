@@ -60,6 +60,8 @@ use crate::state::{
 };
 use crate::terminal::panel::{TerminalPanel, ToggleTerminal, clamp_terminal_height};
 use crate::theme::Theme;
+#[cfg(feature = "appshots-fixture")]
+use crate::transcript::TranscriptFixture as _;
 use crate::transcript::{self, Transcript, TranscriptEvent};
 
 mod account_chats;
@@ -990,27 +992,8 @@ fn sidebar_key_order_changed(old: &[(String, f32)], new: &[(String, f32)]) -> bo
 /// branch / pull-request rows add the exact height of their tallest child.
 /// Keeping this calculation beside the renderer's metrics prevents disclosure
 /// clips when view options alter the row structure.
-pub(super) fn chat_row_height(shows_branch: bool, shows_pull_request: bool) -> f32 {
-    let mut metadata_height: f32 = 0.0;
-    if shows_branch {
-        metadata_height = metadata_height.max(14.0);
-    }
-    if shows_pull_request {
-        metadata_height = metadata_height.max(16.0);
-    }
-    if metadata_height == 0.0 {
-        45.0
-    } else {
-        47.0 + metadata_height
-    }
-}
-fn sidebar_row_height(compact: bool, show_label: bool, branch: bool, pr: bool) -> f32 {
-    if compact {
-        29.0
-    } else {
-        chat_row_height(branch, pr) - if show_label { 0.0 } else { 16.0 }
-    }
-}
+pub(super) use openagents_chat_view::sidebar::chat_row_height;
+use openagents_chat_view::sidebar::row_height as sidebar_row_height;
 
 /// Flex gap between sidebar list items.
 const SIDEBAR_LIST_GAP: f32 = 2.0;
@@ -1035,29 +1018,8 @@ const SIDEBAR_FOOTER_AVATAR_SIZE: f32 = 16.0;
 
 /// Keep the fade short so only the last few glyphs recede. Tracking clipped
 /// content lets the shared paint-time overflow gate leave fitting labels intact.
-pub(crate) fn sidebar_faded_label(
-    id: SharedString,
-    fill: bool,
-    label: impl IntoElement,
-) -> impl IntoElement {
-    let overflow = gpui::ScrollHandle::new();
-    crate::edge_fade::edge_faded(
-        20.0,
-        false,
-        false,
-        div()
-            .id(id.clone())
-            .debug_selector(move || id.to_string())
-            .when(fill, |el| el.flex_1())
-            .min_w_0()
-            .overflow_hidden()
-            .track_scroll(&overflow)
-            .flex()
-            .child(div().flex_none().whitespace_nowrap().child(label)),
-    )
-    .fade_right(true)
-    .fade_label_overflow(&overflow)
-}
+pub(crate) use openagents_chat_view::sidebar::faded_label as sidebar_faded_label;
+
 /// Square action beside the account trigger in the sidebar footer.
 const SIDEBAR_FOOTER_ACTION_SIZE: f32 = SIDEBAR_FOOTER_BUTTON_SIZE;
 /// Breathing room between the account trigger and its adjacent action.
@@ -8501,132 +8463,114 @@ impl Shell {
         } else {
             text.opacity(0.8)
         };
-        div()
-            .id(SharedString::from(row_id.clone()))
-            .group("sidebar-session-row")
-            .debug_selector({
-                let row_id = row_id.clone();
-                move || row_id.clone()
-            })
-            .h(px(sidebar_row_height(
-                compact,
-                show_label,
-                branch.is_some(),
-                change_request.is_some(),
-            )))
-            .flex()
-            .flex_col()
-            .gap(px(2.0))
-            .rounded(px(if search_query.is_some() {
-                popover::PALETTE_ITEM_RADIUS
-            } else {
-                8.0
-            }))
-            .px(px(Theme::SPACE_SM))
-            .py(px(6.0))
-            .text_color(motion::hover_blend(&fade_key, rest_text, text))
-            .bg(motion::hover_blend(&fade_key, rest_bg, hover_bg))
-            // No selection ring (user request) — the wash alone marks the
-            // active row.
-            // Row hover drives BOTH the wash blend and the corner's
-            // status→Archive swap (one listener — gpui allows a single
-            // hover listener per element).
-            .when(!preview, |el| {
-                el.on_hover({
-                    let fade_hover = motion::hover_listener(fade_key.clone());
-                    let hover_id = row_id.clone();
-                    cx.listener(move |this, hovered: &bool, window, cx| {
-                        fade_hover(hovered, window, cx);
-                        this.chat_hover_resync = false;
-                        if *hovered {
-                            if this.chat_status_hover.as_deref() != Some(hover_id.as_str()) {
-                                this.chat_status_hover = Some(hover_id.clone());
-                                cx.notify();
-                            }
-                        } else if this.chat_status_hover.as_deref() == Some(hover_id.as_str()) {
-                            this.chat_status_hover = None;
+        let title = match rename_input.clone() {
+            Some(input) => chat_title_editor(
+                format!("chat-title-editor-{content_id}").into(),
+                input,
+                theme,
+            ),
+            None => sidebar_faded_label(
+                format!("chat-title-{content_id}").into(),
+                true,
+                div()
+                    .text_size(crate::typography::ui_rems(13.0))
+                    .line_height(px(17.0))
+                    .child(popover::search_highlight(title, search_query, theme)),
+            )
+            .into_any_element(),
+        };
+        let identity = // A saved agent's chat wears the OpenAgents mark (#11966).
+                        crate::openagents_saved_agent::Identity::of(
+                            self.state.read(cx).chats.iter().find(|c| c.id == id),
+                            harness,
+                        )
+                        .mark.map(|(path, tint)| icon(path).size(px(SIDEBAR_ACTIVE_HARNESS_ICON_SIZE)).flex_none().text_color(tint.unwrap_or(subline).opacity(if archived_muted { 0.4 } else { 0.8 })).into_any_element());
+        let row = openagents_chat_view::sidebar::row_frame(
+            row_id.clone(),
+            openagents_chat_view::sidebar::RowAppearance {
+                height: sidebar_row_height(
+                    compact,
+                    show_label,
+                    branch.is_some(),
+                    change_request.is_some(),
+                ),
+                palette: search_query.is_some(),
+                rest_text,
+                text,
+                rest_bg,
+                hover_bg,
+            },
+        )
+        // No selection ring (user request) — the wash alone marks the
+        // active row.
+        // Row hover drives BOTH the wash blend and the corner's
+        // status→Archive swap (one listener — gpui allows a single
+        // hover listener per element).
+        .when(!preview, |el| {
+            el.on_hover({
+                let fade_hover = motion::hover_listener(fade_key.clone());
+                let hover_id = row_id.clone();
+                cx.listener(move |this, hovered: &bool, window, cx| {
+                    fade_hover(hovered, window, cx);
+                    this.chat_hover_resync = false;
+                    if *hovered {
+                        if this.chat_status_hover.as_deref() != Some(hover_id.as_str()) {
+                            this.chat_status_hover = Some(hover_id.clone());
                             cx.notify();
                         }
-                    })
-                })
-                .cursor_pointer()
-                .on_click(cx.listener(move |this, event: &gpui::ClickEvent, _, cx| {
-                    // The palette's copy of the row only opens; the sidebar's
-                    // double-click edits the title in place.
-                    if event.click_count() >= 2 && search_query_none {
-                        this.open_rename_chat(select_id.clone(), cx);
-                    } else {
-                        this.open_chat(select_id.clone(), cx);
-                    }
-                }))
-                .on_mouse_down(
-                    MouseButton::Right,
-                    cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                        this.chat_menu.open(ChatMenuState {
-                            tab: None,
-                            chat_id: menu_id.clone(),
-                            position: event.position,
-                            page: ChatMenuPage::Root,
-                        });
+                    } else if this.chat_status_hover.as_deref() == Some(hover_id.as_str()) {
+                        this.chat_status_hover = None;
                         cx.notify();
-                    }),
-                )
-            })
-            .when_some(drag, |el, payload| {
-                let shell = cx.entity();
-                el.on_drag(payload, move |payload, point, window, cx| {
-                    shell.update(cx, |shell, cx| {
-                        shell.begin_sidebar_session_transfer(payload, point, window, cx);
-                    });
-                    cx.stop_propagation();
-                    cx.new(|_| DragGhost)
+                    }
                 })
             })
-            // A row revealed for an inline rename reports where it painted,
-            // frame by frame while its disclosure opens, so the list can
-            // scroll it clear of the edges.
-            .when(
-                rename_input.is_some() && self.chat_rename_revealing(),
-                |el| {
-                    let shell = cx.weak_entity();
-                    el.child(
-                        gpui::canvas(
-                            |_, _, _| {},
-                            move |bounds, _, window, cx| {
-                                window.defer(cx, move |_, cx| {
-                                    shell
-                                        .update(cx, |this, cx| {
-                                            this.keep_rename_row_in_view(bounds, cx)
-                                        })
-                                        .ok();
-                                });
-                            },
-                        )
-                        .absolute()
-                        .inset_0(),
-                    )
-                },
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, event: &gpui::ClickEvent, _, cx| {
+                // The palette's copy of the row only opens; the sidebar's
+                // double-click edits the title in place.
+                if event.click_count() >= 2 && search_query_none {
+                    this.open_rename_chat(select_id.clone(), cx);
+                } else {
+                    this.open_chat(select_id.clone(), cx);
+                }
+            }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.chat_menu.open(ChatMenuState {
+                        tab: None,
+                        chat_id: menu_id.clone(),
+                        position: event.position,
+                        page: ChatMenuPage::Root,
+                    });
+                    cx.notify();
+                }),
             )
-            .when(self.chat_hover_resync && !preview, |el| {
+        })
+        .when_some(drag, |el, payload| {
+            let shell = cx.entity();
+            el.on_drag(payload, move |payload, point, window, cx| {
+                shell.update(cx, |shell, cx| {
+                    shell.begin_sidebar_session_transfer(payload, point, window, cx);
+                });
+                cx.stop_propagation();
+                cx.new(|_| DragGhost)
+            })
+        })
+        // A row revealed for an inline rename reports where it painted,
+        // frame by frame while its disclosure opens, so the list can
+        // scroll it clear of the edges.
+        .when(
+            rename_input.is_some() && self.chat_rename_revealing(),
+            |el| {
                 let shell = cx.weak_entity();
-                let row_id = row_id.clone();
                 el.child(
                     gpui::canvas(
-                        |bounds, window, _| {
-                            window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal)
-                        },
-                        move |_, hitbox, window, cx| {
-                            // The hit test is final by paint, so popovers
-                            // over the row still occlude it.
-                            let hovered = hitbox.is_hovered(window) && !cx.has_active_drag();
-                            if hovered == corner_hovered {
-                                return;
-                            }
+                        |_, _, _| {},
+                        move |bounds, _, window, cx| {
                             window.defer(cx, move |_, cx| {
                                 shell
-                                    .update(cx, |this, cx| {
-                                        this.sync_chat_row_hover(row_id, hovered, cx)
-                                    })
+                                    .update(cx, |this, cx| this.keep_rename_row_in_view(bounds, cx))
                                     .ok();
                             });
                         },
@@ -8634,269 +8578,177 @@ impl Shell {
                     .absolute()
                     .inset_0(),
                 )
-            })
-            // Line 1: "project @ device", status word / time-ago right.
-            .when(!compact && show_label, |el| {
-                el.child(
-                    div()
-                        .w_full()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(Theme::SPACE_SM))
-                        .child(sidebar_faded_label(
-                            format!("chat-device-{content_id}").into(),
-                            true,
-                            div()
-                                .text_size(crate::typography::ui_rems(11.0))
-                                .line_height(px(14.0))
-                                .text_color(subline)
-                                .child(popover::search_highlight(space_name, search_query, theme)),
-                        ))
-                        .child(div().text_color(subline).children(corner.take())),
+            },
+        )
+        .when(self.chat_hover_resync && !preview, |el| {
+            let shell = cx.weak_entity();
+            let row_id = row_id.clone();
+            el.child(
+                gpui::canvas(
+                    |bounds, window, _| window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal),
+                    move |_, hitbox, window, cx| {
+                        // The hit test is final by paint, so popovers
+                        // over the row still occlude it.
+                        let hovered = hitbox.is_hovered(window) && !cx.has_active_drag();
+                        if hovered == corner_hovered {
+                            return;
+                        }
+                        window.defer(cx, move |_, cx| {
+                            shell
+                                .update(cx, |this, cx| {
+                                    this.sync_chat_row_hover(row_id, hovered, cx)
+                                })
+                                .ok();
+                        });
+                    },
                 )
-            })
-            // Line 2: harness identity belongs directly with the title,
-            // instead of floating as unrelated metadata below it.
-            .child(
-                div()
-                    .w_full()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(if compact {
-                        4.0
-                    } else {
-                        SIDEBAR_ACTIVE_HARNESS_TITLE_GAP
-                    }))
-                    .children(compact_status)
-                    .when_some(
-                        // A saved agent's chat wears the OpenAgents mark (#11966).
-                        crate::openagents_saved_agent::Identity::of(
-                            self.state.read(cx).chats.iter().find(|c| c.id == id),
-                            harness,
-                        )
-                        .mark,
-                        |el, (path, tint)| {
-                            el.child(
-                                icon(path)
-                                    .size(px(SIDEBAR_ACTIVE_HARNESS_ICON_SIZE))
-                                    .flex_none()
-                                    .text_color(
-                                        tint.unwrap_or(subline).opacity(if archived_muted {
-                                            0.4
-                                        } else {
-                                            0.8
-                                        }),
-                                    ),
-                            )
-                        },
-                    )
-                    .children(project_icon)
-                    .child(match rename_input {
-                        Some(input) => chat_title_editor(
-                            format!("chat-title-editor-{content_id}").into(),
-                            input,
-                            theme,
-                        ),
-                        None => sidebar_faded_label(
-                            format!("chat-title-{content_id}").into(),
-                            true,
-                            div()
-                                .text_size(crate::typography::ui_rems(13.0))
-                                .line_height(px(17.0))
-                                .child(popover::search_highlight(title, search_query, theme)),
-                        )
-                        .into_any_element(),
-                    })
-                    .when(continued && !compact, |el| {
-                        el.child(
-                            div()
-                                .text_size(crate::typography::ui_rems(10.))
-                                .text_color(theme.text_muted)
-                                .child("Continued"),
-                        )
-                    })
-                    .when(!compact && !show_label && remote, |el| {
-                        el.child(
-                            icon(icons::REMOTE_SERVER)
-                                .size(px(SIDEBAR_ACTIVE_HARNESS_ICON_SIZE))
-                                .flex_none()
-                                .text_color(subline),
-                        )
-                    })
-                    .when(!compact && !show_label, |el| {
-                        el.child(
-                            div()
-                                .flex_none()
-                                .text_color(subline)
-                                .children(corner.take()),
-                        )
-                    })
-                    // Compact trailing cluster, right-packed: the PR badge sits
-                    // LEFT of one fixed slot that shows the relative time, swaps
-                    // to the archive affordance while the row is hovered, and
-                    // shows the Cmd+N jump legend while the modifier is held.
-                    // The legend wins over the hover archive (user request).
-                    // There is no remote globe — the slot's fixed width keeps
-                    // the column aligned across rows regardless of a PR badge.
-                    .when(compact, |el| {
-                        // Cmd-held legend beats the hover archive; preview rows
-                        // (the palette) never archive.
-                        let show_legend = compact_jump_label.is_some();
-                        let show_archive = corner_hovered && !show_legend && !preview;
-                        // The slot is 30px (holds "17m"); a text-length jump
-                        // hint widens it to a floor so "Ctrl+1" vs "Ctrl+2"
-                        // never nudges the column.
-                        let text_hint = compact_jump_label
-                            .as_ref()
-                            .is_some_and(|label| label.chars().count() > 3);
-                        // Running subagents take the time stamp's place; the
-                        // legend and the hover archive still win.
-                        let pill = (!show_legend && !show_archive)
-                            .then(|| subagent_pill("compact"))
-                            .flatten();
-                        let archive_id = id.clone();
-                        el.children(change_request.clone().map(|summary| {
-                            if preview {
-                                crate::change_requests::pull_request_badge_preview(
-                                    format!("{row_id}-compact-pr").into(),
-                                    summary,
-                                    crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
-                                    theme,
-                                )
-                            } else {
-                                crate::change_requests::pull_request_badge(
-                                    format!("{row_id}-compact-pr").into(),
-                                    summary,
-                                    crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
-                                    pr_device.clone(),
-                                    theme,
-                                )
-                            }
-                        }))
-                        .child(
-                            div()
-                                .id(SharedString::from(format!("{row_id}-corner")))
-                                .debug_selector({
-                                    let id = id.clone();
-                                    move || format!("chat-time-{id}")
-                                })
-                                .when(text_hint, |el| {
-                                    el.min_w(crate::typography::ui_rems(COMPACT_JUMP_HINT_WIDTH))
-                                })
-                                // A running-subagents pill can be wider than the plain time.
-                                .when(!text_hint, |el| el.min_w(px(30.0)))
-                                // Fixed height so swapping the time text for the
-                                // archive glyph never resizes the slot.
-                                .h(px(14.0))
-                                .flex_none()
-                                .flex()
-                                .items_center()
-                                .justify_end()
-                                .aria_label(if show_archive {
-                                    if archived { "Unarchive" } else { "Archive" }
-                                } else {
-                                    "Session time"
-                                })
-                                .when(show_archive, |el| {
-                                    el.cursor_pointer()
-                                        .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                                            cx.stop_propagation()
-                                        })
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            cx.stop_propagation();
-                                            this.chat_hover_resync = true;
-                                            this.set_chat_archived(
-                                                archive_id.clone(),
-                                                !archived,
-                                                cx,
-                                            );
-                                        }))
-                                        .tooltip(crate::settings::widgets::text_tooltip_above(
-                                            if archived {
-                                                "Unarchive session"
-                                            } else {
-                                                ShortcutId::ArchiveSession.label()
-                                            },
-                                        ))
-                                })
-                                .child(if show_archive {
-                                    icon(if archived {
-                                        icons::ARCHIVE_UP_MINIMALISTIC
-                                    } else {
-                                        icons::ARCHIVE_MINIMALISTIC
-                                    })
-                                    .size(px(SIDEBAR_ACTIVE_HARNESS_ICON_SIZE))
-                                    .flex_none()
-                                    .text_color(theme.text_muted)
-                                    .into_any_element()
-                                } else if let Some(pill) = pill {
-                                    pill
-                                } else {
-                                    div()
-                                        .whitespace_nowrap()
-                                        .text_right()
-                                        .text_size(crate::typography::ui_rems(11.0))
-                                        .text_color(subline)
-                                        .child(compact_jump_label.unwrap_or(time_ago))
-                                        .into_any_element()
-                                }),
-                        )
-                    }),
+                .absolute()
+                .inset_0(),
             )
-            // Line 3 is structural, not reserved whitespace: compact states
-            // omit it completely when both Branch and Pull request are hidden.
-            .when(!compact && shows_metadata, |row| {
-                row.child(
+        });
+        let compact_request = change_request.clone();
+        openagents_chat_view::sidebar::row_content(
+            row,
+            openagents_chat_view::sidebar::RowData {
+                id: content_id.into(),
+                space_name,
+                branch,
+                compact,
+                show_label,
+                shows_metadata,
+                continued,
+                remote,
+                search_query,
+                subline,
+            },
+            openagents_chat_view::sidebar::RowSlots {
+                title,
+                identity,
+                project_icon,
+                compact_status,
+                corner,
+            },
+            theme,
+            |el| {
+                // Cmd-held legend beats the hover archive; preview rows
+                // (the palette) never archive.
+                let show_legend = compact_jump_label.is_some();
+                let show_archive = corner_hovered && !show_legend && !preview;
+                // The slot is 30px (holds "17m"); a text-length jump
+                // hint widens it to a floor so "Ctrl+1" vs "Ctrl+2"
+                // never nudges the column.
+                let text_hint = compact_jump_label
+                    .as_ref()
+                    .is_some_and(|label| label.chars().count() > 3);
+                // Running subagents take the time stamp's place; the
+                // legend and the hover archive still win.
+                let pill = (!show_legend && !show_archive)
+                    .then(|| subagent_pill("compact"))
+                    .flatten();
+                let archive_id = id.clone();
+                el.children(compact_request.map(|summary| {
+                    if preview {
+                        crate::change_requests::pull_request_badge_preview(
+                            format!("{row_id}-compact-pr").into(),
+                            summary,
+                            crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
+                            theme,
+                        )
+                    } else {
+                        crate::change_requests::pull_request_badge(
+                            format!("{row_id}-compact-pr").into(),
+                            summary,
+                            crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
+                            pr_device.clone(),
+                            theme,
+                        )
+                    }
+                }))
+                .child(
                     div()
-                        .w_full()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(4.0))
-                        .when_some(branch, |el, branch| {
-                            el.child(
-                                icon(icons::GIT_BRANCH)
-                                    .size(px(11.0))
-                                    .flex_none()
-                                    .text_color(subline),
-                            )
-                            .child(sidebar_faded_label(
-                                format!("chat-branch-{content_id}").into(),
-                                false,
-                                div()
-                                    .text_size(crate::typography::ui_rems(11.0))
-                                    .line_height(px(14.0))
-                                    .text_color(subline)
-                                    .child(popover::search_highlight(branch, search_query, theme)),
-                            ))
+                        .id(SharedString::from(format!("{row_id}-corner")))
+                        .debug_selector({
+                            let id = id.clone();
+                            move || format!("chat-time-{id}")
                         })
-                        // Stable invisible spring keeps the optional PR badge
-                        // pinned right without changing no-PR paint.
-                        .child(div().flex_1().min_w_0())
-                        .when_some(change_request, |el, summary| {
-                            el.child(if preview {
-                                crate::change_requests::pull_request_badge_preview(
-                                    format!("{row_id}-pr").into(),
-                                    summary,
-                                    crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
-                                    theme,
-                                )
+                        .when(text_hint, |el| {
+                            el.min_w(crate::typography::ui_rems(COMPACT_JUMP_HINT_WIDTH))
+                        })
+                        // A running-subagents pill can be wider than the plain time.
+                        .when(!text_hint, |el| el.min_w(px(30.0)))
+                        // Fixed height so swapping the time text for the
+                        // archive glyph never resizes the slot.
+                        .h(px(14.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_end()
+                        .aria_label(if show_archive {
+                            if archived { "Unarchive" } else { "Archive" }
+                        } else {
+                            "Session time"
+                        })
+                        .when(show_archive, |el| {
+                            el.cursor_pointer()
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.chat_hover_resync = true;
+                                    this.set_chat_archived(archive_id.clone(), !archived, cx);
+                                }))
+                                .tooltip(crate::settings::widgets::text_tooltip_above(
+                                    if archived {
+                                        "Unarchive session"
+                                    } else {
+                                        ShortcutId::ArchiveSession.label()
+                                    },
+                                ))
+                        })
+                        .child(if show_archive {
+                            icon(if archived {
+                                icons::ARCHIVE_UP_MINIMALISTIC
                             } else {
-                                crate::change_requests::pull_request_badge_with_query(
-                                    format!("{row_id}-pr").into(),
-                                    summary,
-                                    crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
-                                    search_query,
-                                    pr_device.clone(),
-                                    theme,
-                                )
+                                icons::ARCHIVE_MINIMALISTIC
                             })
+                            .size(px(SIDEBAR_ACTIVE_HARNESS_ICON_SIZE))
+                            .flex_none()
+                            .text_color(theme.text_muted)
+                            .into_any_element()
+                        } else if let Some(pill) = pill {
+                            pill
+                        } else {
+                            div()
+                                .whitespace_nowrap()
+                                .text_right()
+                                .text_size(crate::typography::ui_rems(11.0))
+                                .text_color(subline)
+                                .child(compact_jump_label.unwrap_or(time_ago))
+                                .into_any_element()
                         }),
                 )
-            })
-            .into_any_element()
+            },
+            |el: gpui::Div| {
+                el.when_some(change_request, |el, summary| {
+                    el.child(if preview {
+                        crate::change_requests::pull_request_badge_preview(
+                            format!("{row_id}-pr").into(),
+                            summary,
+                            crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
+                            theme,
+                        )
+                    } else {
+                        crate::change_requests::pull_request_badge_with_query(
+                            format!("{row_id}-pr").into(),
+                            summary,
+                            crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
+                            search_query,
+                            pr_device.clone(),
+                            theme,
+                        )
+                    })
+                })
+            },
+        )
     }
 
     fn render_pinned_session_group(
@@ -9594,63 +9446,43 @@ impl Shell {
         // rode the previous frame's offset, so the last frame of a content
         // shrink (row archived while scrolled) left a phantom fade stuck
         // over an unscrollable list (user report).
-        let sidebar_lists = crate::edge_fade::edge_faded(
-            SIDEBAR_GLASS_FADE_BAND,
-            true,
-            true,
-            div()
-                .relative()
-                .flex_1()
-                .min_h_0()
-                .child(crate::overscroll::overscroll(
-                    "sidebar-overscroll",
-                    crate::overscroll::OverscrollSource::Handle(self.sidebar_scroll.clone()),
-                    div()
-                        .id("sidebar-lists")
-                        .relative()
-                        .size_full()
-                        .overflow_y_scroll()
-                        .track_scroll(&self.sidebar_scroll)
-                        .on_drag_move::<SidebarSessionDrag>(cx.listener(
-                            move |this, event: &gpui::DragMoveEvent<SidebarSessionDrag>, _, cx| {
-                                if let Some(transfer) = this.sidebar_session_transfer.as_mut() {
-                                    transfer.viewport = Some(event.bounds);
-                                }
-                                if !event.bounds.contains(&event.event.position) {
-                                    if let Some(transfer) = this.sidebar_session_transfer.as_mut() {
-                                        transfer.preview = None;
-                                    }
-                                    return;
-                                }
-                                let payload = event.drag(cx).clone();
-                                this.track_pinned_session_drag_pointer(
-                                    payload,
-                                    f32::from(event.event.position.y),
-                                    f32::from(event.bounds.top()),
-                                    f32::from(event.bounds.bottom()),
-                                    cx,
-                                );
-                            },
-                        ))
-                        // Empty space and Archived are not transfer targets.
-                        .on_drop::<SidebarSessionDrag>(cx.listener(
-                            |this, _: &SidebarSessionDrag, _, cx| {
-                                this.cancel_sidebar_session_transfer(cx);
-                            },
-                        ))
-                        .px(px(Theme::SPACE_SM))
-                        .flex()
-                        .flex_col()
-                        // No "Sessions" header (user request) — the list
-                        // is the whole column; a little air stands in.
-                        .pt(px(SIDEBAR_LIST_PAD_TOP))
-                        .child(active_list)
-                        .children(archived_section)
-                        .children(moving_row)
-                        .children(self.account_chats_sentinel(cx)),
-                )),
-        )
-        .fade_overflow_y(&self.sidebar_scroll);
+        let sidebar_lists = openagents_chat_view::sidebar::lists(
+            &self.sidebar_scroll,
+            openagents_chat_view::sidebar::list_frame(&self.sidebar_scroll)
+                .on_drag_move::<SidebarSessionDrag>(cx.listener(
+                    move |this, event: &gpui::DragMoveEvent<SidebarSessionDrag>, _, cx| {
+                        if let Some(transfer) = this.sidebar_session_transfer.as_mut() {
+                            transfer.viewport = Some(event.bounds);
+                        }
+                        if !event.bounds.contains(&event.event.position) {
+                            if let Some(transfer) = this.sidebar_session_transfer.as_mut() {
+                                transfer.preview = None;
+                            }
+                            return;
+                        }
+                        let payload = event.drag(cx).clone();
+                        this.track_pinned_session_drag_pointer(
+                            payload,
+                            f32::from(event.event.position.y),
+                            f32::from(event.bounds.top()),
+                            f32::from(event.bounds.bottom()),
+                            cx,
+                        );
+                    },
+                ))
+                // Empty space and Archived are not transfer targets.
+                .on_drop::<SidebarSessionDrag>(cx.listener(
+                    |this, _: &SidebarSessionDrag, _, cx| {
+                        this.cancel_sidebar_session_transfer(cx);
+                    },
+                ))
+                // No "Sessions" header (user request) — the list
+                // is the whole column; a little air stands in.
+                .child(active_list)
+                .children(archived_section)
+                .children(moving_row)
+                .children(self.account_chats_sentinel(cx)),
+        );
 
         let update_strip = self.render_update_strip(theme, cx);
 

@@ -373,7 +373,7 @@ impl ChatApp {
                     }
                     Err(error) => {
                         this.composer.update(cx, |composer, cx| {
-                            if composer.is_empty() {
+                            if composer.is_empty(cx) {
                                 composer.set_text(text.clone(), cx);
                             }
                         });

@@ -11,6 +11,20 @@ pub type Transcript = TranscriptView<crate::transcript_media::DesktopMedia>;
 mod tests {
     #![allow(unused_imports)]
     use super::*;
+    trait DesktopTestState {
+        fn app_state(&self) -> gpui::Entity<crate::state::AppState>;
+    }
+    impl DesktopTestState for Transcript {
+        fn app_state(&self) -> gpui::Entity<crate::state::AppState> {
+            self.host
+                .as_any()
+                .downcast_ref::<crate::transcript_host::AppHost>()
+                .expect("desktop transcript host")
+                .0
+                .clone()
+        }
+    }
+
     use std::cell::{Cell, RefCell};
     use std::collections::{HashMap, HashSet, VecDeque};
     use std::ops::Range;
@@ -2876,7 +2890,7 @@ mod tests {
                     vec![text_part("body", "historial fuera de pantalla")],
                 )];
                 transcript.update(cx, |this, cx| {
-                    this.state.update(cx, |state, cx| {
+                    this.app_state().update(cx, |state, cx| {
                         state.select_chat(Some("chat".into()), cx);
                         state
                             .receive_transcript_update(
@@ -2905,7 +2919,7 @@ mod tests {
                 let mut cutoff = history.clone();
                 cutoff.push(recovered);
                 transcript.update(cx, |this, cx| {
-                    this.state.update(cx, |state, cx| {
+                    this.app_state().update(cx, |state, cx| {
                         state
                             .receive_transcript_update(
                                 openagents_doc::TranscriptUpdate {
@@ -2925,8 +2939,8 @@ mod tests {
                 });
                 cx.update_window(window.into(), |_, window, cx| {
                     transcript.update(cx, |this, cx| {
-                        let _ = this.render_row(0, window, cx);
-                        let _ = this.render_row(1, window, cx);
+                        let _ = this.test_render_row(0, window, cx);
+                        let _ = this.test_render_row(1, window, cx);
                         let old = &this.veils[&SharedString::from("reply#body.0")];
                         assert!(
                             old.borrow_mut()
@@ -2959,7 +2973,7 @@ mod tests {
                     vec![text_part("body", "café histórico y nuevo\n\nOtro párrafo")],
                 )];
                 transcript.update(cx, |this, cx| {
-                    this.state.update(cx, |state, cx| {
+                    this.app_state().update(cx, |state, cx| {
                         state.select_chat(Some("chat".into()), cx);
                         state
                             .receive_transcript_update(
@@ -2988,8 +3002,8 @@ mod tests {
                 });
                 cx.update_window(window.into(), |_, window, cx| {
                     transcript.update(cx, |this, cx| {
-                        let _ = this.render_row(0, window, cx);
-                        let _ = this.render_row(1, window, cx);
+                        let _ = this.test_render_row(0, window, cx);
+                        let _ = this.test_render_row(1, window, cx);
                         let first = &this.veils[&SharedString::from("reply#body.0")];
                         let spans =
                             first
@@ -3022,7 +3036,7 @@ mod tests {
                 let mut next_history = history.clone();
                 next_history.push(recovered);
                 transcript.update(cx, |this, cx| {
-                    this.state.update(cx, |state, cx| {
+                    this.app_state().update(cx, |state, cx| {
                         state
                             .receive_transcript_update(
                                 openagents_doc::TranscriptUpdate {
@@ -3055,7 +3069,7 @@ mod tests {
                 cx.update_window(window.into(), |_, window, cx| {
                     transcript.update(cx, |this, cx| {
                         for ix in 0..this.list.item_count() {
-                            let _ = this.render_row(ix, window, cx);
+                            let _ = this.test_render_row(ix, window, cx);
                         }
                     });
                 })
@@ -3128,7 +3142,7 @@ mod tests {
                         });
                         this.spring_kick = true;
                         updated.push(prompt(&format!("history-{}", updated.len())));
-                        this.state.update(cx, |state, cx| {
+                        this.app_state().update(cx, |state, cx| {
                             let frame =
                                 openagents_doc::diff_transcript(&state.transcript, &updated);
                             state
@@ -3182,7 +3196,7 @@ mod tests {
                 for _ in 0..80 {
                     transcript.update(cx, |this, cx| {
                         this.own_turn_last_tick = Some(Instant::now() - Duration::from_millis(17));
-                        this.step_own_turn(cx);
+                        this.test_step_own_turn(cx);
                     });
                     draw(window, cx);
                     let top = transcript.read(cx).list.bounds_for_item(0).unwrap().top();
@@ -3208,7 +3222,7 @@ mod tests {
             this.list.splice(this.rows.len()..this.rows.len(), count);
             this.rows = rows;
             this.list.remeasure_items(old_last..old_last + 1);
-            this.remeasure_last_row();
+            this.test_remeasure_last_row();
             this.own_turn_kick = true;
             cx.notify();
         }
@@ -3224,7 +3238,7 @@ mod tests {
                     this.list.scroll_to(ListOffset::default());
                 });
                 draw(window, cx);
-                transcript.update(cx, |this, cx| this.step_own_turn(cx));
+                transcript.update(cx, |this, cx| this.test_step_own_turn(cx));
                 draw(window, cx);
                 let before = transcript.read(cx).list.max_offset_for_scrollbar().y;
                 transcript.update(cx, |this, cx| append_runway_rows(this, 3, cx));
@@ -3242,7 +3256,7 @@ mod tests {
             entries: Vec<SessionMessageEntry>,
             cx: &mut Context<Transcript>,
         ) {
-            this.state.update(cx, |state, _| {
+            this.app_state().update(cx, |state, _| {
                 state.selected_chat = Some("chat".into());
                 state.transcript_replayed = true;
                 state.transcript = entries;
@@ -3270,10 +3284,10 @@ mod tests {
                 this.own_turn_last_tick = Some(Instant::now() - Duration::from_millis(17));
                 this.spring_last_tick = Some(Instant::now() - Duration::from_millis(17));
                 if this.own_turn.is_some() {
-                    this.step_own_turn(cx);
+                    this.test_step_own_turn(cx);
                 }
                 if this.pinned {
-                    this.step_spring(cx);
+                    this.test_step_spring(cx);
                 }
             });
             draw(window, cx);
@@ -3373,7 +3387,7 @@ mod tests {
                 transcript.update(cx, |this, cx| {
                     feed(this, vec![prompt("prompt")], cx);
                     this.rail_enabled = false;
-                    this.state.update(cx, |state, _| {
+                    this.app_state().update(cx, |state, _| {
                         state.sessions.push(openagents_proto::Session {
                             last_completed_turn: None,
                             running_subagents: 0,
@@ -3732,14 +3746,14 @@ mod tests {
                     entries.push(prompt(&id));
                     transcript.update(cx, |this, cx| feed(this, entries.clone(), cx));
                     draw(window, cx);
-                    let anchor = transcript.read(cx).own_turn_anchor_ix().unwrap();
+                    let anchor = transcript.read(cx).test_own_turn_anchor_ix().unwrap();
                     let mut previous = transcript
                         .read(cx)
                         .list
                         .bounds_for_item(anchor)
                         .unwrap()
                         .top();
-                    assert!(previous > px(Transcript::own_send_inset(anchor) + 40.0));
+                    assert!(previous > px(Transcript::test_own_send_inset(anchor) + 40.0));
                     for _ in 0..80 {
                         tick(&transcript, window, cx);
                         let top = transcript
@@ -3750,7 +3764,7 @@ mod tests {
                             .top();
                         assert!(top <= previous + px(0.5), "repeat send reversed");
                         assert!(
-                            top >= px(Transcript::own_send_inset(anchor) - 2.5),
+                            top >= px(Transcript::test_own_send_inset(anchor) - 2.5),
                             "repeat send overshot"
                         );
                         assert!(previous - top < px(150.0), "repeat send jumped");
@@ -3787,7 +3801,7 @@ mod tests {
                 assert!(!transcript.read(cx).own_turn.as_ref().unwrap().held);
                 let before = transcript.read(cx).list.logical_scroll_top();
                 transcript.update(cx, |this, cx| {
-                    let mut entries = this.state.read(cx).transcript.clone();
+                    let mut entries = this.app_state().read(cx).transcript.clone();
                     entries.push(assistant(
                         "reply",
                         MessageStatus::Streaming,
@@ -3882,7 +3896,7 @@ mod tests {
                 transcript.update(cx, |this, cx| {
                     this.list.reset(100); // discard all prefix height hints
                     this.on_own_send("chat".into(), "entry-0".into(), cx);
-                    this.release_own_turn_hold();
+                    this.test_release_own_turn_hold();
                     this.list.scroll_to(ListOffset {
                         item_ix: 99,
                         offset_in_item: px(0.0),
@@ -3997,7 +4011,7 @@ mod tests {
                         assert!(!transcript.read(cx).pinned);
                         let before = transcript.read(cx).list.logical_scroll_top();
                         transcript.update(cx, |this, cx| {
-                            let mut entries = this.state.read(cx).transcript.clone();
+                            let mut entries = this.app_state().read(cx).transcript.clone();
                             entries.push(assistant(
                                 "reply",
                                 MessageStatus::Streaming,
@@ -4043,7 +4057,7 @@ mod tests {
                         item_ix: 0,
                         offset_in_item: px(0.0),
                     });
-                    this.step_own_turn(cx);
+                    this.test_step_own_turn(cx);
                 });
                 draw(window, cx);
                 let before = transcript.read(cx).list.bounds_for_item(0).unwrap();
@@ -4083,7 +4097,7 @@ mod tests {
                     .size
                     .height;
                 transcript.update(cx, |this, cx| {
-                    this.step_own_turn(cx);
+                    this.test_step_own_turn(cx);
                     assert!(
                         this.own_turn.is_none(),
                         "overflow must retire the reservation"
@@ -4167,7 +4181,7 @@ mod tests {
                 });
                 draw(window, cx);
                 assert!(
-                    transcript.read(cx).diagram_worker.is_some(),
+                    transcript.read(cx).media.diagram_worker.is_some(),
                     "a fence followed by more reply renders"
                 );
                 // A pinned end is glued, where rows report no bounds; read
@@ -4327,7 +4341,7 @@ mod tests {
                 for _ in 0..50 {
                     tick(&transcript, window, cx);
                 }
-                assert!(transcript.read(cx).diagram_worker.is_none());
+                assert!(transcript.read(cx).media.diagram_worker.is_none());
                 transcript.update(cx, |this, cx| {
                     feed(this, reply(MessageStatus::Complete), cx)
                 });
@@ -4358,6 +4372,7 @@ mod tests {
                 // natural size and releases it on close.
                 let media = transcript
                     .read(cx)
+                    .media
                     .diagrams
                     .borrow()
                     .ready_media()
@@ -4398,7 +4413,7 @@ mod tests {
                 draw(window, cx);
                 let start_top = transcript.read(cx).list.bounds_for_item(11).unwrap().top();
                 assert!(
-                    start_top > px(Transcript::own_send_inset(11) + 100.0),
+                    start_top > px(Transcript::test_own_send_inset(11) + 100.0),
                     "installing the runway must preserve the start of the glide"
                 );
                 let mut previous_top = start_top;
@@ -4407,9 +4422,9 @@ mod tests {
                     transcript.update(cx, |this, cx| {
                         // Pending-echo changes can invalidate the prompt before
                         // the queued glide runs. Exercise that exact ordering.
-                        this.remeasure_last_row();
+                        this.test_remeasure_last_row();
                         this.own_turn_last_tick = Some(Instant::now() - Duration::from_millis(17));
-                        this.step_own_turn(cx);
+                        this.test_step_own_turn(cx);
                     });
                     draw(window, cx);
                     let this = transcript.read(cx);
@@ -4420,7 +4435,7 @@ mod tests {
                     );
                     previous_top = bounds.top();
                     let target =
-                        this.list.viewport_bounds().top() + px(Transcript::own_send_inset(11));
+                        this.list.viewport_bounds().top() + px(Transcript::test_own_send_inset(11));
                     assert!(
                         bounds.top() >= target - px(0.5),
                         "send overshot: {:?} < {:?}",
@@ -4432,7 +4447,7 @@ mod tests {
                 let bounds = this.list.bounds_for_item(11).unwrap();
                 assert!(
                     (f32::from(bounds.top() - this.list.viewport_bounds().top())
-                        - Transcript::own_send_inset(11))
+                        - Transcript::test_own_send_inset(11))
                     .abs()
                         <= 1.0
                 );
@@ -4468,7 +4483,7 @@ mod tests {
                         this.list.bounds_for_item(99).is_none(),
                         "tail must remain virtualized"
                     );
-                    this.step_own_turn(cx);
+                    this.test_step_own_turn(cx);
                     assert!(
                         this.own_turn.is_none(),
                         "a filled hold cannot wait on off-screen bounds"
@@ -4500,7 +4515,7 @@ mod tests {
                     item_ix: 1,
                     offset_in_item: px(20.0),
                 });
-                this.handle_scroll(
+                this.test_handle_scroll(
                     &ListScrollEvent {
                         visible_range: 1..2,
                         count: 2,
@@ -4550,7 +4565,7 @@ mod tests {
                 let before = transcript.read(cx).list.max_offset_for_scrollbar();
                 let toggle = |this: &mut Transcript, cx: &mut Context<Transcript>| {
                     let full_h = this.user_heights["prompt"].get();
-                    this.toggle_user_fold(
+                    this.test_toggle_user_fold(
                         "prompt".into(),
                         0,
                         USER_LINE_HEIGHT * (USER_COLLAPSED_LINES + 1) as f32,
@@ -4627,7 +4642,7 @@ mod tests {
 
                         // No row bounds yet: ownership must transfer even if
                         // geometry is unavailable during a list remeasurement.
-                        transcript.toggle_user_fold(
+                        transcript.test_toggle_user_fold(
                             "prompt".into(),
                             0,
                             110.0,
@@ -4664,7 +4679,7 @@ mod tests {
                     transcript.user_collapse_scroll_scheduled = true;
                     let hold_token = transcript.user_hold_token;
                     match navigation {
-                        "wheel" => transcript.handle_scroll(
+                        "wheel" => transcript.test_handle_scroll(
                             &ListScrollEvent {
                                 visible_range: 0..0,
                                 count: 0,
@@ -4692,7 +4707,7 @@ mod tests {
                     // viewport nor resurrect the canceled compensation.
                     let offset = transcript.list.logical_scroll_top();
                     transcript.user_collapse_scroll_scheduled = false;
-                    transcript.step_user_collapse_scroll(cx);
+                    transcript.test_step_user_collapse_scroll(cx);
                     let after = transcript.list.logical_scroll_top();
                     assert_eq!(after.item_ix, offset.item_ix);
                     assert_eq!(after.offset_in_item, offset.offset_in_item);
@@ -5856,14 +5871,34 @@ mod tests {
 }
 
 #[cfg(feature = "appshots-fixture")]
-impl Transcript {
-    pub fn fixture_appshots_start(&mut self, cx: &mut Context<Self>) {
+use gpui::{Context, SharedString, Window, px};
+#[cfg(feature = "appshots-fixture")]
+use std::time::Instant;
+
+/// Controls used by the desktop's image-preview fixture.
+#[cfg(feature = "appshots-fixture")]
+pub trait TranscriptFixture: Sized {
+    fn fixture_appshots_start(&mut self, cx: &mut Context<Self>);
+    fn fixture_tool_images(&mut self, open: bool, cx: &mut Context<Self>);
+    fn fixture_tool_image_stats(&self) -> (usize, usize);
+    fn fixture_image_menu(
+        &mut self,
+        path: String,
+        action: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    );
+}
+
+#[cfg(feature = "appshots-fixture")]
+impl TranscriptFixture for Transcript {
+    fn fixture_appshots_start(&mut self, cx: &mut Context<Self>) {
         self.list.scroll_to(gpui::ListOffset::default());
         cx.notify();
     }
 
     /// Open or close every tool group and image chip, as clicks would.
-    pub fn fixture_tool_images(&mut self, open: bool, cx: &mut Context<Self>) {
+    fn fixture_tool_images(&mut self, open: bool, cx: &mut Context<Self>) {
         let now = Instant::now();
         for row in &self.rows {
             let RowKind::ToolGroup { tools, .. } = &row.kind else {
@@ -5888,21 +5923,31 @@ impl Transcript {
     }
 
     /// `(previews resident, retained bytes)`.
-    pub fn fixture_tool_image_stats(&self) -> (usize, usize) {
-        self.tool_images.stats()
+    fn fixture_tool_image_stats(&self) -> (usize, usize) {
+        self.media.tool_images.stats()
     }
 
-    pub fn fixture_image_menu(
+    fn fixture_image_menu(
         &mut self,
         path: String,
         action: Option<usize>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let devices = self.image_host(cx).0.into_iter().collect();
-        self.open_image_menu(path, devices, gpui::point(px(420.), px(260.)), window, cx);
+        let devices = crate::transcript_media::DesktopMedia::image_host(self, cx)
+            .0
+            .into_iter()
+            .collect();
+        crate::transcript_media::DesktopMedia::open_image_menu(
+            self,
+            path,
+            devices,
+            gpui::point(px(420.), px(260.)),
+            window,
+            cx,
+        );
         if let Some(action) = action {
-            self.dispatch_image_menu(action, cx);
+            crate::transcript_media::DesktopMedia::dispatch_image_menu(self, action, cx);
         }
     }
 }

@@ -6,6 +6,11 @@ Keep fork-specific changes here so upstream updates can review each integration.
   the iOS and Android wallets, and edit signed `lud16` metadata in the shared
   public profile form.
 
+- OpenAgents #12339: share the desktop composer's editing and chip renderer,
+  sidebar rows, and scrolling list with `/gpui` and `/demo/gpui`. Keep native
+  dictation in the desktop host and browser drafts, completions, and account
+  actions in the web host.
+
 - OpenAgents #12344: draw web transcript visuals in a lazy Wasm module,
   with inline bounds, clipping, controls, attachment reads, and window cleanup.
 

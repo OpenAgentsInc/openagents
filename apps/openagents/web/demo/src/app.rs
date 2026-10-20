@@ -2,6 +2,7 @@
 //! composer. Everything runs in the page; replies are the desktop demo's
 //! scripted turns, streamed word by word through the veil.
 
+use openagents_web_chat_view::message_input::MessageInput;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::rc::Rc;
@@ -21,7 +22,7 @@ use web_time::Instant;
 
 use openagents_chat_view::rust_native_gpui;
 use openagents_chat_view::transcript::host::TurnActivity;
-use openagents_web_chat_view::composer::{Submitted, TextInput};
+use openagents_web_chat_view::composer::Submitted;
 use openagents_web_chat_view::desktop_transcript::{self, WebTranscript};
 use openagents_web_chat_view::labels::{
     CONTENT_WIDTH, SIDEBAR_WIDTH, ago, chip, choice_mark, footer_text, model_label,
@@ -98,19 +99,20 @@ pub struct ChatApp {
     /// What `shared` last got: the chat, its entries' shape, and the
     /// working turn's elapsed seconds.
     published: Option<(String, Vec<(usize, usize, u8)>, i64)>,
-    composer: Entity<TextInput>,
+    composer: Entity<MessageInput>,
     focus_handle: FocusHandle,
     stream: Option<Stream>,
     answers: HashMap<String, BTreeSet<usize>>,
     rng: u64,
     new_chats: usize,
+    sidebar_scroll: gpui::ScrollHandle,
     /// The fixture approval at the end of the working demo chat.
     approval: Approval,
 }
 
 impl ChatApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let composer = cx.new(|cx| TextInput::new("Ask anything", cx));
+        let composer = cx.new(|cx| MessageInput::new("Ask anything", cx));
         cx.subscribe_in(
             &composer,
             window,
@@ -149,6 +151,7 @@ impl ChatApp {
             answers: HashMap::new(),
             rng: 0x9e37_79b9_7f4a_7c15,
             new_chats: 0,
+            sidebar_scroll: gpui::ScrollHandle::new(),
             approval: Approval::new(),
         };
         this.open(0, window, cx);
@@ -205,7 +208,7 @@ impl ChatApp {
             "Ask anything"
         };
         self.composer
-            .update(cx, |composer, _| composer.set_placeholder(placeholder));
+            .update(cx, |composer, cx| composer.set_placeholder(placeholder, cx));
         window.focus(&self.composer.focus_handle(cx), cx);
         cx.notify();
     }
@@ -599,14 +602,10 @@ impl ChatApp {
                     )
                     .child("New chat"),
             )
-            .child(
-                div()
-                    .id("sidebar-chats")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .px(px(10.))
-                    .pb(px(16.))
-                    .children(groups.into_iter().map(|(group, members)| {
+            .child(openagents_chat_view::sidebar::lists(
+                &self.sidebar_scroll,
+                openagents_chat_view::sidebar::list_frame(&self.sidebar_scroll).children(
+                    groups.into_iter().map(|(group, members)| {
                         div()
                             .flex()
                             .flex_col()
@@ -620,8 +619,9 @@ impl ChatApp {
                                     .child(group.label()),
                             )
                             .children(members.into_iter().map(|ix| self.render_chat_row(ix, cx)))
-                    })),
-            )
+                    }),
+                ),
+            ))
             .child(
                 div()
                     .px(px(18.))
@@ -637,99 +637,94 @@ impl ChatApp {
     fn render_chat_row(&self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
         let chat = &self.chats[ix];
         let selected = ix == self.current;
-        let streaming = self.stream.as_ref().is_some_and(|s| s.chat == ix);
-        let dot: Option<Hsla> = match (&chat.status, streaming) {
-            (_, true) | (Some(SessionStatus::Working), _) => Some(theme::accent()),
-            (Some(SessionStatus::AwaitingInput), _) => Some(theme::warning()),
-            (Some(SessionStatus::Errored), _) => Some(theme::danger()),
-            _ if !chat.seen => Some(theme::text_muted()),
-            _ => None,
+        let working = self.stream.as_ref().is_some_and(|s| s.chat == ix)
+            || chat.status == Some(SessionStatus::Working);
+        let desktop = theme::desktop();
+        let status = if working {
+            Some(("Working", desktop.accent))
+        } else {
+            match chat.status {
+                Some(SessionStatus::AwaitingInput) => Some(("Input", desktop.warning)),
+                Some(SessionStatus::Errored) => Some(("Failed", desktop.danger)),
+                _ => None,
+            }
         };
-        let subtitle = match (&chat.project, chat.branch) {
-            (Some(project), Some(branch)) => format!("{project} · {branch}"),
-            (Some(project), None) => project.clone(),
-            (None, Some(branch)) => branch.to_owned(),
-            (None, None) => device_label(&chat.device).to_owned(),
+        let label = chat
+            .project
+            .as_deref()
+            .unwrap_or(device_label(&chat.device));
+        let row = openagents_chat_view::sidebar::row_frame(
+            format!("chat-{}", chat.id),
+            openagents_chat_view::sidebar::RowAppearance {
+                height: openagents_chat_view::sidebar::row_height(
+                    false,
+                    true,
+                    chat.branch.is_some(),
+                    false,
+                ),
+                palette: false,
+                rest_text: desktop
+                    .text
+                    .opacity(if selected || !chat.seen { 1. } else { 0.8 }),
+                text: desktop.text,
+                rest_bg: if selected {
+                    openagents_chat_view::theme::glass_selected_bg()
+                } else {
+                    gpui::transparent_black()
+                },
+                hover_bg: desktop.glass_hover(),
+            },
+        )
+        .cursor_pointer()
+        .hover(|style| style.bg(desktop.glass_hover()).text_color(desktop.text))
+        .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| this.open(ix, window, cx)));
+        let corner = match status {
+            Some((label, color)) => div()
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .child(div().size(px(6.)).rounded_full().bg(color))
+                .child(div().text_size(px(10.)).text_color(color).child(label))
+                .into_any_element(),
+            None => div()
+                .text_size(px(10.))
+                .child(ago(now_ms() - chat.last_at))
+                .into_any_element(),
         };
-        div()
-            .id(SharedString::from(format!("row-{}", chat.id)))
-            .flex()
-            .flex_row()
-            .gap(px(8.))
-            .px(px(8.))
-            .py(px(7.))
-            .rounded(px(9.))
-            .cursor_pointer()
-            .when(selected, |row| row.bg(theme::element_active()))
-            .when(!selected, |row| {
-                row.hover(|style| style.bg(theme::element_hover()))
-            })
-            .on_click(
-                cx.listener(move |this, _: &ClickEvent, window, cx| this.open(ix, window, cx)),
-            )
-            .child(
-                div()
-                    .flex_none()
-                    .w(px(6.))
-                    .h(px(20.))
-                    .flex()
-                    .items_center()
-                    .child(
-                        div()
-                            .size(px(6.))
-                            .rounded_full()
-                            .bg(dot.unwrap_or(theme::border())),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap(px(8.))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_size(px(14.))
-                                    .line_height(px(20.))
-                                    .text_color(if selected || !chat.seen {
-                                        theme::text()
-                                    } else {
-                                        theme::text_muted()
-                                    })
-                                    .child(chat.title.clone()),
-                            )
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .text_size(px(12.))
-                                    .line_height(px(20.))
-                                    .text_color(theme::text_faint())
-                                    .child(ago(now_ms() - chat.last_at)),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .truncate()
-                            .text_size(px(12.))
-                            .line_height(px(17.))
-                            .text_color(theme::text_faint())
-                            .child(subtitle),
-                    ),
-            )
-            .into_any_element()
+        openagents_chat_view::sidebar::row_content(
+            row,
+            openagents_chat_view::sidebar::RowData {
+                id: chat.id.clone().into(),
+                space_name: label.to_owned().into(),
+                branch: chat.branch.map(Into::into),
+                compact: false,
+                show_label: true,
+                shows_metadata: chat.branch.is_some(),
+                continued: false,
+                remote: false,
+                search_query: None,
+                subline: desktop.text_muted.opacity(0.5),
+            },
+            openagents_chat_view::sidebar::RowSlots {
+                title: openagents_chat_view::sidebar::faded_label(
+                    format!("chat-title-{}", chat.id).into(),
+                    true,
+                    div()
+                        .text_size(px(13.))
+                        .line_height(px(17.))
+                        .child(chat.title.clone()),
+                )
+                .into_any_element(),
+                identity: None,
+                project_icon: None,
+                compact_status: None,
+                corner: Some(corner),
+            },
+            &desktop,
+            |row| row,
+            |row| row,
+        )
     }
-
-    // -----------------------------------------------------------------
-    // Header and composer
-    // -----------------------------------------------------------------
 
     fn render_header(&self) -> impl IntoElement {
         let chat = &self.chats[self.current];
@@ -800,7 +795,7 @@ impl ChatApp {
     fn render_composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let chat = &self.chats[self.current];
         let streaming = self.stream.as_ref().is_some_and(|s| s.chat == self.current);
-        let empty = self.composer.read(cx).is_empty();
+        let empty = self.composer.read(cx).is_empty(cx);
         let harness_icon = match chat.harness {
             HarnessId::Codex => "icons/openai-mark.svg",
             _ => "icons/claude-mark.svg",
@@ -854,12 +849,13 @@ impl ChatApp {
                     .gap(px(14.))
                     .pl(px(20.))
                     .pr(px(8.))
-                    .h(px(56.))
+                    .min_h(px(56.))
+                    .py(px(11.))
                     .rounded(px(28.))
                     .border_1()
                     .border_color(theme::border_strong())
                     .bg(theme::surface_card())
-                    .child(self.composer.clone())
+                    .child(div().flex_1().min_w_0().child(self.composer.clone()))
                     .child(
                         div()
                             .flex()

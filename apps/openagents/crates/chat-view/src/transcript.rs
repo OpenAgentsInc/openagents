@@ -9218,3 +9218,60 @@ impl<M: TranscriptMedia> Render for TranscriptView<M> {
         root.children(M::overlays(self, window, cx))
     }
 }
+
+// The retained desktop integration tests exercise the shared transcript.
+#[cfg(feature = "test-support")]
+impl<M: TranscriptMedia> TranscriptView<M> {
+    #[doc(hidden)]
+    pub fn test_release_own_turn_hold(&mut self) {
+        self.release_own_turn_hold();
+    }
+    #[doc(hidden)]
+    pub fn test_remeasure_last_row(&mut self) {
+        self.remeasure_last_row();
+    }
+    #[doc(hidden)]
+    pub fn test_handle_scroll(&mut self, event: &ListScrollEvent, cx: &mut Context<Self>) {
+        self.handle_scroll(event, cx);
+    }
+    #[doc(hidden)]
+    pub fn test_own_send_inset(ix: usize) -> f32 {
+        Self::own_send_inset(ix)
+    }
+    #[doc(hidden)]
+    pub fn test_own_turn_anchor_ix(&self) -> Option<usize> {
+        self.own_turn_anchor_ix()
+    }
+    #[doc(hidden)]
+    pub fn test_step_own_turn(&mut self, cx: &mut Context<Self>) {
+        self.step_own_turn(cx);
+    }
+    #[doc(hidden)]
+    pub fn test_step_spring(&mut self, cx: &mut Context<Self>) {
+        self.step_spring(cx);
+    }
+    #[doc(hidden)]
+    pub fn test_toggle_user_fold(
+        &mut self,
+        row_id: SharedString,
+        row_ix: usize,
+        collapsed: f32,
+        full: f32,
+        reduced: bool,
+    ) {
+        self.toggle_user_fold(row_id, row_ix, collapsed, full, reduced);
+    }
+    #[doc(hidden)]
+    pub fn test_step_user_collapse_scroll(&mut self, cx: &mut Context<Self>) {
+        self.step_user_collapse_scroll(cx);
+    }
+    #[doc(hidden)]
+    pub fn test_render_row(
+        &mut self,
+        ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.render_row(ix, window, cx)
+    }
+}

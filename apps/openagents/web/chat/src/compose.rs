@@ -29,6 +29,7 @@ use openagents_proto::SlashCommand;
 use openagents_proto::invocation::Skill;
 use openagents_web_chat_view::composer::{Cancelled, CompletionKey, Edited, Submitted, TextInput};
 use openagents_web_chat_view::labels::{button, footer_text, truncate};
+use openagents_web_chat_view::message_input::MessageInput;
 use openagents_web_chat_view::theme;
 use openagents_web_client::computer;
 use openagents_web_client::web::Client;
@@ -73,7 +74,7 @@ struct Completion {
 }
 
 pub struct Compose {
-    input: Entity<TextInput>,
+    input: Entity<MessageInput>,
     client: Client,
     /// The draft key of the open chat (`new` for a new chat).
     key: String,
@@ -107,10 +108,10 @@ pub struct Compose {
 }
 
 impl Compose {
-    pub fn new(input: Entity<TextInput>, client: Client, cx: &mut Context<Self>) -> Self {
+    pub fn new(input: Entity<MessageInput>, client: Client, cx: &mut Context<Self>) -> Self {
         let send_with_modifier = storage_get(SEND_KEY).as_deref() == Some("1");
-        input.update(cx, |input, _| {
-            input.set_send_with_modifier(send_with_modifier)
+        input.update(cx, |input, cx| {
+            input.set_send_with_modifier(send_with_modifier, cx)
         });
         cx.subscribe(&input, |this, _, _: &Edited, cx| this.edited(cx))
             .detach();
@@ -396,7 +397,7 @@ impl Compose {
     }
 
     fn keep_draft(&mut self, cx: &mut Context<Self>) {
-        let text = self.input.read(cx).text();
+        let text = self.input.read(cx).text(cx);
         if text.trim().is_empty() || text.len() > MAX_DRAFT_BYTES {
             self.drafts.remove(&self.key);
         } else {
@@ -438,7 +439,7 @@ impl Compose {
         self.send_with_modifier = on;
         storage_set(SEND_KEY, if on { "1" } else { "0" });
         self.input
-            .update(cx, |input, _| input.set_send_with_modifier(on));
+            .update(cx, |input, cx| input.set_send_with_modifier(on, cx));
         cx.notify();
     }
 
@@ -453,7 +454,7 @@ impl Compose {
     fn edited(&mut self, cx: &mut Context<Self>) {
         let (text, cursor, composing) = {
             let input = self.input.read(cx);
-            (input.text(), input.cursor(), input.composing())
+            (input.text(cx), input.cursor(cx), input.composing(cx))
         };
         // Drafts follow the text as it's typed.
         if text.trim().is_empty() {
@@ -502,7 +503,8 @@ impl Compose {
             loading: true,
             error: None,
         });
-        self.input.update(cx, |input, _| input.set_completing(true));
+        self.input
+            .update(cx, |input, cx| input.set_completing(true, cx));
         self.lookup(host, kind, token.query, cx);
         cx.notify();
     }
@@ -598,7 +600,7 @@ impl Compose {
     fn key(&mut self, key: CompletionKey, cx: &mut Context<Self>) {
         let Some(completion) = &mut self.completion else {
             self.input
-                .update(cx, |input, _| input.set_completing(false));
+                .update(cx, |input, cx| input.set_completing(false, cx));
             return;
         };
         let count = completion.items.len().min(MAX_ROWS);
@@ -616,7 +618,7 @@ impl Compose {
             }
             CompletionKey::Dismiss => {
                 let range = completion.token.range.clone();
-                let text = self.input.read(cx).text();
+                let text = self.input.read(cx).text(cx);
                 self.dismissed = text.get(range.clone()).map(|t| (range, t.to_owned()));
                 return self.close_completion(cx);
             }
@@ -629,7 +631,7 @@ impl Compose {
             return;
         };
         self.input
-            .update(cx, |input, _| input.set_completing(false));
+            .update(cx, |input, cx| input.set_completing(false, cx));
         let Some(item) = completion.items.get(row) else {
             // Nothing to choose: Enter goes on as it would.
             cx.notify();
@@ -638,7 +640,7 @@ impl Compose {
         let range = completion.token.range.clone();
         let insert = item.insert.clone();
         self.input.update(cx, |input, cx| {
-            let next = input.text()[range.end..].chars().next();
+            let next = input.text(cx)[range.end..].chars().next();
             let space = if next.is_some_and(char::is_whitespace) {
                 ""
             } else {
@@ -656,7 +658,7 @@ impl Compose {
             cx.notify();
         }
         self.input
-            .update(cx, |input, _| input.set_completing(false));
+            .update(cx, |input, cx| input.set_completing(false, cx));
     }
 
     // -----------------------------------------------------------------
@@ -753,7 +755,7 @@ impl Compose {
                     this.notice = Some(error.to_string());
                     if let Some(text) = restore {
                         this.input.update(cx, |input, cx| {
-                            if input.is_empty() {
+                            if input.is_empty(cx) {
                                 input.set_text(text, cx);
                             }
                         });

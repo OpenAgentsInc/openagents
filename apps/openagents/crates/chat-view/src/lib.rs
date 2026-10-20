@@ -17,6 +17,8 @@ pub mod attachments;
 pub mod badges;
 pub mod comments;
 pub mod composer_chips;
+#[cfg(any(feature = "composer-input", test))]
+pub mod composer_input;
 pub mod composer_markdown;
 pub mod composer_mentions;
 pub mod composer_tokens;
@@ -39,6 +41,7 @@ pub mod roll_text;
 pub mod rpc;
 pub mod rust_native_gpui;
 pub mod settings_forms;
+pub mod sidebar;
 pub mod syntax_cache;
 pub mod theme;
 pub mod tool_image_paths;

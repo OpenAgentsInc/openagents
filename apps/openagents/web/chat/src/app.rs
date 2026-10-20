@@ -2,6 +2,7 @@
 //! open chat's transcript, and the composer. Every read and write goes to
 //! the site's JSON API; an answer streams in over its event stream.
 
+use openagents_web_chat_view::message_input::MessageInput;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -130,7 +131,7 @@ pub struct ChatApp {
     /// The desktop's transcript, drawing `shared` (#12216).
     transcript: Entity<desktop_transcript::Transcript>,
     published: Option<Published>,
-    composer: Entity<TextInput>,
+    composer: Entity<MessageInput>,
     /// The composer's drafts, send key, completions, queue, and question
     /// wizard (#12267, #12268).
     compose: Entity<Compose>,
@@ -144,6 +145,7 @@ pub struct ChatApp {
     sending: bool,
     notice: Option<String>,
     sidebar_open: bool,
+    sidebar_scroll: gpui::ScrollHandle,
     focus_handle: FocusHandle,
     /// The cards each finished answer came with, by entry id.
     entry_cards: HashMap<String, Vec<serde_json::Value>>,
@@ -160,7 +162,7 @@ pub struct ChatApp {
 
 impl ChatApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let composer = cx.new(|cx| TextInput::multiline("Ask anything", cx));
+        let composer = cx.new(|cx| MessageInput::new("Ask anything", cx));
         cx.subscribe_in(
             &composer,
             window,
@@ -370,6 +372,7 @@ impl ChatApp {
             sending: false,
             notice: None,
             sidebar_open: false,
+            sidebar_scroll: gpui::ScrollHandle::new(),
             focus_handle: cx.focus_handle(),
             entry_cards: HashMap::new(),
             generation: 0,
@@ -465,7 +468,7 @@ impl ChatApp {
             "What should we work on?"
         };
         self.composer
-            .update(cx, |composer, _| composer.set_placeholder(placeholder));
+            .update(cx, |composer, cx| composer.set_placeholder(placeholder, cx));
         let Some(id) = chat else {
             self.work.update(cx, |work, cx| work.show(None, cx));
             self.set_host_chat(None, cx);
@@ -813,8 +816,9 @@ impl ChatApp {
                             this.compose
                                 .update(cx, |compose, _| compose.renamed_chat(&id));
                             this.generation += 1;
-                            this.composer
-                                .update(cx, |composer, _| composer.set_placeholder("Ask anything"));
+                            this.composer.update(cx, |composer, cx| {
+                                composer.set_placeholder("Ask anything", cx)
+                            });
                             this.web_threads.insert(
                                 0,
                                 Thread {
@@ -848,7 +852,7 @@ impl ChatApp {
                             this.entries.pop();
                         }
                         this.composer.update(cx, |composer, cx| {
-                            if composer.is_empty() {
+                            if composer.is_empty(cx) {
                                 composer.set_text(text.clone(), cx);
                             }
                         });
@@ -1192,13 +1196,9 @@ impl ChatApp {
                     )
                     .child(self.check_ins.clone())
             })
-            .child(
-                div()
-                    .id("sidebar-chats")
-                    .flex_1()
-                    .overflow_y_scroll()
-                    .px(px(10.))
-                    .pb(px(16.))
+            .child(openagents_chat_view::sidebar::lists(
+                &self.sidebar_scroll,
+                openagents_chat_view::sidebar::list_frame(&self.sidebar_scroll)
                     .children(empty_line.map(|line| {
                         div()
                             .px(px(8.))
@@ -1218,7 +1218,7 @@ impl ChatApp {
                                 col.children(members.into_iter().map(|ix| self.render_row(ix, cx)))
                             })
                     })),
-            )
+            ))
             .when(!self.signed_in, |side| {
                 side.child(
                     div()
@@ -1285,137 +1285,146 @@ impl ChatApp {
         } else {
             thread.line.clone()
         };
+        let desktop = theme::desktop();
         let open_id = id.clone();
+        let rename_id = id.clone();
         let menu_id = id.clone();
-        let mut row = div()
-            .id(SharedString::from(format!("row-{id}")))
-            .group("row")
-            .relative()
+        let more_id = id.clone();
+        let shared = openagents_chat_view::sidebar::row_frame(
+            format!("chat-{id}"),
+            openagents_chat_view::sidebar::RowAppearance {
+                height: openagents_chat_view::sidebar::row_height(compact, !compact, false, false),
+                palette: false,
+                rest_text: desktop.text.opacity(if selected { 1. } else { 0.8 }),
+                text: desktop.text,
+                rest_bg: if selected {
+                    openagents_chat_view::theme::glass_selected_bg()
+                } else {
+                    gpui::transparent_black()
+                },
+                hover_bg: desktop.glass_hover(),
+            },
+        )
+        .cursor_pointer()
+        .hover(|style| style.bg(desktop.glass_hover()).text_color(desktop.text))
+        .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+            if event.click_count() >= 2 {
+                this.start_rename(rename_id.clone(), window, cx);
+            } else if this.current.as_deref() != Some(open_id.as_str()) {
+                this.open(Some(open_id.clone()), window, cx);
+            }
+        }))
+        .on_mouse_down(
+            gpui::MouseButton::Right,
+            cx.listener(move |this, _, _, cx| {
+                this.menu = Some(Menu::Actions(menu_id.clone()));
+                cx.notify();
+            }),
+        );
+        let title = match renaming {
+            Some(field) => div().flex_1().min_w_0().child(field).into_any_element(),
+            None => openagents_chat_view::sidebar::faded_label(
+                format!("chat-title-{id}").into(),
+                true,
+                div()
+                    .text_size(px(13.))
+                    .line_height(px(17.))
+                    .child(if thread.title.is_empty() {
+                        "New chat".to_owned()
+                    } else {
+                        thread.title.clone()
+                    }),
+            )
+            .into_any_element(),
+        };
+        let time = ago(now_ms() - thread.updated_unix as i64 * 1000);
+        let status_label = if thread.working || live_here {
+            Some("Working")
+        } else if dot.is_some() {
+            Some("Failed")
+        } else {
+            None
+        };
+        let corner = div()
             .flex()
-            .flex_row()
-            .gap(px(8.))
-            .px(px(8.))
-            .py(px(if compact { 4. } else { 7. }))
-            .rounded(px(9.))
-            .cursor_pointer()
-            .when(selected, |row| row.bg(theme::element_active()))
-            .when(!selected, |row| {
-                row.hover(|style| style.bg(theme::element_hover()))
-            })
-            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                if this.current.as_deref() != Some(open_id.as_str()) {
-                    this.open(Some(open_id.clone()), window, cx);
-                }
-            }))
+            .items_center()
+            .gap(px(4.))
+            .text_size(px(10.))
+            .text_color(desktop.text_muted.opacity(0.5))
             .child(
                 div()
-                    .flex_none()
-                    .w(px(6.))
-                    .h(px(20.))
-                    .flex()
-                    .items_center()
+                    .text_color(dot.unwrap_or(desktop.text_muted.opacity(0.5)))
                     .child(
-                        div()
-                            .size(px(6.))
-                            .rounded_full()
-                            .bg(dot.unwrap_or(gpui::transparent_black())),
+                        status_label
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| time.clone()),
+                    ),
+            )
+            .child(
+                div()
+                    .id(SharedString::from(format!("more-{id}")))
+                    .size(px(16.))
+                    .cursor_pointer()
+                    .when(!menu_open, |button| {
+                        button
+                            .opacity(0.)
+                            .group_hover("sidebar-session-row", |style| style.opacity(1.))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.menu = if menu_open {
+                            None
+                        } else {
+                            Some(Menu::Actions(more_id.clone()))
+                        };
+                        cx.notify();
+                    }))
+                    .child(
+                        svg()
+                            .path("icons/more-horizontal.svg")
+                            .size(px(14.))
+                            .text_color(desktop.text_muted),
                     ),
             );
-        row = match renaming {
-            Some(field) => row.child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .px(px(6.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(theme::accent().opacity(0.6))
-                    .text_size(px(14.))
-                    .child(field),
-            ),
-            None => row.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .gap(px(8.))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_size(px(14.))
-                                    .line_height(px(20.))
-                                    .text_color(if selected {
-                                        theme::text()
-                                    } else {
-                                        theme::text_muted()
-                                    })
-                                    .child(if thread.title.is_empty() {
-                                        "New chat".to_owned()
-                                    } else {
-                                        thread.title.clone()
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .text_size(px(12.))
-                                    .line_height(px(20.))
-                                    .text_color(theme::text_faint())
-                                    .child(ago(now_ms() - thread.updated_unix as i64 * 1000)),
-                            )
-                            .child(
-                                div()
-                                    .id(SharedString::from(format!("more-{id}")))
-                                    .flex_none()
-                                    .size(px(20.))
-                                    .rounded(px(5.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .when(!menu_open, |b| {
-                                        b.opacity(0.).group_hover("row", |s| s.opacity(1.))
-                                    })
-                                    .hover(|s| s.bg(theme::element_active()))
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                                        cx.stop_propagation();
-                                        this.menu = match &this.menu {
-                                            Some(
-                                                Menu::Actions(m)
-                                                | Menu::Move(m)
-                                                | Menu::Delete(m)
-                                                | Menu::Section(m),
-                                            ) if *m == menu_id => None,
-                                            _ => Some(Menu::Actions(menu_id.clone())),
-                                        };
-                                        cx.notify();
-                                    }))
-                                    .child(
-                                        svg()
-                                            .path("icons/more-horizontal.svg")
-                                            .size(px(14.))
-                                            .text_color(theme::text_muted()),
-                                    ),
-                            ),
-                    )
-                    .when(!subtitle.is_empty(), |col| {
-                        col.child(
-                            div()
-                                .truncate()
-                                .text_size(px(12.))
-                                .line_height(px(17.))
-                                .text_color(theme::text_faint())
-                                .child(subtitle),
-                        )
-                    }),
-            ),
-        };
+        let row = openagents_chat_view::sidebar::row_content(
+            shared,
+            openagents_chat_view::sidebar::RowData {
+                id: id.clone().into(),
+                space_name: subtitle.into(),
+                branch: None,
+                compact,
+                show_label: !compact,
+                shows_metadata: false,
+                continued: false,
+                remote: thread.surface == "terminal",
+                search_query: None,
+                subline: desktop.text_muted.opacity(0.5),
+            },
+            openagents_chat_view::sidebar::RowSlots {
+                title,
+                identity: None,
+                project_icon: None,
+                compact_status: compact.then(|| {
+                    div()
+                        .size(px(6.))
+                        .rounded_full()
+                        .bg(dot.unwrap_or(desktop.text_muted.opacity(0.25)))
+                        .into_any_element()
+                }),
+                corner: Some(corner.into_any_element()),
+            },
+            &desktop,
+            |row| {
+                row.child(
+                    div()
+                        .min_w(px(30.))
+                        .text_size(px(11.))
+                        .text_color(desktop.text_muted.opacity(0.5))
+                        .child(time),
+                )
+            },
+            |row| row,
+        );
         let menu = self.menu.clone().filter(|_| menu_open);
         div()
             .flex()
@@ -1705,7 +1714,7 @@ impl ChatApp {
                 .child(wizard)
                 .into_any_element();
         }
-        let empty = self.composer.read(cx).is_empty() && !self.compose.read(cx).has_files();
+        let empty = self.composer.read(cx).is_empty(cx) && !self.compose.read(cx).has_files();
         // A working computer chat takes more messages; Stop shows while the
         // composer is empty.
         let live = self.live.is_some() || (self.computer_working() && empty);
@@ -1731,7 +1740,7 @@ impl ChatApp {
             })
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                 if this.live.is_some()
-                    || (this.computer_working() && this.composer.read(cx).is_empty())
+                    || (this.computer_working() && this.composer.read(cx).is_empty(cx))
                 {
                     this.stop(cx);
                 } else {

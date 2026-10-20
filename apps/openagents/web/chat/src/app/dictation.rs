@@ -48,7 +48,7 @@ impl ChatApp {
                                 let text = value["text"].as_str().unwrap_or_default().trim();
                                 if !text.is_empty() {
                                     this.composer.update(cx, |composer, cx| {
-                                        let before = composer.text();
+                                        let before = composer.text(cx);
                                         let joined = if before.trim().is_empty() {
                                             text.to_string()
                                         } else {

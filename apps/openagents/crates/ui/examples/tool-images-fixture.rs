@@ -4,6 +4,7 @@
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use image::{ImageEncoder, Rgba, RgbaImage};
 use openagents_proto::ToolCall;
+use openagents_ui::transcript::TranscriptFixture as _;
 use openagents_ui::*;
 use serde_json::json;
 use std::{path::Path, sync::Arc};

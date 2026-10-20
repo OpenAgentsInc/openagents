@@ -458,7 +458,7 @@ impl ChatApp {
                 if let Err(error) = sent {
                     if let Some(text) = &text {
                         this.composer.update(cx, |composer, cx| {
-                            if composer.is_empty() {
+                            if composer.is_empty(cx) {
                                 composer.set_text(text.clone(), cx);
                             }
                         });

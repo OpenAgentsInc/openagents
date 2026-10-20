@@ -11,6 +11,7 @@ pub mod composer;
 pub mod desktop_transcript;
 pub mod labels;
 pub mod markdown;
+pub mod message_input;
 pub mod selection;
 pub mod theme;
 

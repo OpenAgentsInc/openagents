@@ -652,6 +652,7 @@ mod pinned_session_tests {
             .build()
             .unwrap();
         let _guard = runtime.enter();
+        cx.update(|cx| gpui_tokio::init_from_handle(cx, runtime.handle().clone()));
         let dir = tempfile::tempdir().unwrap();
         let window = pin_test_shell(cx, dir.path());
         for change_profile in [true, false] {
