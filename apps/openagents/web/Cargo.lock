@@ -4697,6 +4697,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-web-account-prompts"
+version = "1.0.0"
+dependencies = [
+ "gpui",
+ "js-sys",
+ "openagents-chat-view",
+ "openagents-web-page-host",
+ "rust-native",
+ "serde_json",
+]
+
+[[package]]
 name = "openagents-web-agent-graph"
 version = "1.0.0"
 dependencies = [
@@ -5019,6 +5031,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-web-memory"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "js-sys",
+ "openagents-web-account-prompts",
+ "openagents-web-page-host",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "openagents-web-page-host"
 version = "1.0.0"
 dependencies = [
@@ -5089,6 +5114,19 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "openagents-web-schedules"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "js-sys",
+ "openagents-web-account-prompts",
+ "openagents-web-page-host",
+ "wasm-bindgen",
 ]
 
 [[package]]
