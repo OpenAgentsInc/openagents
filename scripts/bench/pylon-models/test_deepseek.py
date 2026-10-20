@@ -45,6 +45,15 @@ class DeepSeekQualificationTests(unittest.TestCase):
         with patch.object(qualification, "read_json", side_effect=[response(), response("4"), response(None, "Let", "length")]):
             self.assertFalse(qualification.qualify_deepseek("http://127.0.0.1:1", "r1", "psionic", 512)["passed"])
 
+    def test_no_public_model_names_deepseek_v41_yet(self):
+        # V4.1 is protocol-qualified only (#12372); no catalog may offer it.
+        root = Path(__file__).resolve().parents[3]
+        sources = [Path(__file__).with_name("models.json")] + sorted((root / "crates/pylon/src").glob("*.rs"))
+        for source in sources:
+            text = source.read_text().lower()
+            for name in ("v4.1", "v41", "deepseek-v4"):
+                self.assertNotIn(name, text, f"{source} names {name}")
+
     def test_runner_returns_nonzero_for_a_failed_report(self):
         row = next(row for row in json.loads(Path(__file__).with_name("models.json").read_text())
                    if row["id"] == "deepseek-r1-distill-qwen-1.5b")

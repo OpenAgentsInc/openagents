@@ -405,7 +405,7 @@ or starting a new service during this documentation task.
 | Step | Priority and dependencies | Existing owner to extend | Completion evidence |
 | --- | --- | --- | --- |
 | DS0: Pin and qualify the first R1 distill | P0; R0 measurements | `psionic-models` tokenizer/templates, `psionic-serve`, existing Pylon model catalog/runner | Complete for the [recorded 1.5B text profiles](#ds0-full-model-qualification-2026-10-20): pinned token fixtures, native CPU reference, and separately measured llama.cpp CUDA. Sampled CPU, tools, and long context remain unqualified. |
-| DS1: Add the official Rust V4/V4.1 protocol adapter | P0; independent of a full native model | `psionic-models`, `psionic-serve`; R2 for strict constraints | Versioned rendering/token fixtures and mock streamed tool/reasoning/API tests. Report this as protocol-qualified, not native inference support. |
+| DS1: Add the official Rust V4/V4.1 protocol adapter | P0; independent of a full native model | `psionic-models`, `psionic-serve`; R2 for strict constraints | Protocol-qualified for V4.1 (#12372): [checkpoint rendering and token fixtures and mock-backend stream tests](#ds1-implementation-v41-protocol-adapter-12372). Not native inference support; V4 isn't wired. |
 | DS2: Implement a V2-Lite MLA/MoE CPU reference | P1; DS0 artifact/token contract | `psionic-models`, `psionic-runtime`, `psionic-serve`, CPU backend | Independent layer logits, compressed-versus-expanded attention, router/combine parity, cache continuation/reset, and a complete pinned-model result. |
 | DS3: Accelerate single-node MLA/MoE and add V3/R1 variants | P1; DS2; R1/R3 for batched/overlap claims | Existing CUDA backend, expert kernels, runtime memory plans | Exact layout validation, quantized/reference parity, measured total resident memory and latency/committed throughput. Metal is separately qualified. |
 | DS4: Add V3.2 DSA and then V4.1 reference components | P2; DS2/DS3; DS1 for V4.1 serving | Model graph, cache formats, indexed attention, mHC/Engram modules | Per-component and full-model parity. Current FlashMLA/DeepGEMM acceleration additionally needs a compatible pinned device/kernel profile. |
@@ -891,6 +891,63 @@ default or removing the compatible engine.
 This implementation targets the pinned dense Qwen distill. Full DeepSeek
 R1/V3 MLA/MoE execution, other distills, Metal, long context, tools, and
 broader quality qualification remain separate work.
+
+### DS1 implementation: V4.1 protocol adapter (#12372)
+
+DS1 is protocol-qualified for DeepSeek-V4.1-Flash at checkpoint revision
+`1bae0e1088993b9b82de08f59de5be5a34e42170`. No Psionic executor runs the
+model, and no public model list names it.
+
+- **Dependency.** `deepseek-recipe` at
+  `935817c66f5d6e64838f419692545f06787e485f` is vendored under
+  `crates/psionic/vendor/deepseek-recipe/`, without its protocol adapters,
+  image package, or demo servers. [Dependency review](../dependencies.md#deepseek-protocol-components-in-psionic)
+  explains why it isn't a Git dependency and lists the downstream changes.
+- **Rendering and tokens.** `psionic_models::deepseek_v41` renders through
+  the recipe's `DeepseekV41Encoding` and encodes with `PromptTokenizer`, so
+  only intended special tokens become special IDs. It loads the checkpoint's
+  own `tokenizer.json` and `tokenizer_config.json` only when their SHA-256
+  matches the pins, and keys everything by revision and tokenizer digest.
+- **Checkpoint fixtures.** The checkpoint's five `encoding/tests` cases render
+  byte for byte, and their token IDs match the official tokenizer. Three
+  reference-encoder features have no recipe API equivalent: tool declarations
+  on a later system message, internal task tokens such as `<｜action｜>`, and
+  transcripts that end in a finished assistant turn. The case loader maps
+  them onto the recipe's renderer and refuses combinations it can't render
+  exactly, such as later-message tools in thinking mode.
+- **Streaming.** `psionic-serve` maps the recipe's `StreamProcessor` output,
+  driven by `InferenceChunk::Tokens`, onto Chat Completions chunks with
+  `reasoning_content`, incremental tool-call arguments, finish reasons, and
+  usage. Unfinished reasoning stays reasoning, answer whitespace is kept byte
+  for byte, and a stream without a finish event is reported as incomplete,
+  never as `stop`.
+- **Options and constraints.** Thinking mode, reasoning effort, and the
+  recipe's V4.1 `temperature` and `top_p` defaults resolve for V4.1 only,
+  then the recipe's `max_tokens` default shrinks to Psionic's context and
+  output budget. The recipe's `OutputConstraint` is recorded. JSON, schema,
+  regular-expression, required, named, and strict tool constraints are
+  refused until R2's constrained decoder exists; an optional tool call is
+  parsed but not enforced.
+- **Capabilities.** No structured outputs, no vision, and tool calls marked
+  `protocol_only`. Image inputs are refused before rendering.
+
+Refresh the fixtures with `scripts/bench/pylon-models/refresh_deepseek_v41.py`
+(`tokenizers==0.22.2`). It downloads only the pinned tokenizer, the reference
+encoder, and its tests, checks each SHA-256, confirms that the reference
+encoder reproduces every expected output, and writes a 226 KB reduced
+tokenizer that encodes and decodes every fixture text exactly as the 6 MB
+original does. The Rust tests run offline. Run them from `crates/psionic`
+with the shared Cargo settings:
+
+```sh
+cargo test -p psionic-models --lib deepseek_v41
+cargo test -p psionic-serve --lib deepseek_v41
+cargo test -p deepseek-recipe -p deepseek-recipe-core -p deepseek-recipe-encoding
+```
+
+To check the full checkpoint tokenizer, set `DEEPSEEK_V41_TOKENIZER_DIR` to a
+directory holding the pinned `tokenizer.json` and `tokenizer_config.json`
+and run the ignored `checkpoint_tokenizer_matches_the_golden_ids` test.
 
 ## Further infrastructure lessons and what to defer
 

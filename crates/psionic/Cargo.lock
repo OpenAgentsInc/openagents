@@ -216,6 +216,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-stream"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1679,6 +1701,50 @@ name = "data-encoding"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
+
+[[package]]
+name = "deepseek-recipe"
+version = "0.2.0"
+dependencies = [
+ "async-stream",
+ "deepseek-recipe-core",
+ "serde",
+ "serde_json",
+ "tokenizers",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
+name = "deepseek-recipe-core"
+version = "0.2.0"
+dependencies = [
+ "deepseek-recipe-macros",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "deepseek-recipe-encoding"
+version = "0.2.0"
+dependencies = [
+ "aho-corasick",
+ "deepseek-recipe-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tracing",
+]
+
+[[package]]
+name = "deepseek-recipe-macros"
+version = "0.2.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "deflate64"
@@ -4986,6 +5052,9 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
+ "deepseek-recipe",
+ "deepseek-recipe-core",
+ "deepseek-recipe-encoding",
  "fancy-regex 0.16.2",
  "flate2",
  "half",

@@ -73,6 +73,7 @@ tower = "0.5"
 tower-service = "0.3"
 
 [dev-dependencies]
+psionic-models = { path = "../psionic-models", features = ["deepseek-v41-fixtures"] }
 psionic-provider = { path = "../psionic-provider" }
 safetensors = { workspace = true }
 

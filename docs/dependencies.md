@@ -363,6 +363,60 @@ only these two reviewed versions. It does not add a graph-wide license waiver
 or an advisory exception. The dependency gate retains the same 29 errors that
 precede this slice.
 
+## DeepSeek protocol components in Psionic
+
+Reviewed on 2026-10-20 for #12372: Psionic vendors part of DeepSeek's
+[`deepseek-recipe`](https://github.com/deepseek-ai/deepseek-recipe) 0.2.0
+(MIT, copyright 2026 DeepSeek) at commit
+`935817c66f5d6e64838f419692545f06787e485f`, under
+`crates/psionic/vendor/deepseek-recipe/`. Each crate keeps the upstream
+`LICENSE` file. The Psionic workspace lists them as members, so they build
+with its toolchain and lockfile.
+
+We vendor rather than use a pinned Git dependency because the upstream
+manifests turn on features that text-only serving doesn't need. The
+`deepseek-recipe` crate always pulls `jsonschema`, `rand`, `base64`,
+`data-url`, `xxhash-rust`, and its OpenAI and Anthropic adapters, and the
+workspace enables the `tokenizers` `http` downloader and its default
+features. Cargo can't turn those features off from a dependent crate.
+
+What's kept:
+
+- `deepseek-recipe-macros`, `deepseek-recipe-core`, and
+  `deepseek-recipe-encoding`: unchanged sources.
+- `deepseek-recipe`: `stream/` (token-boundary decoder, output parser, and
+  stream processor), `request/options.rs`, `request/mod.rs` without the
+  protocol-adapter types, and `protocol/output_constraint.rs` and
+  `protocol/reasoning.rs`.
+
+What's left out: the protocol adapters, `deepseek-recipe-image`, the Python
+bindings, the demo servers, and the bundled tokenizers. The recipe's bundled
+V4.1 tokenizer spells the image placeholder `<｜image｜>`, while the
+checkpoint's spells it `<｜deepseek_image｜>`, so Psionic uses only the
+checkpoint's own tokenizer, pinned by SHA-256.
+
+Downstream changes, each marked in the source:
+
+- `tokenizers` 0.23.2 builds with `default-features = false` and `onig`
+  only, as `psionic-models` already does.
+- `ParsingOptions::preserves_answer_whitespace` (default `false`, the upstream
+  behavior) keeps leading newlines of answer content, so a replayed answer
+  reproduces the generated tokens.
+- `DeepseekV41Encoding::render_tool_prompt`, `resolve_output_constraint`, and
+  `resolve_thinking_mode` are public.
+- `request/mod.rs` drops `ProtocolRequest` and `ResponseOptions`; `lib.rs`
+  declares only the kept modules.
+- Upstream tests that read the full V4.1 tokenizer are ignored unless the
+  `upstream-tokenizer-tests` feature is on and
+  `DEEPSEEK_RECIPE_V41_TOKENIZER` names a `tokenizer.json`. With the
+  recipe's own tokenizer, all 42 upstream tests pass.
+
+The only new registry packages in the Psionic lockfile are `async-stream`
+and `async-stream-impl` 0.3.6 (MIT), which the stream processor uses. To
+update, copy the same files from a reviewed upstream commit, reapply the
+changes above, and update this section and `DEEPSEEK_RECIPE_COMMIT` in
+`psionic-models`.
+
 ## Owner deferral for #11277
 
 On 2026-10-11, the owner requested immediate small fixes, waiver or postponement

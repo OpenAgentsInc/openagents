@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/psionic-*"]
+members = [
+    "crates/psionic-*",
+    "vendor/deepseek-recipe/deepseek-recipe",
+    "vendor/deepseek-recipe/deepseek-recipe-core",
+    "vendor/deepseek-recipe/deepseek-recipe-encoding",
+    "vendor/deepseek-recipe/deepseek-recipe-macros",
+]
 
 [workspace.lints.rust]
 missing_docs = "allow"

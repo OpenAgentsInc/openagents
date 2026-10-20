@@ -101,6 +101,7 @@ use crate::{
     tokio_runtime_telemetry_axum::serve_with_runtime_telemetry,
 };
 
+mod deepseek_v41;
 mod generation_admission;
 mod qwen38_media;
 mod tassadar_post_article_router_plugin_tool_loop_pilot;

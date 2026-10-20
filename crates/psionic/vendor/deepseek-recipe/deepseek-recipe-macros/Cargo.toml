@@ -1,0 +1,18 @@
+# Vendored from deepseek-ai/deepseek-recipe at commit
+# 935817c66f5d6e64838f419692545f06787e485f. See docs/dependencies.md.
+[package]
+name = "deepseek-recipe-macros"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/deepseek-ai/deepseek-recipe"
+publish = false
+description = "Procedural macros for deepseek-recipe: the `prompt!` template macro and the `UntaggedDeserialize` derive."
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+syn = { version = "2.0.117", features = ["full", "extra-traits"] }

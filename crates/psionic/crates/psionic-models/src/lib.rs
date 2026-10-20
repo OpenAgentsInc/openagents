@@ -8,6 +8,7 @@ mod cs336_a2_flashattention_reference;
 mod csm;
 mod csm_parity;
 mod deepseek_r1;
+pub mod deepseek_v41;
 pub mod deepseek_v41_weights;
 mod fixtures;
 mod harmony;

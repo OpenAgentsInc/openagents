@@ -1,7 +1,8 @@
 # Native DeepSeek-V4.1-Flash in Psionic
 
-Status: proposal, 2026-10-20. Only the V2 weight reader is implemented
-([Weight loader](#weight-loader-v2)); everything else is planned. It
+Status: proposal, 2026-10-20. Only V1, the protocol adapter (#12372), and the
+V2 weight reader ([Weight loader](#weight-loader-v2)) are implemented;
+everything else is planned. It
 extends the [DeepSeek support plan](deepseek-support-plan.md) (DS0–DS6) and
 the [implementation roadmap](implementation-roadmap.md) with one concrete
 goal: serve the current DeepSeek release, V4.1-Flash, with Psionic as the only
@@ -88,7 +89,7 @@ about 308 GB.
 | Exact math for each block | The checkpoint's `inference/model.py`, `kernel.py`, `engram.py` | Rust CPU references for each component, checked against golden activations |
 | Weight loading | Psionic's paged artifact readers and identity rules | A safetensors reader that keeps FP8/FP4 blocks and UE8M0 scales byte-exact; no conversion to GGUF |
 | GPU kernels | Psionic CUDA backend, existing quantized matrix-vector kernels and CUDA graphs | FP4 E2M1 and FP8 E4M3 block-scaled matrix-vector kernels, MQA attention with sink and window, the indexer, Sinkhorn mixing, the Engram gather |
-| Single-request serving | `--single-generation`, the R1 reasoning contract, managed Pylon recovery | A V4.1 template family and reasoning parser through DS1 |
+| Single-request serving | `--single-generation`, the R1 reasoning contract, managed Pylon recovery, the DS1 adapter (`psionic_models::deepseek_v41`) | Selecting the DS1 adapter for a loaded V4.1 model |
 | Splitting the model | The Gemma 4 step/reset pipeline (`psionic-serve/src/gguf.rs` and `openai_http.rs`), Mesh-LLM lessons, `psionic-net` | Typed stage state for V4.1, stage packages, one stage Pylon per GPU, stage readiness, placement for mixed GPUs |
 | Load balancing experts (later) | [EPLB][EPLB] policy ideas | Real expert routing in `psionic-cluster`, which today derives routing from a hash ([Psionic gaps](#psionic-gaps-this-plan-must-close)) |
 
@@ -106,7 +107,7 @@ passes.
 | Step | Work | Done when |
 | --- | --- | --- |
 | V0: Oracle | Pin the reference sources. On a rented 8-GPU machine, run `inference/generate.py` (TP8, FP4 experts) on a fixed prompt set and dump per-layer inputs and outputs for selected layers and tokens: embeddings, Engram output, each attention variant, indexer selections, Sinkhorn mixing, router ids and weights, expert outputs, logits. Store digests and small slices in the repository and full dumps in a bucket. | Golden fixtures cover layers 0, 1, 2, 14, 20, 21, and 39; the run's environment, revision, and costs are recorded; the VM is deleted. |
-| V1: Protocol | DS1: integrate `deepseek-recipe` for V4.1 rendering, token encoding, reasoning, and tool-call parsing, with mock-backend tests. | The checkpoint's own `encoding/tests` cases pass byte for byte. |
+| V1: Protocol | DS1: integrate `deepseek-recipe` for V4.1 rendering, token encoding, reasoning, and tool-call parsing, with mock-backend tests. | Done (#12372): the checkpoint's five `encoding/tests` cases render byte for byte with the official token IDs, and mock-backend streams map onto Chat Completions. Protocol-qualified only; see [DS1](deepseek-support-plan.md#ds1-implementation-v41-protocol-adapter-12372). |
 | V2: Loader | Safetensors reader with exact FP8 and FP4 block layouts, tensor naming, and the 48-shard index. Stream-mode loading for machines that hold only part of the model. | Every tensor in the index loads with its shape and dtype; random-block dequantization matches the oracle's dequantized values. |
 | V3: CPU components | Rust references for RMSNorm, hyper-connection mixing (Sinkhorn), the three attention variants, the indexer and candidate selection, Engram hashing and lookup, the gate, routed and shared experts, the head. | Each matches its golden slice within a stated tolerance; router ids match exactly. |
 | V4: CPU full model | Compose the 40 layers with a streamed or memory-mapped weight source. Greedy decode on the oracle prompts. | Logits match the oracle within tolerance for the first 32 generated tokens; the greedy text matches. Slow is fine. |
