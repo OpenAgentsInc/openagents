@@ -47,8 +47,10 @@ pub const ALLOWED: &[&str] = &[
     methods::SEARCH_WORKSPACE_CONTENT,
     // The composer's @ mentions (#12267).
     methods::SEARCH_FILES,
-    // The queue panel's view of a chat's queue (#12268).
+    // The queue panel's view of a chat's queue, and the question wizard's
+    // read of its last entries (#12268).
     methods::WATCH_QUEUE,
+    methods::READ_CHAT_WINDOW,
     // The file panel follows changes on the computer (#12272).
     methods::WATCH_WORKSPACE_FILES,
 ];

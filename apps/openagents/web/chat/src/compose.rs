@@ -44,6 +44,10 @@ const MAX_DRAFTS: usize = 50;
 const MAX_DRAFT_BYTES: usize = 16 * 1024;
 /// The most rows a completion list shows.
 const MAX_ROWS: usize = 8;
+/// How many of a host chat's last entries are read for a question, and
+/// how often.
+const QUESTION_WINDOW: usize = 4;
+const QUESTION_POLL: Duration = Duration::from_secs(2);
 /// A pause after typing before the computer's files are searched.
 const SEARCH_PAUSE: Duration = Duration::from_millis(120);
 
@@ -86,6 +90,8 @@ pub struct Compose {
     /// The host chat's queue, as its computer last sent it.
     queue: Vec<QueuedMessage>,
     _queue: Option<Task<()>>,
+    /// Follows the host chat's last entries for an agent's question.
+    _questions: Option<Task<()>>,
     /// The queued row being retyped, and its field.
     editing: Option<(String, Entity<TextInput>)>,
     /// The agent's open question, and the requests already answered here.
@@ -130,6 +136,7 @@ impl Compose {
             _lookup: None,
             queue: Vec::new(),
             _queue: None,
+            _questions: None,
             editing: None,
             wizard: None,
             answer,
@@ -180,6 +187,10 @@ impl Compose {
         self.queue.clear();
         self.editing = None;
         self._queue = self.host.clone().map(|host| self.watch_queue(host, cx));
+        self._questions = self.host.clone().map(|host| self.watch_questions(host, cx));
+        if self.host.is_none() {
+            self.wizard = None;
+        }
         cx.notify();
     }
 
@@ -520,6 +531,38 @@ impl Compose {
                 {
                     break;
                 }
+            }
+        })
+    }
+
+    /// Read the host chat's last entries every few seconds, so an agent's
+    /// question opens the wizard here as it does on the desktop.
+    fn watch_questions(&mut self, host: HostChat, cx: &mut Context<Self>) -> Task<()> {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            loop {
+                let read = async {
+                    let computer = computer::connect(&client, &host.device, || {}).await?;
+                    let window = computer
+                        .call(
+                            openagents_rpc_methods::READ_CHAT_WINDOW,
+                            json!({ "chatId": host.chat, "limit": QUESTION_WINDOW }),
+                        )
+                        .await?;
+                    anyhow::Ok(serde_json::from_value::<Vec<SessionMessageEntry>>(
+                        window["entries"].clone(),
+                    )?)
+                }
+                .await;
+                if let Ok(entries) = read {
+                    let alive = this
+                        .update(cx, |this, cx| this.transcript(&entries, cx))
+                        .is_ok();
+                    if !alive {
+                        break;
+                    }
+                }
+                cx.background_executor().timer(QUESTION_POLL).await;
             }
         })
     }
@@ -1060,6 +1103,7 @@ mod openagents_rpc_methods {
     pub const SEARCH_FILES: &str = "SearchFiles";
     pub const QUEUE_COMMAND: &str = "QueueCommand";
     pub const WATCH_QUEUE: &str = "WatchQueue";
+    pub const READ_CHAT_WINDOW: &str = "ReadChatWindow";
     pub const QUEUE_MESSAGE: &str = "QueueMessage";
     pub const UPDATE_QUEUED_MESSAGE: &str = "UpdateQueuedMessage";
     pub const MOVE_QUEUED_MESSAGE: &str = "MoveQueuedMessage";
