@@ -91,7 +91,10 @@ async fn send(
         request = request.header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
     }
     for (name, value) in extra {
-        request = request.header(*name, *value);
+        request.headers_mut().unwrap().insert(
+            axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(),
+            axum::http::HeaderValue::from_str(value).unwrap(),
+        );
     }
     let response = site
         .clone()
@@ -347,4 +350,121 @@ async fn pro_and_admins_pass_and_a_test_run_can_ask_to_be_free() {
     let bob = login(&lab.fixture, "bob").await;
     let page = send(site, Method::GET, "/cad", &bob, None, &[]).await;
     assert!(!page.body.contains(crate::cad_gate::TITLE), "{}", page.body);
+}
+
+#[tokio::test]
+async fn gpui_cad_routes_keep_html_and_cookie_authority() {
+    let root = tempfile::tempdir().unwrap();
+    let build = root.path().join("gpui");
+    std::fs::create_dir(&build).unwrap();
+    for name in [
+        "start.js",
+        "openagents_web_chat.js",
+        "openagents_web_chat_bg.wasm",
+        "openagents_web_cad.js",
+        "openagents_web_cad_bg.wasm",
+    ] {
+        std::fs::write(build.join(name), b"fixture").unwrap();
+    }
+    let store = Arc::new(Store::local(root.path().join("chats")));
+    seed(&store, "alice").await;
+    let fixture = fixture_with(move |config| {
+        config.chat_store = store;
+        config.gpui_chat = Some(build);
+    })
+    .await;
+    let alice = login(&fixture, "alice").await;
+    let bob = login(&fixture, "bob").await;
+    let site = &fixture.site;
+    for (address, page) in [
+        ("/cad?ui=gpui", "cad"),
+        ("/cad/bracket?v=1&ui=gpui", "cad/bracket/1/"),
+        (
+            "/cad/bracket/configurator?v=1&ui=gpui",
+            "cad/bracket/1//configurator",
+        ),
+        ("/cad-world?ui=gpui", "cad/_world"),
+    ] {
+        let response = send(site, Method::GET, address, &alice, None, &[]).await;
+        assert_eq!(response.status, StatusCode::SEE_OTHER, "{}", response.body);
+        assert_eq!(
+            response.headers[header::LOCATION],
+            format!("/gpui?page={page}")
+        );
+    }
+    let html = send(
+        site,
+        Method::GET,
+        "/cad/bracket?v=1&ui=html",
+        &alice,
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(html.status, StatusCode::OK);
+    assert!(html.body.contains("data-cad-doc-page"));
+    let csrf = field(form_at(&html.body, "/cad/bracket/delete"), "csrf");
+    let list = send(site, Method::GET, "/v1/cad", &alice, None, &[]).await;
+    assert_eq!(list.status, StatusCode::OK, "{}", list.body);
+    assert_eq!(list.headers[header::CACHE_CONTROL], "private, no-store");
+    let data: serde_json::Value = serde_json::from_str(&list.body).unwrap();
+    assert_eq!(data["docs"]["bracket"]["title"], "Bracket");
+    let other = send(site, Method::GET, "/v1/cad/bracket", &bob, None, &[]).await;
+    assert_eq!(other.status, StatusCode::NOT_FOUND);
+    let denied = send(
+        site,
+        Method::GET,
+        "/v1/cad",
+        &alice,
+        None,
+        &[("sec-fetch-site", "cross-site")],
+    )
+    .await;
+    assert_eq!(denied.status, StatusCode::FORBIDDEN);
+    for (ticket, status) in [
+        ("wrong", StatusCode::FORBIDDEN),
+        (csrf.as_str(), StatusCode::PAYMENT_REQUIRED),
+    ] {
+        let response = send(
+            site,
+            Method::POST,
+            "/v1/cad/bracket/pull",
+            &alice,
+            Some(r#"{"project":"","version":1,"part":"body","face":"body:+z","delta":1}"#),
+            &[
+                ("content-type", "application/json"),
+                (crate::cookie_api::CSRF_HEADER, ticket),
+            ],
+        )
+        .await;
+        assert_eq!(response.status, status, "{}", response.body);
+    }
+    let framed = send(
+        site,
+        Method::GET,
+        "/cad/bracket/viewer?v=1",
+        &alice,
+        None,
+        &[],
+    )
+    .await;
+    assert_eq!(framed.status, StatusCode::OK);
+    assert!(
+        framed.headers[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .contains("frame-ancestors 'self'")
+    );
+    assert!(framed.body.contains("data-cad-model"));
+    assert!(!framed.body.contains("Back to chat"));
+    let shared = send(
+        site,
+        Method::GET,
+        &format!("/cad-config/{}?ui=gpui", "a".repeat(48)),
+        &Cookies::default(),
+        None,
+        &[],
+    )
+    .await;
+    assert!(!shared.status.is_redirection());
 }

@@ -266,6 +266,8 @@ pub fn owned(path: &str) -> bool {
             .strip_prefix("/u/")
             .is_some_and(|login| !login.is_empty() && !login.contains('/'))
         || path.starts_with("/v1/home/")
+        || path == "/v1/cad"
+        || path.starts_with("/v1/cad/")
         || path == "/v1/labs"
         || path.starts_with("/v1/labs/")
         || crate::own_runs::owns(path)

@@ -309,6 +309,14 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ),
     ("/cad/{file}/file", "a design's files"),
     (
+        "/cad/{file}/viewer",
+        "the CAD viewer framed over the GPUI page",
+    ),
+    (
+        "/chat/cad/gpui-viewer.js",
+        "the CAD viewer's GPUI controls bridge",
+    ),
+    (
         "/cad-config/*",
         "a live shared CAD configurator and its model",
     ),

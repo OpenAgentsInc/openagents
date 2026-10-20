@@ -4763,6 +4763,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-web-cad"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "openagents-chat-view",
+ "openagents-gpui-web",
+ "openagents-web-client",
+ "openagents-web-page-host",
+ "rust-native",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "openagents-web-card"
 version = "1.0.0"
 dependencies = [

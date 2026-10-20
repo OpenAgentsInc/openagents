@@ -1516,3 +1516,5 @@ master delegation audit.
   off, set the update policy of, check, apply, and cancel agents and their
   updates, and add, switch, and remove agent accounts. A browser's
   `StartAgentLogin` never names another device to serve its callback.
+
+- CAD pages in the GPUI shell (#12334): shared Rust Native document and configurator forms, a separate lazy `web/cad` module over `web/page-host`, and the existing CAD viewer in a same-origin frame. HTML pages and public design links keep answering.
