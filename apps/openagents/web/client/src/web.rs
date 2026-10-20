@@ -271,6 +271,34 @@ impl Client {
         self.send("GET", path, None::<&()>).await
     }
 
+    /// Posts a form body (`a=b&c=d`) to one of this site's pages, as the
+    /// page's own form would, and follows its redirect. For pages whose
+    /// posts take forms, not JSON (`/environments/*`, #12225).
+    pub async fn post_form(&self, path: &str, body: &str) -> Result<()> {
+        let init = web_sys::RequestInit::new();
+        init.set_method("POST");
+        init.set_credentials(web_sys::RequestCredentials::SameOrigin);
+        let headers = web_sys::Headers::new().map_err(js_error)?;
+        headers
+            .set("content-type", "application/x-www-form-urlencoded")
+            .map_err(js_error)?;
+        headers.set(CSRF_HEADER, &self.csrf).map_err(js_error)?;
+        init.set_headers(&headers);
+        init.set_body(&JsValue::from_str(body));
+        let request = web_sys::Request::new_with_str_and_init(path, &init).map_err(js_error)?;
+        let window = web_sys::window().ok_or_else(|| anyhow!("no window"))?;
+        let response: web_sys::Response = JsFuture::from(window.fetch_with_request(&request))
+            .await
+            .map_err(|_| anyhow!("We couldn't reach openagents.com. Check your connection."))?
+            .dyn_into()
+            .map_err(js_error)?;
+        if response.ok() {
+            Ok(())
+        } else {
+            Err(anyhow!("That didn't go through. Try again."))
+        }
+    }
+
     pub async fn send<T: DeserializeOwned>(
         &self,
         method: &str,

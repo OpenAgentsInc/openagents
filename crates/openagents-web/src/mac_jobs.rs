@@ -116,6 +116,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/v1/mac-jobs/events", get(events_route))
         .route("/v1/mac-jobs/{id}", get(read_route))
         .route("/v1/mac-jobs/{id}/cancel", post(cancel_route))
+        .route("/v1/mac-jobs/{id}/answer", post(answer_route))
         .route("/v1/mac-jobs/{id}/artifacts/{file}", get(artifact_route))
 }
 
@@ -1663,6 +1664,53 @@ async fn cancel_route(
     match crate::mac_jobs_actor::cancel(&app, &account, &id).await {
         Ok(Some(())) => answer(StatusCode::OK, json!({"cancelled": true})),
         Ok(None) => refused(StatusCode::NOT_FOUND, "unknown", "There is no such job."),
+        Err(error) => stored(&error),
+    }
+}
+
+#[derive(Deserialize)]
+struct AnswerBody {
+    question: String,
+    decision: String,
+}
+
+/// `POST /v1/mac-jobs/{id}/answer` `{question, decision}`: Approve or Deny
+/// the job's question, as the job's page does (#12225).
+async fn answer_route(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
+        Err(response) => return response,
+    };
+    let Ok(sent) = serde_json::from_slice::<AnswerBody>(&body) else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "Choose Approve or Deny.",
+        );
+    };
+    let approve = match sent.decision.as_str() {
+        "approve" => true,
+        "deny" => false,
+        _ => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid",
+                "Choose Approve or Deny.",
+            );
+        }
+    };
+    match crate::mac_jobs_actor::answer(&app, &account, &id, &sent.question, approve, "web").await {
+        Ok(Answered::Recorded) => answer(StatusCode::OK, json!({"answered": true})),
+        Ok(Answered::NotAsking | Answered::Unknown) => refused(
+            StatusCode::CONFLICT,
+            "not_asking",
+            "That job isn't waiting for an answer anymore.",
+        ),
         Err(error) => stored(&error),
     }
 }

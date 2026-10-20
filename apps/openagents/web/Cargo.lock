@@ -4600,6 +4600,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< Updated upstream
 name = "openagents-web-room"
 version = "1.0.0"
 dependencies = [
@@ -4611,6 +4612,23 @@ dependencies = [
  "log",
  "openagents-web-client",
  "serde_json",
+=======
+name = "openagents-web-work"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "openagents-gpui-web",
+ "openagents-web-chat-view",
+ "openagents-web-client",
+ "serde",
+ "serde_json",
+ "uuid",
+>>>>>>> Stashed changes
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

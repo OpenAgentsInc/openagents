@@ -1,0 +1,33 @@
+# The work panel beside the GPUI web chat (#12225): the account's
+# environments and their Claude Code runs, its work runs and the landing
+# queue, and its Mac jobs, each live. Its own module, which the chat page
+# loads the first time the panel opens, so the chat's module stays under its
+# budget. Built beside the chat by `scripts/build-web-chat.sh`.
+[package]
+name = "openagents-web-work"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gpui.workspace = true
+anyhow.workspace = true
+openagents-web-chat-view.workspace = true
+openagents-web-client.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+openagents-gpui-web = { workspace = true, features = ["browser-text"] }
+wasm-bindgen.workspace = true
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1.7"
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+uuid.workspace = true
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Event", "EventTarget", "Window"] }

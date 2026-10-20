@@ -274,6 +274,7 @@ window.addEventListener("oa-host", function (event) {
   }
 });
 
+<<<<<<< Updated upstream
 // A computer chat's live transcript (#12224): its own module, loaded the
 // first time a computer chat opens (`oa-room-open`, with the chat's id); it
 // sends each change back as `oa-room`.
@@ -314,6 +315,48 @@ window.addEventListener("oa-room-close", function () {
   roomChat = "";
   if (room) {
     room.close();
+=======
+// The work panel (#12225): work runs, environments, and Mac jobs. Its
+// own module, loaded the first time the header's work button asks for it,
+// in a box on the right.
+var workBox = null;
+function openWork() {
+  if (workBox) {
+    workBox.hidden = !workBox.hidden;
+    return;
+  }
+  workBox = document.createElement("div");
+  workBox.id = "gpui-work";
+  workBox.setAttribute("aria-label", "Work");
+  workBox.style.cssText = "position:fixed;top:8px;right:8px;bottom:8px;width:min(560px,46vw);z-index:6;border-radius:14px;overflow:hidden;";
+  document.body.appendChild(workBox);
+  var glue = new URL("./openagents_web_work.js", import.meta.url);
+  Promise.all([import(glue.href), loadedFonts])
+    .then(function (loaded) {
+      var module = loaded[0];
+      return module.default({
+        module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_work_bg.wasm", import.meta.url))),
+      }).then(function () {
+        module.mount(loaded[1]);
+      });
+    })
+    .catch(function (error) {
+      console.error("the work panel couldn't start", error);
+      workBox.remove();
+      workBox = null;
+    });
+}
+window.addEventListener("oa-work-toggle", openWork);
+window.addEventListener("oa-work-close", function () {
+  if (workBox) {
+    workBox.hidden = true;
+  }
+});
+window.addEventListener("oa-work-failed", function () {
+  if (workBox) {
+    workBox.remove();
+    workBox = null;
+>>>>>>> Stashed changes
   }
 });
 

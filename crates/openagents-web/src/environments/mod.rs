@@ -26,6 +26,7 @@
 //! after it ([`repositories`]), a page of 30 at a time, most recently
 //! pushed first, from the account service's per-account cache.
 
+pub(crate) mod api;
 pub(crate) mod board;
 pub(crate) mod computers;
 pub(crate) mod push;
@@ -92,7 +93,10 @@ pub(crate) fn routes(app: &App) -> Router<App> {
         .route("/environments", get(index).post(create))
         .route("/environments/new", get(new))
         .route(REPOS, get(repositories))
+        .route("/environments/list.json", get(api::list))
         .route("/environments/{id}", get(show))
+        .route("/environments/{id}/state.json", get(api::show))
+        .route("/environments/{id}/runs/{run}/state.json", get(api::run))
         .route("/environments/{id}/events", get(events))
         .route("/environments/{id}/message", post(message))
         .route("/environments/{id}/retry", post(retry))

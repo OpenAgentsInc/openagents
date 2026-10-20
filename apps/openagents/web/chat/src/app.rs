@@ -1557,6 +1557,12 @@ impl ChatApp {
             )
             .children(project.map(|p| chip("icons/folder.svg", p, theme::text_muted())))
             .children(computer.map(|c| chip("icons/laptop.svg", c, theme::text_muted())))
+            // The work panel: work runs, environments, and Mac jobs (#12225).
+            .when(self.signed_in, |row| {
+                row.child(icon_button("header-work", "icons/document.svg").on_click(
+                    |_: &ClickEvent, _, _| crate::compose::page_event("oa-work-toggle", ""),
+                ))
+            })
             // The file panel, for a chat on a computer (#12271).
             .when(self.compose.read(cx).host().is_some(), |row| {
                 row.child(icon_button("header-files", "icons/folder.svg").on_click(
