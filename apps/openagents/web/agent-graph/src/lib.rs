@@ -50,6 +50,32 @@ pub fn mount(
         let button = document.create_element("button")?;
         button.set_text_content(Some("Scroll past graph"));
         button.set_attribute("type", "button")?;
+        // A skip link: out of the layout and out of sight until it has
+        // focus, so adding it moves nothing on the page (the graph's first
+        // frame is already showing).
+        let hide = |button: &web_sys::HtmlElement, hidden: bool| {
+            let style = button.style();
+            let (clip, size) = if hidden {
+                ("inset(50%)", "1px")
+            } else {
+                ("none", "auto")
+            };
+            style.set_property("position", "absolute").ok();
+            style.set_property("z-index", "3").ok();
+            style.set_property("clip-path", clip).ok();
+            style.set_property("width", size).ok();
+            style.set_property("height", size).ok();
+            style.set_property("overflow", "hidden").ok();
+            style.set_property("white-space", "nowrap").ok();
+        };
+        let element: web_sys::HtmlElement = button.clone().dyn_into()?;
+        hide(&element, true);
+        for (event, hidden) in [("focus", false), ("blur", true)] {
+            let target = element.clone();
+            let toggle = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| hide(&target, hidden));
+            button.add_event_listener_with_callback(event, toggle.as_ref().unchecked_ref())?;
+            toggle.forget();
+        }
         mount.insert_adjacent_element("beforebegin", &button)?;
         let skip = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
             if let Some(window) = web_sys::window() {

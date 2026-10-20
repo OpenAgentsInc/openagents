@@ -11,6 +11,7 @@
 //! keeps the glyph pixels as GPUI's atlas receives them.
 
 mod capture;
+mod platform;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -51,10 +52,45 @@ fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     std::fs::write(path, bytes).with_context(|| format!("writing {}", path.display()))
 }
 
+/// The scene as `gzip` bytes, as the page reads them.
+fn gzipped(scene: &openagents_first_frame::Scene) -> Result<Vec<u8>> {
+    let raw = scene.encode()?;
+    // gzip, which the page's `DecompressionStream` reads; no file time, so
+    // a rebuild writes the same bytes.
+    let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    gzip.write_all(&raw)?;
+    Ok(gzip.finish()?)
+}
+
+/// `--frame WIDTH HEIGHT SCALE [--gray]`: one frame of Foreman's graph at
+/// that size in layout pixels and that scale, gzipped, to standard output,
+/// for a page whose box matches no size class (`openagents-web` runs this).
+fn one_frame(args: &[String]) -> Result<()> {
+    let number = |at: usize| -> Result<f32> {
+        args.get(at)
+            .context("usage: first-frame-capture --frame WIDTH HEIGHT SCALE [--gray]")?
+            .parse::<f32>()
+            .context("a size or scale isn't a number")
+    };
+    let frame = capture::Frame {
+        size: (number(0)?, number(1)?),
+        scale: number(2)?,
+        subpixel: args.get(3).map(String::as_str) != Some("--gray"),
+    };
+    let json = serde_json::to_string(&agent_graph::foreman::graph())?;
+    let scene = capture::capture(&json, frame)?;
+    std::io::stdout().write_all(&gzipped(&scene)?)?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
-    let mut args = std::env::args().skip(1);
+    let all: Vec<String> = std::env::args().skip(1).collect();
+    if all.first().map(String::as_str) == Some("--frame") {
+        return one_frame(&all[1..]);
+    }
+    let mut args = all.into_iter();
     let Some(out) = args.next().map(PathBuf::from) else {
-        bail!("usage: first-frame-capture OUTDIR");
+        bail!("usage: first-frame-capture OUTDIR | --frame WIDTH HEIGHT SCALE [--gray]");
     };
     std::fs::create_dir_all(&out)?;
     let graph = agent_graph::foreman::graph();
@@ -63,16 +99,19 @@ fn main() -> Result<()> {
     let mut classes = vec![];
     for class in &CLASSES {
         // Subpixel glyphs, as the browser's WebGPU renderer draws them.
-        let scene = capture::capture(&json, class.size, true)
-            .with_context(|| format!("capturing {}", class.name))?;
+        let scene = capture::capture(
+            &json,
+            capture::Frame {
+                size: class.size,
+                scale: SCALE,
+                subpixel: true,
+            },
+        )
+        .with_context(|| format!("capturing {}", class.name))?;
         let raw = scene.encode()?;
         // The format reads back what it wrote.
         anyhow::ensure!(openagents_first_frame::Scene::decode(&raw)? == scene);
-        // gzip, which the page's `DecompressionStream` reads; no file
-        // time, so a rebuild writes the same bytes.
-        let mut gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
-        gzip.write_all(&raw)?;
-        let packed = gzip.finish()?;
+        let packed = gzipped(&scene)?;
         let file = format!("foreman-{}.ffs.gz", class.name);
         write(&out.join(&file), &packed)?;
         eprintln!(

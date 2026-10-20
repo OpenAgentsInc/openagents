@@ -3661,11 +3661,13 @@ dependencies = [
  "agent-graph",
  "anyhow",
  "flate2",
+ "futures",
  "gpui",
  "gpui_wgpu",
  "image",
  "openagents-first-frame",
  "openagents-web-agent-graph",
+ "raw-window-handle",
  "serde_json",
  "sha2",
 ]

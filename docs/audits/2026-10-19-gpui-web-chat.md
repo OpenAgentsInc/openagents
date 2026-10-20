@@ -444,6 +444,36 @@ Doesn't:
   GPU has no dual-source blending draws grayscale text, so its text's color
   fringes change at the swap (#12243).
 
+## The first frame at any window size (2026-10-20, #12243)
+
+- **Capture at any scale.** `first-frame-capture` now runs the view on a
+  platform of its own (`first-frame-capture/src/platform.rs`) instead of
+  GPUI's test window, which always has a scale of 2 and no subpixel text.
+  Its window takes the page's device pixel ratio and draws subpixel text
+  directly, so a frame can be captured for any box at any ratio.
+- **On request.** The image ships the tool beside the frames
+  (`first-frame/first-frame-capture`, built with the `capture` profile).
+  When the box matches neither inline frame, the boot script asks
+  `/agent/foreman/first-frame?v=DIGEST&w=…&h=…&dpr=…`; the site runs the
+  tool once for that size (about 50 ms, one at a time, ten seconds at
+  most), keeps the frame, and serves it for a day under the graph's
+  digest. The page then paints it as it paints an inline frame.
+- **Nothing moves.** AgentGraph's "Scroll past graph" control is now a
+  skip link that takes no space until it has focus, so mounting the app
+  no longer shifts the box.
+
+Pixel diff of the snapshot against the app's first frame, loopback:
+
+| Window | Snapshot painted | Identical pixels | PSNR |
+| --- | --- | --- | --- |
+| 1512 × 982 at 2× | 93 ms | 99.88% | 53.4 dB |
+| 1728 × 1117 at 2× | 95 ms | 99.88% | 53.7 dB |
+| 1280 × 800 at 2× | 96 ms | 99.85% | 52.4 dB |
+| 1920 × 1080 at 2× | 83 ms | 99.88% | 53.7 dB |
+| 1440 × 900 at 1× | 90 ms | 99.73% | 50.1 dB |
+| 390 × 844 at 3× | 92 ms | 99.86% | 52.2 dB |
+| 412 × 915 at 2.625× | 100 ms | 99.86% | 52.2 dB |
+
 ## WebGPU-only modules, preloads, and shared fonts (2026-10-20)
 
 - **The GPUI modules were already WebGPU-only.** `gpui_wgpu` takes wgpu's

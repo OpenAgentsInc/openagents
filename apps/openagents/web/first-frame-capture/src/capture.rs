@@ -8,12 +8,14 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use gpui::{
-    AppContext as _, AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTile, Background,
-    BorderStyle, Bounds, DevicePixels, EdgeFadeParams, HeadlessAppContext, Hsla, PlatformAtlas,
-    PlatformHeadlessRenderer, PlatformTextSystem, PrimitiveBatch, ScaledPixels, Size, TileId,
-    TransformationMatrix, px, size,
+    AppContext as _, Application, AtlasKey, AtlasTextureId, AtlasTextureKind, AtlasTile,
+    Background, BorderStyle, Bounds, DevicePixels, EdgeFadeParams, Hsla, PlatformAtlas,
+    PlatformTextSystem, PrimitiveBatch, RequestFrameOptions, ScaledPixels, Size, TestDispatcher,
+    TileId, TransformationMatrix, WindowBounds, WindowOptions, point, px, size,
 };
 use openagents_first_frame as ff;
+
+use crate::platform::{CapturePlatform, Surface};
 
 /// GPUI's text gamma, grayscale contrast, and subpixel contrast on the
 /// web, where its `ZED_FONTS_*` variables are never set
@@ -27,70 +29,20 @@ struct Recorded {
     kind: AtlasTextureKind,
     size: Size<DevicePixels>,
     bytes: Vec<u8>,
-    /// For a grayscale glyph, the same glyph rasterized for subpixel
-    /// rendering.
-    subpixel: Option<Twin>,
-}
-
-/// A glyph's subpixel rasterization: where it sits against the grayscale
-/// tile's origin, its size, and its pixels (blue, green, red, alpha).
-struct Twin {
-    offset: (i32, i32),
-    size: Size<DevicePixels>,
-    bytes: Vec<u8>,
 }
 
 #[derive(Default)]
 struct RecorderState {
     tiles: HashMap<AtlasKey, AtlasTile>,
-    pixels: HashMap<(u32, u32), Recorded>,
+    pixels: HashMap<u32, Recorded>,
     next: u32,
 }
 
 /// A sprite atlas that keeps every tile's pixels instead of uploading them.
 /// Each tile gets a texture of its own, so a tile is named by its texture.
-///
-/// GPUI's headless window never asks for subpixel glyphs, but the browser's
-/// WebGPU renderer does (with dual-source blending, as in Chrome), so the
-/// recorder also rasterizes each grayscale glyph the way a subpixel window
-/// would, through the same text system.
+#[derive(Default)]
 pub struct Recorder {
     state: Mutex<RecorderState>,
-    text: Arc<dyn PlatformTextSystem>,
-}
-
-impl Recorder {
-    pub fn new(text: Arc<dyn PlatformTextSystem>) -> Self {
-        Self {
-            state: Mutex::default(),
-            text,
-        }
-    }
-
-    fn twin(&self, key: &AtlasKey) -> Result<Option<Twin>> {
-        let AtlasKey::Glyph(params) = key else {
-            return Ok(None);
-        };
-        if params.is_emoji || params.subpixel_rendering {
-            return Ok(None);
-        }
-        let gray = self.text.glyph_raster_bounds(params)?;
-        let mut twin = params.clone();
-        twin.subpixel_rendering = true;
-        let bounds = self.text.glyph_raster_bounds(&twin)?;
-        if bounds.size.width.0 == 0 || bounds.size.height.0 == 0 {
-            return Ok(None);
-        }
-        let (size, bytes) = self.text.rasterize_glyph(&twin, bounds)?;
-        Ok(Some(Twin {
-            offset: (
-                bounds.origin.x.0 - gray.origin.x.0,
-                bounds.origin.y.0 - gray.origin.y.0,
-            ),
-            size,
-            bytes,
-        }))
-    }
 }
 
 impl PlatformAtlas for Recorder {
@@ -105,7 +57,6 @@ impl PlatformAtlas for Recorder {
         let Some((size, bytes)) = build()? else {
             return Ok(None);
         };
-        let subpixel = self.twin(key)?;
         let mut state = self.state.lock().unwrap();
         state.next += 1;
         let id = state.next;
@@ -120,12 +71,11 @@ impl PlatformAtlas for Recorder {
             },
         };
         state.pixels.insert(
-            (id, id),
+            id,
             Recorded {
                 kind,
                 size,
                 bytes: bytes.into_owned(),
-                subpixel,
             },
         );
         state.tiles.insert(key.clone(), tile);
@@ -137,61 +87,90 @@ impl PlatformAtlas for Recorder {
     }
 }
 
-/// The window's renderer: converts each scene it's asked to draw.
-struct Capture {
-    atlas: Arc<Recorder>,
-    subpixel: bool,
-    frame: Rc<RefCell<Option<Result<ff::Scene>>>>,
+/// How to capture: the window's size in layout pixels, its scale (the
+/// page's device pixel ratio), and whether text is subpixel, as the
+/// browser's WebGPU renderer draws it where dual-source blending exists.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Frame {
+    pub size: (f32, f32),
+    pub scale: f32,
+    pub subpixel: bool,
 }
 
-impl PlatformHeadlessRenderer for Capture {
-    fn render_scene_to_image(
-        &mut self,
-        scene: &gpui::Scene,
-        size: Size<DevicePixels>,
-    ) -> Result<image::RgbaImage> {
-        *self.frame.borrow_mut() = Some(convert(scene, size, &self.atlas, self.subpixel));
-        Ok(image::RgbaImage::new(1, 1))
-    }
-
-    fn render_scene(&mut self, _: &gpui::Scene, _: Size<DevicePixels>) -> Result<()> {
-        Ok(())
-    }
-
-    fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
-        self.atlas.clone()
-    }
-}
-
-/// Lays out and paints the graph `json` in a window of `css` layout pixels
-/// and returns its first frame, with subpixel glyphs when `subpixel`.
-pub fn capture(json: &str, css: (f32, f32), subpixel: bool) -> Result<ff::Scene> {
+/// Lays out and paints the graph `json` in a window of `frame`'s size and
+/// scale and returns its first frame.
+pub fn capture(json: &str, frame: Frame) -> Result<ff::Scene> {
+    ensure!(
+        frame.size.0 >= 1.0
+            && frame.size.1 >= 1.0
+            && frame.size.0 <= 8192.0
+            && frame.size.1 <= 8192.0,
+        "the window size is out of range"
+    );
+    ensure!(
+        frame.scale > 0.0 && frame.scale <= 4.0,
+        "the scale is out of range"
+    );
     let spec = openagents_web_agent_graph::parse(json).map_err(|e| anyhow!(e))?;
     let text = Arc::new(gpui_wgpu::CosmicTextSystem::new_without_system_fonts(
         openagents_web_agent_graph::theme::SANS,
     ));
     text.add_fonts(openagents_web_agent_graph::assets::font_faces())?;
-    let frame = Rc::new(RefCell::new(None));
-    let atlas = Arc::new(Recorder::new(text.clone()));
-    let renderer = {
-        let (frame, atlas) = (frame.clone(), atlas.clone());
-        move || {
-            Some(Box::new(Capture {
-                atlas: atlas.clone(),
-                subpixel,
-                frame: frame.clone(),
-            }) as Box<dyn PlatformHeadlessRenderer>)
-        }
+    let atlas = Arc::new(Recorder::default());
+    let out: Rc<RefCell<Option<Result<ff::Scene>>>> = Rc::default();
+    let present = {
+        let (atlas, out) = (atlas.clone(), out.clone());
+        Rc::new(move |scene: &gpui::Scene, _: Size<gpui::Pixels>, _: f32| {
+            let mut slot = out.borrow_mut();
+            if slot.is_none() {
+                *slot = Some(convert(scene, frame, &atlas));
+            }
+        })
     };
-    let mut cx = HeadlessAppContext::with_platform(text, Arc::new(()), renderer);
-    let window = cx.open_window(size(px(css.0), px(css.1)), move |_, cx| {
-        cx.new(|_| openagents_web_agent_graph::GraphView::new(spec, false, Vec::new()))
-    })?;
-    cx.run_until_parked();
-    let any = window.into();
-    cx.update_window(any, |_, window, cx| window.draw(cx).clear())?;
-    cx.capture_screenshot(any)?;
-    let scene = frame
+    let dispatcher = TestDispatcher::new(0);
+    let platform = Rc::new(CapturePlatform::new(
+        &dispatcher,
+        text as Arc<dyn PlatformTextSystem>,
+        Surface {
+            scale: frame.scale,
+            subpixel: frame.subpixel,
+            atlas: atlas.clone(),
+            present,
+        },
+    ));
+    let request = platform.frame();
+    let handle = Application::with_platform(platform).run_embedded(move |cx| {
+        let bounds = Bounds {
+            origin: point(px(0.0), px(0.0)),
+            size: size(px(frame.size.0), px(frame.size.1)),
+        };
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                focus: false,
+                show: false,
+                ..Default::default()
+            },
+            move |_, cx| {
+                cx.new(|_| openagents_web_agent_graph::GraphView::new(spec, false, Vec::new()))
+            },
+        )
+        .expect("a capture window opens");
+    });
+    dispatcher.run_until_parked();
+    // The frame the browser shows first: GPUI's first presented frame.
+    let mut callback = request
+        .borrow_mut()
+        .take()
+        .context("the window asked for no frames")?;
+    callback(RequestFrameOptions {
+        require_presentation: true,
+        force_render: true,
+    });
+    dispatcher.run_until_parked();
+    drop(callback);
+    drop(handle);
+    let scene = out
         .borrow_mut()
         .take()
         .context("the window drew no frame")?;
@@ -260,13 +239,62 @@ impl Tables {
     }
 }
 
-/// A glyph tile in the scene's atlas: its size, where it sits against
-/// GPUI's grayscale tile, and its pixels, row by row.
+/// A glyph tile in the scene's atlas: its size, its kind, and its pixels,
+/// row by row (one coverage byte a pixel, or blue, green, red, alpha).
 struct Glyph {
     w: u16,
     h: u16,
-    offset: (i32, i32),
+    subpixel: bool,
     pixels: Vec<u8>,
+}
+
+/// The scene's tile for a sprite's atlas tile, adding its pixels on first
+/// use.
+fn glyph(
+    glyphs: &mut Vec<Glyph>,
+    tile_at: &mut HashMap<u32, u16>,
+    recorded: &RecorderState,
+    tile: &AtlasTile,
+    bounds: &Bounds<ScaledPixels>,
+    subpixel: bool,
+) -> Result<u16> {
+    let id = tile.texture_id.index;
+    let at = match tile_at.get(&id) {
+        Some(&at) => at,
+        None => {
+            let r = recorded
+                .pixels
+                .get(&id)
+                .context("a glyph's pixels weren't recorded")?;
+            let want = if subpixel {
+                AtlasTextureKind::Subpixel
+            } else {
+                AtlasTextureKind::Monochrome
+            };
+            ensure!(r.kind == want, "a glyph's tile is of another kind");
+            let (w, h) = (r.size.width.0, r.size.height.0);
+            let bytes = if subpixel { 4 } else { 1 };
+            ensure!(
+                r.bytes.len() == (w * h * bytes) as usize,
+                "a glyph has the wrong number of pixels"
+            );
+            let at = u16::try_from(glyphs.len()).context("too many glyphs")?;
+            glyphs.push(Glyph {
+                w: u16::try_from(w)?,
+                h: u16::try_from(h)?,
+                subpixel,
+                pixels: r.bytes.clone(),
+            });
+            tile_at.insert(id, at);
+            at
+        }
+    };
+    let g = &glyphs[at as usize];
+    ensure!(
+        bounds.size.width.0 == g.w as f32 && bounds.size.height.0 == g.h as f32,
+        "a glyph is drawn at another size than its tile"
+    );
+    Ok(at)
 }
 
 /// Packs tiles into rows, tallest first, a pixel apart.
@@ -298,21 +326,16 @@ fn pack(tiles: &[(u16, u16)]) -> Result<(u16, u16, Vec<(u16, u16)>)> {
 /// as the shaders compute them, and only the glyph tiles the frame uses.
 /// Anything the painter can't draw the same way is refused, so a page
 /// never shows a frame that differs from the app's.
-pub fn convert(
-    scene: &gpui::Scene,
-    device: Size<DevicePixels>,
-    atlas: &Recorder,
-    subpixel: bool,
-) -> Result<ff::Scene> {
+pub fn convert(scene: &gpui::Scene, frame: Frame, atlas: &Recorder) -> Result<ff::Scene> {
     ensure!(
         scene.backdrop_blurs.is_empty(),
         "backdrop blurs aren't supported"
     );
     let mut t = Tables::default();
     let mut out = ff::Scene {
-        width: u32::try_from(device.width.0)?,
-        height: u32::try_from(device.height.0)?,
-        scale: 2.0,
+        width: (frame.size.0 * frame.scale).round() as u32,
+        height: (frame.size.1 * frame.scale).round() as u32,
+        scale: frame.scale,
         gamma_ratios: gpui::get_gamma_correction_ratios(GAMMA),
         contrast: CONTRAST,
         subpixel_contrast: SUBPIXEL_CONTRAST,
@@ -323,7 +346,6 @@ pub fn convert(
     let mut glyphs: Vec<Glyph> = vec![];
     let mut corner_at: HashMap<[u32; 4], u32> = HashMap::new();
     let recorded = atlas.state.lock().unwrap();
-    let channels = if subpixel { 3 } else { 1 };
     for batch in scene.batches() {
         match batch {
             PrimitiveBatch::Quads(range) => {
@@ -420,95 +442,81 @@ pub fn convert(
                         s.transformation == TransformationMatrix::unit(),
                         "transformed glyphs aren't supported"
                     );
-                    let id = s.tile.texture_id.index;
-                    let tile = match tile_at.get(&id) {
-                        Some(&at) => at,
-                        None => {
-                            let r = recorded
-                                .pixels
-                                .get(&(id, s.tile.tile_id.0))
-                                .context("a glyph's pixels weren't recorded")?;
-                            ensure!(
-                                r.kind == AtlasTextureKind::Monochrome,
-                                "only coverage glyphs are supported"
-                            );
-                            let (w, h) = (r.size.width.0, r.size.height.0);
-                            ensure!(
-                                r.bytes.len() == (w * h) as usize,
-                                "a glyph has the wrong number of pixels"
-                            );
-                            ensure!(
-                                s.bounds.size.width.0 == w as f32
-                                    && s.bounds.size.height.0 == h as f32,
-                                "a glyph is drawn at another size than its tile"
-                            );
-                            let glyph = if subpixel {
-                                let twin = r
-                                    .subpixel
-                                    .as_ref()
-                                    .context("a glyph has no subpixel rasterization")?;
-                                let (w, h) = (twin.size.width.0, twin.size.height.0);
-                                ensure!(
-                                    twin.bytes.len() == (w * h * 4) as usize,
-                                    "a subpixel glyph has the wrong number of pixels"
-                                );
-                                // Blue, green, red, alpha to red, green, blue.
-                                let pixels: Vec<u8> = twin
-                                    .bytes
-                                    .chunks_exact(4)
-                                    .flat_map(|px| [px[2], px[1], px[0]])
-                                    .collect();
-                                Glyph {
-                                    w: u16::try_from(w)?,
-                                    h: u16::try_from(h)?,
-                                    offset: twin.offset,
-                                    pixels,
-                                }
-                            } else {
-                                Glyph {
-                                    w: u16::try_from(w)?,
-                                    h: u16::try_from(h)?,
-                                    offset: (0, 0),
-                                    pixels: r.bytes.clone(),
-                                }
-                            };
-                            let at = u16::try_from(glyphs.len()).context("too many glyphs")?;
-                            glyphs.push(glyph);
-                            tile_at.insert(id, at);
-                            at
-                        }
-                    };
-                    let offset = glyphs[tile as usize].offset;
+                    let tile = glyph(
+                        &mut glyphs,
+                        &mut tile_at,
+                        &recorded,
+                        &s.tile,
+                        &s.bounds,
+                        false,
+                    )?;
                     out.sprites.push(ff::Sprite {
-                        x: s.bounds.origin.x.0 + offset.0 as f32,
-                        y: s.bounds.origin.y.0 + offset.1 as f32,
+                        x: s.bounds.origin.x.0,
+                        y: s.bounds.origin.y.0,
                         mask: t.mask(&s.content_mask.bounds)?,
                         color: t.color(s.color)?,
                         tile,
                     });
                 }
-                let range = start..out.sprites.len() as u32;
-                out.commands.push(if subpixel {
-                    ff::Command::SubpixelSprites(range)
-                } else {
-                    ff::Command::Sprites(range)
-                });
+                out.commands
+                    .push(ff::Command::Sprites(start..out.sprites.len() as u32));
             }
-            PrimitiveBatch::SubpixelSprites { .. } => bail!("subpixel glyphs aren't supported"),
+            PrimitiveBatch::SubpixelSprites { range, .. } => {
+                let start = out.sprites.len() as u32;
+                for s in &scene.subpixel_sprites[range] {
+                    no_fade(&s.fade)?;
+                    ensure!(
+                        s.transformation == TransformationMatrix::unit(),
+                        "transformed glyphs aren't supported"
+                    );
+                    let tile = glyph(
+                        &mut glyphs,
+                        &mut tile_at,
+                        &recorded,
+                        &s.tile,
+                        &s.bounds,
+                        true,
+                    )?;
+                    out.sprites.push(ff::Sprite {
+                        x: s.bounds.origin.x.0,
+                        y: s.bounds.origin.y.0,
+                        mask: t.mask(&s.content_mask.bounds)?,
+                        color: t.color(s.color)?,
+                        tile,
+                    });
+                }
+                out.commands.push(ff::Command::SubpixelSprites(
+                    start..out.sprites.len() as u32,
+                ));
+            }
             PrimitiveBatch::PolychromeSprites { .. } => bail!("images aren't supported"),
             PrimitiveBatch::Underlines(_) => bail!("underlines aren't supported"),
             PrimitiveBatch::Surfaces(_) => bail!("surfaces aren't supported"),
         }
     }
+    // One channel unless some glyph is subpixel; then every tile has three,
+    // a coverage glyph's the same in each.
+    let channels = if glyphs.iter().any(|g| g.subpixel) {
+        3
+    } else {
+        1
+    };
     let sizes: Vec<(u16, u16)> = glyphs.iter().map(|g| (g.w, g.h)).collect();
     let (aw, ah, places) = pack(&sizes)?;
     let mut pixels = vec![0u8; aw as usize * ah as usize * channels];
     for (g, &(x, y)) in glyphs.iter().zip(&places) {
-        let row_bytes = g.w as usize * channels;
         for row in 0..g.h as usize {
-            let to = ((y as usize + row) * aw as usize + x as usize) * channels;
-            pixels[to..to + row_bytes]
-                .copy_from_slice(&g.pixels[row * row_bytes..(row + 1) * row_bytes]);
+            for col in 0..g.w as usize {
+                let to = ((y as usize + row) * aw as usize + x as usize + col) * channels;
+                let px = row * g.w as usize + col;
+                if g.subpixel {
+                    // Blue, green, red, alpha to red, green, blue.
+                    let b = &g.pixels[px * 4..px * 4 + 4];
+                    pixels[to..to + 3].copy_from_slice(&[b[2], b[1], b[0]]);
+                } else {
+                    pixels[to..to + channels].fill(g.pixels[px]);
+                }
+            }
         }
         out.tiles.push(ff::Tile {
             x,
@@ -553,13 +561,19 @@ mod tests {
         assert_eq!(pack(&[]).unwrap(), (0, 0, vec![]));
     }
 
-    /// The real graph, both classes: deterministic and drawable.
+    /// The real graph at both classes and at other scales: deterministic
+    /// and drawable.
     #[test]
     fn foremans_first_frame_is_deterministic_and_round_trips() {
         let json = serde_json::to_string(&agent_graph::foreman::graph()).unwrap();
         for class in &crate::CLASSES {
-            let a = capture(&json, class.size, true).unwrap();
-            let b = capture(&json, class.size, true).unwrap();
+            let frame = Frame {
+                size: class.size,
+                scale: 2.0,
+                subpixel: true,
+            };
+            let a = capture(&json, frame).unwrap();
+            let b = capture(&json, frame).unwrap();
             assert_eq!(a, b, "{} differs between runs", class.name);
             assert_eq!(
                 (a.width, a.height),
@@ -570,11 +584,54 @@ mod tests {
             );
             assert!(!a.quads.is_empty() && !a.sprites.is_empty() && !a.paths.is_empty());
             assert_eq!(a.atlas.channels, 3);
-            // Grayscale glyphs are the same frame with one-channel tiles.
-            let gray = capture(&json, class.size, false).unwrap();
-            assert_eq!((gray.atlas.channels, gray.quads.len()), (1, a.quads.len()));
+            assert!(
+                a.commands
+                    .iter()
+                    .any(|c| matches!(c, ff::Command::SubpixelSprites(_)))
+            );
             let bytes = a.encode().unwrap();
             assert_eq!(ff::Scene::decode(&bytes).unwrap(), a);
         }
+        // A phone at 3x and a plain screen at 1x, with grayscale text.
+        for scale in [1.0, 3.0] {
+            let frame = Frame {
+                size: (375.0, 600.5),
+                scale,
+                subpixel: false,
+            };
+            let s = capture(&json, frame).unwrap();
+            assert_eq!(
+                (s.width, s.height),
+                ((375.0 * scale) as u32, (600.5 * scale).round() as u32)
+            );
+            assert_eq!(s.atlas.channels, 1);
+            assert!(
+                s.commands
+                    .iter()
+                    .any(|c| matches!(c, ff::Command::Sprites(_)))
+            );
+        }
+        assert!(
+            capture(
+                &json,
+                Frame {
+                    size: (0.0, 10.0),
+                    scale: 2.0,
+                    subpixel: true
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            capture(
+                &json,
+                Frame {
+                    size: (10.0, 10.0),
+                    scale: 9.0,
+                    subpixel: true
+                }
+            )
+            .is_err()
+        );
     }
 }

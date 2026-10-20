@@ -257,7 +257,7 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && oa-kache run cargo build --locked --manifest-path /build/apps/openagents/web/Cargo.toml \
         -p openagents-first-frame-paint --release --target wasm32-unknown-unknown \
     && oa-kache run cargo build --locked --manifest-path /build/apps/openagents/web/Cargo.toml \
-        -p openagents-first-frame-capture --bin first-frame-capture
+        -p openagents-first-frame-capture --bin first-frame-capture --profile capture
 
 FROM gpuiweb-deps AS gpuiweb
 COPY . .
@@ -275,6 +275,7 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/agent-graph/first-frame/manifest.json \
     && test -s /build/agent-graph/first-frame/painter.wasm.gz \
     && test -s /build/agent-graph/first-frame/foreman-desktop.ffs.gz \
+    && test -x /build/agent-graph/first-frame/first-frame-capture \
     && oa-kache run apps/openagents/scripts/build-web-chat.sh /build/gpui-chat \
     && test -s /build/gpui-chat/openagents_web_chat.js \
     && test -s /build/gpui-chat/openagents_web_chat_bg.wasm \

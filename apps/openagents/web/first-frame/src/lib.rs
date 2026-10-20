@@ -166,7 +166,7 @@ pub enum Command {
         paths: Range<u32>,
         sprites: Range<u32>,
     },
-    /// Glyphs from a one-channel atlas.
+    /// Coverage glyphs, from the atlas's first channel.
     Sprites(Range<u32>),
     /// Glyphs from a three-channel atlas, blended a color channel at a
     /// time as GPUI's subpixel pipeline does.
@@ -509,12 +509,8 @@ impl Scene {
                     range(paths, self.paths.len())?;
                     range(sprites, self.path_sprites.len())?;
                 }
-                Command::Sprites(r) => {
-                    range(r, self.sprites.len())?;
-                    if !r.is_empty() && atlas.channels != 1 {
-                        return Err(Error("glyphs don't match the atlas's channels"));
-                    }
-                }
+                // Coverage glyphs read the first channel of either atlas.
+                Command::Sprites(r) => range(r, self.sprites.len())?,
                 Command::SubpixelSprites(r) => {
                     range(r, self.sprites.len())?;
                     if !r.is_empty() && atlas.channels != 3 {

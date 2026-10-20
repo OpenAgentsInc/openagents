@@ -63,3 +63,14 @@ opt-level = "z"
 
 [profile.release.package.openagents-first-frame]
 opt-level = "z"
+
+# The first-frame capture runs natively at build time and on the site for
+# window sizes no class covers: optimized, without the release profile's
+# whole-program link, so the image builds it in reasonable time.
+[profile.capture]
+inherits = "release"
+opt-level = 2
+lto = false
+codegen-units = 16
+panic = "unwind"
+strip = true

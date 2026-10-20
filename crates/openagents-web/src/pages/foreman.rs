@@ -59,13 +59,14 @@ pub(crate) fn routes() -> Router<App> {
         .route("/agent/{id}", get(agent_page))
         .route("/agent/{id}/graph.json", get(graph_json))
         .route("/agent/{id}/definition.json", get(definition_json))
+        .route(super::first_frame::ON_DEMAND, get(first_frame_on_demand))
         .route("/agent-graph/{file}", get(graph_file))
 }
 
 /// Whether this site answers `path`: Foreman's page, a template's page or
 /// graph, or the graph's build files. Other `/agent/` paths go upstream.
 pub(crate) fn owns(path: &str) -> bool {
-    if path == PATH || path.starts_with("/agent-graph/") {
+    if path == PATH || path == super::first_frame::ON_DEMAND || path.starts_with("/agent-graph/") {
         return true;
     }
     let Some(rest) = path.strip_prefix("/agent/") else {
@@ -93,6 +94,48 @@ fn graph_build(app: &App) -> Option<&std::path::Path> {
 /// script hands to the module (`super::gpui_fonts`).
 fn graph_fonts(app: &App) -> Option<Markup> {
     super::gpui_fonts::fonts(app)?.preloads(&super::gpui_fonts::GRAPH_FACES)
+}
+
+#[derive(serde::Deserialize)]
+struct FrameQuery {
+    v: String,
+    w: f64,
+    h: f64,
+    dpr: f64,
+}
+
+/// `/agent/foreman/first-frame`: the graph's first frame at a box size no
+/// size class covers, captured on the first request for it and kept. The
+/// address carries the graph's digest, so a frame is cached for a day and
+/// a new graph gets new addresses.
+async fn first_frame_on_demand(
+    State(app): State<App>,
+    axum::extract::Query(query): axum::extract::Query<FrameQuery>,
+) -> Response {
+    let first = graph_build(&app).and_then(|build| {
+        let json = serde_json::to_string(&agent_graph::foreman::graph()).ok()?;
+        FirstFrame::cached(build, &json)
+    });
+    let (Some(first), Some(size)) = (
+        first,
+        super::first_frame::Size::parse(query.w, query.h, query.dpr),
+    ) else {
+        return crate::not_found().await;
+    };
+    if query.v != first.digest {
+        return crate::not_found().await;
+    }
+    match super::first_frame::on_demand(&first, size).await {
+        Some(frame) => (
+            [
+                (header::CONTENT_TYPE, "application/octet-stream"),
+                (header::CACHE_CONTROL, "public, max-age=86400"),
+            ],
+            frame.as_ref().clone(),
+        )
+            .into_response(),
+        None => crate::not_found().await,
+    }
 }
 
 async fn foreman_page(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -1050,6 +1093,7 @@ mod tests {
         assert!(owns("/agent/foreman/definition.json"));
         assert!(owns(&format!("/agent/{}", templates::FOREMAN_ID)));
         assert!(owns("/agent-graph/start.js"));
+        assert!(owns("/agent/foreman/first-frame"));
         assert!(!owns("/agent/nobody") && !owns("/agents"));
     }
 

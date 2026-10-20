@@ -33,3 +33,5 @@ sha2 = "0.10"
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 gpui = { workspace = true, features = ["test-support"] }
 gpui_wgpu.workspace = true
+futures.workspace = true
+raw-window-handle.workspace = true

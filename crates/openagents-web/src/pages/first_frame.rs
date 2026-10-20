@@ -28,6 +28,13 @@ use sha2::{Digest, Sha256};
 /// The directory inside the AgentGraph build.
 pub(crate) const DIRECTORY: &str = "first-frame";
 
+/// The capture tool inside it (`first-frame-capture`, native).
+pub(crate) const CAPTURE: &str = "first-frame-capture";
+
+/// Where a page whose box matches no class asks for its frame:
+/// `?v=DIGEST&w=WIDTH&h=HEIGHT&dpr=SCALE`.
+pub(crate) const ON_DEMAND: &str = "/agent/foreman/first-frame";
+
 /// One size class's frame, ready to inline.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Class {
@@ -49,6 +56,10 @@ pub(crate) struct FirstFrame {
     /// `'sha256-…'` for the inline script.
     pub(crate) hash: String,
     pub(crate) classes: Vec<Class>,
+    /// The graph's digest, which names the on-demand frames' addresses.
+    pub(crate) digest: String,
+    /// The capture tool, for window sizes no class covers.
+    pub(crate) capture: Option<PathBuf>,
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -96,11 +107,14 @@ impl FirstFrame {
             "'sha256-{}'",
             base64::engine::general_purpose::STANDARD.encode(Sha256::digest(script.as_bytes()))
         );
+        let capture = dir.join(CAPTURE);
         Some(FirstFrame {
             painter: b64(std::fs::read(dir.join("painter.wasm.gz")).ok()?),
             script,
             hash,
             classes,
+            digest: sha256_hex(graph_json.as_bytes()),
+            capture: capture.is_file().then_some(capture),
         })
     }
 
@@ -137,7 +151,8 @@ impl FirstFrame {
         html! {
             script type="application/octet-stream" id="first-frame-painter" { (self.painter) }
             script type="application/octet-stream" id="first-frame-scene"
-                data-width=(class.width) data-height=(class.height) data-scale=(class.scale) { (class.scene) }
+                data-width=(class.width) data-height=(class.height) data-scale=(class.scale)
+                data-other=[self.capture.as_ref().map(|_| format!("{ON_DEMAND}?v={}", self.digest))] { (class.scene) }
             script { (PreEscaped(&self.script)) }
         }
     }
@@ -150,6 +165,90 @@ impl FirstFrame {
             1,
         )
     }
+}
+
+/// A frame size a page may ask for: layout pixels to 1/64 and a scale to
+/// 1/1000, as integers, so one size has one cache entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct Size {
+    w64: u32,
+    h64: u32,
+    dpr1000: u32,
+}
+
+impl Size {
+    /// Checks and rounds a page's request: a box from 100 to 4096 layout
+    /// pixels a side at a scale from 0.5 to 4.
+    pub(crate) fn parse(w: f64, h: f64, dpr: f64) -> Option<Size> {
+        let fine = |v: f64, lo: f64, hi: f64| v.is_finite() && (lo..=hi).contains(&v);
+        if !fine(w, 100.0, 4096.0) || !fine(h, 100.0, 4096.0) || !fine(dpr, 0.5, 4.0) {
+            return None;
+        }
+        Some(Size {
+            w64: (w * 64.0).round() as u32,
+            h64: (h * 64.0).round() as u32,
+            dpr1000: (dpr * 1000.0).round() as u32,
+        })
+    }
+
+    fn args(&self) -> [String; 3] {
+        [
+            (self.w64 as f64 / 64.0).to_string(),
+            (self.h64 as f64 / 64.0).to_string(),
+            (self.dpr1000 as f64 / 1000.0).to_string(),
+        ]
+    }
+}
+
+/// Frames captured on request, by size; at most this many are kept.
+const KEPT: usize = 256;
+
+/// The frame for `size`, captured once by the build's capture tool (one
+/// capture at a time, ten seconds at most) and kept.
+pub(crate) async fn on_demand(first: &FirstFrame, size: Size) -> Option<Arc<Vec<u8>>> {
+    static FRAMES: Mutex<Option<HashMap<(String, Size), Arc<Vec<u8>>>>> = Mutex::new(None);
+    static ONE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+    let key = (first.digest.clone(), size);
+    let cached = |key: &(String, Size)| {
+        FRAMES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_or_insert_with(HashMap::new)
+            .get(key)
+            .cloned()
+    };
+    if let Some(frame) = cached(&key) {
+        return Some(frame);
+    }
+    let tool = first.capture.as_ref()?;
+    let _turn = ONE.acquire().await.ok()?;
+    if let Some(frame) = cached(&key) {
+        return Some(frame);
+    }
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::process::Command::new(tool)
+            .arg("--frame")
+            .args(size.args())
+            .kill_on_drop(true)
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    if !output.status.success() || output.stdout.is_empty() {
+        return None;
+    }
+    let frame = Arc::new(output.stdout);
+    let mut frames = FRAMES.lock().unwrap_or_else(|e| e.into_inner());
+    let frames = frames.get_or_insert_with(HashMap::new);
+    if frames.len() >= KEPT {
+        frames.clear();
+    }
+    frames.insert(key, frame.clone());
+    Some(frame)
 }
 
 #[cfg(test)]
@@ -226,5 +325,32 @@ mod tests {
             .replace("d.ffs.gz", "../d.ffs.gz");
         std::fs::write(&manifest, text).unwrap();
         assert!(FirstFrame::read(dir.path(), "{}").is_none());
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+
+    #[test]
+    fn requested_sizes_are_bounded_and_rounded() {
+        let s = Size::parse(990.0, 605.671875, 2.0).unwrap();
+        assert_eq!(
+            s.args(),
+            ["990".to_owned(), "605.671875".to_owned(), "2".to_owned()]
+        );
+        assert_eq!(
+            Size::parse(990.004, 605.67, 2.0001),
+            Some(Size {
+                w64: 63360,
+                h64: 38763,
+                dpr1000: 2000
+            })
+        );
+        assert!(Size::parse(50.0, 600.0, 2.0).is_none());
+        assert!(Size::parse(600.0, 5000.0, 2.0).is_none());
+        assert!(Size::parse(600.0, 600.0, 0.0).is_none());
+        assert!(Size::parse(f64::NAN, 600.0, 2.0).is_none());
+        assert!(Size::parse(600.0, 600.0, 9.0).is_none());
     }
 }

@@ -15,8 +15,9 @@
 # For AgentGraph it also writes `first-frame/`: the first-frame painter
 # (`painter.js`, wasm-bindgen's `--target no-modules` glue, `painter.wasm`,
 # and `boot.js`), Foreman's first frame for each size class
-# (`foreman-*.ffs.gz`, captured natively by `first-frame-capture`), and
-# `manifest.json`. The site carries these inline in /agent/foreman, so the
+# (`foreman-*.ffs.gz`, captured natively by `first-frame-capture`),
+# `manifest.json`, and the capture tool itself, which the site runs for
+# other box sizes. The site carries these inline in /agent/foreman, so the
 # graph shows before the module has downloaded.
 #
 # openagents.com's server shows the demo at /demo/gpui when started with
@@ -102,9 +103,12 @@ if [ "$app_name" = agent-graph ]; then
   gzip -9 -n -c "$first/painter.wasm" > "$first/painter.wasm.gz"
   cp "$web/first-frame-paint/boot.js" "$first/boot.js"
   # Native, no GPU: GPUI's headless platform lays out and paints the view.
-  cargo run --locked --manifest-path "$web/Cargo.toml" -p openagents-first-frame-capture \
-    --bin first-frame-capture \
-    -- "$first"
+  # The tool stays beside the frames: the site runs it for box sizes no
+  # class covers (`/agent/foreman/first-frame`).
+  cargo build --locked --manifest-path "$web/Cargo.toml" -p openagents-first-frame-capture \
+    --bin first-frame-capture --profile capture
+  cp "$target_dir/capture/first-frame-capture" "$first/first-frame-capture"
+  "$first/first-frame-capture" "$first"
 fi
 if [ "$with_page" = true ]; then
   cp "$crate/index.html" "$out/index.html"

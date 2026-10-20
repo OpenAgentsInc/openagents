@@ -1350,8 +1350,16 @@ the image copies it to `/srv/agent-graph`.
   glyphs blend a channel at a time with color masks instead of dual-source
   blending.
 
-The build script writes them to `OUTDIR/first-frame/`; the site inlines
-them in `/agent/foreman` (`pages/first_frame.rs` in `openagents-web`).
+- `first-frame-capture` runs on a headless platform of its own
+  (`src/platform.rs`: GPUI's `TestDispatcher` with its own `Platform` and
+  `PlatformWindow`), so a capture takes any scale and draws subpixel text
+  directly; GPUI's `TestWindow` is fixed at scale 2 without subpixel text.
+  `--frame WIDTH HEIGHT SCALE` writes one frame to standard output, which
+  the site runs for box sizes no inline frame covers.
+
+The build script writes them, and the capture tool, to
+`OUTDIR/first-frame/`; the site inlines them in `/agent/foreman`
+(`pages/first_frame.rs` in `openagents-web`).
 
 ### Shared font files (#12233)
 
