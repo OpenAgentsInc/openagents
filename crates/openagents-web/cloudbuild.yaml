@@ -18,6 +18,7 @@ steps:
       - -c
       - |
         set -e
+        test -x scripts/build-spark-wallet-web.sh
         sha="$$(sed -n 's/^pub const KIT_SHA256: &str = "\([0-9a-f]*\)";$$/\1/p' crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs)"
         mkdir -p crates/openagents-web/kit
         if [ -n "$$sha" ]; then

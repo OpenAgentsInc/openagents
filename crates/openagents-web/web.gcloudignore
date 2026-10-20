@@ -31,6 +31,7 @@
 !/scripts/
 /scripts/*
 !/scripts/build-everglade-web.sh
+!/scripts/build-spark-wallet-web.sh
 !/scripts/build-bunny-web.sh
 !/scripts/build-icecream-web.sh
 !/scripts/build-snap-web.sh
