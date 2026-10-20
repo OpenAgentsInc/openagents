@@ -4506,6 +4506,7 @@ dependencies = [
  "openagents-proto",
  "openagents-web-chat-view",
  "openagents-web-client",
+ "serde",
  "serde_json",
  "uuid",
  "wasm-bindgen",

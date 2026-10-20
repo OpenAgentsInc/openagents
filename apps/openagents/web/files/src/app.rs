@@ -30,6 +30,9 @@ use serde_json::Value;
 
 use crate::model::{self, Opens, Row};
 
+mod edit;
+use gpui::{App, Focusable as _, Pixels, Point};
+
 /// The computer's method names (`openagents_rpc::methods`).
 mod methods {
     pub const LIST_WORKSPACE_DIRECTORY: &str = "ListWorkspaceDirectory";
@@ -90,6 +93,8 @@ struct Tab {
     body: Body,
     /// A download in progress: bytes so far.
     downloading: Option<u64>,
+    /// Its editor, when the computer lets us write it (#12272).
+    edit: Option<edit::Editing>,
     _task: Option<Task<()>>,
 }
 
@@ -107,7 +112,12 @@ pub struct FilesApp {
     loading: HashSet<String>,
     expanded: HashSet<String>,
     git: HashMap<String, char>,
-    hidden: bool,
+    settings: model::Settings,
+    settings_open: bool,
+    /// The row being renamed, and its field.
+    renaming: Option<(String, Entity<TextInput>)>,
+    /// The row asking whether to delete it.
+    deleting: Option<String>,
     tabs: Vec<Tab>,
     /// The open file tab, or the Files tab when none.
     active: Option<usize>,
@@ -144,7 +154,10 @@ impl FilesApp {
             loading: HashSet::new(),
             expanded: HashSet::new(),
             git: HashMap::new(),
-            hidden: false,
+            settings: edit::read_settings(),
+            settings_open: false,
+            renaming: None,
+            deleting: None,
             tabs: Vec::new(),
             active: None,
             search,
@@ -172,6 +185,8 @@ impl FilesApp {
         self.git.clear();
         self.tabs.clear();
         self.active = None;
+        self.renaming = None;
+        self.deleting = None;
         self.found = None;
         self.notice = None;
         self._watch = None;
@@ -347,14 +362,6 @@ impl FilesApp {
         }
     }
 
-    /// Whether an open file should be read again after a change on the
-    /// computer. Editing overrides this (#12272).
-    fn reload_wanted(&self, at: usize) -> bool {
-        self.tabs
-            .get(at)
-            .is_some_and(|tab| tab.downloading.is_none())
-    }
-
     fn toggle(&mut self, row: &Row, cx: &mut Context<Self>) {
         if row.dir {
             if !self.expanded.remove(&row.path) {
@@ -382,6 +389,7 @@ impl FilesApp {
             size,
             body: Body::Loading,
             downloading: None,
+            edit: None,
             _task: None,
         });
         let at = self.tabs.len() - 1;
@@ -420,6 +428,7 @@ impl FilesApp {
                     if let Body::Text { file, .. } = &tab.body {
                         tab.size = Some(file.size);
                     }
+                    this.attach_editor(&path, cx);
                     cx.notify();
                 }
             })
@@ -661,6 +670,25 @@ impl FilesApp {
             .child(div().flex_1())
             .child(
                 div()
+                    .id("panel-settings")
+                    .flex_none()
+                    .px(px(8.))
+                    .text_size(px(13.))
+                    .text_color(if self.settings_open {
+                        theme::text()
+                    } else {
+                        theme::text_muted()
+                    })
+                    .cursor_pointer()
+                    .hover(|x| x.text_color(theme::text()))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        this.settings_open = !this.settings_open;
+                        cx.notify();
+                    }))
+                    .child("Settings"),
+            )
+            .child(
+                div()
                     .id("panel-close")
                     .flex_none()
                     .px(px(8.))
@@ -715,26 +743,11 @@ impl FilesApp {
                     }
                     cx.notify();
                 })),
-            )
-            .child(
-                button(
-                    "show-hidden",
-                    if self.hidden {
-                        "Hide dot files"
-                    } else {
-                        "Dot files"
-                    },
-                    false,
-                )
-                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                    this.hidden = !this.hidden;
-                    cx.notify();
-                })),
             );
         let body: AnyElement = match &self.found {
             Some(found) => self.render_found(found, cx),
             None => {
-                let rows = model::rows(&self.listed, &self.expanded, self.hidden);
+                let rows = model::rows(&self.listed, &self.expanded, self.settings.show_hidden);
                 if rows.is_empty() {
                     let line = if self.loading.contains("") {
                         "Reading the files…"
@@ -771,8 +784,106 @@ impl FilesApp {
     fn render_row(&self, ix: usize, row: &Row, cx: &mut Context<Self>) -> AnyElement {
         let badge = self.git.get(&row.path).copied();
         let clicked = row.clone();
+        let renaming = self
+            .renaming
+            .as_ref()
+            .filter(|(path, _)| *path == row.path)
+            .map(|(_, field)| field.clone());
+        let deleting = self.deleting.as_deref() == Some(row.path.as_str());
+        let name: AnyElement = match renaming {
+            Some(field) => div()
+                .flex_1()
+                .min_w_0()
+                .px(px(6.))
+                .rounded(px(6.))
+                .border_1()
+                .border_color(theme::border_strong())
+                .child(field)
+                .into_any_element(),
+            None => div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .text_color(if badge.is_some() {
+                    theme::warning()
+                } else {
+                    theme::text()
+                })
+                .child(row.name.clone())
+                .into_any_element(),
+        };
+        let action = |id: &'static str, label: &'static str| {
+            div()
+                .id((id, ix))
+                .flex_none()
+                .px(px(5.))
+                .rounded(px(5.))
+                .text_size(px(12.))
+                .text_color(theme::text_faint())
+                .hover(|x| x.text_color(theme::text()).bg(theme::element_active()))
+                .child(label)
+        };
+        let path = row.path.clone();
+        let actions: AnyElement = if deleting {
+            let confirm = path.clone();
+            div()
+                .flex()
+                .flex_row()
+                .flex_none()
+                .gap(px(4.))
+                .child(footer_text(if row.dir {
+                    "Delete folder?"
+                } else {
+                    "Delete?"
+                }))
+                .child(action("delete-yes", "Delete").on_click(cx.listener(
+                    move |this, _: &ClickEvent, _, cx| {
+                        cx.stop_propagation();
+                        this.delete_entry(&confirm, cx);
+                    },
+                )))
+                .child(action("delete-no", "Keep").on_click(cx.listener(
+                    |this, _: &ClickEvent, _, cx| {
+                        cx.stop_propagation();
+                        this.deleting = None;
+                        cx.notify();
+                    },
+                )))
+                .into_any_element()
+        } else {
+            let rename = path.clone();
+            let delete = path.clone();
+            div()
+                .flex()
+                .flex_row()
+                .flex_none()
+                .gap(px(2.))
+                .invisible()
+                .group_hover("tree-row", |x| x.visible())
+                .child(action("rename", "Rename").on_click(cx.listener(
+                    move |this, _: &ClickEvent, window, cx| {
+                        cx.stop_propagation();
+                        this.start_rename(&rename, window, cx);
+                    },
+                )))
+                .child(action("delete", "Delete").on_click(cx.listener(
+                    move |this, _: &ClickEvent, _, cx| {
+                        cx.stop_propagation();
+                        this.deleting = Some(delete.clone());
+                        this.renaming = None;
+                        cx.notify();
+                    },
+                )))
+                .into_any_element()
+        };
+        let dragged = edit::Dragged {
+            path: row.path.clone(),
+            name: row.name.clone(),
+        };
+        let folder = row.dir.then(|| row.path.clone());
         div()
             .id(("row", ix))
+            .group("tree-row")
             .flex()
             .flex_row()
             .items_center()
@@ -784,6 +895,14 @@ impl FilesApp {
             .cursor_pointer()
             .hover(|x| x.bg(theme::element_hover()))
             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.toggle(&clicked, cx)))
+            .on_drag(dragged, edit::drag_label)
+            .when_some(folder, |row, folder| {
+                row.drag_over::<edit::Dragged>(|x, _, _, _| x.bg(theme::accent_wash()))
+                    .on_drop(cx.listener(move |this, dragged: &edit::Dragged, _, cx| {
+                        let destination = format!("{folder}/{}", dragged.name);
+                        this.move_entry(&dragged.path, &destination, cx);
+                    }))
+            })
             .child(
                 div()
                     .flex_none()
@@ -797,18 +916,8 @@ impl FilesApp {
                         "▸"
                     }),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .text_color(if badge.is_some() {
-                        theme::warning()
-                    } else {
-                        theme::text()
-                    })
-                    .child(row.name.clone()),
-            )
+            .child(name)
+            .child(actions)
             .children(badge.map(|badge| {
                 div()
                     .flex_none()
@@ -968,6 +1077,7 @@ impl FilesApp {
                     )
                 },
             )
+            .children(self.render_save_state(at, cx))
             .child(self.download_button(at, tab, cx));
         let body: AnyElement = match &tab.body {
             Body::Loading => div()
@@ -1011,6 +1121,19 @@ impl FilesApp {
                     ),
                 )
                 .into_any_element(),
+            Body::Text { .. } if tab.edit.is_some() => {
+                let editor = tab.edit.as_ref().map(|edit| edit.editor.clone());
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .px(px(12.))
+                    .py(px(8.))
+                    .text_size(px(12.5))
+                    .children(editor)
+                    .into_any_element()
+            }
             Body::Text { lines, file, .. } => {
                 let lines = lines.clone();
                 let truncated = file.truncated;
@@ -1145,6 +1268,7 @@ impl Render for FilesApp {
                 .child(line)
         });
         let body = match self.active {
+            _ if self.settings_open => self.render_settings(cx),
             Some(at) => self.render_file(at, cx),
             None => self.render_tree(cx),
         };

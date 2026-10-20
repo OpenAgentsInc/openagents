@@ -8,6 +8,62 @@ use openagents_proto::{
     WorkspaceTextEncoding,
 };
 
+/// The Files settings, as on the desktop (Settings, Files), kept in this
+/// browser.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Settings {
+    pub autosave: bool,
+    pub autosave_delay_ms: u64,
+    pub word_wrap: bool,
+    pub show_hidden: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            autosave: false,
+            autosave_delay_ms: 900,
+            word_wrap: false,
+            show_hidden: false,
+        }
+    }
+}
+
+/// The autosave delays the desktop offers.
+pub const DELAY_OPTIONS: [u64; 5] = [300, 600, 900, 1_500, 3_000];
+
+impl Settings {
+    /// Settings read back from storage, with a delay the panel offers.
+    pub fn read(json: Option<&str>) -> Self {
+        let mut settings: Self = json
+            .and_then(|json| serde_json::from_str(json).ok())
+            .unwrap_or_default();
+        if !DELAY_OPTIONS.contains(&settings.autosave_delay_ms) {
+            settings.autosave_delay_ms = Self::default().autosave_delay_ms;
+        }
+        settings
+    }
+
+    /// The next autosave delay, round the list.
+    pub fn next_delay(&mut self) {
+        let at = DELAY_OPTIONS
+            .iter()
+            .position(|delay| *delay == self.autosave_delay_ms)
+            .map_or(0, |at| (at + 1) % DELAY_OPTIONS.len());
+        self.autosave_delay_ms = DELAY_OPTIONS[at];
+    }
+}
+
+/// A delay as people read it.
+pub fn delay(ms: u64) -> String {
+    if ms >= 1_000 {
+        format!("{} s", ms as f64 / 1_000.)
+    } else {
+        format!("{ms} ms")
+    }
+}
+
 /// How a file opens in the panel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Opens {
@@ -290,6 +346,28 @@ mod tests {
         assert_eq!(badges["src/app"], '•');
         assert_eq!(badges["src"], '•');
         assert_eq!(badges["new.txt"], 'A');
+    }
+
+    #[test]
+    fn settings_read_back_with_a_known_delay() {
+        assert_eq!(Settings::read(None), Settings::default());
+        let read = Settings::read(Some(
+            r#"{"autosave":true,"autosaveDelayMs":1500,"wordWrap":true}"#,
+        ));
+        assert!(read.autosave && read.word_wrap && !read.show_hidden);
+        assert_eq!(read.autosave_delay_ms, 1_500);
+        assert_eq!(
+            Settings::read(Some(r#"{"autosaveDelayMs":7}"#)).autosave_delay_ms,
+            900
+        );
+        let mut settings = Settings::default();
+        settings.next_delay();
+        assert_eq!(settings.autosave_delay_ms, 1_500);
+        settings.next_delay();
+        settings.next_delay();
+        assert_eq!(settings.autosave_delay_ms, 300);
+        assert_eq!(delay(1_500), "1.5 s");
+        assert_eq!(delay(300), "300 ms");
     }
 
     #[test]

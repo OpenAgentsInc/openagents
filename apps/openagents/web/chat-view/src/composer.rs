@@ -50,6 +50,7 @@ actions!(
         SelectDown,
         SubmitAlways,
         Tab,
+        Save,
     ]
 );
 
@@ -73,6 +74,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-enter", SubmitAlways, context),
         KeyBinding::new("ctrl-enter", SubmitAlways, context),
         KeyBinding::new("tab", Tab, context),
+        KeyBinding::new("cmd-s", Save, context),
+        KeyBinding::new("ctrl-s", Save, context),
         KeyBinding::new("shift-enter", Newline, context),
         KeyBinding::new("alt-enter", Newline, context),
         KeyBinding::new("up", Up, context),
@@ -131,7 +134,19 @@ pub struct TextInput {
     send_with_modifier: bool,
     /// The app shows a completion list for the token under the caret.
     completing: bool,
+    /// A code editor ([`TextInput::editor`]): fills its box, no Markdown,
+    /// Tab indents, and Cmd/Ctrl+S emits [`SaveRequested`].
+    editor: bool,
+    /// Long lines wrap (an editor may turn it off).
+    wrap: bool,
+    /// The height the field last had on screen, for scrolling a filled
+    /// editor.
+    shown_height: Pixels,
 }
+
+/// Emitted by an editor on Cmd/Ctrl+S.
+pub struct SaveRequested;
+impl EventEmitter<SaveRequested> for TextInput {}
 
 impl EventEmitter<Submitted> for TextInput {}
 impl EventEmitter<Cancelled> for TextInput {}
@@ -155,6 +170,9 @@ impl TextInput {
             scroll_y: px(0.),
             send_with_modifier: false,
             completing: false,
+            editor: false,
+            wrap: true,
+            shown_height: px(0.),
         }
     }
 
@@ -165,6 +183,40 @@ impl TextInput {
             multiline: true,
             ..Self::new(placeholder, cx)
         }
+    }
+
+    /// A code editor that fills its box: Enter starts a new line, Tab
+    /// indents, Cmd/Ctrl+S asks to save ([`SaveRequested`]), and the text
+    /// draws in the monospaced face without Markdown.
+    pub fn editor(cx: &mut Context<Self>) -> Self {
+        Self {
+            multiline: true,
+            editor: true,
+            send_with_modifier: true,
+            ..Self::new("", cx)
+        }
+    }
+
+    /// Whether long lines wrap.
+    pub fn set_wrap(&mut self, wrap: bool, cx: &mut Context<Self>) {
+        if self.wrap != wrap {
+            self.wrap = wrap;
+            cx.notify();
+        }
+    }
+
+    /// Replaces the text and puts the caret at `cursor` (clamped), with
+    /// nothing selected: an editor reading its file again.
+    pub fn reset(&mut self, text: impl Into<SharedString>, cursor: usize, cx: &mut Context<Self>) {
+        self.content = text.into();
+        let mut at = cursor.min(self.content.len());
+        while !self.content.is_char_boundary(at) {
+            at -= 1;
+        }
+        self.selected_range = at..at;
+        self.selection_reversed = false;
+        self.marked_range = None;
+        cx.notify();
     }
 
     /// The field's text.
@@ -254,6 +306,9 @@ impl TextInput {
     }
 
     fn submit_always(&mut self, _: &SubmitAlways, _: &mut Window, cx: &mut Context<Self>) {
+        if self.editor {
+            return cx.emit(SaveRequested);
+        }
         self.send(cx);
     }
 
@@ -269,6 +324,16 @@ impl TextInput {
         if self.completing && self.marked_range.is_none() {
             return cx.emit(CompletionKey::Accept);
         }
+        if self.editor && self.marked_range.is_none() {
+            return self.insert(None, "    ", cx);
+        }
+        cx.propagate();
+    }
+
+    fn save(&mut self, _: &Save, _: &mut Window, cx: &mut Context<Self>) {
+        if self.editor {
+            return cx.emit(SaveRequested);
+        }
         cx.propagate();
     }
 
@@ -281,7 +346,7 @@ impl TextInput {
             return;
         }
         // A list continues on the next line; an empty item ends it.
-        if self.selected_range.is_empty() {
+        if self.selected_range.is_empty() && !self.editor {
             if let Some((range, text)) = openagents_chat_view::composer_markdown::newline_edit(
                 &self.content,
                 self.cursor_offset(),
@@ -957,6 +1022,7 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::submit))
             .on_action(cx.listener(Self::submit_always))
             .on_action(cx.listener(Self::tab))
+            .on_action(cx.listener(Self::save))
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
@@ -1019,8 +1085,12 @@ impl TextInput {
             .unwrap_or(px(LINE_HEIGHT))
     }
 
-    /// The height a multi-line field shows: its text, up to [`MAX_ROWS`].
+    /// The height a multi-line field shows: its text, up to [`MAX_ROWS`],
+    /// or an editor's box.
     fn visible_height(&self) -> Pixels {
+        if self.editor {
+            return self.shown_height.max(px(LINE_HEIGHT));
+        }
         self.text_height()
             .min(px(LINE_HEIGHT) * MAX_ROWS as f32)
             .max(px(LINE_HEIGHT))
@@ -1033,13 +1103,13 @@ fn shape_rows(
     text: &SharedString,
     runs: &[TextRun],
     font_size: Pixels,
-    width: Pixels,
+    width: Option<Pixels>,
     window: &Window,
 ) -> Vec<(usize, WrappedLine, Pixels)> {
     let line_height = px(LINE_HEIGHT);
     let lines = window
         .text_system()
-        .shape_text(text.clone(), font_size, runs, Some(width), None)
+        .shape_text(text.clone(), font_size, runs, width, None)
         .map(|lines| lines.into_vec())
         .unwrap_or_default();
     let mut rows = Vec::with_capacity(lines.len());
@@ -1093,6 +1163,17 @@ impl AreaElement {
             underline: None,
             strikethrough: None,
         };
+        if input.editor {
+            let run = TextRun {
+                font: theme::mono(FontWeight::NORMAL),
+                ..run
+            };
+            let runs = match input.marked_range.clone().filter(|_| !placeholder) {
+                Some(marked) => markdown_runs_plain(&text, &run, marked),
+                None => vec![run],
+            };
+            return (text, runs, placeholder);
+        }
         if input.multiline && !placeholder {
             return (
                 text.clone(),
@@ -1127,6 +1208,33 @@ impl AreaElement {
         };
         (text, runs, placeholder)
     }
+}
+
+/// Plain runs with the IME's marked text underlined.
+fn markdown_runs_plain(text: &str, base: &TextRun, marked: Range<usize>) -> Vec<TextRun> {
+    let marked = marked.start.min(text.len())..marked.end.min(text.len());
+    [
+        TextRun {
+            len: marked.start,
+            ..base.clone()
+        },
+        TextRun {
+            len: marked.end - marked.start,
+            underline: Some(UnderlineStyle {
+                color: Some(base.color),
+                thickness: px(1.0),
+                wavy: false,
+            }),
+            ..base.clone()
+        },
+        TextRun {
+            len: text.len() - marked.end,
+            ..base.clone()
+        },
+    ]
+    .into_iter()
+    .filter(|run| run.len > 0)
+    .collect()
 }
 
 /// A draft's runs with its Markdown drawn as typed: bold (and headings),
@@ -1230,6 +1338,10 @@ impl Element for AreaElement {
         let mut style = Style::default();
         style.size.width = relative(1.).into();
         let input = self.input.clone();
+        if input.read(_cx).editor {
+            style.size.height = relative(1.).into();
+            return (window.request_layout(style, [], _cx), ());
+        }
         let layout = window.request_measured_layout(style, move |known, available, window, cx| {
             let width = known.width.unwrap_or(match available.width {
                 gpui::AvailableSpace::Definite(width) => width,
@@ -1238,7 +1350,7 @@ impl Element for AreaElement {
             let input = input.read(cx);
             let (text, runs, _) = AreaElement::runs(input, window);
             let font_size = window.text_style().font_size.to_pixels(window.rem_size());
-            let rows = shape_rows(&text, &runs, font_size, width, window);
+            let rows = shape_rows(&text, &runs, font_size, Some(width), window);
             let total = rows
                 .last()
                 .map(|(_, line, top)| *top + line.size(px(LINE_HEIGHT)).height)
@@ -1261,10 +1373,15 @@ impl Element for AreaElement {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let line_height = px(LINE_HEIGHT);
+        if self.input.read(cx).shown_height != bounds.size.height {
+            self.input
+                .update(cx, |input, _| input.shown_height = bounds.size.height);
+        }
         let input = self.input.read(cx);
         let (text, runs, placeholder) = AreaElement::runs(input, window);
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
-        let rows = shape_rows(&text, &runs, font_size, bounds.size.width, window);
+        let wrap = (!input.editor || input.wrap).then_some(bounds.size.width);
+        let rows = shape_rows(&text, &runs, font_size, wrap, window);
         let position = |offset: usize| -> Point<Pixels> {
             rows.iter()
                 .rev()
