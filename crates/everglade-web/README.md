@@ -14,9 +14,12 @@ its tests cover.
 ./scripts/build-everglade-web.sh OUTDIR
 ```
 
-The script runs `cargo build --release --target wasm32-unknown-unknown -p
-everglade-web`, then `wasm-bindgen --target web`, then `wasm-opt -O2` when
-Binaryen is installed. It needs:
+The script runs `cargo build --profile verse-web --target
+wasm32-unknown-unknown -p everglade-web` (the release profile with LTO, one
+codegen unit, and no symbols; `EVERGLADE_PROFILE` picks another), then
+`wasm-bindgen --target web`, then `wasm-opt -O2` when Binaryen is installed.
+The site's image adds brotli and gzip copies beside both files, and the site
+serves the brotli copy to a browser that accepts it. It needs:
 
 - The pinned toolchain's `wasm32-unknown-unknown` target.
 - The `wasm-bindgen` CLI at exactly the version `Cargo.lock` pins for the
@@ -34,7 +37,7 @@ The script writes exactly these files, directly in `OUTDIR`:
 | File | What it is |
 | --- | --- |
 | `everglade_web.js` | The ES module glue. Its default export, `init`, loads the module. |
-| `everglade_web_bg.wasm` | The module (about 11 MB; about 7.7 MB with gzip). |
+| `everglade_web_bg.wasm` | The module (about 25 MB; about 7.5 MB with brotli, 9.8 MB with gzip, #12319). |
 
 The page that serves them must:
 
@@ -44,6 +47,11 @@ The page that serves them must:
 - Import the glue from the same origin and call
   `init({ module_or_path: "<url of everglade_web_bg.wasm>" })`. The module
   starts itself when `init` finishes (`#[wasm_bindgen(start)]`).
+- Serve the space sky at `/everglade/space/<name>`, the six files of
+  `verse::pbr::gpu::SPACE_FILES` from `crates/verse/assets/lagrange/`. The
+  module doesn't carry them (5.7 MB of PNGs only the space zones draw); it
+  fetches them the first time a space frame asks, and draws one-texel
+  stand-ins until they arrive.
 - Serve the pinned pack at `/everglade/pack/<PACK_SHA256>.vtp` on the same
   origin, where `PACK_SHA256` is
   `verse::zones::everglade_pack::PACK_SHA256` and the file is

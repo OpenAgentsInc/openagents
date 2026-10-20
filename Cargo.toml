@@ -195,6 +195,16 @@ opt-level = 3
 # The profile `scripts/build-plugin-guests.sh` builds Wasm guests with. The
 # guests are checked in and inlined into `programs/evidence-guests.json`,
 # so size is a review cost. No native build uses it.
+# The browser's Verse module (scripts/build-everglade-web.sh, /verse and
+# /lander11, #12319): one codegen unit with LTO, so the linker drops what
+# the page never calls, and no symbols. Kept at full speed: it renders.
+[profile.verse-web]
+inherits = "release"
+lto = true
+codegen-units = 1
+strip = true
+debug = false
+
 [profile.guest]
 inherits = "release"
 opt-level = "z"

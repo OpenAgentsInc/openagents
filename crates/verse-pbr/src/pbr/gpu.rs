@@ -2170,8 +2170,13 @@ impl Photo {
         if self.space_ready {
             return Ok(());
         }
-        self.sky_textures = load_sky(device, queue)?;
-        let stars = sky::parse_stars(include_bytes!("../../../verse/assets/lagrange/stars.bin"))?;
+        // In the browser the files arrive after the page fetches them; the
+        // stand-ins draw until then, and the next frame tries again.
+        let Some(files) = space_files() else {
+            return Ok(());
+        };
+        self.sky_textures = load_sky(device, queue, &files)?;
+        let stars = sky::parse_stars(files[5])?;
         let instances: Vec<StarInstance> = stars
             .iter()
             .map(|s| StarInstance {
@@ -5098,60 +5103,79 @@ fn placeholder_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> [wgpu::Texture
     ]
 }
 
-fn load_sky(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<[wgpu::TextureView; 5], String> {
+/// The space sky's files, in the order [`provide_space_files`] takes
+/// them: `crates/verse/assets/lagrange/`, which the site serves under
+/// `/everglade/space/`.
+pub const SPACE_FILES: [&str; 6] = [
+    "earth_day.png",
+    "earth_clouds.png",
+    "earth_water.png",
+    "moon_albedo.png",
+    "milky_way.png",
+    "stars.bin",
+];
+
+/// The browser's copy of [`SPACE_FILES`], once the page fetched them. The
+/// browser module doesn't carry them: 5.7 MB of already-compressed PNGs
+/// that only the space zones draw (#12319).
+#[cfg(target_arch = "wasm32")]
+static SPACE: std::sync::OnceLock<[Vec<u8>; 6]> = std::sync::OnceLock::new();
+#[cfg(target_arch = "wasm32")]
+static SPACE_WANTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Hands the browser's renderer [`SPACE_FILES`]' bytes; the next space frame
+/// uploads them. A second call is ignored.
+#[cfg(target_arch = "wasm32")]
+pub fn provide_space_files(files: [Vec<u8>; 6]) {
+    let _ = SPACE.set(files);
+}
+
+/// Whether a space frame asked for the sky's files the browser hasn't
+/// provided yet; until then it draws with one-texel stand-ins.
+#[cfg(target_arch = "wasm32")]
+pub fn space_files_wanted() -> bool {
+    SPACE_WANTED.load(std::sync::atomic::Ordering::Relaxed) && SPACE.get().is_none()
+}
+
+/// [`SPACE_FILES`]' bytes: built in, or in the browser, what the page
+/// provided (`None` until then).
+fn space_files() -> Option<[&'static [u8]; 6]> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Some([
+            include_bytes!("../../../verse/assets/lagrange/earth_day.png"),
+            include_bytes!("../../../verse/assets/lagrange/earth_clouds.png"),
+            include_bytes!("../../../verse/assets/lagrange/earth_water.png"),
+            include_bytes!("../../../verse/assets/lagrange/moon_albedo.png"),
+            include_bytes!("../../../verse/assets/lagrange/milky_way.png"),
+            include_bytes!("../../../verse/assets/lagrange/stars.bin"),
+        ])
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        match SPACE.get() {
+            Some([a, b, c, d, e, f]) => Some([&a[..], &b[..], &c[..], &d[..], &e[..], &f[..]]),
+            None => {
+                SPACE_WANTED.store(true, std::sync::atomic::Ordering::Relaxed);
+                None
+            }
+        }
+    }
+}
+
+fn load_sky(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    files: &[&[u8]; 6],
+) -> Result<[wgpu::TextureView; 5], String> {
     let srgb = wgpu::TextureFormat::Rgba8UnormSrgb;
     let r8 = wgpu::TextureFormat::R8Unorm;
     Ok([
-        upload_mipped(
-            device,
-            queue,
-            "earth day",
-            decode(
-                include_bytes!("../../../verse/assets/lagrange/earth_day.png"),
-                false,
-            )?,
-            srgb,
-        ),
-        upload_mipped(
-            device,
-            queue,
-            "earth clouds",
-            decode(
-                include_bytes!("../../../verse/assets/lagrange/earth_clouds.png"),
-                true,
-            )?,
-            r8,
-        ),
-        upload_mipped(
-            device,
-            queue,
-            "earth water",
-            decode(
-                include_bytes!("../../../verse/assets/lagrange/earth_water.png"),
-                true,
-            )?,
-            r8,
-        ),
-        upload_mipped(
-            device,
-            queue,
-            "moon albedo",
-            decode(
-                include_bytes!("../../../verse/assets/lagrange/moon_albedo.png"),
-                false,
-            )?,
-            srgb,
-        ),
-        upload_mipped(
-            device,
-            queue,
-            "milky way",
-            decode(
-                include_bytes!("../../../verse/assets/lagrange/milky_way.png"),
-                false,
-            )?,
-            srgb,
-        ),
+        upload_mipped(device, queue, "earth day", decode(files[0], false)?, srgb),
+        upload_mipped(device, queue, "earth clouds", decode(files[1], true)?, r8),
+        upload_mipped(device, queue, "earth water", decode(files[2], true)?, r8),
+        upload_mipped(device, queue, "moon albedo", decode(files[3], false)?, srgb),
+        upload_mipped(device, queue, "milky way", decode(files[4], false)?, srgb),
     ])
 }
 
@@ -5601,6 +5625,25 @@ mod tests {
         assert_eq!(half(65504.0), 0x7bff);
         assert_eq!(half(1.0e6), 0x7bff);
         assert_eq!(half(0.5), 0x3800);
+    }
+
+    #[test]
+    fn the_space_files_are_built_in_off_the_browser_in_their_order() {
+        let files = space_files().unwrap();
+        assert_eq!(
+            files[0].len(),
+            include_bytes!("../../../verse/assets/lagrange/earth_day.png").len()
+        );
+        assert!(sky::parse_stars(files[5]).unwrap().len() > 9_000);
+        for name in SPACE_FILES {
+            assert!(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../verse/assets/lagrange")
+                    .join(name)
+                    .is_file(),
+                "{name}"
+            );
+        }
     }
 
     #[test]

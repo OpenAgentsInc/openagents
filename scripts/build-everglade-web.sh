@@ -85,10 +85,12 @@ if cargo tree --locked --target "$target" -p everglade-web -e features 2>/dev/nu
   echo "the web build enables dev-destruction; production builds must not" >&2
   exit 1
 fi
-cargo build --release --locked --target "$target" -p everglade-web
+# The verse-web profile (Cargo.toml): LTO and one codegen unit (#12319).
+profile="${EVERGLADE_PROFILE:-verse-web}"
+cargo build --profile "$profile" --locked --target "$target" -p everglade-web
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-dir "$out" \
-  "$target_dir/$target/release/everglade_web.wasm"
+  "$target_dir/$target/$profile/everglade_web.wasm"
 
 if command -v wasm-opt >/dev/null 2>&1; then
   # The features Rust's wasm32 target enables by default.

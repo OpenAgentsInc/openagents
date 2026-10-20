@@ -82,7 +82,7 @@ FROM wasm-base AS everglade-deps
 COPY --from=skeleton /skeleton/ ./
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run sh -c '\
     w=wasm32-unknown-unknown \
-    && cargo build --release --locked --target $w -p everglade-web \
+    && cargo build --profile verse-web --locked --target $w -p everglade-web \
     && cargo build --locked --release --target $w \
         -p coder-components-web -p coder-cloud-web -p coder-browser-web \
         -p coder-chat-web -p oa-vault-web \
@@ -107,8 +107,11 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -f /build/everglade/everglade_web.js \
     && test -f /build/everglade/everglade_web_bg.wasm \
     && gzip -9 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
-    && mkdir -p /build/everglade/pack /build/everglade/kit/bake \
+    && brotli -q 11 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
+    && test -s /build/everglade/everglade_web_bg.wasm.br \
+    && mkdir -p /build/everglade/pack /build/everglade/kit/bake /build/everglade/space \
     && cp assets/verse/everglade/*.vtp /build/everglade/pack/ \
+    && cp crates/verse/assets/lagrange/*.png crates/verse/assets/lagrange/stars.bin /build/everglade/space/ \
     && if [ -d crates/openagents-web/kit ]; then \
         find crates/openagents-web/kit -maxdepth 1 -name '*.vtp' \
             -exec cp {} /build/everglade/kit/ \;; fi \

@@ -241,6 +241,12 @@ async fn open_grid(
     width: u32,
     height: u32,
 ) -> Result<GridEngine, String> {
+    // Three tasks, not one (#12319: the start blocked the page for 167 ms):
+    // the pack's meshes on the CPU, the GPU's adapter and device, then the
+    // upload. The page gets a turn between each.
+    let content = verse::grid_engine::Content::grid()?;
+    mark("verse-grid-content");
+    yield_to_page().await;
     let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(WebDisplay));
     descriptor.backends = backends;
     let instance = wgpu::util::new_instance_with_webgpu_detection(descriptor).await;
@@ -248,7 +254,25 @@ async fn open_grid(
         .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
         .map_err(|e| format!("cannot draw on the canvas: {e}"))?;
     let gpu = Gpu::open_async(instance, &surface).await?;
-    GridEngine::on_surface(gpu, surface, atlas, width, height)
+    mark("verse-grid-gpu");
+    yield_to_page().await;
+    let engine = GridEngine::on_surface_with(gpu, surface, content, atlas, width, height)?;
+    mark("verse-grid-engine");
+    Ok(engine)
+}
+
+/// Lets the page run its own tasks (input, the chat, painting) before the
+/// next step of the start: a timer task, not a microtask, so it really
+/// yields.
+async fn yield_to_page() {
+    gloo_timers::future::TimeoutFuture::new(0).await;
+}
+
+/// A `performance.mark` the page's start timings read.
+fn mark(name: &str) {
+    if let Some(performance) = web_sys::window().and_then(|window| window.performance()) {
+        let _ = performance.mark(name);
+    }
 }
 
 /// What draws the page: the Grid through the engine renderer, Everglade and
@@ -750,6 +774,8 @@ async fn run_grid(
         wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL
     };
     let atlas = Atlas::new((14.0 * scale).round());
+    mark("verse-grid-atlas");
+    yield_to_page().await;
     let engine = open_grid(&canvas, backends, &atlas, width, height).await?;
     web_sys::console::info_1(&JsValue::from_str(&format!(
         "Grid: engine renderer on {}",
@@ -996,6 +1022,63 @@ async fn fetch_pinned(window: &Window, url: &str, total: u64) -> Result<Vec<u8>,
     Ok(bytes)
 }
 
+/// The space sky's files (`verse::pbr::gpu::SPACE_FILES`), fetched from
+/// `/everglade/space/` the first time a space frame asks for them: they
+/// are 5.7 MB of PNGs the module no longer carries, and the Grid on /verse
+/// and /lander11 never draws space (#12319). The frame draws its
+/// stand-ins until they arrive.
+fn fetch_space_when_wanted() {
+    thread_local! {
+        static ASKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if !verse::pbr::gpu::space_files_wanted() || ASKED.with(|asked| asked.replace(true)) {
+        return;
+    }
+    wasm_bindgen_futures::spawn_local(async {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let mut files: Vec<Vec<u8>> = Vec::new();
+        for name in verse::pbr::gpu::SPACE_FILES {
+            match fetch_bytes(&window, &format!("/everglade/space/{name}")).await {
+                Ok(bytes) => files.push(bytes),
+                Err(error) => {
+                    web_sys::console::warn_1(&JsValue::from_str(&format!(
+                        "Space draws without its sky: {error}"
+                    )));
+                    return;
+                }
+            }
+        }
+        if let Ok(files) = <[Vec<u8>; 6]>::try_from(files) {
+            verse::pbr::gpu::provide_space_files(files);
+        }
+    });
+}
+
+/// One same-origin file's bytes, without credentials or redirects.
+async fn fetch_bytes(window: &Window, url: &str) -> Result<Vec<u8>, String> {
+    let init = RequestInit::new();
+    init.set_redirect(RequestRedirect::Error);
+    init.set_credentials(RequestCredentials::Omit);
+    let response: Response = JsFuture::from(window.fetch_with_str_and_init(url, &init))
+        .await
+        .map_err(|_| format!("{url} could not connect"))?
+        .dyn_into()
+        .map_err(|_| format!("{url} returned no response"))?;
+    if !response.ok() {
+        return Err(format!("{url} failed with HTTP {}", response.status()));
+    }
+    let buffer = JsFuture::from(
+        response
+            .array_buffer()
+            .map_err(|_| format!("{url} has no body"))?,
+    )
+    .await
+    .map_err(|_| format!("{url} was interrupted"))?;
+    Ok(Uint8Array::new(&buffer).to_vec())
+}
+
 /// Device-pixel drawing size for the canvas's laid-out CSS size.
 fn drawing_size(canvas: &HtmlCanvasElement, scale: f32) -> (u32, u32) {
     let side = |css: i32| ((css.max(1) as f32 * scale).round() as u32).clamp(1, MAX_SIDE);
@@ -1004,6 +1087,7 @@ fn drawing_size(canvas: &HtmlCanvasElement, scale: f32) -> (u32, u32) {
 
 impl Page {
     fn frame(&mut self, now: f64) {
+        fetch_space_when_wanted();
         let gap = self.last.map_or(0.0, |last| now - last);
         let started = web_sys::window()
             .and_then(|w| w.performance())

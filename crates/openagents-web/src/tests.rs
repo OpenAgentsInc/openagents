@@ -1399,6 +1399,38 @@ async fn everglade_bake_layers_stream_beyond_the_cloud_run_buffer_limit() {
     assert_eq!(received, size);
 }
 
+/// #12319: the browser module fetches the space sky instead of carrying
+/// it; only its six files are served.
+#[tokio::test]
+async fn everglade_serves_the_space_sky_files_and_nothing_else_there() {
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = with_everglade(root.path());
+    let directory = config.everglade.as_ref().unwrap().join("space");
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(directory.join("earth_day.png"), b"\x89PNG").unwrap();
+    std::fs::write(directory.join("secret.txt"), b"no").unwrap();
+    let get = |path: &str| {
+        Request::builder()
+            .uri(path)
+            .header(header::HOST, LOCAL)
+            .body(Body::empty())
+            .unwrap()
+    };
+    let response = router(config.clone())
+        .oneshot(get("/everglade/space/earth_day.png"))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
+    for path in [
+        "/everglade/space/secret.txt",
+        "/everglade/space/..%2Fsecret.txt",
+    ] {
+        let response = router(config.clone()).oneshot(get(path)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+}
+
 #[tokio::test]
 async fn everglade_wasm_streams_beyond_the_cloud_run_buffer_limit() {
     use futures_util::StreamExt;
@@ -2176,7 +2208,10 @@ async fn the_lander11_page_has_the_chat_over_verse() {
     assert!(html.contains("<canvas id=\"everglade-canvas\""), "{html}");
     assert!(html.contains("/lander8/build/") && html.contains("/everglade/everglade_web_bg.wasm"));
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-    assert!(policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"), "{policy}");
+    assert!(
+        policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"),
+        "{policy}"
+    );
     crate::copy_guard::assert_plain("/lander11", &html);
     let chat = "/lander11/chat/5e1f0c3a-7d2b-4c4e-9a1b-000000000001";
     let (status, _, same) = get_with(router(config.clone()), chat, LOCAL).await;

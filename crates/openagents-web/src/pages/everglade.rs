@@ -99,6 +99,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/everglade/pack/{file}", get(pack_file))
         .route("/everglade/kit/{file}", get(kit_file))
         .route("/everglade/kit/bake/{file}", get(bake_file))
+        .route("/everglade/space/{file}", get(space_file))
 }
 
 /// The build directory, when it holds the glue module and the wasm.
@@ -496,6 +497,40 @@ async fn kit_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Res
         directory.join(KIT_DIRECTORY).join(&file),
         "application/octet-stream",
         PACK_CACHE,
+    )
+    .await
+}
+
+/// The space sky's files (Earth, the Moon, the Milky Way, and the stars)
+/// that the browser module fetches when it first draws space, instead of
+/// carrying them (#12319). The image copies them from
+/// `crates/verse/assets/lagrange/`.
+const SPACE_DIRECTORY: &str = "space";
+const SPACE_FILES: [&str; 6] = [
+    "earth_day.png",
+    "earth_clouds.png",
+    "earth_water.png",
+    "moon_albedo.png",
+    "milky_way.png",
+    "stars.bin",
+];
+
+async fn space_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Response {
+    let Some(directory) = app.config.everglade.as_deref() else {
+        return crate::not_found().await;
+    };
+    if !SPACE_FILES.contains(&file.as_str()) {
+        return crate::not_found().await;
+    }
+    let content_type = if file.ends_with(".png") {
+        "image/png"
+    } else {
+        "application/octet-stream"
+    };
+    serve(
+        directory.join(SPACE_DIRECTORY).join(&file),
+        content_type,
+        BUILD_CACHE,
     )
     .await
 }

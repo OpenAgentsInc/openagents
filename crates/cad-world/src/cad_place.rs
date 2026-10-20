@@ -145,6 +145,25 @@ struct Solid {
 
 /// CAD Lab's glTF (`export::glb`): a node per solid, positions, normals
 /// and indices, a colour per material.
+/// The CAD Lab rover's glTF (`assets/verse/cad/rover.glb`), known by its
+/// length and SHA-256. Comparing against the file itself built all 5.7 MB
+/// of it into every program that places CAD models, the browser's Verse
+/// module among them (#12319).
+const ROVER_LEN: usize = 5_748_500;
+const ROVER_SHA256: &str = "d68343cfa8566db96739d8bcfae9bb967ffee3158cfe06f88d467619c4a75bda";
+
+fn is_rover(bytes: &[u8]) -> bool {
+    use sha2::Digest as _;
+    bytes.len() == ROVER_LEN && {
+        let digest = sha2::Sha256::digest(bytes);
+        digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+            == ROVER_SHA256
+    }
+}
+
 fn parse_glb(bytes: &[u8]) -> Option<Vec<Solid>> {
     let word = |at: usize| -> Option<usize> {
         Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?) as usize)
@@ -307,7 +326,7 @@ pub fn stand_bytes(
             }
         }
     }
-    if bytes == include_bytes!("../../../assets/verse/cad/rover.glb") {
+    if is_rover(bytes) {
         let mut spec: Value =
             serde_json::from_str(include_str!("../../../assets/verse/cad/rover.json"))
                 .map_err(|e| e.to_string())?;
@@ -341,4 +360,17 @@ pub fn stand_bytes(
         size: (hi - lo) * scale,
         vertices,
     })
+}
+
+#[cfg(test)]
+mod rover_tests {
+    #[test]
+    fn the_rover_is_known_by_its_length_and_digest() {
+        let rover = include_bytes!("../../../assets/verse/cad/rover.glb");
+        assert!(super::is_rover(rover));
+        let mut other = rover.to_vec();
+        other[100] ^= 1;
+        assert!(!super::is_rover(&other));
+        assert!(!super::is_rover(b"glTF"));
+    }
 }
