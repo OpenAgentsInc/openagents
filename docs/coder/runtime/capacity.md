@@ -52,6 +52,17 @@ the file's path, never the token.
 - The Microcoder loop's Claude lane (Coder's delegate door and repository
   runs) moves a step a limit refused to the next login and runs it again.
   Coder's Claude Code delegations start each new session on the next login.
+- OpenAgents app chats, Foreman included, keep the login they run on while
+  it has capacity. A turn that ends on a usage limit records it against
+  that login, and the chat runs the turn again on the next login with
+  capacity, resuming its session (or starting fresh with the conversation
+  when the session can't be found). The chat gets one line saying so.
+- Microcoder's lean Claude session and Agent SDK routes, and Coder's
+  `claude -p` runs, start on the picked login and move to the next one on
+  a limit.
+- The agent gate also refuses a new subagent when the session's own login
+  (`OA_CLAUDE_LOGIN`, else `default`) is out, because a subagent runs on
+  its parent's login, and names the login new chats run on.
 
 A binary from before named logins reads a book that holds them as empty,
 and its next write drops them. Update every `openagents`, `coder`, and

@@ -190,7 +190,7 @@ pub(crate) async fn turn(
         return Turn::Ended(ended);
     }
     let login = host.login_environment().await;
-    let env: Vec<(String, String)> = login
+    let mut env: Vec<(String, String)> = login
         .map(|login| {
             login
                 .variables
@@ -209,7 +209,24 @@ pub(crate) async fn turn(
         .find(|(key, _)| key == "HOME")
         .map(|(_, value)| PathBuf::from(value))
         .or_else(|| user_home::home_os().map(PathBuf::from));
-    let credential = (lean.credential)(home.as_deref());
+    let mut credential = (lean.credential)(home.as_deref());
+    // A Claude session starts on the login the capacity book picks (#12215):
+    // a named login runs on its token alone.
+    let chosen = claude_login(lean, host.store());
+    if let Some(chosen) = &chosen {
+        use microcoder_loop::logins::{API_KEY_VARS, LOGIN_VAR, TOKEN_VAR};
+        env.retain(|(key, _)| {
+            !API_KEY_VARS.contains(&key.as_str()) && key != TOKEN_VAR && key != LOGIN_VAR
+        });
+        env.extend(
+            chosen
+                .vars()
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned())),
+        );
+        credential = Credential::OauthToken;
+    }
+    let login_name = chosen.map(|chosen| chosen.name);
     let policy = (lean.executor)(&route.model, &effort);
     let mut cli = coder_delegate::policy::executor(
         &policy,
@@ -386,14 +403,17 @@ pub(crate) async fn turn(
                 } else {
                     Kind::UsageLimit
                 };
-                return Turn::Refused(Refusal::new(lean.provider, kind, now, limit.resets_at));
+                return Turn::Refused(
+                    Refusal::new(lean.provider, kind, now, limit.resets_at).on_login(login_name),
+                );
             }
             // A limit after work ends the turn with what it did; the book
             // keeps other work off the login and lets the auto-start
             // policy resume the task after the reset (#10765).
             if let Some(limit) = &summary.limit {
                 let now = coder::task::autostart::unix_now();
-                let refusal = coder::task::capacity::from_limit(lean.provider, limit, now);
+                let refusal = coder::task::capacity::from_limit(lean.provider, limit, now)
+                    .on_login(login_name);
                 if let Err(why) = coder::task::capacity::record(host.store(), refusal) {
                     eprintln!("microcoder: the capacity book was not updated: {why}");
                 }
@@ -402,6 +422,18 @@ pub(crate) async fn turn(
         }
     }
     Turn::Ended(ended)
+}
+
+/// The named Claude login the capacity book in `book` picks for a Claude
+/// session (#12215), or `None` for another engine, the signed-in login,
+/// every login out, or a token that can't be read.
+pub(crate) fn claude_login(lean: &Lean, book: &Path) -> Option<microcoder_loop::logins::Chosen> {
+    if lean.provider != Provider::Claude {
+        return None;
+    }
+    coder::task::capacity::Book::load(book)
+        .pick(Provider::Claude, coder::task::autostart::unix_now())?
+        .chosen()
 }
 
 #[cfg(test)]

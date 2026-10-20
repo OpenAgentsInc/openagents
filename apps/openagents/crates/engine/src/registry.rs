@@ -319,7 +319,8 @@ impl HarnessRegistry {
     /// Load `harness-prefs.json` from the engine data dir and remember the
     /// path for writes. Corrupt/missing files fall back to the default set.
     pub fn load_prefs(&self, data_dir: &Path) {
-        if let Ok(runner) = openagents_harness::sdk::SdkHarness::load(&data_dir.join("sdk-runners.json"))
+        if let Ok(runner) =
+            openagents_harness::sdk::SdkHarness::load(&data_dir.join("sdk-runners.json"))
         {
             self.register(Arc::new(runner));
         }
@@ -597,7 +598,15 @@ pub fn default_registry() -> HarnessRegistry {
             enabled: None,
         },
         Box::new(|| openagents_harness::ClaudeHarness::new().installed()),
-        Box::new(|| Ok(Arc::new(openagents_harness::ClaudeHarness::new()) as Arc<dyn Harness>)),
+        Box::new(|| {
+            let harness = openagents_harness::ClaudeHarness::new();
+            // Each chat picks a Claude login from the capacity book (#12215).
+            let harness = match crate::claude_logins::from_home() {
+                Some(logins) => harness.with_logins(logins),
+                None => harness,
+            };
+            Ok(Arc::new(harness) as Arc<dyn Harness>)
+        }),
     );
     // Codex, same lazy pattern: the static descriptor mirrors AcpHarness::codex()
     // exactly (`describe()` after the first resolve must not change the
@@ -758,7 +767,9 @@ pub fn default_registry() -> HarnessRegistry {
             enabled: None,
         },
         Box::new(|| openagents_harness::AcpHarness::antigravity().installed()),
-        Box::new(|| Ok(Arc::new(openagents_harness::AcpHarness::antigravity()) as Arc<dyn Harness>)),
+        Box::new(
+            || Ok(Arc::new(openagents_harness::AcpHarness::antigravity()) as Arc<dyn Harness>),
+        ),
     );
     registry
 }
@@ -1249,7 +1260,8 @@ mod title_tests {
         let registry = HarnessRegistry::new();
         registry.load_prefs(dir.path());
         registry.register(Arc::new(
-            openagents_harness::ClaudeHarness::new().with_executable(std::env::current_exe().unwrap()),
+            openagents_harness::ClaudeHarness::new()
+                .with_executable(std::env::current_exe().unwrap()),
         ));
         let settings = TitleSettings {
             harness: Some(HarnessId::ClaudeCode),

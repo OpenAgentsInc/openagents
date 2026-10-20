@@ -20,6 +20,8 @@ chat-home = { path = "../../../../crates/chat-home" }
 # Moving chats to a cloud computer (#11932).
 openagents-sdk = { path = "../../../../crates/openagents-sdk" }
 coder-cloud = { path = "../../../../crates/coder-cloud" }
+# The capacity book picks each Claude chat's login (#12215).
+microcoder-loop = { path = "../../../../crates/microcoder-loop" }
 openagents-account.workspace = true
 openagents-mcp.workspace = true
 openagents-brand.workspace = true

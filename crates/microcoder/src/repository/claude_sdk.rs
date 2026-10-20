@@ -1014,7 +1014,20 @@ pub(crate) async fn turn(
         );
     }
     let gate = Arc::new(Gate::new(host.workspace(), once, denied));
-    let env = environment(host).await;
+    let mut env = environment(host).await;
+    // The session starts on the login the capacity book picks (#12215): a
+    // named login runs on its token alone.
+    let login = super::lean_session::claude_login(&super::claude_session::LEAN, host.store());
+    if let Some(login) = &login {
+        env.remove(microcoder_loop::logins::TOKEN_VAR);
+        env.extend(
+            login
+                .vars()
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned())),
+        );
+    }
+    let login = login.map(|login| login.name);
     let transcript = Transcript {
         host,
         model: route.model.clone(),
@@ -1278,7 +1291,9 @@ pub(crate) async fn turn(
                 && ended.tool_calls == 0
             {
                 let now = coder::task::autostart::unix_now();
-                return Turn::Refused(Refusal::new(Provider::Claude, kind, now, None));
+                return Turn::Refused(
+                    Refusal::new(Provider::Claude, kind, now, None).on_login(login),
+                );
             }
             ended.error = Some(if finished.errors.is_empty() {
                 format!(

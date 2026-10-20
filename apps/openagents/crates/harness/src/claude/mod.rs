@@ -45,6 +45,7 @@
 
 pub mod catalog;
 mod discovery;
+pub mod logins;
 mod normalize;
 mod wire;
 
@@ -164,6 +165,9 @@ pub struct ClaudeHarness {
     /// Run under a keeper when the engine lends one (#11930); `None` reads
     /// [`crate::keeper::ENV`].
     keepers: Option<bool>,
+    /// The host's Claude logins (#12215); `None` runs every launch on the
+    /// signed-in login.
+    logins: Option<Arc<dyn logins::ClaudeLogins>>,
 }
 
 impl Default for ClaudeHarness {
@@ -177,6 +181,7 @@ impl Default for ClaudeHarness {
             models_cache: crate::catalog::Catalog::default(),
             workspace_commands: crate::skills::CommandDiscovery::default(),
             keepers: None,
+            logins: None,
         }
     }
 }
@@ -201,6 +206,12 @@ impl ClaudeHarness {
     /// Run under a keeper when the engine lends one, or never.
     pub fn with_keepers(mut self, keepers: bool) -> Self {
         self.keepers = Some(keepers);
+        self
+    }
+
+    /// Choose each launch's Claude login from `logins` (#12215).
+    pub fn with_logins(mut self, logins: Arc<dyn logins::ClaudeLogins>) -> Self {
+        self.logins = Some(logins);
         self
     }
 
@@ -335,6 +346,18 @@ impl ClaudeHarness {
         }
         // The chat's proof of its ID, for its shell commands (#12067).
         cmd.envs(crate::chat_identity_env(request.mcp.as_ref()));
+        // A named login runs on its token alone: an API key would take
+        // precedence over it (#12215).
+        if let Some(env) = logins::login_of(request)
+            .filter(|name| *name != logins::DEFAULT_LOGIN)
+            .zip(self.logins.as_ref())
+            .and_then(|(name, logins)| logins.launch_env(name))
+        {
+            cmd.envs(env);
+            for name in logins::API_KEY_VARS {
+                cmd.env_remove(name);
+            }
+        }
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -519,7 +542,9 @@ impl Harness for ClaudeHarness {
     /// Same launch arguments and cwd. The CLI ignores the sandbox level, and
     /// option spellings that launch the same flags are the same runtime.
     fn same_runtime(&self, live: &RunRequest, next: &RunRequest) -> bool {
-        live.cwd == next.cwd && Self::launch_args(live) == Self::launch_args(next)
+        live.cwd == next.cwd
+            && Self::launch_args(live) == Self::launch_args(next)
+            && logins::login_of(live) == logins::login_of(next)
     }
     /// Model, context window, effort, fast mode, thinking, ultracode and the
     /// permission mode all change on the live process (`set_model`,
@@ -527,7 +552,19 @@ impl Harness for ClaudeHarness {
     /// needs a new one (#12200: a permission toggle used to restart the
     /// process and kill its background agents and shells).
     fn reconfigures_in_place(&self, live: &RunRequest, next: &RunRequest) -> bool {
-        live.cwd == next.cwd
+        live.cwd == next.cwd && logins::login_of(live) == logins::login_of(next)
+    }
+    /// The login (#12215): the live runtime's while it has capacity, else
+    /// the next login that has.
+    fn prepare_launch(&self, live: Option<&RunRequest>, next: &mut RunRequest) {
+        if let Some(logins) = &self.logins {
+            logins::prepare(logins.as_ref(), live, next);
+        }
+    }
+    /// A runtime whose login ran out can't work, background work included:
+    /// its subagents run on the same login.
+    fn replaces_despite_background(&self, live: &RunRequest, next: &RunRequest) -> bool {
+        logins::login_of(live) != logins::login_of(next)
     }
 
     /// Credential and executable identity scopes both initialize and catalog caches.
@@ -644,6 +681,9 @@ impl Harness for ClaudeHarness {
         request.mcp = None;
         request.model_options.clear();
         request.auto_approve = false;
+        if let Some(logins) = &self.logins {
+            logins::prepare(logins.as_ref(), None, &mut request);
+        }
         self.run_with_mode(request, controls, true, None).await
     }
 }
@@ -785,6 +825,7 @@ impl ClaudeHarness {
             event_tx,
             controls,
             config: request,
+            logins: self.logins.clone(),
             interrupt_grace: self.interrupt_grace,
             kill_grace: self.kill_grace,
             stderr_tail,
@@ -916,10 +957,49 @@ struct Session {
     /// The configuration the process runs with now: its launch request, then
     /// whatever a steer's `config` applied in place.
     config: RunRequest,
+    /// Where a usage limit is recorded, against the login in `config`.
+    logins: Option<Arc<dyn logins::ClaudeLogins>>,
     interrupt_grace: Duration,
     kill_grace: Duration,
     /// Rolling stderr tail for the crash message on an unexpected exit.
     stderr_tail: crate::StderrTail,
+}
+
+/// Records the usage limit `frame` reports against the login `config` runs
+/// on (#12215): a blocking `rate_limit_event`, with its reset, once a turn,
+/// else an assistant `rate_limit` error. `recorded` is what this turn
+/// recorded: `Some(true)` the event, `Some(false)` the error alone. A
+/// `result` ends the turn.
+fn note_limit(
+    frame: &Frame,
+    logins: &dyn logins::ClaudeLogins,
+    config: &RunRequest,
+    recorded: &mut Option<bool>,
+) {
+    let (limit, from_event) = match frame {
+        Frame::Result(_) => {
+            *recorded = None;
+            return;
+        }
+        Frame::RateLimit(f) if f.rate_limit_info.blocks() && *recorded != Some(true) => (
+            logins::UsageLimit {
+                resets_at: f
+                    .rate_limit_info
+                    .resets_at
+                    .filter(|at| at.is_finite() && *at > 0.0)
+                    .map(|at| at as u64),
+                window: f.rate_limit_info.rate_limit_type.clone(),
+            },
+            true,
+        ),
+        Frame::Assistant(f) if f.error.as_deref() == Some("rate_limit") && recorded.is_none() => {
+            (logins::UsageLimit::default(), false)
+        }
+        _ => return,
+    };
+    *recorded = Some(from_event);
+    let login = logins::login_of(config).unwrap_or(logins::DEFAULT_LOGIN);
+    logins.record_limit(login, &limit);
 }
 
 /// The per-run event loop: one task multiplexing stdout frames, the steering
@@ -936,6 +1016,7 @@ async fn run_session(session: Session) {
         event_tx,
         controls,
         mut config,
+        logins,
         interrupt_grace,
         kill_grace,
         stderr_tail,
@@ -980,6 +1061,8 @@ async fn run_session(session: Session) {
     // dropping on time alone lost a quick replacement's own end.
     let mut stop_done_at: Option<tokio::time::Instant> = None;
     let mut active_since_stop = false;
+    // The limit this turn met, once recorded (#12215).
+    let mut limit_recorded = None;
     let mut commands = Commands::default();
     if let Some(first_command) = first_command {
         commands.written(first_command);
@@ -1101,6 +1184,9 @@ async fn run_session(session: Session) {
                             "late result of a stopped turn dropped"
                         );
                         continue;
+                    }
+                    if let Some(logins) = &logins {
+                        note_limit(&frame, logins.as_ref(), &config, &mut limit_recorded);
                     }
                     for ev in norm.normalize(frame, interrupted || stopping.is_some()) {
                         match &ev {
@@ -1623,7 +1709,10 @@ mod mcp_injection_tests {
                 .collect(),
         };
         let parsed: Value = serde_json::from_str(&mcp_config_arg(&mcp)).unwrap();
-        assert_eq!(parsed["mcpServers"]["openagents"]["command"], "/opt/openagents/openagents");
+        assert_eq!(
+            parsed["mcpServers"]["openagents"]["command"],
+            "/opt/openagents/openagents"
+        );
         assert_eq!(
             parsed["mcpServers"]["openagents"]["args"],
             serde_json::json!(["mcp"])

@@ -11245,6 +11245,7 @@ dependencies = [
  "ignore",
  "libc",
  "loro",
+ "microcoder-loop",
  "nostr",
  "notify 7.0.0",
  "oa-copy",

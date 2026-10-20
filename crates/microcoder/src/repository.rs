@@ -1201,56 +1201,83 @@ async fn run_stages_with<T: codex_transport::Transport>(
                     }
                     continue;
                 }
-                match engine.turn(&host, &route, program, recipe.as_mut()).await {
-                    devin::Turn::Ended(ended) => {
-                        let cancelled = host.cancelled();
-                        let (ending, completed) = ended.ending(cancelled);
-                        // Frozen checks that didn't pass while the agent
-                        // worked run once after its turn, for the record,
-                        // unless the run's independent check runs them on
-                        // the exact candidate right after (#10232): running
-                        // them twice only kept the person waiting (#10279).
-                        let independent = completed && host.checks_follow();
-                        let checks = match recipe.as_mut() {
-                            Some(recipe) if !recipe.frozen.is_empty() => {
-                                Some(if ended.checks_passed {
-                                    Some(true)
-                                } else if cancelled || independent || ended.asked.is_some() {
-                                    None
-                                } else {
-                                    Some(recipe.check(&host, "after the turn").await)
-                                })
+                // A refusal on one login moves the turn to the provider's next
+                // login with capacity (#12215), at most once a login.
+                let mut moves = 0;
+                loop {
+                    match engine
+                        .turn(&host, &route, program.clone(), recipe.as_mut())
+                        .await
+                    {
+                        devin::Turn::Ended(ended) => {
+                            let cancelled = host.cancelled();
+                            let (ending, completed) = ended.ending(cancelled);
+                            // Frozen checks that didn't pass while the agent
+                            // worked run once after its turn, for the record,
+                            // unless the run's independent check runs them on
+                            // the exact candidate right after (#10232): running
+                            // them twice only kept the person waiting (#10279).
+                            let independent = completed && host.checks_follow();
+                            let checks = match recipe.as_mut() {
+                                Some(recipe) if !recipe.frozen.is_empty() => {
+                                    Some(if ended.checks_passed {
+                                        Some(true)
+                                    } else if cancelled || independent || ended.asked.is_some() {
+                                        None
+                                    } else {
+                                        Some(recipe.check(&host, "after the turn").await)
+                                    })
+                                }
+                                _ => None,
+                            };
+                            if let Some(error) = &ended.error {
+                                let _ = host.append(
+                                    &Step::said(
+                                        Source::System,
+                                        &format!("{name} could not finish the turn: {error}"),
+                                    )
+                                    .noting(&format!("{note}_error"), json!({"error": error})),
+                                );
                             }
-                            _ => None,
-                        };
-                        if let Some(error) = &ended.error {
-                            let _ = host.append(
-                                &Step::said(
-                                    Source::System,
-                                    &format!("{name} could not finish the turn: {error}"),
-                                )
-                                .noting(&format!("{note}_error"), json!({"error": error})),
-                            );
-                        }
-                        host.cost(spent.plus(agent_cost(&ended)));
-                        let mut agent = ended.summary();
-                        if let Some(message) = ended.stop_message(cancelled) {
-                            agent["stopped"] = json!(message);
-                        }
-                        let summary = json!({"configuration":host.configuration(),"route":route,
+                            host.cost(spent.plus(agent_cost(&ended)));
+                            let mut agent = ended.summary();
+                            if let Some(message) = ended.stop_message(cancelled) {
+                                agent["stopped"] = json!(message);
+                            }
+                            let summary = json!({"configuration":host.configuration(),"route":route,
                             note:agent,"independent_checks":"not_run",
                             "recipe_checks":checks.map(|pass| json!({"pass":pass,
                                 "left_to":(pass.is_none() && independent).then_some("independent_checks"),
                                 "ended_turn":ended.checks_passed})),
                             "billing":"unknown","automatic_crash_resume":false});
-                        return host.finish(ending, completed, summary);
-                    }
-                    devin::Turn::Refused(refusal) => {
-                        let recorded = capacity::record(&book, refusal.clone()).err();
-                        refusals.push(refusal.clone());
-                        let book_state = recorded
-                            .map_or_else(|| json!("recorded"), |why| json!({"unrecorded":why}));
-                        let _ = host.append(
+                            return host.finish(ending, completed, summary);
+                        }
+                        devin::Turn::Refused(refusal) => {
+                            let recorded = capacity::record(&book, refusal.clone()).err();
+                            refusals.push(refusal.clone());
+                            let now = task::autostart::unix_now();
+                            let next = capacity::Book::load(&book)
+                                .pick(engine.provider(), now)
+                                .map(|pick| pick.name().map(str::to_owned));
+                            if recorded.is_none()
+                                && moves < MAX_LOGIN_MOVES
+                                && !host.cancelled()
+                                && next.as_ref().is_some_and(|next| *next != refusal.login)
+                            {
+                                moves += 1;
+                                let _ = host.append(
+                                &Step::said(
+                                    Source::System,
+                                    &format!("{name} refused for a usage or rate limit; the turn moves to another login."),
+                                )
+                                .noting("login_switch", json!({"route":route,"refusal":refusal,
+                                    "login":next.flatten()})),
+                            );
+                                continue;
+                            }
+                            let book_state = recorded
+                                .map_or_else(|| json!("recorded"), |why| json!({"unrecorded":why}));
+                            let _ = host.append(
                             &Step::said(
                                 Source::System,
                                 &format!("{name} refused for a usage or rate limit; the run switches to the next admitted route."),
@@ -1260,8 +1287,10 @@ async fn run_stages_with<T: codex_transport::Transport>(
                                 json!({"from":route,"refusal":refusal,"capacity_book":book_state}),
                             ),
                         );
-                        if last {
-                            return no_capacity(host, &book, &refusals);
+                            if last {
+                                return no_capacity(host, &book, &refusals);
+                            }
+                            break;
                         }
                     }
                 }
@@ -1270,6 +1299,9 @@ async fn run_stages_with<T: codex_transport::Transport>(
     }
     no_capacity(host, &book, &refusals)
 }
+
+/// The most times one stage's turn moves to another login (#12215).
+const MAX_LOGIN_MOVES: usize = 8;
 
 /// End a run no stage could serve: `no_capacity`, with the earliest reset.
 fn no_capacity(host: Host, book: &Path, refusals: &[Refusal]) -> Result<task::Task, task::Error> {

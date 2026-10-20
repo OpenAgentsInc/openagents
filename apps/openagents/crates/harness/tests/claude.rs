@@ -1500,3 +1500,104 @@ async fn a_stopped_turn_keeps_the_process_and_its_background_work() {
         "closing the mailbox ends the run"
     );
 }
+
+/// A fake set of Claude logins (#12215): `alt` and `spare` are named, and
+/// the ones in `out` have no capacity.
+#[derive(Default)]
+struct FakeLogins {
+    out: Mutex<Vec<String>>,
+    recorded: Mutex<Vec<(String, openagents_harness::claude::logins::UsageLimit)>>,
+}
+
+impl openagents_harness::claude::logins::ClaudeLogins for FakeLogins {
+    fn choose(&self, live: Option<&str>) -> Option<String> {
+        let out = self.out.lock().unwrap();
+        if let Some(live) = live.filter(|live| !out.iter().any(|o| o == live)) {
+            return Some(live.to_owned());
+        }
+        ["default", "alt", "spare"]
+            .into_iter()
+            .find(|name| !out.iter().any(|o| o == name))
+            .map(str::to_owned)
+    }
+    fn launch_env(&self, name: &str) -> Option<Vec<(String, String)>> {
+        (name != "default").then(|| {
+            vec![
+                ("CLAUDE_CODE_OAUTH_TOKEN".into(), format!("token-of-{name}")),
+                ("OA_CLAUDE_LOGIN".into(), name.into()),
+            ]
+        })
+    }
+    fn record_limit(&self, name: &str, limit: &openagents_harness::claude::logins::UsageLimit) {
+        self.out.lock().unwrap().push(name.into());
+        self.recorded
+            .lock()
+            .unwrap()
+            .push((name.into(), limit.clone()));
+    }
+}
+
+/// #12215: a chat keeps its login while it has capacity, moves when it runs
+/// out (even past background work), launches a named login on its token, and
+/// records the limit it meets against that login, with the reset.
+#[tokio::test]
+async fn a_chat_runs_on_its_login_and_records_the_limit_against_it() {
+    use openagents_harness::claude::logins::{LOGIN_OPTION, login_of};
+    let logins = Arc::new(FakeLogins::default());
+    let harness = harness().with_logins(logins.clone());
+
+    let mut first = request("first");
+    harness.prepare_launch(None, &mut first);
+    assert_eq!(login_of(&first), Some("default"));
+    logins.out.lock().unwrap().push("default".into());
+    let mut next = request("scenario:login-limit");
+    harness.prepare_launch(Some(&first), &mut next);
+    assert_eq!(login_of(&next), Some("alt"));
+    assert!(
+        !harness.same_runtime(&first, &next),
+        "a new login is a new process"
+    );
+    assert!(!harness.reconfigures_in_place(&first, &next));
+    assert!(harness.replaces_despite_background(&first, &next));
+    let mut again = request("again");
+    harness.prepare_launch(Some(&next), &mut again);
+    assert!(
+        harness.same_runtime(&next, &again),
+        "alt still has capacity"
+    );
+
+    let (controls, _steer, _token) = controls("A");
+    let events = run_to_end(&harness, next, controls).await;
+    let text: String = events
+        .iter()
+        .filter_map(|e| match e {
+            AgentEvent::TextDelta { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(text, format!("login=alt token={}", "token-of-alt".len()));
+    // The assistant's error records the limit; the rate limit event that
+    // follows refines it with the reset, once.
+    let recorded = logins.recorded.lock().unwrap().clone();
+    assert_eq!(recorded.len(), 2, "{recorded:?}");
+    assert!(recorded.iter().all(|(login, _)| login == "alt"));
+    let last = &recorded[1].1;
+    assert_eq!(last.resets_at, Some(4_102_444_800));
+    assert_eq!(last.window.as_deref(), Some("seven_day"));
+    assert!(matches!(
+        events.last(),
+        Some(AgentEvent::Done {
+            status: DoneStatus::Errored,
+            ..
+        })
+    ));
+
+    // Without logins the request is left as it is.
+    let mut plain = request("plain");
+    plain
+        .model_options
+        .insert(LOGIN_OPTION.into(), serde_json::json!("alt"));
+    let bare = self::harness();
+    bare.prepare_launch(None, &mut plain);
+    assert_eq!(login_of(&plain), Some("alt"));
+}

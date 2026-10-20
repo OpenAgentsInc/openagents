@@ -207,9 +207,23 @@ fn removed_env(
     out
 }
 
-/// Drive `claude -p` once and answer, or fail with a typed sentence.
-/// The conversation is kept under a session id Coder chooses (or the one
+/// The capacity book's directory, which picks the Claude login a plan run
+/// starts on (#12215). Tests never read the book: it lives in the real home.
+fn book_dir() -> Option<std::path::PathBuf> {
+    if cfg!(test) {
+        None
+    } else {
+        Some(coder::task::local::default_store())
+    }
+}
+
+/// Drive `claude -p` and answer, or fail with a typed sentence. The
+/// conversation is kept under a session id Coder chooses (or the one
 /// `turn` continues), so a run a usage limit stops can go on later.
+///
+/// A plan run starts on the Claude login the capacity book picks (#12215).
+/// A usage limit is recorded against that login, and when another login has
+/// capacity the conversation goes on there.
 pub(super) async fn run(
     program: &Path,
     task: &str,
@@ -218,6 +232,110 @@ pub(super) async fn run(
     emit: &mut dyn FnMut(RuntimeEvent),
     turn: Turn,
 ) -> Result<Value, String> {
+    let book = book_dir().map(|dir| (dir, microcoder_loop::account::identify as Identify));
+    run_with_book(program, task, cwd, cancel, emit, turn, book).await
+}
+
+type Identify = microcoder_loop::account::Identify;
+
+/// [`run`] with the capacity book in `book` and `identify` naming the
+/// signed-in login, or no book.
+async fn run_with_book(
+    program: &Path,
+    task: &str,
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+    mut turn: Turn,
+    book: Option<(std::path::PathBuf, Identify)>,
+) -> Result<Value, String> {
+    use microcoder_loop::capacity::{self, Provider};
+    let book = book.filter(|_| turn.key.is_none());
+    let pick = |book: &Path, identify: Identify| {
+        let loaded = capacity::Book::load_with(book, identify);
+        let picked = loaded.pick(Provider::Claude, coder_delegate::limit::now())?;
+        Some((picked.name().map(str::to_owned), picked.chosen()))
+    };
+    loop {
+        let now = coder_delegate::limit::now();
+        let login = book
+            .as_ref()
+            .and_then(|(book, identify)| pick(book, *identify))
+            .and_then(|(_, chosen)| chosen)
+            .map(|chosen| {
+                coder_delegate::delegate::ClaudeLogin::new(
+                    chosen.name,
+                    chosen.token.expose().to_owned(),
+                )
+            });
+        let name = login.as_ref().map(|login| login.name.clone());
+        let read_only = turn.read_only;
+        let (result, limit, session) = run_on(program, task, cwd, cancel, emit, turn, login).await;
+        let (Some((book, identify)), Some(limit)) = (book.as_ref(), limit) else {
+            return result;
+        };
+        let refusal =
+            coder::task::capacity::from_limit(Provider::Claude, &limit, now).on_login(name.clone());
+        if let Err(why) = capacity::record_with(book, refusal, *identify) {
+            eprintln!("coder: the capacity book was not updated: {why}");
+            return result;
+        }
+        let next = pick(book, *identify).map(|(next, _)| next);
+        if next.is_none_or(|next| next == name) || !session_id(&session) {
+            return result;
+        }
+        turn = Turn {
+            resume: Some(session),
+            key: None,
+            read_only,
+        };
+    }
+}
+
+/// One `claude -p` run on `login` (`None`: the signed-in login, or the
+/// turn's own key): its answer, the usage limit it met, and the session it
+/// kept.
+async fn run_on(
+    program: &Path,
+    task: &str,
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+    turn: Turn,
+    login: Option<coder_delegate::delegate::ClaudeLogin>,
+) -> (
+    Result<Value, String>,
+    Option<coder_delegate::limit::Limit>,
+    String,
+) {
+    let session = turn.resume.clone().unwrap_or_else(new_session);
+    let result = run_once(program, task, cwd, cancel, emit, turn, &session, login).await;
+    match result {
+        Ok((report, on_key)) => {
+            let limit = (!on_key).then(|| report.limit(ID)).flatten();
+            (
+                answer(&report, coder_delegate::limit::now(), &session),
+                limit,
+                session,
+            )
+        }
+        Err(error) => (Err(error), None, session),
+    }
+}
+
+/// Drive `claude -p` once, and report how it ended and whether it ran on
+/// the turn's own key.
+#[allow(clippy::too_many_arguments)]
+async fn run_once(
+    program: &Path,
+    task: &str,
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+    turn: Turn,
+    session: &str,
+    login: Option<coder_delegate::delegate::ClaudeLogin>,
+) -> Result<(Report, bool), String> {
     if !crate::approval::tools_allowed() {
         return Err("Claude Code cannot run when tools are disabled.".into());
     }
@@ -234,7 +352,6 @@ pub(super) async fn run(
     if turn.resume.as_deref().is_some_and(|id| !session_id(id)) {
         return Err("That Claude Code conversation can't be continued.".into());
     }
-    let session = turn.resume.clone().unwrap_or_else(new_session);
     let on_key = turn.key.is_some();
     let mut command = acp_client::process::command(program);
     acp_client::process::non_interactive(&mut command);
@@ -242,7 +359,7 @@ pub(super) async fn run(
         .args(["-p", "--output-format", "stream-json", "--verbose"])
         .args(match &turn.resume {
             Some(id) => ["--resume", id.as_str()],
-            None => ["--session-id", session.as_str()],
+            None => ["--session-id", session],
         })
         .current_dir(cwd);
     if crate::approval::gated() || turn.read_only {
@@ -294,6 +411,13 @@ pub(super) async fn run(
             .env_remove(secret_screen::CLAUDE_CODE_OAUTH_TOKEN)
             .env_remove("ANTHROPIC_AUTH_TOKEN")
             .env("ANTHROPIC_API_KEY", key.expose());
+    } else if let Some(login) = &login {
+        // A named login runs on its token alone (#12215): an API key would
+        // take precedence over it.
+        command
+            .env_remove("ANTHROPIC_API_KEY")
+            .env_remove("ANTHROPIC_AUTH_TOKEN")
+            .envs(login.vars());
     }
     drop(turn);
     let started = Instant::now();
@@ -355,7 +479,7 @@ pub(super) async fn run(
     if !on_key {
         coder_delegate::delegate::remember_engine_notice(ID, &report);
     }
-    answer(&report, coder_delegate::limit::now(), &session)
+    Ok((report, on_key))
 }
 
 /// The host a print run's hook bridge asks: the session's registry
@@ -712,6 +836,82 @@ echo '{{"type":"result","subtype":"success","is_error":false,"result":"done"}}'
 
     /// The fixture stand-in for the binary: never a real account.
     #[cfg(unix)]
+    /// #12215: a plan run starts on the login the capacity book picks, and
+    /// on a usage limit records it against that login and goes on in the
+    /// same conversation on the next login with capacity, on its token.
+    #[tokio::test]
+    async fn a_limited_plan_run_goes_on_on_the_next_login() {
+        fn nobody(_: microcoder_loop::capacity::Provider) -> Option<String> {
+            None
+        }
+        let _lock = crate::approval::test_lock().lock().unwrap();
+        use microcoder_loop::capacity::{self, Provider};
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("claude");
+        let log = dir.path().join("log");
+        std::fs::write(
+            &program,
+            format!(
+                r#"#!/bin/sh
+read task
+echo "${{OA_CLAUDE_LOGIN:-default}} $*" >> {log}
+if [ "$OA_CLAUDE_LOGIN" != "spare" ]; then
+echo '{{"type":"rate_limit_event","rate_limit_info":{{"status":"rejected","resetsAt":4102444800,"rateLimitType":"seven_day"}}}}'
+echo '{{"type":"result","subtype":"success","is_error":true,"result":"You have hit your weekly limit","session_id":"{SESSION}"}}'
+exit 1
+fi
+printf '{{"type":"result","subtype":"success","is_error":false,"result":"%s on %s","session_id":"{SESSION}"}}\n' "$task" "${{#CLAUDE_CODE_OAUTH_TOKEN}}"
+"#,
+                log = log.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let store = dir.path().join("tasks");
+        let tokens = dir.path().join("claude-logins");
+        let token =
+            microcoder_loop::logins::Token::find("sk-ant-oat01-fixture-token-0123456789").unwrap();
+        for name in ["alt", "spare"] {
+            let file = microcoder_loop::logins::save_token(&tokens, name, &token).unwrap();
+            capacity::add_login(&store, Provider::Claude, name, &file, 1).unwrap();
+        }
+        let answer = run_with_book(
+            &program,
+            "fix it",
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+            Turn::default(),
+            Some((store.clone(), nobody)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            answer["reply"],
+            format!("fix it on {}", token.expose().len())
+        );
+        let runs = std::fs::read_to_string(&log).unwrap();
+        let runs: Vec<&str> = runs.lines().collect();
+        assert_eq!(runs.len(), 3, "{runs:?}");
+        assert!(runs[0].starts_with("default ") && runs[0].contains("--session-id"));
+        assert!(
+            runs[1].starts_with("alt ") && runs[1].contains("--resume"),
+            "{runs:?}"
+        );
+        assert!(runs[2].starts_with("spare ") && runs[2].contains("--resume"));
+        let book = capacity::Book::load_with(&store, nobody);
+        let now = coder_delegate::limit::now();
+        assert!(
+            book.blocking_login(Provider::Claude, Some("alt"), now)
+                .is_some()
+        );
+        assert_eq!(
+            book.pick(Provider::Claude, now).unwrap().name(),
+            Some("spare")
+        );
+    }
+
     #[tokio::test]
     async fn the_unmodified_binary_runs_in_print_mode_with_the_task_on_stdin() {
         let _lock = crate::approval::test_lock().lock().unwrap();

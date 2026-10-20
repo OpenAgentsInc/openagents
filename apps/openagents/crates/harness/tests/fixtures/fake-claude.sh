@@ -452,6 +452,14 @@ case "$first" in
   done
   ;;
 
+*scenario:login-limit*)
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":[],"cwd":"/tmp","session_id":"sess-login"}'
+  emit "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"login=${OA_CLAUDE_LOGIN:-none} token=${#CLAUDE_CODE_OAUTH_TOKEN}\"}}}"
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[]},"error":"rate_limit"}'
+  emit '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"seven_day","resetsAt":4102444800}}'
+  emit '{"type":"result","subtype":"error_during_execution","errors":["You have hit your weekly limit"],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-login"}'
+  ;;
+
 *scenario:error*)
   emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":[],"cwd":"/tmp","session_id":"sess-err"}'
   # Terse assistant-level error code with no content.

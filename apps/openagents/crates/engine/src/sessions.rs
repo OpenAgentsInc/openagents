@@ -146,7 +146,14 @@ impl RuntimeConfig {
         background_tasks: usize,
     ) -> Option<bool> {
         match self.route(harness_id, request) {
-            None if background_tasks > 0 && self.harness_id == harness_id => Some(false),
+            None if background_tasks > 0
+                && self.harness_id == harness_id
+                && !self
+                    .harness
+                    .replaces_despite_background(&self.request, request) =>
+            {
+                Some(false)
+            }
             route => route,
         }
     }
@@ -665,6 +672,15 @@ impl SessionsEngine {
         // cross-harness delivery before recording or routing the user turn.
         openagents_proto::invocation::validate_harness_invocations(&request.prompt, harness_id)
             .map_err(EngineError::Other)?;
+        // What the host chooses for the launch, such as Claude Code's login
+        // (#12215), settled against the live runtime before routing.
+        if let Ok(harness) = self.inner.registry.resolve(harness_id) {
+            let live = lock(&self.inner.runs)
+                .get(chat_id)
+                .filter(|h| h.runtime_config.harness_id == harness_id)
+                .map(|h| h.runtime_config.request.clone());
+            harness.prepare_launch(live.as_ref(), &mut request);
+        }
         let routed = lock(&self.inner.runs).get(chat_id).map(|h| {
             let background = h.turn.background_tasks();
             let route = h
@@ -891,7 +907,8 @@ impl SessionsEngine {
         let turn = TurnControl::default();
         let started = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let fork_history_sent = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let (voice_handle, realtime, _voice_events) = openagents_harness::codex::realtime::channel();
+        let (voice_handle, realtime, _voice_events) =
+            openagents_harness::codex::realtime::channel();
         let voice_active = Arc::new(VoiceActivity::default());
         let controls = RunControls {
             realtime: (harness_id == HarnessId::Codex).then_some(realtime),
@@ -2005,12 +2022,14 @@ impl Inner {
             .collect();
         // Only a fork owes copied history: its transcript has the seam. A
         // saved agent whose runtime changed owes it too (#11966).
-        if !saved_agent::carries_history(doc) && !entries.iter().any(|entry| {
-            entry
-                .parts
-                .iter()
-                .any(|part| matches!(part, openagents_doc::MessagePart::Fork { .. }))
-        }) {
+        if !saved_agent::carries_history(doc)
+            && !entries.iter().any(|entry| {
+                entry
+                    .parts
+                    .iter()
+                    .any(|part| matches!(part, openagents_doc::MessagePart::Fork { .. }))
+            })
+        {
             return None;
         }
         let end = match provider {
@@ -2462,6 +2481,9 @@ async fn drive_run(
         resume: None,
         ..request.clone()
     });
+    // A turn that errored because its Claude login ran out runs again on
+    // the next login with capacity (#12215): (request, from, to).
+    let mut login_move: Option<(RunRequest, String, String)> = None;
     // The session this run resumes, for the missing-session fallback.
     let resumed = request.resume.clone().filter(|_| {
         !request
@@ -2530,8 +2552,10 @@ async fn drive_run(
                 }
                 let mut wire_request = request;
                 if !matches!(harness_id, HarnessId::Cursor | HarnessId::Opencode) {
-                    wire_request.prompt =
-                        openagents_proto::invocation::harness_prompt(&wire_request.prompt, harness_id);
+                    wire_request.prompt = openagents_proto::invocation::harness_prompt(
+                        &wire_request.prompt,
+                        harness_id,
+                    );
                 }
                 keepers::start(
                     &inner,
@@ -2725,15 +2749,16 @@ async fn drive_run(
     // ACP retains the watchdog only for unowned self-continued activity.
     let deterministic_turn_end = harness.deterministic_turn_end();
     let authoritative_prompt_end = harness.authoritative_prompt_end();
-    let quiesce_after: Option<std::time::Duration> = match openagents_brand::env_var("OPENAGENTS_TURN_QUIESCE_MS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-    {
-        Some(0) => None,
-        Some(ms) => Some(std::time::Duration::from_millis(ms)),
-        None if deterministic_turn_end => None,
-        None => Some(std::time::Duration::from_secs(120)),
-    };
+    let quiesce_after: Option<std::time::Duration> =
+        match openagents_brand::env_var("OPENAGENTS_TURN_QUIESCE_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+        {
+            Some(0) => None,
+            Some(ms) => Some(std::time::Duration::from_millis(ms)),
+            None if deterministic_turn_end => None,
+            None => Some(std::time::Duration::from_secs(120)),
+        };
     let mut last_stream_activity = tokio::time::Instant::now();
     // SELF-CONTINUED turns get a much SHORTER quiesce window. A turn the
     // agent starts on its own (background-task wake) can never receive a
@@ -3673,6 +3698,13 @@ async fn drive_run(
                 );
                 continue;
             }
+            if *status == DoneStatus::Errored
+                && !interrupted
+                && !pending_steer
+                && let Some(live) = retry_request.as_ref()
+            {
+                login_move = moved_login(harness.as_ref(), live);
+            }
             final_completed_turn = completed_turn;
             break match status {
                 DoneStatus::Errored => SessionStatus::Errored,
@@ -3730,6 +3762,12 @@ async fn drive_run(
     } else {
         orphans
     };
+    if orphans.is_empty()
+        && !interrupted
+        && let Some((request, from, to)) = login_move
+    {
+        move_to_login(&inner, &chat_id, harness_id, &doc, request, &from, &to);
+    }
     if !orphans.is_empty() {
         // The dying run accepted these into its mailbox but never confirmed a
         // Steered boundary (idle-reaper race, a mid-turn error discarding
@@ -3779,6 +3817,99 @@ async fn drive_run(
     }
 }
 
+/// The request a turn that ended on `live`'s exhausted login runs again
+/// with, and the logins it moves from and to (#12215): `None` unless the
+/// host now chooses another login for it.
+fn moved_login(harness: &dyn Harness, live: &RunRequest) -> Option<(RunRequest, String, String)> {
+    use openagents_harness::claude::logins::{DEFAULT_LOGIN, login_of};
+    let mut next = live.clone();
+    harness.prepare_launch(Some(live), &mut next);
+    if !harness.replaces_despite_background(live, &next) {
+        return None;
+    }
+    let from = login_of(live).unwrap_or(DEFAULT_LOGIN).to_owned();
+    let to = login_of(&next)?.to_owned();
+    Some((next, from, to))
+}
+
+/// A login's name as the chat says it.
+fn login_words(name: &str) -> String {
+    if name == openagents_harness::claude::logins::DEFAULT_LOGIN {
+        "the signed-in Claude login".into()
+    } else {
+        format!("the Claude login {name}")
+    }
+}
+
+/// Runs the chat's last message again on the login `to` after `from` hit a
+/// usage limit (#12215): one line in the chat says so, and the new run
+/// resumes the chat's session (session files are local to this computer),
+/// or, when Claude Code can't find it, starts fresh with the conversation
+/// (#12205).
+fn move_to_login(
+    inner: &Arc<Inner>,
+    chat_id: &str,
+    harness_id: HarnessId,
+    doc: &crate::doc_host::DocWriter,
+    mut request: RunRequest,
+    from: &str,
+    to: &str,
+) {
+    let Some((message_id, prompt)) = doc.read_entries().ok().and_then(|entries| {
+        entries
+            .iter()
+            .rev()
+            .find(|e| e.role == MessageRole::User)
+            .and_then(|e| {
+                e.parts.iter().find_map(|p| match p {
+                    MessagePart::Text { text, .. } => Some((e.id.clone(), text.clone())),
+                    _ => None,
+                })
+            })
+    }) else {
+        return;
+    };
+    let mut from_words = login_words(from);
+    if let Some(first) = from_words.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    let _ = doc.push_message(&openagents_doc::SessionMessageEntry {
+        id: format!("login:{}", new_id()),
+        role: MessageRole::System,
+        parts: vec![MessagePart::Text {
+            id: "login".into(),
+            text: format!(
+                "{from_words} reached its usage limit, so this chat continues on {}.",
+                login_words(to)
+            ),
+        }],
+        created_at: now_ms(),
+        device_id: inner.device_id.clone(),
+        status: Some(MessageStatus::Complete),
+        continuation_of: None,
+        duration_ms: None,
+    });
+    tracing::info!(chat = %chat_id, from, to, "moving the chat to another Claude login");
+    request.prompt = prompt;
+    request.resume = None;
+    request.attachments.clear();
+    let engine = SessionsEngine {
+        inner: inner.clone(),
+    };
+    let chat = chat_id.to_owned();
+    tokio::spawn(async move {
+        if let Err(err) = engine
+            .dispatch_with(&chat, harness_id, request, Some(message_id), false)
+            .await
+        {
+            tracing::warn!(chat = %chat, error = %err, "the run on the next Claude login did not start");
+            engine
+                .inner
+                .set_status(&chat, SessionStatus::Errored, false);
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3813,11 +3944,17 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
         assert_eq!(
             parsed["currentUserMessage"],
-            openagents_proto::invocation::harness_prompt(&current, openagents_proto::HarnessId::Cursor)
+            openagents_proto::invocation::harness_prompt(
+                &current,
+                openagents_proto::HarnessId::Cursor
+            )
         );
         assert_eq!(
             parsed["previousUserMessages"][0],
-            openagents_proto::invocation::harness_prompt(&previous, openagents_proto::HarnessId::Cursor)
+            openagents_proto::invocation::harness_prompt(
+                &previous,
+                openagents_proto::HarnessId::Cursor
+            )
         );
     }
 
@@ -4127,7 +4264,9 @@ mod tests {
         fn reasoning_levels(&self) -> &[openagents_proto::ReasoningLevel] {
             &[]
         }
-        async fn models(&self) -> Result<Vec<openagents_proto::Model>, openagents_harness::HarnessError> {
+        async fn models(
+            &self,
+        ) -> Result<Vec<openagents_proto::Model>, openagents_harness::HarnessError> {
             Ok(vec![])
         }
         async fn start_idle(
@@ -4135,7 +4274,10 @@ mod tests {
             request: RunRequest,
             _controls: openagents_harness::RunControls,
         ) -> Result<
-            futures::stream::BoxStream<'static, Result<AgentEvent, openagents_harness::HarnessError>>,
+            futures::stream::BoxStream<
+                'static,
+                Result<AgentEvent, openagents_harness::HarnessError>,
+            >,
             openagents_harness::HarnessError,
         > {
             use futures::StreamExt;
@@ -4169,7 +4311,10 @@ mod tests {
             _request: RunRequest,
             _controls: openagents_harness::RunControls,
         ) -> Result<
-            futures::stream::BoxStream<'static, Result<AgentEvent, openagents_harness::HarnessError>>,
+            futures::stream::BoxStream<
+                'static,
+                Result<AgentEvent, openagents_harness::HarnessError>,
+            >,
             openagents_harness::HarnessError,
         > {
             self.inference_calls
@@ -4269,6 +4414,64 @@ mod tests {
         idle_startup_case(false).await;
     }
 
+    /// #12215: a Claude chat whose login ran out moves to the next login
+    /// with capacity, replacing its runtime even past background work, and
+    /// keeps its login while that one has capacity.
+    #[test]
+    fn a_chat_on_an_exhausted_login_moves_to_the_next_one() {
+        use microcoder_loop::capacity::{self, Provider};
+        use openagents_harness::claude::logins::{ClaudeLogins, UsageLimit, login_of};
+        fn nobody(_: Provider) -> Option<String> {
+            None
+        }
+        fn clock() -> u64 {
+            1_800_000_000
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("tasks");
+        let token =
+            microcoder_loop::logins::Token::find("sk-ant-oat01-fixture-token-0123456789").unwrap();
+        let file =
+            microcoder_loop::logins::save_token(&dir.path().join("logins"), "alt", &token).unwrap();
+        capacity::add_login(&store, Provider::Claude, "alt", &file, 1).unwrap();
+        let logins = Arc::new(crate::claude_logins::BookLogins::new(store, nobody, clock));
+        let harness: Arc<dyn Harness> =
+            Arc::new(openagents_harness::ClaudeHarness::new().with_logins(logins.clone()));
+
+        let mut live = request();
+        harness.prepare_launch(None, &mut live);
+        assert_eq!(login_of(&live), Some("default"));
+        assert!(
+            moved_login(harness.as_ref(), &live).is_none(),
+            "default has capacity"
+        );
+        let config = RuntimeConfig::new(HarnessId::ClaudeCode, &live, harness.clone());
+        let mut next = request();
+        harness.prepare_launch(Some(&live), &mut next);
+        assert_eq!(
+            config.route_keeping_background(HarnessId::ClaudeCode, &next, 2),
+            Some(false)
+        );
+
+        logins.record_limit(
+            "default",
+            &UsageLimit {
+                resets_at: Some(clock() + 3_600),
+                window: Some("five_hour".into()),
+            },
+        );
+        let (moved, from, to) = moved_login(harness.as_ref(), &live).expect("alt has capacity");
+        assert_eq!((from.as_str(), to.as_str()), ("default", "alt"));
+        assert_eq!(login_of(&moved), Some("alt"));
+        // The runtime is replaced, background work or not: it can't work.
+        assert_eq!(
+            config.route_keeping_background(HarnessId::ClaudeCode, &moved, 2),
+            None
+        );
+        assert_eq!(login_words("default"), "the signed-in Claude login");
+        assert!(oa_copy::violations(&login_words("alt"), &[]).is_empty());
+    }
+
     #[test]
     fn live_routing_requires_the_same_runtime_configuration() {
         let initial = request();
@@ -4325,12 +4528,18 @@ mod tests {
         let mut moved = initial.clone();
         moved.cwd = "/elsewhere".into();
         assert_eq!(config.route(HarnessId::Grok, &moved), None);
-        assert_eq!(config.route_keeping_background(HarnessId::Grok, &moved, 0), None);
+        assert_eq!(
+            config.route_keeping_background(HarnessId::Grok, &moved, 0),
+            None
+        );
         assert_eq!(
             config.route_keeping_background(HarnessId::Grok, &moved, 3),
             Some(false)
         );
-        assert_eq!(config.route_keeping_background(HarnessId::Devin, &moved, 3), None);
+        assert_eq!(
+            config.route_keeping_background(HarnessId::Devin, &moved, 3),
+            None
+        );
         let mut same = initial.clone();
         same.prompt = "again".into();
         assert_eq!(
@@ -4451,7 +4660,9 @@ mod tests {
         fn reasoning_levels(&self) -> &[openagents_proto::ReasoningLevel] {
             &[openagents_proto::ReasoningLevel::Medium]
         }
-        async fn models(&self) -> Result<Vec<openagents_proto::Model>, openagents_harness::HarnessError> {
+        async fn models(
+            &self,
+        ) -> Result<Vec<openagents_proto::Model>, openagents_harness::HarnessError> {
             Ok(vec![])
         }
         async fn run(
@@ -4459,7 +4670,10 @@ mod tests {
             _request: RunRequest,
             _controls: RunControls,
         ) -> Result<
-            futures::stream::BoxStream<'static, Result<AgentEvent, openagents_harness::HarnessError>>,
+            futures::stream::BoxStream<
+                'static,
+                Result<AgentEvent, openagents_harness::HarnessError>,
+            >,
             openagents_harness::HarnessError,
         > {
             let mut feed = self

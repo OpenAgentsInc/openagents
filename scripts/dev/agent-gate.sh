@@ -9,6 +9,8 @@
 #          holds others, #12211), when a usage limit parked agents and nobody
 #          resumed, or when OA_AGENT_MAX agents are already running (no cap
 #          unless OA_AGENT_MAX is set; owner, 2026-10-12).
+#          It also refuses when this session's own login (OA_CLAUDE_LOGIN,
+#          else default) is out, since its subagents run on it (#12215).
 #   start  SubagentStart: counts a running agent.
 #   stop   SubagentStop: uncounts it.
 #   limit  StopFailure / PostToolUseFailure: when the failure is a usage
@@ -56,6 +58,14 @@ case "$mode" in
     fi
     if [ -x "$OPENAGENTS" ] && ! out=$("$OPENAGENTS" capacity check claude 2>&1); then
       deny "Every Claude login is out of capacity: ${out:-a recorded limit holds}. No new agents until one resets."
+    fi
+    # A subagent runs on its parent session's login (#12215): when this
+    # session's own login is out, a new agent here would fail at once even
+    # though another login has capacity.
+    own=${OA_CLAUDE_LOGIN:-default}
+    if [ -x "$OPENAGENTS" ] && ! out=$("$OPENAGENTS" capacity check claude --login "$own" 2>&1); then
+      next=$("$OPENAGENTS" --json capacity check claude 2>/dev/null | jq -r '.login // empty' 2>/dev/null)
+      deny "This session's Claude login ($own) is out of capacity: ${out:-a recorded limit holds}. Its agents would run on it and fail. New chats run on ${next:-another login} (openagents capacity logins); start the work in a new chat there."
     fi
     n=$(active_count)
     if [ "$MAX" -gt 0 ] && [ "$n" -ge "$MAX" ]; then

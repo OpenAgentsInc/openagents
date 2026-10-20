@@ -227,6 +227,17 @@ pub trait Harness: Send + Sync {
     fn reconfigures_in_place(&self, _live: &RunRequest, _next: &RunRequest) -> bool {
         false
     }
+    /// Settles what `next` launches with that the host, not the caller,
+    /// chooses, given the live runtime's request (`None` when none runs):
+    /// Claude Code's login (#12215). The engine calls it before it routes
+    /// `next`, so [`Self::same_runtime`] compares the settled request.
+    fn prepare_launch(&self, _live: Option<&RunRequest>, _next: &mut RunRequest) {}
+    /// Whether `next` must replace the live runtime started for `live` even
+    /// while that runtime runs background work, which a replacement kills:
+    /// only when that work can't go on, such as a login out of capacity.
+    fn replaces_despite_background(&self, _live: &RunRequest, _next: &RunRequest) -> bool {
+        false
+    }
     fn same_runtime(&self, live: &RunRequest, next: &RunRequest) -> bool {
         live.model == next.model
             && live.reasoning == next.reasoning
@@ -326,9 +337,9 @@ pub use executable::find_openagents_cli;
 pub mod host;
 pub mod install;
 pub(crate) mod internal_tags;
+pub(crate) mod jsonrpc;
 #[cfg(unix)]
 pub mod keeper;
-pub(crate) mod jsonrpc;
 pub mod mock;
 mod model_context;
 pub mod opencode;
