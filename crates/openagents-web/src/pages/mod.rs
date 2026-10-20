@@ -15,9 +15,9 @@ pub(crate) mod contact;
 pub(crate) mod content;
 pub(crate) mod download;
 pub(crate) mod efficiency;
-pub(crate) mod foreman;
 mod everglade;
 mod first_frame;
+pub(crate) mod foreman;
 mod gpui_build;
 mod gpui_chat;
 mod gpui_demo;
@@ -25,21 +25,21 @@ pub(crate) mod gpui_fonts;
 pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
+mod lander10;
 mod lander3;
-mod lander5;
 pub(crate) mod lander4;
+mod lander5;
 mod lander6;
 mod lander7;
-mod pylons;
-mod pylons_field;
 mod lander8;
-mod lander10;
 mod lander9;
 mod landing;
 mod layertree;
 pub(crate) mod live;
 mod pricing;
 pub(crate) mod profile;
+mod pylons;
+mod pylons_field;
 pub(crate) mod sdk_docs;
 mod snap;
 mod snap_shares;
@@ -72,24 +72,6 @@ pub(crate) use download::{
 };
 #[cfg(test)]
 pub(crate) use everglade::GRID_POLICY;
-#[cfg(test)]
-pub(crate) use lander3::LANDER3_POLICY;
-#[cfg(test)]
-pub(crate) use lander5::{LANDER5_GLUE, LANDER5_PATH, LANDER5_WASM};
-#[cfg(test)]
-pub(crate) use lander6::{LANDER6_GLUE, LANDER6_PATH, LANDER6_WASM};
-#[cfg(test)]
-pub(crate) use lander7::{LANDER7_GLUE, LANDER7_PATH, LANDER7_WASM};
-#[cfg(test)]
-pub(crate) use pylons::{
-    CARD_GLUE as PYLONS_CARD_GLUE, CARD_WASM as PYLONS_CARD_WASM, LAYER_GLUE as PYLONS_LAYER_GLUE,
-    LAYER_WASM as PYLONS_LAYER_WASM, PYLONS_LIVE_PATH, PYLONS_PATH,
-};
-pub(crate) use pylons_field::field as pylons_field;
-#[cfg(test)]
-pub(crate) use lander8::{LANDER8_GLUE, LANDER8_PATH, LANDER8_SESSION, LANDER8_WASM};
-#[cfg(test)]
-pub(crate) use lander9::LANDER9_PATH;
 pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
 #[cfg(test)]
 pub(crate) use icecream::{
@@ -99,11 +81,29 @@ pub(crate) use icecream::{
 #[cfg(test)]
 pub(crate) use icecream_guide::ICECREAM_GUIDE_PATH;
 #[cfg(test)]
+pub(crate) use lander3::LANDER3_POLICY;
+#[cfg(test)]
+pub(crate) use lander5::{LANDER5_GLUE, LANDER5_PATH, LANDER5_WASM};
+#[cfg(test)]
+pub(crate) use lander6::{LANDER6_GLUE, LANDER6_PATH, LANDER6_WASM};
+#[cfg(test)]
+pub(crate) use lander7::{LANDER7_GLUE, LANDER7_PATH, LANDER7_WASM};
+#[cfg(test)]
+pub(crate) use lander8::{LANDER8_GLUE, LANDER8_PATH, LANDER8_SESSION, LANDER8_WASM};
+#[cfg(test)]
+pub(crate) use lander9::LANDER9_PATH;
+#[cfg(test)]
 pub(crate) use layertree::{
     LAYERTREE_CANVAS, LAYERTREE_GLUE, LAYERTREE_PATH, LAYERTREE_POLICY, LAYERTREE_START,
     LAYERTREE_WASM,
 };
 pub(crate) use pricing::PRICING;
+#[cfg(test)]
+pub(crate) use pylons::{
+    CARD_GLUE as PYLONS_CARD_GLUE, CARD_WASM as PYLONS_CARD_WASM, LAYER_GLUE as PYLONS_LAYER_GLUE,
+    LAYER_WASM as PYLONS_LAYER_WASM, PYLONS_LIVE_PATH, PYLONS_PATH,
+};
+pub(crate) use pylons_field::field as pylons_field;
 #[cfg(test)]
 pub(crate) use snap::{SNAP_CANVAS, SNAP_GLUE, SNAP_PATH, SNAP_START, SNAP_WASM};
 #[cfg(test)]
@@ -150,4 +150,22 @@ pub(crate) fn routes() -> Router<App> {
         .merge(connect::routes())
         .merge(profile::routes())
         .merge(pricing::routes())
+}
+
+/// Where a retired lander's page moves once the one front door is on
+/// (#12260): `/lander3` to `/lander9` go to `/`, and a `/lander8` chat to
+/// the same chat on `/lander10`. Their build files keep answering, since
+/// `/lander10` loads `/lander8`'s chat.
+#[must_use]
+pub(crate) fn retired_lander(path: &str) -> Option<String> {
+    let path = path.trim_end_matches('/');
+    if matches!(
+        path,
+        "/lander3" | "/lander4" | "/lander5" | "/lander6" | "/lander7" | "/lander8" | "/lander9"
+    ) {
+        return Some("/".into());
+    }
+    path.strip_prefix("/lander8/chat/")
+        .filter(|id| !id.is_empty() && !id.contains('/'))
+        .map(|id| format!("/lander10/chat/{id}"))
 }

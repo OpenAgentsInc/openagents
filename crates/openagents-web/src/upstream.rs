@@ -245,6 +245,7 @@ pub fn owned(path: &str) -> bool {
         || path.starts_with("/v1/agent-definitions/")
         || crate::published_agents::owns(path)
         || crate::profiles::owns(path)
+        || path == crate::pages::home::HOME
         // A GitHub login's profile, which moves to `/@{name}` (#12254).
         || path
             .strip_prefix("/u/")

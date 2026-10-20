@@ -478,6 +478,11 @@ pub struct Config {
     /// Whether published agents answer room mentions and private messages
     /// (`OPENAGENTS_WEB_AGENT_REPLIES=on`; #12256). Off by default.
     pub agent_replies: bool,
+    /// Whether `/` is the one front door for signed-out visitors: `/lander10`
+    /// (`OPENAGENTS_WEB_FRONT_DOOR=on`; #12260), with the older landers
+    /// moving to `/`. Off by default until the owner confirms; the current
+    /// home stays at `/home` either way.
+    pub front_door: bool,
     /// `/lander8`'s chat (`--lander8 DIR`, default `/srv/lander8` when it
     /// exists): its WebGPU-only and WebGL2 builds, served under
     /// `/lander8/build/`. Without it, `/lander8` is the Grid, the name, and
@@ -629,6 +634,7 @@ impl Config {
             agent_key_seed: None,
             xp_referees: Vec::new(),
             agent_replies: false,
+            front_door: false,
             lander8: None,
             lander9: None,
             snap: None,
@@ -702,6 +708,7 @@ pub fn router(mut config: Config) -> Router {
         upstream: app.config.upstream.clone(),
         api: app.config.inference.is_some(),
         inference: app.config.inference.clone(),
+        front_door: app.config.front_door,
     };
     let site_hosts = hosts.clone();
     let mut site = Router::<App>::new();
@@ -896,6 +903,9 @@ struct Hosts {
     /// The inference gateway, for `/v1/responses` and
     /// `/v1/chat/completions` naming a model id ([`door_route`]).
     inference: Option<Arc<upstream::Upstream>>,
+    /// The one front door is on ([`Config::front_door`]): the older
+    /// landers move to `/`.
+    front_door: bool,
 }
 
 impl Hosts {
@@ -938,6 +948,11 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
         .to_owned();
     let local = hosts.local(&host) && loopback_peer(&request);
     let path = request.uri().path();
+    if hosts.front_door
+        && let Some(to) = pages::retired_lander(path)
+    {
+        return cloud::protect(axum::response::Redirect::temporary(&to).into_response());
+    }
     // The task browser reads this computer's own task store, so it stays
     // on the local address.
     let browser = path == "/app" || path.starts_with("/app/");

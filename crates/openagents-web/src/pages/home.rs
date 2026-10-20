@@ -24,6 +24,7 @@ use crate::ui_page::UiPage;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/", get(home))
+        .route(HOME, get(classic))
         .route(NEW, get(new_chat))
 }
 
@@ -60,6 +61,10 @@ struct Home {
     #[serde(default)]
     project: Option<String>,
 }
+
+/// The home page as it was before the one front door (#12260), whatever
+/// `/` shows.
+pub(crate) const HOME: &str = "/home";
 
 /// A new chat for anyone, signed in or not: the homepage's chat when the
 /// homepage shows the landing page instead.
@@ -110,9 +115,24 @@ async fn home(
         choice.remember(&app, &mut response);
         return response;
     }
+    // The one front door, when it's on: `/lander10` for a visitor with no
+    // session; signed in, the new chat as before.
+    let project = query.as_ref().ok().and_then(|q| q.0.project.clone());
+    if app.config.front_door && shows_landing(&headers, project.as_deref()) {
+        return super::lander10::front_door(State(app), headers).await;
+    }
     let mut response = home_html(&app, &headers, query).await;
     choice.remember(&app, &mut response);
     response
+}
+
+/// `/home`: the home page without the front door.
+async fn classic(
+    State(app): State<App>,
+    headers: HeaderMap,
+    query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
+) -> Response {
+    home_html(&app, &headers, query).await
 }
 
 async fn home_html(

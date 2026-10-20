@@ -335,6 +335,16 @@ wrong.
 
 1. Which lander becomes `/`? (`/lander8` already chats; `/lander9` adds
    hands.) **Decided:** U7 picks it from first-paint measurements.
+   **U7 (2026-10-20):** `/lander10`, the real chat plus the live pylons,
+   which the owner asked for as the one lander. Both candidates paint from
+   one inline response with no blocking script or stylesheet: 3,893 bytes
+   with brotli for `/lander10` against 2,147 for `/lander8` (and 5,775 for
+   today's `/`), under a millisecond apart at 20 Mbit/s. `/lander8`
+   measured 56–72 ms to first contentful paint and its chat's first frame
+   at 980–1,007 ms at 20 Mbit/s cold; `/lander10` loads the same chat
+   build plus the 60 KB pylons layer after the Grid's first frame. It is
+   behind `OPENAGENTS_WEB_FRONT_DOOR=on`, off in production until the owner
+   confirms; `/home` keeps today's home either way.
 2. Do `/gym` and `/forum` come back as top-level pages, or do Gym results and
    public rooms live only on profiles and in `/explore`? **Decided:** they
    live on profiles and in `/explore`, not as separate pages.

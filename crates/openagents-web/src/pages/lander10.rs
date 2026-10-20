@@ -287,6 +287,11 @@ fn document(directory: Option<&Path>, list: String) -> Arc<Document> {
 /// The list without a live field: the server was started with no relay.
 const UNAVAILABLE: &str = "<h2 id=\"pylons-count\">Pylons</h2><ul id=\"pylons-list\"></ul>";
 
+/// `/` as the one front door (#12260): this page.
+pub(crate) async fn front_door(app: State<App>, request: HeaderMap) -> Response {
+    page(app, request).await
+}
+
 async fn page(State(app): State<App>, request: HeaderMap) -> Response {
     let list = match app.config.pylons_relay.as_deref() {
         Some(relay) => list_html(&field(relay).current()),

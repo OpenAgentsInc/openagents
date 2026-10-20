@@ -92,6 +92,10 @@ pub(crate) struct Screen {
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     (
+        "/home",
+        "the home page as it was before the front door: the same page as `/`, already in the gallery",
+    ),
+    (
         "/@{handle}/follow",
         "Follow: its states need a relay, the account service, and a browser extension, which its own tests drive",
     ),

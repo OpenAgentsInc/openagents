@@ -38,6 +38,10 @@ const PROMISES: &str = "/promises";
 /// A top-level destination in the left panel, under "New chat".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Nav {
+    /// `/explore`: agents, plugins, and pylons (#12259).
+    Explore,
+    /// `/pylons`: the pylons online now.
+    Pylons,
     /// `/environments`: set up a repository and run Claude Code in it.
     Environments,
 }
@@ -46,6 +50,8 @@ impl Nav {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Explore => "Explore",
+            Self::Pylons => "Pylons",
             Self::Environments => "Environments",
         }
     }
@@ -53,12 +59,16 @@ impl Nav {
     #[must_use]
     pub const fn href(self) -> &'static str {
         match self {
+            Self::Explore => "/explore",
+            Self::Pylons => "/pylons",
             Self::Environments => "/environments",
         }
     }
 
     fn icon(self) -> Icon {
         match self {
+            Self::Explore => Icon::Compass,
+            Self::Pylons => Icon::Bolt,
             Self::Environments => Icon::Cube,
         }
     }
@@ -67,13 +77,14 @@ impl Nav {
 /// The destinations the left panel shows, in order. A destination is added
 /// here when its page exists (`Nav::Environments` with `/environments`,
 /// shown to the people who may use it, [`crate::agent_work`]).
-pub const NAV: &[Nav] = &[Nav::Environments];
+pub const NAV: &[Nav] = &[Nav::Explore, Nav::Pylons, Nav::Environments];
 
 /// Whether the left panel offers `nav`: Environments only when a studio is
 /// configured and the request may do agent work (the local address, or a
 /// signed-in person allowed it on a public host).
 fn nav_shown(nav: Nav, studio: bool, allowed: bool) -> bool {
     match nav {
+        Nav::Explore | Nav::Pylons => true,
         Nav::Environments => studio && allowed,
     }
 }
