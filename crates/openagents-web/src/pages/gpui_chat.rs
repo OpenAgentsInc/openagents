@@ -434,7 +434,8 @@ fn shell(page: &Shell<'_>) -> Markup {
     let new_chat = if base.is_empty() { "/" } else { base };
     html! {
         (DOCTYPE)
-        html lang="en" {
+        // The canvas is dark, so the HTML chat's parts beside it are too.
+        html lang="en" data-theme="dark" {
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";

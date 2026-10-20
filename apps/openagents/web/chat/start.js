@@ -157,6 +157,21 @@ history.pushState = function () {
 };
 window.addEventListener("popstate", chatChanged);
 
+// A message sent from the side panel's "Send with files" goes through the
+// HTML chat's own form; the canvas then reads the chat again (as Back does)
+// and follows the new answer.
+document.addEventListener("htmx:afterRequest", function (event) {
+  var form = event.detail && event.detail.elt;
+  if (!form || form.id !== "chat-form" || !event.detail.successful) {
+    return;
+  }
+  var files = document.getElementById("gpui-files");
+  if (files) {
+    files.open = false;
+  }
+  window.dispatchEvent(new PopStateEvent("popstate"));
+});
+
 // The text view: its button, Cmd+F or Ctrl+F (the browser's find then reads
 // the chat's text there), and Escape to close it.
 var textView = document.getElementById("gpui-text");
