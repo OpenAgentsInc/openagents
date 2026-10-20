@@ -25,7 +25,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Form, Path, Query, Request, State};
+use axum::extract::{Form, Path, Query, RawQuery, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -230,11 +230,17 @@ async fn list_page(
     State(app): State<App>,
     headers: HeaderMap,
     Query(query): Query<PageQuery>,
+    RawQuery(raw): RawQuery,
 ) -> Response {
     let (service, viewer) = match viewer(&app, &headers).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Some(gpui) =
+        crate::pages::gpui_chat::page_for(&app, &headers, raw.as_deref(), "projects")
+    {
+        return gpui;
+    }
     render_with(
         service,
         &viewer,

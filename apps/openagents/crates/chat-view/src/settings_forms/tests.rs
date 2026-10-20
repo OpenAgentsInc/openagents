@@ -663,3 +663,108 @@ fn traces_list_and_open_one_with_share_and_delete() {
         Some(Intent::Traces(Action::Open("t1".into(), Some("a2".into()))))
     );
 }
+
+#[test]
+fn agents_show_what_runs_with_stop_message_and_the_landing_queue() {
+    use agents::{Action, State, computers, landings, view};
+    let boards = serde_json::json!({"computers": [
+        {"name": "Studio", "online": true, "items": [
+            {"id": "a1", "kind": "agent", "title": "#12 Fix the build", "status": "working", "line": "running tests"},
+            {"id": "c1", "kind": "chat", "title": "A chat", "status": "working"},
+            {"id": "l1", "kind": "landing", "title": "#13 Land it", "status": "done"},
+        ]},
+        {"name": "Idle", "online": false, "items": [{"id": "c2", "kind": "chat", "title": "x", "status": "done"}]},
+    ]});
+    let queue = serde_json::json!({"waiting": [
+        {"id": "q1", "branch": "fix-build", "summary": "Fix the build", "state": "queued", "issue": 12}
+    ], "landing": [], "failed": []});
+    let state = State {
+        computers: Load::Ready(computers(&boards)),
+        landing: Load::Ready(landings(&queue)),
+        busy: None,
+    };
+    assert_eq!(state.computers.ready().unwrap().len(), 1);
+    let root = view(&state, &Paints::default());
+    let out = plain_view(&root);
+    for line in [
+        "Studio",
+        "#12 Fix the build",
+        "Working · running tests",
+        "Landing queue",
+        "#12 Fix the build",
+        "Waiting to land · fix-build",
+    ] {
+        assert!(out.iter().any(|w| w == line), "{line} in {out:?}");
+    }
+    assert!(!out.iter().any(|w| w == "A chat"));
+    let intents = intents(&root);
+    assert!(intents.contains(&Intent::Agents(Action::Stop("Studio".into(), "a1".into()))));
+    assert!(intents.contains(&Intent::Agents(Action::Message(
+        "Studio".into(),
+        "a1".into()
+    ))));
+    assert!(!intents.contains(&Intent::Agents(Action::Stop("Studio".into(), "l1".into()))));
+}
+
+#[test]
+fn projects_list_and_open_one_with_members_repositories_and_sources() {
+    use projects::{Action, Members, Open, Project, State, sources, view};
+    let list = serde_json::json!({"data": [{
+        "id": "p1", "name": "Site", "counts": {"threads": 3},
+        "repositories": [{"repository": "acme/site", "primary": true}, {"repository": "acme/docs", "primary": false}],
+    }]});
+    let mut state = State {
+        list: Load::Ready(Project::list(&list)),
+        ..State::default()
+    };
+    let out = plain_view(&view(&state, &Paints::default()));
+    assert!(out.iter().any(|w| w == "acme/site · 3 chats"), "{out:?}");
+    state.open = Some(Open {
+        id: "p1".into(),
+        members: Load::Ready(Members::from_value(&serde_json::json!({
+            "role": "owner",
+            "data": [
+                {"account": "me", "name": "Pat", "role": "owner", "you": true},
+                {"account": "sam", "name": "", "login": "sam", "role": "editor", "you": false},
+            ],
+            "invitations": [{"id": "i1", "role": "viewer", "expires_at": "2026-10-27T00:00:00Z"}],
+        }))),
+        sources: Load::Ready(sources(&serde_json::json!({"data": [
+            {"id": "s1", "name": "Specs", "kind": "folder"}
+        ]}))),
+        link: Some("https://openagents.com/projects/join/abc".into()),
+        confirm_leave: false,
+        confirm_remove: None,
+    });
+    let root = view(&state, &Paints::default());
+    let out = plain_view(&root);
+    for line in [
+        "Pat (you)",
+        "sam",
+        "Viewer link, until 2026-10-27",
+        "Invitation link",
+        "https://openagents.com/projects/join/abc",
+        "Make primary",
+        "Specs",
+        "Add from Google Drive",
+    ] {
+        assert!(out.iter().any(|w| w == line), "{line} in {out:?}");
+    }
+    let intents = intents(&root);
+    for want in [
+        Action::SetRole("p1".into(), "sam".into(), "viewer".into()),
+        Action::AskRemove(Some("sam".into())),
+        Action::InviteLink("p1".into(), "editor".into()),
+        Action::MakePrimary("p1".into(), "acme/docs".into()),
+        Action::RemoveRepository("p1".into(), "acme/site".into()),
+        Action::RemoveSource("p1".into(), "s1".into()),
+        Action::Rename("p1".into()),
+    ] {
+        assert!(
+            intents.contains(&Intent::Projects(want.clone())),
+            "{want:?}"
+        );
+    }
+    // The owner can't leave; a member can.
+    assert!(!intents.contains(&Intent::Projects(Action::AskLeave(true))));
+}

@@ -19,6 +19,9 @@
 #   openagents_web_settings_bg.wasm  first time Settings opens (#12288)
 #   openagents_web_traces.js      Traces' glue and module, loaded at
 #   openagents_web_traces_bg.wasm  `?page=traces` (#12329)
+#   openagents_web_agents.js      Agents, at `?page=agents` (#12330), and
+#   openagents_web_projects.js    Projects, at `?page=projects` (#12331),
+#                                 each with its _bg.wasm module
 #   start.js                      the page's one script: checks, loads, launches
 #   fonts/*.ttf                   the Geist faces the chat draws, fetched apart
 #   *.gz, *.br                    gzip and brotli copies, sent when asked
@@ -110,7 +113,7 @@ wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     "$out/openagents_web_settings_bg.wasm" -o "$out/openagents_web_settings_bg.wasm"
 # The account's pages (#12329, #12330, #12331): each its own module, which
 # start.js loads at `?page=NAME`.
-for page in traces; do
+for page in traces agents projects; do
   cargo build --locked --manifest-path "$web/Cargo.toml" -p "openagents-web-$page" \
     --release --target "$target"
   wasm-bindgen --target web --no-typescript --out-dir "$out" \
@@ -134,7 +137,7 @@ compress() {
 # The first-frame painter: the page paints the frame this browser kept
 # from the last visit before the module loads (#12244).
 "$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
-python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces
+python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces openagents_web_agents openagents_web_projects
 for font in $fonts; do
   compress "$out/fonts/$font"
 done

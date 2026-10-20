@@ -1630,7 +1630,8 @@ async fn explore_lists_the_skills_the_directory_signed() {
     assert!(!page.body.contains("forged-skill"));
 }
 
-/// With the GPUI chat on, the account's pages open in it (#12329); the
+/// With the GPUI chat on, the account's pages open in it (#12329,
+/// #12330, #12331); the
 /// HTML pages stay for every other browser and for `?ui=html`.
 #[tokio::test]
 async fn account_pages_open_in_the_gpui_app_when_it_is_on() {
@@ -1643,6 +1644,9 @@ async fn account_pages_open_in_the_gpui_app_when_it_is_on() {
     for (page, gpui) in [
         ("/settings/traces", "/gpui?page=traces"),
         ("/settings/traces/abc", "/gpui?page=traces/abc"),
+        ("/settings/agents", "/gpui?page=agents"),
+        ("/projects", "/gpui?page=projects"),
+        ("/projects/proj_1", "/gpui?page=projects/proj_1"),
     ] {
         let moved = browser.get(&world, page).await;
         assert!(moved.status.is_redirection(), "{page}: {}", moved.status);

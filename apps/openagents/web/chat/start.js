@@ -502,6 +502,8 @@ window.addEventListener("oa-settings-open", openSettings);
 // the box, and moving within the page (`oa-page-path`) keeps the address.
 var PAGES = {
   traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
+  agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
+  projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
 };
 var pageBoxes = {};
 var pageModules = {};

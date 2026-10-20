@@ -5,7 +5,7 @@
 //! primary makes the first one left the primary.
 
 use axum::Router;
-use axum::extract::{Form, Path, Query, State};
+use axum::extract::{Form, Path, Query, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -94,11 +94,17 @@ async fn show(
     headers: HeaderMap,
     Path(id): Path<String>,
     Query(query): Query<PageQuery>,
+    RawQuery(raw): RawQuery,
 ) -> Response {
     let (service, viewer) = match viewer(&app, &headers).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Some(gpui) =
+        crate::pages::gpui_chat::page_for(&app, &headers, raw.as_deref(), &format!("projects/{id}"))
+    {
+        return gpui;
+    }
     let status = match service.github_status(&headers).await {
         Ok(status) => status,
         Err(error) => return failed(&headers, &error),

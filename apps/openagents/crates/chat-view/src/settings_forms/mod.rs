@@ -12,9 +12,13 @@
 //! the rest to the computer or the account.
 
 pub mod account;
+/// Agents and the landing queue (#12330).
+pub mod agents;
 pub mod appearance;
 /// Earn on a paired computer (#12294).
 pub mod earn;
+/// Projects (#12331).
+pub mod projects;
 pub mod providers;
 pub mod shortcuts;
 /// Traces (#12329).
@@ -330,6 +334,10 @@ pub enum Intent {
     Providers(providers::Action),
     /// Traces (#12329).
     Traces(traces::Action),
+    /// Agents (#12330).
+    Agents(agents::Action),
+    /// Projects (#12331).
+    Projects(projects::Action),
 }
 
 /// The theme's colors for the forms, which the host reads from its theme
@@ -1039,6 +1047,27 @@ fn archived(remote: &Remote, paints: &Paints) -> Vec<Node<Intent>> {
 // ---------------------------------------------------------------------
 // Pieces the pages share
 // ---------------------------------------------------------------------
+
+/// A node key for a row named by outside data (an id, a repository, a
+/// computer's name): `prefix-raw` when `raw` is a valid key already, else
+/// its key characters and a short hash of it, so two names never share one.
+pub(crate) fn key(prefix: &str, raw: &str) -> String {
+    let plain = format!("{prefix}-{raw}");
+    let valid = |b: u8| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':');
+    if plain.len() <= 96 && plain.bytes().all(valid) {
+        return plain;
+    }
+    let hash = raw.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    });
+    let kept: String = raw
+        .bytes()
+        .filter(|b| valid(*b))
+        .take(60)
+        .map(char::from)
+        .collect();
+    format!("{prefix}-{kept}-{hash:016x}")
+}
 
 pub(crate) fn node(key: &str, style: Style, element: Element<Intent>) -> Node<Intent> {
     Node {

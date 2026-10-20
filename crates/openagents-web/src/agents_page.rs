@@ -29,7 +29,7 @@
 
 use axum::Router;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{Form, Query, State};
+use axum::extract::{Form, Query, RawQuery, State};
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -341,11 +341,16 @@ async fn list_page(
     State(app): State<App>,
     headers: HeaderMap,
     Query(query): Query<ListQuery>,
+    RawQuery(raw): RawQuery,
 ) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Some(gpui) = crate::pages::gpui_chat::page_for(&app, &headers, raw.as_deref(), "agents")
+    {
+        return gpui;
+    }
     let owner = account_owner(&viewer.account_id);
     let found = machines_with_environments(&app, &viewer).await;
     let going = found.iter().any(|machine| machine.agents.iter().any(live));

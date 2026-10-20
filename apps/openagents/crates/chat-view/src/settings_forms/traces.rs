@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{
-    Intent, Load, Paints, button, card, column, danger_button, header, row, section, text,
+    Intent, Load, Paints, button, card, column, danger_button, header, key, row, section, text,
 };
 
 /// The most steps the viewer draws, as the site's page does.
@@ -255,11 +255,11 @@ fn list(state: &State, paints: &Paints) -> Vec<Node<Intent>> {
                 .iter()
                 .map(|t| {
                     row(
-                        &format!("trace-{}", t.id),
+                        &key("trace", &t.id),
                         t.name(),
                         Some(&t.detail()),
                         vec![button(
-                            &format!("trace-open-{}", t.id),
+                            &key("trace-open", &t.id),
                             "Open",
                             act(Action::Open(t.id.clone(), None)),
                         )],
@@ -357,14 +357,14 @@ fn trace(state: &State, open: &Open, paints: &Paints) -> Vec<Node<Intent>> {
                         n => format!("{n} steps"),
                     };
                     row(
-                        &format!("trace-agent-{}", a.id),
+                        &key("trace-agent", &a.id),
                         &a.title,
                         Some(&steps),
                         if shown {
                             Vec::new()
                         } else {
                             vec![button(
-                                &format!("trace-agent-open-{}", a.id),
+                                &key("trace-agent-open", &a.id),
                                 "Show",
                                 act(Action::Open(
                                     open.id.clone(),
