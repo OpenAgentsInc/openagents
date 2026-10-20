@@ -8,7 +8,9 @@ use web_sys::{
     HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlBuffer, WebGlProgram, WebGlTexture,
 };
 
-use crate::{LAYER_FLOATS, PATH_FLOATS, QUAD_FLOATS, SHADOW_FLOATS, SPRITE_FLOATS, shaders};
+use crate::{
+    IMAGE_FLOATS, LAYER_FLOATS, PATH_FLOATS, QUAD_FLOATS, SHADOW_FLOATS, SPRITE_FLOATS, shaders,
+};
 
 fn fail(why: &'static str) -> JsValue {
     JsValue::from_str(why)
@@ -201,6 +203,33 @@ pub fn paint(canvas: &HtmlCanvasElement, scene: &[u8]) -> Result<u32, JsValue> {
         Some(pixels),
     )?;
 
+    // Images: their own program and RGBA texture, on unit 2.
+    let mut images = None;
+    if !scene.images.is_empty() {
+        let program = program(&gl, shaders::IMAGE_VS, shaders::IMAGE_FS, fw, fh)?;
+        let atlas = &scene.image_atlas;
+        gl.uniform2f(
+            gl.get_uniform_location(&program, "u_atlas").as_ref(),
+            atlas.width.max(1) as f32,
+            atlas.height.max(1) as f32,
+        );
+        gl.uniform1i(gl.get_uniform_location(&program, "u_tex").as_ref(), 2);
+        gl.active_texture(GL::TEXTURE2);
+        texture(&gl, GL::LINEAR)?;
+        gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            GL::TEXTURE_2D,
+            0,
+            GL::RGBA8 as i32,
+            atlas.width as i32,
+            atlas.height as i32,
+            0,
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            Some(&atlas.pixels),
+        )?;
+        images = Some((program, buffer(&gl, &i.images)?));
+    }
+
     // Paths draw into a multisampled layer, resolved into a texture.
     let has_paths = scene
         .commands
@@ -269,6 +298,7 @@ pub fn paint(canvas: &HtmlCanvasElement, scene: &[u8]) -> Result<u32, JsValue> {
             | Command::Shadows(r)
             | Command::Sprites(r)
             | Command::SubpixelSprites(r)
+            | Command::Images(r)
                 if r.is_empty() => {}
             Command::Quads(r) => {
                 gl.use_program(Some(&quad));
@@ -295,6 +325,14 @@ pub fn paint(canvas: &HtmlCanvasElement, scene: &[u8]) -> Result<u32, JsValue> {
                     gl.draw_arrays_instanced(GL::TRIANGLE_STRIP, 0, 4, (r.end - r.start) as i32);
                 }
                 gl.color_mask(true, true, true, true);
+            }
+            Command::Images(r) => {
+                let Some((program, data)) = &images else {
+                    continue;
+                };
+                gl.use_program(Some(program));
+                attributes(&gl, data, 5, IMAGE_FLOATS, r.start, 1);
+                gl.draw_arrays_instanced(GL::TRIANGLE_STRIP, 0, 4, (r.end - r.start) as i32);
             }
             Command::Paths {
                 paths,

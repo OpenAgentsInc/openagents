@@ -1361,6 +1361,18 @@ The build script writes them, and the capture tool, to
 `OUTDIR/first-frame/`; the site inlines them in `/agent/foreman`
 (`pages/first_frame.rs` in `openagents-web`).
 
+### The ready frame (#12244)
+
+- `web/gpui-web`: `announce_ready` makes the next frame drawn the app's
+  ready frame, announced as `gpui-ready` (an event from the canvas and a
+  performance mark). With the `first-frame` feature, a `Recorder` from
+  `web/first-frame-record` sits in front of the renderer's atlas, and the
+  ready frame is recorded as an `openagents-first-frame` scene
+  (`gpuiRecordedFrame` in JavaScript).
+- `web/chat` calls `announce_ready` once its chats and the open chat have
+  arrived, and keeps the recorded frame in Cache Storage for the next
+  visit. `web/first-frame-paint` draws polychrome sprites too.
+
 ### Shared font files (#12233)
 
 - `web/gpui-web`'s `WebFonts::from_js` takes the faces a page fetched, one

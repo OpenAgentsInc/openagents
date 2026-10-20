@@ -15,6 +15,7 @@ members = [
     "first-frame",
     "first-frame-paint",
     "first-frame-capture",
+    "first-frame-record",
     "card",
     "graph-card",
     "pylon-card",
@@ -37,6 +38,7 @@ openagents-web-chat-view = { path = "chat-view" }
 openagents-chat-view = { path = "../crates/chat-view" }
 openagents-web-client = { path = "client" }
 openagents-first-frame = { path = "first-frame" }
+openagents-first-frame-record = { path = "first-frame-record" }
 anyhow = "1.0.86"
 futures = "0.3.32"
 log = "0.4.16"

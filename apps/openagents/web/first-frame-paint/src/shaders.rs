@@ -273,3 +273,32 @@ uniform sampler2D u_tex;
 in vec2 v_uv;
 void main() { o = texture(u_tex, v_uv); }
 ";
+
+/// Images: bounds, mask, tile in atlas pixels, (opacity, grayscale), radii.
+pub const IMAGE_VS: &str = "
+uniform vec2 u_atlas;
+in vec4 a0; in vec4 a1; in vec4 a2; in vec4 a3; in vec4 a4;
+out vec2 v_uv; flat out vec4 v_bounds; flat out vec4 v_mask; flat out vec4 v_misc; flat out vec4 v_radii;
+void main() {
+    vec2 u = unit_vertex();
+    gl_Position = to_device(a0.xy + u * a0.zw);
+    v_uv = (a2.xy + u * a2.zw) / u_atlas;
+    v_bounds = a0; v_mask = a1; v_misc = a3; v_radii = a4;
+}
+";
+
+/// `fs_poly_sprite` without edge fades or alpha masks.
+pub const IMAGE_FS: &str = "
+uniform sampler2D u_tex;
+in vec2 v_uv; flat in vec4 v_bounds; flat in vec4 v_mask; flat in vec4 v_misc; flat in vec4 v_radii;
+void main() {
+    vec4 color = texture(u_tex, v_uv);
+    vec2 p = frag();
+    if (clipped(p, v_mask)) { discard; }
+    if (v_misc.y != 0.0) {
+        color = vec4(vec3(dot(color.rgb, vec3(0.2126, 0.7152, 0.0722))), color.a);
+    }
+    float distance = quad_sdf(p, v_bounds, v_radii);
+    o = vec4(color.rgb, color.a * v_misc.x * clamp(0.5 - distance, 0.0, 1.0));
+}
+";

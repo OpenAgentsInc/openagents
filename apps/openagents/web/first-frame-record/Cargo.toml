@@ -1,0 +1,14 @@
+# Records a GPUI frame as an `openagents-first-frame` scene. A native
+# capture (`first-frame-capture`) and the browser (`gpui-web`'s
+# `first-frame` feature, recording an app's own frame) share it.
+[package]
+name = "openagents-first-frame-record"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[dependencies]
+anyhow.workspace = true
+gpui.workspace = true
+openagents-first-frame.workspace = true

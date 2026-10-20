@@ -249,6 +249,26 @@ pub(crate) async fn page(
     // otherwise the start script loads the build's own copies.
     let fonts = super::gpui_fonts::fonts(app)
         .and_then(|fonts| fonts.preloads(&super::gpui_fonts::CHAT_FACES));
+    // The frame this browser kept from its last visit to this page, which
+    // the painter shows before the module loads (#12244). Kept per person
+    // (a digest of the page's CSRF value) and dropped when the outline
+    // of chats changes.
+    let painter = build(app).and_then(|dir| {
+        super::first_frame::Painter::cached(&dir.join(super::first_frame::DIRECTORY))
+    });
+    let first = painter.as_ref().map(|painter| {
+        let mut outline = format!("{}\n", chat.as_deref().unwrap_or(""));
+        for row in &rows {
+            outline.push_str(&format!("{}\t{}\n", row.id, row.title));
+        }
+        painter.kept(
+            &format!(
+                "/__first-frame/chat/{}{path}",
+                super::first_frame::short_digest(&csrf)
+            ),
+            &super::first_frame::short_digest(&outline),
+        )
+    });
     let document = shell(&Shell {
         title: &title,
         csrf: &csrf,
@@ -259,13 +279,17 @@ pub(crate) async fn page(
         signed_in,
         fonts,
         build: build(app),
+        first,
     });
     let mut response = Html(document.into_string()).into_response();
+    let policy = match &painter {
+        Some(painter) => painter.policy(GPUI_CHAT_POLICY),
+        None => GPUI_CHAT_POLICY.to_owned(),
+    };
     let headers = response.headers_mut();
-    headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(GPUI_CHAT_POLICY),
-    );
+    if let Ok(policy) = HeaderValue::from_str(&policy) {
+        headers.insert(header::CONTENT_SECURITY_POLICY, policy);
+    }
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert("x-robots-tag", HeaderValue::from_static("noindex"));
     crate::pages::chat::cookie(app, &owner, fresh, &mut response);
@@ -287,6 +311,9 @@ struct Shell<'a> {
     fonts: Option<Markup>,
     /// The build's directory, for its content-hashed names.
     build: Option<&'a Path>,
+    /// The painter and the kept frame's address, when the build has the
+    /// painter.
+    first: Option<Markup>,
 }
 
 /// The page: the outline the canvas replaces, the message for browsers
@@ -302,6 +329,7 @@ fn shell(page: &Shell<'_>) -> Markup {
         signed_in,
         ref fonts,
         build,
+        ref first,
     } = *page;
     let new_chat = if base.is_empty() { "/" } else { base };
     html! {
@@ -323,6 +351,7 @@ fn shell(page: &Shell<'_>) -> Markup {
                 @if let Some(fonts) = fonts { (fonts) }
             }
             body {
+                @if let Some(first) = first { (first) }
                 div #gpui-shell .g-shell {
                     aside .g-side {
                         div .g-brand { "OpenAgents" }
@@ -481,6 +510,7 @@ mod tests {
             signed_in: true,
             fonts: None,
             build: None,
+            first: None,
         })
         .into_string();
         assert!(html.contains("src=\"/gpui/build/start.js\""));
@@ -508,6 +538,7 @@ mod tests {
             signed_in: false,
             fonts: None,
             build: None,
+            first: None,
         })
         .into_string();
         assert!(html.contains("name=\"openagents-chat-base\" content=\"\""));
@@ -577,6 +608,7 @@ mod tests {
             signed_in: true,
             fonts: None,
             build: Some(dir.path()),
+            first: None,
         })
         .into_string();
         assert!(html.contains(&format!("href=\"{BUILD_PATH}/{hashed}\"")));
@@ -596,6 +628,7 @@ mod tests {
             signed_in: false,
             fonts: None,
             build: None,
+            first: None,
         })
         .into_string();
         let text = oa_copy::visible_text(&html);

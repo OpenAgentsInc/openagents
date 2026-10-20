@@ -474,6 +474,48 @@ Pixel diff of the snapshot against the app's first frame, loopback:
 | 390 × 844 at 3× | 92 ms | 99.86% | 52.2 dB |
 | 412 × 915 at 2.625× | 100 ms | 99.86% | 52.2 dB |
 
+## The chat's first frame from the last visit (2026-10-20, #12244)
+
+A chat is the signed-in person's own content, so its frame can't be
+captured at build time. The browser keeps it instead:
+
+- **The ready frame.** The chat calls `announce_ready` once its chats and
+  the open chat have arrived; `gpui-web` then marks and announces the next
+  frame it draws (`gpui-ready`). With `gpui-web`'s `first-frame` feature it
+  also records that frame: a `Recorder` in front of the renderer's atlas
+  keeps each glyph and image tile's pixels, and
+  `openagents-first-frame-record` converts the scene, as the native capture
+  does (the conversion moved into that crate, shared by both).
+- **Kept in the browser only.** The chat's start script gzips the frame
+  and keeps it in Cache Storage under the page's key (a digest of the
+  page's CSRF value, so per person), the address, the box's size and
+  ratio, and the page's outline digest (the chat list and the open chat).
+  It keeps one frame an address and drops other accounts' frames. Nothing
+  goes to the server.
+- **Painted before the module.** The page carries the painter inline. On
+  the next visit the boot script finds the kept frame for this address,
+  size, and outline, paints it, and removes it on `gpui-ready`, when the
+  app has drawn the same screen. A changed outline means no frame.
+- **Images.** The format and the painter now draw GPUI's polychrome
+  sprites (the chat's icons are images): an RGBA atlas, opacity,
+  grayscale, and rounded corners.
+
+Measured on `/gpui` as a visitor, second visit, headless Chrome, cache off
+(the kept frame comes from Cache Storage):
+
+| Profile | Kept frame painted | App's ready frame |
+| --- | --- | --- |
+| Loopback | 165 ms | 253 ms |
+| 20 Mbit/s, 40 ms | 115 ms | 985 ms |
+| 9 Mbit/s, 150 ms | 338 ms | 2,351 ms |
+
+The kept frame and the app's ready frame were identical (100% of pixels,
+3024 × 1964). The chat module grew 26 KB with brotli for the recorder, to
+1,472,324 bytes, inside the 1.5 MB budget. Not covered: a new message in
+the open chat since the last visit doesn't change the outline, so the
+kept frame shows the old transcript until the app's ready frame replaces
+it.
+
 ## WebGPU-only modules, preloads, and shared fonts (2026-10-20)
 
 - **The GPUI modules were already WebGPU-only.** `gpui_wgpu` takes wgpu's

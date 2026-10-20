@@ -62,6 +62,10 @@ pub(crate) struct WebWindowInner {
     pending_physical_size: Cell<Option<(u32, u32)>>,
     /// Whether the first frame at the canvas's size has been drawn.
     presented: Cell<bool>,
+    /// Keeps glyph pixels as the atlas receives them, to record the ready
+    /// frame (`crate::ready`).
+    #[cfg(feature = "first-frame")]
+    recorder: Arc<openagents_first_frame_record::Recorder>,
     /// What the app asked to show behind its drawing: a transparent window
     /// lets the page show through, for a canvas in a box on a page.
     background: Cell<WindowBackgroundAppearance>,
@@ -184,6 +188,10 @@ impl WebWindow {
             capslock: Capslock::default(),
         };
 
+        #[cfg(feature = "first-frame")]
+        let recorder = Arc::new(openagents_first_frame_record::Recorder::over(
+            mutable_state.renderer.sprite_atlas().clone(),
+        ));
         let is_mac = is_mac_platform(&browser_window);
 
         let inner = Rc::new(WebWindowInner {
@@ -202,6 +210,8 @@ impl WebWindow {
             mql_handle: RefCell::new(None),
             pending_physical_size: Cell::new(None),
             presented: Cell::new(false),
+            #[cfg(feature = "first-frame")]
+            recorder,
             background: Cell::new(WindowBackgroundAppearance::Opaque),
         });
 
@@ -370,6 +380,31 @@ impl WebWindowInner {
         init.set_bubbles(true);
         if let Ok(event) = web_sys::Event::new_with_event_init_dict("gpui-first-frame", &init) {
             self.canvas.dispatch_event(&event).ok();
+        }
+    }
+
+    /// A performance mark and an event that bubbles from the canvas.
+    fn announce(&self, name: &str) {
+        if let Some(performance) = self.browser_window.performance() {
+            performance.mark(name).ok();
+        }
+        let init = web_sys::EventInit::new();
+        init.set_bubbles(true);
+        if let Ok(event) = web_sys::Event::new_with_event_init_dict(name, &init) {
+            self.canvas.dispatch_event(&event).ok();
+        }
+    }
+
+    /// Records `scene` for the next visit, at the canvas's device size.
+    #[cfg(feature = "first-frame")]
+    fn record(&self, scene: &Scene) {
+        let device = (self.canvas.width(), self.canvas.height());
+        let scale = self.browser_window.device_pixel_ratio() as f32;
+        match openagents_first_frame_record::convert(scene, device, scale, &self.recorder)
+            .and_then(|scene| scene.encode().map_err(anyhow::Error::from))
+        {
+            Ok(bytes) => crate::ready::keep(bytes),
+            Err(error) => log::info!("not keeping this frame for the next visit: {error:#}"),
         }
     }
 
@@ -731,13 +766,15 @@ impl PlatformWindow for WebWindow {
         }
 
         self.inner.state.borrow_mut().renderer.draw(scene);
-        if !self.inner.presented.get()
-            && self.inner.canvas.width() > 1
-            && self.inner.canvas.height() > 1
-            && scene.len() > 0
-        {
+        let sized = self.inner.canvas.width() > 1 && self.inner.canvas.height() > 1;
+        if !self.inner.presented.get() && sized && scene.len() > 0 {
             self.inner.presented.set(true);
             self.inner.announce_first_frame();
+        }
+        if self.inner.presented.get() && crate::ready::take_ready() {
+            #[cfg(feature = "first-frame")]
+            self.inner.record(scene);
+            self.inner.announce("gpui-ready");
         }
     }
 
@@ -746,6 +783,9 @@ impl PlatformWindow for WebWindow {
     }
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
+        #[cfg(feature = "first-frame")]
+        return self.inner.recorder.clone();
+        #[cfg(not(feature = "first-frame"))]
         self.inner.state.borrow().renderer.sprite_atlas().clone()
     }
 

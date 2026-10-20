@@ -63,6 +63,9 @@ compress() {
     brotli -q 11 -f -o "$1.br" "$1"
   fi
 }
+# The first-frame painter: the page paints the frame this browser kept
+# from the last visit before the module loads (#12244).
+"$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
 python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat
 for font in $fonts; do
   compress "$out/fonts/$font"

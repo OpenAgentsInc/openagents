@@ -3671,6 +3671,7 @@ dependencies = [
  "gpui_wgpu",
  "image",
  "openagents-first-frame",
+ "openagents-first-frame-record",
  "openagents-web-agent-graph",
  "raw-window-handle",
  "serde_json",
@@ -3687,6 +3688,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-first-frame-record"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "openagents-first-frame",
+]
+
+[[package]]
 name = "openagents-gpui-web"
 version = "0.1.0"
 dependencies = [
@@ -3700,6 +3710,8 @@ dependencies = [
  "image",
  "js-sys",
  "log",
+ "openagents-first-frame",
+ "openagents-first-frame-record",
  "parking_lot",
  "raw-window-handle",
  "smallvec",

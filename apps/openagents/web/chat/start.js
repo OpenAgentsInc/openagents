@@ -2,7 +2,7 @@
 // It needs WebGPU; without it, the page goes to the regular
 // chat. Otherwise the module and the fonts download together,
 // and the canvas replaces the page's outline once the app has started.
-import init, { launch } from "./openagents_web_chat.js";
+import init, { launch, gpuiRecordedFrame } from "./openagents_web_chat.js";
 
 const FONTS = [
   "Geist.ttf",
@@ -86,6 +86,52 @@ function start() {
     window.__gpuiReadyAt = performance.now();
     window.__gpuiReadyMs = window.__gpuiReadyAt - started;
     document.documentElement.dataset.gpui = "ready";
+  }, { once: true });
+  // Once the chats and the open chat have arrived (`gpui-ready`), keep
+  // that frame in this browser, so the page can paint it before the module
+  // on the next visit to this address at this size (#12244). It never
+  // leaves the browser; a change in the page's outline of chats retires it.
+  document.addEventListener("gpui-ready", function () {
+    var scene = document.getElementById("first-frame-scene");
+    if (!scene || !scene.dataset.cache || !window.caches || !window.CompressionStream || !window.__firstFrameKey) {
+      return;
+    }
+    var frame = gpuiRecordedFrame();
+    if (!frame) {
+      return;
+    }
+    var rect = document.body.getBoundingClientRect();
+    var address = window.__firstFrameKey(scene, { w: rect.width, h: rect.height, dpr: window.devicePixelRatio });
+    var prefix = location.origin + scene.dataset.cache + "?";
+    // Frames kept for another account on this browser go too.
+    var account = location.origin + scene.dataset.cache.split("/").slice(0, 4).join("/") + "/";
+    var packed = new Response(
+      new Blob([frame]).stream().pipeThrough(new CompressionStream("gzip")),
+    ).arrayBuffer();
+    Promise.all([caches.open("openagents-first-frame"), packed])
+      .then(function (ready) {
+        var store = ready[0];
+        return store.keys().then(function (requests) {
+          // One frame an address: the older sizes and outlines go, and
+          // any other account's.
+          return Promise.all(requests.filter(function (request) {
+            var url = request.url;
+            return url.indexOf(account) !== 0 || (url.indexOf(prefix) === 0 && url !== address);
+          }).map(function (request) {
+            return store.delete(request);
+          }));
+        }).then(function () {
+          return store.put(address, new Response(ready[1], {
+            headers: { "content-type": "application/octet-stream" },
+          }));
+        });
+      })
+      .then(function () {
+        performance.mark("first-frame-kept-for-next-visit");
+      })
+      .catch(function (error) {
+        console.warn("couldn't keep this frame for the next visit", error);
+      });
   }, { once: true });
   Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
     .then(function (loaded) {

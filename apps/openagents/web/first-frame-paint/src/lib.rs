@@ -25,6 +25,7 @@ pub const SHADOW_FLOATS: usize = 28;
 pub const SPRITE_FLOATS: usize = 16;
 pub const PATH_FLOATS: usize = 12;
 pub const LAYER_FLOATS: usize = 4;
+pub const IMAGE_FLOATS: usize = 20;
 
 /// The scene's primitives as GPU instance data, one array a kind.
 #[derive(Debug, Default, PartialEq)]
@@ -34,6 +35,7 @@ pub struct Instances {
     pub sprites: Vec<f32>,
     pub path_vertices: Vec<f32>,
     pub layers: Vec<f32>,
+    pub images: Vec<f32>,
 }
 
 fn rect(out: &mut Vec<f32>, r: &openagents_first_frame::Rect) {
@@ -84,6 +86,20 @@ pub fn instances(scene: &Scene) -> Instances {
     }
     for r in &scene.path_sprites {
         rect(&mut out.layers, r);
+    }
+    for image in &scene.images {
+        let t = &scene.image_tiles[image.tile as usize];
+        rect(&mut out.images, &image.bounds);
+        rect(&mut out.images, mask(image.mask));
+        out.images
+            .extend_from_slice(&[t.x as f32, t.y as f32, t.w as f32, t.h as f32]);
+        out.images.extend_from_slice(&[
+            image.opacity,
+            if image.grayscale { 1.0 } else { 0.0 },
+            0.0,
+            0.0,
+        ]);
+        out.images.extend_from_slice(&image.radii);
     }
     out
 }
@@ -238,6 +254,7 @@ mod tests {
             shaders::SPRITE_FS,
             shaders::PATH_FS,
             shaders::LAYER_FS,
+            shaders::IMAGE_FS,
         ] {
             let full = shaders::fs(body);
             assert!(full.starts_with("#version 300 es"));

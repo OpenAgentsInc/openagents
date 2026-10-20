@@ -1567,6 +1567,12 @@ impl Focusable for ChatApp {
 
 impl Render for ChatApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Once the chats and the open chat have arrived, this frame is the
+        // one a page snapshot shows until the app draws (`gpui-ready`), and
+        // the one it keeps for the next visit (#12244).
+        if self.loaded && !self.loading_chat {
+            openagents_gpui_web::announce_ready();
+        }
         let wide = window.viewport_size().width > px(820.);
         let rows = self.entries.len() + usize::from(self.live.is_some());
         let transcript: AnyElement = if self.current.is_none() && rows == 0 {

@@ -69,6 +69,80 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// The painter alone: its module and the inline script that runs it, for
+/// a page that paints a frame the browser kept (`/gpui`, #12244).
+#[derive(Debug, PartialEq)]
+pub(crate) struct Painter {
+    /// The painter module, gzipped, base64.
+    pub(crate) painter: String,
+    /// The glue and the boot script, as one inline script.
+    pub(crate) script: String,
+    /// `'sha256-…'` for the inline script.
+    pub(crate) hash: String,
+}
+
+impl Painter {
+    /// Reads `dir` (`painter.wasm.gz`, `painter.js`, `boot.js`).
+    pub(crate) fn read(dir: &Path) -> Option<Painter> {
+        let glue = std::fs::read_to_string(dir.join("painter.js")).ok()?;
+        let boot = std::fs::read_to_string(dir.join("boot.js")).ok()?;
+        let script = format!("{glue}\n{boot}");
+        if script.to_ascii_lowercase().contains("</script") {
+            return None;
+        }
+        let hash = format!(
+            "'sha256-{}'",
+            base64::engine::general_purpose::STANDARD.encode(Sha256::digest(script.as_bytes()))
+        );
+        let painter = base64::engine::general_purpose::STANDARD
+            .encode(std::fs::read(dir.join("painter.wasm.gz")).ok()?);
+        Some(Painter {
+            painter,
+            script,
+            hash,
+        })
+    }
+
+    /// [`Painter::read`], once per directory.
+    pub(crate) fn cached(dir: &Path) -> Option<Arc<Painter>> {
+        static CACHE: Mutex<Option<HashMap<PathBuf, Option<Arc<Painter>>>>> = Mutex::new(None);
+        let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        cache
+            .get_or_insert_with(HashMap::new)
+            .entry(dir.to_path_buf())
+            .or_insert_with(|| Painter::read(dir).map(Arc::new))
+            .clone()
+    }
+
+    /// The painter and the script, with a scene element that names the
+    /// frame this browser kept for this page: `key` (the Cache Storage
+    /// entry's address before the box size) and `outline` (the server's
+    /// view of what the page shows; a kept frame of another outline is
+    /// stale). The snapshot stays until the app's ready frame.
+    pub(crate) fn kept(&self, key: &str, outline: &str) -> Markup {
+        html! {
+            script type="application/octet-stream" id="first-frame-painter" { (self.painter) }
+            script type="application/octet-stream" id="first-frame-scene"
+                data-cache=(key) data-outline=(outline) data-swap="gpui-ready" {}
+            script { (PreEscaped(&self.script)) }
+        }
+    }
+
+    /// `policy` with this script's hash allowed.
+    pub(crate) fn policy(&self, policy: &str) -> String {
+        policy.replacen(
+            "script-src 'self'",
+            &format!("script-src 'self' {}", self.hash),
+            1,
+        )
+    }
+}
+
+/// A short digest, for keys and outlines.
+pub(crate) fn short_digest(text: &str) -> String {
+    sha256_hex(text.as_bytes())[..16].to_owned()
+}
+
 impl FirstFrame {
     /// Reads `build/first-frame`, or `None` when it's missing, unreadable,
     /// or captured from another graph than `graph_json`.
@@ -308,6 +382,20 @@ mod tests {
             "data-width=\"356\" data-height=\"605.671875\" data-scale=\"2\">cGhvbmU=</script>"
         ));
         assert!(html.contains("<script>let wasm_bindgen;\n(function () {})();</script>"));
+    }
+
+    #[test]
+    fn a_page_can_carry_the_painter_alone_for_a_kept_frame() {
+        let dir = build("{}");
+        let painter = Painter::read(&dir.path().join(DIRECTORY)).unwrap();
+        let html = painter.kept("/__first-frame/chat/abc/gpui", "0123").into_string();
+        assert!(html.contains("id=\"first-frame-painter\">d2FzbQ==</script>"));
+        assert!(html.contains(
+            "data-cache=\"/__first-frame/chat/abc/gpui\" data-outline=\"0123\" data-swap=\"gpui-ready\"></script>"
+        ));
+        assert!(painter.policy(crate::pages::foreman::GRAPH_POLICY).contains(&painter.hash));
+        assert_eq!(short_digest("x").len(), 16);
+        assert!(Painter::read(Path::new("/nowhere")).is_none());
     }
 
     #[test]

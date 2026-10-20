@@ -15,6 +15,10 @@ default = []
 # Background threads over SharedArrayBuffer. Needs a nightly compiler with
 # wasm atomics and cross-origin isolation headers; off by default.
 multithreaded = ["dep:wasm_thread"]
+# Record the frame an app announces as ready (`announce_ready`) as an
+# `openagents-first-frame` scene, which a page keeps and paints before the
+# module on the next visit (`recorded_frame`).
+first-frame = ["dep:openagents-first-frame", "dep:openagents-first-frame-record"]
 
 [lib]
 path = "src/gpui_web.rs"
@@ -38,6 +42,8 @@ console_error_panic_hook = "0.1.7"
 js-sys = "0.3"
 raw-window-handle.workspace = true
 wasm_thread = { version = "0.3", features = ["es_modules"], optional = true }
+openagents-first-frame = { workspace = true, optional = true }
+openagents-first-frame-record = { workspace = true, optional = true }
 web-sys = { version = "0.3", features = [
     "Blob",
     "CanvasRenderingContext2d",

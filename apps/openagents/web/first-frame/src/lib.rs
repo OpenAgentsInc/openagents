@@ -124,6 +124,20 @@ pub struct Sprite {
     pub tile: u16,
 }
 
+/// A color image or color glyph (GPUI's polychrome sprite), drawn from a
+/// tile of [`Scene::image_atlas`] stretched over `bounds`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Image {
+    pub bounds: Rect,
+    pub mask: u16,
+    /// Index into [`Scene::image_tiles`].
+    pub tile: u16,
+    pub opacity: f32,
+    pub grayscale: bool,
+    /// Top left, top right, bottom right, bottom left.
+    pub radii: [f32; 4],
+}
+
 /// A rectangle of the atlas, in its pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Tile {
@@ -171,6 +185,8 @@ pub enum Command {
     /// Glyphs from a three-channel atlas, blended a color channel at a
     /// time as GPUI's subpixel pipeline does.
     SubpixelSprites(Range<u32>),
+    /// Images from the image atlas.
+    Images(Range<u32>),
 }
 
 /// One frame.
@@ -197,6 +213,10 @@ pub struct Scene {
     pub sprites: Vec<Sprite>,
     pub tiles: Vec<Tile>,
     pub atlas: Atlas,
+    /// Color images: red, green, blue, and straight alpha for each pixel.
+    pub images: Vec<Image>,
+    pub image_tiles: Vec<Tile>,
+    pub image_atlas: Atlas,
     pub commands: Vec<Command>,
 }
 
@@ -246,6 +266,7 @@ const KIND_SHADOWS: u8 = 2;
 const KIND_PATHS: u8 = 3;
 const KIND_SPRITES: u8 = 4;
 const KIND_SUBPIXEL_SPRITES: u8 = 5;
+const KIND_IMAGES: u8 = 6;
 
 struct Writer(Vec<u8>);
 
@@ -517,6 +538,32 @@ impl Scene {
                         return Err(Error("glyphs don't match the atlas's channels"));
                     }
                 }
+                Command::Images(r) => range(r, self.images.len())?,
+            }
+        }
+        let images = &self.image_atlas;
+        if !self.images.is_empty() && images.channels != 4 {
+            return Err(Error("the image atlas doesn't have four channels"));
+        }
+        if images.pixels.len()
+            != images.width as usize * images.height as usize * images.channels as usize
+        {
+            return Err(Error("the image atlas has the wrong number of pixels"));
+        }
+        for t in &self.image_tiles {
+            if t.x as u32 + t.w as u32 > images.width as u32
+                || t.y as u32 + t.h as u32 > images.height as u32
+            {
+                return Err(Error("a tile is outside the atlas"));
+            }
+        }
+        for image in &self.images {
+            sized(&image.bounds)?;
+            index(image.mask, masks)?;
+            index(image.tile, self.image_tiles.len())?;
+            finite(&image.radii)?;
+            if !(image.opacity.is_finite() && (0.0..=1.0).contains(&image.opacity)) {
+                return Err(Error("an image's opacity is out of range"));
             }
         }
         Ok(())
@@ -606,6 +653,27 @@ impl Scene {
         w.u8(self.atlas.channels);
         w.0.extend_from_slice(&self.atlas.pixels);
 
+        w.count(self.image_tiles.len());
+        w.u16s(&self.image_tiles, |t| t.x);
+        w.u16s(&self.image_tiles, |t| t.y);
+        w.u16s(&self.image_tiles, |t| t.w);
+        w.u16s(&self.image_tiles, |t| t.h);
+
+        w.count(self.images.len());
+        w.rects(&self.images, |i| i.bounds);
+        w.u16s(&self.images, |i| i.mask);
+        w.u16s(&self.images, |i| i.tile);
+        w.f32s(&self.images, |i| [i.opacity]);
+        for i in &self.images {
+            w.u8(i.grayscale as u8);
+        }
+        w.f32s(&self.images, |i| i.radii);
+
+        w.u16(self.image_atlas.width);
+        w.u16(self.image_atlas.height);
+        w.u8(self.image_atlas.channels);
+        w.0.extend_from_slice(&self.image_atlas.pixels);
+
         w.count(self.commands.len());
         for c in &self.commands {
             let (kind, r, extra) = match c {
@@ -614,6 +682,7 @@ impl Scene {
                 Command::Paths { paths, sprites } => (KIND_PATHS, paths, Some(sprites)),
                 Command::Sprites(r) => (KIND_SPRITES, r, None),
                 Command::SubpixelSprites(r) => (KIND_SUBPIXEL_SPRITES, r, None),
+                Command::Images(r) => (KIND_IMAGES, r, None),
             };
             w.u8(kind);
             w.u32(r.start);
@@ -750,6 +819,41 @@ impl Scene {
         let len = s.atlas.width as usize * s.atlas.height as usize * s.atlas.channels as usize;
         s.atlas.pixels = r.take(len)?.to_vec();
 
+        let n = r.count(8)?;
+        s.image_tiles = vec![Tile::default(); n];
+        r.u16s(&mut s.image_tiles, |t| &mut t.x)?;
+        r.u16s(&mut s.image_tiles, |t| &mut t.y)?;
+        r.u16s(&mut s.image_tiles, |t| &mut t.w)?;
+        r.u16s(&mut s.image_tiles, |t| &mut t.h)?;
+
+        let n = r.count(41)?;
+        s.images = vec![Image::default(); n];
+        r.rects(&mut s.images, |i| &mut i.bounds)?;
+        r.u16s(&mut s.images, |i| &mut i.mask)?;
+        r.u16s(&mut s.images, |i| &mut i.tile)?;
+        for image in &mut s.images {
+            image.opacity = r.f32()?;
+        }
+        for image in &mut s.images {
+            image.grayscale = match r.u8()? {
+                0 => false,
+                1 => true,
+                _ => return Err(Error("an image's grayscale flag is not 0 or 1")),
+            };
+        }
+        r.f32s(&mut s.images, |i| &mut i.radii)?;
+
+        s.image_atlas.width = r.u16()?;
+        s.image_atlas.height = r.u16()?;
+        s.image_atlas.channels = r.u8()?;
+        if !matches!(s.image_atlas.channels, 1 | 4) {
+            return Err(Error("the image atlas doesn't have four channels"));
+        }
+        let len = s.image_atlas.width as usize
+            * s.image_atlas.height as usize
+            * s.image_atlas.channels as usize;
+        s.image_atlas.pixels = r.take(len)?.to_vec();
+
         let n = r.count(9)?;
         s.commands = Vec::with_capacity(n);
         for _ in 0..n {
@@ -764,6 +868,7 @@ impl Scene {
                 },
                 KIND_SPRITES => Command::Sprites(a),
                 KIND_SUBPIXEL_SPRITES => Command::SubpixelSprites(a),
+                KIND_IMAGES => Command::Images(a),
                 _ => return Err(Error("an unknown draw command")),
             });
         }
@@ -861,6 +966,9 @@ mod tests {
                 channels: 1,
                 pixels: (0..16).map(|v| v * 16).collect(),
             },
+            images: vec![],
+            image_tiles: vec![],
+            image_atlas: Atlas::default(),
             commands: vec![
                 Command::Shadows(0..1),
                 Command::Quads(0..2),
@@ -887,6 +995,50 @@ mod tests {
             ..Scene::default()
         };
         assert_eq!(Scene::decode(&empty.encode().unwrap()).unwrap(), empty);
+        // A color image, stretched over its bounds.
+        let mut images = sample();
+        images.images = vec![Image {
+            bounds: Rect::new(2.0, 3.0, 8.0, 8.0),
+            mask: 0,
+            tile: 0,
+            opacity: 0.5,
+            grayscale: true,
+            radii: [2.0; 4],
+        }];
+        images.image_tiles = vec![Tile {
+            x: 0,
+            y: 0,
+            w: 2,
+            h: 2,
+        }];
+        images.image_atlas = Atlas {
+            width: 2,
+            height: 2,
+            channels: 4,
+            pixels: (0..16).collect(),
+        };
+        images.commands.push(Command::Images(0..1));
+        let bytes = images.encode().unwrap();
+        assert_eq!(Scene::decode(&bytes).unwrap(), images);
+        let mut wrong = images.clone();
+        wrong.image_atlas.channels = 3;
+        wrong.image_atlas.pixels.truncate(12);
+        assert_eq!(
+            wrong.validate(),
+            Err(Error("the image atlas doesn't have four channels"))
+        );
+        let mut wrong = images.clone();
+        wrong.images[0].opacity = 2.0;
+        assert_eq!(
+            wrong.validate(),
+            Err(Error("an image's opacity is out of range"))
+        );
+        let mut wrong = images;
+        wrong.images[0].tile = 1;
+        assert_eq!(
+            wrong.validate(),
+            Err(Error("an index is outside its table"))
+        );
         // Subpixel glyphs from a three-channel atlas.
         let mut subpixel = sample();
         subpixel.subpixel_contrast = 0.5;
@@ -1018,9 +1170,10 @@ mod tests {
         assert_eq!(Scene::decode(&bad), Err(Error("a number is not finite")));
         // A sprite pointing past the tiles, written by hand.
         let mut bad = bytes;
-        // Commands (4 + 9 + 9 + 17 + 9 bytes), the atlas pixels and header,
-        // then the sprite's tile index.
-        let tile_at = bad.len() - 48 - 16 - 5 - 2;
+        // Commands (4 + 9 + 9 + 17 + 9 bytes), the empty image tables and
+        // atlas (4 + 4 + 5), the atlas pixels and header, then the sprite's
+        // tile index.
+        let tile_at = bad.len() - 48 - 13 - 16 - 5 - 2;
         // The sprite's tile index sits just before the atlas header.
         let atlas_header = tile_at + 2;
         assert_eq!(&bad[atlas_header..atlas_header + 5], &[4, 0, 4, 0, 1]);
