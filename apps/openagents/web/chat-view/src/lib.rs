@@ -31,3 +31,5 @@ mod icon;
 pub use gpui::svg;
 #[cfg(target_family = "wasm")]
 pub use icon::svg;
+
+pub mod visuals;

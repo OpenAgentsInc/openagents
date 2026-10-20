@@ -126,6 +126,7 @@ pub struct ChatApp {
     focus_handle: FocusHandle,
     expanded: HashSet<String>,
     images: HashMap<String, Arc<Image>>,
+    visuals: openagents_web_chat_view::visuals::Frames,
     /// The cards each finished answer came with, by entry id.
     entry_cards: HashMap<String, Vec<serde_json::Value>>,
     /// Bumped on each open, so a slow read for a chat left behind is dropped.
@@ -265,6 +266,7 @@ impl ChatApp {
             focus_handle: cx.focus_handle(),
             expanded: HashSet::new(),
             images: HashMap::new(),
+            visuals: Default::default(),
             entry_cards: HashMap::new(),
             generation: 0,
             _alerts: None,
@@ -356,6 +358,7 @@ impl ChatApp {
         self.compose
             .update(cx, |compose, cx| compose.switch_chat(chat.as_deref(), cx));
         self.generation += 1;
+        self.visuals.clear();
         let generation = self.generation;
         self.menu = None;
         self.notice = None;
@@ -1746,7 +1749,22 @@ impl ChatApp {
         // Web chats ask no questions of their own.
         let mut questions =
             |_: usize, _: &[openagents_proto::UserInputQuestion], _: bool| div().into_any_element();
-        let body = transcript::assistant_body(view, &toggle, &mut questions);
+        let read = openagents_web_chat_view::visuals::browser_reader();
+        let mut visuals = |id: &str, title: &str, path: &str| {
+            self.visuals.render(
+                format!("{key}#{id}"),
+                title,
+                path,
+                read.clone(),
+                |this, cx| {
+                    this.list_state.remeasure();
+                    cx.notify();
+                },
+                cx,
+            )
+        };
+        let body =
+            transcript::assistant_body_with_visuals(view, &toggle, &mut questions, &mut visuals);
         let copy = entry.status != Some(MessageStatus::Streaming);
         let text = entry
             .parts

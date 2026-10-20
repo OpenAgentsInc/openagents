@@ -17,6 +17,9 @@
 //! app. `math.random` is seeded from the visual's id before every call, so a
 //! script's random data is the same on every render and every device.
 
+#[cfg(any(target_family = "wasm", feature = "portable-runtime"))]
+extern crate luaur as mlua;
+
 pub mod assets;
 mod draw;
 pub mod image;
@@ -29,7 +32,7 @@ mod style;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use mlua::{Function, Lua, LuaOptions, StdLib, Table, Value, VmState};
 
@@ -96,6 +99,7 @@ fn describe(error: &mlua::Error) -> String {
         mlua::Error::MemoryError(_) => {
             format!("the script used more than {} MB", MEMORY_LIMIT >> 20)
         }
+        #[cfg(not(any(target_family = "wasm", feature = "portable-runtime")))]
         mlua::Error::WithContext { context, cause } => format!("{context}: {}", describe(cause)),
         other => node::short_error(other),
     }
@@ -143,10 +147,11 @@ impl Visual {
                 MAX_SCRIPT_BYTES / 1024
             )));
         }
-        let lua = Lua::new_with(
-            StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::UTF8 | StdLib::BIT,
-            LuaOptions::default(),
-        )?;
+        #[cfg(not(any(target_family = "wasm", feature = "portable-runtime")))]
+        let libraries = StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::UTF8 | StdLib::BIT;
+        #[cfg(any(target_family = "wasm", feature = "portable-runtime"))]
+        let libraries = StdLib::ALL_SAFE;
+        let lua = Lua::new_with(libraries, LuaOptions::default())?;
         lua.set_memory_limit(MEMORY_LIMIT)?;
 
         let deadline: Rc<Cell<Option<Instant>>> = Rc::default();
@@ -171,6 +176,21 @@ impl Visual {
         });
 
         let globals = lua.globals();
+        // luaur opens the standard libraries together. Match the desktop's
+        // allowlist before freezing globals; no host, module, or clock API.
+        #[cfg(any(target_family = "wasm", feature = "portable-runtime"))]
+        for name in [
+            "os",
+            "debug",
+            "coroutine",
+            "require",
+            "loadstring",
+            "load",
+            "io",
+            "collectgarbage",
+        ] {
+            globals.set(name, Value::Nil)?;
+        }
         let logs: Rc<RefCell<Vec<String>>> = Rc::default();
         let sink = logs.clone();
         globals.set(

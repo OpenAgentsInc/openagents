@@ -3441,6 +3441,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "luaur-ast"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "764705892871b019d59ae715a3c258c05d4c0cdc91b48bc13de1dff9528c46aa"
+dependencies = [
+ "luaur-common",
+]
+
+[[package]]
+name = "luaur-bytecode"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d04ae19a8ccc422eb05af31c3d72ea52417fe183cf3b12c5838cec539541ab3a"
+dependencies = [
+ "luaur-common",
+]
+
+[[package]]
+name = "luaur-common"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d9c24d960012cf14bd4cfd056a89d41758d5548305e91552fc71aa0318edae7"
+dependencies = [
+ "libc",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "luaur-compiler"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e84db18b5d4b63286e3725ef8473a1181dc70bad9941608ec120ecc2e255397"
+dependencies = [
+ "luaur-ast",
+ "luaur-bytecode",
+ "luaur-common",
+]
+
+[[package]]
+name = "luaur-rt"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2f75240c12ca15167dae8542d7d477d28a58491e33a752c4e160f424dc6e588"
+dependencies = [
+ "luaur-ast",
+ "luaur-bytecode",
+ "luaur-common",
+ "luaur-compiler",
+ "luaur-vm",
+]
+
+[[package]]
+name = "luaur-vm"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "945d6993538f99bc25a424b7a7a55b9db953d609f7fc869e6d80495326e46ae2"
+dependencies = [
+ "luaur-common",
+]
+
+[[package]]
 name = "lyon"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4167,6 +4228,7 @@ dependencies = [
  "futures",
  "gpui",
  "gpui-base",
+ "image",
  "openagents-brand",
  "openagents-doc",
  "openagents-markdown",
@@ -4174,6 +4236,8 @@ dependencies = [
  "openagents-syntax",
  "openagents-theme",
  "openagents-veil",
+ "openagents-visual",
+ "openagents-visual-gpu",
  "openagents-workspace-hack",
  "pulldown-cmark",
  "roxmltree 0.21.1",
@@ -4182,6 +4246,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tracing",
  "unicode-segmentation",
  "url",
  "uuid",
@@ -4346,10 +4411,24 @@ dependencies = [
  "base64 0.22.1",
  "gltf",
  "image",
+ "luaur-rt",
  "mlua",
  "naga",
  "openagents-workspace-hack",
  "thiserror 2.0.21",
+ "web-time",
+]
+
+[[package]]
+name = "openagents-visual-gpu"
+version = "1.0.0"
+dependencies = [
+ "openagents-brand",
+ "openagents-visual",
+ "openagents-workspace-hack",
+ "pollster 0.4.0",
+ "tracing",
+ "wgpu",
 ]
 
 [[package]]
@@ -4430,13 +4509,19 @@ dependencies = [
  "anyhow",
  "chrono",
  "gpui",
+ "js-sys",
  "openagents-chat-view",
  "openagents-doc",
  "openagents-gpui-web",
  "openagents-markdown",
  "openagents-proto",
+ "openagents-visual",
  "resvg",
+ "serde_json",
  "unicode-segmentation",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -7719,6 +7804,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
 dependencies = [
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets",
 ]
 
 [[package]]
