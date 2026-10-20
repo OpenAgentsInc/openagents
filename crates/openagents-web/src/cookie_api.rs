@@ -54,6 +54,7 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/agent-assignments",
     "/v1/published-agents",
     "/v1/schedules",
+    "/v1/memory",
     "/v1/labs",
     "/v1/voice-agent",
     "/v1/keys",
@@ -218,6 +219,9 @@ mod tests {
             "/v1/labs/documents/d1",
             "/v1/voice-agent",
             "/v1/keys/k1",
+            "/v1/memory",
+            "/v1/memory/mem-one",
+            "/v1/schedules/prompt-one/pause",
             "/v1/device/keys/challenge",
             "/v1/device/name",
             "/v1/account",
@@ -233,6 +237,8 @@ mod tests {
         }
         for path in [
             "/v1/threadsx",
+            "/v1/memoryx",
+            "/coder/memory",
             "/v1/account/github/token",
             "/v1/accounts",
             "/v1/device/nostr/challenge",

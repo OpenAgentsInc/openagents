@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 use wasm_bindgen::{JsCast, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 
+mod memory_schedules;
 /// Settings → Providers over host RPC (#12283).
 mod providers;
 
@@ -91,6 +92,11 @@ pub struct SettingsApp {
     focus_wanted: bool,
     computer_task: Option<Task<()>>,
     account_task: Option<Task<()>>,
+    memory_read: Option<Task<()>>,
+    schedules_read: Option<Task<()>>,
+    memory_write: Option<Task<()>>,
+    schedules_write: Option<Task<()>>,
+    account_fields: memory_schedules::Fields,
     /// Earn's reads of the computer (#12294), and the wait before the next.
     earn_task: Option<Task<()>>,
     earn_timer: Option<Task<()>>,
@@ -132,6 +138,11 @@ impl SettingsApp {
             focus_wanted: false,
             computer_task: None,
             account_task: None,
+            memory_read: None,
+            schedules_read: None,
+            memory_write: None,
+            schedules_write: None,
+            account_fields: Default::default(),
             earn_task: None,
             earn_timer: None,
             providers_watch: None,
@@ -208,6 +219,7 @@ impl SettingsApp {
             }
             Page::Providers => self.load_providers(cx),
             Page::Account => self.load_account(cx),
+            Page::Memory | Page::Schedules => self.load_memory_schedules(page, cx),
             Page::Notifications => self.remote.notifications_allowed = notifications_allowed(),
             _ => {}
         }
@@ -567,6 +579,8 @@ impl SettingsApp {
             }
             Intent::Earn(action) => self.earn_action(action, cx),
             Intent::Providers(action) => self.providers_action(action, cx),
+            Intent::Memory(action) => self.memory_action(action, cx),
+            Intent::Schedules(action) => self.schedules_action(action, cx),
             Intent::TitleHarness(harness) => {
                 self.save_titles(json!({ "harness": harness, "model": null }), cx)
             }
@@ -916,7 +930,9 @@ impl Render for SettingsApp {
         let page = self.page;
         let paints = paints(&theme::desktop());
         let root = forms::page(page, &self.prefs, &self.remote, &paints);
-        let body = rust_native_gpui::mount_root(
+        self.prepare_account_fields(&root, cx);
+        let account_fields = self.account_fields.clone();
+        let body = rust_native_gpui::mount_root_with_fields(
             &root,
             "settings",
             self.revision,
@@ -925,6 +941,19 @@ impl Render for SettingsApp {
                 if let Some(intent) = find_intent(&root, &activation.node) {
                     this.settings_intent(intent, cx);
                 }
+            },
+            move |key, _| {
+                account_fields.get(key).map(|input| {
+                    div()
+                        .px(px(12.))
+                        .py(px(8.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(theme::border_strong())
+                        .bg(theme::input_bg())
+                        .child(input.clone())
+                        .into_any_element()
+                })
             },
             cx,
         );

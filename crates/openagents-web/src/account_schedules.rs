@@ -39,7 +39,7 @@
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{DefaultBodyLimit, Form, Path, State};
+use axum::extract::{DefaultBodyLimit, Form, Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -1093,7 +1093,11 @@ fn target(viewer: &Viewer, request: &str) -> String {
 /// A form's ticket: its CSRF token and request id.
 type Ticket<'a> = (&'a str, &'a str);
 
-async fn schedules_page(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn schedules_page(
+    State(app): State<App>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -1127,7 +1131,10 @@ async fn schedules_page(State(app): State<App>, headers: HeaderMap) -> Response 
             (&tickets[2].0, &tickets[2].1),
         ],
     );
-    page(&headers, service, &viewer, "Scheduled prompts", PAGE, body)
+    let body = html! { (body) (crate::settings_memory_schedules::entry(&app, &headers, query.as_deref(), "schedules")) };
+    let mut response = page(&headers, service, &viewer, "Scheduled prompts", PAGE, body);
+    crate::pages::gpui_chat::choice(&headers, query.as_deref()).remember(&app, &mut response);
+    response
 }
 
 /// The intervals the page offers, in seconds and words.

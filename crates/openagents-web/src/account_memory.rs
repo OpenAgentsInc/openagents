@@ -29,7 +29,7 @@
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{DefaultBodyLimit, Form, Path, State};
+use axum::extract::{DefaultBodyLimit, Form, Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
@@ -462,6 +462,11 @@ pub(crate) async fn chat_notes(store: &Store, owner: &str) -> Vec<MemoryNote> {
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .route("/v1/memory", get(api_list))
+        .route(
+            "/v1/memory/{id}",
+            axum::routing::put(api_put).delete(api_delete),
+        )
         .route(API, get(api_list))
         .route(SYNC, post(api_sync))
         .route(
@@ -612,7 +617,11 @@ fn kind_label(kind: &str) -> &'static str {
         .map_or("Note", |(_, label)| *label)
 }
 
-async fn memory_page(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn memory_page(
+    State(app): State<App>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -636,7 +645,10 @@ async fn memory_page(State(app): State<App>, headers: HeaderMap) -> Response {
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
-    page(&headers, service, &viewer, "Memory", PAGE, body)
+    let body = html! { (body) (crate::settings_memory_schedules::entry(&app, &headers, query.as_deref(), "memory")) };
+    let mut response = page(&headers, service, &viewer, "Memory", PAGE, body);
+    crate::pages::gpui_chat::choice(&headers, query.as_deref()).remember(&app, &mut response);
+    response
 }
 
 /// The note's fields, filled in for an edit or empty for a new one.
