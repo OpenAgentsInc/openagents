@@ -28,6 +28,28 @@ mod work;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
 
+#[cfg(target_family = "wasm")]
+thread_local! {
+    static CHAT: std::cell::RefCell<Option<(gpui::WindowHandle<app::ChatApp>, gpui::AsyncApp)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// A palette chord from another canvas, such as the file pane. The keymap
+/// stays in Rust; the page only forwards a key the focused canvas did not use.
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen(js_name = paletteShortcut)]
+pub fn palette_shortcut(ctrl: bool, alt: bool, shift: bool, cmd: bool, key: String) -> bool {
+    CHAT.with(|chat| {
+        chat.borrow().as_ref().is_some_and(|(window, cx)| {
+            window
+                .update(&mut cx.clone(), |chat, window, cx| {
+                    chat.palette_key(ctrl, alt, shift, cmd, &key, window, cx)
+                })
+                .unwrap_or(false)
+        })
+    })
+}
+
 /// Starts the chat with the page's fonts, one `Uint8Array` per face.
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen]
@@ -63,14 +85,16 @@ pub fn launch(fonts: js_sys::Array) {
             composer::bind_keys(cx);
             openagents_web_chat_view::selection::bind_keys(cx);
             let bounds = gpui::Bounds::centered(None, size(px(1280.), px(820.)), cx);
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    ..Default::default()
-                },
-                |window, cx| cx.new(|cx| app::ChatApp::new(window, cx)),
-            )
-            .expect("the page has a canvas to draw into");
+            let window = cx
+                .open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        ..Default::default()
+                    },
+                    |window, cx| cx.new(|cx| app::ChatApp::new(window, cx)),
+                )
+                .expect("the page has a canvas to draw into");
+            CHAT.with(|chat| *chat.borrow_mut() = Some((window, cx.to_async())));
             cx.activate(true);
         });
     std::mem::forget(handle);
