@@ -76,6 +76,7 @@ pub mod jobs;
 #[allow(clippy::result_large_err)]
 pub mod key_accounts;
 mod lab_workers;
+mod lightning_address;
 pub mod money;
 mod nostr_sign_in;
 pub mod open_quota;

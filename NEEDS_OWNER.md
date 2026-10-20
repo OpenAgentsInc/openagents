@@ -1,3 +1,18 @@
+## Self-hosted Lightning addresses (#12307)
+
+The address service needs a private LNURL backend and PostgreSQL before
+receiving can be enabled. Follow
+[`docs/payments/lightning-address-operations.md`](docs/payments/lightning-address-operations.md):
+provision the service credential and stable SSP authentication seed, install
+TLS for the restricted webhook hostname, and set the gateway configuration.
+Keep backups of the account holds, database, and service keys together.
+
+Fund a dedicated test wallet for the small payment and wallet-transfer checks.
+Use the dedicated OpenAgents test account. No real-money payment, owner wallet
+restore, production service activation, or DNS change was performed during
+source development. Enable Nostr zaps only after its service signing key and
+receipt delivery have been checked.
+
 ## WorkOS sign-in: the steps only you can take (#12320 to #12323) (2026-10-20)
 
 WorkOS sign-in is built and switched off in production. The switch is

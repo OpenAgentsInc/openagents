@@ -38,6 +38,11 @@ pub(crate) const USAGE: &str = "usage: openagents wallet COMMAND [OPTIONS]
                           with --json, add --show-words to print them.
   balance                 Your balance, in one plain sentence.
   address                 Your address to get paid at.
+  lightning [status|enable|disable|key|authorize|transfer]
+                          Manage your name@openagents.com payment address.
+                          key shows the new wallet's public key; authorize
+                          --to-key KEY approves moving the old address;
+                          transfer --authorization FILE accepts that approval.
   receive [--amount SATS] [--bitcoin]
                           A payment request to share: a Lightning invoice,
                           for SATS if given; --bitcoin gives a Bitcoin
@@ -69,6 +74,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::screen("create", Effect::Secret, "wallet"),
     Declared::screen("balance", Effect::ReadOnly, "wallet"),
     Declared::screen("address", Effect::ReadOnly, "wallet"),
+    Declared::screen("lightning", Effect::LocalWrite, "wallet"),
     Declared::screen("receive", Effect::LocalWrite, "wallet"),
     Declared::screen("send", Effect::Spends, "wallet"),
     Declared::screen("history", Effect::ReadOnly, "wallet"),
@@ -118,7 +124,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     };
     let format = Format::from_env();
     let takes = match command.as_str() {
-        "send" => 1,
+        "send" | "lightning" => 1,
         _ => 0,
     };
     if args.positional().len() > takes {
@@ -149,6 +155,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 Box::new(move |_: &Value| line) as Render,
             )
         }),
+        "lightning" => lightning(&args),
         "receive" => receive(&args, format),
         "send" => send(output, &args, format, note),
         "history" => history(&args, format, note),
@@ -916,4 +923,159 @@ mod tests {
         assert_eq!(date(0), "1970-01-01");
         assert_eq!(date(951_782_400), "2000-02-29");
     }
+}
+
+/// Account calls never carry the wallet's recovery words or spending keys.
+fn lightning(args: &Args) -> Result<(Value, Render), Failure> {
+    use openagents_sdk::lightning_address::AddressState;
+    let operation = args
+        .positional()
+        .first()
+        .map(String::as_str)
+        .unwrap_or("status");
+    if !matches!(
+        operation,
+        "status" | "enable" | "disable" | "key" | "authorize" | "transfer"
+    ) {
+        return Err(Failure::Usage(
+            "Use lightning status, enable, disable, key, authorize, or transfer.".into(),
+        ));
+    }
+    let authorization = if operation == "transfer" {
+        let path = args.option("authorization").ok_or_else(|| {
+            Failure::Usage("Use --authorization with the old wallet's approval file.".into())
+        })?;
+        let text = std::fs::read_to_string(path)
+            .map_err(|_| Failure::Plain("The address approval file couldn't be read.".into()))?;
+        if text.len() > 16 * 1024 {
+            return Err(Failure::Plain("That address approval is too long.".into()));
+        }
+        let value: Value = serde_json::from_str(&text)
+            .map_err(|_| Failure::Plain("The address approval couldn't be read.".into()))?;
+        if value["domain"] != "openagents.com" || !value["username"].is_string() {
+            return Err(Failure::Plain(
+                "That approval isn't for an OpenAgents address.".into(),
+            ));
+        }
+        Some((text, value["username"].as_str().unwrap().to_owned()))
+    } else {
+        None
+    };
+    if operation == "key" || operation == "authorize" {
+        let node = computer::open(&computer::home()).map_err(Failure::Plain)?;
+        let value = if operation == "key" {
+            json!({"pubkey":node.lightning_wallet_key().map_err(Failure::Plain)?})
+        } else {
+            let key = args.option("to-key").ok_or_else(|| {
+                Failure::Usage("Use --to-key with the new wallet's public key.".into())
+            })?;
+            let text = node
+                .authorize_lightning_transfer(key)
+                .map_err(Failure::Plain)?;
+            serde_json::from_str(&text)
+                .map_err(|_| Failure::Plain("The address approval couldn't be read.".into()))?
+        };
+        let line = serde_json::to_string_pretty(&value).unwrap();
+        return Ok((value, Box::new(move |_| line)));
+    }
+    let (client, session) = crate::agents::connect().map_err(Failure::Plain)?;
+    let runtime = crate::runtime();
+    let status = runtime
+        .block_on(client.lightning_addresses(&session))
+        .map_err(|_| {
+            Failure::Plain("Your Lightning address couldn't be read. Try again.".into())
+        })?;
+    let name = runtime
+        .block_on(client.account_name(&session))
+        .map_err(|_| Failure::Plain("Your name couldn't be read. Try again.".into()))?
+        .name;
+    let mut records = status.addresses;
+    if operation == "enable" || operation == "transfer" {
+        if !status.configured {
+            return Err(Failure::Plain(
+                "Receiving at your name isn't available yet. Try again later.".into(),
+            ));
+        }
+        let name = name.ok_or_else(|| {
+            Failure::Plain(
+                "Claim a name in your profile before enabling a Lightning address.".into(),
+            )
+        })?;
+        if authorization
+            .as_ref()
+            .is_some_and(|(_, approved)| approved != &name)
+        {
+            return Err(Failure::Plain(
+                "That approval is for another address.".into(),
+            ));
+        }
+        let current = records.iter().find(|record| record.name == name);
+        let revision = current.map_or(0, |record| record.revision);
+        let challenge = runtime
+            .block_on(client.lightning_challenge(&session, revision))
+            .map_err(|_| {
+                Failure::Plain(
+                    "The address request couldn't be started. Refresh and try again.".into(),
+                )
+            })?;
+        if challenge.name != name || challenge.domain != "openagents.com" {
+            return Err(Failure::Plain(
+                "The address request doesn't match your name.".into(),
+            ));
+        }
+        let node = computer::open(&computer::home()).map_err(Failure::Plain)?;
+        let proof = node
+            .sign_lightning_challenge(&challenge.message)
+            .map_err(Failure::Plain)?;
+        runtime
+            .block_on(client.enroll_lightning_address(
+                &session,
+                &challenge.id,
+                &proof.pubkey,
+                &proof.signature,
+            ))
+            .map_err(|_| {
+                Failure::Plain(
+                    "The wallet couldn't be linked to this address. Refresh and try again.".into(),
+                )
+            })?;
+        if let Some((text, _)) = &authorization {
+            node.claim_lightning_transfer(text)
+                .map_err(Failure::Plain)?;
+        } else {
+            node.register_lightning_address(&name)
+                .map_err(Failure::Plain)?;
+        }
+        records = runtime.block_on(client.lightning_addresses(&session)).map_err(|_|Failure::Plain("The address was requested, but its status couldn't be checked. Run lightning status.".into()))?.addresses;
+    } else if operation == "disable" {
+        let name = name.ok_or_else(|| {
+            Failure::Plain("Choose the address to disable in your profile.".into())
+        })?;
+        let current = records
+            .iter()
+            .find(|record| record.name == name)
+            .ok_or_else(|| {
+                Failure::Plain("You haven't enabled a Lightning address for this name.".into())
+            })?;
+        let changed = runtime
+            .block_on(client.disable_lightning_address(&session, &name, current.revision))
+            .map_err(|_| {
+                Failure::Plain("The address couldn't be disabled. Refresh and try again.".into())
+            })?;
+        records.retain(|record| record.name != name);
+        records.push(changed);
+    }
+    let active: Vec<String> = records
+        .iter()
+        .filter(|record| record.state == AddressState::Active)
+        .map(|record| format!("{}@{}", record.name, record.domain))
+        .collect();
+    let line = if operation == "disable" {
+        "Your Lightning address is disabled. Its name stays yours.".into()
+    } else if active.is_empty() {
+        "You don't have an active Lightning address.".into()
+    } else {
+        format!("Your Lightning address: {}", active.join(", "))
+    };
+    Ok((json!({"addresses":records}), Box::new(move |_| line)))
 }

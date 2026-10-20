@@ -63,10 +63,11 @@ public keys equal. Never upload recovery words, seed entropy, wallet
 spending keys, or an external signer's private material.
 
 The durable record contains the normalized name, account ID, profile
-Nostr key, compressed Spark identity public key, domain, revision,
-creation/update time, and state. State is `pending`, `active`, `disabled`,
-or `retired`. Store consumed enrollment challenges separately with their
-expiry. No record contains a wallet secret.
+Nostr key, compressed Spark identity public key, previous and historical
+wallet keys, domain, revision, creation/update time, and state. State is `pending`, `active`, `disabled`,
+or `retired`. Bound pending enrollment challenges by expiry and keep the
+last applied challenge ID in the address record for safe retries. No record
+contains a wallet secret.
 
 Once a name has been enrolled for payments, its payment-name hold belongs
 to that account permanently. Existing social names that have never been
@@ -87,7 +88,12 @@ Wallet rotation requires a new wallet proof and fresh account
 authorization. Changing a destination increments the revision and cannot
 reuse an old authorization. Existing invoices keep their original
 recipient. Recovery never makes a held name available to another account.
-Do not expose general cross-account address transfer in the first release.
+Keep the old wallet as transfer authority until the backend accepts both
+wallets' signatures. The original wallet can cancel an unfinished rotation
+with a fresh account proof. Retain signed access to old wallets' own payment
+metadata after disabling or rotating; those keys cannot register or transfer
+the current address. Do not expose general cross-account address transfer
+in the first release.
 
 ## Enrollment protocol
 
@@ -307,3 +313,9 @@ when its requested code is on main and its own checks pass.
 - [Breez payment webhooks](https://sdk-doc-spark.breez.technology/guide/lnurl_webhooks.html).
 - [LUD-16](https://github.com/lnurl/luds/blob/luds/16.md) and [LUD-06](https://github.com/lnurl/luds/blob/luds/06.md).
 - [NIP-57](../../nips/official/57.md).
+
+## Deployment reference
+
+The [operations runbook](lightning-address-operations.md) covers the pinned
+backend build, private network, service configuration, backups, activation
+checks, and rollback. Deployment templates live in `deploy/lightning-address/`.

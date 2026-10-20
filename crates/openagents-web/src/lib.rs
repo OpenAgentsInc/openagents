@@ -123,6 +123,7 @@ pub(crate) mod labs_kinds;
 pub mod landing;
 #[doc(hidden)]
 pub mod layout;
+mod lightning_address;
 mod link_preview;
 pub mod mac_jobs;
 #[doc(hidden)]
@@ -819,6 +820,7 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .merge(published_agents::routes())
         .merge(profiles::routes())
         .merge(wallet_browser::routes())
+        .merge(lightning_address::routes())
         .merge(verse_key::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())

@@ -38,9 +38,10 @@ mod apple_tests;
 pub mod commercial;
 pub mod deletion;
 pub mod identities;
-pub mod names;
 #[cfg(test)]
 mod identities_tests;
+pub mod lightning;
+pub mod names;
 pub mod nostr;
 pub mod sso;
 #[cfg(test)]
@@ -304,6 +305,9 @@ pub struct Store {
     /// Claimed `name@openagents.com` names (#12254); empty books preserve old digests.
     #[serde(default, skip_serializing_if = "names::Book::is_empty")]
     pub names: names::Book,
+    /// Permanent payment-name holds and verified wallet enrollments.
+    #[serde(default, skip_serializing_if = "lightning::Book::is_empty")]
+    pub lightning: lightning::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -579,6 +583,7 @@ impl Store {
         self.sso.validate(self)?;
         self.identities.validate(self)?;
         self.names.validate()?;
+        self.lightning.validate()?;
         Ok(())
     }
 }
@@ -1143,6 +1148,7 @@ impl Accounts {
             sso: sso::Book::default(),
             identities: identities::Book::default(),
             names: names::Book::default(),
+            lightning: lightning::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2815,6 +2821,7 @@ mod tests {
             sso: sso::Book::default(),
             identities: identities::Book::default(),
             names: names::Book::default(),
+            lightning: lightning::Book::default(),
             digest: String::new(),
         };
         store.seal();

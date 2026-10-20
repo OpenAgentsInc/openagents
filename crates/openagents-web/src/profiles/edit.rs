@@ -264,6 +264,7 @@ fn content(
                 (text_field("profile-display-name", "Name", "display_name", metadata.shown_name(), "The name people see."))
                 (text_field("profile-picture", "Picture", "picture", metadata.picture.as_deref(), "A link to your picture, starting with https://."))
                 (text_field("profile-about", "About", "about", metadata.about.as_deref(), "A line or two about you."))
+                (text_field("profile-lightning", "Lightning address", "lud16", metadata.lud16.as_deref(), "Where people can send you a tip."))
                 (text_field("profile-website", "Website", "website", metadata.website.as_deref(), "Optional."))
                 p data-oa-profile-publish="" hidden {
                     (Button::new("Publish").kind(ButtonType::Submit))
@@ -403,6 +404,7 @@ fn edited(fields: &Value) -> Metadata {
         picture: field("picture"),
         about: field("about"),
         website: field("website"),
+        lud16: field("lud16"),
         ..Metadata::default()
     }
 }
@@ -433,6 +435,7 @@ async fn draft(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         picture: present(&edit.picture),
         about: present(&edit.about),
         website: present(&edit.website),
+        lud16: present(&edit.lud16),
         ..Metadata::default()
     };
     if let Err(words) = check.check() {

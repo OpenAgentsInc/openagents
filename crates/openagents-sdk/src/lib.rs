@@ -12,9 +12,9 @@ pub mod agents;
 #[cfg(feature = "transport")]
 pub mod attention;
 #[cfg(feature = "transport")]
-pub mod browser_wallet;
-#[cfg(feature = "transport")]
 mod auth;
+#[cfg(feature = "transport")]
+pub mod browser_wallet;
 pub mod chats;
 #[cfg(feature = "transport")]
 pub mod cloud_host;
@@ -34,6 +34,8 @@ pub mod issues;
 pub mod labs;
 #[cfg(feature = "transport")]
 pub mod land;
+#[cfg(feature = "transport")]
+pub mod lightning_address;
 mod model;
 #[cfg(feature = "transport")]
 pub mod owner_notifications;

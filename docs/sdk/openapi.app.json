@@ -26583,6 +26583,235 @@
           }
         }
       }
+    },
+    "/v1/device/lightning-address": {
+      "get": {
+        "operationId": "getDeviceLightningAddresses",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Read your Lightning addresses",
+        "description": "Uses your current account session. Wallet signatures are made locally; never send recovery words or private keys. Responses are not cached.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current address state or enrollment challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Check the request and wallet signature."
+          },
+          "401": {
+            "description": "Log in again to continue."
+          },
+          "409": {
+            "description": "Refresh the address revision and try again."
+          },
+          "503": {
+            "description": "Receiving is unavailable or has not been configured."
+          }
+        }
+      },
+      "put": {
+        "operationId": "enrollDeviceLightningAddress",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Prove your wallet controls this address",
+        "description": "Uses your current account session. Wallet signatures are made locally; never send recovery words or private keys. Responses are not cached.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current address state or enrollment challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Check the request and wallet signature."
+          },
+          "401": {
+            "description": "Log in again to continue."
+          },
+          "409": {
+            "description": "Refresh the address revision and try again."
+          },
+          "503": {
+            "description": "Receiving is unavailable or has not been configured."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "challenge",
+                  "pubkey",
+                  "signature"
+                ],
+                "properties": {
+                  "challenge": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64
+                  },
+                  "pubkey": {
+                    "type": "string",
+                    "minLength": 66,
+                    "maxLength": 66
+                  },
+                  "signature": {
+                    "type": "string",
+                    "maxLength": 144
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "disableDeviceLightningAddress",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Stop receiving at your address",
+        "description": "Uses your current account session. Wallet signatures are made locally; never send recovery words or private keys. Responses are not cached.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current address state or enrollment challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Check the request and wallet signature."
+          },
+          "401": {
+            "description": "Log in again to continue."
+          },
+          "409": {
+            "description": "Refresh the address revision and try again."
+          },
+          "503": {
+            "description": "Receiving is unavailable or has not been configured."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "expected_revision"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  "expected_revision": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/device/lightning-address/challenge": {
+      "post": {
+        "operationId": "challengeDeviceLightningAddress",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Request a wallet enrollment challenge",
+        "description": "Uses your current account session. Wallet signatures are made locally; never send recovery words or private keys. Responses are not cached.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current address state or enrollment challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Check the request and wallet signature."
+          },
+          "401": {
+            "description": "Log in again to continue."
+          },
+          "409": {
+            "description": "Refresh the address revision and try again."
+          },
+          "503": {
+            "description": "Receiving is unavailable or has not been configured."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expected_revision"
+                ],
+                "properties": {
+                  "expected_revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

@@ -15,6 +15,7 @@ mod history;
 mod labs;
 mod labs_worker;
 mod land;
+mod lightning_address;
 mod payment_required;
 mod run_commands;
 mod runs;

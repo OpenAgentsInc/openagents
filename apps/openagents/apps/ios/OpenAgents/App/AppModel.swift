@@ -260,6 +260,10 @@ final class AppModel {
         guard let account else { throw NSError(domain: "OpenAgents", code: 1, userInfo: [NSLocalizedDescriptionKey: "Log in again to continue."]) }
         return try account.browserPayments(wallet: wallet, listener: browserPaymentsBridge)
     }
+    func openLightningAddress(wallet: CoreWallet) throws -> CoreLightningAddress {
+        guard let account else { throw NSError(domain: "OpenAgents", code: 1, userInfo: [NSLocalizedDescriptionKey: "Log in again to continue."]) }
+        return try account.lightningAddress(wallet: wallet)
+    }
     func openProjectInvitations() {
         guard let site = URL(string: Self.accountWebsite), let url = URL(string: "projects", relativeTo: site)?.absoluteURL else { return }
         UIApplication.shared.open(url)

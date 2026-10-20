@@ -189,6 +189,8 @@ pub struct YourProfile {
     pub name: String,
     pub picture: String,
     pub about: String,
+    #[serde(default)]
+    pub lightning: String,
     /// `name@openagents.com`, once the account holds the name.
     pub address: Option<String>,
     /// Where the profile shows on the website.
@@ -201,6 +203,7 @@ pub struct ProfileEdit {
     pub name: String,
     pub picture: String,
     pub about: String,
+    pub lightning: String,
 }
 
 /// What to say when the account service refused a name.
@@ -239,6 +242,7 @@ fn shown(name: Option<String>, metadata: &Metadata, npub: &str) -> YourProfile {
         name: name.or_else(|| metadata.name.clone()).unwrap_or_default(),
         picture: metadata.picture.clone().unwrap_or_default(),
         about: metadata.about.clone().unwrap_or_default(),
+        lightning: metadata.lud16.clone().unwrap_or_default(),
     }
 }
 
@@ -284,6 +288,7 @@ pub fn profile_event(
         name: Some(edit.name.trim().to_owned()).filter(|n| !n.is_empty()),
         picture: Some(picture.to_owned()).filter(|p| !p.is_empty()),
         about: Some(about.to_owned()).filter(|a| !a.is_empty()),
+        lud16: Some(edit.lightning.trim().to_owned()).filter(|a| !a.is_empty()),
         ..Metadata::default()
     };
     check.check().map_err(str::to_owned)?;
@@ -292,6 +297,7 @@ pub fn profile_event(
         name: Some(name.unwrap_or(edit.name.trim()).to_owned()),
         picture: Some(picture.to_owned()),
         about: Some(about.to_owned()),
+        lud16: Some(edit.lightning.trim().to_owned()),
         nip05: name.map(|n| format!("{n}@{DOMAIN}")),
         ..Metadata::default()
     };
@@ -483,6 +489,7 @@ pub mod copy {
     pub const NAME: &str = "Name";
     pub const PICTURE: &str = "Picture link";
     pub const ABOUT: &str = "About";
+    pub const LIGHTNING: &str = "Lightning address";
     pub const SAVE: &str = "Save";
     pub const SAVING: &str = "Saving…";
     pub const LOADING: &str = "Loading your profile…";
@@ -577,6 +584,13 @@ impl ProfileForm {
                 metadata::ABOUT_MAX * 4,
                 true,
             ),
+            field(
+                "lightning",
+                copy::LIGHTNING,
+                &state.edit.lightning,
+                320,
+                false,
+            ),
             Node {
                 key: "save".into(),
                 style: Default::default(),
@@ -646,6 +660,7 @@ impl ProfileForm {
             "name" => state.edit.name = event.value.clone(),
             "picture" => state.edit.picture = event.value.clone(),
             "about" => state.edit.about = event.value.clone(),
+            "lightning" => state.edit.lightning = event.value.clone(),
             _ => return Err("Choose a field.".into()),
         }
         state.notice = None;
@@ -691,6 +706,7 @@ impl ProfileForm {
                     name: shown.name.clone(),
                     picture: shown.picture.clone(),
                     about: shown.about.clone(),
+                    lightning: shown.lightning.clone(),
                 };
                 state.shown = Some(shown.clone());
                 state.notice = None;

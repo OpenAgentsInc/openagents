@@ -157,6 +157,12 @@ impl Metadata {
         if self.website.as_deref().is_some_and(|u| !web_url(u)) {
             return Err("Use a full web address for your website.");
         }
+        if self.lud16.as_deref().is_some_and(|value| {
+            let object = Map::from_iter([("lud16".to_owned(), Value::String(value.to_owned()))]);
+            address(&object, "lud16").is_none()
+        }) {
+            return Err("Use a Lightning address such as name@openagents.com.");
+        }
         Ok(())
     }
 

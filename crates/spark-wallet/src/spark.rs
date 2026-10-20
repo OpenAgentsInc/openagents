@@ -26,6 +26,7 @@ use breez_sdk_spark::{
     SuccessActionProcessed, SyncWalletRequest, default_config,
 };
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 /// OpenAgents' Breez API key. The owner confirmed with the Breez team that it
@@ -46,6 +47,7 @@ pub fn sdk_config(network: Network) -> breez_sdk_spark::Config {
     // Encrypted sync to Breez's server is for several devices on one
     // wallet, which the app does not offer.
     config.real_time_sync_server_url = None;
+    config.lnurl_domain = Some("openagents.com".into());
     // Claim on-chain deposits (a MoonPay purchase, or bitcoin sent to the
     // deposit address) at maturity for up to the network's fastest
     // recommended rate plus 1 sat/vB, so ordinary deposits credit without a
@@ -474,6 +476,88 @@ impl EventListener for Listener {
 }
 
 impl Node for SparkNode {
+    fn sign_lightning_challenge(
+        &self,
+        message: &str,
+    ) -> Result<crate::model::WalletSignature, String> {
+        let fields: serde_json::Value = serde_json::from_str(message)
+            .map_err(|_| "That address request isn't valid.".to_string())?;
+        if fields[0] != "openagents.lightning-address.v1"
+            || fields[3] != "openagents.com"
+            || fields[4] != "enable"
+        {
+            return Err("That address request isn't valid.".into());
+        }
+        self.runtime
+            .block_on(self.sdk.sign_message(breez_sdk_spark::SignMessageRequest {
+                message: message.into(),
+                compact: false,
+            }))
+            .map(|proof| crate::model::WalletSignature {
+                pubkey: proof.pubkey,
+                signature: proof.signature,
+            })
+            .map_err(|_| "The wallet couldn't sign this address request.".into())
+    }
+    fn register_lightning_address(&self, name: &str) -> Result<String, String> {
+        self.runtime
+            .block_on(self.sdk.register_lightning_address(
+                breez_sdk_spark::RegisterLightningAddressRequest {
+                    username: name.into(),
+                    description: Some(format!("Pay to {name}@openagents.com")),
+                },
+            ))
+            .map(|info| info.lightning_address)
+            .map_err(|_| "The Lightning address couldn't be enabled. Try again.".into())
+    }
+
+    fn lightning_wallet_key(&self) -> Result<String, String> {
+        self.runtime
+            .block_on(self.sdk.get_info(GetInfoRequest {
+                ensure_synced: Some(false),
+            }))
+            .map(|info| info.identity_pubkey)
+            .map_err(|_| "The wallet key couldn't be read.".into())
+    }
+    fn authorize_lightning_transfer(&self, new_key: &str) -> Result<String, String> {
+        let key = secp256k1::PublicKey::from_str(new_key)
+            .map_err(|_| "Check the new wallet's payment address key.".to_string())?;
+        let authorization = self
+            .runtime
+            .block_on(self.sdk.authorize_lightning_address_transfer(
+                breez_sdk_spark::AuthorizeTransferRequest {
+                    transferee_pubkey: key.to_string(),
+                },
+            ))
+            .map_err(|_| "The wallet couldn't approve moving this address.".to_string())?;
+        if authorization.domain != "openagents.com" {
+            return Err("This address belongs to another service.".into());
+        }
+        serde_json::to_string(&authorization).map_err(|_| "The approval couldn't be read.".into())
+    }
+    fn claim_lightning_transfer(&self, authorization: &str) -> Result<String, String> {
+        if authorization.len() > 16 * 1024 {
+            return Err("That address approval is too long.".into());
+        }
+        let authorization: breez_sdk_spark::TransferAuthorization =
+            serde_json::from_str(authorization)
+                .map_err(|_| "That address approval couldn't be read.".to_string())?;
+        if authorization.domain != "openagents.com" {
+            return Err("This address belongs to another service.".into());
+        }
+        self.runtime
+            .block_on(self.sdk.claim_lightning_address_transfer(
+                breez_sdk_spark::ClaimTransferRequest {
+                    authorization,
+                    description: None,
+                },
+            ))
+            .map(|info| info.lightning_address)
+            .map_err(|_| {
+                "The address couldn't be moved. Check both wallets' approvals and try again.".into()
+            })
+    }
+
     fn balance(&self) -> Result<u64, String> {
         self.runtime
             .block_on(self.sdk.get_info(GetInfoRequest {

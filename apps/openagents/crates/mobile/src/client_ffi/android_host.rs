@@ -88,6 +88,7 @@ pub enum AndroidHostSurface {
     Composer,
     PublicProfile,
     BrowserPayments,
+    LightningAddress,
 }
 impl AndroidHostSurface {
     fn scope(self) -> &'static str {
@@ -105,6 +106,7 @@ impl AndroidHostSurface {
             Self::Composer => "android:composer",
             Self::PublicProfile => "android:public-profile",
             Self::BrowserPayments => "android:browser-payments",
+            Self::LightningAddress => "android:lightning-address",
         }
     }
 }
@@ -123,6 +125,7 @@ pub enum AndroidHostRoute {
     PublicProfile,
     /// More > Payments from your browser (#12310).
     BrowserPayments,
+    LightningAddress,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -842,6 +845,22 @@ impl CoreAndroidHost {
             .as_ref()
             .ok_or(CoreError::Closed)?
             .browser_payments(wallet, self.events.clone())
+    }
+    pub fn lightning_address(&self) -> CoreResult<Arc<super::CoreLightningAddress>> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let wallet = self
+            .wallet_core
+            .lock()
+            .map_err(|_| CoreError::Closed)?
+            .clone()
+            .ok_or_else(|| CoreError::InvalidArgument {
+                message: "Open your wallet first.".into(),
+            })?;
+        self.account
+            .as_ref()
+            .ok_or(CoreError::Closed)?
+            .lightning_address(wallet)
     }
     pub fn sharing(&self) -> CoreResult<Arc<CoreSharing>> {
         let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;

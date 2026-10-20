@@ -62,6 +62,7 @@ pub(crate) const ACCOUNT: &[&str] = &[
     // The account's name@openagents.com name, which Settings > Your ID
     // shows (#12290).
     "/v1/device/name",
+    "/v1/device/lightning-address",
     "/v1/attention",
     "/v1/notify",
     "/v1/land",

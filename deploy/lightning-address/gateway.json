@@ -1,0 +1,7 @@
+{
+  "backend": "http://127.0.0.1:8181",
+  "api_key_env": "OPENAGENTS_BREEZ_API_KEY",
+  "public_origin": "https://openagents.com",
+  "min_msat": 1000,
+  "max_msat": 100000000
+}

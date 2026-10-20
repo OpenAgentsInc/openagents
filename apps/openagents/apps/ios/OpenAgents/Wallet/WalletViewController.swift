@@ -62,8 +62,21 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
         let browser = UIBarButtonItem(title: "Browser", primaryAction: UIAction { [weak self] _ in self?.openBrowserPayments() })
         browser.accessibilityLabel = "Payments from your browser"
         browser.accessibilityIdentifier = "wallet-browser-payments"
-        navigationItem.rightBarButtonItem = browser
+        let address = UIBarButtonItem(title: "Address", primaryAction: UIAction { [weak self] _ in self?.openLightningAddress() })
+        address.accessibilityIdentifier = "wallet-lightning-address"
+        navigationItem.rightBarButtonItems = [browser, address]
         render()
+    }
+
+    private func openLightningAddress() {
+        do {
+            let address = try app.openLightningAddress(wallet: wallet)
+            present(UINavigationController(rootViewController: AgentFormController(app: app, lightning: address)), animated: true)
+        } catch {
+            let alert = UIAlertController(title: "Couldn't open your Lightning address", message: error.localizedDescription, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+        }
     }
 
     private func openBrowserPayments() {

@@ -7549,6 +7549,7 @@ dependencies = [
  "tenancy",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "url",
  "zeroize",
 ]
 
@@ -18670,6 +18671,7 @@ dependencies = [
  "openagents-workspace-hack",
  "pay-ledger",
  "receipts",
+ "secp256k1 0.31.1",
  "serde",
  "serde_json",
  "sha2 0.10.9",

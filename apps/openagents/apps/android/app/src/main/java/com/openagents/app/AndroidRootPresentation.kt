@@ -74,6 +74,7 @@ internal class AndroidRootPresentation(
     private var sharing: AndroidSharingMount? = null
     private var profile: AndroidProfileMount? = null
     private var browserPayments: AndroidBrowserPaymentsMount? = null
+    private var lightningAddress: AndroidLightningAddressMount? = null
     private var recovery: RecoveryHost? = null
     private var wallet: RecoveryHost? = null
     private var voiceSettings: AndroidVoiceSettingsMount? = null
@@ -250,6 +251,9 @@ internal class AndroidRootPresentation(
             if (walletButton.visibility == View.VISIBLE) menu.add("Payments from your browser").setOnMenuItemClickListener {
                 guarded { owner.navigate(AndroidHostRoute.BROWSER_PAYMENTS); panes.showSession() }; true
             }
+            if (walletButton.visibility == View.VISIBLE) menu.add("Lightning address").setOnMenuItemClickListener {
+                guarded { owner.navigate(AndroidHostRoute.LIGHTNING_ADDRESS); panes.showSession() }; true
+            }
             if (voiceSettingsShown) menu.add("Voice").setOnMenuItemClickListener {
                 guarded { owner.navigate(AndroidHostRoute.VOICE_SETTINGS); panes.showSession() }; true
             }
@@ -325,6 +329,7 @@ internal class AndroidRootPresentation(
         if (next.route != AndroidHostRoute.CHAT) { closeMedia(); transcriptSurfaces?.retire() }
         if (next.route != AndroidHostRoute.SHARING) { sharing?.close(); sharing = null }
         if (next.route != AndroidHostRoute.PUBLIC_PROFILE) { profile?.close(); profile = null }
+        if (next.route != AndroidHostRoute.LIGHTNING_ADDRESS) { lightningAddress?.close(); lightningAddress = null }
         if (next.route != AndroidHostRoute.BROWSER_PAYMENTS) { browserPayments?.close(); browserPayments = null }
         if (next.route != AndroidHostRoute.VOICE_SETTINGS) { voiceSettings?.close(); voiceSettings = null }
         if (next.route != AndroidHostRoute.WALLET) { wallet?.close(); wallet = null }
@@ -404,6 +409,19 @@ internal class AndroidRootPresentation(
                         AndroidDeviceAuthentication(activity, CredentialLauncher(activity::launchDeviceCredential)),
                         semantics(AndroidHostSurface.BROWSER_PAYMENTS), ::showFailure)
                 } else browserPayments?.render()
+            }
+            AndroidHostRoute.LIGHTNING_ADDRESS -> {
+                recovery?.close(); recovery = null
+                sessions?.close(); sessions = null
+                settings?.close(); settings = null
+                settingsActions?.close(); settingsActions = null
+                chatContainer.visibility = View.GONE; routeContainer.visibility = View.VISIBLE
+                if (lightningAddress == null) {
+                    routeContainer.removeAllViews()
+                    owner.wallet(AndroidRetiredSparkSeed(activity.applicationContext))
+                    lightningAddress = AndroidLightningAddressMount(activity, routeContainer, owner.lightningAddress(),
+                        application.presentationWork, semantics(AndroidHostSurface.LIGHTNING_ADDRESS), ::showFailure)
+                } else lightningAddress?.render()
             }
             AndroidHostRoute.VOICE_SETTINGS -> {
                 recovery?.close(); recovery = null
@@ -913,6 +931,7 @@ internal class AndroidRootPresentation(
     private fun closeRoutes() {
         sharing?.close(); sharing = null
         profile?.close(); profile = null
+        lightningAddress?.close(); lightningAddress = null
         browserPayments?.close(); browserPayments = null
         voiceSettings?.close(); voiceSettings = null
         wallet?.close(); wallet = null

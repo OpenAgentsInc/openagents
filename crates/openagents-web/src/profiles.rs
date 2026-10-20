@@ -495,6 +495,10 @@ fn render(
             }))
             div.oa-page-actions {
                 (action_link("Follow", &format!("{path}/follow")))
+                @if let Some(address) = &metadata.lud16 {
+                    a class="oa-button" href=(format!("lightning:{address}")) { "Send a tip" }
+                    span.oa-page-meta { (address) }
+                }
                 @if let Some(website) = &metadata.website {
                     (action_link("Website", website))
                 }

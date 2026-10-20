@@ -361,6 +361,9 @@ impl super::Accounts {
             if !keys.contains(&key) {
                 return Ok(Claimed::Refused(NameProblem::NotYourKey));
             }
+            if store.lightning.held_by_other(&name, account) {
+                return Ok(Claimed::Refused(NameProblem::Taken));
+            }
             if let Some(holder) = store.names.names.get(&name)
                 && holder.account != account
                 && standing(store, &name).is_some()

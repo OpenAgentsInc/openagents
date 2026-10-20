@@ -10,8 +10,9 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     private let sharing: CoreSharing?
     private var profile: CorePublicProfile?
     private var payments: CoreBrowserPayments?
+    private var lightning: CoreLightningAddress?
     private var poll: Timer?
-    private var prefix: String { if payments != nil { return "browser-payments" }; if profile != nil { return "profile" }; if voiceAgent != nil { return "voice-agent" }; return sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
+    private var prefix: String { if lightning != nil { return "lightning-address" }; if payments != nil { return "browser-payments" }; if profile != nil { return "profile" }; if voiceAgent != nil { return "voice-agent" }; return sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
     private let stack = UIStackView()
     private var observation: AnyObject?
     private var instance = ""
@@ -72,11 +73,21 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         super.init(nibName: nil, bundle: nil)
     }
 
+    init(app: AppModel, lightning: CoreLightningAddress) {
+        self.app = app
+        self.agents = nil
+        self.lab = nil
+        self.voiceAgent = nil
+        self.sharing = nil
+        self.lightning = lightning
+        super.init(nibName: nil, bundle: nil)
+    }
+
     required init?(coder: NSCoder) { fatalError() }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = payments != nil ? "Payments from your browser" : profile != nil ? "Public profile" : voiceAgent != nil ? "Voice agent" : sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
+        title = lightning != nil ? "Lightning address" : payments != nil ? "Payments from your browser" : profile != nil ? "Public profile" : voiceAgent != nil ? "Voice agent" : sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
         view.backgroundColor = .systemBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         let scroll = UIScrollView()
@@ -107,6 +118,11 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         voiceAgent?.setVisible(visible: true)
         lab?.setVisible(visible: true)
         sharing?.setVisible(visible: true)
+        if let lightning {
+            let refresh = { Task { @MainActor [weak self] in try? await lightning.refresh(); self?.render() } }
+            _ = refresh()
+            poll = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in _ = refresh() }
+        }
         if let payments {
             let refresh = { Task { @MainActor [weak self] in try? await payments.refresh(); self?.render() } }
             _ = refresh()
@@ -124,7 +140,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     }
     private func render() {
         let snapshot = agents?.snapshot()
-        guard let json = payments.flatMap({ try? $0.snapshot() }) ?? profile.flatMap({ try? $0.snapshot() }) ?? voiceAgent.flatMap({ try? $0.snapshot() }) ?? sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
+        guard let json = lightning.flatMap({ try? $0.snapshot() }) ?? payments.flatMap({ try? $0.snapshot() }) ?? profile.flatMap({ try? $0.snapshot() }) ?? voiceAgent.flatMap({ try? $0.snapshot() }) ?? sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
         guard let data = json.data(using: .utf8), let form = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let root = form["root"] as? [String: Any] else { return }
         instance = form["instance"] as? String ?? ""
         revision = (form["revision"] as? NSNumber)?.uint64Value ?? 0
@@ -227,6 +243,28 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         render()
     }
     private func activate(_ key: String) {
+        if let lightning {
+            let currentInstance = instance
+            let currentRevision = revision
+            Task { @MainActor [weak self] in
+                do {
+                    let effect = try await lightning.activate(instance: currentInstance, revision: currentRevision, key: key)
+                    if let data = effect.data(using: .utf8),
+                       let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let text = value["copy"] as? String { UIPasteboard.general.string = text }
+                    if let data = effect.data(using: .utf8),
+                       let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let text = value["share"] as? String, let host = self {
+                        let sheet = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+                        sheet.popoverPresentationController?.sourceView = host.view
+                        sheet.popoverPresentationController?.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.midY, width: 1, height: 1)
+                        host.present(sheet, animated: true)
+                    }
+                    self?.render()
+                } catch { self?.showError(error); self?.render() }
+            }
+            return
+        }
         if let payments {
             let currentInstance = instance
             let currentRevision = revision

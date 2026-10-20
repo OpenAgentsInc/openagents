@@ -83,7 +83,7 @@ fn host(headers: &HeaderMap) -> Option<&str> {
 
 /// The signed-in account behind a session (a sign-in or a sign-in key),
 /// not an API key.
-fn caller(state: &ServeState, headers: &HeaderMap) -> Result<String, Response> {
+pub(crate) fn caller(state: &ServeState, headers: &HeaderMap) -> Result<String, Response> {
     let principal = principal(state, headers)?;
     let account = member_account(&principal)?.to_string();
     if principal.session().is_none() {

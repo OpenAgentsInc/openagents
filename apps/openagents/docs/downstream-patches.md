@@ -2,6 +2,10 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12307: mount the shared Rust Native Lightning address sheet in
+  the iOS and Android wallets, and edit signed `lud16` metadata in the shared
+  public profile form.
+
 - OpenAgents #12344: draw web transcript visuals in a lazy Wasm module,
   with inline bounds, clipping, controls, attachment reads, and window cleanup.
 

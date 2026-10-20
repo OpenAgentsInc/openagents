@@ -3390,6 +3390,8 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func startIdentity(deviceName: String) 
     
+    func lightningAddress(wallet: CoreWallet) throws  -> CoreLightningAddress
+
     /**
      * The own-computer card's record for whoever is signed in, or this
      * install while signed out.
@@ -3994,6 +3996,16 @@ open func startIdentity(deviceName: String)  {try! rustCall() {
         FfiConverterString.lower(deviceName),uniffiCallStatus
     )
 }
+}
+
+open func lightningAddress(wallet: CoreWallet)throws  -> CoreLightningAddress  {
+    return try  FfiConverterTypeCoreLightningAddress_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_lightning_address(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreWallet_lower(wallet),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -4995,6 +5007,8 @@ public protocol CoreAndroidHostProtocol: AnyObject, Sendable {
     
     func history() throws  -> CoreSavedHistory?
     
+    func lightningAddress() throws  -> CoreLightningAddress
+
     func navigate(route: AndroidHostRoute) throws 
     
     /**
@@ -5325,6 +5339,15 @@ open func history()throws  -> CoreSavedHistory?  {
 })
 }
     
+open func lightningAddress()throws  -> CoreLightningAddress  {
+    return try  FfiConverterTypeCoreLightningAddress_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_lightning_address(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+
 open func navigate(route: AndroidHostRoute)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_coreandroidhost_navigate(
@@ -9176,6 +9199,165 @@ public func FfiConverterTypeCoreLabCard_lift(_ handle: UInt64) throws -> CoreLab
 #endif
 public func FfiConverterTypeCoreLabCard_lower(_ value: CoreLabCard) -> UInt64 {
     return FfiConverterTypeCoreLabCard.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreLightningAddressProtocol: AnyObject, Sendable {
+
+    /**
+     * Returns a copy effect only after validating the displayed action.
+     */
+    func activate(instance: String, revision: UInt64, key: String) async throws  -> String
+
+    func refresh() async throws
+
+    func snapshot() throws  -> String
+
+}
+open class CoreLightningAddress: CoreLightningAddressProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corelightningaddress(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corelightningaddress(handle, $0) }
+    }
+
+
+
+
+    /**
+     * Returns a copy effect only after validating the displayed action.
+     */
+open func activate(instance: String, revision: UInt64, key: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corelightningaddress_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+
+open func refresh()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corelightningaddress_refresh(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+
+open func snapshot()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelightningaddress_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+
+
+
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreLightningAddress: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreLightningAddress
+
+    public static func lift(_ handle: UInt64) throws -> CoreLightningAddress {
+        return CoreLightningAddress(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreLightningAddress) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreLightningAddress {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreLightningAddress, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreLightningAddress_lift(_ handle: UInt64) throws -> CoreLightningAddress {
+    return try FfiConverterTypeCoreLightningAddress.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreLightningAddress_lower(_ value: CoreLightningAddress) -> UInt64 {
+    return FfiConverterTypeCoreLightningAddress.lower(value)
 }
 
 
@@ -27397,6 +27579,7 @@ public enum AndroidHostRoute: Equatable, Hashable {
      * More > Payments from your browser (#12310).
      */
     case browserPayments
+    case lightningAddress
 
 
 
@@ -27440,6 +27623,8 @@ public struct FfiConverterTypeAndroidHostRoute: FfiConverterRustBuffer {
         
         case 11: return .browserPayments
         
+        case 12: return .lightningAddress
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -27491,6 +27676,10 @@ public struct FfiConverterTypeAndroidHostRoute: FfiConverterRustBuffer {
         case .browserPayments:
             writeInt(&buf, Int32(11))
         
+
+        case .lightningAddress:
+            writeInt(&buf, Int32(12))
+
         }
     }
 }
@@ -27528,6 +27717,7 @@ public enum AndroidHostSurface: Equatable, Hashable {
     case composer
     case publicProfile
     case browserPayments
+    case lightningAddress
 
 
 
@@ -27575,6 +27765,8 @@ public struct FfiConverterTypeAndroidHostSurface: FfiConverterRustBuffer {
         
         case 13: return .browserPayments
         
+        case 14: return .lightningAddress
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -27634,6 +27826,10 @@ public struct FfiConverterTypeAndroidHostSurface: FfiConverterRustBuffer {
         case .browserPayments:
             writeInt(&buf, Int32(13))
         
+
+        case .lightningAddress:
+            writeInt(&buf, Int32(14))
+
         }
     }
 }
@@ -38213,6 +38409,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_start_identity() != 62974) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_lightning_address() != 10996) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_own_computer_offer() != 46210) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38271,6 +38470,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreandroidhost_history() != 56895) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_lightning_address() != 31908) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreandroidhost_navigate() != 1188) {
@@ -38640,6 +38842,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_corelabcard_snapshot() != 62790) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelightningaddress_activate() != 5994) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelightningaddress_refresh() != 15575) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelightningaddress_snapshot() != 50213) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreonboarding_finish() != 30618) {

@@ -11,6 +11,24 @@ use std::sync::Arc;
 /// [`crate::SparkNode`] is the real one; tests supply their own. Every call
 /// blocks.
 pub trait Node: Send + Sync {
+    /// Signs an account-scoped enrollment challenge without exporting a key.
+    fn sign_lightning_challenge(&self, _message: &str) -> Result<WalletSignature, String> {
+        Err("This wallet can't enable a Lightning address yet.".into())
+    }
+    fn register_lightning_address(&self, _name: &str) -> Result<String, String> {
+        Err("This wallet can't enable a Lightning address yet.".into())
+    }
+
+    fn lightning_wallet_key(&self) -> Result<String, String> {
+        Err("This wallet can't read its payment address key.".into())
+    }
+    fn authorize_lightning_transfer(&self, _new_key: &str) -> Result<String, String> {
+        Err("This wallet can't move its Lightning address.".into())
+    }
+    fn claim_lightning_transfer(&self, _authorization: &str) -> Result<String, String> {
+        Err("This wallet can't move its Lightning address.".into())
+    }
+
     /// The balance in base units, as last synced.
     fn balance(&self) -> Result<u64, String>;
     fn sync(&self) -> Result<(), String>;
@@ -476,4 +494,11 @@ pub struct PaymentRow {
     pub status: String,
     /// Unix seconds.
     pub at: u64,
+}
+
+/// A public wallet identity and signature; never a wallet secret.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct WalletSignature {
+    pub pubkey: String,
+    pub signature: String,
 }

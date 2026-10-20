@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lnurl
+      POSTGRES_USER: lnurl
+      POSTGRES_PASSWORD: ${LNURL_POSTGRES_PASSWORD:?Set the database password}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U lnurl -d lnurl']
+      interval: 10s
+      timeout: 3s
+      retries: 6
+  lnurl:
+    image: openagents-lnurl:2c140a5d721f04d21c5ac334fecc3efe7c069943
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:8181:8080
+    environment:
+      BREEZ_LNURL_ADDRESS: 0.0.0.0:8080
+      BREEZ_LNURL_DB_URL: ${LNURL_DATABASE_URL:?Set the PostgreSQL URL}
+      BREEZ_LNURL_DOMAINS: openagents.com
+      BREEZ_LNURL_NETWORK: mainnet
+      BREEZ_LNURL_SCHEME: https
+      BREEZ_LNURL_AUTO_MIGRATE: 'true'
+      BREEZ_LNURL_DEFAULT_API_KEY: ${OPENAGENTS_BREEZ_API_KEY:?Set the Breez service credential}
+      BREEZ_LNURL_SSP_AUTH_SEED: ${LNURL_SSP_AUTH_SEED:?Set a stable 32-byte hex seed}
+      BREEZ_LNURL_WEBHOOK_DOMAIN: ${LNURL_WEBHOOK_DOMAIN:?Set the webhook hostname}
+      BREEZ_LNURL_LOG_LEVEL: info
+      BREEZ_LNURL_MIN_SENDABLE: '1000'
+      BREEZ_LNURL_MAX_SENDABLE: '100000000'
+      BREEZ_LNURL_MAX_REGISTRATIONS_PER_DAY: '5'
+volumes:
+  postgres:

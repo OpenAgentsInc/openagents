@@ -213,6 +213,7 @@ async fn a_profile_is_published_over_the_earlier_one_and_read_back() {
         name: "alice".into(),
         picture: "https://example.com/a.png".into(),
         about: "Builds agents.".into(),
+        lightning: "alice@openagents.com".into(),
     };
     let event = profile_event(&me, &edit, Some("alice"), Some(&earlier), 50).unwrap();
     assert!(event.created_at > earlier.created_at);
@@ -225,6 +226,7 @@ async fn a_profile_is_published_over_the_earlier_one_and_read_back() {
     let read = Metadata::read(&newest.content);
     assert_eq!(read.name.as_deref(), Some("alice"));
     assert_eq!(read.nip05.as_deref(), Some("alice@openagents.com"));
+    assert_eq!(read.lud16.as_deref(), Some("alice@openagents.com"));
     assert_eq!(read.picture.as_deref(), Some("https://example.com/a.png"));
     assert_eq!(read.banner.as_deref(), Some("https://example.com/b.png"));
     assert_eq!(held.lock().unwrap().len(), 2);
@@ -252,6 +254,11 @@ fn a_bad_picture_or_long_bio_is_refused_before_signing() {
         ..ProfileEdit::default()
     };
     assert!(profile_event(&me, &long, None, None, 1).is_err());
+    let bad_address = ProfileEdit {
+        lightning: "https://example.com/wallet".into(),
+        ..ProfileEdit::default()
+    };
+    assert!(profile_event(&me, &bad_address, None, None, 1).is_err());
 }
 
 #[tokio::test]
@@ -353,6 +360,7 @@ fn the_form_copy_reads_plainly() {
         copy::NAME,
         copy::PICTURE,
         copy::ABOUT,
+        copy::LIGHTNING,
         copy::SAVE,
         copy::SAVED,
         copy::LOADING,
