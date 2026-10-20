@@ -409,6 +409,12 @@ checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
 
 [[package]]
 name = "base64"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
+
+[[package]]
+name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
@@ -544,6 +550,16 @@ checksum = "553c5d846a6ba5150c65e3b1b8ec073bcf1abc20f9b7220de384a4443ea4e20a"
 dependencies = [
  "bytes",
  "cfg_aliases",
+]
+
+[[package]]
+name = "bstr"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
+dependencies = [
+ "memchr",
+ "serde_core",
 ]
 
 [[package]]
@@ -2017,6 +2033,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
+name = "gltf"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3ce1918195723ce6ac74e80542c5a96a40c2b26162c1957a5cd70799b8cacf7"
+dependencies = [
+ "base64 0.13.1",
+ "byteorder",
+ "gltf-json",
+ "image",
+ "lazy_static",
+ "serde_json",
+ "urlencoding",
+]
+
+[[package]]
+name = "gltf-derive"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14070e711538afba5d6c807edb74bcb84e5dbb9211a3bf5dea0dfab5b24f4c51"
+dependencies = [
+ "inflections",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "gltf-json"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6176f9d60a7eab0a877e8e96548605dedbde9190a7ae1e80bbcc1c9af03ab14"
+dependencies = [
+ "gltf-derive",
+ "serde",
+ "serde_derive",
+ "serde_json",
+]
+
+[[package]]
 name = "gpui"
 version = "0.2.2"
 source = "git+https://github.com/zeronsh/zui?rev=361ff20b919fdfb80199ee6d9aed725300cb7d54#361ff20b919fdfb80199ee6d9aed725300cb7d54"
@@ -2585,6 +2640,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "inflections"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a257582fdcde896fd96463bf2d40eefea0580021c0712a0e2b028b60b47a837a"
+
+[[package]]
 name = "instant"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3050,6 +3111,76 @@ dependencies = [
 ]
 
 [[package]]
+name = "luau0-src"
+version = "0.22.0+luau740"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ea012e8a8aaff2f7b6c788fad41a60630003b6a0932bcf045f7d14952c9bd31"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "luaur-ast"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "764705892871b019d59ae715a3c258c05d4c0cdc91b48bc13de1dff9528c46aa"
+dependencies = [
+ "luaur-common",
+]
+
+[[package]]
+name = "luaur-bytecode"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d04ae19a8ccc422eb05af31c3d72ea52417fe183cf3b12c5838cec539541ab3a"
+dependencies = [
+ "luaur-common",
+]
+
+[[package]]
+name = "luaur-common"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d9c24d960012cf14bd4cfd056a89d41758d5548305e91552fc71aa0318edae7"
+dependencies = [
+ "libc",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "luaur-compiler"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e84db18b5d4b63286e3725ef8473a1181dc70bad9941608ec120ecc2e255397"
+dependencies = [
+ "luaur-ast",
+ "luaur-bytecode",
+ "luaur-common",
+]
+
+[[package]]
+name = "luaur-rt"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2f75240c12ca15167dae8542d7d477d28a58491e33a752c4e160f424dc6e588"
+dependencies = [
+ "luaur-ast",
+ "luaur-bytecode",
+ "luaur-common",
+ "luaur-compiler",
+ "luaur-vm",
+]
+
+[[package]]
+name = "luaur-vm"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "945d6993538f99bc25a424b7a7a55b9db953d609f7fc869e6d80495326e46ae2"
+dependencies = [
+ "luaur-common",
+]
+
+[[package]]
 name = "lyon"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3249,6 +3380,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "mlua"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a7ae6b65bf54b7fdd4cf5b6f44f60862350ebf3fe3779b3a9cc005e7fa14f81"
+dependencies = [
+ "bstr",
+ "either",
+ "libc",
+ "mlua-sys",
+ "num-traits",
+ "parking_lot",
+ "rustc-hash 2.1.3",
+]
+
+[[package]]
+name = "mlua-sys"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1631cda17bd6486410ab751d91f5fd4484f441589278cdad879eb3afc721a285"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "luau0-src",
+ "pkg-config",
+]
+
+[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3278,6 +3437,7 @@ dependencies = [
  "log",
  "num-traits",
  "once_cell",
+ "pp-rs",
  "rustc-hash 1.1.0",
  "thiserror 2.0.21",
  "unicode-ident",
@@ -3675,6 +3835,7 @@ dependencies = [
  "futures",
  "gpui",
  "gpui-base",
+ "image",
  "openagents-brand",
  "openagents-doc",
  "openagents-markdown",
@@ -3682,6 +3843,8 @@ dependencies = [
  "openagents-syntax",
  "openagents-theme",
  "openagents-veil",
+ "openagents-visual",
+ "openagents-visual-gpu",
  "openagents-workspace-hack",
  "pulldown-cmark",
  "roxmltree 0.21.1",
@@ -3805,19 +3968,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-visual"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "gltf",
+ "image",
+ "luaur-rt",
+ "mlua",
+ "naga",
+ "openagents-workspace-hack",
+ "thiserror 2.0.21",
+ "web-time",
+]
+
+[[package]]
+name = "openagents-visual-gpu"
+version = "1.0.0"
+dependencies = [
+ "openagents-brand",
+ "openagents-visual",
+ "openagents-workspace-hack",
+ "pollster 0.4.0",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
 name = "openagents-web-chat-view"
 version = "1.0.0"
 dependencies = [
  "anyhow",
  "chrono",
  "gpui",
+ "js-sys",
  "openagents-chat-view",
  "openagents-doc",
  "openagents-gpui-web",
  "openagents-markdown",
  "openagents-proto",
+ "openagents-visual",
  "resvg",
+ "serde_json",
  "unicode-segmentation",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -4197,6 +4393,15 @@ name = "powerfmt"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a6394b9e965e73d0a289ee54f589087e2c676aedf60885baf52c76b771e4958"
+
+[[package]]
+name = "pp-rs"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb458bb7f6e250e6eb79d5026badc10a3ebb8f9a15d1fff0f13d17c71f4d6dee"
+dependencies = [
+ "unicode-xid",
+]
 
 [[package]]
 name = "ppv-lite86"
@@ -6019,6 +6224,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
+
+[[package]]
 name = "usvg"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6630,6 +6841,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
 dependencies = [
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets",
 ]
 
 [[package]]
