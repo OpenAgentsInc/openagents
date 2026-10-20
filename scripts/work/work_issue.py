@@ -57,6 +57,16 @@ requesting person's own credential there, in a home of the run's own.
 
 Progress is one JSON line per step on stdout and in `OUT/events.jsonl`; the
 result is `OUT/result.json` and the last stdout line (`{"type": "result"}`).
+
+A failed run saves what a repair needs in `OUT/saved/` before its worktrees
+go (#12209): `change.patch` (the diff against its base, new files
+included), `failure.json` (each failing check's command and last 200
+lines of output, and why the run stopped) and `result.json`. `openagents
+chat work` uploads that folder to `gs://openagentsgemini-coder-artifacts/runs/RUN/`
+on a pool or Archil run (`OA_WORK_SAVE_EMIT=1` also prints it as one
+`{"type": "saved"}` line, for a sandbox that can't reach the bucket).
+`--resume-from DIR` starts from such a folder: the saved diff applied at
+its base, and the failure in the engine's prompt.
 Cost is what Claude Code reports (list price); when it reports none, the
 cost is `null` (unknown), never zero.
 """
@@ -361,7 +371,8 @@ def replay_checks(run: Run, root: Path, base: str, issue_text: str = "") -> list
         run.say("checks", f"formatting {pkg}")
         fmt = cargo(root, ["fmt", "-p", pkg], 300)
         checks.append({"name": f"cargo fmt -p {pkg}", "ok": fmt.returncode == 0,
-                       "tail": (fmt.stdout + fmt.stderr)[-600:] if fmt.returncode else ""})
+                       "tail": (fmt.stdout + fmt.stderr)[-600:] if fmt.returncode else "",
+                       **kept(fmt)})
     for pkg in packages:
         # The shipped build first (lib and bins, no `cfg(test)`): the cheap
         # failure, and one `cargo test` cannot see (#12210).
@@ -370,7 +381,8 @@ def replay_checks(run: Run, root: Path, base: str, issue_text: str = "") -> list
         build = cargo(root, ["check", "-p", pkg, "--message-format", "short"], 1200)
         checks.append({"name": f"cargo check -p {pkg}", "ok": build.returncode == 0,
                        "secs": round(time.time() - t0, 1),
-                       "tail": test_report(build.stdout, build.stderr)[0] if build.returncode else ""})
+                       "tail": test_report(build.stdout, build.stderr)[0] if build.returncode else "",
+                       **kept(build)})
         if build.returncode:
             continue
         run.say("checks", f"running {pkg}'s tests")
@@ -381,7 +393,8 @@ def replay_checks(run: Run, root: Path, base: str, issue_text: str = "") -> list
         failed = sum(int(n) for n in re.findall(r"; (\d+) failed", text))
         tail, names = test_report(test.stdout, test.stderr) if test.returncode else ("", [])
         check = {"name": f"cargo test -p {pkg}", "ok": test.returncode == 0, "passed": ran,
-                 "failed": failed, "failed_tests": names, "secs": round(time.time() - t0, 1), "tail": tail}
+                 "failed": failed, "failed_tests": names, "secs": round(time.time() - t0, 1), "tail": tail,
+                 **kept(test)}
         excusable = [n for n in names if not named_in(n, issue_text)]
         if names and excusable == names:
             run.say("checks", f"{pkg}: {len(names)} test(s) failed; checking whether main fails them too")
@@ -398,10 +411,24 @@ def replay_checks(run: Run, root: Path, base: str, issue_text: str = "") -> list
         run.say("checks", f"{c['what']}" if c.get("available", True) else f"no checker here: {c['what']}")
         secs = NESTED_SECS if c["kind"] == "rust-nested" else kinds.CHECK_SECS
         r = kinds.run_check(c, root, str(LOCAL_EXEC), timeout=secs,
-                            env=dict(os.environ, OA_WORK_CMD_TIMEOUT=str(secs)))
+                            env=dict(os.environ, OA_WORK_CMD_TIMEOUT=str(secs)), keep_lines=SAVED_LINES)
         checks.append({"name": " ".join(c["argv"])[:200], "id": c["id"], "kind": c["kind"], "ok": r["ok"],
-                       "available": r["available"], "secs": r["secs"], "tail": r["tail"]})
+                       "available": r["available"], "secs": r["secs"], "tail": r["tail"],
+                       **({"output": r["output"]} if r.get("output") else {})})
     return checks
+
+
+# A failed check keeps this many of its last output lines for the saved
+# run (#12209); they leave the result before it's printed.
+SAVED_LINES = 200
+
+
+def kept(proc: subprocess.CompletedProcess) -> dict:
+    """A failed command's last `SAVED_LINES` lines of output, as `output`."""
+    if proc.returncode == 0:
+        return {}
+    lines = (proc.stdout or "").splitlines() + (proc.stderr or "").splitlines()
+    return {"output": "\n".join(lines[-SAVED_LINES:])}
 
 
 def checks_pass(checks: list[dict]) -> bool:
@@ -788,12 +815,22 @@ def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: 
     """One engine's attempt in a fresh worktree; `start_from` is a diff
     applied first (a re-brief that keeps the first attempt's change)."""
     wt = add_worktree(checkout, out / "worktree", base)
+    resume = getattr(args, "resume", None)
+    start_from = start_from or (resume or {}).get("patch")
     if start_from:
-        sh(["git", "-C", str(wt), "apply", "--binary", "--whitespace=nowarn", "-"], input=start_from, check=False)
+        applied = sh(["git", "-C", str(wt), "apply", "--binary", "--whitespace=nowarn", "-"], input=start_from,
+                     check=False)
+        if resume and applied.returncode:
+            run.say("resume", f"the saved change doesn't apply at {base[:10]}; starting without it: "
+                    f"{applied.stderr.strip()[-300:]}")
+    if resume:  # the engine starts from what failed (#12209)
+        if b is not None:
+            b = dict(b, markdown=b["markdown"] + "\n\n" + resume["note"])
+    told = dict(issue, body=(issue.get("body") or "") + "\n\n" + resume["note"]) if resume else issue
     if engine.startswith("briefed"):
         agent = run_briefed(run, b, wt, out, args.model, args.timeout, backend_of(engine), args.land)
     else:
-        agent = run_bare(run, issue, wt, out, args.model, args.timeout, args.land)
+        agent = run_bare(run, told, wt, out, args.model, args.timeout, args.land)
     files = changed_files(wt, base)
     checks = replay_checks(run, wt, base, issue_text(issue)) if files else []
     stat = diff_stat(wt, base) if files else {"files": [], "added": 0, "removed": 0}
@@ -816,6 +853,68 @@ def working_patch(root: Path, base: str) -> str:
     patch = sh(["git", "-C", str(root), "diff", "--cached", "--binary", base]).stdout
     sh(["git", "-C", str(root), "reset", "-q"])
     return patch
+
+
+def saved_attempt(attempts: list[dict]) -> dict | None:
+    """The attempt a repair starts from: the last one that changed
+    something, else the last one."""
+    changed = [a for a in attempts if (a.get("diff") or {}).get("files")]
+    return (changed or attempts or [None])[-1]
+
+
+def save_failure(out: Path, result: dict) -> Path | None:
+    """A failed run's evidence in `OUT/saved/`, while its worktrees still
+    exist (#12209): the diff, each failing check's command and output, and
+    the result. `None` when no attempt ran."""
+    a = saved_attempt(result["attempts"])
+    if a is None:
+        return None
+    saved = out / "saved"
+    saved.mkdir(parents=True, exist_ok=True)
+    patch = ""
+    if a.get("worktree") and Path(a["worktree"]).exists() and result.get("base"):
+        patch = working_patch(Path(a["worktree"]), result["base"])
+    elif a.get("out") and (Path(a["out"]) / "change.patch").exists():
+        patch = (Path(a["out"]) / "change.patch").read_text(errors="replace")
+    if patch:
+        (saved / "change.patch").write_text(patch)
+    failing = [{"command": c["name"], "output": c.get("output") or c.get("tail") or ""}
+               for c in a["checks"] if c.get("ok") is False]
+    failure = {"schema": "openagents.work.saved-run.v1", "run_id": result["run_id"], "repo": result["repo"],
+               "issue": result["issue"], "title": result.get("title"), "base": result.get("base"),
+               "engine": a["engine"], "outcome": a["outcome"], "error": result.get("error"),
+               "escalated": result.get("escalated"), "failing_checks": failing,
+               "files": (a.get("diff") or {}).get("files", []), "patch": "change.patch" if patch else None}
+    (saved / "failure.json").write_text(json.dumps(failure, indent=2))
+    return saved
+
+
+def resume_note(failure: dict) -> str:
+    """The prompt section a resumed run starts with: the saved change is
+    already applied, and what failed."""
+    lines = [f"## Resuming run {failure.get('run_id')}", "",
+             f"An earlier run of this issue stopped: {failure.get('error') or failure.get('outcome')}."]
+    if failure.get("patch"):
+        lines.append("Its change is already applied in your working directory. Keep what works and fix what failed.")
+    for check in failure.get("failing_checks") or []:
+        lines += ["", f"`{check['command']}` failed. Its last lines:", "", "```",
+                  "\n".join(str(check.get("output") or "").splitlines()[-SAVED_LINES:]), "```"]
+    return "\n".join(lines)
+
+
+def load_resume(folder: Path) -> dict:
+    """A saved run folder (`OUT/saved/`) as `--resume-from` reads it."""
+    failure = json.loads((folder / "failure.json").read_text())
+    patch_file = folder / (failure.get("patch") or "change.patch")
+    patch = patch_file.read_text(errors="replace") if patch_file.exists() else ""
+    return {"failure": failure, "patch": patch, "note": resume_note(failure)}
+
+
+def emit_saved(saved: Path, run_id: str) -> None:
+    """The saved folder as one stdout line, for an orchestrator that
+    uploads it itself (an Archil sandbox can't reach the bucket)."""
+    files = {p.name: p.read_text(errors="replace") for p in sorted(saved.iterdir()) if p.is_file()}
+    print(json.dumps({"type": "saved", "run_id": run_id, "files": files}), flush=True)
 
 
 def fallback_ran(a: dict) -> bool:
@@ -901,7 +1000,10 @@ def main() -> int:
     ap.add_argument("--base", help="start from this commit instead of origin/main (a replay; implies --land none)")
     ap.add_argument("--allow-closed", action="store_true",
                     help="work a closed issue (a replay of an issue already fixed on main)")
+    ap.add_argument("--resume-from", help="a failed run's saved folder (OUT/saved): apply its diff at its base "
+                    "and start the engine with the failure in its prompt (#12209)")
     args = ap.parse_args()
+    args.resume = load_resume(Path(args.resume_from)) if args.resume_from else None
     if args.base:
         args.land = "none"
 
@@ -925,6 +1027,14 @@ def main() -> int:
             raise RuntimeError(f"issue #{args.issue} is {issue['state'].lower()}")
         checkout = checkout_for(args.repo, args.checkout)
         base = resolve_base(checkout, args.base) if args.base else default_branch_sha(checkout)
+        if args.resume:
+            # The saved diff applies where it was made; landing rebases it.
+            saved_base = args.resume["failure"].get("base")
+            if saved_base and git_ok(checkout, "cat-file", "-e", f"{saved_base}^{{commit}}").returncode == 0:
+                base = saved_base
+            result["resumed_from"] = args.resume["failure"].get("run_id")
+            run.say("resume", f"resuming run {result['resumed_from']} at {base[:10]}",
+                    resumed_from=result["resumed_from"])
         result["base"] = base
         result["land"] = args.land
         engine, why = args.engine, None
@@ -999,6 +1109,17 @@ def main() -> int:
         result["error"] = str(error)[-1500:]
     finally:
         result["secs"] = round(time.time() - run.started, 1)
+        if not result["ok"]:
+            try:
+                saved = save_failure(out, result)
+            except Exception as error:  # noqa: BLE001 - saving never hides the run's own failure
+                saved = None
+                run.say("saved", f"the failed run couldn't be saved: {error}")
+            if saved:
+                result["saved"] = {"dir": str(saved), "files": sorted(p.name for p in saved.iterdir())}
+        for a in result["attempts"]:
+            for c in a["checks"]:
+                c.pop("output", None)
         if not args.keep:
             for a in result["attempts"]:
                 try:
@@ -1009,6 +1130,12 @@ def main() -> int:
             a.pop("worktree", None)
             a.pop("out", None)
         (out / "result.json").write_text(json.dumps(result, indent=2))
+        if result.get("saved"):
+            saved = Path(result["saved"]["dir"])
+            (saved / "result.json").write_text(json.dumps(result, indent=2))
+            result["saved"]["files"] = sorted(p.name for p in saved.iterdir())
+            if os.environ.get("OA_WORK_SAVE_EMIT") == "1":
+                emit_saved(saved, run_id)
         run.say("done", "done" if result["ok"] else f"stopped: {result['error']}", ok=result["ok"])
         print(json.dumps(result), flush=True)
     return 0 if result["ok"] else 1

@@ -63,6 +63,9 @@ enum Told {
 
 /// `chat work`.
 pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
+    if let Some(run) = args.option("resume-from") {
+        return resume(output, args, run).await;
+    }
     let spec = args
         .option("issues")
         .ok_or_else(|| {
@@ -376,6 +379,68 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     })
 }
 
+/// `chat work --resume-from RUN` (#12209): the failed run's issue again,
+/// here, from its saved diff and failing check ([`super::work_saved`]).
+async fn resume(output: &Output, args: &Args, run: &str) -> Result<u8, Failure> {
+    if args.option("issues").is_some() || args.option("on").is_some() {
+        return Err(Failure::Usage(
+            "--resume-from works the saved run's issue on this computer; leave out --issues and --on"
+                .into(),
+        ));
+    }
+    let engine = args.option("engine").unwrap_or("briefed").to_owned();
+    if !matches!(
+        engine.as_str(),
+        "briefed" | "briefed:codex" | "briefed:opencode" | "briefed:gemini"
+    ) {
+        return Err(Failure::Usage(format!(
+            "--resume-from runs a briefed engine: `briefed`, `briefed:codex`, `briefed:opencode`, or `briefed:gemini`, not `{engine}`"
+        )));
+    }
+    let here =
+        std::env::current_dir().map_err(|_| failed("This command has no working directory."))?;
+    let checkout = local::checkout(&here).map_err(failed)?;
+    let repository = issue_run::Gh.repository(&checkout.top).map_err(failed)?;
+    let policy = issue_run::Policy::load(&checkout.top).map_err(failed)?;
+    let land = super::work_briefed::land_word(args.option("land"), policy.land == Land::Main)
+        .map_err(Failure::Usage)?;
+    let home = user_home::home_os()
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| failed(user_home::NO_HOME))?;
+    let run = run.to_owned();
+    let (dir, saved) = tokio::task::spawn_blocking(move || {
+        let store = super::work_saved::store()?;
+        super::work_saved::fetch(&home, store.as_ref(), &run)
+    })
+    .await
+    .map_err(|_| failed("the saved run could not be read"))?
+    .map_err(failed)?;
+    let from = saved["repo"].as_str().unwrap_or_default();
+    if !from.eq_ignore_ascii_case(&repository) {
+        return Err(failed(format!(
+            "That run worked {from}, but this checkout is {repository}."
+        )));
+    }
+    let issue = saved["issue"].as_u64().unwrap_or_default();
+    let output = *output;
+    let top = checkout.top.clone();
+    tokio::task::spawn_blocking(move || {
+        super::work_briefed::work_here(
+            &output,
+            &top,
+            &repository,
+            &[issue],
+            1,
+            land,
+            &engine,
+            None,
+            Some(&dir),
+        )
+    })
+    .await
+    .map_err(|_| failed("the work stopped"))?
+}
+
 /// `chat work` with the briefed agent ([`super::work_briefed`]).
 async fn briefed_work(
     output: &Output,
@@ -447,6 +512,7 @@ async fn briefed_work(
                 land,
                 &engine,
                 Some(rows),
+                None,
             )
         } else {
             super::work_briefed::work_cloud(&output, &repository, &numbers, land)

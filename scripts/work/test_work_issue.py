@@ -379,5 +379,80 @@ class AttributionTests(unittest.TestCase):
         self.assertNotIn("Co-Authored-By", self.commit_message("briefed:gemini"))
 
 
+class SavedRunTests(unittest.TestCase):
+    """A failed run keeps its diff and failing check (#12209), and
+    `--resume-from` starts a new attempt from them."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.top = Path(self.tmp.name)
+        self.repo = self.top / "repo"
+        work.sh(["git", "init", "-q", "-b", "main", str(self.repo)])
+        for key, value in (("user.email", "t@example.com"), ("user.name", "t")):
+            work.sh(["git", "-C", str(self.repo), "config", key, value])
+        (self.repo / "a.txt").write_text("one\n")
+        work.sh(["git", "-C", str(self.repo), "add", "-A"])
+        work.sh(["git", "-C", str(self.repo), "commit", "-qm", "base"])
+        self.base = work.sh(["git", "-C", str(self.repo), "rev-parse", "HEAD"]).stdout.strip()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def failed_result(self):
+        wt = work.add_worktree(self.repo, self.top / "out" / "briefed" / "worktree", self.base)
+        (wt / "a.txt").write_text("two\n")
+        (wt / "new.txt").write_text("added\n")
+        output = "\n".join(f"line {i}" for i in range(300))
+        check = {"name": "cargo test -p x", "ok": False, "tail": "short", "output": output}
+        return {"run_id": "run1", "repo": "o/r", "issue": 7, "title": "Fix a", "base": self.base,
+                "error": "no change passed its checks", "escalated": None,
+                "attempts": [{"engine": "briefed", "worktree": str(wt), "out": str(wt.parent),
+                              "checks": [{"name": "cargo fmt -p x", "ok": True}, check],
+                              "diff": {"files": ["a.txt", "new.txt"]}, "outcome": "checks failed"}]}
+
+    def test_a_failed_check_keeps_its_last_200_lines(self):
+        proc = Mock(returncode=101, stdout="\n".join(f"out {i}" for i in range(250)), stderr="err\n")
+        lines = work.kept(proc)["output"].splitlines()
+        self.assertEqual(len(lines), work.SAVED_LINES)
+        self.assertEqual(lines[-1], "err")
+        self.assertEqual(work.kept(Mock(returncode=0, stdout="x", stderr="")), {})
+
+    def test_the_saved_folder_holds_the_diff_with_new_files_and_the_failing_check(self):
+        saved = work.save_failure(self.top / "out", self.failed_result())
+        self.assertEqual(sorted(p.name for p in saved.iterdir()), ["change.patch", "failure.json"])
+        patch_text = (saved / "change.patch").read_text()
+        self.assertIn("+two", patch_text)
+        self.assertIn("new.txt", patch_text)
+        failure = json.loads((saved / "failure.json").read_text())
+        self.assertEqual((failure["run_id"], failure["issue"], failure["base"]), ("run1", 7, self.base))
+        self.assertEqual([c["command"] for c in failure["failing_checks"]], ["cargo test -p x"])
+        self.assertTrue(failure["failing_checks"][0]["output"].endswith("line 299"))
+
+    def test_no_attempt_saves_nothing(self):
+        self.assertIsNone(work.save_failure(self.top / "out", {"attempts": []}))
+
+    def test_resume_applies_the_saved_diff_and_tells_the_engine_what_failed(self):
+        saved = work.save_failure(self.top / "out", self.failed_result())
+        resume = work.load_resume(saved)
+        self.assertIn("`cargo test -p x` failed", resume["note"])
+        self.assertIn("already applied", resume["note"])
+        args = Mock(resume=resume, model="", timeout=1, land="none")
+        seen = {}
+
+        def bare(run, issue, root, out, model, timeout, land_mode="pr"):
+            seen["body"] = issue["body"]
+            seen["a"] = (root / "a.txt").read_text()
+            seen["new"] = (root / "new.txt").read_text()
+            return {"secs": 0, "usage": {"cost_usd": None}, "error": None}
+        with patch.object(work, "run_bare", side_effect=bare), \
+                patch.object(work, "replay_checks", return_value=[{"name": "cargo test -p x", "ok": True}]):
+            a = work.attempt(Mock(), "bare", {"number": 7, "title": "Fix a", "body": "Body."}, self.repo,
+                             self.base, self.top / "resumed" / "bare", args, None)
+        self.assertEqual((seen["a"], seen["new"]), ("two\n", "added\n"))
+        self.assertTrue(seen["body"].startswith("Body."))
+        self.assertIn("Resuming run run1", seen["body"])
+        self.assertTrue(a["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()

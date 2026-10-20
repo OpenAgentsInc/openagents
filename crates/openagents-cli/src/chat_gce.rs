@@ -143,12 +143,16 @@ d=$(dirname "$0")
   oa_build || return $?
   cd "$HOME/openagents" || return 2
   # The briefed engine lands through this build's CLI (`land submit`).
+  # A failed run's diff and failing check go to the bucket (#12209).
+  export {saved_env}={saved_store}
   {command}
 }}
 main; rc=$?
 echo "$rc" >"$d/exit"; touch "$HOME/.oa-pool/busy"; exit "$rc"
 "#,
         build = cloud::BUILD,
+        saved_env = super::work_saved::STORE_ENV,
+        saved_store = super::work_saved::DEFAULT_STORE,
     )
 }
 
@@ -272,6 +276,9 @@ struct Ended {
     commits: Vec<String>,
     task: String,
     thread: String,
+    /// Where a failed run's diff and failing check were saved, and the
+    /// engine's run ID (#12209).
+    saved: Option<(String, Option<String>)>,
 }
 
 /// Follows run `run` on `host` until it ends, reattaching when the
@@ -294,6 +301,7 @@ fn follow(
     let mut errors: VecDeque<String> = VecDeque::new();
     let (mut task, mut thread) = (String::new(), String::new());
     let mut ended: Option<(String, String, Vec<String>)> = None;
+    let mut saved: Option<(String, Option<String>)> = None;
     let mut exit: Option<String> = None;
     let mut attempts = 0;
     running
@@ -352,6 +360,13 @@ fn follow(
                     continue;
                 }
                 seen += 1;
+                if let Ok(record) = serde_json::from_str::<Value>(line.trim())
+                    && record["event"] == "issue"
+                    && let Some(at) = super::work_saved::saved_of(&record)
+                {
+                    let run = record["result"]["run_id"].as_str().map(str::to_owned);
+                    saved = Some((at, run));
+                }
                 match inner(line.trim()) {
                     Inner::Started {
                         task: t,
@@ -429,6 +444,7 @@ fn follow(
             commits,
             task,
             thread,
+            saved,
         }),
         None => {
             let code = exit.unwrap_or_else(|| "unknown".into());
@@ -556,6 +572,7 @@ fn run_issue(
         commits: vec![],
         task: String::new(),
         thread: String::new(),
+        saved: None,
     };
     let ended = loop {
         if stopping.load(Ordering::SeqCst) {
@@ -667,6 +684,7 @@ fn run_issue(
                     task: task.clone(),
                     thread,
                     commits: vec![],
+                    saved: None,
                 };
                 let mut record =
                     route_record(pool, &request.repository, issue, host, &ended, wall, cost);
@@ -728,6 +746,9 @@ fn run_issue(
     event(&output, json!({"event": "route_record", "record": record}));
     if !matches!(ended.outcome.as_str(), "skipped" | "closed" | "not_started") {
         let mut body = cost_comment(host, slots, &ended.outcome, wall, dollars);
+        if let Some((at, run)) = ended.saved.as_ref().filter(|_| ended.outcome == "failed") {
+            body.push_str(&super::work_saved::comment_line(at, run.as_deref()));
+        }
         if !preemptions.is_empty() {
             body.push_str(
                 "\nWall time includes recovery; cost sums the run's share on each host.\n",
@@ -748,6 +769,7 @@ fn run_issue(
         "message": ended.message, "placement": cloud::COMPUTER, "host": host.name,
         "zone": host.zone, "spot": host.spot, "wall_seconds": wall.as_secs(),
         "cost_usd": dollars, "commits": ended.commits, "preemptions": preemptions,
+        "saved": ended.saved.as_ref().map(|(at, _)| at),
         "task": (!ended.task.is_empty()).then_some(ended.task),
         "thread": (!ended.thread.is_empty()).then_some(ended.thread)}),
     )
@@ -1341,6 +1363,9 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
         );
         assert!(script.contains("OA_CLI=$HOME/.oa-pool/bin/openagents"));
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
+        assert!(
+            script.contains("export OA_WORK_SAVED_RUNS=gs://openagentsgemini-coder-artifacts/runs")
+        );
         assert!(script.contains("OPENAGENTS_CODER_PLACEMENT=gce"));
         assert!(script.contains("return 75"));
         // The remote command line carries no credential: only the script
@@ -1373,6 +1398,7 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
             commits: vec![],
             task: "k1".into(),
             thread: String::new(),
+            saved: None,
         };
         let record = route_record(
             &pool,

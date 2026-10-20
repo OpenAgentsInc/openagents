@@ -46,6 +46,7 @@ openagents chat run-coder --thread ID
 openagents chat run-command --thread ID
 openagents chat apply --thread ID
 openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|bare]
+openagents chat work --resume-from RUN [--land queue|main|pr|none] [--engine briefed]
 ```
 
 Every command but `open` also takes `--scratch`, `--local`, and `--socket

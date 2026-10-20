@@ -75,6 +75,16 @@ repair step (`--land queue` always uses the queue;
 the context finder. (`--on boat` still sends the briefed agent to
 openagents.com's work hosts through `POST /v1/work`.)
 
+A failed run saves what a repair needs before its worktrees go (#12209):
+the diff against its base with new files, each failing check's command
+and last 200 lines of output, and the run's result, in
+`gs://openagentsgemini-coder-artifacts/runs/RUN/` (`--on archil` uploads
+from the orchestrating computer, since the sandbox can't reach the
+bucket). The run's summary line and issue comment name the folder.
+`openagents chat work --resume-from RUN` works the issue again on this
+computer: the saved diff applied at its base, and the failure in the
+engine's prompt.
+
 ## The compute budget
 
 `~/.openagents/cloud/budget.json`, set with `openagents cloud budget`

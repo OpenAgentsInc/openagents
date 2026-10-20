@@ -216,8 +216,14 @@ pub(super) fn finished(output: &Output, issue: u64, result: &Value) -> Value {
     if let Some(error) = result["error"].as_str() {
         message.push_str(&format!(". {error}"));
     }
+    if outcome == "failed"
+        && let Some(saved) = super::work_saved::summary(result)
+    {
+        message.push_str(&format!(". {saved}"));
+    }
     let record = json!({"event": "issue", "issue": issue, "outcome": outcome,
-        "message": message, "engine": result["engine"], "result": result});
+        "message": message, "engine": result["engine"], "result": result,
+        "saved": result["saved"]});
     event(output, record.clone());
     if !output.json() {
         println!("#{issue}: {outcome}. {message}");
@@ -281,8 +287,10 @@ pub(super) fn work_here(
     land: &str,
     engine: &str,
     fleet: Option<(super::fleet::Shared, Groups)>,
+    resume: Option<&Path>,
 ) -> Result<u8, Failure> {
     let driver = engine_dir().map_err(failed)?;
+    let resume = resume.map(Path::to_path_buf);
     let engine = engine.to_owned();
     let agent = agent_binary();
     event(
@@ -323,13 +331,14 @@ pub(super) fn work_here(
     for _ in 0..parallel {
         let (queue, sender) = (std::sync::Arc::clone(&queue), sender.clone());
         let groups = std::sync::Arc::clone(&groups);
-        let (driver, agent, top, repository, land, engine) = (
+        let (driver, agent, top, repository, land, engine, resume) = (
             driver.clone(),
             agent.clone(),
             top.to_path_buf(),
             repository.to_owned(),
             land.to_owned(),
             engine.clone(),
+            resume.clone(),
         );
         workers.push(std::thread::spawn(move || {
             loop {
@@ -358,6 +367,11 @@ pub(super) fn work_here(
                     ])
                     .arg("--checkout")
                     .arg(&top)
+                    .args(
+                        resume.iter().flat_map(|dir| {
+                            [std::ffi::OsStr::new("--resume-from"), dir.as_os_str()]
+                        }),
+                    )
                     .current_dir(&top)
                     .stdin(Stdio::null())
                     .stdout(Stdio::piped())
@@ -410,7 +424,11 @@ pub(super) fn work_here(
     }
     drop(sender);
     let mut results = Vec::new();
-    for (issue, row) in receiver {
+    for (issue, mut row) in receiver {
+        if row["type"] == "result" {
+            // A failed pool run's saved folder goes to the bucket (#12209).
+            super::work_saved::upload_here(&mut row);
+        }
         if let Some((shared, _)) = &fleet {
             let task = row["task"].as_str().unwrap_or_default().to_owned();
             super::fleet::update(shared, |fleet| match row["type"].as_str() {

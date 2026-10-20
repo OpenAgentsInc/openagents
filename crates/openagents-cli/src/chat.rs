@@ -55,6 +55,8 @@ mod shell;
 mod work;
 #[path = "chat_work_briefed.rs"]
 mod work_briefed;
+#[path = "chat_work_saved.rs"]
+mod work_saved;
 
 pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
   send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS] [--project PROJECT]
@@ -200,6 +202,14 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         queue (or opens the pull request with --land pr), then deletes the
         sandbox. The cloud
         budget's caps hold at Archil's list price; docs/cloud/archil.md.
+        A failed pool or Archil run saves its diff, its failing check's
+        command and last 200 lines of output, and its result to
+        gs://openagentsgemini-coder-artifacts/runs/RUN/ (a run here keeps
+        them in ~/.openagents/work/runs/RUN/saved/), and its summary and
+        issue comment say where.
+  work --resume-from RUN [--land direct|queue|pr|none] [--engine briefed|briefed:codex|briefed:opencode|briefed:gemini]
+        Work a failed run's issue again on this computer, starting from
+        that run's saved diff, with what failed in the engine's prompt.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
@@ -255,6 +265,7 @@ const OPTIONS: &[&str] = &[
     "engine",
     "project",
     "agent",
+    "resume-from",
 ];
 const SWITCHES: &[&str] = &[
     "scratch",

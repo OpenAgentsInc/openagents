@@ -444,6 +444,7 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
     }
     .await;
     let mut result = None;
+    let mut saved_files = Vec::new();
     let mut tail: VecDeque<String> = VecDeque::new();
     let code = match staged {
         Err(message) => {
@@ -468,6 +469,8 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
                 };
                 if row["type"] == "result" {
                     result = Some(row);
+                } else if row["type"] == "saved" {
+                    saved_files = super::work_saved::files_of(&row);
                 } else {
                     super::work_briefed::shown(&output, issue, &row);
                 }
@@ -496,6 +499,18 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
         live.retain(|id| *id != sandbox.id);
     }
     let mut result = result_or(result, code, &tail);
+    // The sandbox can't reach the bucket: its failed run's diff and failing
+    // check go up from here (#12209).
+    if !saved_files.is_empty() {
+        let files = std::mem::take(&mut saved_files);
+        let mut uploaded = result.clone();
+        result = tokio::task::spawn_blocking(move || {
+            super::work_saved::record_upload(&mut uploaded, super::work_saved::store(), &files);
+            uploaded
+        })
+        .await
+        .unwrap_or(result);
+    }
     keep_result(issue, &run_id, &result);
     // Landed directly: the sandbox can't comment, so this computer does
     // (the commit's "fixes #N" closes the issue).
@@ -571,7 +586,16 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
     );
     append_record(&route);
     event(&output, json!({"event": "route_record", "record": route}));
-    let body = cost_comment(&name, &outcome, wall, dollars);
+    let mut body = cost_comment(&name, &outcome, wall, dollars);
+    if outcome == "failed"
+        && let Some(url) = result["saved"]["url"].as_str()
+    {
+        body.push_str(&super::work_saved::comment_line(
+            url,
+            result["run_id"].as_str(),
+        ));
+    }
+    record["saved"] = result["saved"].clone();
     let repository = request.repository.clone();
     let _ =
         tokio::task::spawn_blocking(move || super::boat::comment(&repository, issue, &body)).await;

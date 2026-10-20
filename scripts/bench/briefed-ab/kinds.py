@@ -429,9 +429,11 @@ def plan(paths: list[str], tree: Tree, base: str | None = None, rust: bool = Tru
 # ------------------------------------------------------------------ running
 
 def run_check(check: dict, root: Path, exec_path: str | None = None, filter_words: list[str] | None = None,
-              timeout: int = CHECK_SECS, env: dict | None = None) -> dict:
+              timeout: int = CHECK_SECS, env: dict | None = None, keep_lines: int = 0) -> dict:
     """Run one check in `root`. Exec checks go through `exec_path` (the
-    build lock) when given."""
+    build lock) when given. With `keep_lines`, a failure also returns that
+    many of its last output lines as `output` (a failed run's saved
+    evidence, #12209)."""
     t0 = time.time()
     if not check.get("available", True):
         return {"id": check["id"], "ok": None, "available": False, "secs": 0.0,
@@ -449,8 +451,11 @@ def run_check(check: dict, root: Path, exec_path: str | None = None, filter_word
         code, text = 124, f"timed out after {timeout}s\n{(e.stdout or b'')[-2000:]!r}"
     except OSError as e:
         code, text = None, f"could not run: {e}"
-    return {"id": check["id"], "ok": code == 0, "available": True, "exit": code,
-            "secs": round(time.time() - t0, 1), "tail": "" if code == 0 else tail(text)}
+    result = {"id": check["id"], "ok": code == 0, "available": True, "exit": code,
+              "secs": round(time.time() - t0, 1), "tail": "" if code == 0 else tail(text)}
+    if keep_lines and code != 0:
+        result["output"] = "\n".join(text.splitlines()[-keep_lines:])
+    return result
 
 
 def tail(text: str, lines: int = 25, chars: int = 1800) -> str:

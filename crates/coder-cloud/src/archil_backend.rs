@@ -385,7 +385,7 @@ cd "$HOME/openagents" && git fetch -q origin main && git checkout -q --detach or
   || {{ echo "archil: git fetch failed" >&2; exit 2; }}
 oa_agent || exit 3
 export OA_BRIEFED_AGENT=$d/bin/briefed-agent OA_WORK_PUSH_BRANCH={branch} \
-  OA_WORK_FALLBACK=push OA_WORK_HOST_COMMENTS=1
+  OA_WORK_FALLBACK=push OA_WORK_HOST_COMMENTS=1 OA_WORK_SAVE_EMIT=1
 exec python3 "$d/engine/scripts/work/work_issue.py" --repo {repository} --issue {issue} \
   --engine {engine} --land {land} --checkout "$HOME/openagents" --issue-json "$d/issue.json" \
   --out "$d/out" --run-id {run_id}
@@ -581,7 +581,9 @@ mod tests {
         let deleted = script.find(r#"rm -f "$d/env""#).unwrap();
         assert!(deleted < script.find("credential.helper").unwrap());
         assert!(script.contains("--land push"));
-        assert!(script.contains("OA_WORK_FALLBACK=push OA_WORK_HOST_COMMENTS=1"));
+        assert!(
+            script.contains("OA_WORK_FALLBACK=push OA_WORK_HOST_COMMENTS=1 OA_WORK_SAVE_EMIT=1")
+        );
         let direct = run_script("o/r", 7, "briefed", true, "land/archil-7-x", "run1");
         assert!(direct.contains("--land direct"));
         assert!(script.contains("--issue-json \"$d/issue.json\""));
