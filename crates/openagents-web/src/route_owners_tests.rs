@@ -294,3 +294,15 @@ fn the_api_paths_and_the_older_coder_paths_are_owned() {
         assert!(crate::upstream::owned(path), "{path}");
     }
 }
+
+#[test]
+fn retired_demo_addresses_stay_owned() {
+    for path in [
+        "/demo",
+        "/demo/5",
+        "/demo/environment/thread",
+        "/demo/environment/message",
+    ] {
+        assert!(crate::upstream::owned(path), "{path}");
+    }
+}

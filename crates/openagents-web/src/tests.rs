@@ -2847,17 +2847,7 @@ fn stylesheet_links(page: &str) -> Vec<String> {
 /// The pages in the Coder Light / Coder Noir design language that need no
 /// sign-in: every public page, the component catalog, and the problem page.
 fn ui_pages() -> Vec<&'static str> {
-    PAGES
-        .iter()
-        .copied()
-        .chain([
-            "/ui",
-            "/nope",
-            "/demo",
-            "/demo/lease-fix",
-            "/demo/benchmark",
-        ])
-        .collect()
+    PAGES.iter().copied().chain(["/ui", "/nope"]).collect()
 }
 
 /// #11031: no page a visitor can open without signing in, nor any demo
@@ -3803,6 +3793,8 @@ async fn cloud_cookies_reach_owned_pages_only_on_a_configured_host() {
                 // `/cloud` answers locally with its redirect home.
                 let expected = if path == "/cloud" {
                     StatusCode::SEE_OTHER
+                } else if path == "/demo" {
+                    StatusCode::PERMANENT_REDIRECT
                 } else {
                     StatusCode::OK
                 };

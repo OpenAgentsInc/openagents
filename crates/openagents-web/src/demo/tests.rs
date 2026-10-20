@@ -2,8 +2,6 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use tower::ServiceExt;
 
-use super::chats::CHATS;
-
 const HOST: &str = "127.0.0.1:4300";
 
 async fn send(
@@ -46,126 +44,35 @@ fn config(root: &std::path::Path) -> crate::Config {
 }
 
 #[tokio::test]
-async fn demo_is_public_in_the_shared_shell_and_never_reaches_the_task_store() {
+async fn every_html_demo_address_permanently_redirects_without_a_build() {
     let root = tempfile::tempdir().unwrap();
-    assert!(crate::upstream::owned("/demo"));
-    let (status, headers, html) =
-        send(config(root.path()), get("/demo", "openagents.com", false)).await;
-    assert_eq!(status, StatusCode::OK);
+    for path in [
+        "/demo",
+        "/demo/environment",
+        "/demo/5",
+        "/demo/nope",
+        "/demo/lease-fix/thread",
+        "/demo/lease-fix/message",
+    ] {
+        for htmx in [false, true] {
+            let (status, headers, _) =
+                send(config(root.path()), get(path, "openagents.com", htmx)).await;
+            assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{path}");
+            assert_eq!(headers[header::LOCATION], "/demo/gpui", "{path}");
+        }
+    }
+    let (status, headers, _) = send(
+        config(root.path()),
+        post("/demo/lease-fix/message", "q=Hello", true),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(headers[header::LOCATION], "/demo/gpui");
     assert!(!root.path().join("must-not-be-created").exists());
-    for needle in [
-        "class=\"oa-layout\"",
-        "id=\"demo-chats\"",
-        "href=\"/demo/environment\" hx-get=\"/demo/environment/thread\"",
-        "aria-current=\"page\"",
-        "class=\"oa-thread-view\"",
-        // Its tool groups are trace lines (#11639).
-        "class=\"oa-trace\" aria-label=\"What the agent did\"",
-        "data-kind=\"summary\"",
-        "class=\"oa-result-card\"",
-        "class=\"oa-steps\"",
-        "id=\"demo-composer\"",
-        "action=\"/demo/environment/message\"",
-        "src=\"/static/htmx.min.js\"",
-        "Set up the repository environment",
-    ] {
-        assert!(html.contains(needle), "{needle}");
-    }
-    for chat in &CHATS {
-        assert!(
-            html.contains(&format!("href=\"/demo/{}\"", chat.slug)),
-            "{}",
-            chat.slug
-        );
-    }
-    for gone in [
-        "oa-tool-group",
-        "oa-tool-call",
-        "chat-start.js",
-        "htmx-sse.js",
-        "demo-html.css",
-        "legacy-demo.css",
-    ] {
-        assert!(!html.contains(gone), "{gone}");
-    }
-    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-    assert!(policy.contains("script-src 'self';"), "{policy}");
-    assert!(!policy.contains("unsafe"), "{policy}");
 }
 
 #[tokio::test]
-async fn each_chat_has_its_own_page_and_thread_fragment() {
-    let root = tempfile::tempdir().unwrap();
-    for chat in &CHATS {
-        let path = format!("/demo/{}", chat.slug);
-        let (status, _, html) = send(config(root.path()), get(&path, HOST, false)).await;
-        assert_eq!(status, StatusCode::OK, "{path}");
-        assert!(html.contains(&format!("href=\"{path}\" hx-get")), "{path}");
-        let breadcrumb = html
-            .matches("oa-breadcrumb-current\" aria-current=\"page\"")
-            .count();
-        assert_eq!(
-            html.matches("aria-current=\"page\"").count() - breadcrumb,
-            1,
-            "{path}"
-        );
-        let (status, headers, fragment) = send(
-            config(root.path()),
-            get(&format!("{path}/thread"), HOST, true),
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK, "{path}");
-        assert_eq!(headers["HX-Push-Url"], path.as_str());
-        assert!(!fragment.contains("<html"), "{path}");
-        assert!(fragment.contains("id=\"demo-chats\" hx-swap-oob=\"outerHTML\""));
-        assert!(fragment.contains("id=\"demo-dock\" hx-swap-oob=\"outerHTML\""));
-        assert!(fragment.contains(chat.title));
-    }
-}
-
-#[tokio::test]
-async fn unknown_chats_are_missing_and_old_numbered_links_return_to_the_demo() {
-    let root = tempfile::tempdir().unwrap();
-    let (status, _, _) = send(config(root.path()), get("/demo/nope", HOST, false)).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, headers, _) = send(config(root.path()), get("/demo/5", HOST, false)).await;
-    assert!(status.is_redirection());
-    assert_eq!(headers[header::LOCATION], "/demo");
-}
-
-#[tokio::test]
-async fn a_sent_message_gets_a_scripted_reply_with_and_without_htmx() {
-    let root = tempfile::tempdir().unwrap();
-    let (status, _, fragment) = send(
-        config(root.path()),
-        post("/demo/lease-fix/message", "q=Hello+%3Cthere%3E", true),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(fragment.contains("hx-swap-oob=\"beforeend:#demo-transcript\""));
-    assert!(fragment.contains("Hello &lt;there&gt;"));
-    assert!(fragment.contains("wasn't sent to an agent"));
-    assert!(fragment.contains("id=\"demo-dock\" hx-swap-oob=\"outerHTML\""));
-    let (status, _, page) = send(
-        config(root.path()),
-        post("/demo/lease-fix/message", "q=Hello", false),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(page.contains("class=\"oa-layout\""));
-    assert!(page.contains("wasn't sent to an agent"));
-    let (status, _, _) = send(
-        config(root.path()),
-        post("/demo/lease-fix/message", "q=+", true),
-    )
-    .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-}
-
-/// #12337: with the GPUI demo built on this server, the HTML demo and its
-/// chats move to `/demo/gpui` for good.
-#[tokio::test]
-async fn the_html_demo_moves_to_the_gpui_demo_when_it_is_built() {
+async fn the_gpui_demo_still_loads() {
     let root = tempfile::tempdir().unwrap();
     let build = root.path().join("gpui-demo");
     std::fs::create_dir(&build).unwrap();
@@ -175,13 +82,6 @@ async fn the_html_demo_moves_to_the_gpui_demo_when_it_is_built() {
         crate::pages::gpui_demo::GPUI_DEMO_START,
     ] {
         std::fs::write(build.join(file), "").unwrap();
-    }
-    for path in ["/demo", "/demo/lease-fix", "/demo/5"] {
-        let mut config = config(root.path());
-        config.gpui_demo = Some(build.clone());
-        let (status, headers, _) = send(config, get(path, "openagents.com", false)).await;
-        assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{path}");
-        assert_eq!(headers[header::LOCATION], "/demo/gpui", "{path}");
     }
     let mut config = config(root.path());
     config.gpui_demo = Some(build);

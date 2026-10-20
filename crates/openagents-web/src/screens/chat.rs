@@ -159,17 +159,6 @@ pub(super) fn screens() -> Vec<Screen> {
                 state("stopped", "Stopped", run_stopped),
             ],
         },
-        Screen {
-            id: "demo",
-            title: "Demo",
-            group: Group::Page,
-            routes: &["/demo", "/demo/{chat}"],
-            states: vec![
-                state("index", "Demo", demo_index),
-                state("chat", "A demo chat", demo_chat),
-                state("missing", "Demo chat not found", demo_missing),
-            ],
-        },
     ]
 }
 
@@ -1061,16 +1050,4 @@ fn run_stopped(headers: &HeaderMap) -> Response {
         Value::Null,
         Some("You stopped this run."),
     )
-}
-
-fn demo_index(headers: &HeaderMap) -> Response {
-    crate::demo::sample(headers, "environment")
-}
-
-fn demo_chat(headers: &HeaderMap) -> Response {
-    crate::demo::sample(headers, "lease-fix")
-}
-
-fn demo_missing(headers: &HeaderMap) -> Response {
-    crate::demo::sample(headers, "no-such-chat")
 }

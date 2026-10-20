@@ -222,7 +222,6 @@ async fn the_chat_states_show_their_sample_data() {
         ),
         ("work-run", "finished", "The change"),
         ("work-run", "running", "Running the tests"),
-        ("demo", "chat", "Fix the lease table reset"),
     ];
     let screens = super::screens();
     for (screen, id, text) in expected {
