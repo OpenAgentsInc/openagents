@@ -69,6 +69,8 @@ pub const RUN_RECORD: u16 = 3_187;
 pub const RUN_HEAD: u16 = 30_186;
 /// NIP-AGENT public agent definition.
 pub const AGENT_DEFINITION: u16 = 30_187;
+/// NIP-SKILL skill listing.
+pub const SKILL_LISTING: u16 = 30_188;
 /// The shared private artifact envelope.
 pub const PRIVATE_ARTIFACT: u16 = 3_188;
 /// NIP-EVAL public evaluation declaration.
@@ -205,6 +207,7 @@ pub const REGISTRY: &[Claim] = &[
     claim(EXT_CHECKPOINT, "NIP-EXT", "Revocation checkpoint"),
     claim(RUN_HEAD, "NIP-RUN", "Encrypted current-head hint"),
     claim(AGENT_DEFINITION, "NIP-AGENT", "Public agent definition"),
+    claim(SKILL_LISTING, "NIP-SKILL", "Skill listing"),
     claim(KB_HEAD, "NIP-KB", "Current entry head"),
     claim(MKT_HEAD, "NIP-MKT", "Current offering head"),
     claim(XP_QUEST, "NIP-XP", "Frozen quest version"),

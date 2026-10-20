@@ -1581,3 +1581,51 @@ async fn a_browsers_verse_key_is_owned_by_the_persons_key_and_the_grid_lists_pla
     assert_eq!(status, StatusCode::OK);
     assert_eq!(places["agents"][0]["name"], "Grid Helper");
 }
+
+#[tokio::test]
+async fn explore_lists_the_skills_the_directory_signed() {
+    let relay = Relay::start().await;
+    let world = key_world_with(vec![relay.url.clone()]).await;
+    let mut config = crate::Config::development(world.root.path().join("tasks"));
+    config.agent_key_seed = Some([7; 32]);
+    let app = crate::App(std::sync::Arc::new(crate::Inner { config }));
+    let directory = crate::profiles::skills::directory(&app).unwrap();
+    let author = key(0x71);
+    let skill = |name: &str| nostr::skill_listing::Skill {
+        name: name.into(),
+        version: "1.0.0".into(),
+        digest: format!("sha256:{}", "a".repeat(64)),
+        url: format!("https://openagents.com/v1/skills/{name}/versions/1.0.0/SKILL.md"),
+        license: "MIT".into(),
+        category: "coding".into(),
+        tags: vec![],
+    };
+    relay.put(
+        nostr::skill_listing::listing_event(
+            &directory,
+            &skill("repo-map"),
+            Some(author.pubkey()),
+            1_790_000_000,
+        )
+        .unwrap(),
+    );
+    // Another key's listing isn't the directory's, so it doesn't show.
+    relay.put(
+        nostr::skill_listing::listing_event(
+            &key(0x72),
+            &skill("forged-skill"),
+            None,
+            1_790_000_000,
+        )
+        .unwrap(),
+    );
+    let mut anyone = Browser::default();
+    let page = anyone.get(&world, "/explore").await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(page.body.contains("repo-map"), "{}", page.body);
+    assert!(page.body.contains(&format!(
+        "href=\"/@{}\"",
+        crate::profiles::npub(author.pubkey())
+    )));
+    assert!(!page.body.contains("forged-skill"));
+}

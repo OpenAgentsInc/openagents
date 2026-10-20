@@ -284,6 +284,7 @@ a synthetic vault run with a verified Google-attested HPKE endpoint.
 | [NIP-PRG](NIP-PRG.md) | Typed workflows, the default kind of contributed capability; seven step kinds, bounded composition, and plugin packet ABI. | `30182`, `30183`. |
 | [NIP-EXT](NIP-EXT.md) | Extension packages, the container a capability ships in: immutable releases, imports, host component sets, discovery, revocation, and namespace transfer; `eval-suite` components carry published test sets. | `3184`–`3186`, `30184`, `30185`; private records on shared `3188`. |
 | [NIP-REG](NIP-REG.md) | Rust publisher/mirror/reader: inert catalogs, original publisher pins, explicit trust, bounded equivalent sources, and monotone revocation state. | Existing EXT `3184` releases and `30184` heads; no new kinds. |
+| [NIP-SKILL](NIP-SKILL.md) | Published skills: one addressable listing per skill a directory reviewed and admitted, with its digest, document URL, and author's key; reviews are NIP-32 labels on its address. | `30188`. |
 | [NIP-RUN](NIP-RUN.md) | Encrypted durable journals, fencing, evidence, and recovery. | `3187`, `30186`. |
 | [NIP-CJ](NIP-CJ.md) | Conversation, typed-decision, and recoverable execution jobs; conversation offers, cards, and the test-set draft (`crates/nostr` `cj_conversation`). | `25900`/`26900`/`27000`, `25910`/`26910`/`27010`, `25920`/`26920`/`27020`. |
 | [NIP-DEC](NIP-DEC.md) | Decisions: one state (a string or object) and typed `noul`, `choice`, and `score` questions whose instructions and criteria are EntryType (string, object, array, or null), answered with probabilities; bounds, model aliases (`typesafe/jev-1.13`), HTTP-gateway equivalence with OpenRouter's status codes, and ATIF decision calls. Implemented in `crates/nostr` `decision`, served by the hosted decision worker. | The CJ decision family `25910`/`26910`/`27010`, `openagents.systemone.v1`. |
@@ -388,6 +389,7 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `30185` | [NIP-EXT](NIP-EXT.md) | Revocation checkpoint |
 | `30186` | [NIP-RUN](NIP-RUN.md) | Encrypted current-head hint |
 | `30187` | [NIP-AGENT](NIP-AGENT.md) | Public agent definition |
+| `30188` | [NIP-SKILL](NIP-SKILL.md) | Skill listing |
 | `30190` | [NIP-KB](NIP-KB.md) | Current entry head |
 | `30192` | [NIP-MKT](NIP-MKT.md) | Current offering head |
 | `30193` | [NIP-XP](NIP-XP.md) | Frozen quest version |

@@ -45,6 +45,14 @@ pub(crate) struct AgentRow {
 pub(crate) struct Directory {
     pub(crate) agents: Vec<AgentRow>,
     pub(crate) plugins: Vec<plugin_registry::listings::Listing>,
+    pub(crate) skills: Vec<SkillRow>,
+}
+
+/// A published skill (NIP-SKILL), with the reviews signed about it.
+#[derive(Clone, Debug)]
+pub(crate) struct SkillRow {
+    pub(crate) listing: nostr::skill_listing::Listing,
+    pub(crate) reviews: usize,
 }
 
 type Cache = Mutex<HashMap<String, (Instant, Arc<Directory>)>>;
@@ -71,8 +79,15 @@ pub(crate) fn ranked(
     agents
 }
 
-pub(crate) async fn load(relays: &[String]) -> Arc<Directory> {
-    let key = relays.join(",");
+pub(crate) async fn load(app: &App) -> Arc<Directory> {
+    // Keep the relays' skill listings in line with the directory (#12303).
+    let syncing = app.clone();
+    tokio::spawn(async move { super::skills::sync(&syncing).await });
+    let directories: Vec<String> = super::skills::directory(app)
+        .map(|s| vec![s.pubkey().to_string()])
+        .unwrap_or_default();
+    let relays = &app.config.profile_relays;
+    let key = format!("{}|{}", relays.join(","), directories.join(","));
     if let Some((at, found)) = cache()
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -122,7 +137,59 @@ pub(crate) async fn load(relays: &[String]) -> Arc<Directory> {
     let mut plugins =
         plugin_registry::listings::without_samples(plugin_registry::listings::published(listings));
     plugins.truncate(SHOWN);
-    let found = Arc::new(Directory { agents, plugins });
+    let skills = if directories.is_empty() {
+        Vec::new()
+    } else {
+        let (listings, _) = read_all(
+            &ours,
+            &json!({"kinds": [nostr::skill_listing::KIND], "authors": directories, "limit": 500}),
+        )
+        .await;
+        let current = nostr::skill_listing::current(&listings, &directories);
+        let addresses: Vec<String> = current
+            .iter()
+            .map(|l| nostr::skill_listing::address(&l.directory, &l.skill.name))
+            .take(200)
+            .collect();
+        let reviews = if addresses.is_empty() {
+            Vec::new()
+        } else {
+            read_all(
+                &ours,
+                &json!({"kinds": [1985], "#a": addresses, "limit": 2000}),
+            )
+            .await
+            .0
+        };
+        let mut rows: Vec<SkillRow> = current
+            .into_iter()
+            .map(|listing| {
+                let address =
+                    nostr::skill_listing::address(&listing.directory, &listing.skill.name);
+                let reviews = reviews
+                    .iter()
+                    .filter(|e| {
+                        e.validate_crypto().is_ok() && e.tag_values("a").any(|a| a == address)
+                    })
+                    .map(|e| e.pubkey.clone())
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len();
+                SkillRow { listing, reviews }
+            })
+            .collect();
+        rows.sort_by(|a, b| {
+            b.reviews
+                .cmp(&a.reviews)
+                .then(a.listing.skill.name.cmp(&b.listing.skill.name))
+        });
+        rows.truncate(SHOWN);
+        rows
+    };
+    let found = Arc::new(Directory {
+        agents,
+        plugins,
+        skills,
+    });
     cache()
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -155,11 +222,11 @@ fn pylons(app: &App) -> Markup {
 }
 
 pub(super) async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
-    let directory = load(&app.config.profile_relays).await;
+    let directory = load(&app).await;
     let content = html! {
         (MarkdownRoot::new(html! {
             h1 { "Explore" }
-            p { "Agents, plugins, and pylons on the OpenAgents network. Everything here comes from signed Nostr events, so any app can show the same list." }
+            p { "Agents, skills, plugins, and pylons on the OpenAgents network. Everything here comes from signed Nostr events, so any app can show the same list." }
         }))
         section.oa-card aria-labelledby="explore-agents" {
             (MarkdownRoot::new(html! {
@@ -175,6 +242,33 @@ pub(super) async fn page(State(app): State<App>, headers: HeaderMap) -> Response
                                 a href=(super::href(&agent.owner, None)) { (short_npub(&agent.owner)) }
                                 @if agent.evidence > 0 {
                                     " · " (agent.evidence) " signed reviews and jobs"
+                                }
+                            }
+                        }
+                    }
+                }
+            }))
+        }
+        section.oa-card aria-labelledby="explore-skills" {
+            (MarkdownRoot::new(html! {
+                h2 id="explore-skills" { "Skills" }
+                @if directory.skills.is_empty() {
+                    p { "No skills are published yet." }
+                } @else {
+                    ul {
+                        @for row in &directory.skills {
+                            li {
+                                a href=(row.listing.skill.url) { (row.listing.skill.name) }
+                                " " (row.listing.skill.version)
+                                @if let Some(author) = &row.listing.author {
+                                    " · by "
+                                    a href=(super::href(author, None)) { (short_npub(author)) }
+                                }
+                                @if !row.listing.skill.category.is_empty() {
+                                    " · " (row.listing.skill.category)
+                                }
+                                @if row.reviews > 0 {
+                                    " · " (row.reviews) " signed reviews"
                                 }
                             }
                         }
@@ -211,7 +305,7 @@ pub(super) async fn page(State(app): State<App>, headers: HeaderMap) -> Response
     };
     UiPage::new("Explore")
         .path(PAGE)
-        .description("Agents, plugins, and pylons on the OpenAgents network.")
+        .description("Agents, skills, plugins, and pylons on the OpenAgents network.")
         .scriptless()
         .content(PageColumn::new(content))
         .respond(&headers)
@@ -221,7 +315,7 @@ pub(super) async fn page(State(app): State<App>, headers: HeaderMap) -> Response
 /// (#12313), from the same reads as this page.
 pub(super) async fn places(State(app): State<App>) -> Response {
     use axum::response::IntoResponse;
-    let directory = load(&app.config.profile_relays).await;
+    let directory = load(&app).await;
     let pylons: Vec<serde_json::Value> = match app.config.pylons_relay.as_deref() {
         Some(relay) => crate::pages::pylons_field(relay)
             .current()

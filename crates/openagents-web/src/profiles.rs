@@ -28,6 +28,7 @@
 mod edit;
 pub(crate) mod evidence;
 mod explore;
+pub(crate) mod skills;
 pub(crate) mod gym;
 pub(crate) use edit::PAGE as SETTINGS_PAGE;
 mod picture;

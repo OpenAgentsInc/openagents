@@ -919,6 +919,22 @@ fn object_failure(error: &std::io::Error) -> Response {
     )
 }
 
+/// The author's public Nostr key: the one their `name@openagents.com`
+/// name points at, else their first key; none for an account without a
+/// key. Profiles and the skill events link to it (#12303).
+fn author_pubkey(state: &ServeState, account: &str) -> Option<String> {
+    let store = tenancy::Accounts::open(&state.dir)
+        .and_then(|a| a.store())
+        .ok()?;
+    if let Some((_, claim)) = tenancy::accounts::names::name_of(&store, account) {
+        return Some(claim.pubkey);
+    }
+    store
+        .accounts
+        .get(account)
+        .and_then(|record| tenancy::accounts::nostr::keys_of(record).into_iter().next())
+}
+
 /// The entry's public document — its latest published version, its
 /// version list, and the install block.
 fn entry_document(state: &ServeState, entry: &skills::Entry) -> Value {
@@ -933,6 +949,7 @@ fn entry_document(state: &ServeState, entry: &skills::Entry) -> Value {
     json!({
         "name": entry.name,
         "author": latest.author,
+        "author_pubkey": author_pubkey(state, &latest.author),
         "category": latest.category,
         "tags": latest.tags,
         "latest": version_document(state, &entry.name, latest),

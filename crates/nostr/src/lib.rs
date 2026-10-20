@@ -54,6 +54,7 @@ pub mod push_lease;
 pub mod pylon;
 pub mod read_state_snapshot;
 pub mod run;
+pub mod skill_listing;
 pub mod session;
 pub mod sovereign;
 pub mod sovereign_lifecycle;
