@@ -290,6 +290,18 @@ impl Replica {
         }
     }
 
+    pub fn rename_device(&mut self, id: &str, name: &str) -> Result<(), Refused> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("Enter a computer name.".into());
+        }
+        match self.doc.rename_device(id, name) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err("We couldn't find that computer.".into()),
+            Err(_) => Err("We couldn't rename that computer. Try again.".into()),
+        }
+    }
+
     pub fn rename(&mut self, id: &str, title: &str) -> Result<(), Refused> {
         let wrote = self.doc.rename_chat(id, title.trim());
         self.found(id, wrote)

@@ -35,6 +35,7 @@ use crate::route;
 mod cloud_computers;
 /// Every computer's chats from the registry (#12265).
 mod computers;
+mod devices;
 /// A new session on a computer (#12266).
 mod new_session;
 
@@ -111,6 +112,7 @@ pub struct ChatApp {
     search: Entity<TextInput>,
     filter: String,
     rename: Option<(String, Entity<TextInput>)>,
+    show_computers: bool,
     menu: Option<Menu>,
     /// The project a new chat starts in.
     new_project: Option<String>,
@@ -249,6 +251,7 @@ impl ChatApp {
             search,
             filter: String::new(),
             rename: None,
+            show_computers: false,
             menu: None,
             new_project: None,
             sending: false,
@@ -920,7 +923,14 @@ impl ChatApp {
                             .child("OpenAgents"),
                     )
                     .when(self.registry.is_some(), |row| {
-                        row.child(self.render_view_button(cx))
+                        row.child(self.render_view_button(cx)).child(
+                            button("computers-settings", "Computers", false).on_click(cx.listener(
+                                |this, _, _, cx| {
+                                    this.show_computers = true;
+                                    cx.notify();
+                                },
+                            )),
+                        )
                     })
                     .when(full, |row| {
                         row.child(icon_button("close-sidebar", "icons/close.svg").on_click(
@@ -1794,7 +1804,9 @@ impl Render for ChatApp {
         }
         let wide = window.viewport_size().width > px(820.);
         let rows = self.entries.len() + usize::from(self.live.is_some());
-        let transcript: AnyElement = if self.current.is_none() && rows == 0 {
+        let transcript: AnyElement = if self.show_computers {
+            self.render_computers(cx)
+        } else if self.current.is_none() && rows == 0 {
             self.render_new_chat(cx)
         } else if self.loading_chat && rows == 0 {
             div()

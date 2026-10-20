@@ -348,3 +348,18 @@ fn the_view_round_trips_through_its_stored_words() {
     }
     assert_eq!(View::decode("nonsense"), View::default());
 }
+
+#[test]
+fn computer_rename_is_shared_with_the_desktop() {
+    let mut browser = joined(server_rows(|r| {
+        r.upsert_device(&device("mac-1", "Scratch", "linux"))
+            .unwrap();
+    }));
+    assert!(browser.rename_device("missing", "New").is_err());
+    assert!(browser.rename_device("mac-1", "  ").is_err());
+    browser
+        .rename_device("mac-1", "  Scratch renamed  ")
+        .unwrap();
+    assert_eq!(browser.devices()[0].name, "Scratch renamed");
+    assert!(!browser.pushes().is_empty());
+}
