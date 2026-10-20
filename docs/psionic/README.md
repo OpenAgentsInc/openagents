@@ -78,6 +78,10 @@ criteria grounded in Psionic's current serving and cluster code.
 
 ## Framework comparisons
 
+The [DeepSeek support plan](deepseek-support-plan.md) surveys DeepSeek's public
+infrastructure and defines specific targets for R1 distills, native MLA/MoE,
+V3.2 sparse attention, and V4.1, with pinned model and kernel compatibility.
+
 The [DeepInfer review](deepinfer-lessons.md) compares its released inference
 engine with Psionic's serving paths and recommends focused work on device
 batching, reproducibility, structured outputs, and speculative verification.

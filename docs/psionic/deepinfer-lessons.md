@@ -6,6 +6,12 @@ Psionic comparison revision: `83fe8b7f6b3cd437ae9b7af213cf9f04875dd793`
 in this monorepo. Recommendations below are engineering judgments from source
 inspection, not measured performance improvements for Psionic.
 
+The follow-up [DeepSeek support plan](deepseek-support-plan.md) expands this
+review to official Rust protocol components, model-specific MLA/MoE and sparse
+attention work, and a pinned kernel/device compatibility matrix. It records
+FlashMLA's removal of older model/Hopper support and DeepEP's newer NCCL-based
+implementation so future work does not rely on older infrastructure descriptions.
+
 ## Recommendation
 
 Use DeepInfer as a reference for making Psionic's existing serving paths work

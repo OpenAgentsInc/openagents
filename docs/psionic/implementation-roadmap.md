@@ -1,7 +1,7 @@
 # Psionic implementation roadmap
 
 Updated on 2026-10-20. Source baseline:
-`bcfb0c3fd88393760b9b4bf83913b509813270be` in this monorepo.
+`818354f0e5317f40a2d6adf0b7a3228f10b8b20d` in this monorepo.
 This roadmap combines the [DeepInfer review](deepinfer-lessons.md) and
 [Mesh-LLM review](mesh-llm-lessons.md). Those reviews pin the upstream revisions
 and describe their limitations. The Psionic findings below were checked again
@@ -48,6 +48,30 @@ R2 and R4 can proceed after R0 without waiting for R1. R7 and R9 are separate
 follow-ups; speculation does not depend on finishing distributed serving.
 No implementation step depends on a new public mesh, a storage cluster, or a
 new accelerator vendor.
+
+## DeepSeek-specific support
+
+The [DeepSeek support and infrastructure plan](deepseek-support-plan.md) adds
+a model-specific implementation sequence based on a broader source survey.
+DeepSeek model names cover different numerical and protocol architectures;
+support must be qualified per artifact and engine.
+
+| Priority | DeepSeek step | Relationship to this roadmap |
+| --- | --- | --- |
+| P0 | DS0: Pin R1-Distill-Qwen-1.5B and its actual tokenizer/template | Extend R0 and the existing CPU/Pylon qualification paths. Qualify external-engine GPU execution separately from native support. |
+| P0 | DS1: Adapt official Rust V4/V4.1 recipe components | Run protocol/token fixtures with mock inference immediately; connect strict constraints to R2. This does not require loading a full DeepSeek model. |
+| P1 | DS2: Add native V2-Lite MLA/MoE reference execution | Reuse artifact and sampling contracts; implement latent KV, RoPE/scaling, and the checkpoint's shared/routed expert semantics. |
+| P1 | DS3: Add single-node acceleration and V3/full-R1 variants | Reuse R1/R3 for batch/overlap claims; qualify weight/scale layouts and device support separately. |
+| P2 | DS4: Add V3.2 sparse indexing, then V4.1 reference components | V4.1 additionally needs compressed/shared attention, mHC, and Engram. Qualify model-specific R4/R5 boundaries; Gemma results do not qualify these models. |
+| P2 | DS5: Add expert scale-up on a qualified fast fabric | Use R4–R7 packaging, lifecycle, and placement. Current DeepEP is a Hopper-or-newer NVLink/RDMA path, not WAN Pylon transport. |
+| P2 | DS6: Evaluate a matched DSpark draft | Extend R9 using an exact trained target/draft pair and calibration evidence from DeepSpec. |
+
+DS0's prompt/token fixtures and DS1's Rust adapter are immediate additions to
+the first-change queue alongside R0–R2. DS2's CPU reference can proceed without
+buying datacenter hardware. The current FlashMLA release excludes Hopper and
+older DeepSeek models and changes KV formats; use the support plan's pinned
+kernel/model/device matrix rather than combining upstream `main` branches.
+The RTX 4080 is outside the primary optimized FlashMLA/DeepGEMM targets.
 
 ## What already exists
 
@@ -271,6 +295,9 @@ backend, device, precision, kernel build, and topology before reusing them.
 Start with R0's measurement/qualification extension, then R1's smallest real
 CUDA batch and bounded admission. R2's compilation reuse and R4's existing
 Gemma boundary qualification are the next independently reviewable changes.
+For DeepSeek support, add DS0's distill token/template qualification and DS1's
+official Rust protocol adapter, then DS2's native MLA/MoE reference. Keep their
+completion claims separate from generic Qwen or Gemma qualification.
 Each subsequent change should name its prerequisite result and the exact
 behavior it improves; do not turn this roadmap into a single large rewrite.
 
