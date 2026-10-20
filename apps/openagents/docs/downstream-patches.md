@@ -5,6 +5,11 @@ Keep fork-specific changes here so upstream updates can review each integration.
 - OpenAgents #12281: add cloud computer creation, stop, wake, removal, and CPU
   usage to the web chat's new-session computer picker.
 
+- OpenAgents #12287: share the agent visual view with the browser. Use the
+  pure Rust `luaur-rt` interpreter behind the visual sandbox API on wasm,
+  and the existing software scene rasterizer; preserve native Lab loading
+  and GPU rendering. Replay the desktop demo's chart, canvas, and 3D parts.
+
 - OpenAgents #12295: wrap web chat table cells within their columns, including
   long links and identifiers. Keep left, center, and right text alignment.
   The desktop transcript already wraps cells and scrolls wide tables.
