@@ -1,7 +1,7 @@
 //! Stable device-local browser storage, independent of chats and repositories.
+use openagents_proto::{AuthState, WorkspaceScope};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use openagents_proto::{AuthState, WorkspaceScope};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct BrowserProfile {

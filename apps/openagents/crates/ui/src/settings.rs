@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gpui::{App, Global, Task};
-use serde::{Deserialize, Serialize};
 use openagents_proto::{AuthState, WorkspaceScope};
+use serde::{Deserialize, Serialize};
 
 pub mod accounts;
 pub(crate) mod agent_wakes;
@@ -24,11 +24,11 @@ pub mod composer;
 pub mod devices;
 pub mod earn;
 pub mod files;
-pub(crate) mod voice_agent;
 pub mod harnesses;
 pub mod notifications;
 pub mod shortcuts;
 pub mod thread_naming;
+pub(crate) mod voice_agent;
 pub mod wallpaper;
 pub mod wallpaper_colors;
 pub mod widgets;
@@ -541,7 +541,9 @@ pub fn remove_new_thread_composer_background(cx: &mut App) -> Result<(), String>
     let data_dir = cx
         .try_global::<SettingsStore>()
         .map(|store| store.data_dir.clone())
-        .ok_or_else(|| "Unable to remove the image. Restart OpenAgents and try again.".to_string())?;
+        .ok_or_else(|| {
+            "Unable to remove the image. Restart OpenAgents and try again.".to_string()
+        })?;
     let mut next = current(cx);
     let previous = next.new_thread_composer_background.take();
     next.wallpaper_source = None;
@@ -1669,7 +1671,10 @@ impl UiSettings {
             .or_default()
     }
 
-    pub fn skill_completion(&self, harness: openagents_proto::HarnessId) -> SkillCompletionSettings {
+    pub fn skill_completion(
+        &self,
+        harness: openagents_proto::HarnessId,
+    ) -> SkillCompletionSettings {
         self.skill_completion_by_harness
             .get(&harness)
             .copied()
@@ -3044,9 +3049,18 @@ mod tests {
         )
         .unwrap();
         let loaded = UiSettings::load(dir.path());
-        assert_eq!(loaded.appearance, crate::appearance::AppearanceMode::default());
-        assert_eq!(loaded.accent, openagents_theme::AccentSelection::ThemeDefault);
-        assert_eq!(loaded.surface, openagents_theme::SurfacePreference::ThemeDefault);
+        assert_eq!(
+            loaded.appearance,
+            crate::appearance::AppearanceMode::default()
+        );
+        assert_eq!(
+            loaded.accent,
+            openagents_theme::AccentSelection::ThemeDefault
+        );
+        assert_eq!(
+            loaded.surface,
+            openagents_theme::SurfacePreference::ThemeDefault
+        );
         assert_eq!(loaded.sidebar_width, 300.0);
         assert!(loaded.sidebar_pinned_session_ids_by_profile.is_empty());
         assert!(!loaded.sound_enabled, "other keys still parse");

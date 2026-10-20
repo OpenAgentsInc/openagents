@@ -214,8 +214,9 @@ mod tests {
         let _guard = runtime.enter();
         let (out, mut requests) = tokio::sync::mpsc::channel(16);
         let (replies, inbound) = tokio::sync::mpsc::channel(16);
-        let engine =
-            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound));
+        let engine = crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(
+            out, inbound,
+        ));
         let state = cx.new(|_| {
             let mut state = super::super::test_support::state();
             state.set_test_engine(engine);

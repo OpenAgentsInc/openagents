@@ -1,10 +1,12 @@
 //! Desktop adapter for the shared voice-agent picker.
-use gpui::{AnyElement, Context, Render, SharedString, Subscription, Task, Window, div, prelude::*, px};
+use crate::{openagents_account::AppAccount, theme::Theme};
+use gpui::{
+    AnyElement, Context, Render, SharedString, Subscription, Task, Window, div, prelude::*, px,
+};
 use gpui_tokio::Tokio;
 use openagents_account::voice_agent::{Action, Picker};
 use rust_native::{Activation, Element, Node, View};
 use std::sync::Arc;
-use crate::{openagents_account::AppAccount, theme::Theme};
 
 pub struct VoiceAgentCard {
     picker: Option<Arc<Picker>>,

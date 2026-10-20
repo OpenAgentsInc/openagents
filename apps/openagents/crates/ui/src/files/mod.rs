@@ -424,7 +424,9 @@ impl FilesSurface {
                         .unwrap_or(&chat.device_id);
                     // A projectless chat's folder is an implementation detail.
                     match chat.cwd.as_deref() {
-                        Some(cwd) if !openagents_proto::projectless::is_projectless_cwd(Some(cwd)) => {
+                        Some(cwd)
+                            if !openagents_proto::projectless::is_projectless_cwd(Some(cwd)) =>
+                        {
                             format!("Files in {cwd} · {device}")
                         }
                         _ => format!("Files · {device}"),
