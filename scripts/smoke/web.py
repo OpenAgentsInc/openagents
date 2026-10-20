@@ -38,6 +38,7 @@ token and device approval answer 404, and `/api/v1/models` answers.
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import os
 import re
@@ -93,7 +94,9 @@ class Response:
 class Site:
     def __init__(self, base):
         self.base = base.rstrip("/")
-        self.cookies = {}
+        # These HTTP checks inspect the supported HTML view. The default
+        # GPUI view gets its own checks with a fresh visitor below.
+        self.cookies = {"oa_chat_ui": "html"}
 
     def request(self, path, method="GET", form=None, body=None, headers=None, cookies=True):
         url = path if path.startswith("http") else self.base + path
@@ -572,6 +575,28 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
     # starts a chat at /new: the composer, the four starter questions, the
     # theme toggle.
     if want("home"):
+        visitor = Site(base)
+        visitor.cookies.clear()
+        default = visitor.get("/")
+        features = re.search(r'<meta name="openagents-features" content="([^"]*)"', default.text)
+        if features and "gpui_default" in features.group(1).split(","):
+            record("home: default GPUI page loads", default.status == 200
+                   and 'id="gpui-shell"' in default.text, f"{default.status}")
+            record("home: GPUI page has CSRF and an HTML fallback",
+                   re.search(r'<meta name="openagents-csrf" content="[^"]+"', default.text) is not None
+                   and "?ui=html" in default.text)
+            assets = sorted(set(re.findall(r'(?:src|href)="(/gpui/build/[^"?]+\.(?:js|wasm))"',
+                                           default.text)))
+            record("home: GPUI page names its loader, JavaScript, and WASM",
+                   len(assets) == 3 and any("/start." in path for path in assets)
+                   and any(path.endswith(".wasm") for path in assets))
+            for path in assets:
+                asset = visitor.get(path, cookies=False)
+                expected = re.search(r"\.([0-9a-f]{64})\.(?:js|wasm)$", path)
+                record(f"home: GPUI asset {path.rsplit('/', 1)[-1]}",
+                       asset.status == 200 and expected is not None
+                       and hashlib.sha256(asset.body).hexdigest() == expected.group(1),
+                       f"{asset.status}, {len(asset.body)} bytes")
         landing = site.get("/")
         # With gpui_default on (#12226), / and /new are the GPUI chat for a
         # browser that chose neither view; the HTML pages stay at ?ui=html.
