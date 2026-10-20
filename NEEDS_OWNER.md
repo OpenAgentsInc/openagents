@@ -3219,3 +3219,32 @@ debug build (More > Public profile, More > Payments from your browser). With
 the dedicated test account and test values, never your own wallet: ask to pay
 a small x402 test resource from Chrome, approve it on the phone, and check the
 browser completes it; on Android, save a name and picture and check `/@NAME`.
+
+## Create the DeepSeek-V4.1 billing alerts (#12370) (2026-10-20)
+
+The agent's service account can't read or create billing budgets on the
+billing account. Signed in as yourself (`gcloud auth login` first if gcloud
+asks), run these two commands. They alert the billing account's admins when
+spend on machines labeled `budget=deepseek-v41` (every machine
+`scripts/dev/cloud-budget.py` starts) reaches $1,500 and $2,500, counted
+before credits, from today to the end of March 2027:
+
+```sh
+for amount in 1500 2500; do
+  gcloud billing budgets create \
+    --billing-account=01D15C-64524A-1062EA \
+    --display-name="DeepSeek-V4.1 work: \$${amount}" \
+    --budget-amount=${amount}USD \
+    --filter-projects=projects/openagentsgemini \
+    --filter-labels=budget=deepseek-v41 \
+    --credit-types-treatment=exclude-all-credits \
+    --start-date=2026-10-20 --end-date=2027-03-31 \
+    --threshold-rule=percent=0.5 \
+    --threshold-rule=percent=0.9 \
+    --threshold-rule=percent=1.0
+done
+gcloud billing budgets list --billing-account=01D15C-64524A-1062EA
+```
+
+The guard's own cap of $3,000 doesn't depend on these alerts:
+`python3 scripts/dev/cloud-budget.py report` shows what the work has spent.

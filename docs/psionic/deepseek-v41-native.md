@@ -199,6 +199,76 @@ The full CPU reference (V4) needs about 510 GB of readable weights. It can
 memory-map them from local SSD on a smaller machine, more slowly, or run on a
 host with enough RAM: a `g4-standard-384` host has 1,440 GiB and an A4 host about 3.9 TiB, so the GPU machine can also run the CPU reference.
 
+### How to use the cloud spend guard
+
+Start every Google Compute machine for this work with
+`scripts/dev/cloud-budget.py` (#12370). Don't call `gcloud compute instances
+create` directly. The guard does the following:
+
+- Looks up the hourly price in `scripts/dev/cloud-prices.json` and refuses a
+  machine type, or a spot or on-demand choice, that has no price there.
+- Refuses the machine if the money spent, plus every running machine's cost up
+  to its expiry, plus `--hours` × price, would pass the $3,000 cap.
+- Gives the machine an `expires-at` label and `--max-run-duration`, so Google
+  deletes it at expiry. With `--on-expiry stop`, Google stops it instead and
+  keeps its disks.
+- Labels it with your run (`run-id`, `run-host`) and `budget=deepseek-v41`,
+  and records it in the run, so ending the session reaps it.
+- Records `start` and `stop` records with the price and cost in
+  `~/.openagents/cloud-budget/deepseek-v41.jsonl`.
+
+The run label comes from `OA_RUN_ID`, which every Claude Code shell here
+sets. Elsewhere, create a run first with
+`export OA_RUN_ID=$(python3 scripts/dev/agent-run.py new)`.
+
+Check the spot price on the day, and update the price table with its source
+and date if it changed. Then run the command with `--dry-run` first. The dry run
+prints the full `gcloud` command and the budget total without creating
+anything. Flags after `--` pass through to `gcloud compute instances create`
+unchanged. The guard sets `--labels`, `--max-run-duration`,
+`--instance-termination-action`, `--provisioning-model`, `--machine-type`,
+`--zone`, and `--project` itself, and refuses them after `--`; add your own
+labels with `--label KEY=VALUE`.
+
+The V0 oracle run (#12371), one `a4-highgpu-8g` spot machine for 8 hours:
+
+```sh
+python3 scripts/dev/cloud-budget.py create oa-dsv41-oracle-1 \
+  --machine-type a4-highgpu-8g --zone us-central1-b --spot --hours 8 \
+  --label issue=12371 --dry-run -- \
+  --boot-disk-size=500GB --boot-disk-type=hyperdisk-balanced \
+  --image-family=common-cu129-ubuntu-2404-nvidia-580 \
+  --image-project=deeplearning-platform-release
+```
+
+An `a4-highgpu-8g` comes with its eight GPUs and its local SSDs, so it needs no
+`--accelerator` or `--local-ssd` flags. Check the zone's B200 spot capacity
+and the image family on the day, then run the same command without
+`--dry-run`. The guard prints `vm NAME zone ZONE expires TIME`. A spot machine
+that Google reclaims early is deleted the same way. To keep the machine's disks
+after expiry, add `--on-expiry stop`; a stopped machine still pays for its
+disks.
+
+While it runs, and after:
+
+```sh
+python3 scripts/dev/cloud-budget.py report        # spent, running, remaining
+python3 scripts/dev/cloud-budget.py stop oa-dsv41-oracle-1   # delete it now
+python3 scripts/dev/cloud-budget.py sync          # record machines that expired
+python3 scripts/dev/cloud-budget.py prices        # the price table
+```
+
+`report` asks Google which machines still exist, then prints the money spent,
+the running machines' cost so far and up to their expiry, the money remaining,
+and each running machine's age and expiry. Add `--offline` to skip the check,
+or `--json` for a script. Prices cover the machine and its GPUs, not persistent
+disks or network, which come out of the reserve. Record the machine type, hours,
+and the cost `report` shows in the run's evidence.
+
+The billing budget alerts at $1,500 and $2,500 track spend labeled
+`budget=deepseek-v41`. If they aren't set up yet, the command is in
+`NEEDS_OWNER.md`.
+
 ## Psionic gaps this plan must close
 
 - **No DeepSeek decoder family.** `GgufDecoderFamily` has no DeepSeek case,

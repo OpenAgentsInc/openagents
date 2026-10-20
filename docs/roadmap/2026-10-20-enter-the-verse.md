@@ -244,6 +244,9 @@ caps it at **$3,000**, using spot capacity where it exists:
 
 Rules for every machine:
 
+- Start it with the spend guard, `scripts/dev/cloud-budget.py`, which enforces
+  the cap, the expiry, and the run label
+  ([how to use it](../psionic/deepseek-v41-native.md#how-to-use-the-cloud-spend-guard)).
 - Label it with the run (`agent-run.py label-vm`), so the reaper can stop it.
 - Give it an expiry and stop it when its bounded task ends.
 - Record its machine type, hours and cost in the run's evidence.

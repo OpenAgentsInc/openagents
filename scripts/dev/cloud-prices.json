@@ -1,0 +1,51 @@
+{
+  "schema": "openagents.cloud-prices.v1",
+  "currency": "USD",
+  "unit": "per hour, machine and GPUs only; persistent disks and network are not included",
+  "notes": "List prices in us-central1 (Iowa or Americas SKUs). Sums use the guest vCPU, memory in GiB, and GPU counts that `gcloud compute machine-types describe` reports. A machine type missing here is refused. Re-check spot prices on the day you rent and update this file with the new date.",
+  "sources": {
+    "catalog-2026-10-20": "Cloud Billing Catalog API, service 6F81-5844-456A (Compute Engine), us-central1, read 2026-10-20",
+    "muse-2026-10-15": "docs/research/muse/2026-10-15-muse-spark-serving.md, section 3, Cloud Billing Catalog read 2026-10-15"
+  },
+  "machines": {
+    "a4-highgpu-8g": {
+      "standard": 128.88,
+      "spot": 39.6336,
+      "math": "8 B200 slices (VM included): 8 x 16.11 on demand, 8 x 4.9542 spot",
+      "source": "catalog-2026-10-20",
+      "also": "muse-2026-10-15"
+    },
+    "g4-standard-384": {
+      "standard": 35.9994,
+      "spot": 13.308,
+      "math": "8 RTX PRO 6000 + 384 vCPU + 1,440 GiB: 8 x 1.09565 + 384 x 0.04891 + 1440 x 0.00587 on demand; 8 x 0.4503 + 384 x 0.01743 + 1440 x 0.002092 spot",
+      "source": "catalog-2026-10-20",
+      "also": "muse-2026-10-15"
+    },
+    "g4-standard-48": {
+      "standard": 4.4999,
+      "spot": 1.6635,
+      "math": "1 RTX PRO 6000 + 48 vCPU + 180 GiB: 1.09565 + 48 x 0.04891 + 180 x 0.00587 on demand; 0.4503 + 48 x 0.01743 + 180 x 0.002092 spot",
+      "source": "catalog-2026-10-20"
+    },
+    "a3-ultragpu-8g": {
+      "standard": 83.4918,
+      "spot": 50.0854,
+      "math": "8 H200 + 224 vCPU + 2,952 GiB: 8 x 9.31174 + 224 x 0.02251 + 2952 x 0.00134 on demand; 8 x 5.586 + 224 x 0.0135 + 2952 x 0.000804 spot",
+      "source": "catalog-2026-10-20",
+      "also": "muse-2026-10-15"
+    },
+    "e2-micro": {
+      "standard": 0.008376,
+      "spot": 0.005027,
+      "math": "0.25 vCPU + 1 GiB: 0.25 x 0.02181159 + 0.00292353 on demand; 0.25 x 0.01309 + 0.001754 spot",
+      "source": "catalog-2026-10-20"
+    },
+    "e2-small": {
+      "standard": 0.016753,
+      "spot": 0.010053,
+      "math": "0.5 vCPU + 2 GiB: 0.5 x 0.02181159 + 2 x 0.00292353 on demand; 0.5 x 0.01309 + 2 x 0.001754 spot",
+      "source": "catalog-2026-10-20"
+    }
+  }
+}
