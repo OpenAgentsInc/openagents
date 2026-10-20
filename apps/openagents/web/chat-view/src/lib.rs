@@ -8,6 +8,7 @@
 pub mod assets;
 pub mod composer;
 pub mod markdown;
+pub mod selection;
 pub mod theme;
 pub mod transcript;
 

@@ -9,8 +9,9 @@ use std::time::Duration;
 use futures::StreamExt as _;
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, Focusable, FollowMode, FontWeight,
-    Hsla, Image, IntoElement, ListAlignment, ListState, ParentElement, Render, SharedString,
-    SharedUri, Styled, Task, Window, div, list, prelude::*, px,
+    Hsla, Image, IntoElement, ListAlignment, ListState, MouseButton, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Render, SharedString, SharedUri, Styled, Task, Window, div, list, prelude::*,
+    px,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_gpui_web::img;
@@ -21,6 +22,7 @@ use openagents_web_chat_view::transcript::{
     self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, ago, button, chip, footer_text,
     info_card, truncate,
 };
+use openagents_web_chat_view::{composer::Copy, selection};
 use openagents_web_chat_view::{now_ms, theme};
 use openagents_web_client::web::{Client, Follow};
 use openagents_web_client::{Change, Event, MessageRole as SentBy, Project, Refusal, Thread};
@@ -93,6 +95,8 @@ pub struct ChatApp {
     _refresh: Task<()>,
     _ticker: Task<()>,
     _history: Task<()>,
+    /// A transcript selection drag, scrolling at the edges (#12305).
+    selection_drag: selection::DragScroll,
 }
 
 impl ChatApp {
@@ -204,11 +208,29 @@ impl ChatApp {
             _refresh: refresh,
             _ticker: ticker,
             _history: history,
+            selection_drag: selection::DragScroll::default(),
         };
         this.load_projects(cx);
         this.load(route::current(), cx);
         window.focus(&this.composer.focus_handle(cx), cx);
         this
+    }
+
+    /// A transcript selection drag moved: follow it, and scroll while it
+    /// holds near the top or bottom edge, as the desktop does (#12305).
+    fn on_selection_move(
+        &mut self,
+        event: &MouseMoveEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let list = self.list_state.clone();
+        self.selection_drag
+            .moved(event, &list, |this: &mut Self| &mut this.selection_drag, cx);
+    }
+
+    fn on_selection_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.selection_drag.released(cx);
     }
 
     fn thread(&self, id: &str) -> Option<&Thread> {
@@ -1587,6 +1609,9 @@ impl Render for ChatApp {
                 .flex()
                 .flex_col()
                 .child(markdown::selection_reset())
+                .on_mouse_move(cx.listener(Self::on_selection_move))
+                .on_mouse_up(MouseButton::Left, cx.listener(Self::on_selection_up))
+                .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_selection_up))
                 .child(
                     list(
                         self.list_state.clone(),
@@ -1644,6 +1669,13 @@ impl Render for ChatApp {
         let mut root = div()
             .id("openagents-web-chat")
             .track_focus(&self.focus_handle)
+            // Cmd/Ctrl+C with the focus outside the composer: the
+            // transcript's selection (#12305).
+            .on_action(cx.listener(|_, _: &Copy, _, cx| {
+                if !selection::copy(cx) {
+                    cx.propagate();
+                }
+            }))
             .size_full()
             .flex()
             .flex_row()

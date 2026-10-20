@@ -88,6 +88,8 @@ pub struct ChatApp {
     chats: Vec<Chat>,
     current: usize,
     list_state: ListState,
+    /// A transcript selection drag, scrolling at the edges (#12305).
+    selection_drag: openagents_web_chat_view::selection::DragScroll,
     composer: Entity<TextInput>,
     focus_handle: FocusHandle,
     stream: Option<Stream>,
@@ -128,6 +130,7 @@ impl ChatApp {
             chats: load_chats(),
             current: 0,
             list_state,
+            selection_drag: Default::default(),
             composer,
             focus_handle: cx.focus_handle(),
             stream: None,
@@ -1142,6 +1145,27 @@ impl Render for ChatApp {
                 .flex()
                 .flex_col()
                 .child(markdown::selection_reset())
+                .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
+                    let list = this.list_state.clone();
+                    this.selection_drag.moved(
+                        event,
+                        &list,
+                        |this: &mut Self| &mut this.selection_drag,
+                        cx,
+                    );
+                }))
+                .on_mouse_up(
+                    gpui::MouseButton::Left,
+                    cx.listener(|this, _: &gpui::MouseUpEvent, _, cx| {
+                        this.selection_drag.released(cx)
+                    }),
+                )
+                .on_mouse_up_out(
+                    gpui::MouseButton::Left,
+                    cx.listener(|this, _: &gpui::MouseUpEvent, _, cx| {
+                        this.selection_drag.released(cx)
+                    }),
+                )
                 .child(
                     list(
                         self.list_state.clone(),
@@ -1157,6 +1181,15 @@ impl Render for ChatApp {
         let mut root = div()
             .id("openagents-web")
             .track_focus(&self.focus_handle)
+            // Cmd/Ctrl+C outside the composer copies the transcript's
+            // selection (#12305).
+            .on_action(
+                cx.listener(|_, _: &openagents_web_chat_view::composer::Copy, _, cx| {
+                    if !openagents_web_chat_view::selection::copy(cx) {
+                        cx.propagate();
+                    }
+                }),
+            )
             .size_full()
             .flex()
             .flex_row()

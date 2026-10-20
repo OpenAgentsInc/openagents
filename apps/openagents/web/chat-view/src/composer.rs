@@ -389,6 +389,10 @@ impl TextInput {
             cx.write_to_clipboard(ClipboardItem::new_string(
                 self.content[self.selected_range.clone()].to_string(),
             ));
+        } else if !crate::selection::copy(cx) {
+            // Nothing selected here or in the transcript: the page's own
+            // copy goes on (#12305).
+            cx.propagate();
         }
     }
 
