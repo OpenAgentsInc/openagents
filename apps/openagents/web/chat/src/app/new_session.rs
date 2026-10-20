@@ -31,6 +31,8 @@ pub(super) enum Picker {
     Harness,
     Model,
     Reasoning,
+    /// The folder browser for adding a project (#12318).
+    Folder,
 }
 
 /// A new session's choices.
@@ -53,6 +55,8 @@ pub(super) struct Target {
     /// What's being read from the computer now.
     pub loading: Option<&'static str>,
     pub task: Option<Task<()>>,
+    /// Adding a project: the folder browser's place (#12318).
+    pub folder: Option<super::add_project::Folder>,
 }
 
 fn reasoning_label(level: ReasoningLevel) -> &'static str {
@@ -237,7 +241,7 @@ impl ChatApp {
         .detach();
     }
 
-    fn choose_project(&mut self, project: Option<String>, cx: &mut Context<Self>) {
+    pub(super) fn choose_project(&mut self, project: Option<String>, cx: &mut Context<Self>) {
         self.target.project = project;
         self.target.open = None;
         self.target.worktree = false;
@@ -559,7 +563,15 @@ impl ChatApp {
                             .into_any_element(),
                         );
                     }
+                    choices.push(
+                        choice("project-add", "Add a project…".into(), false)
+                            .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                                this.browse(None, false, window, cx)
+                            }))
+                            .into_any_element(),
+                    );
                 }
+                Some(Picker::Folder) => choices.extend(self.folder_choices(cx)),
                 Some(Picker::Branch) => {
                     for reference in &target.refs {
                         let name = reference.name.clone();

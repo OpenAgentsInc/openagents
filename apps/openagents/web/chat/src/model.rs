@@ -348,6 +348,22 @@ pub fn groups(
     out
 }
 
+/// The folder above `path` on a computer (#12318).
+pub fn parent(path: &str) -> Option<String> {
+    let trimmed = path.trim_end_matches('/');
+    let (head, _) = trimmed.rsplit_once('/')?;
+    Some(if head.is_empty() {
+        "/".into()
+    } else {
+        head.into()
+    })
+}
+
+/// `name` inside folder `path`.
+pub fn join(path: &str, name: &str) -> String {
+    format!("{}/{name}", path.trim_end_matches('/'))
+}
+
 /// A title for a chat from its first message, as the site makes one.
 pub fn title_from(text: &str) -> String {
     let line = text
@@ -563,6 +579,14 @@ mod tests {
         );
         assert_eq!(one_list[2], (Group::Chats, vec![1, 0, 6]));
         assert_eq!(one_list.last().unwrap(), &(Group::Archived, vec![5]));
+    }
+
+    #[test]
+    fn folders_go_up_and_in() {
+        assert_eq!(parent("/Users/me/site").as_deref(), Some("/Users/me"));
+        assert_eq!(parent("/Users").as_deref(), Some("/"));
+        assert_eq!(parent("/"), None);
+        assert_eq!(join("/Users/me/", "site"), "/Users/me/site");
     }
 
     #[test]

@@ -32,6 +32,8 @@ use crate::compose::{Compose, HostChat};
 use crate::model::{self, Msg};
 use crate::route;
 
+/// Adding a project on a computer (#12318).
+mod add_project;
 mod cloud_computers;
 /// Every computer's chats from the registry (#12265).
 mod computers;

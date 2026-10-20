@@ -64,6 +64,10 @@ pub const ALLOWED: &[&str] = &[
     methods::LIST_REFS,
     methods::LIST_FOLDERS,
     methods::GET_WORKTREE_SETTINGS,
+    // Adding a project: the folder browser (#12318).
+    methods::SEARCH_HOME_FOLDERS,
+    methods::RELEASE_HOME_FOLDER_SEARCH,
+    methods::LIST_DRIVES,
     // A chat on this computer: its transcript (#12266).
     methods::WATCH_DOC_MESSAGES,
     methods::READ_CHAT_WINDOW,
@@ -122,6 +126,17 @@ pub fn sanitize(method: &str, mut params: serde_json::Value) -> serde_json::Valu
         }
     }
     params
+}
+
+/// Whether `Mutate` params add a project on computer `device`, the one
+/// change of the workspace a browser may ask for (#12318): a folder on
+/// this computer, never another's.
+pub fn project_on(device: &str, params: &serde_json::Value) -> bool {
+    params["op"] == "createSpace"
+        && params["deviceId"] == device
+        && params["path"]
+            .as_str()
+            .is_some_and(|p| p.starts_with('/') || p.starts_with('~'))
 }
 
 /// The right `method` needs, or `None` when a browser can't call it.
@@ -479,7 +494,12 @@ impl RpcService for Connection {
                 }
                 // `grant` admits only a browser grant, so its rights are
                 // `Rights::browser()`.
-                if !required_right(method).is_some_and(|right| Rights::browser().contains(right)) {
+                let right = if method == methods::MUTATE {
+                    project_on(&browsers.device, &value).then_some(Right::Operate)
+                } else {
+                    required_right(method)
+                };
+                if !right.is_some_and(|right| Rights::browser().contains(right)) {
                     return Err(RpcError::Failed(
                         "A browser can't do that on this computer yet.".into(),
                     ));

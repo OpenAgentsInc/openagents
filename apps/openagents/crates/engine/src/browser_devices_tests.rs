@@ -186,6 +186,27 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
         json!({"chatId": "c1", "command": {"kind": "run", "messageId": "m1",
             "request": {"prompt": "Hi", "cwd": "~"}}})
     );
+    // A project on this computer, and nothing else of Mutate (#12318).
+    let project = json!({"op": "createSpace", "spaceId": "s1", "deviceId": "mac-1",
+        "path": "/work/site", "gitDetected": true});
+    assert_eq!(
+        value(tab.handle(methods::MUTATE, project.clone()).await)["ran"],
+        methods::MUTATE
+    );
+    for refused in [
+        json!({"op": "createSpace", "spaceId": "s1", "deviceId": "other-mac", "path": "/work"}),
+        json!({"op": "deleteSpace", "spaceId": "s1"}),
+        json!({"op": "createSpace", "spaceId": "s1", "deviceId": "mac-1", "path": "work"}),
+    ] {
+        assert!(failed(tab.handle(methods::MUTATE, refused).await).contains("can't do that"));
+    }
+    assert_eq!(
+        value(
+            tab.handle(methods::SEARCH_HOME_FOLDERS, json!({"query": "site"}))
+                .await
+        )["ran"],
+        methods::SEARCH_HOME_FOLDERS
+    );
     // Another tab of the same browser needs its own hello.
     let other = gate.service("web-tab2");
     assert_eq!(

@@ -1491,3 +1491,7 @@ master delegation audit.
   move (`PlanMove`, `ApproveMove`, `StartMove`, `DiscardMove`, `BringBack`)
   under its run right, and read `MoveStatus`. The person at the browser is
   the person approving, as on the desktop's move sheet.
+- #12318 lets a browser browse and search the computer's folders
+  (`SearchHomeFolders`, `ReleaseHomeFolderSearch`, `ListDrives`, beside
+  `ListFolders`) and call `Mutate` only for `createSpace` on this computer
+  (`browser_devices::project_on`), under its run right.
