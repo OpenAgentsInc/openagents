@@ -78,7 +78,7 @@ mod pull_request_skeleton;
 #[cfg(test)]
 mod pull_request_test_support;
 pub mod queue;
-pub mod rail;
+pub use openagents_chat_view::rail;
 pub use openagents_chat_view::prefs;
 pub use openagents_chat_view::rpc;
 pub use openagents_chat_view::roll_text;

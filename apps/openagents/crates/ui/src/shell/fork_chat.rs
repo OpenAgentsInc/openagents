@@ -5,9 +5,7 @@
 use super::*;
 
 /// The "Forked from <title>" link in a fork's transcript.
-#[derive(Clone, PartialEq, gpui::Action)]
-#[action(namespace = shell, no_json)]
-pub(crate) struct OpenForkSource(pub String);
+pub(crate) use openagents_chat_view::transcript::OpenForkSource;
 
 impl Shell {
     pub(super) fn open_fork_source(&mut self, chat_id: &str, cx: &mut Context<Self>) {

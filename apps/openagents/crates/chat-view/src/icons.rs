@@ -306,6 +306,21 @@ impl Icon {
         self.path = path.into();
         self
     }
+
+    /// The painter draws a static mask, so a group hover keeps the icon's
+    /// own color on the web.
+    pub fn group_hover(
+        self,
+        _group: impl Into<SharedString>,
+        _style: impl FnOnce(gpui::StyleRefinement) -> gpui::StyleRefinement,
+    ) -> Self {
+        self
+    }
+
+    /// The painter draws masks upright on the web.
+    pub fn with_transformation(self, _transformation: gpui::Transformation) -> Self {
+        self
+    }
 }
 
 #[cfg(target_family = "wasm")]

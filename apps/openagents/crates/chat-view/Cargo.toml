@@ -35,6 +35,8 @@ unicode-segmentation.workspace = true
 serde_json.workspace = true
 roxmltree = "0.21.1"
 sha2.workspace = true
+similar.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]

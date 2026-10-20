@@ -10,7 +10,9 @@
 use gpui::{AnyElement, Context, ListOffset, SharedString, div, prelude::*, px};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use web_time::Instant;
 
 use openagents_doc::{MessagePart, MessageRole, SessionMessageEntry};
 
@@ -40,12 +42,12 @@ pub struct RailTick {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct RailKey {
-    chat: Option<String>,
-    revision: u64,
-    count: usize,
-    last: Option<(String, Vec<usize>)>,
-    echoes: Vec<String>,
+pub struct RailKey {
+    pub chat: Option<String>,
+    pub revision: u64,
+    pub count: usize,
+    pub last: Option<(String, Vec<usize>)>,
+    pub echoes: Vec<String>,
 }
 
 impl RailKey {
@@ -77,9 +79,9 @@ impl RailKey {
     }
 }
 
-pub(crate) type RailCache = (RailKey, Arc<Vec<(RailTick, usize)>>);
+pub type RailCache = (RailKey, Arc<Vec<(RailTick, usize)>>);
 
-fn user_text(entry: &SessionMessageEntry) -> String {
+pub fn user_text(entry: &SessionMessageEntry) -> String {
     // Ordinary long prompts need only their opening; attachment-only messages
     // and context blocks still use the complete attachment parser.
     if let Some(MessagePart::Text { text, .. }) = entry.parts.first() {
@@ -110,7 +112,7 @@ fn user_text(entry: &SessionMessageEntry) -> String {
     crate::attachments::user_message_rail_text(&raw)
 }
 
-fn first_reply_text(entries: &[SessionMessageEntry]) -> Option<String> {
+pub fn first_reply_text(entries: &[SessionMessageEntry]) -> Option<String> {
     entries
         .iter()
         .find(|e| e.role == MessageRole::Assistant)
@@ -252,7 +254,7 @@ pub fn truncate_preview(text: &str, max_chars: usize) -> String {
 /// continues over the corrected remainder — no restart, no compensating jump.
 #[derive(Debug, Clone)]
 pub struct GlideTimeline {
-    eased_prev: f32,
+    pub eased_prev: f32,
 }
 
 impl Default for GlideTimeline {
@@ -283,8 +285,8 @@ impl GlideTimeline {
 
 /// `OPENAGENTS_SCROLL_TRACE=1` logs per-frame glide positions at `warn` level —
 /// the smoothness measurement knob (same family as `OPENAGENTS_FRAME_STATS`).
-fn scroll_trace_enabled() -> bool {
-    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+pub fn scroll_trace_enabled() -> bool {
+    pub static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| {
         openagents_brand::env_var("OPENAGENTS_SCROLL_TRACE")
             .is_ok_and(|v| !v.is_empty() && v != "0")

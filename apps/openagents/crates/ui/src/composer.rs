@@ -53,7 +53,6 @@ use openagents_chat_view::composer_mentions::{
 pub use openagents_chat_view::composer_mentions::{SentMentionSpan, sent_mention_display};
 pub(crate) use chip::{
     CHIP_PAD_FAMILY, ChipIcon, chip_icon, chip_pad_ranges, chip_text, paint_chip,
-    text_chip_label_offset,
 };
 
 // ---------------------------------------------------------------------------
