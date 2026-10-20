@@ -182,6 +182,10 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "the share step: a dialog over the chat (its no-script page shows the same words)",
     ),
     ("/auth/github", "goes to GitHub"),
+    (
+        "/auth/workos/{method}",
+        "goes to GitHub or Google through WorkOS",
+    ),
     ("/auth/github/install", "goes to GitHub"),
     ("/auth/github/reconnect", "goes to GitHub"),
     ("/auth/github/repos", "goes to GitHub"),
@@ -276,7 +280,10 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/everglade*", "a canvas world"),
     ("/druid", "a canvas world"),
     ("/grid", "a canvas world"),
-    ("/verse", "a canvas world: the Grid, as the website's spatial layer"),
+    (
+        "/verse",
+        "a canvas world: the Grid, as the website's spatial layer",
+    ),
     ("/lander3*", "a canvas world"),
     ("/lander5", "a canvas world"),
     ("/lander4", "a canvas page"),

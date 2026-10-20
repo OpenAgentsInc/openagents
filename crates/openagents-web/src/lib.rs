@@ -150,6 +150,7 @@ mod verse_key;
 mod visitor_api;
 mod wallet_browser;
 mod web_sign_in;
+mod workos_auth;
 mod wellknown;
 mod work_runs;
 
@@ -856,6 +857,12 @@ pub fn router(mut config: Config) -> Router {
         ))
         .layer(middleware::from_fn(projects::scope))
         .layer(middleware::from_fn_with_state(app.clone(), account::scope))
+        // Before anything reads the session: refresh a WorkOS session, or
+        // end ours with it (#12323).
+        .layer(middleware::from_fn_with_state(
+            app.clone(),
+            workos_auth::layer,
+        ))
         .layer(middleware::from_fn_with_state(
             app.clone(),
             analytics::observe,

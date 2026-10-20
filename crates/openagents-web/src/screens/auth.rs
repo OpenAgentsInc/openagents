@@ -81,6 +81,32 @@ pub(crate) fn screens() -> Vec<Screen> {
                     sign_in_unavailable_local,
                 ),
                 state("signed-in", "Logged in", signed_in_notice),
+                state("workos", "WorkOS, production methods", workos_login),
+                state("workos-all", "WorkOS, every method", workos_login_all),
+                state("workos-signup", "WorkOS sign-up", workos_signup),
+                state("workos-wrong", "WorkOS, wrong password", workos_wrong),
+            ],
+        },
+        Screen {
+            id: "email-code",
+            title: "Check your email",
+            group: Group::Page,
+            routes: &["/login/verify"],
+            states: vec![
+                state("verify", "Confirm the email", email_verify),
+                state("code", "A code to log in", email_code),
+                state("wrong", "Wrong code", email_code_wrong),
+            ],
+        },
+        Screen {
+            id: "password-reset",
+            title: "Reset a password",
+            group: Group::Page,
+            routes: &["/login/forgot", "/login/reset"],
+            states: vec![
+                state("ask", "Ask for a link", forgot),
+                state("sent", "Link sent", forgot_sent),
+                state("new", "Choose a new password", reset),
             ],
         },
         Screen {
@@ -233,6 +259,110 @@ fn home_signed_in(headers: &HeaderMap) -> Response {
 
 fn login(headers: &HeaderMap) -> Response {
     crate::auth::sign_in_page(headers, false, false, "/")
+}
+
+const PRODUCTION: &[oa_auth::workos::Method] = &[
+    oa_auth::workos::Method::Github,
+    oa_auth::workos::Method::Password,
+    oa_auth::workos::Method::MagicCode,
+];
+const EVERY: &[oa_auth::workos::Method] = &[
+    oa_auth::workos::Method::Github,
+    oa_auth::workos::Method::Google,
+    oa_auth::workos::Method::Password,
+    oa_auth::workos::Method::MagicCode,
+    oa_auth::workos::Method::Sso,
+];
+
+fn workos_login(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_login(
+        headers,
+        false,
+        "/",
+        None,
+        None,
+        PRODUCTION,
+        CSRF,
+        StatusCode::OK,
+    )
+}
+
+fn workos_login_all(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_login(headers, false, "/", None, None, EVERY, CSRF, StatusCode::OK)
+}
+
+fn workos_signup(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_login(
+        headers,
+        true,
+        "/",
+        None,
+        None,
+        PRODUCTION,
+        CSRF,
+        StatusCode::OK,
+    )
+}
+
+fn workos_wrong(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_login(
+        headers,
+        false,
+        "/",
+        Some(oa_auth::workos::Refusal::InvalidCredentials.message()),
+        Some("ada@example.com"),
+        PRODUCTION,
+        CSRF,
+        StatusCode::UNAUTHORIZED,
+    )
+}
+
+fn email_verify(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_code(
+        headers,
+        "ada@example.com",
+        true,
+        "/",
+        None,
+        CSRF,
+        StatusCode::OK,
+    )
+}
+
+fn email_code(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_code(
+        headers,
+        "ada@example.com",
+        false,
+        "/",
+        None,
+        CSRF,
+        StatusCode::OK,
+    )
+}
+
+fn email_code_wrong(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_code(
+        headers,
+        "ada@example.com",
+        false,
+        "/",
+        Some("That code isn't right. Check it and try again."),
+        CSRF,
+        StatusCode::BAD_REQUEST,
+    )
+}
+
+fn forgot(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_forgot(headers, "/", None, CSRF)
+}
+
+fn forgot_sent(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_forgot(headers, "/", Some("ada@example.com"), CSRF)
+}
+
+fn reset(headers: &HeaderMap) -> Response {
+    crate::workos_auth::render_reset(headers, "sample-reset-token", None, CSRF, StatusCode::OK)
 }
 
 fn signup(headers: &HeaderMap) -> Response {

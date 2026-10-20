@@ -110,7 +110,7 @@ ttf-parser = "0.25"
 # Mac jobs: the recipes and what a linked Mac reports (#11223).
 mac-jobs = { path = "../mac-jobs" }
 maud = { version = "=0.27.0", features = ["axum"] }
-oa-auth = { path = "../oa-auth" }
+oa-auth = { path = "../oa-auth", features = ["workos"] }
 oa-connections = { path = "../oa-connections" }
 oa-seal = { path = "../oa-seal" }
 # The sealed-inference demo at /att (NIP-ATT): the gateway's own checks and
@@ -159,7 +159,7 @@ retail-service = { path = "../retail-service" }
 coder-project = { path = "../coder-project" }
 coder-pty = { path = "../coder-pty", default-features = false }
 coder-scheduler = { path = "../coder-scheduler" }
-oa-auth = { path = "../oa-auth", features = ["fake", "local"] }
+oa-auth = { path = "../oa-auth", features = ["fake", "local", "fake-workos"] }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }

@@ -291,6 +291,8 @@ async fn sign_out(
     if let Err(error) = service.verify_logout_csrf(&headers, &form.csrf) {
         return refused(error);
     }
+    // A WorkOS session behind this one ends too (#12323).
+    crate::workos_auth::revoke(&app, &headers).await;
     let mut response = match service.sign_out_current(&headers).await {
         Ok(()) => see_other("/"),
         Err(_) => failure(

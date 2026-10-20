@@ -1981,3 +1981,5 @@ async fn settings_leaves_out_hidden_features() {
     let settings = browser.get(&shown, "/settings").await;
     assert!(settings.body.contains("settings-plan"), "{}", settings.body);
 }
+
+mod workos;

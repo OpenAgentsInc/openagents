@@ -16,7 +16,7 @@ use axum::Router;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use maud::{Markup, PreEscaped, html};
 use openagents_ui::actions::{Alert, ButtonLink, ButtonVariant, Color, ControlSize, Variant};
 use openagents_ui::icons::Icon;
@@ -30,8 +30,35 @@ use crate::ui_page::{EmptyMedia, UiPage, action_link, auth_card, empty_media, em
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        .route("/login", get(login))
-        .route("/signup", get(signup))
+        .route(
+            "/login",
+            get(login).post(crate::workos_auth::password_login),
+        )
+        .route(
+            "/signup",
+            get(signup).post(crate::workos_auth::password_signup),
+        )
+        // WorkOS sign-in (#12323): provider trips, the callback, emailed
+        // codes, single sign-on, and password resets.
+        .route("/auth/workos/{method}", get(crate::workos_auth::start))
+        .route(
+            oa_auth::workos::CALLBACK_PATH,
+            get(crate::workos_auth::callback),
+        )
+        .route("/login/code", post(crate::workos_auth::send_code))
+        .route(
+            "/login/verify",
+            get(crate::workos_auth::code_page).post(crate::workos_auth::verify_code),
+        )
+        .route("/login/sso", post(crate::workos_auth::sso))
+        .route(
+            "/login/forgot",
+            get(crate::workos_auth::forgot_page).post(crate::workos_auth::forgot),
+        )
+        .route(
+            "/login/reset",
+            get(crate::workos_auth::reset_page).post(crate::workos_auth::reset),
+        )
         .route("/auth/github", get(start))
         .route("/auth/github/callback", get(callback))
 }
@@ -42,6 +69,9 @@ const GITHUB_MARK: &str = r#"<svg class="oa-icon" width="16" height="16" viewBox
 #[derive(Deserialize)]
 struct Back {
     return_to: Option<String>,
+    /// A WorkOS sign-in that didn't finish says why (#12323).
+    #[serde(default)]
+    error: Option<String>,
 }
 
 /// The `/login?return_to=` link for a page at `path`.
@@ -77,6 +107,19 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
         && service.authenticate(headers).await.is_ok()
     {
         return protect(Redirect::to(&return_to).into_response());
+    }
+    // WorkOS sign-in, when this environment has it on (#12323).
+    if crate::workos_auth::on(app).is_some() {
+        let notice = back.error.as_deref().map(crate::workos_auth::notice_for);
+        return crate::workos_auth::page(
+            app,
+            headers,
+            signup,
+            &return_to,
+            notice,
+            None,
+            StatusCode::OK,
+        );
     }
     if github(app).is_none() {
         // No GitHub sign-in here: the account-key form.
@@ -160,6 +203,20 @@ pub(crate) fn sign_in_page(
 }
 
 async fn start(State(app): State<App>, headers: HeaderMap, Query(back): Query<Back>) -> Response {
+    // With WorkOS on, GitHub sign-in goes through WorkOS; this old address
+    // keeps answering by sending the browser there.
+    if let Some((_, workos)) = crate::workos_auth::on(&app)
+        && workos
+            .client
+            .settings()
+            .offers(oa_auth::workos::Method::Github)
+    {
+        let back = oa_auth::return_to(back.return_to.as_deref());
+        return protect(
+            Redirect::to(&format!("/auth/workos/github?return_to={}", encode(&back)))
+                .into_response(),
+        );
+    }
     begin(
         &app,
         &headers,

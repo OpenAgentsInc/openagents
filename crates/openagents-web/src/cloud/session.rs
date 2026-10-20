@@ -14,6 +14,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const SESSION_COOKIE: &str = "oa_cloud_session";
 const WORKSPACE_COOKIE: &str = "oa_cloud_workspace";
 const LOGIN_COOKIE: &str = "oa_cloud_login";
+/// The sealed WorkOS session (access and refresh tokens), beside our own
+/// session cookie, when a WorkOS sign-in made the session.
+pub(crate) const WORKOS_COOKIE: &str = "oa_workos";
 const TICKET_SECONDS: u64 = 600;
 
 tokio::task_local! {
@@ -63,6 +66,27 @@ struct Configuration {
     /// the list only marks admins.
     #[serde(default)]
     invite_only: Option<oa_auth::InviteOnly>,
+    /// WorkOS sign-in (docs/auth/2026-10-20-workos-source-of-truth.md):
+    /// the environment's client, its API key's source, the methods it has
+    /// on, and the rollout mode (`OPENAGENTS_AUTH` overrides it). Absent,
+    /// or in `legacy` mode, sign-in is what it was.
+    #[serde(default)]
+    workos: Option<oa_auth::workos::Settings>,
+}
+
+/// WorkOS for the website: the client, the mode, and the password the
+/// session cookie is sealed with (derived from the CSRF secret).
+pub struct WebWorkos {
+    pub client: oa_auth::workos::Workos,
+    pub mode: oa_auth::workos::Mode,
+    cookie_password: String,
+}
+
+impl WebWorkos {
+    /// The 64-hex-character password the SDK seals session cookies with.
+    pub(crate) fn cookie_password(&self) -> &str {
+        &self.cookie_password
+    }
 }
 
 /// Runtime failures contain no credential, private response, or transport details.
@@ -220,6 +244,7 @@ pub struct CloudSession {
     csrf_key: [u8; 32],
     http: reqwest::Client,
     invite_only: Option<oa_auth::InviteOnly>,
+    workos: Option<WebWorkos>,
 }
 
 impl Drop for CloudSession {
@@ -301,6 +326,20 @@ impl CloudSession {
         if let Some(invite) = &declared.invite_only {
             invite.validate()?;
         }
+        let workos = match &declared.workos {
+            Some(settings) if settings.mode().on() => Some(WebWorkos {
+                client: oa_auth::workos::Workos::new(settings.clone())
+                    .map_err(|why| format!("Cloud configuration: workos: {why}"))?,
+                mode: settings.mode(),
+                cookie_password: {
+                    let mut digest = Sha256::new();
+                    digest.update(b"openagents-web workos cookie\0");
+                    digest.update(key);
+                    hex(&digest.finalize())
+                },
+            }),
+            _ => None,
+        };
         let http = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
@@ -318,6 +357,7 @@ impl CloudSession {
             csrf_key: key,
             http,
             invite_only: declared.invite_only,
+            workos,
         };
         loaded.health()?;
         Ok(loaded)
@@ -325,6 +365,146 @@ impl CloudSession {
 
     pub fn origin(&self) -> &str {
         &self.origin
+    }
+
+    /// WorkOS sign-in, when this site has it on.
+    pub fn workos(&self) -> Option<&WebWorkos> {
+        self.workos.as_ref()
+    }
+
+    /// A cookie `name` holding a value the WorkOS SDK sealed, for
+    /// `seconds`. The SDK seals with standard base64; the cookie keeps it
+    /// URL-safe.
+    pub(crate) fn sealed_cookie(
+        &self,
+        name: &str,
+        sealed: &str,
+        seconds: u64,
+    ) -> Result<HeaderValue> {
+        let safe: String = sealed
+            .chars()
+            .map(|c| match c {
+                '+' => '-',
+                '/' => '_',
+                '=' => '.',
+                other => other,
+            })
+            .collect();
+        if safe.len() > 3800 {
+            return Err(SessionError::InvalidRequest);
+        }
+        cookie(name, &safe, seconds, self.secure)
+    }
+
+    /// The sealed value cookie `name` carries, as the SDK sealed it.
+    pub(crate) fn sealed_value(headers: &HeaderMap, name: &str) -> Option<String> {
+        value(headers, name).ok().flatten().map(|safe| {
+            safe.chars()
+                .map(|c| match c {
+                    '-' => '+',
+                    '_' => '/',
+                    '.' => '=',
+                    other => other,
+                })
+                .collect()
+        })
+    }
+
+    /// The cookie that forgets cookie `name`.
+    pub(crate) fn clear_cookie(&self, name: &str) -> HeaderValue {
+        cookie(name, "", 0, self.secure).expect("static cookie is valid")
+    }
+
+    /// The session token this request's cookie carries.
+    pub(crate) fn session_cookie(headers: &HeaderMap) -> Option<String> {
+        value(headers, SESSION_COOKIE)
+            .ok()
+            .flatten()
+            .filter(|token| session_token(token))
+    }
+
+    /// End the session `token` names at the account service. For a session
+    /// whose WorkOS session has ended; no browser form is involved.
+    pub(crate) async fn end_session(&self, token: &str) -> Result<()> {
+        if !session_token(token) {
+            return Err(SessionError::Unauthenticated);
+        }
+        self.client(token)?
+            .account()
+            .sign_out()
+            .await
+            .map_err(native_error)
+    }
+
+    /// Finish a WorkOS sign-in: hand the access token WorkOS issued to the
+    /// account service, which checks it against WorkOS's keys itself, finds
+    /// or makes the account, and issues our session.
+    pub async fn sign_in_workos(&self, access_token: &str) -> Result<SessionGrant> {
+        if !oa_auth::workos::token::looks_like_access_token(access_token) {
+            return Err(SessionError::InvalidRequest);
+        }
+        self.ready()?;
+        let response = self
+            .http
+            .post(format!("{}/v1/sessions/workos", self.account_service))
+            .timeout(Duration::from_secs(20))
+            .json(&serde_json::json!({"access_token": access_token}))
+            .send()
+            .await
+            .map_err(|_| SessionError::Unavailable)?;
+        let status = response.status();
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| SessionError::Unavailable)?;
+        if !status.is_success() {
+            let code = serde_json::from_slice::<serde_json::Value>(&bytes)
+                .ok()
+                .and_then(|body| body["error"]["code"].as_str().map(str::to_string))
+                .unwrap_or_default();
+            return Err(match (status.as_u16(), code.as_str()) {
+                (403, "invite_only") => SessionError::InviteOnly,
+                (403, "signup_disabled") => SessionError::SignupClosed,
+                (409, _) => SessionError::Conflict,
+                (400 | 401 | 403, _) => SessionError::Unauthenticated,
+                _ => SessionError::Unavailable,
+            });
+        }
+        #[derive(Deserialize)]
+        struct WireSession {
+            id: String,
+            kind: String,
+            account: Option<String>,
+            expires_at: u64,
+        }
+        #[derive(Deserialize)]
+        struct Wire {
+            session: WireSession,
+            token: String,
+            #[serde(default)]
+            created: bool,
+        }
+        let wire: Wire = (bytes.len() <= 64 * 1024)
+            .then(|| serde_json::from_slice(&bytes).ok())
+            .flatten()
+            .ok_or(SessionError::Unavailable)?;
+        if !session_token(&wire.token) {
+            return Err(SessionError::Unavailable);
+        }
+        let viewer = self.read_view(&wire.token, None).await?;
+        if viewer.session_id != wire.session.id
+            || wire.session.kind != "user"
+            || wire.session.account.as_deref() != Some(&viewer.account_id)
+            || wire.session.expires_at != viewer.expires_at
+        {
+            return Err(SessionError::Conflict);
+        }
+        Ok(SessionGrant {
+            viewer,
+            token: jev::ApiKey::new(wire.token),
+            secure: self.secure,
+            created: wire.created,
+        })
     }
     /// The account service this site checks sign-ins with.
     pub(crate) fn account_service(&self) -> &str {
@@ -767,8 +947,13 @@ impl CloudSession {
     pub fn clear_cookies(&self) -> Vec<HeaderValue> {
         let mut cookies = legacy_clears(self.secure);
         cookies.extend(
-            [SESSION_COOKIE, WORKSPACE_COOKIE, LOGIN_COOKIE]
-                .map(|name| cookie(name, "", 0, self.secure).expect("static cookie is valid")),
+            [
+                SESSION_COOKIE,
+                WORKSPACE_COOKIE,
+                LOGIN_COOKIE,
+                WORKOS_COOKIE,
+            ]
+            .map(|name| cookie(name, "", 0, self.secure).expect("static cookie is valid")),
         );
         cookies
     }
