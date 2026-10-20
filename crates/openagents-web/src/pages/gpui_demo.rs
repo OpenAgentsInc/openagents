@@ -66,10 +66,11 @@ fn build(app: &App) -> Option<&Path> {
 }
 
 /// The loading line; the demo adds its canvas to the page and the start
-/// script removes the line once the demo runs.
-fn body() -> String {
+/// script removes the line once the demo runs. `fonts` preloads the shared
+/// font files the start script hands to the module.
+fn body(fonts: &str) -> String {
     format!(
-        "<h1 class=\"unseen\">{TITLE}</h1>\
+        "{fonts}<h1 class=\"unseen\">{TITLE}</h1>\
 <p class=\"glade-status\" id=\"gpui-status\" aria-live=\"polite\">Loading\u{2026}</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to see the demo.</p></noscript>\
 <script type=\"module\" src=\"{GPUI_DEMO_PATH}/{GPUI_DEMO_START}\"></script>"
@@ -98,10 +99,12 @@ fn unavailable(headers: &HeaderMap) -> Response {
 }
 
 async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
-    if build(&app).is_none() {
+    let fonts = super::gpui_fonts::fonts(&app)
+        .and_then(|fonts| fonts.preloads(&super::gpui_fonts::CHAT_FACES));
+    let (Some(_), Some(fonts)) = (build(&app), fonts) else {
         return unavailable(&headers);
-    }
-    let mut response = fullscreen(TITLE, &body());
+    };
+    let mut response = fullscreen(TITLE, &body(&fonts.into_string()));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(GPUI_DEMO_POLICY),
@@ -135,15 +138,15 @@ mod tests {
 
     #[test]
     fn the_page_loads_the_start_script_from_the_build() {
-        let html = body();
+        let html = body("<link data-gpui-font=\"Geist.ttf\">");
         assert!(html.contains("src=\"/demo/gpui/start.js\""));
         assert!(html.contains("id=\"gpui-status\""));
     }
 
     #[test]
     fn the_page_copy_is_plain_and_names_no_upstream() {
-        let text = oa_copy::visible_text(&body());
+        let text = oa_copy::visible_text(&body(""));
         assert!(oa_copy::violations(&text, &[]).is_empty(), "{text}");
-        assert!(!body().to_lowercase().contains("zeron"));
+        assert!(!body("").to_lowercase().contains("zeron"));
     }
 }

@@ -12,13 +12,16 @@ pub(crate) use shims::{attachments, client, config, now_ms, rpc};
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
 
+/// Starts the demo with the page's fonts: the shared Geist and Geist Mono
+/// files (`openagents_web_chat_view::assets::FONT_FILES`, one `Uint8Array`
+/// each, in that order), which the page fetches from `/gpui-fonts/`.
 #[cfg(target_family = "wasm")]
-#[wasm_bindgen(start)]
-pub fn start() {
+#[wasm_bindgen]
+pub fn launch(fonts: js_sys::Array) {
     use std::rc::Rc;
 
     use gpui::{AppContext, Application, WindowBounds, WindowOptions, px, size};
-    use openagents_gpui_web::{WebFonts, WebPlatform};
+    use openagents_gpui_web::WebPlatform;
     use openagents_web_chat_view::{assets, composer, theme};
 
     console_error_panic_hook::set_once();
@@ -27,7 +30,7 @@ pub fn start() {
         false,
         WebFonts {
             fallback_family: theme::SANS,
-            faces: font_faces(),
+            faces: font_faces(&fonts),
         },
     );
     // The browser owns the run loop: `run` would drop the app as soon as it
@@ -50,11 +53,14 @@ pub fn start() {
     std::mem::forget(handle);
 }
 
-/// The shared Geist faces, plus Noto subsets for the CJK and emoji in the
-/// demo chats.
+/// The page's shared Geist faces, plus Noto subsets for the CJK and emoji in
+/// the demo chats, which only the demo draws.
 #[cfg(target_family = "wasm")]
-fn font_faces() -> Vec<std::borrow::Cow<'static, [u8]>> {
-    let mut faces = openagents_web_chat_view::assets::bundled_font_faces();
+use openagents_gpui_web::WebFonts;
+
+#[cfg(target_family = "wasm")]
+fn font_faces(fonts: &js_sys::Array) -> Vec<std::borrow::Cow<'static, [u8]>> {
+    let mut faces = WebFonts::from_js(openagents_web_chat_view::theme::SANS, fonts).faces;
     faces.push(std::borrow::Cow::Borrowed(include_bytes!(
         "../assets/fonts/NotoSansCJKjp-Regular-demo.otf"
     )));

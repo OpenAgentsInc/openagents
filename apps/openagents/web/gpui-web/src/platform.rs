@@ -28,6 +28,21 @@ pub struct WebFonts {
     pub faces: Vec<Cow<'static, [u8]>>,
 }
 
+impl WebFonts {
+    /// The faces a page fetched and handed over, one `Uint8Array` each.
+    /// Apps load the site's shared font files this way (`/gpui-fonts/`),
+    /// so the browser caches each face once for every app that draws it.
+    pub fn from_js(fallback_family: &'static str, faces: &js_sys::Array) -> Self {
+        Self {
+            fallback_family,
+            faces: faces
+                .iter()
+                .map(|face| Cow::Owned(js_sys::Uint8Array::new(&face).to_vec()))
+                .collect(),
+        }
+    }
+}
+
 pub struct WebPlatform {
     browser_window: web_sys::Window,
     background_executor: BackgroundExecutor,

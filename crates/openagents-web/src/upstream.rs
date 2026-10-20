@@ -146,10 +146,12 @@ const OWNED_EXACT: [&str; 88] = [
 /// `/coder/memory`), so a shipped app still calling them is served here
 /// and its `Bearer sess_...` never reaches the upstream. Current apps ask
 /// the `/v1` paths first (#11158).
-const OWNED_PREFIXES: [&str; 47] = [
+const OWNED_PREFIXES: [&str; 48] = [
     "/landing/",
     // The GPUI web chat's chats and build files (crate::pages::gpui_chat).
     "/gpui/",
+    // The GPUI web apps' shared font files (`crate::pages::gpui_fonts`).
+    "/gpui-fonts/",
     "/auth/",
     // Link preview pictures (crate::link_preview).
     "/og/",

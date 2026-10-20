@@ -20,6 +20,7 @@ mod everglade;
 mod first_frame;
 mod gpui_chat;
 mod gpui_demo;
+pub(crate) mod gpui_fonts;
 pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
@@ -130,6 +131,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(lander9::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())
+        .merge(gpui_fonts::routes())
         .merge(gpui_chat::routes())
         .merge(icecream::routes())
         .merge(snap::routes())

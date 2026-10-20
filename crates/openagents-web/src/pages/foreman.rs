@@ -79,35 +79,52 @@ pub(crate) fn owns(path: &str) -> bool {
 }
 
 /// The build directory, when it holds the glue, the module and the start
-/// script.
+/// script, and the site has the shared fonts the graph draws with.
 fn graph_build(app: &App) -> Option<&std::path::Path> {
     let directory = app.config.agent_graph.as_deref()?;
+    graph_fonts(app)?;
     [GRAPH_GLUE, GRAPH_WASM, GRAPH_START]
         .iter()
         .all(|file| directory.join(file).is_file())
         .then_some(directory)
 }
 
+/// Preloads of the shared font files the graph draws with, which its start
+/// script hands to the module (`super::gpui_fonts`).
+fn graph_fonts(app: &App) -> Option<Markup> {
+    super::gpui_fonts::fonts(app)?.preloads(&super::gpui_fonts::GRAPH_FACES)
+}
+
 async fn foreman_page(State(app): State<App>, headers: HeaderMap) -> Response {
-    live_page(&headers, graph_build(&app))
+    let fonts = graph_fonts(&app);
+    live_page(&headers, graph_build(&app), fonts)
 }
 
 /// The page, with the GPUI graph over the server map when `live`.
 pub(crate) fn page(headers: &HeaderMap, live: bool) -> Response {
-    live_page_with(headers, live, None)
+    live_page_with(headers, live, None, None)
 }
 
 /// The page for a server with the AgentGraph `build`, if any: the graph,
 /// and its first frame when the build has one for this graph.
-fn live_page(headers: &HeaderMap, build: Option<&std::path::Path>) -> Response {
+fn live_page(
+    headers: &HeaderMap,
+    build: Option<&std::path::Path>,
+    fonts: Option<Markup>,
+) -> Response {
     let first = build.and_then(|build| {
         let json = serde_json::to_string(&agent_graph::foreman::graph()).ok()?;
         FirstFrame::cached(build, &json)
     });
-    live_page_with(headers, build.is_some(), first.as_deref())
+    live_page_with(headers, build.is_some(), first.as_deref(), fonts)
 }
 
-fn live_page_with(headers: &HeaderMap, live: bool, first: Option<&FirstFrame>) -> Response {
+fn live_page_with(
+    headers: &HeaderMap,
+    live: bool,
+    first: Option<&FirstFrame>,
+    fonts: Option<Markup>,
+) -> Response {
     let ui = UiPage::new("Foreman").path(PATH).description(
         "Foreman, the agent that keeps the whole picture of OpenAgents work, \
          as Agent Lab defines it.",
@@ -122,7 +139,7 @@ fn live_page_with(headers: &HeaderMap, live: bool, first: Option<&FirstFrame>) -
         _ => GRAPH_POLICY.to_owned(),
     };
     let html = ui
-        .head(graph_script())
+        .head(html! { (graph_script()) @if let Some(fonts) = fonts { (fonts) } })
         .content(body(Some(&graph), frame))
         .render(headers)
         .into_string();
@@ -304,10 +321,13 @@ async fn agent_page(
         .description(graph.description.clone());
     let live = graph_build(&app).is_some();
     let content = generic_body(&id, &graph, live);
-    if !live {
+    let (true, Some(fonts)) = (live, graph_fonts(&app)) else {
         return ui.scriptless().content(content).respond(&headers);
-    }
-    let mut response = ui.head(graph_script()).content(content).respond(&headers);
+    };
+    let mut response = ui
+        .head(html! { (graph_script()) (fonts) })
+        .content(content)
+        .respond(&headers);
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(GRAPH_POLICY),

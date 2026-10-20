@@ -1348,3 +1348,16 @@ the image copies it to `/srv/agent-graph`.
 
 The build script writes them to `OUTDIR/first-frame/`; the site inlines
 them in `/agent/foreman` (`pages/first_frame.rs` in `openagents-web`).
+
+### Shared font files (#12233)
+
+- `web/gpui-web`'s `WebFonts::from_js` takes the faces a page fetched, one
+  `Uint8Array` each.
+- AgentGraph (`mount`), the demo (`launch`), and the chat no longer compile
+  Geist and Geist Mono into their modules. `scripts/build-web-fonts.sh`
+  writes the faces once under content-hashed names with `fonts.json`; the
+  site serves them at `/gpui-fonts/` (`--gpui-fonts`, `/srv/gpui-fonts` in
+  the image), and each page names the faces its app needs with
+  `<link rel=preload as=fetch crossorigin data-gpui-font>` preloads, which
+  its start script reads back. `first-frame-capture` still compiles the
+  same files in, natively.

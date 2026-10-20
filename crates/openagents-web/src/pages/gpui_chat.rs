@@ -149,7 +149,11 @@ pub(crate) async fn page(app: &App, headers: &HeaderMap, chat: Option<String>) -
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| if chat.is_some() { "Chat" } else { "New chat" }.to_owned());
     let csrf = crate::pages::chat::csrf(app, &owner);
-    let document = shell(&title, &csrf, &rows, chat.as_deref(), &regular);
+    // The shared font files (`super::gpui_fonts`) when the site has them;
+    // otherwise the start script loads the build's own copies.
+    let fonts = super::gpui_fonts::fonts(app)
+        .and_then(|fonts| fonts.preloads(&super::gpui_fonts::CHAT_FACES));
+    let document = shell(&title, &csrf, &rows, chat.as_deref(), &regular, fonts);
     let mut response = Html(document.into_string()).into_response();
     let headers = response.headers_mut();
     headers.insert(
@@ -163,7 +167,14 @@ pub(crate) async fn page(app: &App, headers: &HeaderMap, chat: Option<String>) -
 
 /// The page: the outline the canvas replaces, the message for browsers
 /// that can't draw it, and the start script.
-fn shell(title: &str, csrf: &str, rows: &[Row], current: Option<&str>, regular: &str) -> Markup {
+fn shell(
+    title: &str,
+    csrf: &str,
+    rows: &[Row],
+    current: Option<&str>,
+    regular: &str,
+    fonts: Option<Markup>,
+) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -178,6 +189,7 @@ fn shell(title: &str, csrf: &str, rows: &[Row], current: Option<&str>, regular: 
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
                 link rel="stylesheet" href=(SHELL_CSS_PATH);
                 link rel="modulepreload" href={ (BUILD_PATH) "/" (GPUI_CHAT_GLUE) };
+                @if let Some(fonts) = fonts { (fonts) }
             }
             body {
                 div #gpui-shell .g-shell {
@@ -327,7 +339,7 @@ mod tests {
 
     #[test]
     fn the_shell_paints_the_chat_list_and_loads_the_start_script() {
-        let html = shell("Chat", "abc123", &rows(), Some("c1"), "/chat/c1").into_string();
+        let html = shell("Chat", "abc123", &rows(), Some("c1"), "/chat/c1", None).into_string();
         assert!(html.contains("src=\"/gpui/build/start.js\""));
         assert!(html.contains("rel=\"modulepreload\" href=\"/gpui/build/openagents_web_chat.js\""));
         assert!(html.contains("name=\"openagents-csrf\" content=\"abc123\""));
@@ -341,7 +353,7 @@ mod tests {
 
     #[test]
     fn the_shell_copy_is_plain_and_names_no_upstream() {
-        let html = shell("New chat", "x", &rows(), None, "/").into_string();
+        let html = shell("New chat", "x", &rows(), None, "/", None).into_string();
         let text = oa_copy::visible_text(&html);
         assert!(oa_copy::violations(&text, &[]).is_empty(), "{text}");
         assert!(!html.to_lowercase().contains("zeron"));

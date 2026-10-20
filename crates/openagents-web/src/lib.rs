@@ -422,6 +422,11 @@ pub struct Config {
     /// `/srv/agent-graph` when it exists), served under `/agent-graph/`.
     /// Without it, agent pages show the server's map alone.
     pub agent_graph: Option<PathBuf>,
+    /// The GPUI web apps' shared font files (`--gpui-fonts DIR`, written by
+    /// `apps/openagents/scripts/build-web-fonts.sh`; default
+    /// `/srv/gpui-fonts` when it exists), served under `/gpui-fonts/`.
+    /// AgentGraph and `/demo/gpui` start only with them.
+    pub gpui_fonts: Option<PathBuf>,
     /// The signed-in GPUI web chat's build (`--gpui-chat DIR`, default
     /// `/srv/gpui-chat` when it exists), served at `/gpui`. Without it,
     /// `/gpui` says it isn't available and points to the regular chat.
@@ -594,6 +599,7 @@ impl Config {
             bunny: None,
             gpui_demo: None,
             agent_graph: None,
+            gpui_fonts: None,
             gpui_chat: None,
             icecream: None,
             layertree: None,

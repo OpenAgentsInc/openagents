@@ -262,6 +262,8 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 FROM gpuiweb-deps AS gpuiweb
 COPY . .
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
+    && apps/openagents/scripts/build-web-fonts.sh /build/gpui-fonts \
+    && test -s /build/gpui-fonts/fonts.json \
     && oa-kache run apps/openagents/scripts/build-web-demo.sh /build/gpui-demo \
     && test -s /build/gpui-demo/openagents_web_demo.js \
     && test -s /build/gpui-demo/openagents_web_demo_bg.wasm \
@@ -332,6 +334,7 @@ COPY --from=everglade /build/layertree /srv/layertree
 COPY --from=everglade /build/lander5 /srv/lander5
 COPY --from=gpuiweb /build/gpui-demo /srv/gpui-demo
 COPY --from=gpuiweb /build/agent-graph /srv/agent-graph
+COPY --from=gpuiweb /build/gpui-fonts /srv/gpui-fonts
 COPY --from=gpuiweb /build/gpui-chat /srv/gpui-chat
 COPY --from=gpuiweb /build/lander6 /srv/lander6
 COPY --from=gpuiweb /build/lander7 /srv/lander7

@@ -7,7 +7,9 @@
 #
 #   NAME.js          wasm-bindgen's `--target web` glue
 #   NAME_bg.wasm     the module
-#   start.js         the page's one script: imports the glue
+#   start.js         the page's one script: imports the glue, fetches the
+#                    font files the page names (`data-gpui-font` preloads;
+#                    the site serves them from build-web-fonts.sh's output)
 #   *.gz, *.br       gzip and brotli copies, sent when asked
 #
 # For AgentGraph it also writes `first-frame/`: the first-frame painter
@@ -107,5 +109,10 @@ if [ "$app_name" = agent-graph ]; then
 fi
 if [ "$with_page" = true ]; then
   cp "$crate/index.html" "$out/index.html"
+  # The page names the faces it needs; a static server finds them here.
+  mkdir -p "$out/fonts"
+  for font in $(sed -n 's/.*data-gpui-font="\([A-Za-z-]*\.ttf\)".*/\1/p' "$crate/index.html"); do
+    cp "$app/crates/ui/assets/fonts/$font" "$out/fonts/$font"
+  done
 fi
 ls -l "$out"

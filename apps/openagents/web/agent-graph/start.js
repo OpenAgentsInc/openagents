@@ -20,6 +20,27 @@ function graph() {
   });
 }
 
+// The faces the graph draws: the site's shared font files, which the page
+// names (and starts downloading) with `<link data-gpui-font>` preloads.
+function fonts() {
+  var links = document.querySelectorAll("link[data-gpui-font]");
+  if (!links.length) {
+    return Promise.reject(new Error("the page names no fonts"));
+  }
+  return Promise.all(
+    Array.prototype.map.call(links, function (link) {
+      return fetch(link.href).then(function (response) {
+        if (!response.ok) {
+          throw new Error("font " + link.href + ": " + response.status);
+        }
+        return response.arrayBuffer();
+      }).then(function (buffer) {
+        return new Uint8Array(buffer);
+      });
+    }),
+  );
+}
+
 function say(text) {
   var status = box.querySelector(".oa-agent-graph-status");
   if (!status) {
@@ -146,11 +167,11 @@ function tools() {
 if (box) {
   tools();
   var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  Promise.all([init(), graph()])
+  Promise.all([init(), graph(), fonts()])
     .then(function (ready) {
       box.classList.add("is-live");
       var chat = document.getElementById("agent-graph-chat");
-      mount(ready[1], still, chat ? chat.textContent : undefined);
+      mount(ready[1], still, chat ? chat.textContent : undefined, ready[2]);
     })
     .catch(function (error) {
       box.classList.remove("is-live");

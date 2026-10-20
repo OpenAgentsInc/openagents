@@ -50,9 +50,16 @@ if (!supported()) {
   unsupported();
 } else {
   var started = performance.now();
+  // The site's shared font files when the page names them (preloads with
+  // `data-gpui-font`, in FONTS order), else the build's own copies.
+  var shared = document.querySelectorAll("link[data-gpui-font]");
+  var urls = shared.length === FONTS.length
+    ? Array.prototype.map.call(shared, function (link) { return link.href; })
+    : FONTS.map(function (name) { return new URL("fonts/" + name, import.meta.url); });
   var fonts = Promise.all(
-    FONTS.map(function (name) {
-      return fetch(new URL("fonts/" + name, import.meta.url)).then(function (response) {
+    urls.map(function (url, at) {
+      var name = FONTS[at];
+      return fetch(url).then(function (response) {
         if (!response.ok) {
           throw new Error("font " + name + ": " + response.status);
         }

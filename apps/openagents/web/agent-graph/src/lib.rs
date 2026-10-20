@@ -29,10 +29,16 @@ pub fn parse(json: &str) -> Result<GraphSpec, String> {
 use wasm_bindgen::prelude::*;
 
 /// Draws `spec` (a graph's JSON) in the page. `still` turns off the moving
-/// data, for readers who ask for less motion.
+/// data, for readers who ask for less motion. `fonts` holds the
+/// [`assets::FONT_FILES`] faces, one `Uint8Array` each, in that order.
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen]
-pub fn mount(spec: &str, still: bool, chat: Option<String>) -> Result<(), JsValue> {
+pub fn mount(
+    spec: &str,
+    still: bool,
+    chat: Option<String>,
+    fonts: js_sys::Array,
+) -> Result<(), JsValue> {
     use std::rc::Rc;
 
     use gpui::{AppContext, Application, WindowBounds, WindowOptions, px, size};
@@ -61,13 +67,12 @@ pub fn mount(spec: &str, still: bool, chat: Option<String>) -> Result<(), JsValu
         .transpose()
         .map_err(|e| JsValue::from_str(&e.to_string()))?
         .unwrap_or_default();
-    let platform = WebPlatform::new(
-        false,
-        WebFonts {
-            fallback_family: theme::SANS,
-            faces: assets::font_faces(),
-        },
-    );
+    if fonts.length() as usize != assets::FONT_FILES.len() {
+        return Err(JsValue::from_str(
+            "the page didn't hand over the graph's fonts",
+        ));
+    }
+    let platform = WebPlatform::new(false, WebFonts::from_js(theme::SANS, &fonts));
     // The browser owns the run loop: hold the embedded handle for the life
     // of the page.
     let handle = Application::with_platform(Rc::new(platform)).run_embedded(move |cx| {
