@@ -229,9 +229,21 @@ impl Render for Stage {
                 div()
                     .id("voice-captions")
                     .max_w(px(680.))
-                    .min_h(px(72.))
+                    .w_full()
+                    .h(px(72.))
+                    .overflow_hidden()
+                    .flex()
+                    .flex_col()
+                    .justify_end()
+                    .text_center()
                     .text_size(px(18.))
-                    .child(self.view.caption().to_owned()),
+                    .line_height(px(24.))
+                    .child(
+                        div()
+                            .w_full()
+                            .flex_shrink_0()
+                            .child(self.view.caption().to_owned()),
+                    ),
             )
             .child(
                 div()
