@@ -3055,3 +3055,18 @@ set a name and picture, save, and check `openagents.com/@NAME` shows them;
 then publish a saved agent from Agent Lab and check `/agent/ID` draws it with
 the test account as owner. Android has the Rust side only; its screen is a
 follow-up issue.
+
+## Confirm /lander10 as the front door (#12260)
+
+`/` becomes `/lander10` (the real chat and the live pylons) for signed-out
+visitors only with `OPENAGENTS_WEB_FRONT_DOOR=on` on the `web` container. It
+is off in production. Open `/lander10` and `/home` on staging; if `/lander10`
+is the front door you want, say so and the deploy lane turns the flag on (the
+older landers then redirect to `/`). Until then `/` doesn't change.
+
+## Decide how name@openagents.com Lightning addresses are hosted (#12307)
+
+Decision 3 in `docs/audits/2026-10-17-spark-wallet.md`: Breez-hosted
+`name@openagents.com` through a CNAME (fast; Breez's server issues our users'
+invoices), or our own LNURL server (more work; we hold that trust). The
+Lightning address part of #12307 waits on this.
