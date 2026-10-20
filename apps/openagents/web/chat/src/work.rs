@@ -213,13 +213,12 @@ impl Render for Work {
         if asking.is_none() && agents.is_empty() && self.note.is_none() {
             return div().into_any_element();
         }
-        div()
+        let column = div()
             .w_full()
             .max_w(px(760.))
             .flex()
             .flex_col()
             .gap(px(8.))
-            .px(px(16.))
             .children(asking)
             .when(!agents.is_empty(), |col| {
                 col.child(
@@ -249,7 +248,15 @@ impl Render for Work {
                     .text_size(px(12.5))
                     .text_color(theme::text_faint())
                     .child(note)
-            }))
+            }));
+        // Centered over the composer, as the transcript is.
+        div()
+            .w_full()
+            .flex()
+            .justify_center()
+            .px(px(16.))
+            .pt(px(6.))
+            .child(column)
             .into_any_element()
     }
 }
