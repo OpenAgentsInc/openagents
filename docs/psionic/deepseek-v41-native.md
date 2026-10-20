@@ -591,7 +591,7 @@ This phase does not publish a V4.1 serving model.
 | Issue | Scope | Implementation and local checks |
 | --- | --- | --- |
 | [#12377](https://github.com/OpenAgentsInc/openagents/issues/12377), P1.3 | Hyper-connections | Float32 joint-stream RMS projection, pre/post coefficients, exact Sinkhorn order, collapse using the previous pre-mix, and residual expansion with `comb[source, target]`. Four targeted tests cover a nonuniform four-stream fixture, orientation, extreme logits, and invalid input. |
-| [#12378](https://github.com/OpenAgentsInc/openagents/issues/12378), P1.7 | MoE | Filed; implement after #12377. |
+| [#12378](https://github.com/OpenAgentsInc/openagents/issues/12378), P1.7 | MoE | Float32 sqrtsoftplus routing, selection-only correction bias, top-k normalization, asymmetric SwiGLU clamps, selected-expert accumulation, and the shared expert. The row-provider adapter reads FP4/FP8/BF16/F32 rows through the existing loader. |
 | [#12379](https://github.com/OpenAgentsInc/openagents/issues/12379), P1.4a/P1.5a | Attention and selection primitives | Filed; implement after #12378. Low-rank projections, RoPE/YaRN, activation quantization, and cross-layer source-cache wiring remain later work. |
 | [#12380](https://github.com/OpenAgentsInc/openagents/issues/12380), P1.6 | Engram | Filed; implement after #12379. |
 
@@ -610,3 +610,13 @@ Cargo target and build environment:
 ```sh
 cargo test -p psionic-models --lib deepseek_v41_cpu
 ```
+
+Ten component tests pass after the MoE addition, including a synthetic packed-FP4
+checkpoint read through the row adapter. MoE tests compare routing and expert output with a synthetic NumPy fixture
+(`1e-5` absolute tolerance), exercise six-of-384 routing, top-1 behavior,
+extreme logits, and invalid inputs, and verify that unselected experts are
+never read. Exact score ties choose the lower expert ID in the CPU reference;
+PyTorch's device `topk` tie order is not a portable guarantee. The oracle
+comparison must report ties separately. Route weights multiply the intermediate
+activation before the down projection, as in the reference; activation
+quantization and BF16 rounding at that boundary are still deferred.

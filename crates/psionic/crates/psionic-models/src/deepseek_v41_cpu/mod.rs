@@ -8,6 +8,7 @@
 //! checkpoint in memory.
 
 pub mod hyperconnections;
+pub mod moe;
 
 use thiserror::Error;
 
@@ -68,6 +69,63 @@ pub(crate) fn sigmoid(x: f32) -> f32 {
 pub trait MatrixRows {
     fn dimensions(&self) -> (usize, usize);
     fn row(&self, index: usize) -> Result<Vec<f32>, CpuError>;
+}
+
+/// Matrix backed by positioned checkpoint reads, including packed FP4 rows.
+pub struct CheckpointMatrix<'a> {
+    checkpoint: &'a crate::deepseek_v41_weights::DeepSeekV41Checkpoint,
+    name: String,
+    dimensions: (usize, usize),
+}
+
+impl<'a> CheckpointMatrix<'a> {
+    pub fn new(
+        checkpoint: &'a crate::deepseek_v41_weights::DeepSeekV41Checkpoint,
+        name: impl Into<String>,
+    ) -> Result<Self, CpuError> {
+        use crate::deepseek_v41_weights::V41BlockFormat;
+        let name = name.into();
+        let entry = checkpoint.entry(&name)?;
+        let [rows, stored_cols] = entry.shape.as_slice() else {
+            return Err(CpuError::Invalid(
+                "checkpoint matrix must have two dimensions",
+            ));
+        };
+        let format = checkpoint.block_format(&name)?;
+        let cols = if format == V41BlockFormat::Fp4E2M1Row32 {
+            stored_cols
+                .checked_mul(2)
+                .ok_or(CpuError::Invalid("shape overflow"))?
+        } else {
+            *stored_cols
+        };
+        let dimensions = (
+            usize::try_from(*rows).map_err(|_| CpuError::Invalid("shape overflow"))?,
+            usize::try_from(cols).map_err(|_| CpuError::Invalid("shape overflow"))?,
+        );
+        if dimensions.0 == 0 || dimensions.1 == 0 {
+            return Err(CpuError::Invalid("empty matrix"));
+        }
+        Ok(Self {
+            checkpoint,
+            name,
+            dimensions,
+        })
+    }
+}
+
+impl MatrixRows for CheckpointMatrix<'_> {
+    fn dimensions(&self) -> (usize, usize) {
+        self.dimensions
+    }
+    fn row(&self, index: usize) -> Result<Vec<f32>, CpuError> {
+        if index >= self.dimensions.0 {
+            return Err(CpuError::Invalid("matrix row out of range"));
+        }
+        let row = self.checkpoint.dequantize_row(&self.name, index as u64)?;
+        shape("checkpoint matrix row", &row, self.dimensions.1)?;
+        Ok(row)
+    }
 }
 
 /// Borrowed row-major matrix, useful for small CPU component fixtures.
@@ -135,4 +193,46 @@ pub fn rms_norm(input: &[f32], weight: &[f32], epsilon: f32) -> Result<Vec<f32>,
         .collect();
     finite("RMS output", &out)?;
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::deepseek_v41_weights::{CheckpointOpenOptions, DeepSeekV41Checkpoint};
+
+    #[test]
+    fn checkpoint_matrix_uses_logical_fp4_width_and_positioned_rows()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let header = serde_json::to_vec(&serde_json::json!({
+            "probe.weight": { "dtype": "I8", "shape": [1,16], "data_offsets": [0,16] },
+            "probe.scale": { "dtype": "F8_E8M0", "shape": [1,1], "data_offsets": [16,17] }
+        }))?;
+        let mut shard = (header.len() as u64).to_le_bytes().to_vec();
+        shard.extend(header);
+        shard.extend([0x71; 16]);
+        shard.push(127);
+        std::fs::write(dir.path().join("probe.safetensors"), shard)?;
+        std::fs::write(
+            dir.path().join("model.safetensors.index.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "metadata": { "total_size": 17 },
+                "weight_map": { "probe.weight": "probe.safetensors", "probe.scale": "probe.safetensors" }
+            }))?,
+        )?;
+        let checkpoint = DeepSeekV41Checkpoint::open(
+            dir.path(),
+            CheckpointOpenOptions {
+                headers_only: false,
+                pin: None,
+                check_model_map: false,
+            },
+        )?;
+        let matrix = CheckpointMatrix::new(&checkpoint, "probe.weight")?;
+        assert_eq!(matrix.dimensions(), (1, 32));
+        assert_eq!(&matrix.row(0)?[..4], &[0.5, 6.0, 0.5, 6.0]);
+        assert_eq!(matvec(&matrix, &[1.0; 32])?, vec![104.0]);
+        assert!(matrix.row(1).is_err());
+        Ok(())
+    }
 }

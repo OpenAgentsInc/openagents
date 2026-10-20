@@ -47,6 +47,29 @@ def hyperconnections():
           pre=pre.tolist(),post=post.tolist(),comb=comb.flatten().tolist(),collapsed=collapsed.tolist(),expanded=expanded.flatten().tolist()))
 
 
+def moe():
+    # model.py:794-906, no activation quantization or BF16 conversion.
+    x = np.array([1.25,-.75,2.0], dtype=np.float32)
+    gate = np.array([np.cos(np.arange(3)+j)*.8 for j in range(8)], dtype=np.float32)
+    bias = np.array([0,0,2,-2,0,-1,.5,-.5], dtype=np.float32)
+    score = np.sqrt(np.log1p(np.exp(gate @ x)))
+    ids = np.argsort(-(score+bias),kind='stable')[:3]
+    weights = score[ids].copy();weights /= weights.sum()+np.float32(1e-20);weights *= np.float32(1.5)
+    w1 = [np.sin(np.arange(12)+j).reshape(4,3).astype(np.float32)*7 for j in range(9)]
+    w3 = [np.cos(np.arange(12)+j).reshape(4,3).astype(np.float32)*8 for j in range(9)]
+    w2 = [np.sin(np.arange(12)+j*.5).reshape(3,4).astype(np.float32)*.2 for j in range(9)]
+    def expert(j,w):
+        g=np.minimum(w1[j]@x,10);u=np.clip(w3[j]@x,-10,10)
+        return w2[j] @ ((g/(1+np.exp(-g))*u)*w)
+    y = np.zeros(3,dtype=np.float32)
+    for j,w in sorted(zip(ids,weights)):
+        y += expert(j,w)
+    y += expert(8,np.float32(1))
+    write('moe',dict(input=x.tolist(),gate=gate.flatten().tolist(),bias=bias.tolist(),ids=ids.tolist(),weights=weights.tolist(),output=y.tolist(),
+          w1=[w.flatten().tolist() for w in w1],w2=[w.flatten().tolist() for w in w2],w3=[w.flatten().tolist() for w in w3]))
+
+
 if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
     hyperconnections()
+    moe()
