@@ -6,8 +6,13 @@ license.workspace = true
 publish.workspace = true
 description = "Sandboxed Luau runtime for agent visuals: scripts build a native element tree, canvas drawings, and 3D scenes"
 
+[features]
+# Exercise the browser interpreter natively as well as in wasm.
+portable-runtime = ["dep:luau"]
+
 [dependencies]
-mlua = { version = "0.12", features = ["luau"] }
+web-time = "1.1.0"
+luau = { version = "=0.739.0", optional = true }
 # The GLSL compiler wgpu uses, so a shader is validated exactly as it will run.
 naga = { version = "29", features = ["glsl-in"] }
 # glTF models (`s:model`): `.glb` or self-contained `.gltf`.
@@ -20,3 +25,12 @@ base64 = "0.22"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+mlua = { version = "0.12", features = ["luau"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+luau = { version = "=0.739.0" }
+
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.78"

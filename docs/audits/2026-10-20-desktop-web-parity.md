@@ -171,7 +171,7 @@ These rows are in the chat plan. They are listed so the matrix is complete.
 | Feature | Desktop | Web today | In a browser | Backend needed | Size | Issue |
 | --- | --- | --- | --- | --- | --- | --- |
 | Lab row: image, compare, video, 3D, playable, report | `ui/src/lab_view.rs:109`, `ui/src/lab_model.rs:130` | `/labs/{kind}/{document}`, `/v1/labs/*` | Account API | None | n/a | #12223 |
-| Agent visuals (`show_visual`): charts, tables, controls, canvases, 3D | `ui/src/visuals.rs`, `visual/` (Luau through `mlua`), `visual-gpu/` | None | Luau is C, so it needs a `wasm32` build or another runner; `visual-gpu` draws through wgpu on the web | None | M (spike and first visual) | [#12287](https://github.com/OpenAgentsInc/openagents/issues/12287) |
+| Agent visuals (`show_visual`): charts, tables, controls, canvases, 3D | `ui/src/visuals.rs`, `visual/` (Luau through `mlua`), `visual-gpu/` | Shared visual view in the recorded demo | Rust `luau` 0.739 behind the same sandbox API (execution errors use `Result`, including in panic-abort Wasm); shared chart/canvas view and software 3D rasterizer. Native GPU shader rendering stays native. | Attachment reader for host files | M (spike and first visual) | [#12287](https://github.com/OpenAgentsInc/openagents/issues/12287) |
 | Local Video Lab card | `ui/src/lab_card.rs:81` (loopback `127.0.0.1:8792`) | None | Never: it's a local developer server | n/a | n/a | none |
 
 ### Phase 13: settings, account, notifications, voice, and Earn
