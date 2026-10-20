@@ -2019,7 +2019,7 @@ impl Render for ChatApp {
             openagents_gpui_web::announce_ready();
         }
         if self.lab_open {
-            return self.render_agent_lab(window, cx);
+            return self.render_agent_lab(window, cx).into_any_element();
         }
         let wide = window.viewport_size().width > px(820.);
         let rows = self.entries.len() + usize::from(self.live.is_some());
