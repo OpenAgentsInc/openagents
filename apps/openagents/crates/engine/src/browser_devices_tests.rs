@@ -125,6 +125,36 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
     assert_eq!(opened.rights, ["observe", "operate"]);
     assert!(opened.expires_at <= now() + coder_access::protocol::BROWSER_GRANT_LIFETIME);
 
+    // Voice follows the same grant and cannot route through this computer
+    // to another computer that has not allowed this browser.
+    for method in [
+        methods::VOICE_CAPABILITIES_V2,
+        methods::GET_VOICE_AGENT,
+        methods::PREPARE_VOICE_V2,
+        methods::OWN_VOICE_V2,
+        methods::NEGOTIATE_VOICE_V2,
+        methods::CONFIRM_VOICE_MEDIA_V2,
+        methods::REPORT_VOICE_MEDIA_V2,
+        methods::UPDATE_VOICE_CONTEXT_V2,
+        methods::STOP_VOICE_V2,
+        methods::CANCEL_VOICE_ATTEMPT_V2,
+    ] {
+        let request = json!({"targetDeviceId":"mac-1","payload":{}});
+        let reply = value(tab.handle(method, request.clone()).await);
+        assert_eq!(reply["ran"], method);
+        assert_eq!(reply["params"], request);
+        assert!(
+            failed(
+                tab.handle(method, json!({"targetDeviceId":"mac-2","payload":{}}))
+                    .await
+            )
+            .contains("Choose this computer")
+        );
+        assert_eq!(
+            failed(gate.service("web-other").handle(method, json!({})).await),
+            ALLOW_FIRST
+        );
+    }
     // The allowed reads answer; anything else is refused.
     assert_eq!(
         value(tab.handle(methods::LIST_HARNESSES, json!({})).await),
@@ -249,7 +279,7 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
     .unwrap()
     .unwrap();
     assert_eq!(
-        failed(tab.handle(methods::LIST_HARNESSES, json!({})).await),
+        failed(tab.handle(methods::REPORT_VOICE_MEDIA_V2, json!({})).await),
         ENDED
     );
     assert_eq!(

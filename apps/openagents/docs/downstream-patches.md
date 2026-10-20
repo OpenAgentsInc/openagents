@@ -1483,6 +1483,9 @@ master delegation audit.
   Remove (`crates/ui/src/settings/devices.rs`).
 - `crates/proto/src/device_frame.rs` holds the device-room frame codec that
   `openagents-rpc`, `coder-sync`, and the browser share.
+- #12293 adds the browser voice stage with the desktop's caption reducer and
+  orb geometry, browser WebRTC media, and cancellable device-room voice
+  streams. The computer checks the browser grant and owns the Codex session.
 - #12265 and #12266 widen the browser's list with the new-session pickers'
   repository reads (`ListRepos`, `ListBranches`, `ListRefs`, `ListFolders`,
   `GetWorktreeSettings`), `SwitchRef` and `CreateWorktree`, and a chat's
