@@ -41,3 +41,9 @@
 .oa-cad-findings[hidden]{display:none}
 
 .oa-cad-payment-qr{display:block;max-width:100%;background:#fff;border-radius:12px;margin:16px 0}[data-shop-invoice]{display:block;width:100%;max-width:36rem;overflow-wrap:anywhere;font:12px monospace}[data-shop-form] .oa-slider{margin:16px 0}[data-cad-shop] .oa-cad-viewer{margin:20px 0}
+
+/* The standalone viewer framed over the GPUI CAD page (#12334). */
+body.oa-cad-frame{margin:0;height:100vh;overflow:hidden;font:14px system-ui,sans-serif;background:#171717;color:#eee}
+.oa-cad-frame>section,.oa-cad-frame .oa-cad-viewer{height:100%}
+.oa-cad-frame .oa-cad-view{aspect-ratio:auto;flex:1;min-height:120px}
+.oa-cad-frame .oa-cad-tools{flex:none;padding:0 8px 8px}

@@ -331,7 +331,22 @@ async fn send(
     ))
     .into_response()
 }
-async fn world(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn world(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    // Fetches from the world keep the JSON contract; a browser navigation
+    // can open the account's placed designs in the GPUI shell.
+    if headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("text/html"))
+    {
+        if let Some(page) = gpui::page_for(&app, &headers, query.as_deref(), "cad/_world") {
+            return page;
+        }
+    }
     let mut response = world_list(&app, &headers).await;
     response.headers_mut().insert(
         header::CACHE_CONTROL,
@@ -339,7 +354,7 @@ async fn world(State(app): State<App>, headers: HeaderMap) -> Response {
     );
     response
 }
-async fn world_list(app: &App, headers: &HeaderMap) -> Response {
+pub(super) async fn world_list(app: &App, headers: &HeaderMap) -> Response {
     let Some(scope) = page_scope(&app, &headers, None).await else {
         return Json(json!([])).into_response();
     };

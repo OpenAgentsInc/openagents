@@ -1521,3 +1521,4 @@ master delegation audit.
   `StartAgentLogin` never names another device to serve its callback.
 
 - #12346: Saved agents carry a bounded handoff when switching runtimes, with complete conversation and decision-log archives. Agent Lab and the desktop chat header offer explicit runtime choices over the existing revision-checked agent API.
+- CAD pages in the GPUI shell (#12334): shared Rust Native document and configurator forms, a separate lazy `web/cad` module over `web/page-host`, and the existing CAD viewer in a same-origin frame. HTML pages and public design links keep answering.

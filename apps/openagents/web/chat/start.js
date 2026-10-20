@@ -592,6 +592,7 @@ var PAGES = {
   agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
   "agent-lab": ["./openagents_web_agent_lab.js", "./openagents_web_agent_lab_bg.wasm"],
+  cad: ["./openagents_web_cad.js", "./openagents_web_cad_bg.wasm"],
   labs: ["./openagents_web_lab.js", "./openagents_web_lab_bg.wasm"],
   voice: ["./openagents_web_voice.js", "./openagents_web_voice_bg.wasm"],
 };

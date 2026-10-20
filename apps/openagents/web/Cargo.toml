@@ -21,6 +21,7 @@ members = [
     "agents",
     "projects",
     "lab",
+    "cad",
     "work",
     "settings",
     "demo",

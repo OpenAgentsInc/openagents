@@ -55,6 +55,7 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/published-agents",
     "/v1/schedules",
     "/v1/labs",
+    "/v1/cad",
     "/v1/voice-agent",
     "/v1/keys",
     "/v1/device/keys",
