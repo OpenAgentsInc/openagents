@@ -209,7 +209,8 @@ create` directly. The guard does the following:
 - Looks up the hourly price in `scripts/dev/cloud-prices.json` and refuses a
   machine type, or a spot or on-demand choice, that has no price there.
 - Refuses the machine if the money spent, plus every running machine's cost up
-  to its expiry, plus `--hours` × price, would pass the $3,000 cap.
+  to its expiry, plus the budget's reserve, plus `--hours` × price, would pass
+  the $3,000 cap.
 - Gives the machine an `expires-at` label and `--max-run-duration`, so Google
   deletes it at expiry. With `--on-expiry stop`, Google stops it instead and
   keeps its disks.
@@ -217,6 +218,59 @@ create` directly. The guard does the following:
   and records it in the run, so ending the session reaps it.
 - Records `start` and `stop` records with the price and cost in
   `~/.openagents/cloud-budget/deepseek-v41.jsonl`.
+
+Before it admits a machine, `create` runs `sync`, which also records any
+machine labeled `budget=deepseek-v41` that has no running record, such as one
+whose create reply was lost, so it counts.
+
+#### Allocate from one host
+
+One host and one ledger file allocate for a budget (#12376). The guard has no
+shared store, so a second host or a second `OA_CLOUD_BUDGET_DIR` would
+otherwise admit against its own $3,000. Copying the ledger to workers doesn't
+share the budget; run every `create` on the one host and let workers use the
+machines.
+
+- A new budget's first record names its host and ledger path. A ledger from
+  before #12376 gets an `owner` record on its next `create`; earlier records
+  are never rewritten.
+- `~/.openagents/cloud-budget-authority.json` names the ledger each budget uses
+  on this host.
+- `create` and `reserve` refuse from any other host or ledger path. If the
+  owning host has stopped allocating for good, run the command with
+  `--take-over` from the new host; the ledger records the takeover. Set
+  `OA_CLOUD_BUDGET_HOST` only to keep a host's name stable.
+
+#### Reserve storage and network
+
+The price table covers machines and GPUs only. Set a reserve for persistent
+disks, buckets, checkpoint copies, oracle dumps, and network egress, and
+`create` counts it against the cap:
+
+```sh
+python3 scripts/dev/cloud-budget.py reserve 250 \
+  --why "2 TB hyperdisk 2 weeks, 1.6 TB bucket 1 month, 2 TB egress"
+```
+
+To measure it, add up `gcloud storage du -s gs://BUCKET`, the sizes in
+`gcloud compute disks list --filter=labels.budget=deepseek-v41`, and the planned
+copies, at the catalog's per-GB prices for the time you keep them. The latest
+`reserve` replaces the one before it; raise it before a larger rental.
+
+#### Corrupt records
+
+A crash can tear the ledger's last line. The guard skips it, and the next
+record names the torn line so it still reads. Any other line that can't be
+read makes `create` and `reserve` refuse and name the line, because a lost
+line may hide a running machine. `report` still prints what it can read and
+marks the line. Repair the line from Google's records, such as
+`gcloud compute operations list`, before you allocate again.
+
+When `sync` finds that a machine is gone, it takes the end time from the
+zone's operations, then from the audit log. A machine that Google deleted late
+costs until its actual deletion. If neither record says when it ended, the
+machine counts in full until its expiry and is then settled at its expiry. A
+machine still recorded as running past its expiry counts until now.
 
 The run label comes from `OA_RUN_ID`, which every Claude Code shell here
 sets. Elsewhere, create a run first with
@@ -255,13 +309,15 @@ While it runs, and after:
 ```sh
 python3 scripts/dev/cloud-budget.py report        # spent, running, remaining
 python3 scripts/dev/cloud-budget.py stop oa-dsv41-oracle-1   # delete it now
-python3 scripts/dev/cloud-budget.py sync          # record machines that expired
+python3 scripts/dev/cloud-budget.py sync          # record machines that ended or appeared
+python3 scripts/dev/cloud-budget.py reserve 250 --why "..."  # storage and network
 python3 scripts/dev/cloud-budget.py prices        # the price table
 ```
 
 `report` asks Google which machines still exist, then prints the money spent,
-the running machines' cost so far and up to their expiry, the money remaining,
-and each running machine's age and expiry. Add `--offline` to skip the check,
+the running machines' cost so far and up to their expiry, the reserve, the
+money remaining, the allocating host, and each running machine's age and
+expiry. Add `--offline` to skip the check,
 or `--json` for a script. Prices cover the machine and its GPUs, not persistent
 disks or network, which come out of the reserve. Record the machine type, hours,
 and the cost `report` shows in the run's evidence.
@@ -515,6 +571,14 @@ notify; they do not stop Compute Engine spending. Keep the owner alert step
 in `NEEDS_OWNER.md`, use expiry/reaping for VM lifetime, and compare measured
 costs with the reservation before each later allocation. No new cloud
 resource was created for this review.
+
+#12376 closes items 1 and 2 within one host: `create` refuses on interior
+corruption, settles gone machines only from Google's operations or audit log,
+adopts labeled machines missing from the ledger, refuses a second host or
+ledger path, and counts a storage and network reserve. See
+[How to use the cloud spend guard](#how-to-use-the-cloud-spend-guard). A
+shared, multi-host budget store and stopping spend from billing alerts remain
+out of scope.
 
 ## Independent CPU port, first implementation phase (2026-10-20)
 

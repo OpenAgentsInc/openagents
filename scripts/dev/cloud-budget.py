@@ -17,26 +17,43 @@ Every machine the work rents goes through `create`, which:
   5. writes a `start` record to the ledger before gcloud runs, and a `stop`
      record if gcloud fails.
 
+Admission also counts the budget's reserve for what compute prices miss
+(persistent disks, buckets, checkpoint copies, network egress), set with
+`reserve`.
+
 The ledger is one append-only JSON-lines file per budget:
 ~/.openagents/cloud-budget/<budget>.jsonl (OA_CLOUD_BUDGET_DIR). Each machine
 has a `start` record and, once it ends, a `stop` record with its cost. A torn
-last line (a crash mid-write) is skipped on read, and the next append starts a
-fresh line.
+last line (a crash mid-write) is skipped on read; the next append starts a
+fresh line and writes a `torn` record naming the torn line, so it still reads.
+Any other unreadable line makes `create` and `reserve` refuse (#12376).
+
+One host and one ledger path allocate for a budget (#12376). The owner is in
+the budget's first record, or in an `owner` record that the first `create`
+after #12376 appends to an older ledger; ~/.openagents/cloud-budget-authority.json
+names the ledger path each budget uses on this host. `create` from another
+host or path refuses unless --take-over, which is recorded.
+
+Before admitting, `create` runs `sync`, which also records machines that carry
+the budget's label but have no running record (a lost create reply), so they
+count.
 
     cloud-budget.py create NAME --machine-type T --zone Z --hours H [--spot]
-        [--on-expiry delete|stop] [--label K=V ...] [--dry-run] [--json]
-        [-- EXTRA GCLOUD FLAGS ...]
+        [--on-expiry delete|stop] [--label K=V ...] [--take-over] [--dry-run]
+        [--json] [-- EXTRA GCLOUD FLAGS ...]
     cloud-budget.py stop NAME [--keep-machine]   delete the machine, record cost
-    cloud-budget.py sync                         record machines that ended
-    cloud-budget.py report [--offline] [--json]  spent, running, remaining
+    cloud-budget.py sync                         record machines that ended or appeared
+    cloud-budget.py reserve DOLLARS --why TEXT   set the reserve for storage and network
+    cloud-budget.py report [--offline] [--json]  spent, running, reserve, remaining
     cloud-budget.py prices                       the price table
 
 Common options: --budget NAME (default deepseek-v41), --cap DOLLARS (default
 3000, or the cap the budget's ledger first recorded), --project P (default
 openagentsgemini).
 
-Environment: OA_CLOUD_BUDGET_DIR (ledger directory), OA_CLOUD_PRICES (price
-table), OA_GCLOUD (gcloud binary), OA_AGENT_RUN (agent-run.py path),
+Environment: OA_CLOUD_BUDGET_DIR (ledger directory), OA_CLOUD_BUDGET_HOST (this
+host's name in owner records; default the macOS LocalHostName or the short host
+name), OA_CLOUD_PRICES (price table), OA_GCLOUD (gcloud binary), OA_AGENT_RUN (agent-run.py path),
 OA_CLOUD_BUDGET_NOW (epoch seconds, for tests), CLOUDSDK_CONFIG (when unset,
 ~/work/.secrets/gcloud-sa-config is used if present, as agent-run.py does).
 """
@@ -45,11 +62,13 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import math
 import os
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import time
@@ -63,6 +82,7 @@ LEDGERS = Path(os.environ.get("OA_CLOUD_BUDGET_DIR", str(Path.home() / ".openage
 PRICES = Path(os.environ.get("OA_CLOUD_PRICES", str(HERE / "cloud-prices.json")))
 AGENT_RUN = Path(os.environ.get("OA_AGENT_RUN", str(HERE / "agent-run.py")))
 SA_CONFIG = Path.home() / "work" / ".secrets" / "gcloud-sa-config"
+AUTHORITY = Path.home() / ".openagents" / "cloud-budget-authority.json"
 DEFAULT_BUDGET = "deepseek-v41"
 DEFAULT_CAP = 3000.0
 DEFAULT_PROJECT = "openagentsgemini"
@@ -74,6 +94,11 @@ OWNED_FLAGS = ("--labels", "--max-run-duration", "--termination-time", "--instan
 MIN_BILLED_SECONDS = 60  # Compute Engine bills per second with a one-minute minimum.
 LABEL_VALUE = re.compile(r"^[a-z0-9_-]{0,63}$")
 LABEL_KEY = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
+# A machine whose create time is this far from its start record is another machine.
+SAME_MACHINE_SECONDS = 1800
+# A labeled machine with no expiry label counts this long from when sync finds it.
+ADOPT_HOURS = 24
+LIVE_STATUSES = ("PROVISIONING", "STAGING", "RUNNING", "REPAIRING", "STOPPING", "SUSPENDING")
 
 
 class Refused(Exception):
@@ -157,22 +182,68 @@ def locked(budget: str):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def read_ledger(path: Path) -> list[dict]:
+class Ledger(list):
+    """The records of a ledger, plus the line numbers of any unreadable interior records."""
+
+    def __init__(self, records=(), corrupt=(), path=None):
+        super().__init__(records)
+        self.corrupt: list[int] = list(corrupt)
+        self.path = path
+
+    def refuse_if_corrupt(self) -> None:
+        if self.corrupt:
+            where = ", ".join(str(n) for n in self.corrupt)
+            raise Refused(f"{self.path} has unreadable records on line {where}; a lost record may hide "
+                          "a reservation. Repair the line from Google's records "
+                          "(`gcloud compute operations list`), then try again")
+
+
+def _well_formed(r) -> bool:
+    if not isinstance(r, dict):
+        return False
+    num = (int, float)
+    if r.get("event") == "start":
+        return (isinstance(r.get("id"), str) and isinstance(r.get("vm"), str)
+                and all(isinstance(r.get(k), num) for k in ("price_per_hour", "start_epoch", "expires_epoch")))
+    if r.get("event") == "stop":
+        return isinstance(r.get("id"), str) and isinstance(r.get("stop_epoch"), num)
+    if r.get("event") == "budget":
+        return isinstance(r.get("cap"), num)
+    if r.get("event") == "reserve":
+        return isinstance(r.get("amount"), num) and r["amount"] >= 0
+    return isinstance(r.get("event"), str)
+
+
+def read_ledger(path: Path, quiet: bool = False) -> Ledger:
+    """Read every record. A torn final line is skipped. An unreadable line before it counts as
+    corruption, unless a later `torn` record names it with its digest (the append that followed a
+    crash wrote that record)."""
     try:
         data = path.read_bytes()
     except FileNotFoundError:
-        return []
-    records = []
+        return Ledger(path=path)
+    records, bad = [], []
     lines = data.split(b"\n")
     for i, raw in enumerate(lines):
         if not raw.strip():
             continue
         try:
-            records.append(json.loads(raw))
+            r = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            where = "torn last line" if i == len(lines) - 1 else f"unreadable line {i + 1}"
-            print(f"cloud-budget: skipped a {where} in {path}", file=sys.stderr)
-    return records
+            r = None
+        if _well_formed(r):
+            records.append(r)
+        elif i == len(lines) - 1:
+            if not quiet:
+                print(f"cloud-budget: skipped a torn last line in {path}", file=sys.stderr)
+        else:
+            bad.append((i + 1, hashlib.sha256(raw).hexdigest()))
+    healed = {(r.get("line"), r.get("sha256")) for r in records if r.get("event") == "torn"}
+    corrupt = [n for n, digest in bad if (n, digest) not in healed]
+    if corrupt and not quiet:
+        print(f"cloud-budget: {path} has unreadable records on line "
+              f"{', '.join(map(str, corrupt))}; create refuses until they are repaired", file=sys.stderr)
+    return Ledger(records, corrupt, path)
 
 
 def append(path: Path, record: dict) -> None:
@@ -183,7 +254,20 @@ def append(path: Path, record: dict) -> None:
         if size:
             os.lseek(fd, size - 1, os.SEEK_SET)
             if os.read(fd, 1) != b"\n":
-                line = b"\n" + line  # a crash tore the last record; start a new line
+                # A crash tore the last record. Start a new line, and name the torn line so a
+                # reader can tell it from corruption. Its record never finished, so the gcloud
+                # call it came before never ran.
+                os.lseek(fd, 0, os.SEEK_SET)
+                data = b""
+                while len(data) < size:
+                    chunk = os.read(fd, size - len(data))
+                    if not chunk:
+                        break
+                    data += chunk
+                torn = data.split(b"\n")[-1]
+                note = {"event": "torn", "line": data.count(b"\n") + 1,
+                        "sha256": hashlib.sha256(torn).hexdigest(), "bytes": len(torn), "at": iso(now())}
+                line = b"\n" + (json.dumps(note, sort_keys=True) + "\n").encode() + line
         os.write(fd, line)
         os.fsync(fd)
     finally:
@@ -213,28 +297,43 @@ def ledger_cap(records: list[dict]) -> float | None:
 
 
 def cost(m: dict, at: float) -> float:
-    """What a machine has cost by `at`: per second, one-minute minimum, never past its expiry."""
+    """What a machine has cost by `at`: per second, one-minute minimum.
+
+    A finished machine costs until its recorded end, which may be after its expiry when Google
+    deleted it late. A running machine costs until `at`; once past its expiry it keeps counting
+    until `sync` settles it from Google's records.
+    """
     if m.get("reason") == "create-failed":
         return 0.0
     end = m.get("stop_epoch")
     if end is None:
-        end = min(at, m["expires_epoch"])
+        end = at
     seconds = max(end - m["start_epoch"], MIN_BILLED_SECONDS)
     return round(m["price_per_hour"] * seconds / 3600, 6)
 
 
-def committed(m: dict) -> float:
-    """The most a running machine can cost: until its expiry."""
-    return round(m["price_per_hour"] * max(m["expires_epoch"] - m["start_epoch"], MIN_BILLED_SECONDS) / 3600, 6)
+def committed(m: dict, at: float | None = None) -> float:
+    """The most a running machine can cost: until its expiry, or until now if that's later."""
+    end = max(m["expires_epoch"], at if at is not None else 0)
+    return round(m["price_per_hour"] * max(end - m["start_epoch"], MIN_BILLED_SECONDS) / 3600, 6)
 
 
-def totals(ms: list[dict], at: float) -> dict:
+def ledger_reserve(records: list[dict]) -> float:
+    amount = 0.0
+    for r in records:
+        if r.get("event") == "reserve":
+            amount = float(r["amount"])
+    return amount
+
+
+def totals(ms: list[dict], at: float, reserve: float = 0.0) -> dict:
     done = [m for m in ms if m.get("stop_epoch") is not None]
     live = [m for m in ms if m.get("stop_epoch") is None]
     return {
         "spent": round(sum(cost(m, at) for m in done), 6),
         "running": round(sum(cost(m, at) for m in live), 6),
-        "running_committed": round(sum(committed(m) for m in live), 6),
+        "running_committed": round(sum(committed(m, at) for m in live), 6),
+        "reserve": round(reserve, 6),
         "finished": len(done),
         "live": live,
     }
@@ -242,15 +341,89 @@ def totals(ms: list[dict], at: float) -> dict:
 
 # ---------------------------------------------------------------- admission
 
-def admit(ms: list[dict], cap: float, price: float, hours: float, at: float) -> dict:
-    t = totals(ms, at)
+def admit(ms: list[dict], cap: float, price: float, hours: float, at: float, reserve: float = 0.0) -> dict:
+    t = totals(ms, at, reserve)
     request = round(price * hours, 6)
-    after = t["spent"] + t["running_committed"] + request
+    after = t["spent"] + t["running_committed"] + t["reserve"] + request
     if after > cap + 1e-9:
         raise Refused(f"over the cap: spent {money(t['spent'])} + running up to "
-                      f"{money(t['running_committed'])} + this machine {money(request)} "
-                      f"= {money(after)} > cap {money(cap)}")
-    return {"request": request, "after": after, **{k: t[k] for k in ("spent", "running_committed")}}
+                      f"{money(t['running_committed'])} + reserve {money(t['reserve'])} + this machine "
+                      f"{money(request)} = {money(after)} > cap {money(cap)}")
+    return {"request": request, "after": after, **{k: t[k] for k in ("spent", "running_committed", "reserve")}}
+
+
+# ---------------------------------------------------------------- authority
+
+def host_id() -> str:
+    name = os.environ.get("OA_CLOUD_BUDGET_HOST", "")
+    if not name and sys.platform == "darwin":
+        try:
+            name = subprocess.run(["scutil", "--get", "LocalHostName"], capture_output=True, text=True,
+                                  timeout=5).stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            name = ""
+    return (name or socket.gethostname().split(".")[0]).lower()
+
+
+def ledger_owner(records: list[dict]) -> dict | None:
+    """Who allocates for this budget: the first budget record's host and path, or the latest
+    `owner` record (written by the first create after #12376, or by --take-over)."""
+    owner = None
+    for r in records:
+        if r.get("event") == "budget" and owner is None and r.get("host"):
+            owner = {"host": r["host"], "ledger": r.get("ledger")}
+        elif r.get("event") == "owner" and r.get("host"):
+            owner = {"host": r["host"], "ledger": r.get("ledger")}
+    return owner
+
+
+@contextmanager
+def authority_book():
+    AUTHORITY.parent.mkdir(parents=True, exist_ok=True)
+    with open(AUTHORITY.with_suffix(".lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            try:
+                book = json.loads(AUTHORITY.read_text())
+            except FileNotFoundError:
+                book = {}
+            except json.JSONDecodeError as error:
+                raise Refused(f"{AUTHORITY} is unreadable ({error}); repair it before allocating")
+            before = json.dumps(book, sort_keys=True)
+            yield book
+            if json.dumps(book, sort_keys=True) != before:
+                tmp = AUTHORITY.with_suffix(".tmp")
+                tmp.write_text(json.dumps(book, indent=1, sort_keys=True) + "\n")
+                os.replace(tmp, AUTHORITY)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def claim_authority(budget: str, path: Path, records: list[dict], take_over: bool, at: float) -> list[dict]:
+    """Refuse unless this host and ledger path allocate for the budget. Returns the records to
+    append (an owner record when the ledger has none, or when taking over)."""
+    me, where = host_id(), str(path.resolve())
+    owner = ledger_owner(records)
+    pending = []
+    with authority_book() as book:
+        held = book.get(budget, {}).get("ledger")
+        problems = []
+        if owner and owner["host"] != me:
+            problems.append(f"host {owner['host']} allocates for budget {budget}, not {me}")
+        if owner and owner.get("ledger") and owner["ledger"] != where:
+            problems.append(f"budget {budget} belongs to the ledger at {owner['ledger']}, not {where}")
+        if held and held != where:
+            problems.append(f"on this host, budget {budget} uses the ledger at {held}, not {where}")
+        if problems and not take_over:
+            raise Refused("; ".join(problems) + ". Allocate from that host and ledger, or pass "
+                          "--take-over once the other one has stopped allocating")
+        if take_over and problems:
+            pending.append({"event": "owner", "budget": budget, "host": me, "ledger": where, "at": iso(at),
+                            "take_over": True, "from": owner, "from_ledger": held, "why": "; ".join(problems)})
+        elif owner is None and records:
+            pending.append({"event": "owner", "budget": budget, "host": me, "ledger": where, "at": iso(at)})
+        book[budget] = {"ledger": where, "host": me}
+    return pending
 
 
 def run_labels() -> tuple[str, str]:
@@ -306,8 +479,14 @@ def cmd_create(a: argparse.Namespace) -> int:
             raise Refused(f"label {kv!r}: keys and values are lowercase letters, digits, - or _")
         extra_labels[k] = v
 
+    if not a.dry_run:
+        with locked(a.budget) as path:
+            read_ledger(path, quiet=True).refuse_if_corrupt()
+        sync(a.budget, quiet=True, project=a.project)
+
     with locked(a.budget) as path:
         records = read_ledger(path)
+        records.refuse_if_corrupt()
         cap = ledger_cap(records)
         if a.cap is not None and cap is not None and abs(a.cap - cap) > 1e-9:
             raise Refused(f"budget {a.budget} was opened with cap {money(cap)}; it can't change here")
@@ -316,7 +495,8 @@ def cmd_create(a: argparse.Namespace) -> int:
         if any(m["vm"] == name and m.get("stop_epoch") is None for m in ms):
             raise Refused(f"{name} is already running in budget {a.budget}")
         at = now()
-        verdict = admit(ms, cap, price, hours, at)
+        reserve = ledger_reserve(records)
+        verdict = admit(ms, cap, price, hours, at, reserve)
         expires = at + seconds
         labels = {"run-id": rid, "run-host": rhost, "budget": a.budget,
                   "expires-at": label_time(expires), **extra_labels}
@@ -329,6 +509,7 @@ def cmd_create(a: argparse.Namespace) -> int:
             "start_epoch": at, "start": iso(at), "expires_epoch": expires, "expires_at": iso(expires),
         }
         summary = {"vm": name, "zone": a.zone, "project": a.project, "budget": a.budget, "cap": cap,
+                   "reserve": reserve,
                    "price_per_hour": price, "hours": hours, "expires_at": iso(expires), "run_id": rid,
                    "cost_if_run_to_expiry": verdict["request"], "total_after": round(verdict["after"], 6),
                    "command": command, "dry_run": a.dry_run}
@@ -340,8 +521,11 @@ def cmd_create(a: argparse.Namespace) -> int:
                 print(f"admitted: {money(verdict['request'])} for {hours:g} h; budget total would be "
                       f"{money(verdict['after'])} of {money(cap)} (dry run, nothing created)", file=sys.stderr)
             return 0
+        for note in claim_authority(a.budget, path, records, a.take_over, at):
+            append(path, note)
         if ledger_cap(records) is None:
-            append(path, {"event": "budget", "budget": a.budget, "cap": cap, "at": iso(at)})
+            append(path, {"event": "budget", "budget": a.budget, "cap": cap, "at": iso(at),
+                          "host": host_id(), "ledger": str(path.resolve())})
         append(path, record)
 
     r = gcloud(*command[1:])
@@ -371,45 +555,135 @@ def cmd_create(a: argparse.Namespace) -> int:
 
 # --------------------------------------------------------------- reconcile
 
-def end_time(m: dict) -> float | None:
-    """When a machine that no longer runs stopped, from its zone's operations.
+ENDING_OPS = ("delete", "stop", "preempted", "suspend")
 
-    Expiry shows as `compute.instances.deferredDelete` (or a stop) run by `system`.
-    """
-    r = gcloud("compute", "operations", "list", f"--project={m['project']}", f"--zones={m['zone']}",
-               f"--filter=targetLink~/instances/{m['vm']}$", "--format=json(operationType,endTime)")
-    if r.returncode != 0:
-        return None
+
+def _json(text: str):
     try:
-        ops = json.loads(r.stdout or "[]")
+        return json.loads(text or "[]")
     except json.JSONDecodeError:
         return None
-    ends = [parse_time(o.get("endTime", "")) for o in ops
-            if any(k in o.get("operationType", "").lower() for k in ("delete", "stop", "preempted"))]
+
+
+def end_time(m: dict) -> float | None:
+    """When a machine that no longer runs stopped, from Google's records: its zone's operations,
+    then the audit log (operations age out). Expiry shows as `compute.instances.deferredDelete`
+    (or a stop) run by `system`, sometimes minutes after the expiry."""
+    ends: list[float | None] = []
+    r = gcloud("compute", "operations", "list", f"--project={m['project']}", f"--zones={m['zone']}",
+               f"--filter=targetLink~/instances/{m['vm']}$", "--format=json(operationType,endTime)")
+    ops = _json(r.stdout) if r.returncode == 0 else None
+    if isinstance(ops, list):
+        ends = [parse_time(o.get("endTime", "")) for o in ops
+                if any(k in o.get("operationType", "").lower() for k in ENDING_OPS)]
     ends = [e for e in ends if e and e >= m["start_epoch"]]
+    if not ends:
+        query = (f'resource.type="gce_instance" AND protoPayload.resourceName:"instances/{m["vm"]}" '
+                 f'AND timestamp>="{iso(m["start_epoch"])}"')
+        r = gcloud("logging", "read", query, f"--project={m['project']}", "--freshness=400d",
+                   "--format=json(timestamp,protoPayload.methodName,operation.last)")
+        entries = _json(r.stdout) if r.returncode == 0 else None
+        if isinstance(entries, list):
+            ends = [parse_time(e.get("timestamp", "")) for e in entries
+                    if any(k in str((e.get("protoPayload") or {}).get("methodName", "")).lower() for k in ENDING_OPS)
+                    and (e.get("operation") or {}).get("last", True)]
+            ends = [e for e in ends if e and e >= m["start_epoch"]]
     return min(ends) if ends else None
 
 
-def sync(budget: str, quiet: bool = False) -> int:
+def label_epoch(text: str) -> float | None:
+    m = re.match(r"^(\d{4})-(\d\d)-(\d\d)t(\d\d)-(\d\d)-(\d\d)z$", text or "")
+    if not m:
+        return None
+    return datetime(*map(int, m.groups()), tzinfo=timezone.utc).timestamp()
+
+
+def same_machine(m: dict, created: float | None) -> bool:
+    """Whether a machine Google created at `created` is the one record `m` started: a reused name
+    is a different machine."""
+    return created is None or abs(created - m["start_epoch"]) <= SAME_MACHINE_SECONDS
+
+
+def adopt(budget: str, project: str, quiet: bool) -> int:
+    """Record machines labeled with this budget that have no running record, such as a create
+    whose reply was lost, so they count. Returns how many it recorded."""
+    r = gcloud("compute", "instances", "list", f"--project={project}", f"--filter=labels.budget={budget}",
+               "--format=json(name,zone,machineType,status,creationTimestamp,labels,scheduling)")
+    found = _json(r.stdout) if r.returncode == 0 else None
+    if not isinstance(found, list):
+        print(f"cloud-budget: couldn't list machines labeled budget={budget}; only the ledger's "
+              "machines count", file=sys.stderr)
+        return 0
+    prices = load_prices()
+    added = 0
     with locked(budget) as path:
-        live = [m for m in machines(read_ledger(path)) if m.get("stop_epoch") is None]
+        live = [m for m in machines(read_ledger(path, quiet=True)) if m.get("stop_epoch") is None]
+        for inst in found:
+            name, zone = inst.get("name", ""), str(inst.get("zone", "")).rsplit("/", 1)[-1]
+            created = parse_time(inst.get("creationTimestamp", ""))
+            if inst.get("status") not in LIVE_STATUSES or PROTECTED.match(name) or created is None:
+                continue
+            if any(m["vm"] == name and m["zone"] == zone and same_machine(m, created) for m in live):
+                continue
+            mtype = str(inst.get("machineType", "")).rsplit("/", 1)[-1]
+            spot = (inst.get("scheduling") or {}).get("provisioningModel") == "SPOT"
+            labels = inst.get("labels") or {}
+            try:
+                price, source = price_for(prices, mtype, spot)
+            except Refused:
+                price = max(float(e.get("standard") or 0) for e in prices["machines"].values())
+                source = f"no price for {mtype}; counted at the highest listed price"
+            at = now()
+            expires = label_epoch(labels.get("expires-at", "")) or at + ADOPT_HOURS * 3600
+            record = {"event": "start", "id": uuid.uuid4().hex, "budget": budget, "adopted": True,
+                      "run_id": labels.get("run-id", ""), "vm": name, "zone": zone, "project": project,
+                      "machine_type": mtype, "provisioning": "spot" if spot else "standard",
+                      "price_per_hour": price, "price_source": source,
+                      "hours_requested": round((expires - created) / 3600, 6), "on_expiry": "unknown",
+                      "start_epoch": created, "start": iso(created), "expires_epoch": expires,
+                      "expires_at": iso(expires)}
+            append(path, record)
+            live.append(record)
+            added += 1
+            print(f"cloud-budget: {name} carries budget={budget} but had no running record; it now "
+                  f"counts from {iso(created)} to {iso(expires)} at {money(price)}/h", file=sys.stderr)
+    return added
+
+
+def sync(budget: str, quiet: bool = False, project: str = DEFAULT_PROJECT) -> int:
+    with locked(budget) as path:
+        records = read_ledger(path, quiet=quiet)
+    projects = {project} | {m["project"] for m in machines(records)}
+    for p in sorted(projects):
+        adopt(budget, p, quiet)
+    with locked(budget) as path:
+        live = [m for m in machines(read_ledger(path, quiet=True)) if m.get("stop_epoch") is None]
     ended = 0
     for m in live:
         r = gcloud("compute", "instances", "describe", m["vm"], f"--project={m['project']}",
                    f"--zone={m['zone']}", "--format=json(status,lastStopTimestamp,creationTimestamp)")
         status = None
         if r.returncode == 0:
-            info = json.loads(r.stdout or "{}")
-            created = parse_time(info.get("creationTimestamp", "")) or 0
-            if created and created > m["expires_epoch"]:
+            info = _json(r.stdout or "{}") or {}
+            created = parse_time(info.get("creationTimestamp", "")) if isinstance(info, dict) else None
+            if not same_machine(m, created):
                 status = "GONE"  # a newer machine reuses the name; ours is gone
             else:
                 status = info.get("status")
         elif "was not found" in r.stderr or "notFound" in r.stderr:
             status = "GONE"
         if status in ("GONE", "TERMINATED", "STOPPED"):
-            at = end_time(m) or min(now(), m["expires_epoch"])
+            at = end_time(m)
             reason = "gone" if status == "GONE" else "stopped"
+            if at is None:
+                # Google's records don't say when it ended. Never release money on a guess: it
+                # counts in full until its expiry, and is settled at the expiry after that.
+                if now() < m["expires_epoch"]:
+                    if not quiet:
+                        print(f"{m['vm']}: {reason}, but Google's records don't say when; it counts "
+                              f"until its expiry {m['expires_at']}")
+                    continue
+                at, reason = m["expires_epoch"], reason + "-at-expiry"
             with locked(budget) as path:
                 still = [x for x in machines(read_ledger(path)) if x["id"] == m["id"] and x.get("stop_epoch") is None]
                 if still:
@@ -448,31 +722,69 @@ def cmd_report(a: argparse.Namespace) -> int:
     if not a.offline:
         sync(a.budget, quiet=a.json)
     with locked(a.budget) as path:
-        records = read_ledger(path)
+        records = read_ledger(path, quiet=True)
     cap = ledger_cap(records) or (a.cap if a.cap is not None else DEFAULT_CAP)
     at = now()
     ms = machines(records)
-    t = totals(ms, at)
-    remaining = cap - t["spent"] - t["running_committed"]
+    t = totals(ms, at, ledger_reserve(records))
+    remaining = cap - t["spent"] - t["running_committed"] - t["reserve"]
+    owner = ledger_owner(records)
     rows = [{"vm": m["vm"], "zone": m["zone"], "machine_type": m["machine_type"],
              "provisioning": m["provisioning"], "price_per_hour": m["price_per_hour"],
              "age_seconds": int(at - m["start_epoch"]), "expires_at": m["expires_at"],
-             "cost_so_far": cost(m, at), "cost_to_expiry": committed(m)} for m in t["live"]]
+             "cost_so_far": cost(m, at), "cost_to_expiry": committed(m, at)} for m in t["live"]]
     if a.json:
         print(json.dumps({"budget": a.budget, "cap": cap, "spent": t["spent"], "running": t["running"],
-                          "running_committed": t["running_committed"], "remaining": round(remaining, 6),
-                          "finished": t["finished"], "running_machines": rows}, indent=1))
+                          "running_committed": t["running_committed"], "reserve": t["reserve"],
+                          "remaining": round(remaining, 6), "finished": t["finished"],
+                          "owner": owner, "corrupt_lines": records.corrupt, "running_machines": rows}, indent=1))
         return 0
     print(f"budget {a.budget}  cap {money(cap)}")
+    if records.corrupt:
+        print(f"CORRUPT    line {', '.join(map(str, records.corrupt))} of {records.path} can't be read; "
+              "the totals below leave it out, and create refuses until it is repaired")
     print(f"spent      {money(t['spent'])}  ({t['finished']} finished)")
     print(f"running    {money(t['running'])} so far, up to {money(t['running_committed'])} by expiry "
           f"({len(rows)} running)")
+    print(f"reserve    {money(t['reserve'])}" + ("" if t["reserve"] else
+                                                  "  (none set; storage and network aren't counted)"))
     print(f"remaining  {money(remaining)}")
+    if owner:
+        print(f"allocates  from {owner['host']}")
     for row in rows:
         left = parse_time(row["expires_at"]) - at
         print(f"  {row['vm']}  {row['zone']}  {row['machine_type']} {row['provisioning']}  "
               f"{money(row['price_per_hour'])}/h  age {duration(row['age_seconds'])}  "
               f"expires {row['expires_at']} (in {duration(left)})  {money(row['cost_so_far'])} so far")
+    return 0
+
+
+def cmd_reserve(a: argparse.Namespace) -> int:
+    if not (a.amount >= 0):
+        raise Refused("the reserve can't be negative")
+    if not a.why.strip():
+        raise Refused("say what the reserve covers with --why")
+    with locked(a.budget) as path:
+        records = read_ledger(path)
+        records.refuse_if_corrupt()
+        at = now()
+        cap = ledger_cap(records)
+        if a.cap is not None and cap is not None and abs(a.cap - cap) > 1e-9:
+            raise Refused(f"budget {a.budget} was opened with cap {money(cap)}; it can't change here")
+        cap = cap if cap is not None else (a.cap if a.cap is not None else DEFAULT_CAP)
+        for note in claim_authority(a.budget, path, records, a.take_over, at):
+            append(path, note)
+        if ledger_cap(records) is None:
+            append(path, {"event": "budget", "budget": a.budget, "cap": cap, "at": iso(at),
+                          "host": host_id(), "ledger": str(path.resolve())})
+        append(path, {"event": "reserve", "budget": a.budget, "amount": round(a.amount, 6),
+                      "why": a.why.strip(), "at": iso(at), "host": host_id()})
+        t = totals(machines(records), at, a.amount)
+    left = cap - t["spent"] - t["running_committed"] - t["reserve"]
+    print(f"reserve {money(a.amount)} for {a.why.strip()}; remaining {money(left)} of {money(cap)}")
+    if left < 0:
+        print("cloud-budget: the reserve is more than the budget has left; create refuses until "
+              "machines finish", file=sys.stderr)
     return 0
 
 
@@ -505,12 +817,20 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--on-expiry", choices=["delete", "stop"], default="delete")
     c.add_argument("--label", action="append", default=[])
     c.add_argument("--project", default=os.environ.get("OA_PROJECT", DEFAULT_PROJECT))
+    c.add_argument("--take-over", action="store_true",
+                   help="allocate from this host and ledger although another one did; recorded")
     c.add_argument("--dry-run", action="store_true")
     c.add_argument("--json", action="store_true")
     s = sub.add_parser("stop", parents=[common])
     s.add_argument("name")
     s.add_argument("--keep-machine", action="store_true", help="record the stop without deleting the machine")
-    sub.add_parser("sync", parents=[common])
+    y = sub.add_parser("sync", parents=[common])
+    y.add_argument("--project", default=os.environ.get("OA_PROJECT", DEFAULT_PROJECT))
+    v = sub.add_parser("reserve", parents=[common],
+                       help="set the reserve for disks, buckets, checkpoint copies, and network egress")
+    v.add_argument("amount", type=float)
+    v.add_argument("--why", required=True)
+    v.add_argument("--take-over", action="store_true")
     r = sub.add_parser("report", parents=[common])
     r.add_argument("--offline", action="store_true")
     r.add_argument("--json", action="store_true")
@@ -525,8 +845,10 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "stop":
             return cmd_stop(a)
         if a.cmd == "sync":
-            sync(a.budget)
+            sync(a.budget, project=a.project)
             return 0
+        if a.cmd == "reserve":
+            return cmd_reserve(a)
         if a.cmd == "report":
             return cmd_report(a)
         return cmd_prices(a)
