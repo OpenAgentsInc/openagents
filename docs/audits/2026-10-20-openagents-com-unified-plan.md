@@ -328,14 +328,23 @@ Risks:
 - **Copy.** Profile and receipt pages invite machine talk ("attestation",
   "provenance"). Run `oa_copy::violations` over each new page.
 
-Questions for the owner:
+Questions for the owner, with the defaults we're building on. Each was
+decided 2026-10-20 by the coordinator on the owner's instruction; revisit if
+wrong.
 
-1. Which lander becomes `/`? (`/lander8` already chats; `/lander9` adds hands.)
+1. Which lander becomes `/`? (`/lander8` already chats; `/lander9` adds
+   hands.) **Decided:** U7 picks it from first-paint measurements.
 2. Do `/gym` and `/forum` come back as top-level pages, or do Gym results and
-   public rooms live only on profiles and in `/explore`?
+   public rooms live only on profiles and in `/explore`? **Decided:** they
+   live on profiles and in `/explore`, not as separate pages.
 3. Profile URLs: `/@{name}` (recommended, reads well) or `/p/{name}`?
+   **Decided:** `/@{name}`.
 4. NIP-05 names: first come, first served with a reserved list, or tied to
-   the paid plan?
+   the paid plan? **Decided:** first come, first served, under the existing
+   abuse limits, with a reserved list (brand names, staff, `admin`, and
+   similar).
 5. Browser wallet default: restore from 12 words, or phone-approved and
-   spend-limited (recommended)?
+   spend-limited (recommended)? **Decided:** phone-approved and
+   spend-limited.
 6. Agent rooms: one public NIP-29 room for everyone, or a room per agent?
+   **Decided:** both: one public room, plus a room per agent.
