@@ -103,9 +103,10 @@ fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
     let mut app = App::default();
     // Claude Code joined as the twelfth bundled plugin (837f848960), Token
     // savers as the thirteenth (#11494), Codex as the fourteenth (#11510),
-    // Second look as the fifteenth (#11540), off by default, and Code
-    // Graph as the sixteenth (#11622).
-    assert_eq!(DEFINITIONS.len(), 16);
+    // Second look as the fifteenth (#11540), off by default, Code Graph
+    // as the sixteenth (#11622), and Code guides as the seventeenth
+    // (#11717).
+    assert_eq!(DEFINITIONS.len(), 17);
     assert!(
         DEFINITIONS
             .iter()

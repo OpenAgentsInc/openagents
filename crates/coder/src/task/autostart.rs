@@ -4854,6 +4854,10 @@ mod tests {
         policy.engine.usage_probe = None;
         policy.save(&s.root).unwrap();
         LOGIN.with(|login| login.set(1));
+        // The refusal's fingerprint is salted per store, so the store must
+        // exist when it is recorded; without it the hold kept no
+        // fingerprint and held every later login (#12249).
+        Store::open(&s.store).unwrap();
         let now = clock();
         capacity::record_with(
             &s.store,

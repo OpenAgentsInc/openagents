@@ -469,7 +469,12 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     assert!(app.request.is_none());
     key(&mut app, KeyCode::Esc);
     paste(&mut app, "follow-up question");
-    key(&mut app, KeyCode::Enter);
+    // Enter would stop the turn and send now (#11685); Ctrl+Q queues the
+    // message for after it.
+    assert!(app.handle(Event::Key(KeyEvent::new(
+        KeyCode::Char('q'),
+        KeyModifiers::CONTROL
+    ))));
     assert!(app.draft.text.is_empty());
     assert!(app.request.is_none());
     assert!(app.live.busy);
@@ -508,7 +513,11 @@ fn live_streaming_preserves_stopped_text_and_ignores_stale_updates() {
     assert_eq!(app.live.tokens, 0);
     assert_eq!(app.live.entries.len(), 2);
     assert!(matches!(app.plugins.connection, Connection::Verified));
-    assert!(!render(&mut app, 80, 24).contains("late"));
+    // None of the late updates draws (the input's hint may say "later").
+    let screen = render(&mut app, 80, 24);
+    for late in ["late delta", "late-model", "late answer", "late key error"] {
+        assert!(!screen.contains(late), "{late}: {screen}");
+    }
 
     // Retrieved input is still owned by the composer after stopping.
     key(&mut app, KeyCode::Enter);

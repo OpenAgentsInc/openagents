@@ -75,6 +75,11 @@ async fn grok_environment(host: &Host) -> Vec<(String, String)> {
             std::env::var_os(acp_client::grok::API_KEY_VAR),
         ),
     };
+    // A test's key is the one it set, never the login shell's: a pool host
+    // exports XAI_API_KEY there, which moved the fixtures' turns to
+    // `grok-4.7` and failed them (#12249).
+    #[cfg(test)]
+    let grok_key = login_variable(acp_client::grok::API_KEY_VAR);
     let mut variables: Vec<(String, String)> = raw
         .into_iter()
         .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))

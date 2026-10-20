@@ -808,21 +808,25 @@ impl Memory {
                 text.push('\n');
             }
             text.push_str("# Memory\n\nNotes from earlier sessions: the user's standing context, which may be out of date. Load the memory tools to read one in full (recall NAME), or to save or forget one.\n");
+            let more =
+                |left: usize| format!("- ({left} more; recall with no name lists them all)\n");
+            // Room for the closing "more" line too, so the index holds its
+            // budget whatever the paths above it take (#12249).
+            let reserve = more(notes.len()).len();
             let mut left = 0usize;
             for (at, entry) in notes.iter().enumerate() {
                 let description: String =
                     entry.description.chars().take(INDEX_DESCRIPTION).collect();
                 let line = format!("- {}: {}\n", entry.name, description);
-                if text.len() + line.len() > budget {
+                let last = at + 1 == notes.len();
+                if text.len() + line.len() + if last { 0 } else { reserve } > budget {
                     left = notes.len() - at;
                     break;
                 }
                 text.push_str(&line);
             }
             if left > 0 {
-                text.push_str(&format!(
-                    "- ({left} more; recall with no name lists them all)\n"
-                ));
+                text.push_str(&more(left));
             }
         }
         text

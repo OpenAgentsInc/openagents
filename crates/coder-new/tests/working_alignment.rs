@@ -37,9 +37,11 @@ fn working_spinner_rides_the_inputs_top_left_rail() {
         if width >= 80 {
             assert!(rail.ends_with("Auto → Coder"), "{rail:?}");
         }
-        // The transcript never repeats it, and no second spinner draws.
+        // The transcript never repeats the label. Until the first words
+        // arrive, a wordless spinner holds the reply's place in the
+        // transcript (750b13cc9a): that one and the rail's, no third.
         let screen = rows.join("\n");
-        assert_eq!(screen.matches(spinner).count(), 1, "{screen}");
+        assert_eq!(screen.matches(spinner).count(), 2, "{screen}");
         assert_eq!(screen.matches("Working").count(), 1, "{screen}");
     }
 }
