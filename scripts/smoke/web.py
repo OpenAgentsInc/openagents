@@ -31,6 +31,13 @@ The `environments` group (#11162) signs in as the fixed agent-work test
 account (its key in SMOKE_AGENT_KEY) and opens Environments; with
 `--environment-run OWNER/REPO` it also sets one up end to end.
 
+In WorkOS mode, use SMOKE_WORKOS_CREDENTIAL_FILE for signed-in checks and
+SMOKE_WORKOS_AGENT_CREDENTIAL_FILE for the allowed agent-work account.
+Each names a private JSON file with origin, cookies (oa_workos only),
+access_token, and an optional key_token for inference. The caller owns
+those test accounts and deletes them after the checks. Without these files,
+the suite checks the disabled legacy issuers and skips their signed-in checks.
+
 The `alias` group (#11155) checks that `/api/v1` forwards only the public
 API: the inference admin status, operator sign-up, the website-only GitHub
 token and device approval answer 404, and `/api/v1/models` answers.
@@ -144,6 +151,45 @@ class Site:
 
 
 RESULTS = []
+TEMP_ACCOUNTS = []
+
+
+def workos_credentials(variable, base):
+    """Load a disposable test account without putting credentials in arguments."""
+    path = os.environ.get(variable)
+    if not path:
+        return None
+    if os.stat(path).st_mode & 0o077:
+        raise ValueError(f"{variable} must name a private credential file")
+    with open(path) as stream:
+        credentials = json.load(stream)
+    if (credentials.get("origin") != base or not credentials.get("cookies", {}).get("oa_workos")
+            or credentials.get("cookies", {}).get("oa_cloud_session")
+            or len(credentials.get("access_token", "").split(".")) != 3):
+        raise ValueError(f"{variable} must contain this site's WorkOS browser credentials")
+    return credentials
+
+
+def workos_required(response):
+    try:
+        return response.status == 403 and response.json().get("error", {}).get("code") == "workos_required"
+    except (ValueError, AttributeError):
+        return False
+
+
+def cleanup_accounts():
+    for base, session in TEMP_ACCOUNTS:
+        try:
+            removed = Site(base).request("/v1/account", method="DELETE",
+                                        body={"confirm": "delete my account", "forfeit_balance": True},
+                                        headers={"Authorization": f"Bearer {session}"})
+            record("accounts: disposable operator account is deleted",
+                   removed.status == 200 and removed.json()["account"]["state"] == "deleted",
+                   f"{removed.status}")
+        except Exception:
+            record("accounts: disposable operator account is deleted", False)
+    TEMP_ACCOUNTS.clear()
+
 
 # Checks answered through production's gateway sidecar, which holds until
 # its revision serves traffic (#11154). With --candidate a failure of one of
@@ -438,6 +484,7 @@ def durable(base, token, service, region, project):
     except (ValueError, KeyError, TypeError):
         record("durable: test account", False, f"{made.status}")
         return
+    TEMP_ACCOUNTS.append((base, session))
     bearer = {"Authorization": f"Bearer {session}"}
     provider = "sk-or-v1-smoke-" + uuid.uuid4().hex
     put = api.request(f"/api/v1/workspaces/{ws}/provider-keys/openrouter", method="PUT",
@@ -511,19 +558,28 @@ def durable(base, token, service, region, project):
 def environments(base, key, repo):
     """Environments as the allowed test account: the link, the pages, a
     repository's branch step, and (with `repo`) a setup end to end."""
-    if not key:
+    credentials = workos_credentials("SMOKE_WORKOS_AGENT_CREDENTIAL_FILE", base)
+    if not key and not credentials:
         record("environments: the agent-work test account signs in", None, "SMOKE_AGENT_KEY unset")
         return
     work = Site(base)
-    signed = work.request("/api/v1/sessions", method="POST", headers={"Authorization": f"Bearer {key}"})
-    try:
-        session = signed.json()["token"]
-    except (ValueError, KeyError, TypeError):
-        session = None
-    record("environments: the agent-work test account signs in", bool(session), f"{signed.status}")
-    if not session:
-        return
-    work.cookies["oa_cloud_session"] = session
+    if credentials:
+        work.cookies.update(credentials["cookies"])
+    else:
+        signed = work.request("/api/v1/sessions", method="POST", headers={"Authorization": f"Bearer {key}"})
+        if workos_required(signed):
+            record("environments: legacy browser-session issuer is disabled", True)
+            record("environments: WorkOS agent-work browser check", None,
+                   "SMOKE_WORKOS_AGENT_CREDENTIAL_FILE unset")
+            return
+        try:
+            session = signed.json()["token"]
+        except (ValueError, KeyError, TypeError):
+            session = None
+        record("environments: the agent-work test account signs in", bool(session), f"{signed.status}")
+        if not session:
+            return
+        work.cookies["oa_cloud_session"] = session
     home = work.get("/", headers=HTML)
     record("environments: the left panel links Environments",
            bool(re.search(r'href="/environments"', home.text)), f"{home.status}")
@@ -877,12 +933,12 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
         record("environments: the local task browser is refused on a public host",
                app.status in (403, 404), f"{app.status}")
 
-    # Accounts: open sign-up is refused; GitHub sign-in is the way in. The
-    # signed-in checks use one test account made with the staging operator
-    # token (SMOKE_SIGNUP_TOKEN), when it is set.
+    # Use a disposable operator account in legacy/dual mode, or supplied
+    # WorkOS browser credentials when the legacy issuer is disabled.
     session = key = None
     account = Site(base)
     if not production and (want("accounts") or want("signed-in") or want("gateway") or want("traces")):
+        credentials = workos_credentials("SMOKE_WORKOS_CREDENTIAL_FILE", base)
         open_ = Site(base).request("/api/v1/accounts", method="POST", body={"label": "Smoke"})
         try:
             code = open_.json().get("error", {}).get("code", "")
@@ -899,14 +955,25 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
             try:
                 made_json = made.json()
                 session, key = made_json["session_token"], made_json["key_token"]
+                TEMP_ACCOUNTS.append((base, session))
             except (ValueError, KeyError):
                 pass
-            record("accounts: the operator test account is made", bool(session), f"{made.status}")
+            if workos_required(made):
+                record("accounts: legacy operator-session issuer is disabled", True)
+                record("accounts: WorkOS test credentials supplied", bool(credentials) or None,
+                       "" if credentials else "SMOKE_WORKOS_CREDENTIAL_FILE unset")
+            else:
+                record("accounts: the operator test account is made", bool(session), f"{made.status}")
         else:
             record("accounts: the operator test account is made", None, "SMOKE_SIGNUP_TOKEN unset")
+        if credentials:
+            account.cookies.update(credentials["cookies"])
+            session = credentials["access_token"]
+            key = credentials.get("key_token")
     if want("signed-in") or want("gateway") or want("traces"):
         if session and want("signed-in"):
-            account.cookies["oa_cloud_session"] = session
+            if session.startswith("sess_"):
+                account.cookies["oa_cloud_session"] = session
             home = account.get("/")
             record("signed in: composer selectors render",
                    'id="composer-row"' in home.text and "/composer/row/project" in home.text)
@@ -1029,6 +1096,8 @@ def main():
             args.invite_only, args.environment_run)
     except Exception as e:  # a crash is a failure, never a silent pass
         record("suite: ran to the end", False, repr(e)[:200])
+    finally:
+        cleanup_accounts()
     passed = sum(1 for r in RESULTS if r[0] == "PASS")
     failed = sum(1 for r in RESULTS if r[0] == "FAIL")
     skipped = sum(1 for r in RESULTS if r[0] == "SKIP")
