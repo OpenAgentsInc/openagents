@@ -610,11 +610,23 @@ def main():
     parser.add_argument("--download",action="store_true",help="Fetch a missing model at its pinned revision and verify its SHA-256")
     parser.add_argument("--download-only",action="store_true",help="Download and verify the selected models without stopping any service")
     parser.add_argument("--direct-only",action="store_true",help="Run DeepSeek runtime checks over local HTTP without publishing a Pylon provider")
+    parser.add_argument("--serial-pylon-api",help="Qualify serial Pylon CLI jobs against an already running loopback llama.cpp API")
+    parser.add_argument("--fixture-relay-bin",type=Path,help="The qualification_relay example built with pylon's fixture feature")
+    parser.add_argument("--serial-engine-control",type=Path,help="Optional isolated-engine helper, called with crash/start for restart qualification")
     parser.add_argument("--deepseek-sampling",choices=("greedy", "recommended"),
                         help="Defaults to greedy for the native reference, recommended sampling for llama.cpp")
     parser.add_argument("--download-reserve-gib",type=int,default=30,help="Free space to leave after download (default 30 GiB; smaller RAM-backed caches may need less)")
     parser.add_argument("--pause-unit",help="Temporarily stop this systemd user unit and restore it on exit")
     args=parser.parse_args()
+    if args.serial_pylon_api:
+        from urllib.parse import urlsplit
+        api = urlsplit(args.serial_pylon_api)
+        if api.scheme != "http" or api.hostname != "127.0.0.1" or api.username or api.password or api.path not in ("", "/") or api.query or api.fragment:
+            parser.error("--serial-pylon-api must name a loopback HTTP server")
+        if args.engine != "llama-cpp" or args.direct_only or args.download_only:
+            parser.error("--serial-pylon-api needs --engine llama-cpp without --direct-only or --download-only")
+        if args.fixture_relay_bin is None or args.pylon_bin is None:
+            parser.error("serial Pylon qualification needs --fixture-relay-bin and --pylon-bin")
     args.deepseek_sampling = args.deepseek_sampling or ("greedy" if args.engine == "psionic" else "recommended")
     if args.max_tokens is not None and args.max_tokens < 1:
         parser.error("--max-tokens must be positive")
@@ -633,7 +645,7 @@ def main():
     if not args.download_only:
         if not args.direct_only and args.pylon_bin is None:
             parser.error("--pylon-bin is required unless --direct-only is selected")
-        if args.engine == "llama-cpp" and args.llama_cpp_bin is None:
+        if args.engine == "llama-cpp" and args.llama_cpp_bin is None and not args.serial_pylon_api:
             parser.error("--llama-cpp-bin is required for --engine llama-cpp")
         if args.engine == "psionic":
             if any(row["id"] != "gpt-oss-20b" for row in rows) and args.psionic_bin is None:
@@ -657,6 +669,14 @@ def main():
         prepare_template(row, path)
     if args.download_only:
         return
+    if args.serial_pylon_api:
+        if len(rows) != 1 or rows[0].get("qualification") != "deepseek-r1":
+            parser.error("serial Pylon qualification needs the pinned DeepSeek R1 model")
+        import serial_pylon
+        result = serial_pylon.qualify(args, rows[0], args.output / rows[0]["id"], cli,
+                                     stop_process, deepseek_boxed_response_check)
+        (args.output / "results.json").write_text(json.dumps(result, indent=2))
+        return 0 if result["qualified"] else 1
     props=pause_service(args.pause_unit,args.output) if args.pause_unit else None
     try:
         results=[]

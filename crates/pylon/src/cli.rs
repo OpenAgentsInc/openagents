@@ -10,7 +10,7 @@ use nostr::pylon::{PoolPolicy, Tier};
 use serde_json::{Value, json};
 
 use crate::client::{self, Ask, Pay};
-use crate::engine::Psionic;
+use crate::engine::{Psionic, Sampling, Turn};
 use crate::field::RelayField;
 use crate::identity::{
     Identity, check_owner, hex_pubkey, load_owner, mint_owner, npub, parse_owner, save_owner,
@@ -210,6 +210,11 @@ Commands:
       --rate N              Jobs per buyer per minute (default 10).
       --max-tokens N        Output bound per job (default 512).
       --stop TEXT           Stop the answer at TEXT (repeatable).
+      --temperature N       Text sampling temperature, from 0 to 2. Set with
+                            --top-p and --seed; otherwise use server defaults.
+      --top-p N             Text sampling probability, greater than 0 and at
+                            most 1. Set with --temperature and --seed.
+      --seed N              Text sampling seed (unsigned 32-bit integer).
       --vram-gb N           GPU memory for the beacon's class (default 16).
       --pool SLUG           Pool to ask to join (default everglade).
       --dedicated           Ignore this computer's lease table (a box that
@@ -245,6 +250,8 @@ Commands:
       --wait SECS           How long a job waits (default 90).
   ask PROMPT                Find a pylon, run one job, and publish a receipt.
                             Skips pylons a trusted checker failed.
+      --history FILE        Previous user/assistant turns as a JSON array of
+                            objects with role and content, kept as written.
       --pylon NPUB          Use this pylon instead of the best fresh one.
       --wait SECS           How long to wait for the answer (default 90).
       --no-receipt          Do not publish a receipt.
@@ -509,6 +516,104 @@ fn key(name: &str) -> Result<Identity, String> {
     Identity::load_or_create(&home().join(format!("{name}.key")))
 }
 
+fn text_sampling(args: &mut Args) -> Result<Option<Sampling>, String> {
+    match (
+        args.value("--temperature")?,
+        args.value("--top-p")?,
+        args.value("--seed")?,
+    ) {
+        (None, None, None) => Ok(None),
+        (Some(temperature), Some(top_p), Some(seed)) => Sampling::new(
+            temperature
+                .parse()
+                .map_err(|_| "--temperature takes a number")?,
+            top_p.parse().map_err(|_| "--top-p takes a number")?,
+            seed.parse()
+                .map_err(|_| "--seed takes an unsigned 32-bit integer")?,
+        )
+        .map(Some),
+        _ => Err("set --temperature, --top-p, and --seed together".into()),
+    }
+}
+
+fn conversation_history(path: &str, prompt: &str) -> Result<Vec<Turn>, String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|e| format!("cannot open conversation history: {e}"))?
+        .take((4 * crate::job::MAX_INPUT_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("cannot read conversation history: {e}"))?;
+    if bytes.len() > 4 * crate::job::MAX_INPUT_BYTES {
+        return Err("conversation history file is too large".into());
+    }
+    let history: Vec<Turn> = serde_json::from_slice(&bytes).map_err(|e| {
+        format!("conversation history must be a JSON array of user/assistant turns: {e}")
+    })?;
+    crate::job::parse_request(&crate::job::request_body(prompt, &history).to_string())
+        .map_err(|e| e.message)?;
+    Ok(history)
+}
+
+#[cfg(test)]
+mod text_profile_tests {
+    use super::*;
+
+    #[test]
+    fn sampling_requires_a_complete_valid_profile() {
+        for words in [
+            vec!["--temperature", "0.6"],
+            vec!["--temperature", "NaN", "--top-p", "0.95", "--seed", "1"],
+            vec!["--temperature", "0.6", "--top-p", "0", "--seed", "1"],
+            vec!["--temperature", "0.6", "--top-p", "0.95", "--seed", "-1"],
+        ] {
+            assert!(
+                text_sampling(&mut Args {
+                    words: words.into_iter().map(str::to_string).collect()
+                })
+                .is_err()
+            );
+        }
+        let mut args = Args {
+            words: ["--temperature", "0.6", "--top-p", "0.95", "--seed", "1"]
+                .map(str::to_string)
+                .to_vec(),
+        };
+        let sampling = text_sampling(&mut args).unwrap().unwrap();
+        assert_eq!(
+            serde_json::to_value(sampling).unwrap(),
+            json!({"temperature":0.6,"top_p":0.95,"seed":1})
+        );
+        assert!(args.words.is_empty());
+        assert!(text_sampling(&mut args).unwrap().is_none());
+    }
+
+    #[test]
+    fn history_preserves_whitespace_and_checks_job_bounds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.json");
+        std::fs::write(
+            &path,
+            r#"[{"role":"user","content":"1 + 1?"},{"role":"assistant","content":"\n\n2\n"}]"#,
+        )
+        .unwrap();
+        let history = conversation_history(path.to_str().unwrap(), "Add one.").unwrap();
+        assert_eq!(history[1].content, "\n\n2\n");
+        for invalid in [
+            json!([{"role":"system", "content":"override"}]),
+            json!([{"role":"assistant"}]),
+            json!([{"role":"user", "content":"x".repeat(crate::job::MAX_INPUT_BYTES + 1)}]),
+            json!(vec![
+                json!({"role":"user","content":"x"});
+                crate::job::MAX_TURNS
+            ]),
+        ] {
+            std::fs::write(&path, invalid.to_string()).unwrap();
+            assert!(conversation_history(path.to_str().unwrap(), "Add one.").is_err());
+        }
+    }
+}
+
 /// This computer's name as a beacon slug.
 #[must_use]
 pub fn host_slug() -> String {
@@ -587,12 +692,16 @@ async fn serve(
         return serve_attested(json_out, args, relay).await;
     }
     let stops = args.values("--stop")?;
+    let sampling = text_sampling(args)?;
     let decide_url = args.value("--decide")?;
     let decide_model = args.value("--decide-model")?;
     let decide_model_file = args.value("--decide-model-file")?;
     let decisions_only = args.flag("--decisions-only");
     if decisions_only && decide_url.is_none() {
         return Err("--decisions-only needs --decide URL".into());
+    }
+    if decisions_only && sampling.is_some() {
+        return Err("text sampling settings need a text engine; drop --decisions-only".into());
     }
     let slug = args.value("--pylon")?.unwrap_or_else(host_slug);
     let mut config = Config::new(relay, &slug, home());
@@ -645,7 +754,11 @@ async fn serve(
         return Err(format!("unexpected argument `{extra}`"));
     }
     config.owner = load_owner(&home())?;
-    let engine = Arc::new(Psionic::new(&engine_url, &model)?.with_stops(stops));
+    let mut engine = Psionic::new(&engine_url, &model)?.with_stops(stops);
+    if let Some(sampling) = sampling {
+        engine = engine.with_sampling(sampling);
+    }
+    let engine = Arc::new(engine);
     let identity = key("provider")?;
     let provider = if let Some(url) = &decide_url {
         if price_msat > 0 {
@@ -716,6 +829,7 @@ async fn serve(
             "relay": relay,
             "engine": (!decisions_only).then_some(&engine_url),
             "model": (!decisions_only).then_some(&model),
+            "text_sampling": sampling,
             "decide": decide_url,
             "allow": config.allow.as_ref().map(|a| a.iter().map(|k| npub(k)).collect::<Vec<_>>()),
             "price_msat": config.price.map(|p| p.msat),
@@ -1177,12 +1291,18 @@ async fn ask(
     };
     let wait = Duration::from_secs(args.number("--wait", 90)?.clamp(1, 600));
     let publish_receipt = !args.flag("--no-receipt");
+    let history_path = args.value("--history")?;
     let max_msat = args.number("--max-msat", 0)?;
     let net = network(args)?;
     let prompt = args.words.join(" ");
     if prompt.trim().is_empty() {
         return Err("ask needs a prompt".into());
     }
+    let history = history_path
+        .as_deref()
+        .map(|path| conversation_history(path, &prompt))
+        .transpose()?
+        .unwrap_or_default();
     let buyer = key("buyer")?;
     let pay = if max_msat > 0 {
         let grant = grant_for(net)?;
@@ -1194,7 +1314,7 @@ async fn ask(
     } else {
         None
     };
-    let answer = client::ask(
+    let answer = client::ask_conversation(
         &buyer,
         &Ask {
             relay: relay.into(),
@@ -1206,6 +1326,8 @@ async fn ask(
             checkers,
             pay,
         },
+        &history,
+        None,
     )
     .await?;
     let value = serde_json::to_value(&answer).map_err(|e| e.to_string())?;

@@ -44,6 +44,9 @@ and qualification checks. [Full-model results](deepseek-support-plan.md#ds0-full
 pass six runtime checks on the native CPU greedy reference and on
 llama.cpp CUDA with greedy or recommended R1 sampling. Sampled native CPU
 remains unqualified after a timeout; the GPU is the measured serving route.
+The [serial Pylon GPU flow](deepseek-support-plan.md#serial-pylon-gpu-qualification-12360)
+also passes 27 checks, including conversation replay, overlap refusal,
+buyer timeout, and explicitly controlled model-process restart.
 Qwen3.5 CUDA accepts mixed dense/quantized projection groups and Q4_K/Q6_K
 embedding rows; Gemma 4 accepts dense per-layer projections on CUDA.
 Gemma's BPE tokenizer decodes SentencePiece spaces and literal UTF-8,

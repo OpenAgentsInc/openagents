@@ -115,6 +115,16 @@ qualify the native CPU greedy reference and llama.cpp CUDA text profiles.
 Use the CUDA route for the measured serving configuration; sampled native
 CPU timed out in the development build. The DS0 runner's `--direct-only`
 mode checks the model over loopback HTTP without publishing a provider.
+The [serial Pylon GPU checks](../psionic/deepseek-support-plan.md#serial-pylon-gpu-qualification-12360)
+also pass through a private relay fixture, with one provider slot and one
+llama.cpp parallel slot. For this R1 profile, pass
+`--temperature 0.6 --top-p 0.95 --seed 1` to `pylon serve`, together with
+`--slots 1 --max-tokens 2048`. Pylon preserves the final answer as written;
+`pylon ask --history FILE` reads previous user/assistant turns from a JSON
+array of `{"role":"assistant","content":"..."}` objects. The GPU flow
+fits the existing 90-second provider deadline; the measured CPU
+continuation does not. Explicit crash/restart checks do not imply an
+automatic recovery supervisor.
 GPT-OSS passed the full suite through llama.cpp; its native server
 returned no final answer for the summary prompt even with 4,096 output
 tokens, so use the compatible route for this workload.

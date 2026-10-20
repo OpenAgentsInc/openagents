@@ -39,8 +39,8 @@ Larger distills and a new native GPU decoder follow a working baseline.
 | DS0 agent | Pinned artifact/tokenizer/template, reasoning/final parsing, numerical/full-model qualification, and the existing catalog/runner's DeepSeek checks | Its first text implementation landed as `ad9a289fc7`. Token/artifact checks and six direct runtime checks pass for native CPU greedy and llama.cpp CUDA greedy/recommended sampling; sampled CPU remains unqualified. See the [full-model results](#ds0-full-model-qualification-2026-10-20). |
 | Serving work in this chat | Serial execution, bounded requests, completion/error handling, timeout recovery, then a reproducible private worker launch and smoke check | Consume the landed DS0 profile and its qualification results. Do not rewrite tokenizer, prompt rendering, reasoning parsing, decoder math, or duplicate its qualification runner. |
 
-The first serving changes can be developed with synthetic model-server
-fixtures while DS0 qualification continues. Promotion of **native R1**
+Serving changes use synthetic model-server fixtures alongside the
+recorded DS0 model checks. Promotion of **native R1**
 depends on DS0's full-model CPU answer, continuation, reasoning/final and
 truncation results; fixtures alone are insufficient. The compatible GPU
 path instead needs its own pinned engine/template/artifact qualification.
@@ -129,14 +129,16 @@ reasoning without a final answer, tool requests, refusals and malformed
 completion envelopes are errors. Reasoning is never substituted for final
 text. Use `pylon serve --slots 1 --max-tokens 2048` with the separately
 started serial server and the normal engine/model/buyer settings; the
-2,048-token setting passes DS0's direct runtime checks but still needs
-Pylon deadline qualification; the native CPU continuation took 274 seconds.
+2,048-token setting passes DS0's direct runtime checks and the
+[serial llama.cpp GPU flow](#serial-pylon-gpu-qualification-12360).
+The native CPU continuation took 274 seconds and remains outside Pylon's
+90-second provider deadline.
 The supervised `pylon up` path does not yet select serial mode automatically.
 
 This completes the admission and completion-validation portion of S1,
 independently of DS0. S1's operator-configured context/output caps and
-execution deadline, S2's hard stop/restart recovery, full-model serving-path
-checks, and the cloud launch remain pending. An active generation that does not
+execution deadline, S2's automatic stop/restart recovery, and the cloud
+launch remain pending. An active generation that does not
 finish stays busy; this change does not claim to interrupt a hung decoder.
 Worker/caller-cancellation fixtures and a tiny CPU model cover slot ownership,
 cross-endpoint refusal, error release and sequential reuse; a real HTTP
@@ -548,6 +550,78 @@ use different hardware and build profiles. These measurements establish
 working bounded configurations, not release-build CPU speed, token-level
 numerical parity, or latency guarantees. All checks use isolated loopback
 HTTP servers and synthetic prompts, without a Pylon provider or account.
+
+### Serial Pylon GPU qualification (#12360)
+
+The [serial Pylon report](../../scripts/bench/pylon-models/deepseek-r1-pylon-serial-2026-10-20.json)
+passes **27/27 checks** with the same pinned R1 Q4_K_M and llama.cpp
+revision. The real Pylon CLI sends encrypted buyer jobs through the
+existing loopback NIP-01/NIP-42 relay fixture to a one-slot provider,
+then through an HTTP recording proxy and private SSH tunnel to the RTX
+4080. Successful answers have signed receipts. No production relay,
+account, Clef process, or network Pylon was used or changed.
+
+Pylon now preserves final-answer whitespace while still rejecting empty
+or unfinished answers. `pylon ask --history FILE` reuses previous
+user/assistant turns from a bounded JSON array without changing their
+content. `pylon serve --temperature 0.6 --top-p 0.95 --seed 1` sends all
+three settings explicitly; they must be supplied together. Every captured
+model request confirms these settings, `stream: false`, and `n: 1`.
+
+| Observation | Result |
+| --- | --- |
+| Fresh model process ready | 9.282 s; operating-system caches were not cleared |
+| First complete answer through Pylon | 0.709 s; correct boxed `2` |
+| Actual-history continuation | 1.646 s; correct boxed `3`; 147 prompt tokens |
+| Ten sequential warm requests, including continuation | 10/10; median 0.712 s; range 0.614–1.646 s |
+| Two simultaneous buyer jobs | One succeeds; the other gets `rate_limited: no free slot` |
+| One-token truncation and stop during reasoning | Both fail explicitly; neither delivers a final answer |
+| Buyer expires after one second | Model work keeps running; another request is refused until it finishes, then a new job succeeds |
+| Isolated GPU process killed during a job | Buyer receives a failure; requests while down fail; explicit restart reaches readiness in 4.498 s and the next answer succeeds |
+| Serial execution and GPU allocation | At most one model HTTP request in flight; llama.cpp `--parallel 1`; 29/29 layers offloaded; 1,384 MiB GPU memory |
+
+The delivered first answer and its replayed assistant turn match the model
+response byte for byte, including two leading newlines. Complete-answer
+checks reach 545 total tokens; a negative timeout/truncation probe reaches
+2,087. The provider keeps its 90-second job deadline and 2,048 output-token
+cap. The HTTP timeout stays 120 seconds. Native CPU's 274-second
+continuation is not qualified for this Pylon route.
+
+The runner records requests, responses, receipts, timings, binary/source
+hashes, GPU evidence, and the initial checker corrections. Those probes
+exposed existing slot-refusal and beacon-refresh behavior: a one-second
+buyer wait can expire during discovery of a busy beacon. The final timeout
+probe starts from a fresh free-slot beacon and requires a model request
+to be active when the buyer leaves. No failed generation is silently retried.
+
+After loading the shared Cargo build settings, build the CLI and existing
+relay fixture, start the pinned llama.cpp server on loopback with
+`--parallel 1 --ctx-size 4096 --n-gpu-layers all --device CUDA0
+--reasoning-format deepseek`, and run:
+
+```sh
+cargo build -p pylon --features fixture --bin pylon --example qualification_relay
+python3 scripts/bench/pylon-models/run.py \
+  --models deepseek-r1-distill-qwen-1.5b --engine llama-cpp \
+  --serial-pylon-api http://127.0.0.1:18431 \
+  --pylon-bin /path/to/pylon --fixture-relay-bin /path/to/qualification_relay \
+  --model-dir /path/to/pinned-models --output "$(openagents scratch)/r1-pylon-serial"
+```
+
+This mode checks Pylon transport against an existing server; the operator
+must separately verify that server's artifact, runtime, and GPU allocation.
+An optional `--serial-engine-control /path/to/helper` adds the crash/restart
+checks. It calls the helper with `crash` and `start`; the helper must act
+only on its own isolated model process and return after restart readiness.
+The recorded run used that helper and stopped its model, provider, relay,
+and tunnel afterward.
+
+All 155 Pylon tests pass, with one existing large-model test ignored;
+20 Python tests and changed-file formatting pass. These are bounded
+shared-host observations. The restart was a qualification-controller
+action, not a shipped watchdog. Native Psionic's real HTTP-disconnect
+check, automatic hard recovery, supervised `pylon up` serial selection,
+cloud deployment, long context, and broader model quality remain separate.
 
 ## Further infrastructure lessons and what to defer
 

@@ -8,8 +8,37 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+/// Explicit text sampling settings, independent of the model server's defaults.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct Sampling {
+    temperature: f64,
+    top_p: f64,
+    seed: u32,
+}
+
+impl Sampling {
+    /// Validate sampling settings before starting a provider.
+    ///
+    /// # Errors
+    ///
+    /// When temperature is outside 0–2 or top-p is outside (0, 1].
+    pub fn new(temperature: f64, top_p: f64, seed: u32) -> Result<Self, String> {
+        if !temperature.is_finite() || !(0.0..=2.0).contains(&temperature) {
+            return Err("--temperature must be between 0 and 2".into());
+        }
+        if !top_p.is_finite() || !(0.0 < top_p && top_p <= 1.0) {
+            return Err("--top-p must be greater than 0 and at most 1".into());
+        }
+        Ok(Self {
+            temperature,
+            top_p,
+            seed,
+        })
+    }
+}
+
 /// One message of a conversation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Turn {
     /// `system`, `user`, or `assistant`.
     pub role: String,
@@ -52,6 +81,7 @@ pub struct Psionic {
     /// `/v1/models` (see [`served_name`]).
     served: tokio::sync::OnceCell<String>,
     stop: Vec<String>,
+    sampling: Option<Sampling>,
 }
 
 /// The id in a `/v1/models` body to request `model` by. Psionic lists a
@@ -94,6 +124,7 @@ impl Psionic {
             client,
             served: tokio::sync::OnceCell::new(),
             stop: Vec::new(),
+            sampling: None,
         })
     }
 
@@ -104,10 +135,22 @@ impl Psionic {
         self
     }
 
+    /// Send the same explicit sampling settings with every text request.
+    #[must_use]
+    pub fn with_sampling(mut self, sampling: Sampling) -> Self {
+        self.sampling = Some(sampling);
+        self
+    }
+
     fn request_body(&self, model: &str, messages: Vec<Value>, max_tokens: u32) -> Value {
         let mut body = json!({"model": model, "messages": messages, "max_tokens": max_tokens, "stream": false, "n": 1});
         if !self.stop.is_empty() {
             body["stop"] = json!(self.stop);
+        }
+        if let Some(sampling) = self.sampling {
+            body["temperature"] = json!(sampling.temperature);
+            body["top_p"] = json!(sampling.top_p);
+            body["seed"] = json!(sampling.seed);
         }
         body
     }
@@ -220,8 +263,8 @@ fn finished_text(body: &Value) -> Result<String, String> {
     {
         return Err("model declined to answer".into());
     }
-    let text = message["content"].as_str().unwrap_or_default().trim();
-    if text.is_empty() {
+    let text = message["content"].as_str().unwrap_or_default();
+    if text.trim().is_empty() {
         return Err(if message["reasoning_content"]
             .as_str()
             .is_some_and(|text| !text.trim().is_empty())
@@ -316,7 +359,7 @@ mod tests {
             assert!(!error.contains("unfinished thought"));
         }
         let body = json!({"choices": [{"finish_reason": "stop", "message": {"content": "  2\n", "reasoning_content": "private thought"}}]});
-        assert_eq!(finished_text(&body).unwrap(), "2");
+        assert_eq!(finished_text(&body).unwrap(), "  2\n");
     }
 
     #[tokio::test]
@@ -356,7 +399,10 @@ mod tests {
                     assert_eq!(request["max_tokens"], 32);
                     assert_eq!(request["stream"], false);
                     assert_eq!(request["n"], 1);
-                    json!({"choices":[{"finish_reason":finish,"message":{"content":"READY","reasoning_content":"private thought"}}],"usage":{"prompt_tokens":12,"completion_tokens":1}})
+                    assert_eq!(request["temperature"], 0.6);
+                    assert_eq!(request["top_p"], 0.95);
+                    assert_eq!(request["seed"], 1);
+                    json!({"choices":[{"finish_reason":finish,"message":{"content":"\n\nREADY\n","reasoning_content":"private thought"}}],"usage":{"prompt_tokens":12,"completion_tokens":1}})
                 } else {
                     json!({"data":[{"id":"actual.gguf"}]})
                 }.to_string();
@@ -365,7 +411,8 @@ mod tests {
         });
         let engine = Psionic::new(&address, "advertised")
             .unwrap()
-            .with_stops(vec!["<extra_id_1>".into(), "next,turn".into()]);
+            .with_stops(vec!["<extra_id_1>".into(), "next,turn".into()])
+            .with_sampling(Sampling::new(0.6, 0.95, 1).unwrap());
         let error = engine
             .generate(
                 &[Turn {
@@ -387,7 +434,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(answer.text, "READY");
+        assert_eq!(answer.text, "\n\nREADY\n");
         server.await.unwrap();
     }
 

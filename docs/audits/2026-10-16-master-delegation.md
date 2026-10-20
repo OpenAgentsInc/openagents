@@ -485,7 +485,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
-- #12358: After DS0 full-model qualification, run the serial Psionic/Pylon setup on an isolated model process with one Pylon slot. Record ten sequential warm requests and a cold start; confirm explicit truncation, a busy refusal during generation, and the behavior of a real HTTP disconnect. Keep /home builds first and leave Clef/network Pylon unchanged. Hard execution deadlines and process restart recovery remain S1/S2 implementation work in the [personal serving plan](../psionic/deepseek-support-plan.md#personal-serving-first-one-generation-at-a-time), not features claimed by this change.
+- #12358/#12360: DS0 and the [serial Pylon llama.cpp GPU flow](../psionic/deepseek-support-plan.md#serial-pylon-gpu-qualification-12360) pass with a fresh process, ten warm jobs, truncation/refusal, buyer wait expiry, and an explicitly controlled backend crash/restart. Clef/network Pylon stayed unchanged. Native Psionic's real HTTP-disconnect check, automatic hard deadlines/recovery, and cloud deployment remain S1/S2 work in the [personal serving plan](../psionic/deepseek-support-plan.md#personal-serving-first-one-generation-at-a-time).
 
 - #12344: After the web deploy, use the dedicated test account and a disposable computer chat with a saved chart and 3D visual. Confirm the visual module downloads only when a visual is shown, attachment reads follow the computer grant, controls work, resizing and scrolling keep the canvases in their rows, and changing chats removes them. Delete the chat afterward.
 

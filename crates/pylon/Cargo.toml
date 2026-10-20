@@ -59,5 +59,9 @@ required-features = ["fixture"]
 name = "agent_market"
 required-features = ["fixture"]
 
+[[example]]
+name = "qualification_relay"
+required-features = ["fixture"]
+
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }
