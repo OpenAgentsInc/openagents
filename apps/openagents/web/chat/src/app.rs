@@ -76,6 +76,9 @@ enum Menu {
 pub struct ChatApp {
     client: Client,
     check_ins: Entity<crate::check_ins::CheckIns>,
+    agent_lab: Entity<crate::agent_lab::AgentLab>,
+    lab_open: bool,
+    lab_task: Option<HostChat>,
     /// Signed in, or chatting as the browser's visitor (the page's
     /// `openagents-signed-in`).
     signed_in: bool,
@@ -219,7 +222,13 @@ impl ChatApp {
         let mut back = route::watch();
         let history = cx.spawn(async move |this, cx| {
             while let Some(chat) = back.next().await {
-                if this.update(cx, |this, cx| this.load(chat, cx)).is_err() {
+                if this
+                    .update(cx, |this, cx| {
+                        this.lab_open = false;
+                        this.load(chat, cx);
+                    })
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -228,9 +237,26 @@ impl ChatApp {
         let origin = web_sys::window()
             .and_then(|w| w.location().origin().ok())
             .unwrap_or_default();
+        let agent_lab = cx.new(crate::agent_lab::AgentLab::new);
+        cx.subscribe_in(
+            &agent_lab,
+            window,
+            |this, _, task: &crate::agent_lab::OpenTask, window, cx| {
+                this.lab_task = Some(HostChat {
+                    device: task.device.clone(),
+                    chat: task.chat.clone(),
+                    harness: None,
+                });
+                this.open(Some(task.chat.clone()), window, cx);
+            },
+        )
+        .detach();
         let mut this = Self {
             client,
             check_ins: cx.new(crate::check_ins::CheckIns::new),
+            agent_lab,
+            lab_open: false,
+            lab_task: None,
             signed_in: route::signed_in(),
             origin,
             threads: Vec::new(),
@@ -344,6 +370,7 @@ impl ChatApp {
     }
 
     fn open(&mut self, chat: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        self.lab_open = false;
         route::push(chat.as_deref());
         self.sidebar_open = false;
         self.load(chat, cx);
@@ -391,7 +418,9 @@ impl ChatApp {
                 chat: id.clone(),
                 harness,
             })
-            .or_else(|| self.host_chat_of(&id));
+            .or_else(|| self.host_chat_of(&id))
+            .or_else(|| self.lab_task.clone().filter(|host| host.chat == id));
+        let device = host.as_ref().map(|host| host.device.clone());
         let on_computer = host.is_some();
         self.set_host_chat(host, cx);
         if self.is_computer(&id) {
@@ -400,7 +429,7 @@ impl ChatApp {
             return;
         }
         if on_computer {
-            self.loading_chat = false;
+            self.load_computer_on(id, device.unwrap(), "your computer".into(), generation, cx);
             cx.notify();
             return;
         }
@@ -1006,7 +1035,36 @@ impl ChatApp {
                     ),
             )
             .when(self.signed_in, |sidebar| {
-                sidebar.child(self.check_ins.clone())
+                sidebar
+                    .child(
+                        div()
+                            .id("open-agent-lab")
+                            .role(gpui::Role::Button)
+                            .aria_label("Agent Lab")
+                            .tab_index(0)
+                            .mx(px(10.))
+                            .p(px(8.))
+                            .cursor_pointer()
+                            .child("Agent Lab")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.lab_open = true;
+                                this.sidebar_open = false;
+                                this.agent_lab.update(cx, |lab, cx| lab.open(cx));
+                                route::set_title("Agent Lab");
+                                cx.notify();
+                            }))
+                            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                    this.lab_open = true;
+                                    this.sidebar_open = false;
+                                    this.agent_lab.update(cx, |lab, cx| lab.open(cx));
+                                    route::set_title("Agent Lab");
+                                    cx.notify();
+                                    cx.stop_propagation();
+                                }
+                            })),
+                    )
+                    .child(self.check_ins.clone())
             })
             .child(
                 div()
@@ -1881,11 +1939,42 @@ impl Render for ChatApp {
                     .border_color(theme::border())
                     .bg(theme::bg())
                     .overflow_hidden()
-                    .child(self.render_header(wide, cx))
+                    .when(!self.lab_open, |main| {
+                        main.child(self.render_header(wide, cx))
+                    })
+                    .when(self.lab_open, |main| {
+                        main.child(
+                            div()
+                                .p(px(12.))
+                                .cursor_pointer()
+                                .child("Back to chat")
+                                .id("close-agent-lab")
+                                .role(gpui::Role::Button)
+                                .aria_label("Back to chat")
+                                .tab_index(0)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.lab_open = false;
+                                    cx.notify();
+                                }))
+                                .on_key_down(cx.listener(
+                                    |this, event: &gpui::KeyDownEvent, _, cx| {
+                                        if matches!(event.keystroke.key.as_str(), "enter" | "space")
+                                        {
+                                            this.lab_open = false;
+                                            cx.notify();
+                                            cx.stop_propagation();
+                                        }
+                                    },
+                                )),
+                        )
+                    })
                     .children(notice)
-                    .children(self.render_move_sheet(cx))
-                    .child(transcript)
-                    .child(self.render_composer(cx)),
+                    .when(self.lab_open, |main| main.child(self.agent_lab.clone()))
+                    .when(!self.lab_open, |main| {
+                        main.children(self.render_move_sheet(cx))
+                            .child(transcript)
+                            .child(self.render_composer(cx))
+                    }),
             );
         let mut root = div()
             .id("openagents-web-chat")

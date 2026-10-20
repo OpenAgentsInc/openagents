@@ -502,6 +502,8 @@ The status lines below summarize each issue and its comments. Open the issue for
 - #12208, #12210: The integrator on `oa-dev-env-1` runs `d013fd5ada`. On the next code entry, confirm with `openagents land show ID` that its checks list `cargo check -q -p PKG` before `--tests`, that a stale generated file it touches lands as a "Regenerate generated files" commit, and that a change under `apps/openagents/crates/mobile/` names the Android binding under `regenerate_skipped`.
 - #12206: When the 1.0 push ends, restore `oa-dev-env-idle-minutes=30` on `oa-dev-env-1`. Then queue an entry while a slot is busy and confirm `scripts/cloud/dev-env-agent.sh check` says busy until it lands; stop the VM, submit from a pool host, and confirm the `warning:` line, `integrator_down` in the run result, and the `ALERT:` line in `land status`.
 
+- #12285: After the web deploy, use the dedicated test account at `/?ui=gpui` in Chrome, Safari, and Firefox. Open Agent Lab, edit an agent and its tests, save, run on a scratch Lab host, read the result, add a review note, open the trial's conversation through the paired browser, and choose Use agent. Remove the test experiment and agent afterward. This Linux session's browser launcher points to an unavailable `coder-browser` binary.
+
 Deploys and live checks that no longer hold an issue open. Lane 0 works through them in order, after each production deploy. Add a row when you close an issue with a check still to run. When a check passes, mark it done with the evidence. When it fails, open a new issue and link it.
 
 | Issue (closed or closing) | Check | Status |
