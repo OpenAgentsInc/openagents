@@ -290,17 +290,15 @@ impl<P: Page> Render for Host<P> {
                         .flex_row()
                         .gap(px(8.))
                         .child(
-                            openagents_web_chat_view::transcript::button(
-                                "page-field-ok",
-                                "Save",
-                                true,
-                            )
-                            .on_click(
-                                cx.listener(|this, _: &ClickEvent, _, cx| this.submit_field(cx)),
-                            ),
+                            openagents_web_chat_view::labels::button("page-field-ok", "Save", true)
+                                .on_click(
+                                    cx.listener(|this, _: &ClickEvent, _, cx| {
+                                        this.submit_field(cx)
+                                    }),
+                                ),
                         )
                         .child(
-                            openagents_web_chat_view::transcript::button(
+                            openagents_web_chat_view::labels::button(
                                 "page-field-cancel",
                                 "Cancel",
                                 false,
