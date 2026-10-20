@@ -485,6 +485,15 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12279: after the web and scratch desktop host include this change, use the
+  dedicated test account at `/?ui=gpui` in Chrome, Safari, and Firefox. Allow
+  the browser on the scratch computer, find a chat by title/project/computer,
+  find a file, and open a content hit at its highlighted source line. Check
+  All/Actions/Chats/Files/Content, arrows, Enter, Escape, Ctrl+Alt+Left/Right,
+  and each Settings → Shortcuts binding (including opening the palette while
+  the file pane has focus). Revoke browser access and confirm the next search
+  fails. Use a temporary HOME/project and delete all test chats/files afterward.
+
 - #12224: after #12263's room-token key is set on the web service and coder-sync, and a web deploy at `6d6ff7fb04` or later, run a scratch desktop app (temporary `HOME` and data folder, never the owner's computer) signed in as the test account with a scratch project, start a chat there, and allow the browser (see #12264). In Chrome, signed in as the same account, open that chat with `?ui=gpui`: confirm its transcript loads (the page fetches `openagents_web_room_bg.wasm` once), grows live while the desktop answers, and that a reply typed in the browser reaches the desktop and its answer streams back. Reload after the room has compacted (or after the desktop posts a checkpoint) and confirm the transcript still loads (`/v1/sync/chat2/{id}/checkpoint` answers 200). Remove what the check made.
 - #12223: With `?ui=gpui` on production, as the dedicated test account with a Coder computer online, open a Coder chat whose Coder is waiting on an approval and answer it from the GPUI page's side panel (Approve or Deny), and start a Claude Code run with two agents from the HTML chat, then Stop and Message one from the side panel. Archive the Coder task and delete the chats afterward.
 - #12298: Deploy the web (it adds `GET`/`PUT`/`DELETE /v1/device/name`, which forward to the account service's `/v1/account/name`). Then, as the dedicated test account in the desktop app, open Your ID > Public profile, set a name and an `https://` picture, save, and confirm `/@NAME` shows them, `/.well-known/nostr.json?name=NAME` answers the key, and a third-party Nostr client resolves `NAME@openagents.com`. Release the test name afterward.
