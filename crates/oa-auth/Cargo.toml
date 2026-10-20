@@ -15,6 +15,11 @@ local = ["dep:axum"]
 # Keep GitHub access in the account database when one is attached to the
 # registry directory (#11154).
 postgres = ["tenancy/postgres"]
+# WorkOS User Management (docs/auth/2026-10-20-workos-source-of-truth.md):
+# the official SDK at an exact version, for server crates only.
+workos = ["dep:workos", "dep:jsonwebtoken"]
+# An in-process fake WorkOS API for tests and fixtures.
+fake-workos = ["workos", "dep:axum"]
 
 [dependencies]
 axum = { version = "0.8", optional = true }
@@ -31,10 +36,13 @@ subtle = "2"
 tenancy = { path = "../tenancy" }
 tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
 url = "2"
+workos = { version = "=3.5.0", optional = true }
+# The SDK's own pin, for signing and reading access tokens in the fake.
+jsonwebtoken = { version = "=10.3.0", optional = true, default-features = false, features = ["aws_lc_rs"] }
 x509-parser = { version = "0.18", features = ["verify"] }
 
 [dev-dependencies]
-oa-auth = { path = ".", features = ["fake", "local"] }
+oa-auth = { path = ".", features = ["fake", "local", "fake-workos"] }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync"] }
 

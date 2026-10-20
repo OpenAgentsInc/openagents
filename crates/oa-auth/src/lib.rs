@@ -21,6 +21,8 @@
 //!   account's signed-in apps list.
 //! - [`sign_in_keys`]: the account's sign-in keys (`oa_sk_…`) for agents:
 //!   list, make, revoke, and the last-use note.
+//! - `workos` (feature): WorkOS as the auth object for a person: the
+//!   client, access-token checks, account linking, and the dual-write.
 //! - `fake` (feature): an in-process fake GitHub for tests and fixtures.
 //! - `local` (feature): a small account service for local fixtures.
 
@@ -41,6 +43,8 @@ pub mod play_integrity;
 pub mod repos;
 pub mod service;
 pub mod sign_in_keys;
+#[cfg(feature = "workos")]
+pub mod workos;
 
 pub use app::{AppClient, AppCredentials, AppInstall, TokenCache};
 pub use config::{CALLBACK_PATH, Endpoints, GithubApp, GithubCredentials};
