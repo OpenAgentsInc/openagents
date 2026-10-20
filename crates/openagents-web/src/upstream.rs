@@ -276,6 +276,7 @@ pub fn owned(path: &str) -> bool {
         || crate::work_runs::owns(path)
         || crate::landing::owns(path)
         || crate::account_schedules::owns(path)
+        || crate::account_memory::owns(path)
         || crate::runs::owns(path)
         || crate::attention::owns(path)
         || crate::issue_claims::owns(path)

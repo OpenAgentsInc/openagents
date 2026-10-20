@@ -588,6 +588,8 @@ window.addEventListener("oa-settings-open", openSettings);
 // path). Its box covers the chat; its Back to chat (`oa-page-close`) hides
 // the box, and moving within the page (`oa-page-path`) keeps the address.
 var PAGES = {
+  memory: ["./openagents_web_memory.js", "./openagents_web_memory_bg.wasm"],
+  schedules: ["./openagents_web_schedules.js", "./openagents_web_schedules_bg.wasm"],
   traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
   agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
@@ -612,6 +614,15 @@ function openPage(path) {
   var name = (path || "").split("/")[0];
   var files = PAGES[name];
   if (!files) {
+    return;
+  }
+  // Close Settings through its Rust owner before changing the page address.
+  // The hide acknowledgement comes before that owner finishes its route push.
+  if (settingsBox && !settingsBox.hidden) {
+    window.addEventListener("oa-settings-hide", function () {
+      queueMicrotask(function () { openPage(path); });
+    }, { once: true });
+    window.dispatchEvent(new CustomEvent("oa-settings-close", { detail: "" }));
     return;
   }
   var rest = path.slice(name.length + 1);
