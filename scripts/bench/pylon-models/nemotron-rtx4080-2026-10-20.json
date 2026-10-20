@@ -43,7 +43,8 @@
     "Output budget is 32 tokens rather than the earlier eight-model benchmark 2048; exact checks include formatting.",
     "Direct throughput includes prefill and a short 16-token output; engine timings separately report generation speed.",
     "This is a low-bit quantization of the older dense 340B model, selected by parameter count and memory fit, not answer quality.",
-    "Pylon retains its 90-second job deadline, limiting longer prompts or outputs on this model."
+    "Pylon retains its 90-second job deadline, limiting longer prompts or outputs on this model.",
+    "The shared-GPU load check used four GPU layers while large Rust builds ran; its timing is not an idle-host performance measurement and its short answer timed out."
   ],
   "model": {
     "id": "nemotron4-340b",
@@ -215,5 +216,35 @@
   "qualified_transport": true,
   "median_pylon_wall_ms": 34909.082,
   "exact_checks_passed": 2,
-  "exact_checks_total": 5
+  "exact_checks_total": 5,
+  "supervised_validation": {
+    "selected_via_cli": true,
+    "gpu_layers": 4,
+    "decision_model_running": true,
+    "inventory": [
+      "/home/christopherdavid/.openagents/models/nemotron4-340b/Nemotron-4-340B-Instruct-hf.i1-IQ2_XXS.gguf"
+    ],
+    "ready_ms": 366309.092,
+    "default_restored": true,
+    "restored_inventory": [
+      "/home/christopherdavid/.openagents/models/gemma4-e4b/gemma-4-E4B-it-Q4_K_M.gguf"
+    ],
+    "restore_ready_ms": 36185.578,
+    "source_commit": "eb5d938b94",
+    "loaded_beside_clef": true,
+    "answer_verified": false,
+    "answer_timeout_seconds": 120,
+    "concurrent_large_rust_builds": true,
+    "previous_auto_offload_error": "Attempted 12529.05 MiB CUDA allocation beside Clef using 7092 MiB; out of memory",
+    "follow_up": "https://github.com/OpenAgentsInc/openagents/issues/12348",
+    "quiet_retry_deferred": "Foreman requested releasing quiet to prioritize the owner /home builds; quiet lease released and not renewed."
+  },
+  "final_service": {
+    "state": "serving",
+    "decision_model": "clef-flash",
+    "text_model": "gemma-4-E4B-it-Q4_K_M",
+    "both_engines_up": true,
+    "verify_pass": true,
+    "quiet_lease_released": true
+  }
 }

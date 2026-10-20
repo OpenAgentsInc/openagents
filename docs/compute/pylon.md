@@ -183,7 +183,11 @@ Use `pylon-net` on the configured RTX 4080 host to select its existing
 service home. Four GPU layers leave room for Clef on this shared 16 GiB
 GPU. Automatic fitting attempted a 12.5 GiB allocation beside Clef's
 7 GiB and failed; the isolated benchmark's automatic fit was measured
-with Clef paused. The original eight-model benchmark uses 2,048 output tokens
+with Clef paused. Four layers loaded beside Clef, but a short answer hit
+120 seconds under concurrent large builds. The idle-host answer check is
+[#12348](https://github.com/OpenAgentsInc/openagents/issues/12348); its
+quiet retry was deferred for the owner's `/home` work. Use an idle machine
+for this model. The original eight-model benchmark uses 2,048 output tokens
 and a 128-token throughput probe; the large Nemotron profile uses a
 smaller budget and probe, recorded with each result. `--cases` selects
 individual benchmark prompts. These budgets do not extend the provider's
