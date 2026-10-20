@@ -51,6 +51,8 @@ chrono.workspace = true
 notify.workspace = true
 portable-pty.workspace = true
 base64 = "0.22"
+# Dictation from a paired browser, with the desktop's model (#12292).
+openagents-voice = { path = "../voice" }
 toml = "0.8"
 libc.workspace = true
 gethostname.workspace = true

@@ -114,6 +114,12 @@ pub const OPERATE: &[&str] = &[
     openagents_rpc::pylon::PYLON_UP,
     openagents_rpc::pylon::PYLON_DOWN,
     openagents_rpc::pylon::PYLON_SET_PAUSE,
+    // Dictation: this computer transcribes what the browser records
+    // (#12292).
+    openagents_rpc::dictation::DICTATION_STATUS,
+    openagents_rpc::dictation::DICTATION_APPEND,
+    openagents_rpc::dictation::DICTATION_FINISH,
+    openagents_rpc::dictation::DICTATION_CANCEL,
 ];
 
 /// Parameters a browser never sets: forwarding to another computer under

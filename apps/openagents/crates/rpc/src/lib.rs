@@ -23,6 +23,8 @@ mod client;
 pub mod browsers;
 pub mod connect_phone;
 pub mod device_room;
+/// Dictation from a paired browser (#12292).
+pub mod dictation;
 /// Moving running chats to a cloud computer (#11933).
 pub mod moves;
 /// Earn on a paired computer (#12294).

@@ -118,9 +118,7 @@ pub(super) async fn handle(
 ) -> Result<RpcReply, RpcError> {
     let dir = model_dir(data_dir);
     match method {
-        DICTATION_STATUS => {
-            RpcReply::value(&json!({ "ready": openagents_voice::installed(&dir) }))
-        }
+        DICTATION_STATUS => RpcReply::value(&json!({ "ready": openagents_voice::installed(&dir) })),
         DICTATION_APPEND => {
             let append: Append = parse_params(params)?;
             recordings(|r| r.append(&append, Instant::now())).map_err(RpcError::Failed)?;
