@@ -92,6 +92,7 @@ pub struct ChatApp {
     entry_cards: HashMap<String, Vec<serde_json::Value>>,
     /// Bumped on each open, so a slow read for a chat left behind is dropped.
     generation: u64,
+    _alerts: Option<crate::notifications::browser::Alerts>,
     _refresh: Task<()>,
     _ticker: Task<()>,
     _history: Task<()>,
@@ -205,11 +206,22 @@ impl ChatApp {
             images: HashMap::new(),
             entry_cards: HashMap::new(),
             generation: 0,
+            _alerts: None,
             _refresh: refresh,
             _ticker: ticker,
             _history: history,
             selection_drag: selection::DragScroll::default(),
         };
+        if this.signed_in {
+            let weak = cx.entity().downgrade();
+            let mut async_cx = cx.to_async();
+            this._alerts = crate::notifications::browser::subscribe(move |text| {
+                let _ = weak.update(&mut async_cx, |this, cx| {
+                    this.notice = Some(text);
+                    cx.notify();
+                });
+            });
+        }
         this.load_projects(cx);
         this.load(route::current(), cx);
         window.focus(&this.composer.focus_handle(cx), cx);

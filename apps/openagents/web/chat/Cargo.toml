@@ -34,4 +34,4 @@ getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 uuid.workspace = true
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["History", "Location", "PopStateEvent", "Window", "Document", "Element", "HtmlElement"] }
+web-sys = { version = "0.3", features = ["Notification", "NotificationOptions", "NotificationPermission", "EventSource", "MessageEvent", "AudioContext", "AudioBuffer", "AudioBufferSourceNode", "AudioNode", "AudioDestinationNode", "History", "Location", "PopStateEvent", "Window", "Document", "Element", "HtmlElement"] }

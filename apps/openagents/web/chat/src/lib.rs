@@ -7,6 +7,7 @@
 //! carries no fonts and a return visit reads them from the cache.
 
 pub mod model;
+mod notifications;
 pub mod route;
 
 #[cfg(target_family = "wasm")]
