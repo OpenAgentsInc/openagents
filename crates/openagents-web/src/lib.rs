@@ -56,6 +56,7 @@ mod cookie_api;
 mod components;
 mod composer;
 mod composer_row;
+pub mod compress;
 mod computer_runs;
 pub mod computers;
 mod computers_api;
@@ -778,6 +779,9 @@ pub fn router(mut config: Config) -> Router {
                 agent_ready::negotiate(ours, request, next)
             },
         ))
+        // Outermost, so every response of the site's own is compressed
+        // once, after everything else has set its headers (#12241).
+        .layer(middleware::from_fn(compress::layer))
 }
 
 /// A request on a Blue Rush Studios host: answered at the studio's path

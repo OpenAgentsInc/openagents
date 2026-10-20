@@ -459,6 +459,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.port = bound.port();
     println!("OpenAgents web is listening on http://{bound} (development backend)");
     let router = openagents_web::router(config);
+    openagents_web::compress::warm();
     // SIGTERM (a Cloud Run rollout or scale-in) or ctrl-c: stop accepting,
     // end open event streams, let requests in flight finish within the
     // drain, then keep the last counts (WEB-01).
