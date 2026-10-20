@@ -24,6 +24,7 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 pub(crate) mod owner;
+pub(crate) mod social;
 
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 const MAX_REVISIONS: usize = 1024;
@@ -280,6 +281,17 @@ async fn fork(
     let Some(latest) = record.revisions.last() else {
         return Ok(Err(Refusal::Missing));
     };
+    fork_published(store, owner, id, latest, request).await
+}
+
+/// Fork `latest`, published as `id`, into `owner`'s own saved agents.
+async fn fork_published(
+    store: &Store,
+    owner: &str,
+    id: &str,
+    latest: &PublishedAgent,
+    request: ForkAgent,
+) -> Result<Result<Forked, Refusal>, Error> {
     if !valid_id(&request.request_id) {
         return Ok(Err(Refusal::Invalid("The request ID is invalid.".into())));
     }
@@ -413,6 +425,10 @@ pub(crate) fn routes() -> Router<App> {
             "/v1/published-agents/{id}/owner",
             get(owner::read).put(owner::set).delete(owner::revoke),
         )
+        .route(
+            "/v1/published-agents/{id}/messages",
+            axum::routing::put(social::set_messages),
+        )
         .route("/v1/agent-definitions/{id}/publish", post(publish_route))
         .route("/v1/agent-definitions/{id}/upstream", get(upstream_route))
         // A template's draft holds up to the instructions limit (skills
@@ -447,7 +463,7 @@ async fn fork_route(
     if !valid_id(&id) {
         return Refusal::Missing.response();
     }
-    reply(fork(&app.config.chat_store, &owner, &id, r).await)
+    reply(social::fork_any(&app, &owner, &id, r).await)
 }
 
 async fn publish_route(

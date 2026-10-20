@@ -253,6 +253,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .push("wss://relay.openagents.com".to_owned());
     }
     config.profile_relays.retain(|relay| relay != "off");
+    // Published agents answer mentions and private messages only when asked.
+    config.agent_replies = std::env::var("OPENAGENTS_WEB_AGENT_REPLIES").is_ok_and(|v| v == "on");
     // Whose XP awards count on profiles.
     if let Ok(list) = std::env::var("OPENAGENTS_WEB_XP_REFEREES") {
         config.xp_referees = list.split(',').filter_map(xp_ledger::parse_key).collect();

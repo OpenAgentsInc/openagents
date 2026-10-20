@@ -1,4 +1,4 @@
-// Settings > Public profile (#12254, src/profiles/edit.rs): when a Nostr
+// Settings > Public profile and Follow (#12254, #12256, src/profiles/edit.rs): when a Nostr
 // browser extension (NIP-07) is installed, ask the server for the profile
 // event to sign, have the extension sign it, and send it back to publish.
 (function () {
@@ -39,9 +39,8 @@
 
   function fields() {
     var out = {};
-    ["display_name", "picture", "about", "website"].forEach(function (name) {
-      var input = form.elements.namedItem(name);
-      out[name] = input ? input.value : "";
+    Array.prototype.forEach.call(form.elements, function (input) {
+      if (input.name) out[input.name] = input.value;
     });
     return out;
   }
@@ -77,7 +76,7 @@
         return post("/settings/profile/publish", { event: signed });
       })
       .then(function (answer) {
-        say("Published. ");
+        say("Done. ");
         var link = document.createElement("a");
         link.href = answer.href;
         link.textContent = "See your profile";

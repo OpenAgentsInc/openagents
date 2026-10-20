@@ -59,6 +59,10 @@ pub(crate) fn routes() -> Router<App> {
         .route("/agent/{id}", get(agent_page))
         .route("/agent/{id}/graph.json", get(graph_json))
         .route("/agent/{id}/definition.json", get(definition_json))
+        .route(
+            "/agent/{id}/fork",
+            crate::published_agents::social::fork_route(),
+        )
         .route(super::first_frame::ON_DEMAND, get(first_frame_on_demand))
         .route("/agent-graph/{file}", get(graph_file))
 }
@@ -75,6 +79,7 @@ pub(crate) fn owns(path: &str) -> bool {
     let id = rest
         .strip_suffix("/graph.json")
         .or_else(|| rest.strip_suffix("/definition.json"))
+        .or_else(|| rest.strip_suffix("/fork"))
         .unwrap_or(rest);
     !id.contains('/') && (id == "foreman" || template(id).is_some() || published_shape(id))
 }
@@ -529,6 +534,20 @@ async fn published_page(app: &App, id: &str, headers: &HeaderMap) -> Response {
                     }
                     @if let Some(agent) = &found.agent {
                         p { "Its own Nostr key: " code { (crate::profiles::npub(agent)) } }
+                        @if !retired {
+                            p {
+                                a href=(format!("/@{}/follow", crate::profiles::npub(agent))) { "Follow" }
+                                " · "
+                                a href=(format!("/agent/{id}/fork")) { "Make your own copy" }
+                            }
+                            p.oa-page-meta {
+                                "Talk with it in the "
+                                code { (crate::published_agents::social::agent_room(id)) }
+                                " or "
+                                code { (crate::published_agents::social::PUBLIC_ROOM) }
+                                " room, or send it a private message from any Nostr app."
+                            }
+                        }
                     }
                 }))
             }

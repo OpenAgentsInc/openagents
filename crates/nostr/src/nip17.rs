@@ -22,9 +22,9 @@ use crate::domain::{DomainError, Event, Tag};
 use crate::nip44;
 
 const SEAL_KIND: u16 = 13;
-const CHAT_KIND: u16 = 14;
+pub const CHAT_KIND: u16 = 14;
 const FILE_KIND: u16 = 15;
-const GIFT_WRAP_KIND: u16 = 1_059;
+pub const GIFT_WRAP_KIND: u16 = 1_059;
 const INBOX_KIND: u16 = 10_050;
 /// A wrap or seal timestamp may sit at most this far before the rumor.
 pub const RANDOMIZE_WINDOW_SECONDS: u64 = 2 * 24 * 60 * 60;

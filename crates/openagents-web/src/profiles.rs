@@ -434,8 +434,11 @@ fn render(
                     p.oa-page-meta { "No profile yet." }
                 }
             }))
-            @if let Some(website) = &metadata.website {
-                div.oa-page-actions { (action_link("Website", website)) }
+            div.oa-page-actions {
+                (action_link("Follow", &format!("{path}/follow")))
+                @if let Some(website) = &metadata.website {
+                    (action_link("Website", website))
+                }
             }
         }
         @if !loaded.agents.is_empty() {

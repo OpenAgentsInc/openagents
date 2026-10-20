@@ -475,6 +475,9 @@ pub struct Config {
     /// (`OPENAGENTS_WEB_XP_REFEREES`, comma-separated npubs or hex;
     /// #12257). Empty shows no XP.
     pub xp_referees: Vec<String>,
+    /// Whether published agents answer room mentions and private messages
+    /// (`OPENAGENTS_WEB_AGENT_REPLIES=on`; #12256). Off by default.
+    pub agent_replies: bool,
     /// `/lander8`'s chat (`--lander8 DIR`, default `/srv/lander8` when it
     /// exists): its WebGPU-only and WebGL2 builds, served under
     /// `/lander8/build/`. Without it, `/lander8` is the Grid, the name, and
@@ -625,6 +628,7 @@ impl Config {
             profile_relays: Vec::new(),
             agent_key_seed: None,
             xp_referees: Vec::new(),
+            agent_replies: false,
             lander8: None,
             lander9: None,
             snap: None,
@@ -681,6 +685,15 @@ pub fn router(mut config: Config) -> Router {
     );
     let app = App(Arc::new(Inner { config }));
     work_runs::computers::spawn_cleanup(app.clone());
+    if app.config.agent_replies
+        && app.config.agent_key_seed.is_some()
+        && let Some(gemini) = chat_vision::doors_gemini()
+    {
+        published_agents::social::spawn(
+            app.clone(),
+            Arc::new(published_agents::social::Vertex(gemini)),
+        );
+    }
     let hosts = Hosts {
         port: app.config.port,
         public: app.config.public_hosts.clone(),

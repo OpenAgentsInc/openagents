@@ -50,10 +50,30 @@ pub(crate) struct Owned {
     /// When its events were last signed, so a retirement always comes after.
     #[serde(default)]
     pub(crate) signed_at: u64,
+    /// Who may start a private conversation with it (#12256); the owner
+    /// when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) messages: Option<super::social::MessagesFrom>,
+}
+
+/// Who may message the agent.
+pub(crate) fn messages_from(owned: &Owned) -> super::social::MessagesFrom {
+    owned.messages.unwrap_or_default()
+}
+
+/// The agent key for published agent `id`, as a signer and a secret.
+pub(crate) fn keys(app: &App, id: &str) -> Option<(RelaySigner, secp256k1::SecretKey)> {
+    let hex = secret_hex(app, id)?;
+    let secret: secp256k1::SecretKey = hex.parse().ok()?;
+    Some((RelaySigner::from_secret_hex(&hex).ok()?, secret))
 }
 
 /// The agent key for published agent `id`, when this site has a seed.
 pub(crate) fn signer(app: &App, id: &str) -> Option<RelaySigner> {
+    RelaySigner::from_secret_hex(&secret_hex(app, id)?).ok()
+}
+
+fn secret_hex(app: &App, id: &str) -> Option<String> {
     let seed = app.config.agent_key_seed.as_ref()?;
     for round in 0u8..8 {
         let mut mac = Hmac::<Sha256>::new_from_slice(seed).ok()?;
@@ -62,8 +82,8 @@ pub(crate) fn signer(app: &App, id: &str) -> Option<RelaySigner> {
         mac.update(&[round]);
         let bytes = mac.finalize().into_bytes();
         let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-        if let Ok(signer) = RelaySigner::from_secret_hex(&hex) {
-            return Some(signer);
+        if RelaySigner::from_secret_hex(&hex).is_ok() {
+            return Some(hex);
         }
     }
     None
@@ -286,6 +306,57 @@ async fn write_index(app: &App, pubkey: &str, id: &str) {
     let generation = store.read_key(&key).await.ok().flatten().map(|(_, g)| g);
     let bytes = serde_json::to_vec(id).unwrap_or_default();
     let _ = store.write_key(&key, bytes, generation.as_deref()).await;
+    // And the list the answering loop listens for.
+    for _ in 0..8 {
+        let held = store.read_key(KEYS).await.ok().flatten();
+        let generation = held.as_ref().map(|(_, g)| g.clone());
+        let mut keys: Vec<String> = held
+            .and_then(|(bytes, _)| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
+        if keys.iter().any(|k| k == pubkey) {
+            return;
+        }
+        keys.push(pubkey.to_string());
+        let bytes = serde_json::to_vec(&keys).unwrap_or_default();
+        match store.write_key(KEYS, bytes, generation.as_deref()).await {
+            Err(Error::Conflict) => continue,
+            _ => return,
+        }
+    }
+}
+
+/// Every agent key this site holds an owner for.
+const KEYS: &str = "published-agents/agent-keys.json";
+
+/// The agent keys with an owner.
+pub(crate) async fn agent_keys(app: &App) -> Vec<String> {
+    app.config
+        .chat_store
+        .read_key(KEYS)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|(bytes, _)| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+/// Set who may message published agent `id`, as its publisher.
+pub(super) async fn set_messages(
+    app: &App,
+    publisher: &str,
+    id: &str,
+    from: super::social::MessagesFrom,
+) -> Result<Result<(), Refusal>, Error> {
+    if !agent_public::valid_id(id) {
+        return Ok(Err(Refusal::Missing));
+    }
+    Ok(change_owner(app, publisher, id, |record| {
+        let mut owned = record.owner.clone().ok_or(Refusal::Missing)?;
+        owned.messages = Some(from);
+        Ok(owned)
+    })
+    .await?
+    .map(|_| ()))
 }
 
 pub(super) async fn set(
@@ -331,6 +402,7 @@ pub(super) async fn set(
             pubkey: owner.clone(),
             revoked: false,
             signed_at: now(),
+            messages: None,
         })
     })
     .await;

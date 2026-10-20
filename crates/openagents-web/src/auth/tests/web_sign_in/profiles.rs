@@ -827,3 +827,327 @@ async fn explore_lists_agents_and_plugins_from_relay_events() {
     assert_eq!(cli.len(), 1);
     assert_eq!(cli[0].package, format!("{}:word-count", author.pubkey()));
 }
+
+/// Answers with the question back, so a test can read what it was asked.
+struct Echo;
+
+impl crate::published_agents::social::Answerer for Echo {
+    fn answer(
+        &self,
+        _instructions: String,
+        question: String,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<String>> + Send>> {
+        Box::pin(async move { Some(format!("You said: {question}")) })
+    }
+}
+
+/// A NIP-17 message from `from` (secret byte `seed`) to `to`.
+fn private_message(seed: u8, to: &str, text: &str) -> Event {
+    let from = secp256k1::SecretKey::from_byte_array([seed; 32]).unwrap();
+    let author = key(seed).pubkey().to_string();
+    let reader: secp256k1::XOnlyPublicKey = to.parse().unwrap();
+    let rumor = nostr::nip17::chat_rumor(
+        &author,
+        1_790_000_000,
+        text,
+        vec![Tag::new(vec!["p".into(), to.into()])],
+    )
+    .unwrap();
+    let sealed = nostr::nip17::seal(&rumor, &from, &reader, 1_790_000_000, [3; 32], None).unwrap();
+    let wrapper = secp256k1::SecretKey::from_byte_array([99; 32]).unwrap();
+    nostr::nip17::gift_wrap(&sealed, &wrapper, &reader, 1_790_000_000, [4; 32], None).unwrap()
+}
+
+#[tokio::test]
+async fn people_follow_fork_and_talk_with_an_agent() {
+    use openagents_sdk::agent_lab::{ForkAgent, Pin, PublishAgent, published_id, templates};
+    let relay = Relay::start().await;
+    let world = key_world_with(vec![relay.url.clone()]).await;
+    let pat = key(21);
+    let mut browser = Browser::default();
+    let token = named(&world, &mut browser, &pat, "pat-test").await;
+    let bearer = format!("Bearer {token}");
+    let account = tenancy::accounts::names::resolve(&accounts(&world), "pat-test")
+        .unwrap()
+        .account;
+    let owner = crate::chat_store::account_owner(&account);
+    let store = crate::chat_store::Store::local(world.root.path().join("chats"));
+    let template = templates::foreman();
+    let saved = crate::custom_agents::mutate(
+        &store,
+        &owner,
+        crate::custom_agents::Mutation::Create {
+            request_id: "a".repeat(64),
+            spec: template.draft.agent_spec().unwrap(),
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let request_id = "b".repeat(64);
+    let id = published_id(&request_id);
+    let body = serde_json::to_vec(&PublishAgent {
+        request_id,
+        definition: Pin {
+            id: saved.id,
+            revision: saved.revision,
+        },
+        template: template.clone(),
+    })
+    .unwrap();
+    let mut api = Browser::default();
+    let (status, _) = call(
+        &world,
+        &mut api,
+        "POST",
+        "/v1/published-agents",
+        None,
+        Some(&bearer),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let owner_path = format!("/v1/published-agents/{id}/owner");
+    let (_, about) = call(&world, &mut api, "GET", &owner_path, None, None, None).await;
+    let agent = about["agent"].as_str().unwrap().to_string();
+    let tag = nostr::domain::mint_owner_attestation(
+        &secp256k1::SecretKey::from_byte_array([21; 32]).unwrap(),
+        &agent,
+        about["conditions"].as_str().unwrap(),
+    )
+    .unwrap()
+    .tag();
+    let set = serde_json::to_vec(&json!({"auth": tag.as_slice()})).unwrap();
+    let (status, _) = call(
+        &world,
+        &mut api,
+        "PUT",
+        &owner_path,
+        None,
+        Some(&bearer),
+        Some(&set),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Follow the agent: the extension signs the kind 3 the site drafts.
+    let agent_npub = crate::profiles::npub(&agent);
+    let page = browser.get(&world, &format!("/@{agent_npub}/follow")).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    crate::copy_guard::assert_plain("/@{npub}/follow", &page.body);
+    let ticket = json!({
+        "csrf": attribute(&page.body, "data-csrf"),
+        "request": attribute(&page.body, "data-request"),
+        "fields": {"follow": agent_npub},
+    });
+    let ticket_bytes = ticket.to_string();
+    let (status, draft) = call(
+        &world,
+        &mut browser,
+        "POST",
+        "/settings/profile/draft",
+        Some(ORIGIN),
+        None,
+        Some(ticket_bytes.as_bytes()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{draft}");
+    assert_eq!(draft["event"]["kind"], 3);
+    let tags: Vec<Tag> = serde_json::from_value(draft["event"]["tags"].clone()).unwrap();
+    let follows = pat.sign(
+        draft["event"]["created_at"].as_u64().unwrap(),
+        3,
+        tags,
+        String::new(),
+    );
+    let mut publish = ticket.clone();
+    publish["event"] = serde_json::to_value(&follows).unwrap();
+    let publish_bytes = publish.to_string();
+    let (status, done) = call(
+        &world,
+        &mut browser,
+        "POST",
+        "/settings/profile/publish",
+        Some(ORIGIN),
+        None,
+        Some(publish_bytes.as_bytes()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    let mut anyone = Browser::default();
+    let profile = anyone.get(&world, "/@pat-test").await;
+    assert!(profile.body.contains("Follows 1"), "{}", profile.body);
+
+    // Fork it from its page, and through the API with its upstream kept.
+    let fork_page = browser.get(&world, &format!("/agent/{id}/fork")).await;
+    assert_eq!(fork_page.status, StatusCode::OK, "{}", fork_page.body);
+    let csrf = form_field(&fork_page.body, &format!("/agent/{id}/fork"), "csrf");
+    let forked = browser
+        .post(&world, &format!("/agent/{id}/fork"), &[("csrf", &csrf)])
+        .await;
+    assert_eq!(forked.status, StatusCode::OK, "{}", forked.body);
+    assert!(forked.body.contains("Your copy is saved"));
+    assert!(forked.body.contains(&format!("href=\"/agent/{id}\"")));
+    let request = serde_json::to_vec(&ForkAgent {
+        request_id: "c".repeat(64),
+        name: "Mine".into(),
+    })
+    .unwrap();
+    let (status, copy) = call(
+        &world,
+        &mut api,
+        "POST",
+        &format!("/v1/published-agents/{id}/fork"),
+        None,
+        Some(&bearer),
+        Some(&request),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{copy}");
+    let def = copy["definition"]["id"].as_str().unwrap().to_string();
+    let (status, upstream) = call(
+        &world,
+        &mut api,
+        "GET",
+        &format!("/v1/agent-definitions/{def}/upstream"),
+        None,
+        Some(&bearer),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{upstream}");
+    assert_eq!(upstream["forked_from"]["published"], id);
+
+    // An agent only its public definition describes forks too.
+    let elsewhere = key(51);
+    let elsewhere_tag = nostr::domain::mint_owner_attestation(
+        &secp256k1::SecretKey::from_byte_array([52; 32]).unwrap(),
+        elsewhere.pubkey(),
+        &nostr::agent_public::conditions_until(4_000_000_000),
+    )
+    .unwrap()
+    .tag();
+    let remote_id = "e".repeat(64);
+    let document = agent_graph::definition::of(
+        &template,
+        "remote",
+        &remote_id,
+        &agent_graph::lab::Notes::default(),
+    );
+    relay.put(
+        nostr::agent_public::definition_event(
+            &elsewhere,
+            &elsewhere_tag,
+            key(52).pubkey(),
+            &remote_id,
+            "https://example.com/d.json",
+            &serde_json::to_string(&document).unwrap(),
+            1_790_000_000,
+        )
+        .unwrap(),
+    );
+    let request = serde_json::to_vec(&ForkAgent {
+        request_id: "d".repeat(64),
+        name: "Theirs".into(),
+    })
+    .unwrap();
+    let (status, copy) = call(
+        &world,
+        &mut api,
+        "POST",
+        &format!("/v1/published-agents/{remote_id}/fork"),
+        None,
+        Some(&bearer),
+        Some(&request),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{copy}");
+    assert_eq!(copy["forked_from"]["published"], remote_id);
+
+    // A room mention gets an answer signed by the agent with its owner tag.
+    let mut config = crate::Config::development(world.root.path().join("tasks"));
+    config.chat_store = std::sync::Arc::new(store.clone());
+    config.agent_key_seed = Some([7; 32]);
+    config.profile_relays = vec![relay.url.clone()];
+    let app = crate::App(std::sync::Arc::new(crate::Inner { config }));
+    let room = crate::published_agents::social::agent_room(&id);
+    let asker = key(53);
+    let mention = asker.sign(
+        1_790_000_000,
+        9,
+        vec![
+            Tag::new(vec!["h".into(), room.clone()]),
+            Tag::new(vec!["p".into(), agent.clone()]),
+        ],
+        "What do you do?".into(),
+    );
+    let reply = crate::published_agents::social::respond(&app, &Echo, &mention, 1_790_000_100)
+        .await
+        .expect("an answer");
+    assert_eq!(reply.pubkey, agent);
+    assert_eq!(reply.kind, 9);
+    assert_eq!(reply.content, "You said: What do you do?");
+    assert_eq!(reply.tag_values("h").next(), Some(room.as_str()));
+    assert_eq!(reply.tag_values("q").next(), Some(mention.id.as_str()));
+    let attested = nostr::domain::verify_owner_attestation(&reply)
+        .unwrap()
+        .unwrap();
+    assert_eq!(attested.owner_pubkey, pat.pubkey());
+    crate::published_agents::social::send_reply(&app, &reply).await;
+    assert!(
+        relay
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.id == reply.id)
+    );
+    // Not a mention, no answer.
+    let chatter = asker.sign(
+        1_790_000_000,
+        9,
+        vec![Tag::new(vec!["h".into(), room])],
+        "hi".into(),
+    );
+    assert!(
+        crate::published_agents::social::respond(&app, &Echo, &chatter, 1_790_000_100)
+            .await
+            .is_none()
+    );
+
+    // Private messages: the owner by default, then anyone once allowed.
+    let stranger = private_message(53, &agent, "hello?");
+    assert!(
+        crate::published_agents::social::respond(&app, &Echo, &stranger, 1_790_000_100)
+            .await
+            .is_none()
+    );
+    let from_owner = private_message(21, &agent, "status?");
+    let wrapped = crate::published_agents::social::respond(&app, &Echo, &from_owner, 1_790_000_100)
+        .await
+        .expect("a private answer");
+    let opened = nostr::nip17::open_direct_message(
+        &wrapped,
+        &secp256k1::SecretKey::from_byte_array([21; 32]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(opened.pubkey, agent);
+    assert_eq!(opened.content, "You said: status?");
+    let anyone_body = br#"{"from":"anyone"}"#;
+    let (status, _) = call(
+        &world,
+        &mut api,
+        "PUT",
+        &format!("/v1/published-agents/{id}/messages"),
+        None,
+        Some(&bearer),
+        Some(anyone_body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        crate::published_agents::social::respond(&app, &Echo, &stranger, 1_790_000_100)
+            .await
+            .is_some()
+    );
+}

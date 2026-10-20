@@ -44,6 +44,8 @@ pub(crate) const NAME: &str = "/settings/profile/name";
 pub(crate) const DRAFT: &str = "/settings/profile/draft";
 pub(crate) const PUBLISH: &str = "/settings/profile/publish";
 pub(crate) const SCRIPT: &str = "/settings/profile.js";
+/// Follow a key: `/@{handle}/follow`.
+pub(crate) const FOLLOW: &str = "/@{handle}/follow";
 const NAME_SCOPE: &str = "profile-name";
 const PUBLISH_SCOPE: &str = "profile-publish";
 /// How far a signed profile's time may be from this server's.
@@ -56,6 +58,7 @@ pub(super) fn routes() -> Router<App> {
         .route(DRAFT, post(draft))
         .route(PUBLISH, post(publish))
         .route(SCRIPT, get(script))
+        .route(FOLLOW, get(follow_page))
 }
 
 pub(super) fn owns(path: &str) -> bool {
@@ -414,6 +417,9 @@ async fn draft(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
     let Some(key) = mine.key().map(str::to_string) else {
         return json_refusal(StatusCode::CONFLICT, "Your account has no Nostr key yet.");
     };
+    if let Some(target) = body["fields"]["follow"].as_str() {
+        return follow_draft(&app, &key, target).await;
+    }
     let mut edit = edited(&body["fields"]);
     let present = |v: &Option<String>| v.clone().filter(|v| !v.is_empty());
     let check = Metadata {
@@ -464,7 +470,9 @@ async fn publish(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
         );
     };
     let now = crate::cloud::session::now();
-    if event.kind != 0 || event.validate_crypto().is_err() || event.created_at.abs_diff(now) > SKEW
+    if !matches!(event.kind, 0 | 3)
+        || event.validate_crypto().is_err()
+        || event.created_at.abs_diff(now) > SKEW
     {
         return json_refusal(
             StatusCode::BAD_REQUEST,
@@ -478,7 +486,13 @@ async fn publish(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
         );
     }
     let read = Metadata::read(&event.content);
-    if read.check().is_err() || event.content.len() > 16 * 1024 {
+    let follows_ok = event.kind == 3
+        && event.tags.len() <= nostr::metadata::FOLLOWS_MAX
+        && nostr::metadata::follows(&event).len() == event.tags.len();
+    if (event.kind == 0 && read.check().is_err())
+        || (event.kind == 3 && !follows_ok)
+        || event.content.len() > 16 * 1024
+    {
         return json_refusal(StatusCode::BAD_REQUEST, "Check your profile and try again.");
     }
     let relays = &app.config.profile_relays;
@@ -519,4 +533,104 @@ async fn script() -> Response {
         include_str!("../../static/profile.js"),
     )
         .into_response()
+}
+
+/// The unsigned kind 3 that adds `target` to `key`'s follows.
+async fn follow_draft(app: &App, key: &str, target: &str) -> Response {
+    let Some(target) = oa_target(target) else {
+        return json_refusal(StatusCode::BAD_REQUEST, "That isn't a Nostr key.");
+    };
+    if target == key {
+        return json_refusal(StatusCode::BAD_REQUEST, "That's your own key.");
+    }
+    let current = super::load(&app.config.profile_relays, key).await;
+    let mut follows = current.follows.clone();
+    if !follows.contains(&target) {
+        follows.push(target);
+    }
+    let tags: Vec<Value> = follows.iter().map(|k| json!(["p", k])).collect();
+    protect(
+        axum::Json(json!({
+            "event": {
+                "kind": 3,
+                "created_at": crate::cloud::session::now(),
+                "tags": tags,
+                "content": "",
+            },
+            "pubkey": key,
+        }))
+        .into_response(),
+    )
+}
+
+fn oa_target(text: &str) -> Option<String> {
+    match super::handle(text)? {
+        super::Handle::Key(key) => Some(key),
+        super::Handle::Name(_) => None,
+    }
+}
+
+/// `/@{handle}/follow`: follow a person or agent with your key.
+async fn follow_page(
+    State(app): State<App>,
+    axum::extract::Path(text): axum::extract::Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let back = format!("/@{text}/follow");
+    let (service, viewer) = match viewer(&app, &headers, &back).await {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let Ok(who) = super::who(&app, &text).await else {
+        return problem(StatusCode::NOT_FOUND, "Nobody has that name.");
+    };
+    let mine = match mine(service, &headers).await {
+        Ok(mine) => mine,
+        Err(response) => return response,
+    };
+    let request = fresh_request();
+    let csrf = match service.csrf(&headers, &viewer, PUBLISH_SCOPE, &target(&viewer, &request)) {
+        Ok(csrf) => csrf,
+        Err(error) => return crate::cloud::refused(error),
+    };
+    let profile = super::load(&app.config.profile_relays, &who.pubkey).await;
+    let shown = profile
+        .metadata
+        .as_ref()
+        .and_then(|m| m.shown_name().map(str::to_string))
+        .unwrap_or_else(|| super::short_npub(&who.pubkey));
+    let link = super::href(&who.pubkey, who.name.as_deref());
+    let following = match mine.key() {
+        Some(key) => super::load(&app.config.profile_relays, key)
+            .await
+            .follows
+            .contains(&who.pubkey),
+        None => false,
+    };
+    let body = html! {
+        (MarkdownRoot::new(html! {
+            h1 { "Follow " (shown) }
+            p { a href=(link) { (link) } }
+        }))
+        @if mine.key().is_none() {
+            p { "Your account has no Nostr key yet. Open the OpenAgents app on your phone or computer to make one, then come back." }
+        } @else if following {
+            p { "You follow " (shown) "." }
+        } @else {
+            section class="oa-settings-group" data-oa-profile-edit="" data-pubkey=(mine.key().unwrap_or_default())
+                data-csrf=(csrf) data-request=(request) {
+                form autocomplete="off" data-oa-profile-form="" {
+                    input type="hidden" name="follow" value=(super::npub(&who.pubkey));
+                    p data-oa-profile-publish="" hidden {
+                        (Button::new("Follow").kind(ButtonType::Submit))
+                    }
+                }
+                p class="oa-settings-hint" data-oa-profile-note="" {
+                    "To follow from this page, add a Nostr browser extension. You can also follow from the OpenAgents app."
+                }
+            }
+            script src=(SCRIPT) defer {}
+        }
+    };
+    page(&headers, service, &viewer, "Follow", &back, body)
 }
