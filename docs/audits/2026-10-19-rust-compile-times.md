@@ -8,6 +8,8 @@ without changing their serialized fields or calculations. Verse re-exports
 the shared types at their existing paths. The `/lander3` scene is generated
 by `cargo run -p verse --no-default-features --bin lander3-scene` and checked
 in, so serving it needs neither Verse nor its animation engine.
+The root Hakari configuration excludes `wgpu` and `naga` from traversal,
+so its generated dependency crate does not bring the renderer back.
 
 ## Measurements
 
@@ -45,7 +47,11 @@ is listed in the master delegation's after-close checks.
 `cargo tree -p openagents-web` contains none of `verse`, `verse-world`,
 `verse-zone-everglade`, `verse-content`, `verse-engine`, `verse-pbr`, `wgpu`,
 `wgpu-core`, `wgpu-hal`, or `naga`, including development dependencies.
-Tests cover the six changed crates and the generated landing scene.
+This also holds after the hakari rebase, for native and all-target queries.
+Hakari's generation, dependency, and feature checks pass in both workspaces.
+Tests cover the six implementation crates, the generated dependency crate,
+and the landing scene.
 The crate run also found a stale Grid pack; its existing `grid_pack`
-example regenerated it. Temporary test files use the task's scratch root:
-an extra directory level makes two workshop tests wrap their expected paths.
+example regenerated it. Temporary test files use a short symlink to the
+task's scratch root: longer paths exceed macOS's socket limit or wrap two
+workshop tests' expected text.

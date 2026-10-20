@@ -109,8 +109,6 @@ log = { version = "0.4", default-features = false, features = ["std"] }
 maud = { version = "0.27", features = ["axum"] }
 memchr = { version = "2" }
 miniz_oxide = { version = "0.8", features = ["simd"] }
-naga = { version = "30", features = ["glsl-out", "msl-out", "wgsl-in"] }
-naga-types = { version = "30", default-features = false, features = ["std"] }
 noq = { version = "1", default-features = false, features = ["fast-apple-datapath", "platform-verifier", "ring", "runtime-tokio", "rustls"] }
 noq-proto = { version = "1", default-features = false, features = ["platform-verifier", "ring", "rustls"] }
 num = { version = "0.4" }
@@ -131,7 +129,6 @@ postgres-types = { version = "0.2", default-features = false, features = ["with-
 potential_utf = { version = "0.1", default-features = false, features = ["alloc", "zerovec"] }
 ppv-lite86 = { version = "0.2", default-features = false, features = ["simd", "std"] }
 proc-macro2 = { version = "1" }
-profiling = { version = "1" }
 prost = { version = "0.13", features = ["prost-derive"] }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 pulley-interpreter = { version = "48", default-features = false, features = ["disas", "interp", "std"] }
@@ -153,7 +150,7 @@ reqwest-594e8ee84c453af0 = { package = "reqwest", version = "0.13", default-feat
 reqwest-5ef9efb8ec2df382 = { package = "reqwest", version = "0.12", default-features = false, features = ["blocking", "charset", "http2", "json", "rustls-tls", "socks", "stream", "system-proxy"] }
 resvg = { version = "0.48", default-features = false, features = ["text"] }
 ring = { version = "0.17", features = ["std"] }
-rustc-hash-f595c2ba2a3f28df = { package = "rustc-hash", version = "2" }
+rustc-hash = { version = "2" }
 rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 rustls-pki-types = { version = "1", features = ["std"] }
 rustls-webpki = { version = "0.103", default-features = false, features = ["ring", "std"] }
@@ -210,7 +207,6 @@ uuid = { version = "1", features = ["serde", "v4"] }
 wasm-encoder = { version = "0.254", features = ["wasmparser"] }
 wasmparser = { version = "0.254", default-features = false, features = ["component-model", "features", "hash-collections", "serde", "simd", "std", "validate"] }
 wasmtime-internal-core = { version = "48", default-features = false, features = ["anyhow", "backtrace", "serde"] }
-wgpu = { version = "30", features = ["webgl"] }
 winit = { version = "0.30" }
 winnow = { version = "1" }
 writeable = { version = "0.6" }
@@ -302,15 +298,13 @@ objc2 = { version = "0.6" }
 objc2-app-kit-468e82937335b1c9 = { package = "objc2-app-kit", version = "0.3", default-features = false, features = ["NSAccessibility", "NSAlert", "NSApplication", "NSButton", "NSCell", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSPasteboard", "NSPasteboardItem", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScreen", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "NSWorkspace", "block2", "objc2-core-foundation", "objc2-core-graphics", "std"] }
 objc2-app-kit-6f8ce4dd05d13bba = { package = "objc2-app-kit", version = "0.2", features = ["NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSAppearance", "NSApplication", "NSBitmapImageRep", "NSButton", "NSColor", "NSControl", "NSCursor", "NSDragging", "NSEvent", "NSGraphics", "NSGraphicsContext", "NSImage", "NSImageRep", "NSMenu", "NSMenuItem", "NSOpenGLView", "NSPasteboard", "NSResponder", "NSRunningApplication", "NSScreen", "NSText", "NSTextInputClient", "NSTextInputContext", "NSView", "NSWindow", "NSWindowScripting", "NSWindowTabGroup"] }
 objc2-core-foundation = { version = "0.3", features = ["CFBase"] }
-objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGColor", "CGColorSpace", "CGContext", "CGDataProvider", "CGDirectDisplay", "CGEventTypes", "CGFont", "CGImage", "CGPath", "objc2", "std"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["NSAppleEventDescriptor", "NSArray", "NSAttributedString", "NSBundle", "NSCalendar", "NSCoder", "NSData", "NSDate", "NSDictionary", "NSEnumerator", "NSError", "NSException", "NSFileManager", "NSFileWrapper", "NSFormatter", "NSGeometry", "NSItemProvider", "NSKeyValueObserving", "NSLocale", "NSNotification", "NSNull", "NSObjCRuntime", "NSObject", "NSProcessInfo", "NSRange", "NSSet", "NSString", "NSThread", "NSURL", "NSUUID", "NSUndoManager", "NSUserActivity", "NSValue", "NSZone", "objc2-core-foundation", "std"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSAppleEventDescriptor", "NSArray", "NSAttributedString", "NSBundle", "NSCalendar", "NSCoder", "NSData", "NSDate", "NSDictionary", "NSEnumerator", "NSError", "NSException", "NSFileManager", "NSFileWrapper", "NSFormatter", "NSGeometry", "NSItemProvider", "NSLocale", "NSNotification", "NSObjCRuntime", "NSObject", "NSRange", "NSSet", "NSString", "NSThread", "NSURL", "NSUUID", "NSUndoManager", "NSUserActivity", "NSValue", "NSZone", "objc2-core-foundation", "std"] }
 objc2-system-configuration = { version = "0.3" }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1", features = ["event", "mm", "net", "param", "pipe", "process", "shm", "stdio", "system", "termios", "thread", "time"] }
 security-framework-sys = { version = "2" }
 simdutf8 = { version = "0.1", default-features = false, features = ["public_imp"] }
 tower-d8f496e17d97b5cb = { package = "tower", version = "0.5", default-features = false, features = ["retry", "timeout"] }
 tower-http = { version = "0.6", features = ["cors", "follow-redirect"] }
-wgpu-core = { version = "30", features = ["dx12", "gles", "metal", "portable-atomic", "renderdoc", "vulkan", "webgl", "wgsl"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
 errno = { version = "0.3" }
@@ -333,8 +327,7 @@ objc2 = { version = "0.6" }
 objc2-app-kit-468e82937335b1c9 = { package = "objc2-app-kit", version = "0.3", default-features = false, features = ["NSAccessibility", "NSAlert", "NSApplication", "NSButton", "NSCell", "NSControl", "NSImage", "NSMenu", "NSMenuItem", "NSOpenPanel", "NSPanel", "NSPasteboard", "NSPasteboardItem", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSScreen", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow", "NSWorkspace", "block2", "objc2-core-foundation", "objc2-core-graphics", "std"] }
 objc2-app-kit-6f8ce4dd05d13bba = { package = "objc2-app-kit", version = "0.2", features = ["NSAccessibility", "NSAccessibilityConstants", "NSAccessibilityElement", "NSAccessibilityProtocols", "NSAppearance", "NSApplication", "NSBitmapImageRep", "NSButton", "NSColor", "NSControl", "NSCursor", "NSDragging", "NSEvent", "NSGraphics", "NSGraphicsContext", "NSImage", "NSImageRep", "NSMenu", "NSMenuItem", "NSOpenGLView", "NSPasteboard", "NSResponder", "NSRunningApplication", "NSScreen", "NSText", "NSTextInputClient", "NSTextInputContext", "NSView", "NSWindow", "NSWindowScripting", "NSWindowTabGroup"] }
 objc2-core-foundation = { version = "0.3", features = ["CFBase"] }
-objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGColor", "CGColorSpace", "CGContext", "CGDataProvider", "CGDirectDisplay", "CGEventTypes", "CGFont", "CGImage", "CGPath", "objc2", "std"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["NSAppleEventDescriptor", "NSArray", "NSAttributedString", "NSBundle", "NSCalendar", "NSCoder", "NSData", "NSDate", "NSDictionary", "NSEnumerator", "NSError", "NSException", "NSFileManager", "NSFileWrapper", "NSFormatter", "NSGeometry", "NSItemProvider", "NSKeyValueObserving", "NSLocale", "NSNotification", "NSNull", "NSObjCRuntime", "NSObject", "NSProcessInfo", "NSRange", "NSSet", "NSString", "NSThread", "NSURL", "NSUUID", "NSUndoManager", "NSUserActivity", "NSValue", "NSZone", "objc2-core-foundation", "std"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSAppleEventDescriptor", "NSArray", "NSAttributedString", "NSBundle", "NSCalendar", "NSCoder", "NSData", "NSDate", "NSDictionary", "NSEnumerator", "NSError", "NSException", "NSFileManager", "NSFileWrapper", "NSFormatter", "NSGeometry", "NSItemProvider", "NSLocale", "NSNotification", "NSObjCRuntime", "NSObject", "NSRange", "NSSet", "NSString", "NSThread", "NSURL", "NSUUID", "NSUndoManager", "NSUserActivity", "NSValue", "NSZone", "objc2-core-foundation", "std"] }
 objc2-system-configuration = { version = "0.3" }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1", features = ["event", "mm", "net", "param", "pipe", "process", "shm", "stdio", "system", "termios", "thread", "time"] }
 security-framework-sys = { version = "2" }
@@ -342,7 +335,6 @@ simdutf8 = { version = "0.1", default-features = false, features = ["public_imp"
 spin = { version = "0.9" }
 tower-d8f496e17d97b5cb = { package = "tower", version = "0.5", default-features = false, features = ["retry", "timeout"] }
 tower-http = { version = "0.6", features = ["cors", "follow-redirect"] }
-wgpu-core = { version = "30", features = ["dx12", "gles", "metal", "portable-atomic", "renderdoc", "vulkan", "webgl", "wgsl"] }
 
 [target.x86_64-apple-darwin.build-dependencies]
 errno = { version = "0.3" }
@@ -365,12 +357,10 @@ libc = { version = "0.2" }
 linux-raw-sys-5ef9efb8ec2df382 = { package = "linux-raw-sys", version = "0.12", default-features = false, features = ["auxvec", "elf", "errno", "general", "if_ether", "ioctl", "net", "netlink", "no_std", "prctl", "system", "xdp"] }
 linux-raw-sys-9fbad63c4bcf4a8f = { package = "linux-raw-sys", version = "0.4", default-features = false, features = ["elf", "errno", "general", "ioctl", "no_std", "prctl", "system"] }
 mio = { version = "1", features = ["net", "os-ext"] }
-naga = { version = "30", default-features = false, features = ["hlsl-out", "spv-out"] }
 nom = { version = "7" }
 noq-udp = { version = "1", features = ["fast-apple-datapath"] }
 phf = { version = "0.14", features = ["macros"] }
 phf_shared = { version = "0.14", default-features = false, features = ["std"] }
-rustc-hash-dff4ba8e3ae991db = { package = "rustc-hash", version = "1" }
 rustix-d585fab2519d2d1 = { package = "rustix", version = "0.38", features = ["event", "mm", "pipe", "process", "shm", "system", "thread"] }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1", features = ["event", "mm", "net", "param", "pipe", "process", "shm", "stdio", "system", "termios", "thread", "time"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["public_imp"] }
@@ -383,7 +373,6 @@ wayland-protocols = { version = "0.32", default-features = false, features = ["c
 wayland-protocols-wlr = { version = "0.3", default-features = false, features = ["client", "server"] }
 wayland-server = { version = "0.31", default-features = false, features = ["libwayland_1_23"] }
 wayland-sys = { version = "0.31", default-features = false, features = ["dlopen", "egl", "libwayland_server_1_23"] }
-wgpu-core = { version = "30", features = ["dx12", "gles", "metal", "portable-atomic", "renderdoc", "vulkan", "webgl", "wgsl"] }
 x11rb = { version = "0.13", default-features = false, features = ["composite", "dl-libxcb", "randr", "res", "resource_manager", "xinput", "xkb"] }
 x11rb-protocol = { version = "0.13", default-features = false, features = ["composite", "randr", "res", "resource_manager", "xinput", "xkb"] }
 zbus = { version = "5" }
@@ -401,7 +390,6 @@ nom = { version = "7" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.14", default-features = false, features = ["std"] }
 ring = { version = "0.17", features = ["std"] }
-rustc-hash-dff4ba8e3ae991db = { package = "rustc-hash", version = "1" }
 rustix-d585fab2519d2d1 = { package = "rustix", version = "0.38", features = ["event", "mm", "pipe", "process", "shm", "system", "thread"] }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1", features = ["event", "mm", "net", "param", "pipe", "process", "shm", "stdio", "system", "termios", "thread", "time"] }
 rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
@@ -424,12 +412,10 @@ libc = { version = "0.2" }
 linux-raw-sys-5ef9efb8ec2df382 = { package = "linux-raw-sys", version = "0.12", default-features = false, features = ["auxvec", "elf", "errno", "general", "if_ether", "ioctl", "net", "netlink", "no_std", "prctl", "system", "xdp"] }
 linux-raw-sys-9fbad63c4bcf4a8f = { package = "linux-raw-sys", version = "0.4", default-features = false, features = ["elf", "errno", "general", "ioctl", "no_std", "prctl", "system"] }
 mio = { version = "1", features = ["net", "os-ext"] }
-naga = { version = "30", default-features = false, features = ["hlsl-out", "spv-out"] }
 nom = { version = "7" }
 noq-udp = { version = "1", features = ["fast-apple-datapath"] }
 phf = { version = "0.14", features = ["macros"] }
 phf_shared = { version = "0.14", default-features = false, features = ["std"] }
-rustc-hash-dff4ba8e3ae991db = { package = "rustc-hash", version = "1" }
 rustix-d585fab2519d2d1 = { package = "rustix", version = "0.38", features = ["event", "mm", "pipe", "process", "shm", "system", "thread"] }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1", features = ["event", "mm", "net", "param", "pipe", "process", "shm", "stdio", "system", "termios", "thread", "time"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["public_imp"] }
@@ -443,7 +429,6 @@ wayland-protocols = { version = "0.32", default-features = false, features = ["c
 wayland-protocols-wlr = { version = "0.3", default-features = false, features = ["client", "server"] }
 wayland-server = { version = "0.31", default-features = false, features = ["libwayland_1_23"] }
 wayland-sys = { version = "0.31", default-features = false, features = ["dlopen", "egl", "libwayland_server_1_23"] }
-wgpu-core = { version = "30", features = ["dx12", "gles", "metal", "portable-atomic", "renderdoc", "vulkan", "webgl", "wgsl"] }
 x11rb = { version = "0.13", default-features = false, features = ["composite", "dl-libxcb", "randr", "res", "resource_manager", "xinput", "xkb"] }
 x11rb-protocol = { version = "0.13", default-features = false, features = ["composite", "randr", "res", "resource_manager", "xinput", "xkb"] }
 zbus = { version = "5" }
@@ -462,7 +447,6 @@ nom = { version = "7" }
 percent-encoding = { version = "2" }
 phf_shared = { version = "0.14", default-features = false, features = ["std"] }
 ring = { version = "0.17", features = ["std"] }
-rustc-hash-dff4ba8e3ae991db = { package = "rustc-hash", version = "1" }
 rustix-d585fab2519d2d1 = { package = "rustix", version = "0.38", features = ["event", "mm", "pipe", "process", "shm", "system", "thread"] }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1", features = ["event", "mm", "net", "param", "pipe", "process", "shm", "stdio", "system", "termios", "thread", "time"] }
 rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
@@ -476,15 +460,13 @@ concurrent-queue = { version = "2" }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
 image = { version = "0.25", default-features = false, features = ["bmp"] }
-naga = { version = "30", default-features = false, features = ["hlsl-out", "spv-out"] }
 noq-udp = { version = "1", features = ["fast-apple-datapath"] }
 simdutf8 = { version = "0.1", default-features = false, features = ["public_imp"] }
 spin = { version = "0.9" }
 tower-d8f496e17d97b5cb = { package = "tower", version = "0.5", default-features = false, features = ["retry", "timeout"] }
 tower-http = { version = "0.6", features = ["cors", "follow-redirect"] }
-wgpu-core = { version = "30", features = ["dx12", "gles", "metal", "portable-atomic", "renderdoc", "vulkan", "webgl", "wgsl"] }
 winapi = { version = "0.3", default-features = false, features = ["consoleapi", "fileapi", "handleapi", "impl-default", "knownfolders", "objbase", "processenv", "processthreadsapi", "shlobj", "std", "synchapi", "winbase", "winerror", "winsock2", "winuser"] }
-windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Devices_Properties", "Win32_Globalization", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Media_Audio", "Win32_Media_KernelStreaming", "Win32_Media_Multimedia", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_Security", "Win32_System_Com_StructuredStorage", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Rpc", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_Wmi", "Win32_UI_Accessibility", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Win32_Devices_Properties", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_Media_Audio", "Win32_Media_KernelStreaming", "Win32_Media_Multimedia", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_Networking_WinSock", "Win32_Security", "Win32_System_Com_StructuredStorage", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Rpc", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_Wmi", "Win32_UI_Accessibility", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_WindowsAndMessaging"] }
 windows-core = { version = "0.62" }
 windows-result = { version = "0.4" }
 windows-sys-4db8c43aad08e7ae = { package = "windows-sys", version = "0.60", features = ["Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_DataExchange", "Win32_System_IO", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI_Shell"] }

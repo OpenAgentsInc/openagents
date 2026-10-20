@@ -17,6 +17,9 @@ platforms = [
 [traversal-excludes]
 # These optional backends must remain opt-in on supported platforms.
 third-party = [
+    # Headless servers must not build the renderer through feature unification.
+    { name = "wgpu" },
+    { name = "naga" },
     { name = "candle-core" },
     { name = "candle-nn" },
     { name = "candle-transformers" },
