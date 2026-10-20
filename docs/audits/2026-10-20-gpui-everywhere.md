@@ -223,18 +223,24 @@ adds the feature to the registry.
 
 ### Already off by configuration
 
-- **Room tokens.** Production has no `OPENAGENTS_WEB_ROOM_TOKEN_KEY`, so
-  Coder chats over `coder-sync` rooms and the registry sidebar fall back
-  to the web chats (#12224, #12263). Setting the key is a deploy step, not a
-  flag.
+- **Room tokens.** Production had no `OPENAGENTS_WEB_ROOM_TOKEN_KEY` on
+  2026-10-20, so Coder chats over `coder-sync` rooms and the registry
+  sidebar fell back to the web chats. `c403fee919` (#12263) makes
+  `scripts/deploy/web.sh promote` add the key from Secret Manager, so the
+  next production deploy turns room tokens on. It's a deploy step, not a
+  flag; #12224's check covers it.
 - **Front door.** `OPENAGENTS_WEB_FRONT_DOOR=on` (#12260) stays off until
   the owner confirms.
 - **WorkOS sign-in.** Another agent builds it behind `OPENAGENTS_AUTH`
   (#12320 to #12324); it's not in this registry.
-- **Dictation and the voice stage** (#12292, #12293), the providers page
-  (#12283), the command palette (#12279), agent visuals (#12287), and
-  transcript extras (#12270) have no web controls yet, so there's nothing
-  to hide.
+- **Dictation** (#12292), the **providers page** (#12283), and the GPUI
+  **Agent Lab** (#12285) landed on 2026-10-20 while this plan was written.
+  They act only on the person's own paired computer and move no money, so
+  they stay shown with their checks in After-close checks, as the other
+  parity pages do.
+- **The voice stage** (#12293), the command palette (#12279), agent visuals
+  (#12287), and transcript extras (#12270) have no web controls yet, so
+  there's nothing to hide.
 
 ### The mechanism
 
