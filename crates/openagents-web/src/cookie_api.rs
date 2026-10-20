@@ -12,6 +12,12 @@
 //! goes on as `Authorization: Bearer`, so every route checks it exactly as
 //! it checks an app's. A request that already has an `Authorization` header
 //! is left as it is.
+//!
+//! Signed out, a browser's `oa_visitor` cookie ([`crate::ask::visitor`]) is
+//! taken the same way, with the same two checks, and goes on as that
+//! visitor's own token ([`crate::visitor_api::token`]): the page then
+//! chats as the app's signed-out visitors do, with their limits, and the
+//! chats are the ones the home page shows for that browser (`/lander8`).
 
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
@@ -41,12 +47,22 @@ fn same_origin(headers: &HeaderMap) -> bool {
         == Some("same-origin")
 }
 
+/// The browser's visitor, when its cookie names one a visitor token can
+/// carry (lowercase, as [`crate::ask::new_visitor`] makes them).
+fn visitor(headers: &HeaderMap) -> Option<String> {
+    crate::ask::visitor(headers).filter(|v| !v.bytes().any(|b| b.is_ascii_uppercase()))
+}
+
 pub(crate) async fn layer(State(app): State<App>, mut request: Request, next: Next) -> Response {
     if !covered(request.uri().path()) || request.headers().contains_key(header::AUTHORIZATION) {
         return next.run(request).await;
     }
-    let Some(token) = crate::chat_owner::session(request.headers()) else {
-        return next.run(request).await;
+    let token = match crate::chat_owner::session(request.headers()) {
+        Some(token) => token,
+        None => match visitor(request.headers()) {
+            Some(visitor) => crate::visitor_api::token(&app.config.ask_salt, &visitor),
+            None => return next.run(request).await,
+        },
     };
     if !same_origin(request.headers()) {
         return refused(
@@ -101,5 +117,23 @@ mod tests {
         assert!(!same_origin(&headers));
         headers.insert("sec-fetch-site", HeaderValue::from_static("same-origin"));
         assert!(same_origin(&headers));
+    }
+
+    #[test]
+    fn a_visitor_cookie_names_its_visitor() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(visitor(&headers), None);
+        let id = "0123456789abcdef0123456789abcdef";
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_str(&format!("{}={id}", crate::ask::COOKIE)).unwrap(),
+        );
+        assert_eq!(visitor(&headers).as_deref(), Some(id));
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_str(&format!("{}={}", crate::ask::COOKIE, id.to_uppercase()))
+                .unwrap(),
+        );
+        assert_eq!(visitor(&headers), None);
     }
 }

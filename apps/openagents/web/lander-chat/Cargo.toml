@@ -1,0 +1,49 @@
+# The chat on openagents.com/lander8: the composer at the bottom of the
+# page and the conversation in a card that grows over the Grid, drawn by the
+# shared GPUI chat views and answered by the site's chat (the same chat API
+# the apps and /gpui use, signed in by the site's cookie). Built twice by
+# `scripts/build-web-lander-chat.sh`: WebGPU-only (the `webgpu/` workspace
+# beside this crate) and with wgpu's WebGL2 fallback (this workspace).
+[package]
+name = "openagents-web-lander-chat"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["export"]
+# Exports `mount` to the page. The WebGPU-only build (`webgpu/`) links this
+# crate without it and exports its own.
+export = []
+
+[dependencies]
+gpui.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+log.workspace = true
+openagents-web-chat-view.workspace = true
+openagents-web-client.workspace = true
+openagents-doc = { path = "../../crates/doc" }
+openagents-proto = { path = "../../crates/proto" }
+serde = { version = "1", features = ["derive"] }
+web-time.workspace = true
+
+[dev-dependencies]
+oa-copy = { path = "../../../../crates/oa-copy" }
+serde_json = "1"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+openagents-gpui-web.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1.7"
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+uuid.workspace = true
+chrono = { version = "0.4", features = ["wasmbind"] }
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Document", "Element", "Event", "EventTarget", "History", "Location", "Performance", "Storage", "Window"] }

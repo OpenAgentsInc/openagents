@@ -18,6 +18,10 @@
 //! `POST /v1/threads/{id}/stop`. Words only: no files, projects, or
 //! computers. After [`MESSAGES`] messages across its chats (deleting a chat
 //! doesn't give them back), sending is refused with `sign_in_required`.
+//!
+//! The site's own `/lander8` chat uses these routes the same way: its
+//! requests carry the browser's `oa_visitor` cookie, which
+//! [`crate::cookie_api`] turns into that visitor's token.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};

@@ -28,6 +28,7 @@
 !/apps/openagents/scripts/build-web-card.sh
 !/apps/openagents/scripts/build-web-graph-card.sh
 !/apps/openagents/scripts/build-web-pylon-card.sh
+!/apps/openagents/scripts/build-web-lander-chat.sh
 !/migrations/
 !/nips/
 !/tests/

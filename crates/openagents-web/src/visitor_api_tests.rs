@@ -480,3 +480,177 @@ fn next_address() -> String {
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!("203.0.{}.{}", (n >> 8) & 0xff, n & 0xff)
 }
+
+/// One request from the site's own page with the browser's cookies and,
+/// for a write, the page's CSRF value (`/lander8`, [`crate::cookie_api`]).
+async fn from_page(
+    world: &crate::projects::tests::World,
+    cookie: &str,
+    csrf: Option<&str>,
+    site: &str,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+) -> (u16, HeaderMap, Value) {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::HOST, &world.host)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::COOKIE, cookie)
+        .header("sec-fetch-site", site)
+        .header("x-forwarded-for", next_address());
+    if let Some(csrf) = csrf {
+        request = request.header(crate::cookie_api::CSRF_HEADER, csrf);
+    }
+    let response = world
+        .site
+        .clone()
+        .oneshot(
+            request
+                .body(body.map_or_else(Body::empty, |v| Body::from(v.to_string())))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let headers = response.headers().clone();
+    let bytes = tokio::time::timeout(
+        Duration::from_secs(10),
+        to_bytes(response.into_body(), 1024 * 1024),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let value = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into()));
+    (status, headers, value)
+}
+
+/// `/lander8` signed out: the page's session read gives the browser a
+/// visitor cookie and a CSRF value, and the chat API then answers that
+/// browser as an app's signed-out visitor, with the same limits; its chats
+/// are the browser's own, as the home page's are.
+#[tokio::test]
+async fn a_browser_visitor_chats_through_the_api_with_its_cookie() {
+    let world = world_with(Options {
+        chat: Some(Arc::new(Worker)),
+        ..Options::default()
+    })
+    .await;
+    let (status, headers, session) = from_page(
+        &world,
+        "",
+        None,
+        "same-origin",
+        "GET",
+        "/lander8/session",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{session}");
+    assert_eq!(session["signed_in"], false);
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    let set = headers[header::SET_COOKIE].to_str().unwrap();
+    let cookie = set.split(';').next().unwrap().to_owned();
+    let visitor = cookie.strip_prefix("oa_visitor=").unwrap().to_owned();
+    let csrf = session["csrf"].as_str().unwrap().to_owned();
+    // The same browser reads the same value and keeps its cookie.
+    let (_, headers, again) = from_page(
+        &world,
+        &cookie,
+        None,
+        "same-origin",
+        "GET",
+        "/lander8/session",
+        None,
+    )
+    .await;
+    assert_eq!(again["csrf"], csrf.as_str());
+    assert!(!headers.contains_key(header::SET_COOKIE));
+
+    // A write needs the page's CSRF value, from this site.
+    let chat = id(500);
+    let start = json!({"request_id": chat, "text": "hello"});
+    let (status, _, _) = from_page(
+        &world,
+        &cookie,
+        None,
+        "same-origin",
+        "POST",
+        "/v1/threads",
+        Some(start.clone()),
+    )
+    .await;
+    assert_eq!(status, 403);
+    let (status, _, _) = from_page(
+        &world,
+        &cookie,
+        Some(&csrf),
+        "cross-site",
+        "POST",
+        "/v1/threads",
+        Some(start.clone()),
+    )
+    .await;
+    assert_eq!(status, 403);
+    let (status, _, started) = from_page(
+        &world,
+        &cookie,
+        Some(&csrf),
+        "same-origin",
+        "POST",
+        "/v1/threads",
+        Some(start),
+    )
+    .await;
+    assert_eq!(status, 201, "{started}");
+    assert_eq!(started["left"], MESSAGES - 1);
+
+    // Its answer streams to this browser, which reads the chat back.
+    let (status, _, events) = from_page(
+        &world,
+        &cookie,
+        None,
+        "same-origin",
+        "GET",
+        &format!("/v1/threads/{chat}/events?request_id={chat}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let events = events.as_str().unwrap_or_default();
+    assert!(
+        events.contains("Answer to hello") && events.contains("\"done\""),
+        "{events}"
+    );
+    let (status, _, thread) = from_page(
+        &world,
+        &cookie,
+        None,
+        "same-origin",
+        "GET",
+        &format!("/v1/threads/{chat}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{thread}");
+    assert_eq!(thread["messages"][0]["text"], "hello");
+    // The chat is the browser's own, where the home page finds it.
+    let stored = world.store.load(&visitor, &chat).await.unwrap();
+    assert!(stored.is_some());
+
+    // Another browser reads nothing of it.
+    let other = format!("oa_visitor={}", crate::ask::new_visitor());
+    let (status, _, _) = from_page(
+        &world,
+        &other,
+        None,
+        "same-origin",
+        "GET",
+        &format!("/v1/threads/{chat}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, 404);
+}

@@ -456,6 +456,11 @@ pub struct Config {
     /// `wss://relay.openagents.com`, and `off` turns it off). `None`
     /// connects to nothing, and `/pylons/live` answers 404.
     pub pylons_relay: Option<String>,
+    /// `/lander8`'s chat (`--lander8 DIR`, default `/srv/lander8` when it
+    /// exists): its WebGPU-only and WebGL2 builds, served under
+    /// `/lander8/build/`. Without it, `/lander8` is the Grid, the name, and
+    /// a link to the home page's chat.
+    pub lander8: Option<PathBuf>,
     /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
     /// it exists), served under `/games/snap-station/`. Without it, the
     /// game's page says it can't be played here.
@@ -591,6 +596,7 @@ impl Config {
             lander7: None,
             pylons: None,
             pylons_relay: None,
+            lander8: None,
             snap: None,
             att: None,
             cad: None,

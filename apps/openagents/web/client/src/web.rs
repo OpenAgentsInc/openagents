@@ -37,6 +37,12 @@ impl Client {
         Self { csrf }
     }
 
+    /// A client whose writes carry `csrf`, for a page that reads its CSRF
+    /// value after it loads (`/lander8`).
+    pub fn with_csrf(csrf: impl Into<String>) -> Self {
+        Self { csrf: csrf.into() }
+    }
+
     pub async fn threads(&self) -> Result<ThreadList> {
         self.get("/v1/threads").await
     }
@@ -188,7 +194,8 @@ impl Client {
         ))
     }
 
-    async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+    /// Reads `path` on this site as JSON.
+    pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         self.send("GET", path, None::<&()>).await
     }
 

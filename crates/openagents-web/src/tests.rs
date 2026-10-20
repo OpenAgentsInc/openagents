@@ -1913,6 +1913,74 @@ async fn the_lander7_page_has_the_corner_name_and_serves_the_graph_builds() {
     }
 }
 
+/// `/lander8`: `/lander5`'s one response with the name in the corner, the
+/// chat's box and loader, the same page at a chat's address, and the
+/// chat's two builds served from `--lander8 DIR`; nothing else is served.
+#[tokio::test]
+async fn the_lander8_page_has_the_chat_and_serves_its_builds() {
+    let root = tempfile::tempdir().unwrap();
+    let builds = root.path().join("lander8");
+    for variant in ["webgpu", "webgl"] {
+        let dir = builds.join(variant);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(pages::LANDER8_GLUE), "export function mount() {}").unwrap();
+        std::fs::write(dir.join(pages::LANDER8_WASM), b"\0asm\x01\0\0\0").unwrap();
+        std::fs::write(dir.join(format!("{}.br", pages::LANDER8_WASM)), b"brotli wasm").unwrap();
+    }
+    std::fs::write(builds.join("secret.js"), "outside the builds").unwrap();
+    let mut config = config(root.path().join("tasks"));
+    config.lander8 = Some(builds);
+
+    let (status, headers, html) = get_with(router(config.clone()), pages::LANDER8_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("</svg>OpenAgents</h1><div id=\"gpui-mount\""), "{html}");
+    assert!(!html.contains("href=\"/download\""), "{html}");
+    assert!(html.contains("/lander8/build/"));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"), "{policy}");
+    // The page is the same for everyone; the session read is per browser.
+    assert!(!headers.contains_key(header::SET_COOKIE));
+    crate::copy_guard::assert_plain(pages::LANDER8_PATH, &html);
+    let chat = "/lander8/chat/5e1f0c3a-7d2b-4c4e-9a1b-000000000001";
+    let (status, _, same) = get_with(router(config.clone()), chat, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(same, html);
+    let (status, _, _) = get_with(router(config.clone()), "/lander8/chat/nope", LOCAL).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    for path in [pages::LANDER8_PATH, chat, pages::LANDER8_SESSION, "/lander8/build/webgpu/x"] {
+        assert!(crate::upstream::owned(path), "{path}");
+    }
+
+    for variant in ["webgpu", "webgl"] {
+        let uri = format!("/lander8/build/{variant}/{}", pages::LANDER8_GLUE);
+        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], "text/javascript; charset=utf-8");
+        let response = router(config.clone())
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/lander8/build/{variant}/{}", pages::LANDER8_WASM))
+                    .header(header::HOST, LOCAL)
+                    .header(header::ACCEPT_ENCODING, "br")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/wasm");
+    }
+    for uri in [
+        "/lander8/build/webgpu/secret.js",
+        "/lander8/build/other/openagents_web_lander_chat.js",
+        "/lander8/build/webgpu/openagents_web_card.js",
+        "/lander8/build/webgpu/../secret.js",
+    ] {
+        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+}
+
 /// A server started with `--layertree DIR` holding a stand-in LayerTree
 /// demo build.
 fn with_layertree(root: &std::path::Path) -> Config {

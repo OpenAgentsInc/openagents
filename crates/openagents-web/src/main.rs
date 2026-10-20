@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--api-host HOST] [--studio-host HOST]... [--upstream http://HOST:PORT] \
-[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--lander5 DIRECTORY] [--lander6 DIRECTORY] [--lander7 DIRECTORY] [--pylons DIRECTORY] [--pylons-relay URL|off] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--lander5 DIRECTORY] [--lander6 DIRECTORY] [--lander7 DIRECTORY] [--lander8 DIRECTORY] [--pylons DIRECTORY] [--pylons-relay URL|off] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads] \
@@ -90,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--lander7" => config.lander7 = Some(PathBuf::from(value)),
             "--pylons" => config.pylons = Some(PathBuf::from(value)),
             "--pylons-relay" => config.pylons_relay = Some(value),
+            "--lander8" => config.lander8 = Some(PathBuf::from(value)),
             "--att" => config.att = Some(PathBuf::from(value)),
             "--cad" => config.cad = Some(PathBuf::from(value)),
             "--components-build" => config.components_build = Some(PathBuf::from(value)),
@@ -237,6 +238,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(relay) = &config.pylons_relay {
         openagents_web::start_pylons_field(relay);
+    }
+    // /lander8's chat ships at /srv/lander8 in the image.
+    if config.lander8.is_none()
+        && std::path::Path::new("/srv/lander8/webgpu/openagents_web_lander_chat_bg.wasm").is_file()
+    {
+        config.lander8 = Some(PathBuf::from("/srv/lander8"));
     }
     // The CAD engine's browser build ships at /srv/cad in the image.
     if config.cad.is_none() && std::path::Path::new("/srv/cad/start.js").is_file() {
