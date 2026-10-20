@@ -6,7 +6,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
 };
 
-use gpui::{App, Global, Rems, SharedString, Window, px, rems};
+use gpui::{App, Global, SharedString, Window, px};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::settings::{self, SavePolicy};
@@ -116,21 +116,10 @@ impl Default for UiFontSize {
     }
 }
 
-/// Convert a size designed at the 16px baseline into a scalable interface rem.
-/// Code, diffs, and terminal text deliberately keep absolute pixel sizes.
-pub const fn ui_rems(pixels_at_default: f32) -> Rems {
-    rems(pixels_at_default / 16.0)
-}
-
-pub const CODE_FONT_SIZE_DEFAULT: f32 = 12.5;
-pub const TERMINAL_FONT_SIZE_DEFAULT: f32 = 13.0;
-pub const FONT_SIZE_MIN: f32 = 8.0;
-pub const FONT_SIZE_MAX: f32 = 32.0;
-
-/// Clamp an absolute code/terminal pixel size into the supported range.
-pub fn clamp_font_size(size: f32) -> f32 {
-    size.clamp(FONT_SIZE_MIN, FONT_SIZE_MAX)
-}
+pub use openagents_chat_view::typography::{
+    CODE_FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN, TERMINAL_FONT_SIZE_DEFAULT,
+    clamp_font_size, ui_rems,
+};
 
 /// Which catalog families successfully registered during this process.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -560,7 +549,7 @@ fn reinstall_theme(cx: &mut App) {
     crate::theme::bump_style_generation();
     let appearance = crate::theme::current_appearance();
     let themes = crate::appearance::themes(cx);
-    crate::theme::Theme::install_selection(
+    <crate::theme::Theme as crate::theme::ThemeInstall>::install_selection(
         appearance,
         themes.variant_id(match appearance {
             crate::theme::Appearance::Dark => openagents_theme::Appearance::Dark,

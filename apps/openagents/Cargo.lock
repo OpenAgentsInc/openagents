@@ -11133,6 +11133,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-chat-view"
+version = "1.0.0"
+dependencies = [
+ "gpui",
+ "openagents-syntax",
+ "openagents-theme",
+ "openagents-workspace-hack",
+ "rust-native",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "openagents-client"
 version = "1.0.0"
 dependencies = [
@@ -11703,6 +11716,7 @@ dependencies = [
  "openagents-account",
  "openagents-background",
  "openagents-brand",
+ "openagents-chat-view",
  "openagents-doc",
  "openagents-engine",
  "openagents-gpui-test",

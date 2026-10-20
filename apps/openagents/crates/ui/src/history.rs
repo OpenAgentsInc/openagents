@@ -4621,7 +4621,7 @@ mod tests {
     fn history_search_focus_survives_the_composer_fallback() {
         let mut app = gpui::TestApp::new();
         app.update(|cx| {
-            Theme::install(crate::theme::Appearance::Dark, cx);
+            <Theme as crate::theme::ThemeInstall>::install(crate::theme::Appearance::Dark, cx);
             crate::composer::init(cx, crate::settings::ComposerSendBehavior::default());
         });
         let mut window = app.open_window(HistorySearchFocusHarness::new);

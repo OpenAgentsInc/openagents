@@ -13,6 +13,7 @@ license = "MIT"
 
 [dependencies]
 gpui.workspace = true
+openagents-chat-view.workspace = true
 anyhow.workspace = true
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }

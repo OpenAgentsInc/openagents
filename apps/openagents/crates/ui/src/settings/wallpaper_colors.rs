@@ -1,6 +1,6 @@
 //! Wallpaper-derived accents and subtle surface tints. User theme choices stay intact.
 use gpui::{App, Global};
-use openagents_theme::{AccentRoles, Color, ThemeVariant};
+use openagents_theme::Color;
 
 /// Quantized dominant colour, favouring chromatic regions over neutral pixels.
 /// Sampling is bounded by the caller; transparent pixels do not influence it.
@@ -38,43 +38,6 @@ pub(crate) fn active(cx: &App) -> Option<Color> {
     } else {
         None
     }
-}
-
-pub(crate) fn tint_variant(variant: &mut ThemeVariant, color: Color) {
-    let neutral = if variant.appearance.is_dark() {
-        Color::BLACK
-    } else {
-        Color::WHITE
-    };
-    let tint = color.mix(
-        neutral,
-        if variant.appearance.is_dark() {
-            0.88
-        } else {
-            0.94
-        },
-    );
-    let colors = &mut variant.colors;
-    for surface in [
-        &mut colors.background,
-        &mut colors.shell,
-        &mut colors.raised,
-        &mut colors.card,
-        &mut colors.dialog,
-        &mut colors.overlay,
-        &mut colors.input,
-    ] {
-        *surface = surface.mix(tint, 0.4);
-    }
-    // Interactive roles use the existing contrast-aware accent derivation.
-    variant.accent = AccentRoles::derive(color, variant.appearance, colors.background);
-    colors.hover = variant.accent.primary.with_alpha(0.09);
-    colors.active = variant.accent.primary.with_alpha(0.15);
-    colors.border = variant.accent.primary.with_alpha(0.14);
-    colors.border_strong = variant.accent.primary.with_alpha(0.3);
-    variant.terminal.background = variant.terminal.background.mix(tint, 0.4);
-    variant.terminal.selection = variant.accent.selection;
-    // Theme::from_variant hardens text against every surface after this overlay.
 }
 
 pub fn set_enabled(enabled: bool, cx: &mut App) {
@@ -142,6 +105,7 @@ pub(crate) fn ensure_color(cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::tint_variant;
 
     #[test]
     fn extraction_ignores_transparency_and_favours_prominent_colour() {
@@ -193,7 +157,9 @@ mod tests {
         cx.update(|cx| {
             gpui_base::init(cx);
             let settings = super::super::UiSettings {
-                accent: openagents_theme::AccentSelection::Preset(openagents_theme::AccentPreset::Pink),
+                accent: openagents_theme::AccentSelection::Preset(
+                    openagents_theme::AccentPreset::Pink,
+                ),
                 appearance: crate::appearance::AppearanceMode::Dark,
                 ..Default::default()
             };

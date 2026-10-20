@@ -1,7 +1,10 @@
-//! The desktop's dark theme (`openagents_ui::theme::Theme::dark`), as the
-//! sRGB values its OKLCH tokens resolve to.
+//! The desktop's dark theme for the web views: each color is read from the
+//! desktop's own tokens (`openagents_chat_view::theme::Theme::dark`).
 
-use gpui::{Font, FontFallbacks, FontStyle, FontWeight, Hsla, font, hsla, rgb};
+use std::sync::LazyLock;
+
+use gpui::{Font, FontFallbacks, FontStyle, FontWeight, Hsla, font};
+use openagents_chat_view::theme::Theme;
 
 pub const SANS: &str = "Geist";
 pub const MONO: &str = "Geist Mono";
@@ -11,81 +14,86 @@ pub const CJK: &str = "Noto Sans CJK JP";
 pub const BODY: f32 = 14.5;
 pub const BODY_LINE: f32 = 23.0;
 /// `typography::CODE_FONT_SIZE_DEFAULT`.
-pub const CODE: f32 = 12.5;
+pub const CODE: f32 = openagents_chat_view::typography::CODE_FONT_SIZE_DEFAULT;
 pub const CODE_LINE: f32 = 19.0;
 
-fn c(hex: u32) -> Hsla {
-    rgb(hex).into()
+static DARK: LazyLock<Theme> = LazyLock::new(Theme::dark);
+
+/// The desktop theme the web views draw with.
+pub fn desktop() -> &'static Theme {
+    &DARK
 }
 
-/// Main panel, sampled `#060606`.
+/// Main panel.
 pub fn bg() -> Hsla {
-    c(0x060606)
+    DARK.bg
 }
-/// Shell and sidebar, sampled `#0d0d0d`.
+/// Shell and sidebar.
 pub fn surface() -> Hsla {
-    c(0x0d0d0d)
+    DARK.surface
 }
 pub fn surface_raised() -> Hsla {
-    c(0x1f1f1f)
+    DARK.surface_raised
 }
 pub fn surface_card() -> Hsla {
-    c(0x0e0e0e)
+    DARK.surface_card
 }
 pub fn element_hover() -> Hsla {
-    hsla(0.0, 0.0, 0.92, 0.07)
+    DARK.element_hover
 }
 pub fn element_active() -> Hsla {
-    hsla(0.0, 0.0, 0.92, 0.11)
+    DARK.element_active
 }
 pub fn border() -> Hsla {
-    hsla(0.0, 0.0, 1.0, 0.08)
+    DARK.border
 }
 pub fn border_strong() -> Hsla {
-    hsla(0.0, 0.0, 1.0, 0.14)
+    DARK.border_strong
 }
 pub fn input_bg() -> Hsla {
-    hsla(0.0, 0.0, 1.0, 0.03)
+    DARK.input_bg
 }
 pub fn text() -> Hsla {
-    c(0xe5e5e5)
+    DARK.text
 }
 pub fn text_muted() -> Hsla {
-    c(0xa1a1a1)
+    DARK.text_muted
 }
 pub fn text_faint() -> Hsla {
-    c(0x737373)
+    DARK.text_faint
 }
 pub fn solid() -> Hsla {
-    c(0xe5e5e5)
+    DARK.solid
 }
 pub fn on_solid() -> Hsla {
-    c(0x0e0e0e)
+    DARK.on_solid
 }
-/// Indigo-400, the default accent.
 pub fn accent() -> Hsla {
-    c(0x7c86ff)
+    DARK.accent
 }
+/// The accent wash the desktop's notice cards and selected rows use
+/// (`accent.opacity(0.12)`); `Theme::accent_wash` is the stronger identity
+/// tint.
 pub fn accent_wash() -> Hsla {
-    accent().opacity(0.12)
+    DARK.accent.opacity(0.12)
 }
 pub fn selection() -> Hsla {
-    accent().opacity(0.35)
+    DARK.selection
 }
 pub fn danger() -> Hsla {
-    c(0xff6467)
+    DARK.danger
 }
 pub fn warning() -> Hsla {
-    c(0xfcbb00)
+    DARK.warning
 }
 pub fn success() -> Hsla {
-    c(0x00d294)
+    DARK.success
 }
 pub fn diff_add() -> Hsla {
-    success()
+    DARK.diff_add
 }
 pub fn diff_del() -> Hsla {
-    danger()
+    DARK.diff_del
 }
 
 /// Named fallbacks for Geist. Emoji isn't named: GPUI drops a named face

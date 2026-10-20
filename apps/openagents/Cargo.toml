@@ -18,6 +18,7 @@ members = [
     "crates/rpc",
     "crates/update",
     "crates/ui",
+    "crates/chat-view",
     "crates/gpui-test",
     "crates/syntax",
     "crates/markdown",
@@ -59,6 +60,7 @@ openagents-engine = { path = "crates/engine" }
 openagents-rpc = { path = "crates/rpc" }
 openagents-update = { path = "crates/update" }
 openagents-ui = { path = "crates/ui" }
+openagents-chat-view = { path = "crates/chat-view" }
 openagents-syntax = { path = "crates/syntax" }
 openagents-markdown = { path = "crates/markdown" }
 openagents-mobile = { path = "crates/mobile" }

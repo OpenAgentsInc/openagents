@@ -424,7 +424,13 @@ fn install_theme(dark: bool, settings: &UiSettings, cx: &mut App) {
         surface: settings.surface.clone(),
     });
     let variant = settings.theme_selection.variant_id(model).to_owned();
-    Theme::install_selection(appearance, &variant, settings.accent, settings.surface, cx);
+    <Theme as crate::theme::ThemeInstall>::install_selection(
+        appearance,
+        &variant,
+        settings.accent,
+        settings.surface,
+        cx,
+    );
 }
 
 /// Selects a fixture chat and loads its messages, or opens the new-chat

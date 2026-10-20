@@ -20,11 +20,11 @@
 //! already-laid-out elements to re-run their paint with the new palette.
 
 use gpui::{App, Global, Subscription, Window};
-use serde::{Deserialize, Serialize};
 use openagents_theme::{AccentSelection, SurfacePreference, ThemeSelection};
+use serde::{Deserialize, Serialize};
 
 use crate::settings::{self, SavePolicy};
-use crate::theme::{Appearance, Theme};
+use crate::theme::{Appearance, Theme, ThemeInstall as _};
 
 /// The user's appearance preference. Persisted in `ui-settings.json`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

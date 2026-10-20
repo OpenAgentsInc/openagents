@@ -33,6 +33,8 @@ gpui_wgpu = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb8019
 http_client = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" }
 openagents-gpui-web = { path = "gpui-web" }
 openagents-web-chat-view = { path = "chat-view" }
+# The desktop's own portable views (#12216).
+openagents-chat-view = { path = "../crates/chat-view" }
 openagents-web-client = { path = "client" }
 openagents-first-frame = { path = "first-frame" }
 anyhow = "1.0.86"
