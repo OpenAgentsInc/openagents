@@ -62,6 +62,8 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/notify",
     "/v1/land",
     "/v1/files",
+    // The browser's phone-approved wallet requests (#12258).
+    "/v1/wallet/browser",
     // Their handlers read the cookie themselves; this layer checks it first.
     crate::traces::API,
     crate::mac_jobs::PREFIX,

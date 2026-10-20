@@ -132,6 +132,7 @@ url = "2"
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+nostr = { path = "../nostr", features = ["test-invoice"] }
 xp-ledger = { path = "../xp-ledger", features = ["fixtures"] }
 coder-host = { path = "../coder-host" }
 verse-lagrange2 = { path = "../verse-lagrange2" }

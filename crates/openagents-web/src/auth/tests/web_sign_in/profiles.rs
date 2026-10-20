@@ -1151,3 +1151,168 @@ async fn people_follow_fork_and_talk_with_an_agent() {
             .is_some()
     );
 }
+
+#[tokio::test]
+async fn the_browser_asks_and_the_phone_approves_and_pays() {
+    use coder_access::spend::{Grant, Purpose, RECEIPT, Receipt, Settlement};
+    use nostr::x402::test_invoice::{described, signed_at};
+    let world = key_world().await;
+    let mut browser = Browser::default();
+    extension_sign_in(&world, &mut browser, &key(61)).await;
+    let bearer = format!("Bearer {}", browser.0["oa_cloud_session"]);
+    let mut api = Browser::default();
+
+    // Nothing to ask with until the phone grants it.
+    let now = crate::cloud::session::now();
+    let invoice = signed_at(
+        "lnbc10u",
+        described([5; 32], "Search API call", 600),
+        false,
+        false,
+        now,
+    );
+    let ask = serde_json::to_vec(&json!({
+        "payment": invoice,
+        "purpose": Purpose::X402Purchase,
+        "resource": "https://example.com/search",
+    }))
+    .unwrap();
+    let (status, _) = call(
+        &world,
+        &mut api,
+        "POST",
+        "/v1/wallet/browser/requests",
+        None,
+        Some(&bearer),
+        Some(&ask),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // The phone grants this browser the default bounds.
+    let (status, shown) = call(
+        &world,
+        &mut api,
+        "GET",
+        "/v1/wallet/browser",
+        None,
+        Some(&bearer),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{shown}");
+    let grantee = shown["grantee"].as_str().unwrap().to_string();
+    let phone = "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+    let grant = Grant::request_mode("22".repeat(32), phone, &grantee, 1, now);
+    let wrong = Grant::request_mode("23".repeat(32), phone, phone_other(), 1, now);
+    for (g, want) in [(&wrong, StatusCode::BAD_REQUEST), (&grant, StatusCode::OK)] {
+        let body = serde_json::to_vec(&json!({"grant": g})).unwrap();
+        let (status, _) = call(
+            &world,
+            &mut api,
+            "PUT",
+            "/v1/wallet/browser/grant",
+            None,
+            Some(&bearer),
+            Some(&body),
+        )
+        .await;
+        assert_eq!(status, want);
+    }
+
+    // The browser asks; the request carries the invoice and nothing secret.
+    let (status, asked) = call(
+        &world,
+        &mut api,
+        "POST",
+        "/v1/wallet/browser/requests",
+        None,
+        Some(&bearer),
+        Some(&ask),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{asked}");
+    let request = asked["request"].clone();
+    let id = request["request"].as_str().unwrap().to_string();
+    assert_eq!(request["amount_msat"], 1_000_000);
+    let text = String::from_utf8(ask.clone()).unwrap();
+    assert!(!text.contains("nsec") && !text.contains("secret"));
+    let big = signed_at(
+        "lnbc200u",
+        described([6; 32], "Big", 600),
+        false,
+        false,
+        now,
+    );
+    let too_much =
+        serde_json::to_vec(&json!({"payment": big, "purpose": Purpose::X402Purchase})).unwrap();
+    let (status, _) = call(
+        &world,
+        &mut api,
+        "POST",
+        "/v1/wallet/browser/requests",
+        None,
+        Some(&bearer),
+        Some(&too_much),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // The phone pays and proves it; a wrong preimage is refused.
+    let receipt = |proof: [u8; 32]| Receipt {
+        v: RECEIPT.into(),
+        requires: vec![],
+        request: id.clone(),
+        grant: grant.grant.clone(),
+        outcome: Settlement::Paid,
+        code: None,
+        payment_id: Some("pay-1".into()),
+        amount_msat: Some(1_000_000),
+        fees_msat: Some(10),
+        proof: Some(proof.iter().map(|b| format!("{b:02x}")).collect()),
+        remaining: None,
+        at: now,
+    };
+    let path = format!("/v1/wallet/browser/requests/{id}/receipt");
+    let forged = serde_json::to_vec(&json!({"receipt": receipt([9; 32])})).unwrap();
+    let (status, _) = call(
+        &world,
+        &mut api,
+        "POST",
+        &path,
+        None,
+        Some(&bearer),
+        Some(&forged),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let paid = serde_json::to_vec(&json!({"receipt": receipt([5; 32])})).unwrap();
+    let (status, settled) = call(
+        &world,
+        &mut api,
+        "POST",
+        &path,
+        None,
+        Some(&bearer),
+        Some(&paid),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{settled}");
+    let (status, read) = call(
+        &world,
+        &mut api,
+        "GET",
+        &format!("/v1/wallet/browser/requests/{id}"),
+        None,
+        Some(&bearer),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["receipt"]["outcome"], "paid");
+    assert_eq!(read["receipt"]["proof"], "05".repeat(32));
+}
+
+fn phone_other() -> &'static str {
+    "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+}
