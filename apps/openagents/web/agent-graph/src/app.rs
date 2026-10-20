@@ -485,7 +485,13 @@ impl GraphView {
         div()
             .absolute()
             .right(px(12.0))
-            .top(px(12.0))
+            // The page's toolbar sits at the top left; on a narrow screen it
+            // can take the whole top, so the zoom controls go to the foot.
+            .top(px(if self.area.0 < NARROW {
+                self.area.1 - 40.0
+            } else {
+                12.0
+            }))
             .flex()
             .gap(px(6.0))
             .child(

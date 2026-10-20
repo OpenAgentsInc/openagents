@@ -57,6 +57,7 @@ pub(crate) fn routes() -> Router<App> {
         .route(PATH, get(foreman_page))
         .route("/agent/{id}", get(agent_page))
         .route("/agent/{id}/graph.json", get(graph_json))
+        .route("/agent/{id}/definition.json", get(definition_json))
         .route("/agent-graph/{file}", get(graph_file))
 }
 
@@ -69,7 +70,10 @@ pub(crate) fn owns(path: &str) -> bool {
     let Some(rest) = path.strip_prefix("/agent/") else {
         return false;
     };
-    let id = rest.strip_suffix("/graph.json").unwrap_or(rest);
+    let id = rest
+        .strip_suffix("/graph.json")
+        .or_else(|| rest.strip_suffix("/definition.json"))
+        .unwrap_or(rest);
     !id.contains('/') && (id == "foreman" || template(id).is_some())
 }
 
@@ -125,17 +129,77 @@ fn graph_data(graph: &agent_graph::GraphSpec) -> Markup {
 }
 
 /// The box the graph draws in, holding the server's own view until it does.
-fn graph_box(graph: Option<&agent_graph::GraphSpec>, fallback: Markup) -> Markup {
+fn graph_box(id: &str, graph: Option<&agent_graph::GraphSpec>, fallback: Markup) -> Markup {
     match graph {
-        None => fallback,
+        None => html! {
+            (tools(id, false))
+            (fallback)
+        },
         Some(graph) => html! {
             div.oa-agent-graph id="gpui-mount" role="img"
                 aria-label=(format!("{} as a graph of its parts. Every part is described below.", graph.title)) {
+                (tools(id, true))
                 (fallback)
             }
             (graph_data(graph))
         },
     }
+}
+
+/// The graph's toolbar. Download JSON is a plain link to the agent's whole
+/// definition, so it works without script; full screen and Copy JSON need
+/// the start script, which shows them.
+fn tools(id: &str, live: bool) -> Markup {
+    let href = format!("/agent/{id}/definition.json");
+    html! {
+        div.oa-agent-graph-tools role="toolbar" aria-label="Graph tools" {
+            @if live {
+                button.oa-agent-graph-tool type="button" data-graph-action="fullscreen" hidden { "Full screen" }
+                button.oa-agent-graph-tool type="button" data-graph-action="copy"
+                    data-graph-definition=(href) hidden { "Copy JSON" }
+            }
+            a.oa-agent-graph-tool href=(href) download=(agent_graph::definition::file_name(id)) { "Download JSON" }
+            @if live {
+                span.oa-agent-graph-status aria-live="polite" {}
+            }
+        }
+    }
+}
+
+/// A template's whole definition, Foreman's with its notes.
+fn template_definition(
+    published: &str,
+    experiment: &Experiment,
+) -> agent_graph::definition::Definition {
+    if published == templates::FOREMAN_ID {
+        agent_graph::foreman::definition()
+    } else {
+        agent_graph::definition::of(
+            experiment,
+            &slug(&experiment.title),
+            published,
+            &agent_graph::lab::Notes::default(),
+        )
+    }
+}
+
+/// `/agent/{id}/definition.json`: a template's whole definition
+/// (`openagents.agent-definition-export`, version 1).
+async fn definition_json(UrlPath(id): UrlPath<String>) -> Response {
+    let Some((published, experiment)) = template(&id) else {
+        return crate::not_found().await;
+    };
+    let definition = template_definition(published, &experiment);
+    let mut response = axum::Json(&definition).into_response();
+    if let Ok(value) = HeaderValue::from_str(&format!(
+        "inline; filename=\"{}\"",
+        agent_graph::definition::file_name(&definition.id)
+    )) {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_DISPOSITION, value);
+    }
+    response
 }
 
 /// An Agent Lab template by its published ID or its name.
@@ -177,7 +241,7 @@ async fn agent_page(
         .path(path)
         .description(graph.description.clone());
     let live = graph_build(&app).is_some();
-    let content = generic_body(&graph, live);
+    let content = generic_body(&id, &graph, live);
     if !live {
         return ui.scriptless().content(content).respond(&headers);
     }
@@ -190,7 +254,7 @@ async fn agent_page(
 }
 
 /// Any graph as a page: its parts and what each one does, in order.
-fn generic_body(graph: &agent_graph::GraphSpec, live: bool) -> Markup {
+fn generic_body(id: &str, graph: &agent_graph::GraphSpec, live: bool) -> Markup {
     let parts = html! {
         div.oa-agent-map-cards {
             @for unit in graph.children(None) {
@@ -217,7 +281,7 @@ fn generic_body(graph: &agent_graph::GraphSpec, live: bool) -> Markup {
                 h1 id="agent-title" { (graph.title) }
                 p.oa-page-lead { (graph.description) }
             }))
-            (graph_box(live.then_some(graph), html! {}))
+            (graph_box(id, live.then_some(graph), html! {}))
             (parts)
         }
     })
@@ -675,7 +739,7 @@ fn body(graph: Option<&agent_graph::GraphSpec>) -> Markup {
                      it, what it reads, what it may do, and how we test it."
                 }
             }))
-            (graph_box(graph, map(&parts, &spec.runtime, spec.model.as_deref().unwrap_or(""))))
+            (graph_box("foreman", graph, map(&parts, &spec.runtime, spec.model.as_deref().unwrap_or(""))))
             div.oa-agent-map-cards {
                 @for part in &parts {
                     article.oa-agent-map-card id=(format!("part-{}", part.id)) data-accent=(part.accent) {
@@ -846,6 +910,7 @@ mod tests {
         }
         assert!(html.contains("record_decision"));
         assert!(html.contains("wait_for_turn"));
+        assert!(html.contains("href=\"/agent/foreman/definition.json\""));
         assert!(!html.contains("<form"));
         assert!(!html.contains("<button"));
         assert!(!html.contains("<script"));
@@ -856,6 +921,13 @@ mod tests {
     fn the_live_page_hands_the_graph_to_the_canvas_and_keeps_the_map() {
         let graph = agent_graph::foreman::graph();
         let html = body(Some(&graph)).into_string();
+        assert!(html.contains("data-graph-action=\"fullscreen\""));
+        assert!(html.contains("data-graph-action=\"copy\""));
+        assert!(
+            html.contains(
+                "href=\"/agent/foreman/definition.json\" download=\"foreman.agent.json\""
+            )
+        );
         assert!(html.contains("id=\"gpui-mount\""));
         assert!(html.contains("<svg viewBox=\"0 0 1100 1000\""));
         let start =
@@ -878,13 +950,14 @@ mod tests {
         experiment.draft.spec.name = "Helper".into();
         let graph =
             agent_graph::lab::of(&experiment, "helper", &agent_graph::lab::Notes::default());
-        let html = generic_body(&graph, true).into_string();
+        let html = generic_body("helper", &graph, true).into_string();
         assert!(html.contains("id=\"gpui-mount\""));
         assert!(html.contains("id=\"part-runtime\""));
         crate::copy_guard::assert_plain("/agent/helper", &html);
         assert_eq!(template("foreman").unwrap().0, templates::FOREMAN_ID);
         assert!(template("nobody").is_none());
         assert!(owns("/agent/foreman") && owns("/agent/foreman/graph.json"));
+        assert!(owns("/agent/foreman/definition.json"));
         assert!(owns(&format!("/agent/{}", templates::FOREMAN_ID)));
         assert!(owns("/agent-graph/start.js"));
         assert!(!owns("/agent/nobody") && !owns("/agents"));

@@ -1,8 +1,8 @@
 /*
  * An agent's map (`/agent/foreman` in openagents-web): a server-drawn SVG
  * with the agent in the middle and the parts of its definition around it,
- * then a card per part. Hover and focus are CSS only; the page runs no
- * script. Each part carries `data-accent` (info, discovery, warning,
+ * then a card per part; AgentGraph's box and toolbar close the file.
+ * Each part carries `data-accent` (info, discovery, warning,
  * success, danger) and sets `--oa-agent-map-accent` from it.
  */
 
@@ -311,29 +311,13 @@
   columns: 2 16rem;
 }
 
-/*
- * AgentGraph (`apps/openagents/web/agent-graph`): once its module starts,
- * the start script marks the box live and GPUI draws the graph in a canvas
- * inside it, in place of the map. Without the module the map stays.
- */
-.oa-agent-graph.is-live {
-  position: relative;
-  height: min(82vh, 860px);
-  min-height: 520px;
-  margin: calc(var(--spacing) * 6) 0 calc(var(--spacing) * 8);
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  overflow: hidden;
-  background: #070707;
-}
-
-.oa-agent-graph.is-live > figure {
-  display: none;
-}
-
-@media (max-width: 640px) {
-  .oa-agent-graph.is-live {
-    height: 72vh;
-    min-height: 440px;
-  }
-}
+.oa-agent-graph.is-live{position:relative;height:min(82vh,860px);min-height:520px;margin:24px 0 32px;border:1px solid var(--color-border);border-radius:16px;overflow:hidden;background:#070707}
+.oa-agent-graph.is-live>figure{display:none}
+@media (max-width:640px){.oa-agent-graph.is-live{height:72vh;min-height:440px}}
+.oa-agent-graph-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:16px}
+.oa-agent-graph.is-live .oa-agent-graph-tools{position:absolute;top:12px;left:12px;z-index:2;margin:0}
+.oa-agent-graph-tool{display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid var(--color-border);border-radius:7px;background:#0d0d0d;color:#e5e5e5;font:inherit;font-size:var(--font-text-sm-size);text-decoration:none;cursor:pointer}
+.oa-agent-graph-status{color:var(--color-text-secondary)}
+.oa-agent-graph:fullscreen,.oa-agent-graph.is-filled{width:100vw;height:100dvh;min-height:0;margin:0;border:0;border-radius:0;background:#070707}
+.oa-agent-graph.is-filled{position:fixed;inset:0;z-index:1000}
+html.oa-agent-graph-filled{overflow:hidden}

@@ -79,7 +79,9 @@ made of and how data moves through it.
 | Derivation | `crates/agent-graph/src/lab.rs` | `lab::of(experiment, id, notes)` for any Agent Lab experiment: runtime and model, instructions with each skill inside, check-ins, the places it reads, tools by group through its authority, memory, the stall ladder with its rungs, and the suite |
 | Foreman | `crates/agent-graph/src/foreman.rs` | `foreman::graph()`: the lessons each part answers, the replay, and what we measure |
 | View | `apps/openagents/web/agent-graph` | GPUI over `openagents-gpui-web`: pan by dragging, zoom with the wheel or the buttons, drag a unit, select a unit to read it in the side panel |
-| Page | `crates/openagents-web/src/pages/foreman.rs` | `/agent/foreman` with the graph's JSON in the page; `/agent/{id}` and `/agent/{id}/graph.json` for Agent Lab templates |
+| Definition | `crates/agent-graph/src/definition.rs` | The whole definition as one document, schema `openagents.agent-definition-export`, `version` 1: the Agent Lab experiment as stored (instructions, every skill's full text, runtime, model, access, autonomy, suite), plus the tools, commands, and places its text names, its grants, its stall ladder, and notes such as lessons and measures |
+| Page | `crates/openagents-web/src/pages/foreman.rs` | `/agent/foreman` with the graph's JSON in the page; `/agent/{id}`, `/agent/{id}/graph.json`, and `/agent/{id}/definition.json` for Agent Lab templates |
+| Toolbar | `apps/openagents/web/agent-graph/start.js` | Full screen (the Fullscreen API, or filling the window where it is missing, as on iPhone; Esc or the button leaves), Copy JSON, and Download JSON (`foreman.agent.json`). Download JSON is a plain link, so it works without script or a GPU |
 
 From Unit we ported:
 
