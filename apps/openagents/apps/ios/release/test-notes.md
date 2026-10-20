@@ -1,4 +1,23 @@
-# OpenAgents 1.0.0 (1017)
+# OpenAgents 1.0.0 (1018)
+
+The app no longer closes by itself on a long chat.
+
+- A chat with very long messages (an agent's briefing can run to megabytes)
+  used so much memory that iOS closed the app, often within minutes. Long
+  messages now show their start with Show more, and Copy still copies the
+  whole message.
+- Large chats save less often while replies stream in, so the app writes
+  far less to storage.
+- Pay a browser's payment request from this phone, and publish your public
+  profile from More.
+- Everything in 1017: scanning the desktop app's code connects this phone,
+  and a restarted computer reconnects by itself.
+
+Open your longest chat and leave it open while a reply streams for a few
+minutes; the app should stay open. Check Show more and Copy on a long
+message, and light and dark appearance.
+
+OpenAgents 1.0.0 (1017)
 
 The 1.0.0 release candidate. Connecting this phone to the OpenAgents desktop
 app now works, and the connection holds up.
