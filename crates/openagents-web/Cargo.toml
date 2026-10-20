@@ -93,6 +93,8 @@ nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
 # XP on profiles, derived from NIP-XP awards (src/profiles/evidence.rs, #12257).
 xp-ledger = { path = "../xp-ledger" }
+# /explore reads plugin listings as the CLI does (src/profiles/explore.rs, #12259).
+plugin-registry = { path = "../plugin-registry" }
 # /pylons' live field: NIP-PYLON beacons and receipts from the relay,
 # verified and projected (pylon::field). No broker: it links SQLite.
 pylon = { path = "../pylon", default-features = false }

@@ -1,6 +1,7 @@
 //! NIP-REG recommendations. Selection never installs, enables, or executes.
 
 pub mod catalog;
+pub mod listings;
 pub mod cli;
 pub mod publish;
 pub mod source;

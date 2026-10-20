@@ -39,18 +39,9 @@ const SEARCH_LIMIT: u64 = 500;
 
 const SWITCHES: &[&str] = &[];
 
-/// The hosted runner's sample plugins (`deploy/eval-runner/catalog`), their
-/// package records compiled in. The runner publishes their releases under
-/// its key. They are its test fixtures: search never lists them, and
-/// install finds one only when named exactly (#10307).
-const CATALOG: [&str; 6] = [
-    include_str!("../../plugin-repo-map/package.json"),
-    include_str!("../../plugin-code-search/package.json"),
-    include_str!("../../plugin-test-report/package.json"),
-    include_str!("../../plugin-explain-error/package.json"),
-    include_str!("../../plugin-release-notes/package.json"),
-    include_str!("../../plugin-dependency-check/package.json"),
-];
+/// The hosted runner's sample plugins, shared with the website's
+/// `/explore` (`curated_registry::listings::SAMPLES`).
+const CATALOG: [&str; 6] = curated_registry::listings::SAMPLES;
 
 /// The catalog's plugins as listings with no release named yet: `find`
 /// resolves the newest release when one is installed.
@@ -80,11 +71,7 @@ pub(crate) fn catalog() -> Vec<Listing> {
 /// `listings` without the hosted runner's sample plugins, which are its
 /// test fixtures and never shown.
 pub(crate) fn without_samples(listings: Vec<Listing>) -> Vec<Listing> {
-    let samples: Vec<String> = catalog().into_iter().map(|entry| entry.package).collect();
-    listings
-        .into_iter()
-        .filter(|listing| !samples.contains(&listing.package))
-        .collect()
+    curated_registry::listings::without_samples(listings)
 }
 
 /// The newest release of the catalog plugin `entry`, as the listing
@@ -586,34 +573,18 @@ pub(crate) fn publish(
     })
 }
 
-/// One published plugin, from its newest listing.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Listing {
-    /// `<publisher>:<slug>`.
-    pub package: String,
-    pub slug: String,
-    pub publisher: String,
-    pub title: String,
-    pub description: String,
-    /// The release the listing points at, an EventRef.
-    pub release: Value,
-    /// Blob servers the publisher named.
-    pub blobs: Vec<String>,
-    pub created_at: u64,
-}
+pub(crate) use curated_registry::listings::Listing;
 
-impl Listing {
-    fn row(&self) -> Value {
-        json!({
-            "id": self.package,
-            "slug": self.slug,
-            "publisher": self.publisher,
-            "title": self.title,
-            "description": self.description,
-            "release": self.release["id"],
-            "created_at": self.created_at,
-        })
-    }
+fn row(listing: &Listing) -> Value {
+    json!({
+        "id": listing.package,
+        "slug": listing.slug,
+        "publisher": listing.publisher,
+        "title": listing.title,
+        "description": listing.description,
+        "release": listing.release["id"],
+        "created_at": listing.created_at,
+    })
 }
 
 /// The published listings, newest per publisher and slug, newest first.
@@ -622,61 +593,10 @@ pub(crate) fn listings(
     author: Option<&str>,
     slug: Option<&str>,
 ) -> Result<Vec<Listing>, String> {
-    let mut filter = json!({
-        "kinds": [nostr::ext::LISTING_KIND],
-        "#t": ["oa:ext:listing:v1"],
-        "limit": SEARCH_LIMIT,
-    });
-    if let Some(author) = author {
-        filter["authors"] = json!([author]);
-    }
-    if let Some(slug) = slug {
-        filter["#d"] = json!([slug]);
-    }
-    let mut newest: BTreeMap<(String, String), Event> = BTreeMap::new();
-    for event in registry.query(filter)? {
-        let Some(d) = event.tag_values("d").next().map(str::to_owned) else {
-            continue;
-        };
-        let key = (event.pubkey.clone(), d);
-        if newest
-            .get(&key)
-            .is_none_or(|kept| (event.created_at, &event.id) > (kept.created_at, &kept.id))
-        {
-            newest.insert(key, event);
-        }
-    }
-    let mut out = Vec::new();
-    for ((publisher, slug), event) in newest {
-        let Ok(body) = nostr::ext::parse_record(&event) else {
-            continue;
-        };
-        if body["state"] != "published" {
-            continue;
-        }
-        out.push(Listing {
-            package: body["package"].as_str().unwrap_or_default().to_owned(),
-            slug,
-            publisher,
-            title: body["title"].as_str().unwrap_or_default().to_owned(),
-            description: body["description"].as_str().unwrap_or_default().to_owned(),
-            release: body["release"].clone(),
-            blobs: body["meta"]["blobs"]
-                .as_array()
-                .map(|bases| {
-                    bases
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .filter(|base| base.starts_with("https://") || base.starts_with("http://"))
-                        .map(str::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default(),
-            created_at: event.created_at,
-        });
-    }
-    out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-    Ok(out)
+    let filter = curated_registry::listings::filter(author, slug, SEARCH_LIMIT);
+    Ok(curated_registry::listings::published(
+        registry.query(filter)?,
+    ))
 }
 
 /// The listings matching `query`, best first: a plugin whose slug or id is
@@ -1058,7 +978,7 @@ fn search_command(args: &Args) -> Result<Value, String> {
         "items": found
             .iter()
             .map(|listing| {
-                let mut row = listing.row();
+                let mut row = row(listing);
                 row["fee_msat"] = json!(fees.get(&listing.package).copied().unwrap_or(0));
                 row
             })

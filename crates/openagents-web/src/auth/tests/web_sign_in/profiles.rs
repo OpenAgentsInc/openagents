@@ -735,3 +735,95 @@ fn a_forged_award_counts_for_no_one() {
     let (xp, awards) = crate::profiles::evidence::xp_of(&pubkey("bob"), &real, &referees);
     assert_eq!((xp, awards.len()), (50, 1));
 }
+
+/// A published NIP-EXT listing of `<by>:<slug>` and the release it names.
+fn plugin(by: &RelaySigner, slug: &str, title: &str) -> (Event, Event) {
+    let release = xp_ledger::eval::fixture::release(by, slug, 1_790_000_000);
+    let body = json!({
+        "v": 1, "requires": [], "type": "listing",
+        "package": format!("{}:{slug}", by.pubkey()),
+        "state": "published",
+        "release": {"id": release.id, "pubkey": release.pubkey, "kind": release.kind},
+        "title": title,
+        "description": "Does one thing.",
+    });
+    let listing = by.sign(
+        1_790_000_001,
+        nostr::ext::LISTING_KIND,
+        vec![
+            Tag::new(vec!["d".into(), slug.into()]),
+            Tag::new(vec!["t".into(), "oa:ext:listing:v1".into()]),
+        ],
+        body.to_string(),
+    );
+    nostr::ext::parse_record(&listing).unwrap();
+    (release, listing)
+}
+
+#[tokio::test]
+async fn explore_lists_agents_and_plugins_from_relay_events() {
+    let relay = Relay::start().await;
+    let world = key_world_with(vec![relay.url.clone()]).await;
+    let author = key(41);
+    let (release, listing) = plugin(&author, "word-count", "Word count");
+    relay.put(release.clone());
+    relay.put(listing.clone());
+    // Two agents by one owner; the one with signed evidence ranks first.
+    let owner = key(42);
+    let secret = |b: u8| secp256k1::SecretKey::from_byte_array([b; 32]).unwrap();
+    let mut ids = Vec::new();
+    for (n, (agent_seed, title)) in [(43u8, "Quiet agent"), (44u8, "Busy agent")]
+        .into_iter()
+        .enumerate()
+    {
+        let agent = key(agent_seed);
+        let tag = nostr::domain::mint_owner_attestation(
+            &secret(42),
+            agent.pubkey(),
+            &nostr::agent_public::conditions_until(4_000_000_000),
+        )
+        .unwrap()
+        .tag();
+        let id = format!("{:02x}", n + 1).repeat(32);
+        let doc = json!({"experiment": {"title": title}}).to_string();
+        relay.put(
+            nostr::agent_public::definition_event(
+                &agent,
+                &tag,
+                owner.pubkey(),
+                &id,
+                "https://example.com/d.json",
+                &doc,
+                1_790_000_000,
+            )
+            .unwrap(),
+        );
+        ids.push((id, agent));
+    }
+    relay.put(receipt(&key(45), ids[1].1.pubkey()));
+    relay.put(label(&key(46), ids[1].1.pubkey(), "great"));
+
+    let mut anyone = Browser::default();
+    let page = anyone.get(&world, "/explore").await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(!page.body.contains("<script src"));
+    crate::copy_guard::assert_plain("/explore", &page.body);
+    for shown in ["Word count", "Does one thing.", "Quiet agent", "Busy agent"] {
+        assert!(page.body.contains(shown), "{shown}: {}", page.body);
+    }
+    assert!(
+        page.body
+            .contains(&format!("href=\"/event/{}\"", release.id))
+    );
+    assert!(page.body.contains(&format!("href=\"/agent/{}\"", ids[0].0)));
+    let busy = page.body.find("Busy agent").unwrap();
+    let quiet = page.body.find("Quiet agent").unwrap();
+    assert!(busy < quiet, "signed evidence ranks first");
+
+    // The same plugins the CLI's search reads.
+    let events = relay.events.lock().unwrap().clone();
+    let cli =
+        plugin_registry::listings::without_samples(plugin_registry::listings::published(events));
+    assert_eq!(cli.len(), 1);
+    assert_eq!(cli[0].package, format!("{}:word-count", author.pubkey()));
+}

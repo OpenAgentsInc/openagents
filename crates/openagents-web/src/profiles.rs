@@ -27,6 +27,7 @@
 
 mod edit;
 pub(crate) mod evidence;
+mod explore;
 pub(crate) use edit::PAGE as SETTINGS_PAGE;
 mod picture;
 pub(crate) mod relays;
@@ -75,13 +76,18 @@ pub(crate) fn routes() -> Router<App> {
         .route(PAGE, get(page))
         .route(PICTURE, get(picture::serve))
         .route("/event/{id}", get(evidence::event_page))
+        .route(explore::PAGE, get(explore::page))
         .merge(edit::routes())
 }
 
 /// Whether this site answers `path` itself.
 #[must_use]
 pub(crate) fn owns(path: &str) -> bool {
-    path == WELL_KNOWN || path.starts_with("/@") || path.starts_with("/event/") || edit::owns(path)
+    path == WELL_KNOWN
+        || path.starts_with("/@")
+        || path.starts_with("/event/")
+        || path == explore::PAGE
+        || edit::owns(path)
 }
 
 /// Who a page is for.

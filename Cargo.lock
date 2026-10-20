@@ -13240,6 +13240,7 @@ dependencies = [
  "openagents-workspace-hack",
  "openui-lang",
  "pay-ledger",
+ "plugin-registry",
  "pulldown-cmark",
  "pylon",
  "pylons-view",

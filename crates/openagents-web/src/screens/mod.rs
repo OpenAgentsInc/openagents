@@ -92,6 +92,14 @@ pub(crate) struct Screen {
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     (
+        "/explore",
+        "Explore: its lists come from relay events, which its own tests drive",
+    ),
+    (
+        "/event/{id}",
+        "a signed event from the relays, which its own tests drive",
+    ),
+    (
         "/settings/profile",
         "Public profile: its states need a relay and the account service's names, which its own tests drive",
     ),
