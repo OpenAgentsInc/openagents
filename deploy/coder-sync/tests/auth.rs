@@ -473,7 +473,9 @@ async fn a_room_token_opens_only_its_own_room_until_it_expires() {
     use futures::SinkExt;
     socket
         .send(Message::Text(
-            json!({"t": "hello", "device": "web-test"}).to_string().into(),
+            json!({"t": "hello", "device": "web-test"})
+                .to_string()
+                .into(),
         ))
         .await
         .unwrap();
@@ -558,4 +560,85 @@ async fn a_room_token_opens_only_its_own_room_until_it_expires() {
     .await
     .unwrap();
     assert_eq!(refused(f.ws(registry, &short)).await, 401);
+}
+
+/// #12264: a room token's client is a browser. Its connection ID starts with
+/// `web-`, which no other client may claim, and its frames reach only a host
+/// that checks browser grants (`browsers=1`).
+#[tokio::test]
+async fn a_browser_reaches_only_a_host_that_checks_its_grant() {
+    use coder_access::room_token::Room;
+    use futures::SinkExt;
+    use openagents_rpc::{DeviceFrameHeader, decode_device_frame, encode_device_frame};
+    use tokio_tungstenite::tungstenite::{Error as WsError, Message};
+    let f = Fixture::start().await;
+    let ws = f.base.replacen("http:", "ws:", 1);
+    let device = uuid::Uuid::new_v4().to_string();
+    let path = format!("/device/{device}/ws");
+    let rpc = |s: &str| {
+        Message::Binary(
+            encode_device_frame(&DeviceFrameHeader::new(s, "rpc"), b"{\"id\":1}")
+                .unwrap()
+                .into(),
+        )
+    };
+    // An old host: the browser is told the computer needs an update.
+    let (_old, _) =
+        tokio_tungstenite::connect_async(format!("{ws}{path}?role=host&token={}", token('a')))
+            .await
+            .unwrap();
+    let ticket = room(Room::Device, &device, "acct_alpha", 300);
+    let (mut browser, _) =
+        tokio_tungstenite::connect_async(format!("{ws}{path}?connId=tab1&token={ticket}"))
+            .await
+            .unwrap();
+    browser.send(rpc("a")).await.unwrap();
+    let (header, payload) = next_binary(&mut browser).await;
+    assert_eq!(header.k, openagents_rpc::device_room::RELAY_KIND);
+    assert_eq!(
+        openagents_rpc::device_room::relay_error_code(&payload).as_deref(),
+        Some("host_outdated")
+    );
+    // A host that checks grants gets the frame, from `web-tab1`.
+    let (mut host, _) = tokio_tungstenite::connect_async(format!(
+        "{ws}{path}?role=host&browsers=1&token={}",
+        token('a')
+    ))
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    browser.send(rpc("b")).await.unwrap();
+    let (header, _) = next_binary(&mut host).await;
+    assert_eq!(header.from.as_deref(), Some("web-tab1"));
+    // An account session can't pass for a browser.
+    match tokio_tungstenite::connect_async(format!(
+        "{ws}{path}?connId=web-tab9&token={}",
+        token('a')
+    ))
+    .await
+    {
+        Err(WsError::Http(response)) => assert_eq!(response.status(), 400),
+        other => panic!("{other:?}"),
+    }
+}
+
+async fn next_binary(
+    socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+) -> (openagents_rpc::DeviceFrameHeader, Vec<u8>) {
+    use tokio_tungstenite::tungstenite::Message;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match socket.next().await {
+                Some(Ok(Message::Binary(bytes))) => {
+                    return openagents_rpc::decode_device_frame(&bytes).unwrap();
+                }
+                Some(Ok(_)) => {}
+                other => panic!("{other:?}"),
+            }
+        }
+    })
+    .await
+    .unwrap()
 }

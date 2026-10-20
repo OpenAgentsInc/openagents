@@ -9,6 +9,7 @@
 //! these methods, so another device can never make a code.
 
 use async_trait::async_trait;
+use openagents_rpc::browsers;
 use openagents_rpc::connect_phone::{
     CANCEL_CONNECT_CODES, CREATE_CONNECT_CODE, CancelConnectCodes, ConnectCode,
 };
@@ -84,6 +85,9 @@ pub(crate) fn cancel(slot: &Slot, invitations: &[String]) -> Result<(), RpcError
 pub struct LocalRpc {
     pub(crate) inner: Arc<dyn RpcService>,
     pub(crate) slot: Slot,
+    /// Browsers asking for and holding access (#12264): only this
+    /// computer's own app allows, denies, and removes them.
+    pub(crate) browsers: Option<Arc<crate::browser_devices::Browsers>>,
 }
 
 #[async_trait]
@@ -107,8 +111,54 @@ impl RpcService for LocalRpc {
                     .map_err(|_| RpcError::Failed(UNAVAILABLE.into()))??;
                 RpcReply::value(&serde_json::json!({}))
             }
+            browsers::LIST_BROWSER_REQUESTS => {
+                RpcReply::value(&self.browsers().map(|b| b.waiting()).unwrap_or_default())
+            }
+            browsers::LIST_BROWSERS => {
+                let allowed = match self.browsers().cloned() {
+                    Some(b) => tokio::task::spawn_blocking(move || b.allowed())
+                        .await
+                        .unwrap_or_default(),
+                    None => Vec::new(),
+                };
+                RpcReply::value(&allowed)
+            }
+            browsers::ANSWER_BROWSER_REQUEST => {
+                let answer: browsers::AnswerRequest = serde_json::from_value(params)
+                    .map_err(|error| RpcError::BadParams(error.to_string()))?;
+                let b = self
+                    .browsers()
+                    .ok_or_else(|| RpcError::Failed(UNAVAILABLE.into()))?
+                    .clone();
+                tokio::task::spawn_blocking(move || b.answer(&answer.id, answer.allow))
+                    .await
+                    .map_err(|_| RpcError::Failed(UNAVAILABLE.into()))??;
+                RpcReply::value(&serde_json::json!({}))
+            }
+            browsers::REVOKE_BROWSER => {
+                #[derive(serde::Deserialize)]
+                struct Revoke {
+                    key: String,
+                }
+                let Revoke { key } = serde_json::from_value(params)
+                    .map_err(|error| RpcError::BadParams(error.to_string()))?;
+                let b = self
+                    .browsers()
+                    .ok_or_else(|| RpcError::Failed(UNAVAILABLE.into()))?
+                    .clone();
+                tokio::task::spawn_blocking(move || b.revoke(&key))
+                    .await
+                    .map_err(|_| RpcError::Failed(UNAVAILABLE.into()))??;
+                RpcReply::value(&serde_json::json!({}))
+            }
             _ => self.inner.handle(method, params).await,
         }
+    }
+}
+
+impl LocalRpc {
+    fn browsers(&self) -> Option<&Arc<crate::browser_devices::Browsers>> {
+        self.browsers.as_ref()
     }
 }
 
@@ -165,6 +215,7 @@ mod tests {
         let rpc = LocalRpc {
             inner: Arc::new(Echo),
             slot: slot.clone(),
+            browsers: None,
         };
 
         let code: ConnectCode = serde_json::from_value(value(

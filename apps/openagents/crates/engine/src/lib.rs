@@ -18,6 +18,7 @@ use openagents_sync::DocsStore;
 pub mod agent_accounts;
 mod agent_wakes;
 pub mod auth;
+pub mod browser_devices;
 mod change_request_store;
 pub mod change_requests;
 pub mod chat2_host;
@@ -36,8 +37,8 @@ pub mod host_rpc;
 mod http_error;
 pub mod instance_lock;
 pub mod local_import;
-pub mod peer_direct;
 mod model_catalogs;
+pub mod peer_direct;
 pub mod profile;
 pub mod project_actions;
 pub mod registry;
@@ -68,19 +69,19 @@ pub use diff_sync::{
 };
 pub use doc_host::{ChatDocHandle, DocHost, DocHostConfig, EdgeConfig};
 pub use instance_lock::InstanceLock;
-pub use profile::EngineProfile;
-pub use project_actions::ProjectActionsStore;
-pub use registry::{HarnessDescriptor, HarnessRegistry, default_registry};
 #[cfg(unix)]
 pub use openagents_harness::build_gate;
 /// Run keepers (#11930): the app binary runs `keeper::main` for its hidden
 /// `keeper` subcommand.
 #[cfg(unix)]
 pub use openagents_harness::keeper;
-pub use sessions::set_keeper_launch;
+pub use profile::EngineProfile;
+pub use project_actions::ProjectActionsStore;
+pub use registry::{HarnessDescriptor, HarnessRegistry, default_registry};
 pub use repos::{CheckoutIdentity, Repos, worktree_branch_from_title};
 pub use rpc::EngineRpc;
 pub use run_journal::{JournalError, RunJournal};
+pub use sessions::set_keeper_launch;
 pub use sessions::{JournaledEvent, SessionsEngine, SteerOutcome};
 pub use source_control::{
     BranchHeadContext, ChangeRequestError, ChangeRequestProvider, ChangeRequestResolution,
@@ -515,19 +516,31 @@ impl EngineCore {
         edge_url: &str,
         service: Arc<dyn RpcService>,
     ) -> openagents_rpc::HostRelay {
+        self.start_host_relay_with_browsers(edge_url, service, None)
+    }
+
+    /// [`Self::start_host_relay_serving`], serving browsers' connections
+    /// through `browsers` (#12264).
+    pub fn start_host_relay_with_browsers(
+        &self,
+        edge_url: &str,
+        service: Arc<dyn RpcService>,
+        browsers: Option<Arc<dyn openagents_rpc::BrowserGate>>,
+    ) -> openagents_rpc::HostRelay {
         let auth = self.auth();
-        let config =
+        let mut config =
             openagents_rpc::HostRelayConfig::new(edge_url, self.device_id.clone(), Arc::new(auth));
+        config.browsers = browsers;
         let doc_host = self.doc_host.clone();
-        let on_nudge: openagents_rpc::NudgeHandler = Arc::new(move |chat_id: String| {
-            match doc_host.enqueue_wakeup(&chat_id) {
+        let on_nudge: openagents_rpc::NudgeHandler = Arc::new(
+            move |chat_id: String| match doc_host.enqueue_wakeup(&chat_id) {
                 Ok(()) => true,
                 Err(err) => {
                     tracing::warn!(chat = %chat_id, %err, "nudge: durable admission failed; withholding ACK");
                     false
                 }
-            }
-        });
+            },
+        );
         openagents_rpc::HostRelay::spawn(config, service, on_nudge)
     }
 
@@ -641,6 +654,8 @@ pub struct EngineRuntime {
     /// The running device connection's connect codes, for the Connect your
     /// phone window.
     connect_codes: connect_phone::Slot,
+    /// Browsers on openagents.com that ask for or hold access (#12264).
+    browsers: Arc<browser_devices::Browsers>,
 }
 
 /// IPC-only lifecycle control owned by `openagents headless`. The regular
@@ -677,7 +692,11 @@ impl EngineRuntime {
             .connect_codes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(host.host().connect_codes());
-        *self.nip_host.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(host);
+        self.browsers.attach(host.host());
+        *self
+            .nip_host
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(host);
         Ok(())
     }
 
@@ -688,6 +707,7 @@ impl EngineRuntime {
         Arc::new(connect_phone::LocalRpc {
             inner: self.core.rpc_service(),
             slot: self.connect_codes.clone(),
+            browsers: Some(self.browsers.clone()),
         })
     }
 
@@ -724,7 +744,10 @@ impl EngineRuntime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
-        self.nip_host.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        self.nip_host
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         // Revoke remote reachability before graceful draining. Sessions may
         // need time to settle; no authenticated relay RPC may enter during
         // that window after sign-out.
@@ -747,7 +770,10 @@ impl Drop for EngineRuntime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
-        self.nip_host.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        self.nip_host
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         self.host_relay
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -788,7 +814,8 @@ impl Engine {
         // Coder Desktop: development scope is opt-in (see `initial_workspace_scope`).
         auth_config.development_requested = config.edge_token.is_some()
             || config.org_id.is_some()
-            || openagents_brand::env_var("OPENAGENTS_WORKSPACE_SCOPE").is_ok_and(|scope| scope == "development");
+            || openagents_brand::env_var("OPENAGENTS_WORKSPACE_SCOPE")
+                .is_ok_and(|scope| scope == "development");
         if !auth_config.development_requested {
             if let Some(account) = openagents_account::desktop::registered(&config.data_dir) {
                 let mut updates = account.watch();
@@ -1034,8 +1061,7 @@ impl Engine {
         // workspace sync being enabled — the feed is the public release feed
         // (served without authentication), not an edge feature.
         // Runs under keepers don't hold a restart (#11946, `handoff`).
-        let quiescent =
-            handoff::quiescent_check(core.sessions.clone(), core.terminals.clone());
+        let quiescent = handoff::quiescent_check(core.sessions.clone(), core.terminals.clone());
         let updater = openagents_update::Updater::spawn(config.edge_url.clone(), Some(quiescent));
         if let Some(mut token_changes) = edge.as_ref().and_then(EdgeConfig::token_changes) {
             let updater_for_tokens = updater.clone();
@@ -1095,6 +1121,12 @@ impl Engine {
                 account.clone(),
             ))
         });
+        // A browser's calls reach the plain engine service through its grant
+        // check (#12264), never the direct-route wrapper.
+        let browsers = browser_devices::Browsers::new(
+            core.device_id.clone(),
+            core.rpc_service() as Arc<dyn RpcService>,
+        );
         let host_relay = edge.as_ref().map(|edge| {
             let mut link_config =
                 openagents_rpc::LinkCacheConfig::new(edge.url.clone(), Arc::new(auth.clone()));
@@ -1125,7 +1157,11 @@ impl Engine {
                 None => service,
             };
             PeerHosting {
-                _relay: core.start_host_relay_serving(&edge.url, service),
+                _relay: core.start_host_relay_with_browsers(
+                    &edge.url,
+                    service,
+                    Some(Arc::new(browser_devices::Gate(browsers.clone()))),
+                ),
                 _direct: direct_host.clone(),
             }
         });
@@ -1135,6 +1171,7 @@ impl Engine {
             host_relay: std::sync::Mutex::new(host_relay),
             nip_host: std::sync::Mutex::new(None),
             connect_codes: Default::default(),
+            browsers,
         };
         // The device connection runs by default, signed in or not, so a
         // phone can pair by QR code. `OPENAGENTS_NIP_HOST=0` turns it off. A

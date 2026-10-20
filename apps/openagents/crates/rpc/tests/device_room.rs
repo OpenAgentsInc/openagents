@@ -1052,3 +1052,54 @@ async fn a_successful_upgrade_retries_room_connection_failures() {
     assert!(room_dials.load(Ordering::SeqCst) > attempts);
     room.abort();
 }
+
+/// #12264: a browser's connection (`web-…`) gets the gate's service, never
+/// the plain surface; a host without a gate serves it nothing.
+#[tokio::test]
+async fn a_browser_connection_reaches_only_the_gate() {
+    struct Gate;
+    impl openagents_rpc::BrowserGate for Gate {
+        fn service(&self, conn_id: &str) -> Arc<dyn RpcService> {
+            TestService::new(&format!("gate:{conn_id}"))
+        }
+    }
+    let relay = FakeRelay::start().await;
+    let mut config = relay_config(&relay.edge_url(), 100);
+    config.browsers = Some(Arc::new(Gate));
+    let host = HostRelay::spawn(config, TestService::new("host-a"), noop_nudge());
+    relay.wait_host_connected().await;
+    let url = device_room_ws_url(&relay.edge_url(), "dev-a", "client", Some("web-tab1"), "t");
+    let browser = DeviceLink::connect(&url).await.expect("browser dials");
+    let answer = browser
+        .client()
+        .call("Echo", serde_json::json!({}))
+        .await
+        .expect("gate answers");
+    assert_eq!(answer["host"], "gate:web-tab1");
+    let url = device_room_ws_url(&relay.edge_url(), "dev-a", "client", Some("phone1"), "t");
+    let phone = DeviceLink::connect(&url).await.expect("phone dials");
+    let answer = phone
+        .client()
+        .call("Echo", serde_json::json!({}))
+        .await
+        .expect("host answers");
+    assert_eq!(answer["host"], "host-a");
+    drop(host);
+
+    // Without a gate, a browser's frames go unanswered.
+    let relay = FakeRelay::start().await;
+    let _host = HostRelay::spawn(
+        relay_config(&relay.edge_url(), 100),
+        TestService::new("host-b"),
+        noop_nudge(),
+    );
+    relay.wait_host_connected().await;
+    let url = device_room_ws_url(&relay.edge_url(), "dev-a", "client", Some("web-tab2"), "t");
+    let browser = DeviceLink::connect(&url).await.expect("browser dials");
+    let unanswered = tokio::time::timeout(
+        Duration::from_millis(500),
+        browser.client().call("Echo", serde_json::json!({})),
+    )
+    .await;
+    assert!(unanswered.is_err(), "{unanswered:?}");
+}

@@ -89,6 +89,11 @@ the owner does at the computer. It leaves out `world` because clients built
 before that right existed refuse a grant that names it; an administrator
 grants `world` explicitly.
 
+The **browser grant** is `observe` and `operate`. A browser on the website
+holds it (see [Browser device grants](#browser-device-grants-12264)). It
+carries no access right, so it can't list or hand on access, and it lasts
+seven days.
+
 A right is necessary, never sufficient. The profile that defines an effect
 still applies its own checks. For example, a terminal stream needs a
 [TERM](NIP-TERM.md) session, and a file read still passes the disclosure
@@ -1794,6 +1799,51 @@ command may have reached a host, transport failure is an unknown outcome: the
 phone checks the existing command ID rather than submitting a new command over
 the fallback. Only failure before dispatch or an explicit `unsupported` reply
 permits choosing the WebSocket path for that operation.
+
+### Browser device grants (#12264)
+
+A browser on openagents.com is a client of the account's computer, as a
+phone is, but it reaches the computer only through the computer's device
+room on `coder-sync`. Its credential is a room token: the website signs it
+for the signed-in account, and it names one room and lasts five minutes
+(`coder_access::room_token`). `coder-sync` gives a connection that a room
+token admitted a connection ID that starts with `web-`. No other client may
+claim that prefix. It delivers that connection's frames only to a host that
+connected with `browsers=1`; any other host gets none, and the browser gets
+the relay error `host_outdated`.
+
+A host serves a `web-` connection only these methods until the browser
+proves its key on that connection:
+
+| Method | Params | Answer |
+| --- | --- | --- |
+| `BrowserRequest` | `{key, label}` | `{request, state}` |
+| `BrowserRequestStatus` | `{request}` | `{request, state}`, where `state` is `asked`, `allowed`, `denied`, or `expired` |
+| `BrowserHello` | `{event}` | `{rights, expiresAt}` |
+| `BrowserForget` | `{}` | `{}`; the host revokes the browser's grant |
+
+`key` is the browser's x-only secp256k1 key. The browser keeps it in its own
+storage. A request waits at most ten minutes, and a host keeps at most eight
+waiting. Only the person at the computer answers a request, in the
+computer's own app. The host serves the answer, the list of allowed
+browsers, and their removal on its local transports only, never through the
+relay. Allowing a request issues a browser grant with origin `approval` and
+the host as issuer. The browser never makes a code.
+
+The hello is an event of kind `27237` with empty content and exactly the
+tags `["host", HOST_DEVICE_ID]` and `["conn", CONNECTION_ID]`, signed with
+the browser's key within 60 seconds of the host's clock. The host checks
+the signature and that the tags name this computer and this connection, so
+a hello can't be used on another socket. The browser's key must then hold a
+current browser grant.
+
+After the hello, the host checks the grant again before every call. A
+revoked or expired grant ends the call and the connection's hello. The host
+answers only the methods it lists for browsers: `EngineInfo`,
+`ListHarnesses`, `ListModels`, `ListSkills`, `ListCommands`,
+`ListWorkspaceDirectory`, `ReadWorkspaceFile`, `ReadWorkspaceImage`,
+`ReadWorkspaceBytes`, `SearchWorkspaceFiles`, and `SearchWorkspaceContent`.
+It refuses every other method.
 
 ### HTTP device proofs
 

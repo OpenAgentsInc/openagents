@@ -16,7 +16,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use openagents_rpc::device_room::{
-    CLIENT_CLOSED, CLIENT_GONE, HOST_CLOSED, HOST_OFFLINE, NUDGE_KIND, RELAY_KIND,
+    CLIENT_CLOSED, CLIENT_GONE, HOST_CLOSED, HOST_OFFLINE, HOST_OUTDATED, NUDGE_KIND, RELAY_KIND,
 };
 use openagents_rpc::{DeviceFrameHeader, decode_device_frame, encode_device_frame};
 use serde_json::{Value, json};
@@ -43,6 +43,9 @@ struct Peer {
     conn: String,
     account: String,
     role: Role,
+    /// A host that serves browsers only through its grant check
+    /// (`browsers=1`, #12264). A browser's frames reach no other host.
+    browsers: bool,
     seen: i64,
     closing: bool,
     tx: mpsc::Sender<Vec<u8>>,
@@ -173,6 +176,17 @@ impl Devices {
         };
         if peer.role == Role::Client {
             if let Some(host) = room.host() {
+                // A browser (a room token's `web-` connection, #12264)
+                // reaches only a host that checks its grant.
+                let browser = peer.conn.starts_with(coder_access::browser::CONN_PREFIX);
+                if browser && !room.peers.get(&host).is_some_and(|h| h.browsers) {
+                    room.error(
+                        id,
+                        DeviceFrameHeader::new(header.s, RELAY_KIND),
+                        HOST_OUTDATED,
+                    );
+                    return;
+                }
                 let stamped = DeviceFrameHeader {
                     s: header.s.clone(),
                     k: header.k,
@@ -648,9 +662,20 @@ pub async fn websocket(
         .get("connId")
         .cloned()
         .unwrap_or_else(|| peerid.to_string());
-    if conn.is_empty() || conn.len() > 128 || conn.chars().any(char::is_control) {
+    if conn.is_empty() || conn.len() > 120 || conn.chars().any(char::is_control) {
         return Err(bad("bad_connection"));
     }
+    // A room token's client is a browser (#12264): its connection ID says so,
+    // and nothing else may claim that prefix.
+    let browser_prefix = coder_access::browser::CONN_PREFIX;
+    let conn = if headers.contains_key(super::auth::ROOM_HEADER) {
+        format!("{browser_prefix}{conn}")
+    } else if conn.starts_with(browser_prefix) {
+        return Err(bad("bad_connection"));
+    } else {
+        conn
+    };
+    let browsers = role == Role::Host && q.get("browsers").is_some_and(|v| v == "1");
     let acked = q.get("nudgeAck").is_some_and(|v| v == "1");
     let (tx, rx) = mpsc::channel(64);
     let (close, closing) = watch::channel(None);
@@ -659,6 +684,7 @@ pub async fn websocket(
         conn,
         account: who.account.clone(),
         role,
+        browsers,
         seen: now(),
         closing: false,
         tx,

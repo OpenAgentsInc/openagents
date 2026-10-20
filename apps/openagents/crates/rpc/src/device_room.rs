@@ -40,6 +40,20 @@ pub const HOST_OFFLINE: &str = "host_offline";
 pub const HOST_CLOSED: &str = "host_closed";
 pub const CLIENT_GONE: &str = "client_gone";
 pub const CLIENT_CLOSED: &str = "client_closed";
+/// A browser's frame reached a host that doesn't check browser grants
+/// (#12264): the computer's app needs an update.
+pub const HOST_OUTDATED: &str = "host_outdated";
+
+/// The connection-ID prefix `coder-sync` gives a room-token client, a
+/// browser (`coder_access::browser::CONN_PREFIX`, #12264). The relay serves
+/// such a connection only through [`HostRelayConfig::browsers`].
+pub const BROWSER_CONN_PREFIX: &str = "web-";
+
+/// The service a browser's connection gets (#12264): the engine's grant
+/// check in front of its RPC surface, one per connection.
+pub trait BrowserGate: Send + Sync + 'static {
+    fn service(&self, conn_id: &str) -> Arc<dyn RpcService>;
+}
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -107,101 +121,25 @@ fn client_echo_deadline() -> Duration {
 // Frame codec
 // ---------------------------------------------------------------------------
 
-/// The JSON frame header. Field order matters for byte-parity with the TS encoder
-/// (`JSON.stringify` of `{s, k, to?, from?}`); absent routing keys are omitted, not null.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DeviceFrameHeader {
-    /// Stream id, unique per (connId, logical stream).
-    pub s: String,
-    /// Stream kind: `"rpc"` | `"term"` | … — opaque to the relay.
-    pub k: String,
-    /// Routing: host → client target.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub to: Option<String>,
-    /// Routing: client → host origin (stamped by the relay).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub from: Option<String>,
-}
+pub use openagents_proto::device_frame::DeviceFrameHeader;
 
-impl DeviceFrameHeader {
-    pub fn new(s: impl Into<String>, k: impl Into<String>) -> Self {
-        Self {
-            s: s.into(),
-            k: k.into(),
-            to: None,
-            from: None,
-        }
-    }
-
-    pub fn with_to(mut self, conn_id: impl Into<String>) -> Self {
-        self.to = Some(conn_id.into());
-        self
-    }
-}
-
-/// Encode `uleb128(header_len) ‖ header JSON ‖ payload`.
+/// Encode `uleb128(header_len) ‖ header JSON ‖ payload`
+/// ([`openagents_proto::device_frame`], shared with `coder-sync` and the browser).
 pub fn encode_device_frame(
     header: &DeviceFrameHeader,
     payload: &[u8],
 ) -> Result<Vec<u8>, RpcError> {
-    let json = serde_json::to_vec(header)
-        .map_err(|e| RpcError::Transport(format!("encode frame header: {e}")))?;
-    let mut out = Vec::with_capacity(json.len() + payload.len() + 5);
-    let mut n = json.len();
-    loop {
-        let mut byte = (n & 0x7f) as u8;
-        n >>= 7;
-        if n != 0 {
-            byte |= 0x80;
-        }
-        out.push(byte);
-        if n == 0 {
-            break;
-        }
-    }
-    out.extend_from_slice(&json);
-    out.extend_from_slice(payload);
-    Ok(out)
+    openagents_proto::device_frame::encode(header, payload).map_err(RpcError::Transport)
 }
 
 /// Decode a device frame; the payload is the remainder after the JSON header.
 pub fn decode_device_frame(bytes: &[u8]) -> Result<(DeviceFrameHeader, Vec<u8>), RpcError> {
-    let bad = |m: &str| RpcError::Transport(format!("device frame: {m}"));
-    let mut offset = 0usize;
-    let mut len: usize = 0;
-    let mut shift = 0u32;
-    loop {
-        let byte = *bytes.get(offset).ok_or_else(|| bad("truncated uleb128"))?;
-        offset += 1;
-        if shift >= 32 {
-            return Err(bad("uleb128 overflow"));
-        }
-        len |= ((byte & 0x7f) as usize) << shift;
-        if byte & 0x80 == 0 {
-            break;
-        }
-        shift += 7;
-    }
-    let header_end = offset
-        .checked_add(len)
-        .ok_or_else(|| bad("header length overflow"))?;
-    let header_bytes = bytes
-        .get(offset..header_end)
-        .ok_or_else(|| bad("truncated header"))?;
-    let header: DeviceFrameHeader =
-        serde_json::from_slice(header_bytes).map_err(|e| bad(&format!("bad header JSON: {e}")))?;
-    Ok((header, bytes[header_end..].to_vec()))
+    openagents_proto::device_frame::decode(bytes).map_err(RpcError::Transport)
 }
 
 /// Extract the error code from a relay control payload (`{"error": code}`).
 pub fn relay_error_code(payload: &[u8]) -> Option<String> {
-    #[derive(Deserialize)]
-    struct RelayError {
-        error: String,
-    }
-    serde_json::from_slice::<RelayError>(payload)
-        .ok()
-        .map(|e| e.error)
+    openagents_proto::device_frame::relay_error_code(payload)
 }
 
 /// Build the device-room WebSocket URL from the http(s) edge base URL.
@@ -294,6 +232,9 @@ pub struct HostRelayConfig {
     pub token: Arc<dyn TokenSource>,
     /// Reconnect delay after a session ends (a small jitter is added).
     pub retry: Duration,
+    /// Serves browsers' connections (#12264). Without it the relay tells
+    /// `coder-sync` nothing and never serves a browser.
+    pub browsers: Option<Arc<dyn BrowserGate>>,
 }
 
 impl HostRelayConfig {
@@ -307,6 +248,7 @@ impl HostRelayConfig {
             device_id: device_id.into(),
             token,
             retry: Duration::from_secs(5),
+            browsers: None,
         }
     }
 }
@@ -348,9 +290,15 @@ impl HostRelay {
                             &token,
                         );
                         let url = format!("{url}&nudgeAck=1");
+                        let url = if config.browsers.is_some() {
+                            format!("{url}&browsers=1")
+                        } else {
+                            url
+                        };
                         let started = tokio::time::Instant::now();
                         let outcome = {
-                            let session = host_session(&url, &service, &on_nudge);
+                            let session =
+                                host_session(&url, &service, config.browsers.as_ref(), &on_nudge);
                             tokio::pin!(session);
                             loop {
                                 tokio::select! {
@@ -476,6 +424,7 @@ fn make_virtual_conn(
 async fn host_session(
     url: &str,
     service: &Arc<dyn RpcService>,
+    browsers: Option<&Arc<dyn BrowserGate>>,
     on_nudge: &NudgeHandler,
 ) -> Result<(), RpcError> {
     let ws = openagents_sync::dial::connect_ws(url)
@@ -496,7 +445,7 @@ async fn host_session(
     let mut conns: HashMap<String, VirtualConn> = HashMap::new();
     let dispatch = async {
         while let Some(bytes) = in_rx.recv().await {
-            handle_host_frame(&bytes, &mut conns, service, &out_tx, on_nudge).await;
+            handle_host_frame(&bytes, &mut conns, service, browsers, &out_tx, on_nudge).await;
         }
     };
     // Poll the transport even when a virtual RPC connection is backpressured.
@@ -519,6 +468,7 @@ async fn handle_host_frame(
     bytes: &[u8],
     conns: &mut HashMap<String, VirtualConn>,
     service: &Arc<dyn RpcService>,
+    browsers: Option<&Arc<dyn BrowserGate>>,
     out_tx: &mpsc::Sender<Vec<u8>>,
     on_nudge: &NudgeHandler,
 ) {
@@ -585,9 +535,21 @@ async fn handle_host_frame(
     let Some(from) = header.from else {
         return;
     };
-    let conn = conns
-        .entry(from.clone())
-        .or_insert_with(|| make_virtual_conn(service.clone(), from, out_tx.clone()));
+    let conn = match conns.entry(from.clone()) {
+        std::collections::hash_map::Entry::Occupied(conn) => conn.into_mut(),
+        std::collections::hash_map::Entry::Vacant(slot) => {
+            // A browser gets the grant check, never the plain surface (#12264).
+            let service = if from.starts_with(BROWSER_CONN_PREFIX) {
+                match browsers {
+                    Some(gate) => gate.service(&from),
+                    None => return,
+                }
+            } else {
+                service.clone()
+            };
+            slot.insert(make_virtual_conn(service, from, out_tx.clone()))
+        }
+    };
     let text = String::from_utf8_lossy(&payload).into_owned();
     if conn.in_tx.send(text).await.is_err() {
         tracing::warn!("device-room: virtual conn dispatch loop gone");
@@ -667,7 +629,8 @@ where
             let Ok(frame) = encode_device_frame(&header, &payload) else {
                 continue;
             };
-            handle_host_frame(&frame, &mut conns, &service, &out_tx, &on_nudge).await;
+            // A direct peer is another computer, never a browser.
+            handle_host_frame(&frame, &mut conns, &service, None, &out_tx, &on_nudge).await;
         }
     };
     tokio::select! {

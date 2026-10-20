@@ -103,6 +103,13 @@ impl Rights {
     pub fn pairing() -> Self {
         Self(Right::ALL[..6].to_vec())
     }
+    /// What a browser on openagents.com holds on a computer (#12264): watch
+    /// and run, nothing more. No terminal, no review, and neither access
+    /// right, so it can't see or hand on access. The person at the computer
+    /// approves it, and it lasts [`crate::protocol::BROWSER_GRANT_LIFETIME`].
+    pub fn browser() -> Self {
+        Self(vec![Right::Observe, Right::Operate])
+    }
     /// Parse `standard`, `admin`, `all`, or a comma-separated list of rights.
     pub fn parse_list(text: &str) -> Result<Self> {
         match text {

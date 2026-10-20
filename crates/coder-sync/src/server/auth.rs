@@ -19,6 +19,8 @@ use std::{
     time::{Duration, Instant},
 };
 pub const ACCOUNT_HEADER: &str = "x-coder-verified-account";
+/// Set by [`guard`] only, on a request a room token admitted (#12263).
+pub const ROOM_HEADER: &str = "x-coder-room-token";
 /// How long a confirmed token keeps working while the account service is down.
 pub const OUTAGE_GRACE: Duration = Duration::from_secs(5 * 60);
 const CONFIRMED_LIMIT: usize = 10_000;
@@ -124,6 +126,7 @@ pub async fn guard(
     next: Next,
 ) -> Response {
     request.headers_mut().remove(ACCOUNT_HEADER);
+    request.headers_mut().remove(ROOM_HEADER);
     request.headers_mut().remove(super::proof::KEY_HEADER);
     request.headers_mut().remove(super::proof::EXPIRY_HEADER);
     if request.uri().path() == "/health" || state.auth != AuthMode::OpenAgents {
@@ -155,6 +158,9 @@ pub async fn guard(
                 request
                     .headers_mut()
                     .insert(super::proof::EXPIRY_HEADER, expiry);
+                request
+                    .headers_mut()
+                    .insert(ROOM_HEADER, HeaderValue::from_static("1"));
                 next.run(request).await
             }
             Err(status) => refuse(request, status).await,

@@ -55,6 +55,43 @@ impl Host {
     }
 }
 
+impl Host {
+    /// Issues and stores a browser's grant (#12264) for its key `device`
+    /// with [`Rights::browser`] for [`BROWSER_GRANT_LIFETIME`], after the
+    /// person at this computer allowed it in the computer's own app. The
+    /// browser reaches the computer through its device room, not `relay`;
+    /// the grant names the host's relay as every grant does.
+    ///
+    /// # Errors
+    /// Refuses a relay the policy forbids, a malformed device key, and the
+    /// owner's or host's own key.
+    pub fn approve_browser(&self, device: &str, relay: &str, now: u64) -> Result<Event> {
+        public(device)?;
+        self.policy.validate(relay).map_err(Error::from)?;
+        let (mut store, secret, mut book) = self.open()?;
+        if device == book.owner || device == book.host {
+            return fail(Code::Forbidden, "owner and host keys cannot enroll");
+        }
+        let origin = Origin {
+            kind: OriginKind::Approval,
+            id: random_id(),
+            issuer: book.host.clone(),
+        };
+        let authorization = issue(
+            &mut book,
+            &secret,
+            device,
+            relay,
+            Rights::browser(),
+            origin,
+            now,
+            now + BROWSER_GRANT_LIFETIME,
+        )?;
+        store.save(&book)?;
+        Ok(authorization)
+    }
+}
+
 /// [`Rights::pairing`]: what a connect code or a nearby approval grants.
 #[must_use]
 pub fn is_connect_code_rights(rights: &Rights) -> bool {
@@ -115,6 +152,41 @@ mod tests {
             RelayPolicy::LoopbackTest,
         );
         assert!(other.is_err());
+    }
+
+    #[test]
+    fn a_browser_gets_watch_and_run_for_a_week_and_can_be_revoked() {
+        let (_dir, host, owner, host_key) = host();
+        let device = key();
+        let now = crate::unix_time().unwrap();
+        let envelope = host.approve_browser(&pubkey(&device), RELAY, now).unwrap();
+        let access = Access::from_authorization(
+            envelope,
+            &device,
+            &host_key,
+            now,
+            RelayPolicy::LoopbackTest,
+        )
+        .unwrap();
+        let grant = access.grant;
+        assert_eq!(grant.rights, Rights::browser());
+        assert!(!grant.rights.contains(Right::AccessAdmin));
+        assert!(!grant.rights.contains(Right::Terminal));
+        assert_eq!(grant.expires_at, now + BROWSER_GRANT_LIFETIME);
+        let listed = host.devices(now).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].state, DeviceState::Active);
+        host.revoke(&pubkey(&device), now).unwrap();
+        assert_eq!(host.devices(now).unwrap()[0].state, DeviceState::Revoked);
+        for principal in [&owner, &host_key] {
+            assert_eq!(
+                host.approve_browser(principal, RELAY, now)
+                    .unwrap_err()
+                    .code,
+                Code::Forbidden
+            );
+        }
+        assert!(host.approve_browser("not-a-key", RELAY, now).is_err());
     }
 
     #[test]

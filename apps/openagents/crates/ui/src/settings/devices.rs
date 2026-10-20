@@ -10,7 +10,7 @@ use gpui::{
 use std::time::Duration;
 
 use openagents_proto::WorkspaceScope;
-use openagents_rpc::methods;
+use openagents_rpc::{browsers, methods};
 
 use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::popover;
@@ -46,6 +46,15 @@ pub fn format_last_seen(last_seen: Option<DateTime<Utc>>, now: DateTime<Utc>) ->
 }
 
 const CONNECT_PHONE_TITLE: &str = crate::shell::CONNECT_PHONE_TITLE;
+/// Browsers on openagents.com (#12264): they ask here, and only here,
+/// before they can use this computer.
+const BROWSERS_EMPTY: &str =
+    "When you use this computer from openagents.com, your browser asks here first.";
+const BROWSER_ASKS: &str = "Asks to use this computer";
+const BROWSER_ASKED_TOAST: &str =
+    "A browser asks to use this computer. Allow it in Settings, Devices.";
+/// How often the page reads browser requests while it's open.
+const BROWSER_POLL: Duration = Duration::from_secs(3);
 const CONNECT_PHONE_HINT: &str = "Scan a code with your phone to use this computer from it.";
 const CONNECT_PHONE_ACTION: &str = "Show code";
 
@@ -74,12 +83,45 @@ pub struct DevicesPage {
     error: Option<SharedString>,
     task: Option<Task<()>>,
     copy_task: Option<Task<()>>,
+    /// Browsers waiting for an answer, and the ones allowed (#12264).
+    browser_requests: Vec<browsers::BrowserRequest>,
+    browsers: Vec<browsers::Browser>,
+    _browser_poll: Option<Task<()>>,
     _observe: Subscription,
 }
 
 impl DevicesPage {
     pub fn new(state: Entity<AppState>, cx: &mut Context<Self>) -> Self {
         let observe = cx.observe(&state, |_, _, cx| cx.notify());
+        let poll = cx.spawn(async move |this, cx| {
+            loop {
+                let Ok(engine) = this.update(cx, |page, cx| page.state.read(cx).engine().cloned())
+                else {
+                    return;
+                };
+                if let Some(engine) = engine {
+                    let requests = engine
+                        .client()
+                        .call(browsers::LIST_BROWSER_REQUESTS, serde_json::json!({}))
+                        .await
+                        .ok()
+                        .and_then(|value| serde_json::from_value(value).ok());
+                    let allowed = engine
+                        .client()
+                        .call(browsers::LIST_BROWSERS, serde_json::json!({}))
+                        .await
+                        .ok()
+                        .and_then(|value| serde_json::from_value(value).ok());
+                    let alive = this.update(cx, |page, cx| {
+                        page.show_browsers(requests, allowed, cx);
+                    });
+                    if alive.is_err() {
+                        return;
+                    }
+                }
+                cx.background_executor().timer(BROWSER_POLL).await;
+            }
+        });
         Self {
             state,
             scroll: widgets::PageScroll::default(),
@@ -88,8 +130,66 @@ impl DevicesPage {
             error: None,
             task: None,
             copy_task: None,
+            browser_requests: Vec::new(),
+            browsers: Vec::new(),
+            _browser_poll: Some(poll),
             _observe: observe,
         }
+    }
+
+    fn show_browsers(
+        &mut self,
+        requests: Option<Vec<browsers::BrowserRequest>>,
+        allowed: Option<Vec<browsers::Browser>>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(requests) = requests {
+            if requests
+                .iter()
+                .any(|r| !self.browser_requests.iter().any(|seen| seen.id == r.id))
+            {
+                crate::toast::info(cx, BROWSER_ASKED_TOAST);
+            }
+            self.browser_requests = requests;
+        }
+        if let Some(allowed) = allowed {
+            self.browsers = allowed;
+        }
+        cx.notify();
+    }
+
+    /// Allow or deny a browser's request, or remove an allowed browser.
+    fn browser_call(
+        &mut self,
+        method: &'static str,
+        params: serde_json::Value,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(engine) = self.state.read(cx).engine().cloned() else {
+            return;
+        };
+        self.task = Some(cx.spawn(async move |this, cx| {
+            let result = engine.client().call(method, params).await;
+            let requests = engine
+                .client()
+                .call(browsers::LIST_BROWSER_REQUESTS, serde_json::json!({}))
+                .await
+                .ok()
+                .and_then(|value| serde_json::from_value(value).ok());
+            let allowed = engine
+                .client()
+                .call(browsers::LIST_BROWSERS, serde_json::json!({}))
+                .await
+                .ok()
+                .and_then(|value| serde_json::from_value(value).ok());
+            this.update(cx, |page, cx| {
+                if let Err(err) = result {
+                    page.error = Some(err.to_string().into());
+                }
+                page.show_browsers(requests, allowed, cx);
+            })
+            .ok();
+        }));
     }
 
     pub(crate) fn open_rename(
@@ -229,6 +329,131 @@ impl DevicesPage {
         if self.scroll.set_list_hovered(*hovered) {
             cx.notify();
         }
+    }
+}
+
+impl DevicesPage {
+    fn render_browsers(&self, theme: &Theme, cx: &mut Context<Self>) -> gpui::Div {
+        let mut block = widgets::section_card(theme).mt(px(8.0));
+        if self.browser_requests.is_empty() && self.browsers.is_empty() {
+            return block.child(
+                widgets::card_row(theme, true).child(
+                    div()
+                        .text_size(crate::typography::ui_rems(13.0))
+                        .text_color(theme.text_muted)
+                        .child(SharedString::from(BROWSERS_EMPTY)),
+                ),
+            );
+        }
+        let mut first = true;
+        for (ix, request) in self.browser_requests.iter().enumerate() {
+            let (allow_id, deny_id) = (request.id.clone(), request.id.clone());
+            block = block.child(
+                widgets::card_row(theme, std::mem::take(&mut first))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(160.0))
+                            .child(widgets::row_title(theme, request.label.clone()))
+                            .child(widgets::meta_line(
+                                theme,
+                                vec![
+                                    div()
+                                        .child(SharedString::from(BROWSER_ASKS))
+                                        .into_any_element(),
+                                    div()
+                                        .child(SharedString::from(short_id(&request.key)))
+                                        .into_any_element(),
+                                ],
+                            )),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.0))
+                            .child(
+                                widgets::text_action(theme, widgets::ActionTone::Quiet, "Deny")
+                                    .id(("browser-deny", ix))
+                                    .tab_index(0)
+                                    .role(gpui::Role::Button)
+                                    .aria_label(format!("Deny {}", request.label))
+                                    .focus_visible(|s| s.border_2().border_color(theme.accent))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.browser_call(
+                                            browsers::ANSWER_BROWSER_REQUEST,
+                                            serde_json::json!({"id": deny_id, "allow": false}),
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                widgets::text_action(theme, widgets::ActionTone::Filled, "Allow")
+                                    .id(("browser-allow", ix))
+                                    .tab_index(0)
+                                    .role(gpui::Role::Button)
+                                    .aria_label(format!("Allow {}", request.label))
+                                    .focus_visible(|s| s.border_2().border_color(theme.accent))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.browser_call(
+                                            browsers::ANSWER_BROWSER_REQUEST,
+                                            serde_json::json!({"id": allow_id, "allow": true}),
+                                            cx,
+                                        );
+                                    })),
+                            ),
+                    ),
+            );
+        }
+        let now = Utc::now();
+        for (ix, browser) in self.browsers.iter().enumerate() {
+            let key = browser.key.clone();
+            let mut meta = vec![
+                div()
+                    .child(SharedString::from(short_id(&browser.key)))
+                    .into_any_element(),
+            ];
+            meta.push(
+                div()
+                    .child(SharedString::from(format!(
+                        "Last seen {}",
+                        format_last_seen(
+                            browser
+                                .last_seen
+                                .and_then(|at| DateTime::from_timestamp(at as i64, 0)),
+                            now
+                        )
+                    )))
+                    .into_any_element(),
+            );
+            block = block.child(
+                widgets::card_row(theme, std::mem::take(&mut first))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(160.0))
+                            .child(widgets::row_title(theme, browser.label.clone()))
+                            .child(widgets::meta_line(theme, meta)),
+                    )
+                    .child(
+                        widgets::text_action(theme, widgets::ActionTone::Quiet, "Remove")
+                            .id(("browser-remove", ix))
+                            .tab_index(0)
+                            .role(gpui::Role::Button)
+                            .aria_label(format!("Remove {}", browser.label))
+                            .focus_visible(|s| s.border_2().border_color(theme.accent))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.browser_call(
+                                    browsers::REVOKE_BROWSER,
+                                    serde_json::json!({"key": key}),
+                                    cx,
+                                );
+                            })),
+                    ),
+            );
+        }
+        block
     }
 }
 
@@ -421,11 +646,14 @@ impl Render for DevicesPage {
                         }),
                 ),
         );
+        let browsers_block = self.render_browsers(&theme, cx);
         let card = div()
             .flex()
             .flex_col()
             .child(widgets::section_label(&theme, "Phone").mt(px(28.0)))
             .child(phone_block)
+            .child(widgets::section_label(&theme, "Browsers").mt(px(28.0)))
+            .child(browsers_block)
             .when_some(local_block, |el, block| {
                 el.child(widgets::section_label(&theme, "This device").mt(px(28.0)))
                     .child(block)
@@ -513,6 +741,9 @@ mod tests {
             CONNECT_PHONE_TITLE,
             CONNECT_PHONE_HINT,
             CONNECT_PHONE_ACTION,
+            BROWSERS_EMPTY,
+            BROWSER_ASKS,
+            BROWSER_ASKED_TOAST,
         ] {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
         }

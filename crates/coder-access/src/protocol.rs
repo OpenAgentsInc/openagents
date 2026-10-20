@@ -17,6 +17,10 @@ pub const REQUEST: &str = "openagents.host-request.v1";
 pub const REPLY: &str = "openagents.host-reply.v1";
 pub const ENROLLMENT: &str = "openagents.host-enrollment-request.v1";
 pub const MAX_GRANT_LIFETIME: u64 = 30 * 24 * 60 * 60;
+/// A browser's grant (#12264): a week, against a phone's 30 days. Its key
+/// lives in the browser's storage, where a shared machine or an extension
+/// can read it.
+pub const BROWSER_GRANT_LIFETIME: u64 = 7 * 24 * 60 * 60;
 pub const MAX_REQUEST_LIFETIME: u64 = 60;
 pub const INVITATION_LIFETIME: u64 = coder_connect::pairing::LIFETIME;
 pub const ENROLLMENT_LIFETIME: u64 = 300;

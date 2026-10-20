@@ -8,6 +8,7 @@ use std::fmt;
 
 pub mod agent;
 pub mod app_rpc;
+pub mod browser;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cj;
 pub mod client;

@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 
 mod client;
 /// Connect your phone: the rotating connect code (#11998).
+pub mod browsers;
 pub mod connect_phone;
 pub mod device_room;
 /// Moving running chats to a cloud computer (#11933).
@@ -28,11 +29,10 @@ mod server;
 
 pub use client::{RpcClient, RpcSubscription, connect_ws};
 pub use device_room::{
-    DeviceFrameHeader, DeviceLink, DirectIo, DirectRoutes, DirectStream, HostRelay,
+    BrowserGate, DeviceFrameHeader, DeviceLink, DirectIo, DirectRoutes, DirectStream, HostRelay,
     HostRelayConfig, LinkCache, LinkCacheConfig, LinkRoute, NudgeHandler, PeerLiveness,
-    PeerLivenessProbe, STATUS_CONNECTED_DIRECTLY, STATUS_SYNC_UNAVAILABLE, StaticToken,
-    TokenError, TokenSource, decode_device_frame, device_room_ws_url, encode_device_frame,
-    serve_direct,
+    PeerLivenessProbe, STATUS_CONNECTED_DIRECTLY, STATUS_SYNC_UNAVAILABLE, StaticToken, TokenError,
+    TokenSource, decode_device_frame, device_room_ws_url, encode_device_frame, serve_direct,
 };
 pub use server::{serve_connection, serve_ws_listener};
 

@@ -1463,3 +1463,17 @@ master delegation audit.
   Agent Lab, which signs the owner tag with `AppAccount::owner_key`.
 - Phone: `CoreAccount::public_profile` and the same Agent Lab Publish through
   `CoreAgentLab`. iOS mounts the form in `AgentFormController`.
+
+## Browsers as clients of a computer (#12264)
+
+- `crates/engine/src/browser_devices.rs` gates every `web-` device-room
+  connection: a browser asks for access, the person at the computer allows
+  it, and its signed hello opens a short list of reads under a NIP-HOST
+  browser grant that the engine checks on every call. The relay hands it
+  those connections through `openagents_rpc::BrowserGate`, and
+  `connect_phone::LocalRpc` serves the answer, list, and remove methods to
+  this computer's own app only.
+- Desktop: Settings, Devices has a Browsers section with Allow, Deny, and
+  Remove (`crates/ui/src/settings/devices.rs`).
+- `crates/proto/src/device_frame.rs` holds the device-room frame codec that
+  `openagents-rpc`, `coder-sync`, and the browser share.

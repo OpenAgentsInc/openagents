@@ -547,6 +547,12 @@ impl Running {
         &self.shared.authority
     }
 
+    /// The relay this host's grants name: the first configured one.
+    #[must_use]
+    pub fn relay(&self) -> Option<&str> {
+        self.shared.config.relays.first().map(String::as_str)
+    }
+
     /// The iroh endpoint's address with the sockets it bound, when the
     /// host serves iroh: what a device on this machine dials.
     #[must_use]
