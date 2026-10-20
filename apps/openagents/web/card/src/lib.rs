@@ -2,9 +2,10 @@
 //! scripted reply, streamed through the shared GPUI chat views into the
 //! page's `#gpui-mount` box, over and over.
 //!
-//! The page calls [`mount`] once the box is ready; the card dispatches a
-//! `gpui-ready` event on the box after its first frame, so the page can fade
-//! it in.
+//! The page calls [`mount`] once the box is ready. `openagents-gpui-web`
+//! dispatches `gpui-first-frame` from the canvas when the card's first frame
+//! at the box's size is drawn, so the page can fade it in; the card
+//! dispatches `gpui-failed` on the box if it can't open its window.
 
 // The demo's files compile for the browser only: their own tests need the
 // desktop's visual engine, which the web workspace doesn't build.

@@ -78,7 +78,8 @@ answers a question, reads a file, and runs the tests.\"></div>";
 
 /// The loader: after the background's first full frame and an idle moment,
 /// the card's build for this browser, fetched at low priority and compiled
-/// as it streams in; the box fades in after the card's first frame. GPUI
+/// as it streams in; the box fades in when GPUI reports the card's first
+/// frame at the box's size (`gpui-first-frame`, bubbling from its canvas). GPUI
 /// focuses a text field of its own when it starts; the card takes no
 /// typing, so that field is hidden from the keyboard and screen readers and
 /// focus goes back where it was. That happens after GPUI's frame callback
@@ -99,14 +100,14 @@ await glue.default({module_or_path:wasm});\
 performance.mark(\"card-compiled\");\
 const before=document.activeElement;\
 box.addEventListener(\"gpui-failed\",fail,{once:true});\
-box.addEventListener(\"gpui-ready\",()=>{\
+box.addEventListener(\"gpui-first-frame\",()=>{\
 performance.mark(\"card-first-frame\");\
+box.addEventListener(\"transitionend\",e=>{if(e.propertyName===\"opacity\")performance.mark(\"card-visible\")});\
+box.classList.add(\"ready\");\
 setTimeout(()=>{\
 for(const field of document.querySelectorAll(\"body>input\")){field.tabIndex=-1;field.setAttribute(\"aria-hidden\",\"true\")}\
 const now=document.activeElement;\
-if(now&&now.tagName===\"INPUT\"){if(before&&before!==document.body)before.focus({preventScroll:true});else now.blur()}\
-box.addEventListener(\"transitionend\",e=>{if(e.propertyName===\"opacity\")performance.mark(\"card-visible\")});\
-box.classList.add(\"ready\")})},{once:true});\
+if(now&&now.tagName===\"INPUT\"){if(before&&before!==document.body)before.focus({preventScroll:true});else now.blur()}})},{once:true});\
 glue.mount(still)}catch(e){fail()}};\
 const go=()=>{if(started)return;started=true;\
 (window.requestIdleCallback||(f=>setTimeout(f,1)))(load,{timeout:400})};\

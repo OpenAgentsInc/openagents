@@ -69,7 +69,6 @@ pub struct CardApp {
     list_state: ListState,
     phase: Phase,
     rng: u64,
-    signaled: bool,
 }
 
 impl CardApp {
@@ -79,7 +78,6 @@ impl CardApp {
             list_state: ListState::new(0, ListAlignment::Top, px(800.)),
             phase: Phase::Still,
             rng: 0x9e37_79b9_7f4a_7c15,
-            signaled: false,
         };
         if still {
             this.finished();
@@ -382,12 +380,7 @@ impl CardApp {
 }
 
 impl Render for CardApp {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.signaled {
-            self.signaled = true;
-            // The first frame is on screen by the time the next one starts.
-            window.on_next_frame(|_, _| signal("gpui-ready"));
-        }
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut root = div()
             .id("openagents-card")
             .size_full()
