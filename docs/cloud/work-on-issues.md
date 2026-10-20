@@ -17,6 +17,12 @@ the work and why.
    (`scripts/filefind`, #11210) and the brief generator
    (`scripts/bench/briefed-ab/briefing.py`) list the files, excerpts, a
    change plan, similar past changes, the checks and the repo rules.
+   For pool runs (`chat work --on gce` or `--on boat`) and the work dispatcher,
+   the context finder's embeddings use `OPENROUTER_API_KEY` from the environment,
+   `~/.openagents/cloud/openrouter.env`, or Secret Manager
+   `openagents-openrouter-api-key`.
+   If the finder is unavailable, the briefing says why, for example,
+   `lite (finder unavailable: no OPENROUTER_API_KEY for its embeddings)`.
 2. **Briefed agent.** `crates/briefed-agent` with `verify` (#11229): Read,
    Edit, Write, Grep and Glob held to a fresh worktree, a briefing-built
    system prompt, and `verify`, which compiles, runs the change's tests and
