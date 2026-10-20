@@ -485,6 +485,8 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12358: After DS0 full-model qualification, run the serial Psionic/Pylon setup on an isolated model process with one Pylon slot. Record ten sequential warm requests and a cold start; confirm explicit truncation, a busy refusal during generation, and the behavior of a real HTTP disconnect. Keep /home builds first and leave Clef/network Pylon unchanged. Hard execution deadlines and process restart recovery remain S1/S2 implementation work in the [personal serving plan](../psionic/deepseek-support-plan.md#personal-serving-first-one-generation-at-a-time), not features claimed by this change.
+
 - #12344: After the web deploy, use the dedicated test account and a disposable computer chat with a saved chart and 3D visual. Confirm the visual module downloads only when a visual is shown, attachment reads follow the computer grant, controls work, resizing and scrolling keep the canvases in their rows, and changing chats removes them. Delete the chat afterward.
 
 - #12337: After the next web deploy, confirm 308 redirects from `/lander3`–`/lander9` and `/landing` to `/home`, `/lander8/chat/{id}` and `/gpui/chat/{id}` to `/chat/{id}`, `/gpui` and `/cloud` to `/`, `/cloud/app/settings*` to the corresponding Settings page, and `/demo` and its HTML demo chats to `/demo/gpui`. Confirm `/`, `/home`, `/chat/{id}`, `/lander10`, `/lander11`, `/verse`, `/verse/hands/*`, `/demo/gpui`, and the HTML fallback still load.

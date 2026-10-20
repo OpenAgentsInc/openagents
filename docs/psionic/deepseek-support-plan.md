@@ -109,6 +109,43 @@ added. Remote KV, prefill/decode separation and multi-node expert execution
 remain later measured optimizations. None is required to return our first
 reliable DeepSeek answer.
 
+### Serving implementation progress (#12358)
+
+The first independent S1 changes add
+`psionic-openai-server --single-generation`. One local worker command owns the generation slot;
+both Chat Completions and Responses return HTTP 429 (`server_busy`) for
+another generation until the worker finishes or relinquishes its command.
+Dropping a caller does not release running work. Commands abandoned before
+execution are discarded. `/health` reports `single_generation` and, in
+that mode, `generation_busy`; an HTTP health response does not prove that
+a busy decoder is progressing. Bootstrap proxy mode rejects this option
+because it cannot enforce the remote worker's execution lifecycle.
+
+Pylon explicitly requests one non-streamed completion and only delivers
+nonempty final text with `finish_reason=stop`. Output-limit termination,
+reasoning without a final answer, tool requests, refusals and malformed
+completion envelopes are errors. Reasoning is never substituted for final
+text. Use `pylon serve --slots 1 --max-tokens 2048` with the separately
+started serial server and the normal engine/model/buyer settings; the
+2,048-token setting still needs DS0's real-model/deadline qualification.
+The supervised `pylon up` path does not yet select serial mode automatically.
+
+This completes the admission and completion-validation portion of S1,
+independently of DS0. S1's operator-configured context/output caps and
+execution deadline, S2's hard stop/restart recovery, full-model qualification,
+and the cloud launch remain pending. An active generation that does not
+finish stays busy; this change does not claim to interrupt a hung decoder.
+Worker/caller-cancellation fixtures and a tiny CPU model cover slot ownership,
+cross-endpoint refusal, error release and sequential reuse; a real HTTP
+disconnect/model-process recovery run belongs to the later S2 check.
+
+Validation: `cargo test -p pylon` passes 153 tests with one existing
+large-model test ignored. The two new serial-admission tests, two existing
+CPU HTTP/default-routing fixtures, and all ten model-server CLI tests pass.
+Changed Rust files pass formatting; 94 local documentation links/anchors
+resolve. These are serving/fixture checks, not DeepSeek model-quality or
+GPU-performance qualification. No deployed service was changed.
+
 ## Model architecture support sequence
 
 1. Qualify an R1 distill through existing Qwen/Llama execution and add its

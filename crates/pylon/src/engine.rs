@@ -105,7 +105,7 @@ impl Psionic {
     }
 
     fn request_body(&self, model: &str, messages: Vec<Value>, max_tokens: u32) -> Value {
-        let mut body = json!({"model": model, "messages": messages, "max_tokens": max_tokens});
+        let mut body = json!({"model": model, "messages": messages, "max_tokens": max_tokens, "stream": false, "n": 1});
         if !self.stop.is_empty() {
             body["stop"] = json!(self.stop);
         }
@@ -170,21 +170,14 @@ impl Engine for Psionic {
                 .await
                 .map_err(|e| format!("model server unreachable: {e}"))?;
             let status = response.status();
+            if !status.is_success() {
+                return Err(format!("model server refused with {status}"));
+            }
             let body: Value = response
                 .json()
                 .await
                 .map_err(|e| format!("model server answered with no JSON: {e}"))?;
-            if !status.is_success() {
-                return Err(format!("model server refused with {status}"));
-            }
-            let text = body["choices"][0]["message"]["content"]
-                .as_str()
-                .ok_or("model server answer has no text")?
-                .trim()
-                .to_string();
-            if text.is_empty() {
-                return Err("model server returned empty text".into());
-            }
+            let text = finished_text(&body)?;
             Ok(Generation {
                 text,
                 input_tokens: body["usage"]["prompt_tokens"].as_u64(),
@@ -193,6 +186,53 @@ impl Engine for Psionic {
             })
         })
     }
+}
+
+/// Pylon delivers one final text answer. A token limit (even with some final
+/// text), unfinished thought or tool request is not a completed answer.
+fn finished_text(body: &Value) -> Result<String, String> {
+    let choices = body["choices"]
+        .as_array()
+        .filter(|choices| choices.len() == 1)
+        .ok_or("model server must return exactly one answer")?;
+    let choice = &choices[0];
+    match choice["finish_reason"].as_str() {
+        Some("stop") => {}
+        Some("length") => {
+            return Err("model reached its output token limit before finishing".into());
+        }
+        Some("tool_calls" | "function_call") => {
+            return Err("model requested a tool instead of a final text answer".into());
+        }
+        Some("content_filter") => return Err("model declined to answer".into()),
+        _ => return Err("model server did not confirm a finished answer".into()),
+    }
+    let message = &choice["message"];
+    if (!message["tool_calls"].is_null()
+        && !message["tool_calls"].as_array().is_some_and(Vec::is_empty))
+        || !message["function_call"].is_null()
+    {
+        return Err("model requested a tool instead of a final text answer".into());
+    }
+    if message["refusal"]
+        .as_str()
+        .is_some_and(|text| !text.trim().is_empty())
+    {
+        return Err("model declined to answer".into());
+    }
+    let text = message["content"].as_str().unwrap_or_default().trim();
+    if text.is_empty() {
+        return Err(if message["reasoning_content"]
+            .as_str()
+            .is_some_and(|text| !text.trim().is_empty())
+        {
+            "model returned reasoning without a final answer"
+        } else {
+            "model server returned no final text"
+        }
+        .into());
+    }
+    Ok(text.to_string())
 }
 
 /// A fake engine that answers with the last user message reversed, for
@@ -233,13 +273,60 @@ impl Engine for Echo {
 mod tests {
     use super::*;
 
+    #[test]
+    fn only_a_finished_final_answer_is_deliverable() {
+        let cases = [
+            (json!({"choices": []}), "exactly one"),
+            (
+                json!({"choices": [{"message": {"content": "partial"}}]}),
+                "did not confirm",
+            ),
+            (
+                json!({"choices": [{"finish_reason": "length", "message": {"content": "partial", "reasoning_content": "thought"}}]}),
+                "token limit",
+            ),
+            (
+                json!({"choices": [{"finish_reason": "stop", "message": {"content": "", "reasoning_content": "unfinished thought"}}]}),
+                "reasoning without",
+            ),
+            (
+                json!({"choices": [{"finish_reason": "tool_calls", "message": {"content": "calling tool"}}]}),
+                "requested a tool",
+            ),
+            (
+                json!({"choices": [{"finish_reason": "stop", "message": {"content": "calling tool", "tool_calls": [{"id": "x"}]}}]}),
+                "requested a tool",
+            ),
+            (
+                json!({"choices": [{"finish_reason": "content_filter", "message": {"content": "partial"}}]}),
+                "declined",
+            ),
+            (
+                json!({"choices": [{"finish_reason": "stop", "message": {"refusal": "no"}}]}),
+                "declined",
+            ),
+            (
+                json!({"choices": [{"finish_reason": "stop", "message": {"content": "  "}}]}),
+                "no final text",
+            ),
+        ];
+        for (body, expected) in cases {
+            let error = finished_text(&body).unwrap_err();
+            assert!(error.contains(expected), "{error}");
+            assert!(!error.contains("unfinished thought"));
+        }
+        let body = json!({"choices": [{"finish_reason": "stop", "message": {"content": "  2\n", "reasoning_content": "private thought"}}]});
+        assert_eq!(finished_text(&body).unwrap(), "2");
+    }
+
     #[tokio::test]
-    async fn completion_sends_all_stops_as_an_array() {
+    async fn completion_sends_stops_and_rejects_truncation_without_retry() {
         use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
         let server = tokio::spawn(async move {
-            for completion in [false, true] {
+            for finish in [None, Some("length"), Some("stop")] {
+                let completion = finish.is_some();
                 let (stream, _) = listener.accept().await.unwrap();
                 let mut reader = BufReader::new(stream);
                 let mut line = String::new();
@@ -267,7 +354,9 @@ mod tests {
                     assert_eq!(request["stop"], json!(["<extra_id_1>", "next,turn"]));
                     assert_eq!(request["model"], "actual.gguf");
                     assert_eq!(request["max_tokens"], 32);
-                    json!({"choices":[{"message":{"content":"READY"}}],"usage":{"prompt_tokens":12,"completion_tokens":1}})
+                    assert_eq!(request["stream"], false);
+                    assert_eq!(request["n"], 1);
+                    json!({"choices":[{"finish_reason":finish,"message":{"content":"READY","reasoning_content":"private thought"}}],"usage":{"prompt_tokens":12,"completion_tokens":1}})
                 } else {
                     json!({"data":[{"id":"actual.gguf"}]})
                 }.to_string();
@@ -277,6 +366,17 @@ mod tests {
         let engine = Psionic::new(&address, "advertised")
             .unwrap()
             .with_stops(vec!["<extra_id_1>".into(), "next,turn".into()]);
+        let error = engine
+            .generate(
+                &[Turn {
+                    role: "user".into(),
+                    content: "Reply READY".into(),
+                }],
+                32,
+            )
+            .await
+            .unwrap_err();
+        assert!(error.contains("token limit"));
         let answer = engine
             .generate(
                 &[Turn {

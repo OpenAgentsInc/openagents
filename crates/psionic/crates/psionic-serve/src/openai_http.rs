@@ -101,10 +101,13 @@ use crate::{
     tokio_runtime_telemetry_axum::serve_with_runtime_telemetry,
 };
 
+mod generation_admission;
 mod qwen38_media;
 mod tassadar_post_article_router_plugin_tool_loop_pilot;
 
 pub use tassadar_post_article_router_plugin_tool_loop_pilot::*;
+
+use self::generation_admission::{GenerationAdmission, GenerationPermit};
 
 use self::qwen38_media::{
     Qwen38OpenAiMediaKind, Qwen38OpenAiMultimodalReceipt, Qwen38OpenAiMultimodalRuntime,
@@ -1000,6 +1003,8 @@ pub struct OpenAiCompatConfig {
     pub port: u16,
     pub backend: OpenAiCompatBackend,
     pub reasoning_budget: u8,
+    /// Admit one local generation at a time, without a waiting generation queue.
+    pub single_generation: bool,
     pub mesh_coordination_enabled: bool,
     pub admitted_sparse_schedules: BTreeMap<String, SparseExpertClusterSchedule>,
 }
@@ -1014,6 +1019,7 @@ impl OpenAiCompatConfig {
             port: 8080,
             backend: OpenAiCompatBackend::Cpu,
             reasoning_budget: 0,
+            single_generation: false,
             mesh_coordination_enabled: true,
             admitted_sparse_schedules: BTreeMap::new(),
         }
@@ -3410,6 +3416,7 @@ impl Gemma4SparseDistributedTextGenerationService {
 #[derive(Clone)]
 struct OpenAiCompatWorker {
     sender: mpsc::UnboundedSender<OpenAiCompatWorkerCommand>,
+    generation_admission: Option<GenerationAdmission>,
 }
 
 enum OpenAiCompatWorkerCommand {
@@ -3417,6 +3424,7 @@ enum OpenAiCompatWorkerCommand {
         model_key: String,
         request: GenerationRequest,
         reply: oneshot::Sender<Result<crate::GenerationResponse, ReferenceTextGenerationError>>,
+        permit: Option<GenerationPermit>,
     },
     Qwen38MultimodalGenerate {
         model_key: String,
@@ -3424,6 +3432,7 @@ enum OpenAiCompatWorkerCommand {
         prompt: Qwen38RenderedPrompt,
         media: Vec<Qwen38PreparedMediaInput>,
         reply: oneshot::Sender<Result<Qwen38OpenAiGenerationResult, ReferenceTextGenerationError>>,
+        permit: Option<GenerationPermit>,
     },
     Embed {
         model_key: String,
@@ -3442,6 +3451,16 @@ enum OpenAiCompatWorkerCommand {
         request: DistributedGemma4RemoteResetRequest,
         reply: oneshot::Sender<Result<(), ReferenceTextGenerationError>>,
     },
+}
+
+impl OpenAiCompatWorkerCommand {
+    fn generation_abandoned(&self) -> bool {
+        match self {
+            Self::Generate { reply, .. } => reply.is_closed(),
+            Self::Qwen38MultimodalGenerate { reply, .. } => reply.is_closed(),
+            _ => false,
+        }
+    }
 }
 
 struct Qwen38OpenAiGenerationResult {
@@ -3684,6 +3703,11 @@ impl OpenAiCompatServer {
         let mut qwen38_multimodal_configured = false;
         let mut sparse_shard_artifact_cache = SparseShardArtifactCache::default();
         let bootstrap_mode = BootstrapProxyMode::from_env()?;
+        if config.single_generation && bootstrap_mode.is_some() {
+            return Err(OpenAiCompatServerError::Config(String::from(
+                "single-generation mode requires a local worker, not a bootstrap proxy",
+            )));
+        }
 
         for model_path in &config.model_paths {
             let decoder_attempt =
@@ -3798,7 +3822,9 @@ impl OpenAiCompatServer {
                     Some(bootstrap_proxy),
                 )
             } else {
-                let worker = OpenAiCompatWorker::spawn(load_plans)?;
+                let mut worker = OpenAiCompatWorker::spawn(load_plans)?;
+                worker.generation_admission =
+                    config.single_generation.then(GenerationAdmission::default);
                 let router = FleetRouter::new(
                     default_model_key.clone(),
                     vec![
@@ -3937,7 +3963,7 @@ impl OpenAiCompatServer {
 
 impl OpenAiCompatWorker {
     fn spawn(load_plans: Vec<OpenAiCompatModelLoadPlan>) -> Result<Self, OpenAiCompatServerError> {
-        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let (sender, mut receiver) = mpsc::unbounded_channel::<OpenAiCompatWorkerCommand>();
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
         std::thread::Builder::new()
             .name(String::from("psionic-openai-worker"))
@@ -4162,6 +4188,9 @@ impl OpenAiCompatWorker {
                     else {
                         break;
                     };
+                    if command.generation_abandoned() {
+                        continue;
+                    }
                     match command {
                         OpenAiCompatWorkerCommand::Qwen38MultimodalGenerate {
                             model_key,
@@ -4169,6 +4198,7 @@ impl OpenAiCompatWorker {
                             prompt,
                             media,
                             reply,
+                            permit: _permit,
                         } => {
                             let result = (|| {
                                 let runtime = qwen38_multimodal_runtimes
@@ -4204,6 +4234,7 @@ impl OpenAiCompatWorker {
                                     multimodal,
                                 })
                             })();
+                            drop(_permit);
                             let _ = reply.send(result);
                             continue;
                         }
@@ -4264,6 +4295,7 @@ impl OpenAiCompatWorker {
                     while let Ok(command) = receiver.try_recv() {
                         pending_commands.push_back(command);
                     }
+                    pending_commands.retain(|command| !command.generation_abandoned());
 
                     let Some(model_key) = pending_commands.front().map(|command| match command {
                         OpenAiCompatWorkerCommand::Generate { model_key, .. } => model_key.clone(),
@@ -4309,8 +4341,9 @@ impl OpenAiCompatWorker {
                                 model_key: command_model_key,
                                 request,
                                 reply,
+                                permit,
                             } if command_model_key == model_key => {
-                                selected.push((request, reply));
+                                selected.push((request, reply, permit));
                             }
                             OpenAiCompatWorkerCommand::Embed {
                                 model_key: command_model_key,
@@ -4329,7 +4362,8 @@ impl OpenAiCompatWorker {
                     pending_commands = remaining;
 
                     let Some(service) = generation_services.get_mut(model_key.as_str()) else {
-                        for (_, reply) in selected {
+                        for (_, reply, _permit) in selected {
+                            drop(_permit);
                             let _ = reply.send(Err(
                                 ReferenceTextGenerationError::UnsupportedModel(model_key.clone()),
                             ));
@@ -4338,7 +4372,7 @@ impl OpenAiCompatWorker {
                     };
                     let requests = selected
                         .iter()
-                        .map(|(request, _)| request.clone())
+                        .map(|(request, _, _)| request.clone())
                         .collect::<Vec<_>>();
                     let results = match service {
                         OpenAiCompatGenerationService::Cpu(service) => {
@@ -4363,7 +4397,8 @@ impl OpenAiCompatWorker {
                             service.generate_continuous_batch(requests)
                         }
                     };
-                    for ((_, reply), result) in selected.into_iter().zip(results.responses) {
+                    for ((_, reply, _permit), result) in selected.into_iter().zip(results.responses) {
+                        drop(_permit);
                         let _ = reply.send(result);
                     }
                 }
@@ -4373,7 +4408,10 @@ impl OpenAiCompatWorker {
                 "failed to receive generic OpenAI worker readiness: {error}"
             ))
         })? {
-            Ok(()) => Ok(Self { sender }),
+            Ok(()) => Ok(Self {
+                sender,
+                generation_admission: None,
+            }),
             Err(message) => Err(OpenAiCompatServerError::Config(message)),
         }
     }
@@ -4382,24 +4420,29 @@ impl OpenAiCompatWorker {
         &self,
         model_key: String,
         request: GenerationRequest,
-    ) -> Result<crate::GenerationResponse, ReferenceTextGenerationError> {
+    ) -> Result<crate::GenerationResponse, OpenAiCompatHttpError> {
+        let permit = self.generation_permit()?;
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(OpenAiCompatWorkerCommand::Generate {
                 model_key,
                 request,
                 reply: reply_tx,
+                permit,
             })
             .map_err(|_| {
                 ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
                     String::from("generic OpenAI worker is no longer available"),
                 ))
             })?;
-        reply_rx.await.map_err(|_| {
-            ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
-                String::from("generic OpenAI worker dropped the response channel"),
-            ))
-        })?
+        reply_rx
+            .await
+            .map_err(|_| {
+                ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
+                    String::from("generic OpenAI worker dropped the response channel"),
+                ))
+            })?
+            .map_err(Into::into)
     }
 
     async fn generate_qwen38_multimodal(
@@ -4408,7 +4451,8 @@ impl OpenAiCompatWorker {
         request: GenerationRequest,
         prompt: Qwen38RenderedPrompt,
         media: Vec<Qwen38PreparedMediaInput>,
-    ) -> Result<Qwen38OpenAiGenerationResult, ReferenceTextGenerationError> {
+    ) -> Result<Qwen38OpenAiGenerationResult, OpenAiCompatHttpError> {
+        let permit = self.generation_permit()?;
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(OpenAiCompatWorkerCommand::Qwen38MultimodalGenerate {
@@ -4417,17 +4461,28 @@ impl OpenAiCompatWorker {
                 prompt,
                 media,
                 reply: reply_tx,
+                permit,
             })
             .map_err(|_| {
                 qwen38_multimodal_generation_error(String::from(
                     "generic OpenAI worker is no longer available",
                 ))
             })?;
-        reply_rx.await.map_err(|_| {
-            qwen38_multimodal_generation_error(String::from(
-                "generic OpenAI worker dropped the Qwen3.8 multimodal response channel",
-            ))
-        })?
+        reply_rx
+            .await
+            .map_err(|_| {
+                qwen38_multimodal_generation_error(String::from(
+                    "generic OpenAI worker dropped the Qwen3.8 multimodal response channel",
+                ))
+            })?
+            .map_err(Into::into)
+    }
+
+    fn generation_permit(&self) -> Result<Option<GenerationPermit>, OpenAiCompatHttpError> {
+        self.generation_admission
+            .as_ref()
+            .map(|admission| admission.try_acquire().ok_or(OpenAiCompatHttpError::Busy))
+            .transpose()
     }
 
     async fn embed(
@@ -4826,6 +4881,8 @@ fn wait_for_upstream_ready(
 
 #[derive(Debug, thiserror::Error)]
 enum OpenAiCompatHttpError {
+    #[error("the model is busy; try again after the current answer finishes")]
+    Busy,
     #[error("{0}")]
     BadRequest(String),
     #[error("{0}")]
@@ -4850,6 +4907,12 @@ impl From<GptOssOpenAiCompatGenerationError> for OpenAiCompatHttpError {
     }
 }
 
+impl From<ReferenceTextGenerationError> for OpenAiCompatHttpError {
+    fn from(value: ReferenceTextGenerationError) -> Self {
+        Self::from(GptOssOpenAiCompatGenerationError::Generation(value))
+    }
+}
+
 impl From<ModelEmbeddingsError> for OpenAiCompatHttpError {
     fn from(value: ModelEmbeddingsError) -> Self {
         Self::Embeddings(Box::new(value))
@@ -4859,6 +4922,7 @@ impl From<ModelEmbeddingsError> for OpenAiCompatHttpError {
 impl IntoResponse for OpenAiCompatHttpError {
     fn into_response(self) -> Response {
         let (status, kind) = match &self {
+            Self::Busy => (StatusCode::TOO_MANY_REQUESTS, "server_busy"),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request_error"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
             Self::PromptRender(_) => (StatusCode::BAD_REQUEST, "invalid_request_error"),
@@ -5801,6 +5865,9 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
 #[derive(Clone, Debug, Serialize)]
 struct GenericHealthResponse {
     status: &'static str,
+    single_generation: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    generation_busy: Option<bool>,
     backend: &'static str,
     execution_mode: &'static str,
     execution_engine: &'static str,
@@ -5861,6 +5928,16 @@ async fn generic_health(
     let local_serving_truth = published_model_local_serving_truth(state.as_ref(), &default_model);
     Json(GenericHealthResponse {
         status: "ok",
+        single_generation: state
+            .workers
+            .values()
+            .any(|worker| worker.generation_admission.is_some()),
+        generation_busy: state
+            .workers
+            .values()
+            .filter_map(|worker| worker.generation_admission.as_ref())
+            .map(GenerationAdmission::is_busy)
+            .reduce(|busy, next| busy || next),
         backend: state.backend_label,
         execution_mode: state.execution_mode_label,
         execution_engine: state.execution_engine_label,
@@ -8961,12 +9038,7 @@ async fn handle_generic_chat_completions(
         (
             worker
                 .generate(route.selection.model_key.clone(), generation_request)
-                .await
-                .map_err(|error| {
-                    OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(
-                        error,
-                    ))
-                })?,
+                .await?,
             None,
         )
     } else {
@@ -8982,10 +9054,7 @@ async fn handle_generic_chat_completions(
                 prompt,
                 qwen38_media,
             )
-            .await
-            .map_err(|error| {
-                OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
-            })?;
+            .await?;
         (generated.response, Some(generated.multimodal))
     };
     let route_execution = route_execution_status_for_local_route(&route.selection);
@@ -9434,12 +9503,7 @@ async fn handle_generic_responses(
         (
             worker
                 .generate(route.selection.model_key.clone(), generation_request)
-                .await
-                .map_err(|error| {
-                    OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(
-                        error,
-                    ))
-                })?,
+                .await?,
             None,
         )
     } else {
@@ -9455,10 +9519,7 @@ async fn handle_generic_responses(
                 prompt,
                 qwen38_media,
             )
-            .await
-            .map_err(|error| {
-                OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(error))
-            })?;
+            .await?;
         (generated.response, Some(generated.multimodal))
     };
     let route_execution = route_execution_status_for_local_route(&route.selection);
@@ -20886,6 +20947,139 @@ mod tests {
             serde_json::json!(true)
         );
         assert_eq!(payload["output"][0]["type"], serde_json::json!("message"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn single_generation_stays_busy_after_caller_disconnect()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use super::{OpenAiCompatHttpError, OpenAiCompatWorkerCommand};
+        use axum::response::IntoResponse;
+        use std::sync::Arc;
+
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-serial.gguf");
+        write_test_gguf(
+            &path,
+            dense_llama_metadata("tiny serial llama").as_slice(),
+            dense_decoder_tensors(false, 3, 4).as_slice(),
+        )?;
+        let mut config = OpenAiCompatConfig::new(&path);
+        config.single_generation = true;
+        let mut server = OpenAiCompatServer::from_config(&config)?;
+        // Hold the actual command, not just the HTTP future, so this test
+        // exercises the same permit ownership as a slow/stuck decoder.
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        let real_sender = {
+            let worker = Arc::get_mut(&mut server.state)
+                .expect("unique state")
+                .workers
+                .values_mut()
+                .next()
+                .expect("worker");
+            std::mem::replace(&mut worker.sender, sender)
+        };
+        let request = ChatCompletionRequest {
+            model: Some(String::from("tiny-serial")),
+            messages: vec![ChatCompletionMessage::text("user", "hello")],
+            temperature: Some(0.0),
+            max_tokens: Some(1),
+            ..Default::default()
+        };
+        let state = Arc::clone(&server.state);
+        let first_request = request.clone();
+        let first =
+            tokio::spawn(
+                async move { handle_generic_chat_completions(state, first_request).await },
+            );
+        let command = tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv())
+            .await?
+            .expect("generation command");
+        assert!(matches!(
+            command,
+            OpenAiCompatWorkerCommand::Generate {
+                permit: Some(_),
+                ..
+            }
+        ));
+        for disconnected in [false, true] {
+            if disconnected {
+                first.abort();
+                // Wait for the HTTP handler to really release its future.
+                while !first.is_finished() {
+                    tokio::task::yield_now().await;
+                }
+                assert!(command.generation_abandoned());
+            }
+            let result = if disconnected {
+                handle_generic_responses(
+                    Arc::clone(&server.state),
+                    ResponsesRequest {
+                        model: Some(String::from("tiny-serial")),
+                        input: ResponsesInput::Text(String::from("hello")),
+                        max_output_tokens: Some(1),
+                        ..Default::default()
+                    },
+                )
+                .await
+            } else {
+                handle_generic_chat_completions(Arc::clone(&server.state), request.clone()).await
+            };
+            let error = result.expect_err("both endpoints must stay busy");
+            let health = super::generic_health(State(Arc::clone(&server.state)))
+                .await
+                .0;
+            assert!(health.single_generation);
+            assert_eq!(health.generation_busy, Some(true));
+            assert!(matches!(error, OpenAiCompatHttpError::Busy));
+            let response = error.into_response();
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+            assert_eq!(
+                response_json(response).await?["error"]["type"],
+                "server_busy"
+            );
+            assert!(
+                receiver.try_recv().is_err(),
+                "busy requests must not enter the queue"
+            );
+        }
+        let _ = first.await;
+        let generation_request = match &command {
+            OpenAiCompatWorkerCommand::Generate { request, .. } => request.clone(),
+            _ => unreachable!("text generation"),
+        };
+        drop(command); // The worker has relinquished the abandoned work.
+        Arc::get_mut(&mut server.state)
+            .expect("unique state")
+            .workers
+            .values_mut()
+            .next()
+            .expect("worker")
+            .sender = real_sender;
+        let worker = server.state.workers.values().next().expect("worker");
+        assert!(
+            worker
+                .generate(String::from("missing-model"), generation_request)
+                .await
+                .is_err()
+        );
+        // Both a backend error and normal completion must release the slot.
+        for _ in 0..2 {
+            let response =
+                handle_generic_chat_completions(Arc::clone(&server.state), request.clone()).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response_json(response).await?["choices"][0]["message"]["content"],
+                "world"
+            );
+            assert_eq!(
+                super::generic_health(State(Arc::clone(&server.state)))
+                    .await
+                    .0
+                    .generation_busy,
+                Some(false)
+            );
+        }
         Ok(())
     }
 

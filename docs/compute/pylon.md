@@ -70,6 +70,13 @@ refusal is `status: error` feedback with a NIP-CJ code: `not_admitted`,
 Output is bounded by `--max-tokens` (default 512) and each job by 90
 seconds. The provider logs no job content.
 
+For serial personal serving, start `psionic-openai-server` with
+`--single-generation` and use `pylon serve --slots 1` with a tested output
+cap. Pylon requires a completed final text answer (`finish_reason=stop`);
+truncated, reasoning-only, tool and malformed responses fail explicitly.
+The server keeps its generation slot while decoding continues after a
+caller timeout. Hard timeout recovery is [still pending](../psionic/deepseek-support-plan.md#serving-implementation-progress-12358).
+
 ### Choose another text model
 
 `up --text-model /path/model.gguf` selects a local GGUF. `--text-device

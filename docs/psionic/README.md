@@ -30,6 +30,11 @@ the Mac, web, and phone builds, do not compile it.
 0.8B Q8_0 loads in about 2 GB of video memory and answers a short prompt in
 about 0.2 seconds.
 
+For personal use, `--single-generation` rejects overlapping generations
+with HTTP 429 and keeps the worker busy if its caller stops waiting.
+`/health` reports that mode and its busy state. Pair it with one Pylon slot;
+see [serving progress and remaining recovery work](deepseek-support-plan.md#serving-implementation-progress-12358).
+
 The pinned public text templates for Llama 3.2, Mistral v0.3, standard
 Qwen3, current Qwen3.5, and Gemma 4 are checked against 26 independent
 Jinja-rendered fixtures. Unknown template hashes still fail closed.

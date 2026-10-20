@@ -283,6 +283,7 @@ where
     let mut backend = OpenAiCompatBackend::Cpu;
     let mut qwen38_vision_model_dir = None;
     let mut reasoning_budget = 0_u8;
+    let mut single_generation = false;
     let mut mesh_coordination_enabled = true;
 
     let mut args = args.into_iter().map(Into::into);
@@ -321,6 +322,7 @@ where
                     .parse()
                     .map_err(|error| format!("invalid --reasoning-budget value: {error}"))?;
             }
+            "--single-generation" => single_generation = true,
             "--mesh-coordination" => {
                 let value = next_value(&mut args, argument.as_str())?;
                 mesh_coordination_enabled = match value.as_str() {
@@ -355,6 +357,7 @@ where
     config.backend = backend;
     config.qwen38_vision_model_dir = qwen38_vision_model_dir;
     config.reasoning_budget = reasoning_budget;
+    config.single_generation = single_generation;
     config.mesh_coordination_enabled = mesh_coordination_enabled;
     Ok(config)
 }
@@ -366,7 +369,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     let mut usage = String::from(
-        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-max-queue <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda|metal] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--decision-worker <http://worker>] [--decision-vision-manifest <manifest> --decision-vision-blobs <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--single-generation] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-max-queue <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda|metal] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--decision-worker <http://worker>] [--decision-vision-manifest <manifest> --decision-vision-blobs <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
     );
     usage.push_str("\n\nRouter-only mode: --router-model-dir <directory> --router-engine native|ort [--router-device cpu|cuda|metal|coreml] [--router-allow-cpu-fallback] [--router-threads <n>] [--router-max-queue <n>] [--ort-library <file> --ort-sha256 <hash>] [--host <ip>] [--port <port>]. Build with --features router-ort for ORT, router-cuda for native CUDA, or router-metal for native Metal. ORT accelerator CPU fallback requires --router-allow-cpu-fallback. The model's fixed questions are listed at GET /v1/models.\n");
     usage
@@ -455,6 +458,14 @@ mod tests {
         assert_eq!(config.model_paths.len(), 2);
         assert_eq!(config.model_paths[0].to_string_lossy(), "/tmp/one.gguf");
         assert_eq!(config.model_paths[1].to_string_lossy(), "/tmp/two.gguf");
+        assert!(!config.single_generation);
+    }
+
+    #[test]
+    fn parse_args_accepts_single_generation() {
+        let config = parse_args_from(["-m", "/tmp/model.gguf", "--single-generation"])
+            .expect("single generation should parse");
+        assert!(config.single_generation);
     }
 
     #[test]
