@@ -149,7 +149,7 @@ pub(crate) fn thread_entry(
     } }
 }
 
-fn encoded(value: &str) -> String {
+pub(crate) fn encoded(value: &str) -> String {
     value
         .bytes()
         .map(|byte| {

@@ -286,6 +286,15 @@ pub(crate) async fn page(
         Some(painter) => painter.policy(GPUI_CHAT_POLICY),
         None => GPUI_CHAT_POLICY.to_owned(),
     };
+    // The account's rooms on `coder-sync` (#12263).
+    let policy = match crate::room_tokens::connect_source(app) {
+        Some(socket) => policy.replacen(
+            "connect-src 'self'",
+            &format!("connect-src 'self' {socket}"),
+            1,
+        ),
+        None => policy,
+    };
     let headers = response.headers_mut();
     if let Ok(policy) = HeaderValue::from_str(&policy) {
         headers.insert(header::CONTENT_SECURITY_POLICY, policy);

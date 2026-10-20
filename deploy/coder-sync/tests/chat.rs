@@ -74,6 +74,7 @@ impl TestServer {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let app = server::router(StateData {
             proof_origin: None,
+            room_keys: Vec::new(),
             database: db.clone(),
             bucket: Bucket::memory(),
             rooms: Rooms::default(),

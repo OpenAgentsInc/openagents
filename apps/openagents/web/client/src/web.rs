@@ -193,6 +193,17 @@ impl Client {
         ))
     }
 
+    /// A token to open `room` (`id`: the computer or chat; the registry is
+    /// the account's own). Ask again for each connection: a token lasts a
+    /// few minutes (#12263).
+    pub async fn room_token(&self, room: Room, id: Option<&str>) -> Result<RoomToken> {
+        let mut body = serde_json::json!({ "room": room.as_str() });
+        if let Some(id) = id {
+            body["id"] = id.into();
+        }
+        self.send("POST", "/v1/sync/room-tokens", Some(&body)).await
+    }
+
     /// Reads `path` on this site as JSON.
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         self.send("GET", path, None::<&()>).await

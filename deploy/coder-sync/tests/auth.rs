@@ -218,6 +218,19 @@ impl Drop for Fixture {
         }
     }
 }
+/// The website's room-token key in these fixtures.
+const ROOM_SECRET: &str = "0303030303030303030303030303030303030303030303030303030303030303";
+fn room(kind: coder_access::room_token::Room, id: &str, account: &str, lifetime: u64) -> String {
+    coder_access::room_token::mint(
+        ROOM_SECRET,
+        account,
+        kind,
+        id,
+        coder_access::unix_time().unwrap(),
+        lifetime,
+    )
+    .unwrap()
+}
 fn token(c: char) -> String {
     format!("sess_{}", c.to_string().repeat(64))
 }
@@ -245,6 +258,7 @@ impl Fixture {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let app = server::router(StateData {
             proof_origin: Some(base.clone()),
+            room_keys: vec![coder_access::room_token::public_key(ROOM_SECRET).unwrap()],
             database: db.clone(),
             bucket: Bucket::memory(),
             rooms: Rooms::default(),
@@ -381,7 +395,11 @@ async fn an_explicit_refusal_is_never_overridden_by_the_cache() {
     f.revoke.store(true, Ordering::SeqCst);
     assert_eq!(status(token('a')).await, 401);
     f.unavailable.store(true, Ordering::SeqCst);
-    assert_eq!(status(token('a')).await, 503, "the refusal evicted the entry");
+    assert_eq!(
+        status(token('a')).await,
+        503,
+        "the refusal evicted the entry"
+    );
 }
 #[tokio::test]
 async fn websocket_connects_are_account_scoped_and_revocation_closes_all_room_types() {
@@ -430,4 +448,114 @@ async fn websocket_connects_are_account_scoped_and_revocation_closes_all_room_ty
         .await
         .unwrap();
     }
+}
+
+/// #12263: a browser's room token opens the one socket it names, as a
+/// client, until it expires, without asking the account service.
+#[tokio::test]
+async fn a_room_token_opens_only_its_own_room_until_it_expires() {
+    use coder_access::room_token::Room;
+    use tokio_tungstenite::tungstenite::{Error as WsError, Message};
+    let f = Fixture::start().await;
+    let refused = |url: String| async move {
+        match tokio_tungstenite::connect_async(url).await {
+            Err(WsError::Http(r)) => r.status().as_u16(),
+            Err(other) => panic!("{other:?}"),
+            Ok(_) => 101,
+        }
+    };
+    let registry = "/registry/acct_alpha/ws";
+    let ticket = room(Room::Registry, "acct_alpha", "acct_alpha", 300);
+    let calls = f.calls.load(Ordering::SeqCst);
+    let (mut socket, _) = tokio_tungstenite::connect_async(f.ws(registry, &ticket))
+        .await
+        .unwrap();
+    use futures::SinkExt;
+    socket
+        .send(Message::Text(
+            json!({"t": "hello", "device": "web-test"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    let first = tokio::time::timeout(Duration::from_secs(10), socket.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let Message::Text(text) = first else {
+        panic!("{first:?}")
+    };
+    let snapshot: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(snapshot["t"], "state", "{snapshot}");
+    assert_eq!(
+        f.calls.load(Ordering::SeqCst),
+        calls,
+        "the account service never sees a room token"
+    );
+    // Not another room, kind, account, or route.
+    assert_eq!(refused(f.ws("/registry/acct_beta/ws", &ticket)).await, 401);
+    assert_eq!(refused(f.ws("/chat2/acct_alpha/ws", &ticket)).await, 401);
+    assert_eq!(refused(f.ws("/device/acct_alpha/ws", &ticket)).await, 401);
+    let rows = f
+        .get("/registry/acct_alpha/rows", Some(ticket.clone()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rows.status(), 401);
+    let beta = room(Room::Registry, "acct_alpha", "acct_beta", 300);
+    assert_eq!(refused(f.ws(registry, &beta)).await, 403);
+    let forged = coder_access::room_token::mint(
+        &"04".repeat(32),
+        "acct_alpha",
+        Room::Registry,
+        "acct_alpha",
+        coder_access::unix_time().unwrap(),
+        300,
+    )
+    .unwrap();
+    assert_eq!(refused(f.ws(registry, &forged)).await, 401);
+
+    // A computer's room: as its client, never as its host.
+    let device = uuid::Uuid::new_v4().to_string();
+    let path = format!("/device/{device}/ws");
+    let _host = tokio_tungstenite::connect_async(format!(
+        "{}{path}?role=host&token={}",
+        f.base.replacen("http:", "ws:", 1),
+        token('a')
+    ))
+    .await
+    .unwrap();
+    let client = room(Room::Device, &device, "acct_alpha", 300);
+    assert_eq!(refused(f.ws(&path, &client)).await, 101);
+    assert_eq!(
+        refused(format!(
+            "{}{path}?role=host&token={client}",
+            f.base.replacen("http:", "ws:", 1)
+        ))
+        .await,
+        401
+    );
+    let stranger = room(Room::Device, &device, "acct_beta", 300);
+    assert_eq!(refused(f.ws(&path, &stranger)).await, 403);
+
+    // It closes when the token expires; the client reconnects with a new one.
+    let short = room(Room::Registry, "acct_alpha", "acct_alpha", 2);
+    let (mut socket, _) = tokio_tungstenite::connect_async(f.ws(registry, &short))
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match socket.next().await {
+                Some(Ok(Message::Close(Some(frame)))) => {
+                    assert_eq!(u16::from(frame.code), 4401);
+                    break;
+                }
+                Some(Ok(_)) => {}
+                other => panic!("Expected the expired token's close, got {other:?}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(refused(f.ws(registry, &short)).await, 401);
 }

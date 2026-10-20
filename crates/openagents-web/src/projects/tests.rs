@@ -87,6 +87,8 @@ pub(crate) struct Options {
     pub chat: Option<Arc<dyn crate::ask::Chat>>,
     /// The counts the site keeps, read back by the test.
     pub analytics: Option<Arc<crate::analytics::Analytics>>,
+    /// The room-token key (#12263); none, as in production without one.
+    pub room_token_key: Option<String>,
 }
 
 /// The `ask_salt` a world with its own [`Options::chat`] uses.
@@ -167,6 +169,7 @@ async fn world_at(port: u16, options: Options) -> World {
     config.cad = options.cad;
     config.everglade = options.everglade;
     config.port = port;
+    config.room_token_key = options.room_token_key;
     let store = Arc::new(Store::local(root.path().join("chats")));
     config.chat_store = store.clone();
     config.cloud = Some(Arc::new(

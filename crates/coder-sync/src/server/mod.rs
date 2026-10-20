@@ -35,6 +35,11 @@ pub struct StateData {
     /// Session notifications; `None` when push isn't configured.
     pub push: Option<Arc<push::Push>>,
     pub proof_origin: Option<String>,
+    /// The website's room-token keys (lowercase hex, x-only), from
+    /// `CODER_SYNC_ROOM_TOKEN_KEYS`: a browser's short-lived token for one
+    /// room is checked against these (#12263). Empty, no room token opens
+    /// anything.
+    pub room_keys: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -264,6 +269,7 @@ mod tests {
     async fn refused_uploads_keep_the_connection_open() {
         let app = router(StateData {
             proof_origin: None,
+            room_keys: Vec::new(),
             database: db::Database::new("host=localhost dbname=unused").unwrap(),
             bucket: storage::Bucket::memory(),
             rooms: rooms::Rooms::default(),

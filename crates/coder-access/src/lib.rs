@@ -25,6 +25,7 @@ pub mod project;
 pub mod protocol;
 pub mod review;
 pub mod rights;
+pub mod room_token;
 pub mod sharing;
 pub mod spend;
 pub mod studio;

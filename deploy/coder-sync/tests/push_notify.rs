@@ -151,6 +151,7 @@ impl Fixture {
             accounts: None,
             revision: "push-test".into(),
             proof_origin: None,
+            room_keys: Vec::new(),
             push: Some(Arc::new(Push::new(settings.clone()))),
         }).route("/v1/account", get(|headers: HeaderMap| async move {
             let id=headers["authorization"].to_str().unwrap().strip_prefix("Bearer ").unwrap().to_owned();
@@ -421,6 +422,7 @@ async fn owner_notes_retry_after_restart_without_losing_limits_or_repeating_succ
         accounts: None,
         revision: "restart".into(),
         proof_origin: None,
+        room_keys: Vec::new(),
         push: Some(Arc::new(Push::new(fx.settings.clone()))),
     });
     fx.tasks.push(tokio::spawn(async move {

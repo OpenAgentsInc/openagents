@@ -64,6 +64,8 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/files",
     // The browser's phone-approved wallet requests (#12258).
     "/v1/wallet/browser",
+    // Room tokens for the registry, device, and chat rooms (#12263).
+    crate::room_tokens::PATH,
     // Their handlers read the cookie themselves; this layer checks it first.
     crate::traces::API,
     crate::mac_jobs::PREFIX,

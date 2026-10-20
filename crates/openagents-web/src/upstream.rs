@@ -244,6 +244,7 @@ pub fn owned(path: &str) -> bool {
         || path == "/v1/agent-definitions"
         || path.starts_with("/v1/agent-definitions/")
         || crate::published_agents::owns(path)
+        || crate::room_tokens::owns(path)
         || crate::profiles::owns(path)
         || crate::wallet_browser::owns(path)
         || path == crate::pages::home::HOME

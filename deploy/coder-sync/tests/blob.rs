@@ -27,6 +27,7 @@ impl Server {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let state = StateData {
             proof_origin: None,
+            room_keys: Vec::new(),
             database: db,
             bucket: Bucket::memory(),
             rooms: Rooms::default(),

@@ -16,6 +16,9 @@ pub struct Config {
     pub revision: String,
     pub push: Option<super::push::Settings>,
     pub proof_origin: String,
+    /// `CODER_SYNC_ROOM_TOKEN_KEYS`: the website's room-token public keys,
+    /// comma-separated lowercase hex (#12263).
+    pub room_keys: Vec<String>,
 }
 
 impl Config {
@@ -68,7 +71,23 @@ impl Config {
         {
             return Err("Invalid public origin.");
         }
+        let room_keys: Vec<String> = get("CODER_SYNC_ROOM_TOKEN_KEYS")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .map(str::to_owned)
+            .collect();
+        if room_keys.iter().any(|key| {
+            key.len() != 64
+                || !key
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        }) {
+            return Err("Invalid room token key.");
+        }
         Ok(Self {
+            room_keys,
             proof_origin,
             listen,
             database_url,

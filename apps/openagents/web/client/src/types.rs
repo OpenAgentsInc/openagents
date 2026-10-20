@@ -1,8 +1,8 @@
 //! What the JSON API answers. The chat API's values are the SDK's own
 //! ([`openagents_sdk::chats::wire`], the same ones the desktop and phone
 //! apps read), re-exported here; this module adds only what the website
-//! alone serves: projects, the site's refusal body, and where a page reads a
-//! chat's file.
+//! alone serves: projects, room tokens, the site's refusal body, and where
+//! a page reads a chat's file.
 
 use serde::{Deserialize, Deserializer};
 
@@ -43,6 +43,45 @@ impl Project {
     pub fn editable(&self) -> bool {
         !matches!(self.role.as_deref(), Some("viewer"))
     }
+}
+
+/// A `coder-sync` room the page may open (#12263): its own registry, a
+/// computer's device room as a client, or a chat's room.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Room {
+    Registry,
+    Device,
+    Chat,
+}
+
+impl Room {
+    /// The name `POST /v1/sync/room-tokens` takes and the socket path's
+    /// first segment.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Registry => "registry",
+            Self::Device => "device",
+            Self::Chat => "chat2",
+        }
+    }
+}
+
+/// A short-lived token for one room, from `POST /v1/sync/room-tokens`.
+/// `url` is the socket address with the token in its query; the socket
+/// closes when the token expires, and the caller asks for a new one to
+/// reconnect.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct RoomToken {
+    #[serde(deserialize_with = "nullable")]
+    pub token: String,
+    #[serde(deserialize_with = "nullable")]
+    pub room: String,
+    #[serde(deserialize_with = "nullable")]
+    pub id: String,
+    pub expires_unix: u64,
+    #[serde(deserialize_with = "nullable")]
+    pub url: String,
 }
 
 /// A refusal: `{error: {code, message}}`.
@@ -109,5 +148,21 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(file_url("c1", &file), "/chat/c1/files/f1");
+    }
+}
+
+#[cfg(test)]
+mod room_tests {
+    use super::*;
+
+    #[test]
+    fn a_room_token_reads_as_the_site_sends_it() {
+        let token: RoomToken = serde_json::from_str(
+            r#"{"token":"ort1_x","room":"registry","id":"acct_1","expires_unix":300,"url":"wss://sync.openagents.com/registry/acct_1/ws?token=ort1_x"}"#,
+        )
+        .unwrap();
+        assert_eq!(token.id, "acct_1");
+        assert_eq!(token.expires_unix, 300);
+        assert_eq!(Room::Chat.as_str(), "chat2");
     }
 }

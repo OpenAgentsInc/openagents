@@ -126,6 +126,7 @@ mod promises;
 mod purchases;
 mod repo_snapshot;
 mod robot_lab;
+mod room_tokens;
 pub mod sales_remote;
 mod screens;
 mod settings;
@@ -374,6 +375,13 @@ pub struct Config {
     pub chat_store: Arc<chat_store::Store>,
     /// Sync service that stores owner notes and phone delivery grants.
     pub owner_notifications_url: String,
+    /// The `coder-sync` origin the browser's rooms are on
+    /// (`OPENAGENTS_SYNC_ORIGIN`, [`room_tokens`]).
+    pub sync_origin: String,
+    /// The secret key (hex) this site signs browser room tokens with
+    /// (`OPENAGENTS_WEB_ROOM_TOKEN_KEY`, #12263). `coder-sync` is given its
+    /// public key. Absent, no room token is made.
+    pub room_token_key: Option<String>,
     /// The repository's landing queue, shared with the CLI and integrator.
     pub landing: Option<Arc<landing::LandingQueue>>,
     /// Small Rust/Wasm input and scroll adapter.
@@ -594,6 +602,11 @@ impl Config {
         Self {
             owner_notifications_url: std::env::var("OPENAGENTS_NOTIFY_SERVICE")
                 .unwrap_or_else(|_| "https://sync.openagents.com".into()),
+            sync_origin: std::env::var("OPENAGENTS_SYNC_ORIGIN")
+                .unwrap_or_else(|_| "https://sync.openagents.com".into()),
+            room_token_key: std::env::var("OPENAGENTS_WEB_ROOM_TOKEN_KEY")
+                .ok()
+                .filter(|key| coder_access::room_token::public_key(key).is_ok()),
             lab_backend: None,
             project_uploads: ProjectUploadPolicy::default(),
             chat_store: Arc::new(chat_store::Store::local(store.with_file_name("web-chats"))),
@@ -791,6 +804,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(account_export::routes())
         .merge(account_delete::routes())
         .merge(cookie_api::routes())
+        .merge(room_tokens::routes())
         .merge(projects::routes())
         .merge(github_tools::routes())
         .merge(lab::routes())

@@ -38,6 +38,7 @@ async fn run() -> Result<(), &'static str> {
     };
     let state = StateData {
         proof_origin: Some(config.proof_origin),
+        room_keys: config.room_keys,
         database,
         bucket,
         rooms: Rooms::default(),

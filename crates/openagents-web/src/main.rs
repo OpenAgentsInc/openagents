@@ -405,6 +405,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "conversations".into(),
         )?);
     }
+    // coder-sync checks browser room tokens with this key (#12263):
+    // `CODER_SYNC_ROOM_TOKEN_KEYS` on the sync server.
+    if let Some(key) = &config.room_token_key
+        && let Ok(public) = coder_access::room_token::public_key(key)
+    {
+        println!("Room tokens are signed with the public key {public}");
+    } else if std::env::var_os("OPENAGENTS_WEB_ROOM_TOKEN_KEY").is_some() {
+        eprintln!(
+            "Room tokens are off: OPENAGENTS_WEB_ROOM_TOKEN_KEY isn't a 64-character hex key"
+        );
+    }
     if let Some(days) = chat_retention.filter(|value| !value.trim().is_empty()) {
         let days = openagents_web::chat_store::retention_days(&days)?;
         openagents_web::chat_store::spawn_expiry(config.chat_store.clone(), days);

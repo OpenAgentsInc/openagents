@@ -108,7 +108,8 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let state = StateData {
-            proof_origin: None,
+        proof_origin: None,
+        room_keys: Vec::new(),
         database: db,
         bucket: Bucket::memory(),
         rooms: Rooms::default(),

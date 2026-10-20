@@ -7,6 +7,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use coder_access::room_token;
 use openagents::{Client, Deployment, Error};
 use sha2::{Digest, Sha256};
 use std::{
@@ -141,6 +142,24 @@ pub async fn guard(
     let Some(token) = bearer(request.headers(), &query).filter(|v| v.len() <= 4096) else {
         return refuse(request, StatusCode::UNAUTHORIZED).await;
     };
+    if room_token::is_room_token(&token) {
+        return match room(&state, &request, &query, &token) {
+            Ok(admitted) => {
+                let (Ok(account), Ok(expiry)) = (
+                    HeaderValue::from_str(&admitted.account),
+                    HeaderValue::from_str(&admitted.expires.to_string()),
+                ) else {
+                    return refuse(request, StatusCode::UNAUTHORIZED).await;
+                };
+                request.headers_mut().insert(ACCOUNT_HEADER, account);
+                request
+                    .headers_mut()
+                    .insert(super::proof::EXPIRY_HEADER, expiry);
+                next.run(request).await
+            }
+            Err(status) => refuse(request, status).await,
+        };
+    }
     let Some(accounts) = &state.accounts else {
         return refuse(request, StatusCode::SERVICE_UNAVAILABLE).await;
     };
@@ -158,6 +177,34 @@ pub async fn guard(
         Err(status) => refuse(request, status).await,
     }
 }
+/// A room token (#12263) opens exactly the socket it names, until it
+/// expires: `/registry/{org}/ws`, `/chat2/{id}/ws`, or `/device/{id}/ws` as
+/// a client, never as the computer's host. It carries no device proof, and
+/// it is checked against [`StateData::room_keys`], not the account service.
+fn room(
+    state: &StateData,
+    request: &Request,
+    query: &HashMap<String, String>,
+    token: &str,
+) -> Result<room_token::Admission, StatusCode> {
+    let now = coder_access::unix_time().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let admitted =
+        room_token::verify(token, &state.room_keys, now).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let headers = request.headers();
+    if headers.contains_key(coder_access::http_proof::DEVICE_HEADER)
+        || headers.contains_key(coder_access::http_proof::HOST_HEADER)
+    {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    match room_token::Room::of_path(request.uri().path()) {
+        Some((room, id)) if room == admitted.room && id == admitted.id => {}
+        _ => return Err(StatusCode::UNAUTHORIZED),
+    }
+    if admitted.room == room_token::Room::Device && query.get("role").is_some_and(|r| r == "host") {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(admitted)
+}
 /// Refuse after reading the upload, so the connection stays reusable.
 async fn refuse(request: Request, status: StatusCode) -> Response {
     super::drain(request.into_body()).await;
@@ -172,6 +219,9 @@ pub struct SocketLease {
     token: String,
     account: String,
     proof_expiry: Option<u64>,
+    /// A room token's socket ends when the token expires; the account
+    /// service never saw the token, so it isn't asked again.
+    room: bool,
 }
 pub fn socket_lease(
     state: &StateData,
@@ -182,9 +232,11 @@ pub fn socket_lease(
     if state.auth != AuthMode::OpenAgents {
         return None;
     }
+    let token = bearer(headers, query)?;
     Some(SocketLease {
         accounts: state.accounts.clone()?,
-        token: bearer(headers, query)?,
+        room: room_token::is_room_token(&token),
+        token,
         account: who.account.clone(),
         proof_expiry: headers
             .get(super::proof::EXPIRY_HEADER)
@@ -198,6 +250,7 @@ pub async fn socket_ended(lease: Option<SocketLease>) -> u16 {
         return std::future::pending().await;
     };
     let proof_expiry = lease.proof_expiry;
+    let room = lease.room;
     let expires = async move {
         match proof_expiry {
             Some(expiry) => {
@@ -210,6 +263,9 @@ pub async fn socket_ended(lease: Option<SocketLease>) -> u16 {
         }
     };
     let account_checks = async move {
+        if room {
+            return std::future::pending().await;
+        }
         loop {
             tokio::time::sleep(Duration::from_secs(15)).await;
             match lease.accounts.verify(&lease.token).await {

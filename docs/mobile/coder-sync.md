@@ -57,6 +57,7 @@ dependencies. No application code is copied into that package.
 | `CODER_SYNC_LISTEN` | Listen address; defaults to `0.0.0.0:$PORT`, or port 8080. |
 | `CODER_SYNC_REVISION` | The full deployed Git commit, returned by `/health`. |
 | `CODER_SYNC_PUBLIC_ORIGIN` | The exact HTTPS origin clients use for device proofs, such as `https://sync.openagents.com`. |
+| `CODER_SYNC_ROOM_TOKEN_KEYS` | The website's room-token public keys, comma-separated lowercase hex. A browser's room token opens one room's socket for a few minutes, as a client (#12263). The website prints its key at startup from `OPENAGENTS_WEB_ROOM_TOKEN_KEY`. Empty, no room token opens anything. |
 
 Dev bearers use `user` or `user@workspace`, matching the reference clients.
 Do not use personal accounts. Production refuses dev auth even when the
