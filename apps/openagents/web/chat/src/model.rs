@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_web_chat_view::transcript::NOTICE_PREFIX;
-use openagents_web_client::{FileRef, MessageRow, Project, Thread, ThreadMessage};
+use openagents_web_client::{FileRef, MessageRow, Project, Thread, ThreadMessage, file_url};
 
 /// One message of the chat at its position.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -36,7 +36,7 @@ pub fn messages(chat: &str, rows: &[MessageRow], detail: &[ThreadMessage]) -> Ve
                     .unwrap_or_default()
                     .iter()
                     .filter(|f| f.kind == "image")
-                    .map(|f: &FileRef| (f.url(chat), f.name.clone()))
+                    .map(|f: &FileRef| (file_url(chat, f), f.name.clone()))
                     .collect()
             } else {
                 Vec::new()

@@ -20,7 +20,7 @@ use openagents_web_chat_view::transcript::{
     self, OnClick, TurnView, VEIL_FADE_MS, button, veil_alpha, working_label,
 };
 use openagents_web_client::web::{Client, Follow};
-use openagents_web_client::{Refusal, StreamEvent};
+use openagents_web_client::{Event, MessageRole as SentBy, Refusal};
 use wasm_bindgen::{JsCast, JsValue};
 use web_time::Instant;
 
@@ -357,22 +357,31 @@ impl LanderChat {
         cx.notify();
     }
 
-    fn on_event(&mut self, event: StreamEvent, cx: &mut Context<Self>) {
+    fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
         let still = self.still;
         let Some(live) = &mut self.live else {
             return;
         };
         match event {
-            StreamEvent::Text {
+            Event::Text {
                 index,
                 role,
                 text,
                 replace,
+                ..
+            }
+            | Event::Tool {
+                index,
+                role,
+                text,
+                replace,
+                ..
             } => {
                 // The person's own message is already in the transcript.
-                if role == "user" {
+                if role == SentBy::User {
                     return;
                 }
+                let role = role.as_str().to_owned();
                 if !text.trim().is_empty()
                     && live.messages.values().all(|(_, t)| t.trim().is_empty())
                 {
@@ -391,9 +400,9 @@ impl LanderChat {
                     slot.1.push_str(&text);
                 }
             }
-            StreamEvent::Cards(_) => {}
-            StreamEvent::Done { outcome } => self.finish(outcome == "stopped", None),
-            StreamEvent::Error { message, .. } => self.finish(false, Some(message)),
+            Event::Cards { .. } => {}
+            Event::Done { outcome, .. } => self.finish(outcome == "stopped", None),
+            Event::Error { error, .. } => self.finish(false, Some(error.message)),
         }
         cx.notify();
     }

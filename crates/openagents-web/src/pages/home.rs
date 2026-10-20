@@ -8,7 +8,7 @@
 //! `/docs/the-grid`.
 
 use axum::Router;
-use axum::extract::{Query, State};
+use axum::extract::{Query, RawQuery, State};
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -78,10 +78,18 @@ fn shows_landing(headers: &HeaderMap, project: Option<&str>) -> bool {
 async fn new_chat(
     State(app): State<App>,
     headers: HeaderMap,
+    RawQuery(raw): RawQuery,
     query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let query = query.map(|q| q.0).unwrap_or_default();
-    page(&app, &headers, query.project.as_deref(), None).await
+    let choice = super::gpui_chat::choice(&headers, raw.as_deref());
+    let mut response = if choice.serves(&app, &headers) {
+        super::gpui_chat::page(&app, &headers, None, "").await
+    } else {
+        let query = query.map(|q| q.0).unwrap_or_default();
+        page(&app, &headers, query.project.as_deref(), None).await
+    };
+    choice.remember(&app, &mut response);
+    response
 }
 
 /// The composer docks at the bottom as on a chat page, with the starter
@@ -91,8 +99,28 @@ async fn new_chat(
 async fn home(
     State(app): State<App>,
     headers: HeaderMap,
+    RawQuery(raw): RawQuery,
     query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
+    // The GPUI chat's new chat, signed in or not, when the person turned
+    // it on (#12222); it takes the landing page's place too.
+    let choice = super::gpui_chat::choice(&headers, raw.as_deref());
+    if choice.serves(&app, &headers) {
+        let mut response = super::gpui_chat::page(&app, &headers, None, "").await;
+        choice.remember(&app, &mut response);
+        return response;
+    }
+    let mut response = home_html(&app, &headers, query).await;
+    choice.remember(&app, &mut response);
+    response
+}
+
+async fn home_html(
+    app: &App,
+    headers: &HeaderMap,
+    query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
+) -> Response {
+    let (app, headers) = (app.clone(), headers.clone());
     let query = query.map(|q| q.0).unwrap_or_default();
     if shows_landing(&headers, query.project.as_deref()) {
         // An in-page navigation (HTMX) can't swap in a page with its own

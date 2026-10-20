@@ -994,9 +994,18 @@ pub(crate) async fn move_thread(
     Path(id): Path<String>,
     body: Result<axum::Json<Value>, JsonRejection>,
 ) -> Response {
-    let (service, token, account) = match caller(&app, &headers).await {
-        Ok(found) => found,
-        Err(response) => return response,
+    // A signed-out visitor renames, pins, and archives its own chats too
+    // (#12222), as the HTML sidebar lets it; it has no projects to move to.
+    let (account, owner) = match crate::visitor_api::caller(&app, &headers) {
+        Some(Ok(visitor)) => (None, visitor),
+        Some(Err(response)) => return response,
+        None => match caller(&app, &headers).await {
+            Ok((service, token, account)) => {
+                let owner = account_owner(&account);
+                (Some((service, token)), owner)
+            }
+            Err(response) => return response,
+        },
     };
     let Some(change) = body.ok().and_then(|body| ThreadChange::read(&body)) else {
         return refused(
@@ -1009,7 +1018,14 @@ pub(crate) async fn move_thread(
         None => None,
         Some(None) => Some(None),
         Some(Some(reference)) => {
-            let status = match status(service, &token).await {
+            let Some((service, token)) = &account else {
+                return refused(
+                    StatusCode::FORBIDDEN,
+                    "sign_in_required",
+                    "Sign in to file chats in projects.",
+                );
+            };
+            let status = match status(service, token).await {
                 Ok(status) => status,
                 Err(response) => return response,
             };
@@ -1022,7 +1038,6 @@ pub(crate) async fn move_thread(
     };
     let target = project.clone().flatten();
     let project = project.map(|p| p.map(|p| p.id));
-    let owner = account_owner(&account);
     let pin_stamp = match change.pinned {
         Some(true) => match crate::pages::chat::sidebar::pin_stamp(&app, &owner).await {
             Ok(stamp) => stamp,
@@ -1073,7 +1088,7 @@ pub(crate) async fn move_thread(
                 if moved {
                     crate::pages::chat::note_shared(&app, target.as_ref(), &owner, &next).await;
                 }
-                if archived && next.archived_unix.is_some() {
+                if archived && next.archived_unix.is_some() && account.is_some() {
                     crate::pages::chat::sidebar::archived_cleanup(&app, &headers, &owner, &id)
                         .await;
                 }
@@ -1151,12 +1166,16 @@ pub(crate) async fn messages(
     Path(id): Path<String>,
     Query(page): Query<Page>,
 ) -> Response {
-    let owner = match crate::coder_sync::owner(&app, &headers).await {
+    // A signed-out visitor's own chats too (#12222).
+    let (owner, visitor) = match crate::visitor_api::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,
     };
     let chat = match app.config.chat_store.load(&owner, &id).await {
         Ok(Some(loaded)) if !loaded.conversation.deleted() => loaded.conversation,
+        Ok(_) | Err(Error::Invalid(_)) if visitor => {
+            return refused(StatusCode::NOT_FOUND, "not_found", "No such chat.");
+        }
         Ok(_) | Err(Error::Invalid(_)) => match shared_thread(&app, &headers, &owner, &id).await {
             Some((loaded, _)) => loaded.conversation,
             None => return refused(StatusCode::NOT_FOUND, "not_found", "No such chat."),

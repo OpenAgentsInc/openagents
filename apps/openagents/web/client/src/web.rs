@@ -84,7 +84,7 @@ impl Client {
         text: &str,
         project: Option<&str>,
     ) -> Result<String> {
-        let body = Send {
+        let body = MessageBody {
             request_id,
             text,
             project,
@@ -94,7 +94,7 @@ impl Client {
     }
 
     pub async fn reply(&self, id: &str, request_id: &str, text: &str) -> Result<()> {
-        let body = Send {
+        let body = MessageBody {
             request_id,
             text,
             project: None,
@@ -138,14 +138,14 @@ impl Client {
         .map(drop)
     }
 
-    /// Follows the answer to `request_id`. Events arrive on the receiver
-    /// until one [`StreamEvent::ends`] it; dropping the [`Follow`] closes the
-    /// connection.
+    /// Follows the answer to `request_id`. Events arrive on the receiver,
+    /// each read by the SDK's [`Event::read`], until one [`Event::ends`] it;
+    /// dropping the [`Follow`] closes the connection.
     pub fn follow(
         &self,
         id: &str,
         request_id: &str,
-    ) -> Result<(Follow, mpsc::UnboundedReceiver<StreamEvent>)> {
+    ) -> Result<(Follow, mpsc::UnboundedReceiver<Event>)> {
         let url = format!(
             "/v1/threads/{}/events?request_id={}",
             encode(id),
@@ -157,18 +157,17 @@ impl Client {
         for name in ["text", "tool", "cards", "done", "error"] {
             let sender = sender.clone();
             let closer = source.clone();
+            let request = request_id.to_owned();
             let listener = Closure::<dyn FnMut(web_sys::MessageEvent)>::new(
                 move |event: web_sys::MessageEvent| {
-                    let data = event.data().as_string();
-                    let parsed = match data {
-                        Some(data) => StreamEvent::parse(name, &data),
+                    let parsed = match event.data().as_string() {
+                        // An event this turn doesn't own, or can't be read,
+                        // is left out, as the native client refuses it.
+                        Some(data) => Event::read(&data, &request).ok(),
                         // The connection's own error: no data. EventSource
                         // retries by itself; a closed one has ended.
                         None if closer.ready_state() == web_sys::EventSource::CLOSED => {
-                            Some(StreamEvent::Error {
-                                code: "disconnected".into(),
-                                message: "We lost the connection. Reload to keep following.".into(),
-                            })
+                            Some(lost(&request))
                         }
                         None => None,
                     };
@@ -258,6 +257,18 @@ pub struct Follow {
 impl Drop for Follow {
     fn drop(&mut self) {
         self.source.close();
+    }
+}
+
+/// The event a closed connection ends a turn's stream with.
+fn lost(request_id: &str) -> Event {
+    Event::Error {
+        request_id: request_id.to_owned(),
+        error: TurnRefusal {
+            code: RefusalCode::Other("disconnected".into()),
+            message: "We lost the connection. Reload to keep following.".into(),
+            retry_after_ms: None,
+        },
     }
 }
 

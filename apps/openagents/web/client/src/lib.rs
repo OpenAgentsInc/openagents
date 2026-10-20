@@ -1,7 +1,8 @@
 //! The account's chats as the site's JSON API serves them.
 //!
-//! [`types`] holds the shapes `crates/openagents-web` answers with
-//! (`phone_api.rs`, `chat_api.rs`, `projects/api.rs`). On wasm32,
+//! [`types`] re-exports the SDK's chat values (`openagents_sdk::chats::wire`,
+//! the same ones the desktop and phone apps read) and adds the site-only
+//! shapes (`projects/api.rs`, the refusal body). On wasm32,
 //! [`web::Client`] reads and writes them with `fetch` and follows an answer
 //! with `EventSource`, signed in by the site's own cookie; writes carry the
 //! page's CSRF value in `x-openagents-csrf`.

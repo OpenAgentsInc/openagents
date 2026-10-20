@@ -10,6 +10,19 @@ use wasm_bindgen::JsCast;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
 
+/// The page's `<meta>` that says whether the person is signed in (`1`) or
+/// chatting as the browser's visitor (`0`).
+pub const SIGNED_IN_META: &str = "openagents-signed-in";
+
+/// The HTML chat's address for `chat` (a new chat when `None`), which the
+/// `ui=html` switch shows even where the GPUI chat is turned on.
+pub fn regular(chat: Option<&str>) -> String {
+    match chat {
+        Some(id) => format!("/chat/{id}?ui=html"),
+        None => "/new?ui=html".to_owned(),
+    }
+}
+
 /// The base when the page names none.
 pub const BASE: &str = "/gpui";
 /// The page's `<meta>` that names the base.
@@ -43,6 +56,21 @@ pub fn base() -> String {
         .and_then(|e| e.get_attribute("content"))
         .map(|base| base.trim_end_matches('/').to_owned())
         .unwrap_or_else(|| BASE.to_owned())
+}
+
+/// Whether the page says the person is signed in. A page that doesn't say
+/// is the `/gpui` page of a signed-in account.
+#[cfg(target_family = "wasm")]
+pub fn signed_in() -> bool {
+    web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| {
+            d.query_selector(&format!("meta[name=\"{SIGNED_IN_META}\"]"))
+                .ok()
+                .flatten()
+        })
+        .and_then(|e| e.get_attribute("content"))
+        .is_none_or(|value| value != "0")
 }
 
 #[cfg(target_family = "wasm")]
@@ -123,5 +151,11 @@ mod tests {
         // At the regular addresses, once swapped in.
         assert_eq!(chat_of("", "/chat/abc"), Some("abc".into()));
         assert_eq!(path_for("", None), "/");
+    }
+
+    #[test]
+    fn the_regular_chat_is_asked_for_by_name() {
+        assert_eq!(regular(Some("abc")), "/chat/abc?ui=html");
+        assert_eq!(regular(None), "/new?ui=html");
     }
 }

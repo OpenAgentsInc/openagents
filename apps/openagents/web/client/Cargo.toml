@@ -1,8 +1,10 @@
-# The signed-in web chat's data client: the account's chats, projects,
-# messages, and live answers from openagents.com's own JSON API
-# (`/v1/threads`, `/v1/threads/{id}/events`, `/v1/projects`), over the
-# browser's `fetch` and `EventSource` with the site's sign-in cookie. The
-# types build anywhere; the transport is wasm32 only.
+# The web chat's transport for the chat API: the account's (or a signed-out
+# visitor's) chats, projects, messages, and live answers from
+# openagents.com's own JSON API (`/v1/threads`, `/v1/threads/{id}/events`,
+# `/v1/projects`), over the browser's `fetch` and `EventSource` with the
+# site's cookie. The values and their rules are openagents-sdk's
+# (`chats::wire`), as the desktop and phone apps read them; this crate adds
+# the browser transport (wasm32 only) and the site-only shapes.
 [package]
 name = "openagents-web-client"
 version.workspace = true
@@ -11,6 +13,9 @@ publish.workspace = true
 license = "MIT"
 
 [dependencies]
+# The chat API's values and rules, shared with the desktop and phone apps;
+# without its native transport.
+openagents-sdk = { path = "../../../../crates/openagents-sdk", default-features = false }
 anyhow.workspace = true
 futures.workspace = true
 serde = { version = "1", features = ["derive"] }

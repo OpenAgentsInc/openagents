@@ -3729,6 +3729,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-sdk"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "openagents-syntax"
 version = "1.0.0"
 dependencies = [
@@ -3857,6 +3866,7 @@ dependencies = [
  "anyhow",
  "futures",
  "js-sys",
+ "openagents-sdk",
  "serde",
  "serde_json",
  "wasm-bindgen",

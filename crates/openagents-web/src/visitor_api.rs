@@ -13,7 +13,8 @@
 //! | `POST /v1/visitors/claim` `{token}` | Signed in (`Bearer sess_…`): move the visitor's chats to the account, `{moved}` |
 //!
 //! With `Authorization: Bearer ovis_…`, these routes answer the visitor's
-//! own chats: `POST /v1/threads`, `GET /v1/threads/{id}`,
+//! own chats: `GET` and `POST /v1/threads`, `GET`, `PATCH` (title, pin,
+//! archive), and `DELETE /v1/threads/{id}`, `GET` and
 //! `POST /v1/threads/{id}/messages`, `GET /v1/threads/{id}/events`, and
 //! `POST /v1/threads/{id}/stop`. Words only: no files, projects, or
 //! computers. After [`MESSAGES`] messages across its chats (deleting a chat

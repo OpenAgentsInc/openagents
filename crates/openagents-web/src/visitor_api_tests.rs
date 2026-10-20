@@ -654,3 +654,94 @@ async fn a_browser_visitor_chats_through_the_api_with_its_cookie() {
     .await;
     assert_eq!(status, 404);
 }
+
+/// The GPUI web chat's sidebar, signed out (#12222): a visitor lists its
+/// chats, reads every message, renames, pins, and archives one, can't file
+/// it in a project, and deletes it; another visitor touches none of it.
+#[tokio::test]
+async fn a_visitor_lists_changes_and_deletes_its_own_chats() {
+    let world = world_with(Options {
+        chat: Some(Arc::new(Worker)),
+        ..Options::default()
+    })
+    .await;
+    let (_, minted) = call(&world, None, "POST", "/v1/visitors", None).await;
+    let token = minted["token"].as_str().unwrap().to_owned();
+    let (_, other) = call(&world, None, "POST", "/v1/visitors", None).await;
+    let other = other["token"].as_str().unwrap().to_owned();
+    let chat = id(41);
+    let (status, _) = call(
+        &world,
+        Some(&token),
+        "POST",
+        "/v1/threads",
+        Some(json!({"request_id": chat, "text": "first\nsecond"})),
+    )
+    .await;
+    assert_eq!(status, 201);
+    answered(&world, &token, &chat).await;
+
+    let (status, list) = call(&world, Some(&token), "GET", "/v1/threads", None).await;
+    assert_eq!(status, 200, "{list}");
+    assert_eq!(list["threads"][0]["id"], json!(chat));
+    let (_, list) = call(&world, Some(&other), "GET", "/v1/threads", None).await;
+    assert_eq!(list["threads"], json!([]));
+
+    let path = format!("/v1/threads/{chat}/messages");
+    let (status, rows) = call(&world, Some(&token), "GET", &path, None).await;
+    assert_eq!(status, 200, "{rows}");
+    assert_eq!(rows["data"][0]["content"][0]["text"], "first\nsecond");
+    let (status, _) = call(&world, Some(&other), "GET", &path, None).await;
+    assert_eq!(status, 404);
+
+    let path = format!("/v1/threads/{chat}");
+    for change in [
+        json!({"title": "Renamed"}),
+        json!({"pinned": true}),
+        json!({"pinned": false}),
+    ] {
+        let (status, body) = call(&world, Some(&token), "PATCH", &path, Some(change)).await;
+        assert_eq!(status, 200, "{body}");
+    }
+    let (_, list) = call(&world, Some(&token), "GET", "/v1/threads", None).await;
+    assert_eq!(list["threads"][0]["title"], "Renamed");
+    let (status, refusal) = call(
+        &world,
+        Some(&token),
+        "PATCH",
+        &path,
+        Some(json!({"project": "name:p"})),
+    )
+    .await;
+    assert_eq!(
+        (status, &refusal["error"]["code"]),
+        (403, &json!("sign_in_required"))
+    );
+    let (status, _) = call(
+        &world,
+        Some(&other),
+        "PATCH",
+        &path,
+        Some(json!({"title": "Theirs"})),
+    )
+    .await;
+    assert_eq!(status, 404);
+    let (status, _) = call(&world, Some(&other), "DELETE", &path, None).await;
+    assert_eq!(status, 404);
+
+    let (status, body) = call(
+        &world,
+        Some(&token),
+        "PATCH",
+        &path,
+        Some(json!({"archived": true})),
+    )
+    .await;
+    assert_eq!((status, &body["archived"]), (200, &json!(true)), "{body}");
+    let (_, list) = call(&world, Some(&token), "GET", "/v1/threads", None).await;
+    assert_eq!(list["threads"], json!([]));
+    let (status, _) = call(&world, Some(&token), "DELETE", &path, None).await;
+    assert_eq!(status, 204);
+    let (status, _) = call(&world, Some(&token), "GET", &path, None).await;
+    assert_eq!(status, 404);
+}

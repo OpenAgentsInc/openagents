@@ -315,7 +315,8 @@ async fn threads(
         };
         return crate::projects::api::threads_in(&app, &headers, project, &page).await;
     }
-    let owner = match coder_sync::owner(&app, &headers).await {
+    // A signed-out visitor's own chats too (#12222).
+    let (owner, _) = match crate::visitor_api::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,
     };
@@ -788,7 +789,9 @@ async fn delete_thread(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
+    // A signed-out visitor deletes its own chats too (#12222); its message
+    // allowance counts deleted chats, so this gives none back.
+    let (owner, _) = match crate::visitor_api::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,
     };

@@ -1,5 +1,5 @@
 // Starts the GPUI web chat (crates/openagents-web/src/pages/gpui_chat.rs).
-// It needs WebGPU; without it, the page says so and links to the regular
+// It needs WebGPU; without it, the page goes to the regular
 // chat. Otherwise the module and the fonts download together,
 // and the canvas replaces the page's outline once the app has started.
 import init, { launch } from "./openagents_web_chat.js";
@@ -30,6 +30,8 @@ function say(text) {
   }
 }
 
+// Without WebGPU the HTML chat takes over: the page goes to
+// its address (the note's link), and shows the note if it can't.
 function unsupported() {
   var status = document.getElementById("gpui-status");
   if (status) {
@@ -38,6 +40,10 @@ function unsupported() {
   var note = document.getElementById("gpui-unsupported");
   if (note) {
     note.hidden = false;
+    var link = note.querySelector("a");
+    if (link) {
+      location.replace(link.href);
+    }
   }
 }
 

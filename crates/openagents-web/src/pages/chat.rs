@@ -1200,7 +1200,25 @@ async fn load_owned(app: &App, owner: &str, id: &str) -> Result<Loaded, Response
     Ok(work::mark_opened(app, work::sync(app, loaded).await).await)
 }
 
-async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
+async fn show(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    // The GPUI chat, when the person turned it on (#12221).
+    let choice = super::gpui_chat::choice(&headers, query.as_deref());
+    let mut response = if choice.serves(&app, &headers) && valid_id(&id) {
+        super::gpui_chat::page(&app, &headers, Some(id), "").await
+    } else {
+        show_html(&app, &headers, &id).await
+    };
+    choice.remember(&app, &mut response);
+    response
+}
+
+async fn show_html(app: &App, headers: &HeaderMap, id: &str) -> Response {
+    let (app, headers, id) = (app.clone(), headers.clone(), id.to_owned());
     let response = show_page(&app, &headers, &id, None).await;
     // Signed out, a chat this browser doesn't hold may be the person's own
     // chat on their account: sign in, then come back to it. A link reader

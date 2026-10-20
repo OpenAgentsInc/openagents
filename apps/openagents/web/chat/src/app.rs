@@ -23,7 +23,7 @@ use openagents_web_chat_view::transcript::{
 };
 use openagents_web_chat_view::{now_ms, theme};
 use openagents_web_client::web::{Client, Follow};
-use openagents_web_client::{Change, Project, Refusal, StreamEvent, Thread};
+use openagents_web_client::{Change, Event, MessageRole as SentBy, Project, Refusal, Thread};
 use web_time::Instant;
 
 use crate::model::{self, Group, Msg};
@@ -59,6 +59,9 @@ enum Menu {
 
 pub struct ChatApp {
     client: Client,
+    /// Signed in, or chatting as the browser's visitor (the page's
+    /// `openagents-signed-in`).
+    signed_in: bool,
     origin: String,
     threads: Vec<Thread>,
     projects: Vec<Project>,
@@ -94,7 +97,7 @@ pub struct ChatApp {
 
 impl ChatApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let composer = cx.new(|cx| TextInput::new("Ask anything", cx));
+        let composer = cx.new(|cx| TextInput::multiline("Ask anything", cx));
         cx.subscribe_in(
             &composer,
             window,
@@ -178,6 +181,7 @@ impl ChatApp {
             .unwrap_or_default();
         let mut this = Self {
             client: Client::from_page(),
+            signed_in: route::signed_in(),
             origin,
             threads: Vec::new(),
             projects: Vec::new(),
@@ -219,7 +223,10 @@ impl ChatApp {
     fn refused(&mut self, error: &anyhow::Error, cx: &mut Context<Self>) {
         log::warn!("chat request failed: {error:#}");
         match error.downcast_ref::<Refusal>() {
-            Some(refusal) if refusal.code == "signed_out" || refusal.code == "http_401" => {
+            Some(refusal)
+                if self.signed_in
+                    && (refusal.code == "signed_out" || refusal.code == "http_401") =>
+            {
                 route::sign_in();
             }
             Some(refusal) => self.notice = Some(refusal.message.clone()),
@@ -379,21 +386,30 @@ impl ChatApp {
         cx.notify();
     }
 
-    fn on_event(&mut self, event: StreamEvent, cx: &mut Context<Self>) {
+    fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
         let Some(live) = &mut self.live else {
             return;
         };
         match event {
-            StreamEvent::Text {
+            Event::Text {
                 index,
                 role,
                 text,
                 replace,
+                ..
+            }
+            | Event::Tool {
+                index,
+                role,
+                text,
+                replace,
+                ..
             } => {
                 // The person's own message is already in the transcript.
-                if role == "user" {
+                if role == SentBy::User {
                     return;
                 }
+                let role = role.as_str().to_owned();
                 let slot = live
                     .messages
                     .entry(index)
@@ -405,9 +421,9 @@ impl ChatApp {
                     slot.1.push_str(&text);
                 }
             }
-            StreamEvent::Cards(cards) => live.cards = cards,
-            StreamEvent::Done { outcome } => self.finish(outcome == "stopped", None, cx),
-            StreamEvent::Error { message, .. } => self.finish(false, Some(message), cx),
+            Event::Cards { .. } => live.cards = event.card_list(),
+            Event::Done { outcome, .. } => self.finish(outcome == "stopped", None, cx),
+            Event::Error { error, .. } => self.finish(false, Some(error.message), cx),
         }
         let at = self.entries.len();
         self.list_state.remeasure_items(at..at + 1);
@@ -839,6 +855,23 @@ impl ChatApp {
                             .children(members.into_iter().map(|ix| self.render_row(ix, cx)))
                     })),
             )
+            .when(!self.signed_in, |side| {
+                side.child(
+                    div()
+                        .id("sign-in")
+                        .px(px(18.))
+                        .py(px(14.))
+                        .border_t_1()
+                        .border_color(theme::border())
+                        .text_size(px(13.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(theme::text())
+                        .cursor_pointer()
+                        .hover(|style| style.bg(theme::surface_card()))
+                        .on_click(|_: &ClickEvent, _, _| route::sign_in())
+                        .child("Sign in to keep your chats"),
+                )
+            })
             .child(
                 div()
                     .id("regular-chat")
@@ -851,11 +884,7 @@ impl ChatApp {
                     .cursor_pointer()
                     .hover(|style| style.text_color(theme::text()))
                     .on_click(cx.listener(|this, _: &ClickEvent, _, _| {
-                        let path = match &this.current {
-                            Some(id) => format!("/chat/{id}"),
-                            None => "/".into(),
-                        };
-                        route::go(&path);
+                        route::go(&route::regular(this.current.as_deref()));
                     }))
                     .child("Open the regular chat"),
             )
@@ -1299,16 +1328,23 @@ impl ChatApp {
                     .max_w(px(CONTENT_WIDTH + 24.))
                     .flex()
                     .flex_row()
-                    .items_center()
+                    .items_end()
                     .gap(px(14.))
                     .pl(px(20.))
                     .pr(px(8.))
-                    .h(px(56.))
+                    .py(px(11.))
+                    .min_h(px(56.))
                     .rounded(px(28.))
                     .border_1()
                     .border_color(theme::border_strong())
                     .bg(theme::surface_card())
-                    .child(self.composer.clone())
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .py(px(5.))
+                            .child(self.composer.clone()),
+                    )
                     .child(send),
             )
     }
@@ -1497,7 +1533,7 @@ impl ChatApp {
                 div()
                     .id(SharedString::from(format!("card-{key}-{ix}")))
                     .cursor_pointer()
-                    .on_click(move |_, _, _| route::go(&format!("/chat/{chat}")))
+                    .on_click(move |_, _, _| route::go(&route::regular(Some(&chat))))
                     .child(info_card(
                         "icons/widget.svg",
                         card_title(card),

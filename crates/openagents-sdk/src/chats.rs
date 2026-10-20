@@ -1,80 +1,25 @@
 //! Cloud turns in the existing account chat. Keep a `Send` to retry the same message.
+//!
+//! [`wire`]'s values and rules need no transport; the calls here are the
+//! native client's, and the website's GPUI chat makes the same requests
+//! with the browser's own.
+pub mod wire;
+#[cfg(feature = "transport")]
 use crate::{CancellationToken, ChatRef, Client, Error, Session};
+#[cfg(feature = "transport")]
 use reqwest::Method;
-use serde::{Deserialize, Serialize};
+#[cfg(feature = "transport")]
 use serde_json::{Value, json};
+pub use wire::*;
 
-/// Why the service refused or ended a turn.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RefusalCode {
-    QuotaExhausted,
-    RateLimited,
-    Busy,
-    Unavailable,
-    Timeout,
-    AccessLost,
-    StreamTimeout,
-    #[serde(untagged)]
-    Other(String),
-}
-/// A refused turn: its code, a message to show, and when to try again.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Refusal {
-    pub code: RefusalCode,
-    pub message: String,
-    pub retry_after_ms: Option<u64>,
-}
-/// One event of a turn's stream: message text, tool output, cards, the end, or an error.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum Event {
-    Text {
-        request_id: String,
-        index: usize,
-        role: crate::MessageRole,
-        text: String,
-        replace: bool,
-    },
-    Tool {
-        request_id: String,
-        index: usize,
-        role: crate::MessageRole,
-        text: String,
-        replace: bool,
-    },
-    Cards {
-        request_id: String,
-        cards: Value,
-    },
-    Done {
-        request_id: String,
-        outcome: String,
-        revision: u64,
-    },
-    Error {
-        request_id: String,
-        error: Refusal,
-    },
-}
-impl Event {
-    /// The request this event belongs to.
-    pub fn request_id(&self) -> &str {
-        match self {
-            Self::Text { request_id, .. }
-            | Self::Tool { request_id, .. }
-            | Self::Cards { request_id, .. }
-            | Self::Done { request_id, .. }
-            | Self::Error { request_id, .. } => request_id,
-        }
-    }
-}
+#[cfg(feature = "transport")]
 /// A cloud turn in one account chat, including turns started on another device.
 #[derive(Clone, Debug)]
 pub struct Turn {
     chat: ChatRef,
     request_id: String,
 }
+#[cfg(feature = "transport")]
 impl Turn {
     /// Names a turn by its chat and request ID. Refuses a request ID that isn't a UUID.
     pub fn new(chat: ChatRef, request_id: String) -> Result<Self, Error> {
@@ -102,12 +47,14 @@ impl Turn {
         Ok(())
     }
 }
+#[cfg(feature = "transport")]
 /// The latest turn in a chat, its outcome, and whether it's still working.
 pub struct Current {
     pub turn: Turn,
     pub outcome: String,
     pub working: bool,
 }
+#[cfg(feature = "transport")]
 /// Find the latest turn, including a turn sent from the web or another app.
 pub async fn current(
     client: &Client,
@@ -146,6 +93,7 @@ pub async fn current(
         working: row["working"].as_bool().ok_or(Error::InvalidResponse)?,
     }))
 }
+#[cfg(feature = "transport")]
 /// A retained retry identity, bound to one chat, account and deployment.
 #[derive(Clone, Debug)]
 pub struct Send {
@@ -153,6 +101,7 @@ pub struct Send {
     request_id: String,
     text: String,
 }
+#[cfg(feature = "transport")]
 impl Send {
     /// Creates a message for `chat` with a new request ID. Refuses empty text or text
     /// over 4,000 characters.
@@ -168,7 +117,7 @@ impl Send {
     }
     /// Restore an explicitly retained request after an uncertain response.
     pub fn with_id(chat: ChatRef, request_id: String, text: String) -> Result<Self, Error> {
-        if !uuid(&request_id) || text.trim().is_empty() || text.chars().count() > 4000 {
+        if !uuid(&request_id) || !message_ok(&text) {
             return Err(Error::InvalidReference);
         }
         Ok(Self {
@@ -207,6 +156,7 @@ impl Send {
         Ok(())
     }
 }
+#[cfg(feature = "transport")]
 /// A new random request id (a version 4 UUID).
 pub(crate) fn new_id() -> Result<String, Error> {
     let mut bytes = [0u8; 16];
@@ -223,16 +173,11 @@ pub(crate) fn new_id() -> Result<String, Error> {
         &hex[20..]
     ))
 }
+#[cfg(feature = "transport")]
 pub(crate) fn uuid(id: &str) -> bool {
-    id.len() == 36
-        && id.bytes().enumerate().all(|(i, b)| {
-            if [8, 13, 18, 23].contains(&i) {
-                b == b'-'
-            } else {
-                b.is_ascii_hexdigit()
-            }
-        })
+    is_request_id(id)
 }
+#[cfg(feature = "transport")]
 /// Start the new chat [`Send::first`] made (`POST /v1/threads`). Retrying the
 /// same `Send` after an uncertain response starts it once.
 pub async fn start(
@@ -262,6 +207,7 @@ pub async fn start(
     }
     Ok(())
 }
+#[cfg(feature = "transport")]
 /// Submit the retained message. Cancellation can leave an accepted turn; retry this same `Send`.
 pub async fn send(
     client: &Client,
@@ -287,15 +233,7 @@ pub async fn send(
     }
     Ok(())
 }
-/// Whether a chat is pinned and archived, as the service reports it after
-/// [`set_pinned`] or [`set_archived`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Filing {
-    /// The chat is pinned to the top of the list.
-    pub pinned: bool,
-    /// The chat is archived: out of the list until restored.
-    pub archived: bool,
-}
+#[cfg(feature = "transport")]
 /// Pin the chat (`true`) or unpin it (`false`), as the web's sidebar does
 /// (`PATCH /v1/threads/{id}`). A new pin goes after every earlier one.
 /// Repeating the call changes nothing more.
@@ -308,6 +246,7 @@ pub async fn set_pinned(
 ) -> Result<Filing, Error> {
     file(client, session, chat, json!({ "pinned": pinned }), cancel).await
 }
+#[cfg(feature = "transport")]
 /// Archive the chat (`true`) or restore it (`false`), as the web's sidebar
 /// does (`PATCH /v1/threads/{id}`). Archiving also removes the cloud
 /// computers that ran it. Repeating the call changes nothing more.
@@ -327,6 +266,7 @@ pub async fn set_archived(
     )
     .await
 }
+#[cfg(feature = "transport")]
 /// Rename an owned saved chat. The server applies the same title limits as the web.
 pub async fn set_title(
     client: &Client,
@@ -335,12 +275,10 @@ pub async fn set_title(
     title: &str,
     cancel: &CancellationToken,
 ) -> Result<Filing, Error> {
-    let title = title.trim();
-    if title.is_empty() || title.chars().count() > 120 || title.chars().any(char::is_control) {
-        return Err(Error::InvalidReference);
-    }
+    let title = self::title(title).ok_or(Error::InvalidReference)?;
     file(client, session, chat, json!({"title": title}), cancel).await
 }
+#[cfg(feature = "transport")]
 async fn file(
     client: &Client,
     session: &Session,
@@ -378,13 +316,7 @@ async fn file(
         archived: value["archived"].as_bool().ok_or(Error::InvalidResponse)?,
     })
 }
-/// The service's answer to a stop request.
-#[derive(Clone, Debug, Deserialize)]
-pub struct Stopped {
-    pub request_id: String,
-    pub stopped: bool,
-    pub finished: bool,
-}
+#[cfg(feature = "transport")]
 /// Stop this request only. A late stop never cancels a newer turn.
 pub async fn stop(
     client: &Client,
@@ -410,6 +342,7 @@ pub async fn stop(
     }
     Ok(result)
 }
+#[cfg(feature = "transport")]
 /// Reconnecting starts with replacements of the current request's messages,
 /// then deltas. Apply by message index; never append a replacement twice.
 pub async fn stream(
@@ -428,6 +361,7 @@ pub async fn stream(
     )
     .await
 }
+#[cfg(feature = "transport")]
 /// Follow one request's events in chat `chat`, with `token`'s access.
 pub(crate) async fn events(
     client: &Client,
@@ -457,77 +391,44 @@ pub(crate) async fn events(
     }
     Ok(Stream {
         response,
-        buffer: Vec::new(),
+        frames: Frames::default(),
         request: request_id.to_owned(),
         cancel: cancel.clone(),
         ended: false,
     })
 }
+#[cfg(feature = "transport")]
 /// The events of one turn, read in order with [`Stream::next`].
 pub struct Stream {
     response: reqwest::Response,
-    buffer: Vec<u8>,
+    frames: Frames,
     request: String,
     cancel: CancellationToken,
     ended: bool,
 }
+#[cfg(feature = "transport")]
 impl Stream {
     /// Reads the next event. Returns `None` after the turn's last event.
     pub async fn next(&mut self) -> Result<Option<Event>, Error> {
         if self.cancel.is_cancelled() {
-            self.buffer.fill(0);
+            self.frames = Frames::default();
             return Err(Error::Cancelled);
         }
         if self.ended {
             return Ok(None);
         }
         loop {
-            if let Some((end, separator)) = self
-                .buffer
-                .windows(2)
-                .position(|w| w == b"\n\n")
-                .map(|p| (p, 2))
-                .or_else(|| {
-                    self.buffer
-                        .windows(4)
-                        .position(|w| w == b"\r\n\r\n")
-                        .map(|p| (p, 4))
-                })
-            {
-                let raw: Vec<u8> = self.buffer.drain(..end + separator).collect();
-                let frame = std::str::from_utf8(&raw).map_err(|_| Error::InvalidResponse)?;
-                let data = frame
-                    .lines()
-                    .filter_map(|l| l.strip_prefix("data:").map(str::trim_start))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if data.is_empty() {
-                    continue;
-                }
-                let event: Event =
-                    serde_json::from_str(&data).map_err(|_| Error::InvalidResponse)?;
-                if event.request_id() != self.request {
-                    return Err(Error::InvalidResponse);
-                }
-                if matches!(&event,Event::Text{index,..}|Event::Tool{index,..} if *index>=4000) {
-                    return Err(Error::InvalidResponse);
-                }
-                self.ended = matches!(&event, Event::Done { .. } | Event::Error { .. });
+            if let Some(data) = self.frames.next().map_err(|_| Error::InvalidResponse)? {
+                let event =
+                    Event::read(&data, &self.request).map_err(|_| Error::InvalidResponse)?;
+                self.ended = event.ends();
                 return Ok(Some(event));
             }
             let chunk = tokio::select! {biased; _=self.cancel.cancelled()=>return Err(Error::Cancelled),result=self.response.chunk()=>result.map_err(|e|Error::Network{timeout:e.is_timeout()})?};
             let Some(chunk) = chunk else {
                 return Err(Error::InvalidResponse);
             };
-            if chunk.len() > 17 * 1024 * 1024 - self.buffer.len() {
-                return Err(Error::TooLarge);
-            }
-            self.buffer.extend_from_slice(&chunk);
+            self.frames.push(&chunk).map_err(|_| Error::TooLarge)?;
         }
-    }
-}
-impl Drop for Stream {
-    fn drop(&mut self) {
-        self.buffer.fill(0);
     }
 }

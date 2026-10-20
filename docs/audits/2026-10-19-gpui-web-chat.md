@@ -304,6 +304,21 @@ routing change in `crates/openagents-web`:
 3. To undo, remove the check; nothing else changes, because both views
    read the same chats through the same API.
 
+Done on 2026-10-20 (#12221, #12222). `/`, `/new`, and `/chat/{id}` serve
+the canvas, with `""` as its base, when the request says `?ui=gpui` or
+carries the `oa_chat_ui=gpui` cookie that `?ui=gpui` sets for a year;
+`?ui=html` shows the HTML chat once, and `?ui=off` shows it and clears the
+cookie (`gpui_chat::choice`). The HTML chat stays the default and the fallback
+(an HTMX swap, a server without the build, a browser without WebGPU,
+and JavaScript off all keep it), and the canvas links to it with
+`?ui=html`. Signed out, the canvas chats as the browser's visitor, as
+`/lander8` does: `GET /v1/threads`, `GET /v1/threads/{id}/messages`,
+`PATCH` (title, pin, archive), and `DELETE /v1/threads/{id}` now take a
+visitor token too; moving a chat to a project still needs an account.
+The chat API's values and rules (`openagents_sdk::chats::wire`) are now
+the SDK's own, which builds for the browser without its `transport`
+feature; `web/client` is the browser transport over them.
+
 ## The first-frame painter (2026-10-19)
 
 `/agent/foreman` now shows AgentGraph's first frame after one round trip,

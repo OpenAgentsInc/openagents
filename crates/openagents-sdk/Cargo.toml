@@ -7,29 +7,50 @@ publish.workspace = true
 description = "The lightweight public OpenAgents client: app authentication and account resources."
 
 [features]
-schema = ["dep:schemars", "openagents-dashboard/schema"]
-labs-cad = ["dep:cad"]
+default = ["transport"]
+# The HTTP client and every call. Without it the crate is only the chat
+# API's values and rules (`chats::wire`), which the website's GPUI chat
+# reads in a browser build (apps/openagents/web/client).
+transport = [
+    "dep:oa-copy",
+    "dep:agent-lab",
+    "dep:chat-home",
+    "dep:agent-contract",
+    "dep:lab-kit",
+    "dep:openagents-dashboard",
+    "dep:openagents-login",
+    "dep:reqwest",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:url",
+    "dep:httpdate",
+    "dep:getrandom",
+    "dep:sha2",
+    "dep:base64",
+]
+schema = ["transport", "dep:schemars", "openagents-dashboard/schema"]
+labs-cad = ["transport", "dep:cad"]
 
 [dependencies]
-oa-copy = { path = "../oa-copy" }
-agent-lab = { path = "../agent-lab" }
-chat-home = { path = "../chat-home" }
-agent-contract = { path = "../agent-contract" }
-lab-kit = { path = "../lab-kit" }
+oa-copy = { path = "../oa-copy", optional = true }
+agent-lab = { path = "../agent-lab", optional = true }
+chat-home = { path = "../chat-home", optional = true }
+agent-contract = { path = "../agent-contract", optional = true }
+lab-kit = { path = "../lab-kit", optional = true }
 cad = { path = "../cad", optional = true }
 schemars = { version = "1", optional = true }
-openagents-dashboard = { path = "../openagents-dashboard" }
-openagents-login = { path = "../openagents-login", default-features = false }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+openagents-dashboard = { path = "../openagents-dashboard", optional = true }
+openagents-login = { path = "../openagents-login", default-features = false, optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["time", "macros"] }
-tokio-util = { version = "0.7", features = ["rt"] }
-url = { version = "2", features = ["serde"] }
-httpdate = "1"
-getrandom = "0.4"
-sha2 = "0.10"
-base64 = "0.22"
+tokio = { version = "1", features = ["time", "macros"], optional = true }
+tokio-util = { version = "0.7", features = ["rt"], optional = true }
+url = { version = "2", features = ["serde"], optional = true }
+httpdate = { version = "1", optional = true }
+getrandom = { version = "0.4", optional = true }
+sha2 = { version = "0.10", optional = true }
+base64 = { version = "0.22", optional = true }
 
 [dev-dependencies]
 # The SDK reference extractor (tests/reference.rs, #12007).

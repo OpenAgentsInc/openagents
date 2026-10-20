@@ -6,7 +6,7 @@
   "modules": [
     {
       "path": "",
-      "doc": "Public OpenAgents HTTP client. Authentication is supplied explicitly; this\nclient never adopts CLI credentials, launches a browser, or loads a host.",
+      "doc": "Public OpenAgents HTTP client. Authentication is supplied explicitly; this\nclient never adopts CLI credentials, launches a browser, or loads a host.\n\nWithout its default `transport` feature, the crate is only what a chat's\nrecords and events are ([`chats::wire`] and the values in [`MessageRole`]'s\nfamily), with no network or runtime, so a browser build shares them.",
       "items": [
         {
           "kind": "struct",
@@ -1296,51 +1296,21 @@
     },
     {
       "path": "chats",
-      "doc": "Cloud turns in the existing account chat. Keep a `Send` to retry the same message.",
+      "doc": "Cloud turns in the existing account chat. Keep a `Send` to retry the same message.\n\n[`wire`]'s values and rules need no transport; the calls here are the\nnative client's, and the website's GPUI chat makes the same requests\nwith the browser's own.",
       "items": [
         {
           "kind": "struct",
           "name": "Current",
           "doc": "The latest turn in a chat, its outcome, and whether it's still working.",
-          "declaration": "pub struct Current {\n    pub turn: Turn,\n    pub outcome: String,\n    pub working: bool,\n}"
-        },
-        {
-          "kind": "enum",
-          "name": "Event",
-          "doc": "One event of a turn's stream: message text, tool output, cards, the end, or an error.",
-          "declaration": "pub enum Event {\n    Text {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Tool {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Cards { request_id: String, cards: Value },\n    Done { request_id: String, outcome: String, revision: u64 },\n    Error { request_id: String, error: Refusal },\n}",
-          "methods": [
-            {
-              "name": "request_id",
-              "doc": "The request this event belongs to.",
-              "declaration": "pub fn request_id(&self) -> &str",
-              "calls": []
-            }
-          ]
-        },
-        {
-          "kind": "struct",
-          "name": "Filing",
-          "doc": "Whether a chat is pinned and archived, as the service reports it after\n[`set_pinned`] or [`set_archived`].",
-          "declaration": "pub struct Filing {\n    pub pinned: bool,\n    pub archived: bool,\n}"
-        },
-        {
-          "kind": "struct",
-          "name": "Refusal",
-          "doc": "A refused turn: its code, a message to show, and when to try again.",
-          "declaration": "pub struct Refusal {\n    pub code: RefusalCode,\n    pub message: String,\n    pub retry_after_ms: Option<u64>,\n}"
-        },
-        {
-          "kind": "enum",
-          "name": "RefusalCode",
-          "doc": "Why the service refused or ended a turn.",
-          "declaration": "pub enum RefusalCode {\n    QuotaExhausted,\n    RateLimited,\n    Busy,\n    Unavailable,\n    Timeout,\n    AccessLost,\n    StreamTimeout,\n    Other(String),\n}"
+          "declaration": "pub struct Current {\n    pub turn: Turn,\n    pub outcome: String,\n    pub working: bool,\n}",
+          "feature": "transport"
         },
         {
           "kind": "struct",
           "name": "Send",
           "doc": "A retained retry identity, bound to one chat, account and deployment.",
           "declaration": "pub struct Send {}",
+          "feature": "transport",
           "methods": [
             {
               "name": "new",
@@ -1388,15 +1358,10 @@
         },
         {
           "kind": "struct",
-          "name": "Stopped",
-          "doc": "The service's answer to a stop request.",
-          "declaration": "pub struct Stopped {\n    pub request_id: String,\n    pub stopped: bool,\n    pub finished: bool,\n}"
-        },
-        {
-          "kind": "struct",
           "name": "Stream",
           "doc": "The events of one turn, read in order with [`Stream::next`].",
           "declaration": "pub struct Stream {}",
+          "feature": "transport",
           "methods": [
             {
               "name": "next",
@@ -1411,6 +1376,7 @@
           "name": "Turn",
           "doc": "A cloud turn in one account chat, including turns started on another device.",
           "declaration": "pub struct Turn {}",
+          "feature": "transport",
           "methods": [
             {
               "name": "new",
@@ -1442,7 +1408,8 @@
               "method": "GET",
               "path": "/v1/threads/*"
             }
-          ]
+          ],
+          "feature": "transport"
         },
         {
           "kind": "fn",
@@ -1454,28 +1421,32 @@
               "method": "POST",
               "path": "/v1/threads/*/messages"
             }
-          ]
+          ],
+          "feature": "transport"
         },
         {
           "kind": "fn",
           "name": "set_archived",
           "doc": "Archive the chat (`true`) or restore it (`false`), as the web's sidebar\ndoes (`PATCH /v1/threads/{id}`). Archiving also removes the cloud\ncomputers that ran it. Repeating the call changes nothing more.",
           "declaration": "pub async fn set_archived(\n    client: &Client,\n    session: &Session,\n    chat: &ChatRef,\n    archived: bool,\n    cancel: &CancellationToken,\n) -> Result<Filing, Error>",
-          "calls": []
+          "calls": [],
+          "feature": "transport"
         },
         {
           "kind": "fn",
           "name": "set_pinned",
           "doc": "Pin the chat (`true`) or unpin it (`false`), as the web's sidebar does\n(`PATCH /v1/threads/{id}`). A new pin goes after every earlier one.\nRepeating the call changes nothing more.",
           "declaration": "pub async fn set_pinned(\n    client: &Client,\n    session: &Session,\n    chat: &ChatRef,\n    pinned: bool,\n    cancel: &CancellationToken,\n) -> Result<Filing, Error>",
-          "calls": []
+          "calls": [],
+          "feature": "transport"
         },
         {
           "kind": "fn",
           "name": "set_title",
           "doc": "Rename an owned saved chat. The server applies the same title limits as the web.",
           "declaration": "pub async fn set_title(\n    client: &Client,\n    session: &Session,\n    chat: &ChatRef,\n    title: &str,\n    cancel: &CancellationToken,\n) -> Result<Filing, Error>",
-          "calls": []
+          "calls": [],
+          "feature": "transport"
         },
         {
           "kind": "fn",
@@ -1487,7 +1458,8 @@
               "method": "POST",
               "path": "/v1/threads"
             }
-          ]
+          ],
+          "feature": "transport"
         },
         {
           "kind": "fn",
@@ -1499,14 +1471,244 @@
               "method": "POST",
               "path": "/v1/threads/*/stop"
             }
-          ]
+          ],
+          "feature": "transport"
         },
         {
           "kind": "fn",
           "name": "stream",
           "doc": "Reconnecting starts with replacements of the current request's messages,\nthen deltas. Apply by message index; never append a replacement twice.",
           "declaration": "pub async fn stream(\n    client: &Client,\n    session: &Session,\n    message: &Turn,\n    cancel: &CancellationToken,\n) -> Result<Stream, Error>",
+          "calls": [],
+          "feature": "transport"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "chats::wire",
+      "doc": "What the chat API sends and takes (`/v1/threads`, its messages, and its\nevent stream), with the rules every client applies to it. Nothing here\nmakes a request, so the desktop and phone apps (through [`crate::chats`]'s\ncalls) and the website's GPUI chat (through the browser's `fetch` and\n`EventSource`) read the same values the same way.\n\nRows are read leniently: a field the service adds later is ignored, and\none it leaves out, or sends as `null`, takes its default.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "BadEvent",
+          "doc": "An event [`Event::read`] refused.",
+          "declaration": "pub struct BadEvent;"
+        },
+        {
+          "kind": "struct",
+          "name": "Change",
+          "doc": "The body of `PATCH /v1/threads/{id}`: only what changes.",
+          "declaration": "pub struct Change {\n    pub title: Option<String>,\n    pub pinned: Option<bool>,\n    pub archived: Option<bool>,\n    pub project: Option<Option<String>>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Content",
+          "doc": "One part of a [`MessageRow`].",
+          "declaration": "pub struct Content {\n    pub kind: String,\n    pub text: String,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "Event",
+          "doc": "One event of a turn's stream: message text, tool output, cards, the end, or an error.",
+          "declaration": "pub enum Event {\n    Text {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Tool {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Cards { request_id: String, cards: Value },\n    Done { request_id: String, outcome: String, revision: u64 },\n    Error { request_id: String, error: Refusal },\n}",
+          "methods": [
+            {
+              "name": "request_id",
+              "doc": "The request this event belongs to.",
+              "declaration": "pub fn request_id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "read",
+              "doc": "Reads one event's `data` for the turn `request_id`. Refuses an event\nthat isn't JSON, belongs to another turn, or names a message past\n[`MAX_EVENT_INDEX`].",
+              "declaration": "pub fn read(data: &str, request_id: &str) -> Result<Self, BadEvent>",
+              "calls": []
+            },
+            {
+              "name": "ends",
+              "doc": "Whether the turn's stream ends after this event.",
+              "declaration": "pub fn ends(&self) -> bool",
+              "calls": []
+            },
+            {
+              "name": "card_list",
+              "doc": "The cards a [`Event::Cards`] carries, each one card's object.",
+              "declaration": "pub fn card_list(&self) -> Vec<Value>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "FileRef",
+          "doc": "A file sent with a message.",
+          "declaration": "pub struct FileRef {\n    pub id: String,\n    pub name: String,\n    pub kind: String,\n    pub size: u64,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Filing",
+          "doc": "Whether a chat is pinned and archived, as the service reports it after\na change.",
+          "declaration": "pub struct Filing {\n    pub pinned: bool,\n    pub archived: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Frames",
+          "doc": "Splits a turn's event stream into the `data` of each event, as the bytes\narrive. The native client reads the response through it; a browser's\n`EventSource` does the same splitting itself.",
+          "declaration": "pub struct Frames {}",
+          "methods": [
+            {
+              "name": "push",
+              "doc": "Adds bytes read from the stream. Refuses more than [`Frames::LIMIT`] unread.",
+              "declaration": "pub fn push(&mut self, chunk: &[u8]) -> Result<(), TooLarge>",
+              "calls": []
+            },
+            {
+              "name": "next",
+              "doc": "The next whole event's `data` lines, joined, or `None` until more\nbytes arrive. An event with no data (a comment or keepalive) is skipped.",
+              "declaration": "pub fn next(&mut self) -> Result<Option<String>, BadEvent>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "MessageBody",
+          "doc": "The body of `POST /v1/threads` and `POST /v1/threads/{id}/messages`.",
+          "declaration": "pub struct MessageBody<'a> {\n    pub request_id: &'a str,\n    pub text: &'a str,\n    pub project: Option<&'a str>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "MessageRow",
+          "doc": "One message in `GET /v1/threads/{id}/messages`, which keeps every\nmessage and its position (`msg_{index}`).",
+          "declaration": "pub struct MessageRow {\n    pub id: String,\n    pub role: String,\n    pub content: Vec<Content>,\n}",
+          "methods": [
+            {
+              "name": "index",
+              "doc": "Its position in the chat.",
+              "declaration": "pub fn index(&self) -> Option<usize>",
+              "calls": []
+            },
+            {
+              "name": "text",
+              "doc": "Its text parts, joined by line breaks.",
+              "declaration": "pub fn text(&self) -> String",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Page",
+          "doc": "A page of `{data, next}`.",
+          "declaration": "pub struct Page<T> {\n    pub data: Vec<T>,\n    pub next: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Refusal",
+          "doc": "A refused turn: its code, a message to show, and when to try again.",
+          "declaration": "pub struct Refusal {\n    pub code: RefusalCode,\n    pub message: String,\n    pub retry_after_ms: Option<u64>,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "RefusalCode",
+          "doc": "Why the service refused or ended a turn.",
+          "declaration": "pub enum RefusalCode {\n    QuotaExhausted,\n    RateLimited,\n    Busy,\n    Unavailable,\n    Timeout,\n    AccessLost,\n    StreamTimeout,\n    Other(String),\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Started",
+          "doc": "`201 {id, answering}` from `POST /v1/threads`.",
+          "declaration": "pub struct Started {\n    pub id: String,\n    pub answering: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Stopped",
+          "doc": "The service's answer to a stop request.",
+          "declaration": "pub struct Stopped {\n    pub request_id: String,\n    pub stopped: bool,\n    pub finished: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Thread",
+          "doc": "One chat in `GET /v1/threads`, and the row of `GET /v1/threads/{id}`.",
+          "declaration": "pub struct Thread {\n    pub id: String,\n    pub request_id: Option<String>,\n    pub outcome: Option<String>,\n    pub title: String,\n    pub line: String,\n    pub surface: String,\n    pub computer: Option<String>,\n    pub updated_unix: u64,\n    pub working: bool,\n    pub online: bool,\n    pub can_reply: bool,\n    pub pinned: bool,\n    pub project: Option<String>,\n    pub messages: usize,\n}",
+          "methods": [
+            {
+              "name": "pending",
+              "doc": "Whether an answer is being written now.",
+              "declaration": "pub fn pending(&self) -> bool",
+              "calls": []
+            },
+            {
+              "name": "synced",
+              "doc": "Whether the chat lives on a computer or phone rather than here.",
+              "declaration": "pub fn synced(&self) -> bool",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "ThreadDetail",
+          "doc": "`GET /v1/threads/{id}`: the row and its newest messages, empty ones left out.",
+          "declaration": "pub struct ThreadDetail {\n    pub thread: Thread,\n    pub messages: Vec<ThreadMessage>,\n    pub earlier: usize,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ThreadList",
+          "doc": "`GET /v1/threads`.",
+          "declaration": "pub struct ThreadList {\n    pub threads: Vec<Thread>,\n    pub total: usize,\n    pub more: bool,\n    pub next_offset: Option<usize>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ThreadMessage",
+          "doc": "One message in `GET /v1/threads/{id}`.",
+          "declaration": "pub struct ThreadMessage {\n    pub role: String,\n    pub text: String,\n    pub files: Vec<FileRef>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "TooLarge",
+          "doc": "A stream that sent more than [`Frames::LIMIT`] without ending an event.",
+          "declaration": "pub struct TooLarge;"
+        },
+        {
+          "kind": "fn",
+          "name": "is_request_id",
+          "doc": "Whether `id` is a request ID the service takes: a lowercase or uppercase\nhex UUID with its dashes.",
+          "declaration": "pub fn is_request_id(id: &str) -> bool",
           "calls": []
+        },
+        {
+          "kind": "fn",
+          "name": "message_ok",
+          "doc": "Whether `text` may be sent: not blank, and at most [`MAX_MESSAGE_CHARS`].",
+          "declaration": "pub fn message_ok(text: &str) -> bool",
+          "calls": []
+        },
+        {
+          "kind": "fn",
+          "name": "title",
+          "doc": "`title` trimmed, when it may name a chat: not blank, at most\n[`MAX_TITLE_CHARS`], and without control characters.",
+          "declaration": "pub fn title(title: &str) -> Option<&str>",
+          "calls": []
+        },
+        {
+          "kind": "const",
+          "name": "MAX_EVENT_INDEX",
+          "doc": "The highest message index a turn's events may name.",
+          "declaration": "pub const MAX_EVENT_INDEX: usize = 4000;"
+        },
+        {
+          "kind": "const",
+          "name": "MAX_MESSAGE_CHARS",
+          "doc": "The longest message, in characters, a turn may send.",
+          "declaration": "pub const MAX_MESSAGE_CHARS: usize = 4000;"
+        },
+        {
+          "kind": "const",
+          "name": "MAX_TITLE_CHARS",
+          "doc": "The longest chat title, in characters.",
+          "declaration": "pub const MAX_TITLE_CHARS: usize = 120;"
         }
       ],
       "reexports": []
