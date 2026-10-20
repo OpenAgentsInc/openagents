@@ -13,6 +13,9 @@ use gpui::{
 use gpui_wgpu::{WgpuContext, WgpuRenderer, WgpuSurfaceConfig};
 use wasm_bindgen::prelude::*;
 
+/// The element a page names to hold the canvas (`id="gpui-mount"`).
+pub const MOUNT_ID: &str = "gpui-mount";
+
 #[derive(Default)]
 pub(crate) struct WebWindowCallbacks {
     pub(crate) request_frame: Option<Box<dyn FnMut(RequestFrameOptions)>>,
@@ -113,8 +116,14 @@ impl WebWindow {
         let body = document
             .body()
             .ok_or_else(|| anyhow::anyhow!("No `body` found on document"))?;
-        body.append_child(&canvas)
-            .map_err(|e| anyhow::anyhow!("Failed to append canvas to body: {e:?}"))?;
+        // A page that keeps its own content around the app names the box the
+        // canvas goes in; otherwise the canvas is the page.
+        let mount: web_sys::Element = document
+            .get_element_by_id(MOUNT_ID)
+            .unwrap_or_else(|| body.clone().into());
+        mount
+            .append_child(&canvas)
+            .map_err(|e| anyhow::anyhow!("Failed to append canvas to the page: {e:?}"))?;
 
         let input_element: web_sys::HtmlInputElement = document
             .create_element("input")

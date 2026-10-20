@@ -5,7 +5,7 @@
 # crate. Build it with `scripts/build-web-demo.sh` from `apps/openagents`.
 [workspace]
 resolver = "2"
-members = ["gpui-web", "demo"]
+members = ["gpui-web", "demo", "agent-graph"]
 
 [workspace.package]
 version = "1.0.0"

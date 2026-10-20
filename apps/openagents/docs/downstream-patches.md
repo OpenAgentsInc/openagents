@@ -1256,3 +1256,22 @@ Build with `scripts/build-web-demo.sh OUTDIR`; `openagents-web --gpui-demo
 OUTDIR` serves it at `/demo/gpui`. The website image builds it in the
 `gpuiweb` stages of `crates/openagents-web/Dockerfile` (Rust 1.98.1) and
 copies it to `/srv/gpui-demo`, which the server uses without a flag.
+
+## AgentGraph on the web (`/agent/foreman`)
+
+- `web/gpui-web` puts its canvas in the page's `#gpui-mount` element when
+  there is one, else in `<body>` as before, so a page can keep its own
+  header and content around the app (`MOUNT_ID` in `window.rs`).
+- `web/agent-graph` (`openagents-web-agent-graph`) draws any agent's graph
+  from `crates/agent-graph` (a root crate, linked without its `lab`
+  feature) with GPUI: units as absolutely placed elements, links, pins, and
+  moving data painted on `canvas` elements, and pan, zoom, drag, and select
+  handled on the graph area. The page passes the graph's JSON to `mount`.
+  It bundles Geist (regular, medium, semibold) and Geist Mono only.
+- The look follows Unit (samuelmtimbo/unit, MIT, Copyright 2021 UNIT IO,
+  Inc): typed pins on unit edges with Unit's pin radius, graph units that
+  hold their children, and data shown on links. No Unit code is copied.
+
+Build with `scripts/build-web-demo.sh --app agent-graph OUTDIR`;
+`openagents-web --agent-graph OUTDIR` serves it under `/agent-graph/`, and
+the image copies it to `/srv/agent-graph`.

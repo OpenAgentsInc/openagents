@@ -28,6 +28,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agent-graph"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+ "serde",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3253,6 +3261,23 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "openagents-web-agent-graph"
+version = "1.0.0"
+dependencies = [
+ "agent-graph",
+ "anyhow",
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "openagents-gpui-web",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "web-time",
 ]
 
 [[package]]
