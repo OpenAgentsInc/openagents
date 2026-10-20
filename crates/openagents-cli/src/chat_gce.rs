@@ -742,6 +742,7 @@ fn run_issue(
         dollars,
     );
     record["preemptions"] = json!(preemptions);
+    super::placement::stamp_ended(&mut record, &ended.message);
     backend.record(&record);
     event(&output, json!({"event": "route_record", "record": record}));
     if !matches!(ended.outcome.as_str(), "skipped" | "closed" | "not_started") {

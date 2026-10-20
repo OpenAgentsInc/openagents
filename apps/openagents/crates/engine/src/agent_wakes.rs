@@ -361,6 +361,9 @@ pub(crate) struct State {
     pub restarted: bool,
     /// The owner's notice that the agent went quiet, until it is sent.
     down_notice: Option<OwnerNotice>,
+    /// The day (days since the epoch, UTC) whose check-in last carried the
+    /// daily velocity summary (#12212).
+    pub velocity_day: Option<u64>,
 }
 
 impl Default for State {
@@ -393,6 +396,7 @@ impl Default for State {
             empty_turns: 0,
             restarted: false,
             down_notice: None,
+            velocity_day: None,
         }
     }
 }
@@ -903,6 +907,15 @@ impl WakeEngine {
             None => "ended without a reply".to_owned(),
         };
         let agent = self.agent.clone();
+        if empty {
+            // Each empty or errored check-in is logged, so `openagents
+            // velocity` counts the coordinator's down minutes (#12212).
+            self.append(&DecisionEntry::Outcome {
+                at: now,
+                id: wake.to_owned(),
+                status: "empty".into(),
+            })?;
+        }
         let liveness = self.update(|s| {
             if !empty {
                 s.empty_turns = 0;
@@ -945,6 +958,27 @@ impl WakeEngine {
             status: status.into(),
         })?;
         Ok(liveness)
+    }
+
+    /// Whether the check-in starting at `now` (Unix ms) is the day's first
+    /// after 13:00 UTC, so it carries the velocity summary (#12212); marks
+    /// the day when it is.
+    pub fn velocity_due(&self, now: i64) -> Result<bool, EngineError> {
+        let now = u64::try_from(now / 1000).unwrap_or(0);
+        self.update(
+            |s| match coder_cloud::velocity::daily_due(now, s.velocity_day) {
+                Some(day) => {
+                    s.velocity_day = Some(day);
+                    true
+                }
+                None => false,
+            },
+        )
+    }
+
+    /// This agent's decision log.
+    pub fn decision_log(&self) -> PathBuf {
+        self.log_path()
     }
 
     /// The watchdog over the chat's own turn (#12029). When the chat is busy
@@ -1989,6 +2023,17 @@ mod tests {
     /// two in a row restart the agent once and tell the owner once; the
     /// fresh session failing twice too pauses check-ins.
     #[test]
+    fn the_velocity_summary_rides_one_check_in_a_day_after_13_utc() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = configured(dir.path());
+        let at = |s: &str| coder_cloud::velocity::utc_seconds(s).unwrap() as i64 * 1000;
+        assert!(!f.velocity_due(at("2026-10-20T12:50:00Z")).unwrap());
+        assert!(f.velocity_due(at("2026-10-20T13:02:00Z")).unwrap());
+        assert!(!f.velocity_due(at("2026-10-20T13:12:00Z")).unwrap());
+        assert!(f.velocity_due(at("2026-10-21T13:05:00Z")).unwrap());
+    }
+
+    #[test]
     fn two_empty_check_ins_in_a_row_restart_once_then_pause() {
         let dir = tempfile::tempdir().unwrap();
         let f = configured(dir.path());
@@ -2041,7 +2086,18 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(outcomes, ["down: restarted", "down: check-ins paused"]);
+        assert_eq!(
+            outcomes,
+            [
+                "empty",
+                "empty",
+                "empty",
+                "down: restarted",
+                "empty",
+                "empty",
+                "down: check-ins paused"
+            ]
+        );
     }
 
     #[test]

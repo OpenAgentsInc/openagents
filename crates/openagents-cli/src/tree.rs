@@ -349,6 +349,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             Some(crate::foreman::USAGE),
             crate::foreman::EFFECTS,
         ),
+        group(
+            "velocity",
+            Some(crate::velocity::USAGE),
+            crate::velocity::EFFECTS,
+        ),
         group("shadow", Some(crate::shadow::USAGE), crate::shadow::EFFECTS),
         group(
             "efficiency",

@@ -26016,6 +26016,91 @@
       ]
     },
     {
+      "name": "velocity",
+      "summary": "The day's delivery numbers: commits, issue close times, the landing queue, failed cloud runs, and coordinator downtime.",
+      "leaf": {
+        "path": [
+          "velocity"
+        ],
+        "usage": [
+          "openagents velocity [--hours N] [--repo OWNER/NAME] [--decision-log FILE] [--fixture FILE]"
+        ],
+        "forms": [
+          {
+            "tokens": [
+              {
+                "kind": "option",
+                "name": "hours",
+                "value": "N",
+                "open": true,
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "repo",
+                "value": "OWNER/NAME",
+                "open": true,
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "decision-log",
+                "value": "FILE",
+                "open": true,
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "fixture",
+                "value": "FILE",
+                "open": true,
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "json",
+                "optional": true,
+                "repeated": true
+              }
+            ]
+          }
+        ],
+        "summary": "The day's delivery numbers: commits, issue close times, the landing queue, failed cloud runs, and coordinator downtime.",
+        "effect": "read_only",
+        "runs_on": "connected_computer"
+      },
+      "options": [
+        {
+          "kind": "option",
+          "name": "repo",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "decision-log",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "fixture",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "efficiency",
       "summary": "Routed against raw delegation, from recorded runs: cost per checked result, time to it, and pass rate, with intervals.",
       "leaf": {

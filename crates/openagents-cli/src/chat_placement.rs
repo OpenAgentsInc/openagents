@@ -105,6 +105,17 @@ pub(super) fn outcome(
 }
 
 /// Dollars as micro-dollars, never negative.
+/// When a run record's run ended and what its summary said, so
+/// `openagents velocity` can count failed runs by cause (#12212).
+pub(super) fn stamp_ended(record: &mut serde_json::Value, message: &str) {
+    record["ended_at"] = serde_json::json!(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs())
+    );
+    record["message"] = serde_json::json!(message.chars().take(600).collect::<String>());
+}
+
 pub(super) fn microusd(dollars: f64) -> u64 {
     (dollars * 1_000_000.0).round().max(0.0) as u64
 }

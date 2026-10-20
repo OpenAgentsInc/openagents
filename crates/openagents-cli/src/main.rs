@@ -143,6 +143,7 @@ mod terminal;
 #[cfg(test)]
 mod tree;
 mod vault;
+mod velocity;
 #[cfg(feature = "verse")]
 mod verse_terminal;
 #[cfg(feature = "verse")]
@@ -291,6 +292,8 @@ Coder:
   shadow       What a sample of Coder runs would have cost through the raw engine
                (off unless set: coder.shadow).
   foreman      Daily measurements for a saved agent, by agent ID.
+  velocity     The day's delivery numbers: commits, issue close times, the
+               landing queue, failed cloud runs, and coordinator downtime.
   efficiency   Routed against raw delegation, from recorded runs: cost per
                checked result, time to it, and pass rate, with intervals.
   cloud        A GCE spot pool granted as one computer: up, down, status.
@@ -676,6 +679,7 @@ fn main() -> ExitCode {
         "agent" => agent::run(&output, &rest),
         "shadow" => shadow::run(&output, &rest),
         "foreman" => foreman::run(&output, &rest),
+        "velocity" => velocity::run(&output, &rest),
         "efficiency" => efficiency::run(&output, &rest),
         "cloud" => cloud::run(&output, &rest),
         // Website deploys and pull request reviews and merges, under the

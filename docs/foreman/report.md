@@ -92,3 +92,23 @@ it with `--fixture` and that agent ID. Tests check the completion delays,
 21/33/35-minute takeovers, both stalls, the visitor write, and the permission
 surprise within the audit's five-minute tolerance. No host check-ins were
 recorded that day.
+
+## Daily velocity
+
+`openagents velocity [--hours 24] [--json]` (#12212) prints the numbers the
+[2026-10-19 velocity audit](../audits/2026-10-19-issue-velocity.md) counted
+by hand: commits on `main` by author, issues filed and closed with the
+median and p90 hours from filing to close, landing queue entries by state
+with the landed median and bounces grouped by cause, failed cloud runs by
+cause, and the minutes the coordinator's check-ins were errored or empty.
+It reads `git log origin/main`, `gh issue list`, the landing queue, the run
+records in `~/.openagents/cloud/runs.jsonl` (each now carries `ended_at`
+and `message`), and the newest decision log of the desktop app's agents
+(`--decision-log FILE` names another). A check-in is empty when it ends
+errored, the host logged it `empty`, or no decision was recorded before it
+ended. A reading that fails is shown as not known, never zero.
+`--fixture FILE` replays a recorded `coder_cloud::velocity::Input`;
+`crates/coder-cloud/tests/fixtures/velocity/2026-10-19.json` is one.
+
+Foreman's first check-in after 13:00 UTC each day carries the same
+summary.

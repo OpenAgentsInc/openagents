@@ -107,7 +107,8 @@ pub async fn landing_status(root: &str, all: bool, now: u64) -> Result<Value, St
     Ok(landing_facts(root, entries, worker, all, now))
 }
 
-async fn landing_entries(root: &str) -> Result<Vec<Value>, String> {
+/// Every landing queue entry under `root` (`gs://...` or a folder).
+pub async fn landing_entries(root: &str) -> Result<Vec<Value>, String> {
     let entries = if root.starts_with("gs://") {
         // Read all entry objects in one request, rather than starting gcloud
         // once for every historical landing.

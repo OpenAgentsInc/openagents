@@ -23,6 +23,7 @@ pub mod owner_status;
 pub mod pool;
 pub mod release;
 pub mod runtime;
+pub mod velocity;
 pub mod work;
 pub mod workspace;
 

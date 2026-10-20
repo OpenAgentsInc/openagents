@@ -1101,6 +1101,14 @@ impl DocHost {
         } else {
             None
         };
+        // The day's first check-in after 13:00 UTC carries the velocity
+        // summary (#12212): the numbers the 2026-10-19 audit counted by hand.
+        #[cfg(unix)]
+        if engine.velocity_due(now).unwrap_or(false) {
+            wake.text.push_str("\n\n");
+            wake.text
+                .push_str(&self.velocity_block(engine, chat, now).await);
+        }
         match self.queue_check_in(chat, &wake, request) {
             Ok(()) => {
                 #[cfg(unix)]
@@ -1121,6 +1129,28 @@ impl DocHost {
                 Ok(None)
             }
         }
+    }
+
+    /// The daily velocity summary for a check-in, over the chat's checkout
+    /// and this agent's own decision log.
+    #[cfg(unix)]
+    async fn velocity_block(&self, engine: &WakeEngine, chat: &str, now: i64) -> String {
+        use coder_cloud::velocity;
+        let checkout = self.workspace().and_then(|workspace| {
+            let row = workspace.chat(chat).ok()??;
+            row.cwd.map(std::path::PathBuf::from)
+        });
+        let sources = velocity::Sources::here(
+            "OpenAgentsInc/openagents",
+            checkout,
+            Some(engine.decision_log()),
+        );
+        let now = u64::try_from(now / 1000).unwrap_or(0);
+        let input = velocity::collect(&sources, 24, now).await;
+        format!(
+            "Daily velocity (`openagents velocity`; include this summary in your check-in):\n{}",
+            velocity::measure(&input).text()
+        )
     }
 
     fn queue_check_in(

@@ -575,7 +575,7 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
     record["sandbox"] = json!(sandbox.id);
     record["wall_seconds"] = json!(wall.as_secs());
     record["cost_usd"] = json!(dollars);
-    let route = route_record(
+    let mut route = route_record(
         &request.repository,
         issue,
         &sandbox.id,
@@ -584,6 +584,7 @@ async fn run_issue(shared: &Shared, issue: u64) -> Value {
         wall,
         dollars,
     );
+    super::placement::stamp_ended(&mut route, record["message"].as_str().unwrap_or_default());
     append_record(&route);
     event(&output, json!({"event": "route_record", "record": route}));
     let mut body = cost_comment(&name, &outcome, wall, dollars);
