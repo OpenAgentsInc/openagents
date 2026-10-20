@@ -14,6 +14,7 @@
 // Simulator builds and tests only: a phone build has no fixture code.
 #[cfg(any(test, debug_assertions, target_abi = "sim"))]
 pub mod fixture;
+pub mod browser;
 pub mod seed;
 #[cfg(test)]
 mod tests;
@@ -404,6 +405,11 @@ impl Wallet {
     /// The screen as a Rust Native view.
     pub fn view(&self) -> View<Action> {
         view(&self.lock(), self.format)
+    }
+
+    /// The open wallet, for paying the browser's requests (#12306).
+    pub fn node(&self) -> Option<Arc<dyn Node>> {
+        self.lock().node.clone()
     }
 
     /// A typed value from a field.
@@ -1294,6 +1300,13 @@ pub trait WalletListener: Send + Sync {
 #[derive(uniffi::Object)]
 pub struct CoreWallet {
     wallet: Wallet,
+}
+
+impl CoreWallet {
+    /// The open wallet, for paying the browser's requests (#12306).
+    pub(crate) fn node(&self) -> Option<Arc<dyn Node>> {
+        self.wallet.node()
+    }
 }
 
 fn failed(message: impl Into<String>) -> CoreError {

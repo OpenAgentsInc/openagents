@@ -1295,6 +1295,25 @@
       "reexports": []
     },
     {
+      "path": "browser_wallet",
+      "doc": "The browser's phone-approved wallet requests, as the phone reads and\nanswers them (#12258, #12306): `GET /v1/wallet/browser`, `PUT\n/v1/wallet/browser/grant`, and `POST\n/v1/wallet/browser/requests/{id}/receipt`, under the app's session.\n\nThe grant, request, and receipt are the agent spend protocol's\ndocuments (`openagents.spend-grant.v1`, `openagents.spend-request.v1`,\n`openagents.spend-receipt.v1`, `coder_access::spend`), carried here as\nJSON so this crate stays free of that one.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "BrowserRequest",
+          "doc": "One request the browser made and the phone's receipt, if any.",
+          "declaration": "pub struct BrowserRequest {\n    pub request: Value,\n    pub receipt: Option<Value>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "BrowserWallet",
+          "doc": "What the site holds for this account's browser.",
+          "declaration": "pub struct BrowserWallet {\n    pub grantee: String,\n    pub grant: Option<Value>,\n    pub requests: Vec<BrowserRequest>,\n}"
+        }
+      ],
+      "reexports": []
+    },
+    {
       "path": "chats",
       "doc": "Cloud turns in the existing account chat. Keep a `Send` to retry the same message.\n\n[`wire`]'s values and rules need no transport; the calls here are the\nnative client's, and the website's GPUI chat makes the same requests\nwith the browser's own.",
       "items": [
@@ -3160,6 +3179,39 @@
               "doc": "Follow the account's attention events after cursor `after` (0 for all\nretained events). After a dropped connection, call again with\n[`AttentionStream::cursor`].",
               "declaration": "pub async fn attention(\n    &self,\n    session: &Session,\n    after: u64,\n    cancel: &CancellationToken,\n) -> Result<AttentionStream, Error>",
               "calls": []
+            },
+            {
+              "name": "browser_wallet",
+              "doc": "The browser's grantee key, the grant, and the requests.",
+              "declaration": "pub async fn browser_wallet(&self, session: &Session) -> Result<BrowserWallet, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/wallet/browser"
+                }
+              ]
+            },
+            {
+              "name": "grant_browser_wallet",
+              "doc": "Give the browser the bounds it may ask within.",
+              "declaration": "pub async fn grant_browser_wallet(\n    &self,\n    session: &Session,\n    grant: Value,\n) -> Result<Value, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/wallet/browser/grant"
+                }
+              ]
+            },
+            {
+              "name": "settle_browser_request",
+              "doc": "Answer one of the browser's requests.",
+              "declaration": "pub async fn settle_browser_request(\n    &self,\n    session: &Session,\n    request: &str,\n    receipt: Value,\n) -> Result<Value, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/wallet/browser/requests/*/receipt"
+                }
+              ]
             },
             {
               "name": "scanned_login",

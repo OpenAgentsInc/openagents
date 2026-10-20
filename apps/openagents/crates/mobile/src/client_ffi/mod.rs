@@ -58,6 +58,8 @@ pub use custom_agents::*;
 pub use project_invitation::ProjectInvitationShare;
 mod public_profile;
 pub use public_profile::*;
+mod browser_payments;
+pub use browser_payments::*;
 mod sharing;
 pub use sharing::*;
 mod settings;

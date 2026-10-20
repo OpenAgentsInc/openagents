@@ -223,7 +223,7 @@ fn invitation_code(link: &str) -> CoreResult<String> {
 }
 #[derive(uniffi::Object)]
 pub struct CoreAccount {
-    controller: Arc<Controller>,
+    pub(crate) controller: Arc<Controller>,
     store: Arc<dyn CredentialStore + Send + Sync>,
     deployment: Deployment,
     data_dir: PathBuf,

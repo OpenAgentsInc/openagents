@@ -11450,6 +11450,7 @@ dependencies = [
  "lab-kit",
  "lab-ui",
  "ndk-context",
+ "nostr",
  "oa-copy",
  "openagents-account",
  "openagents-brand",

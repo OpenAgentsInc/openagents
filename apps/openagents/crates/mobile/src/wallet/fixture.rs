@@ -24,6 +24,8 @@ pub fn opener() -> Opener {
 struct State {
     balance: u64,
     payments: Vec<PaymentRow>,
+    /// Invoices the fixture can pay and the preimage each releases.
+    preimages: std::collections::BTreeMap<String, String>,
 }
 
 pub struct Fixture(Mutex<State>);
@@ -52,11 +54,19 @@ impl Default for Fixture {
                     at: 1_790_000_000,
                 },
             ],
+            preimages: std::collections::BTreeMap::new(),
         }))
     }
 }
 
 impl Fixture {
+    /// Let the fixture pay `invoice`, releasing `preimage` (lowercase hex).
+    pub fn payable(&self, invoice: &str, preimage: &str) {
+        self.state()
+            .preimages
+            .insert(invoice.to_owned(), preimage.to_owned());
+    }
+
     fn state(&self) -> std::sync::MutexGuard<'_, State> {
         self.0.lock().unwrap_or_else(|poison| poison.into_inner())
     }
@@ -185,4 +195,31 @@ impl Node for Fixture {
         Ok(r#"{"fixture":true}"#.into())
     }
     fn subscribe(&self, _notify: Arc<dyn Fn() + Send + Sync>) {}
+
+    fn pay_invoice(
+        &self,
+        invoice: &str,
+        _max_fee_sats: u64,
+        idempotency_key: &str,
+    ) -> Result<openagents_spark::model::InvoicePayment, openagents_spark::model::AgentPayFailure>
+    {
+        let state = self.state();
+        let Some(preimage) = state.preimages.get(invoice).cloned() else {
+            return Err(openagents_spark::model::AgentPayFailure::Failed(
+                "The fixture can't pay that invoice.".into(),
+            ));
+        };
+        Ok(openagents_spark::model::InvoicePayment {
+            row: PaymentRow {
+                id: format!("fixture-{idempotency_key}"),
+                received: false,
+                amount_sats: 0,
+                fee_sats: 1,
+                method: "Lightning".into(),
+                status: "completed".into(),
+                at: 1_791_000_000,
+            },
+            preimage: Some(preimage),
+        })
+    }
 }
