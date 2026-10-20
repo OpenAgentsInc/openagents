@@ -206,19 +206,17 @@ pub(crate) struct Choice {
     remember: Option<bool>,
 }
 
-/// The view `query` (the request's query string) and the cookie ask for:
-/// the query first, then the cookie; the HTML chat when neither says.
 /// For an account page the GPUI app also draws (#12329, #12330, #12331):
-/// when this browser shows the GPUI chat, the GPUI page at `?page=PATH`
-/// over it; `None` keeps the HTML page, which stays for every other
-/// browser and for `?ui=html`.
+/// when this browser shows the GPUI chat ([`choice`]), the GPUI page at
+/// `?page=PATH` over it; `None` keeps the HTML page, which stays for every
+/// other browser and for `?ui=html`.
 pub(crate) fn page_for(
     app: &App,
     headers: &HeaderMap,
     query: Option<&str>,
     path: &str,
 ) -> Option<Response> {
-    let choice = choice(headers, query);
+    let choice = choice(app.config.features, headers, query);
     if !choice.serves(app, headers) {
         return None;
     }
@@ -237,7 +235,16 @@ pub(crate) fn page_for(
     Some(response)
 }
 
-pub(crate) fn choice(headers: &HeaderMap, query: Option<&str>) -> Choice {
+/// The view `query` (the request's query string) and the cookie ask for:
+/// the query first, then the cookie (`gpui` or `html`); for a browser that
+/// chose neither, the GPUI chat when `features` has
+/// [`crate::features::Feature::GpuiDefault`] on and it isn't a phone
+/// (#12226), else the HTML chat.
+pub(crate) fn choice(
+    features: crate::features::Features,
+    headers: &HeaderMap,
+    query: Option<&str>,
+) -> Choice {
     let asked = query.and_then(|query| {
         query.split('&').find_map(|pair| {
             let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
@@ -257,17 +264,39 @@ pub(crate) fn choice(headers: &HeaderMap, query: Option<&str>) -> Choice {
             gpui: false,
             remember: Some(false),
         },
-        _ => Choice {
-            gpui: headers
+        _ => {
+            let kept = headers
                 .get_all(header::COOKIE)
                 .iter()
                 .filter_map(|value| value.to_str().ok())
                 .flat_map(|value| value.split(';'))
                 .filter_map(|pair| pair.trim().split_once('='))
-                .any(|(name, value)| name == UI_COOKIE && value == "gpui"),
-            remember: None,
-        },
+                .find(|(name, _)| *name == UI_COOKIE)
+                .map(|(_, value)| value.to_owned());
+            let gpui = match kept.as_deref() {
+                Some("gpui") => true,
+                Some("html") => false,
+                _ => features.on(crate::features::Feature::GpuiDefault) && !phone(headers),
+            };
+            Choice {
+                gpui,
+                remember: None,
+            }
+        }
     }
+}
+
+/// Whether the browser says it's a phone: phones keep the HTML chat until
+/// they pass their own check (the plan's "Phones").
+fn phone(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|agent| {
+            ["Mobi", "Android", "iPhone", "iPad"]
+                .iter()
+                .any(|word| agent.contains(word))
+        })
 }
 
 impl Choice {
@@ -288,11 +317,10 @@ impl Choice {
         } else {
             ""
         };
-        let cookie = if on {
-            format!("{UI_COOKIE}=gpui; Path=/; Max-Age=31536000; SameSite=Lax{secure}")
-        } else {
-            format!("{UI_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax{secure}")
-        };
+        // `?ui=off` remembers the HTML chat, so a default of GPUI (#12226)
+        // doesn't bring the canvas back.
+        let view = if on { "gpui" } else { "html" };
+        let cookie = format!("{UI_COOKIE}={view}; Path=/; Max-Age=31536000; SameSite=Lax{secure}");
         if let Ok(value) = HeaderValue::from_str(&cookie) {
             response.headers_mut().append(header::SET_COOKIE, value);
         }
@@ -774,21 +802,81 @@ mod tests {
     #[test]
     fn the_query_then_the_cookie_choose_the_view() {
         let none = HeaderMap::new();
-        assert!(!choice(&none, None).gpui);
-        assert!(!choice(&none, Some("project=p1")).gpui);
-        let on = choice(&none, Some("project=p1&ui=gpui"));
+        assert!(!choice(crate::features::Features::none(), &none, None).gpui);
+        assert!(!choice(crate::features::Features::none(), &none, Some("project=p1")).gpui);
+        let on = choice(
+            crate::features::Features::none(),
+            &none,
+            Some("project=p1&ui=gpui"),
+        );
         assert!(on.gpui);
         assert_eq!(on.remember, Some(true));
         let kept = cookie("oa_visitor=abc; oa_chat_ui=gpui");
-        assert!(choice(&kept, None).gpui);
-        assert_eq!(choice(&kept, None).remember, None);
-        let once = choice(&kept, Some("ui=html"));
+        assert!(choice(crate::features::Features::none(), &kept, None).gpui);
+        assert_eq!(
+            choice(crate::features::Features::none(), &kept, None).remember,
+            None
+        );
+        let once = choice(crate::features::Features::none(), &kept, Some("ui=html"));
         assert!(!once.gpui);
         assert_eq!(once.remember, None);
-        let off = choice(&kept, Some("ui=off"));
+        let off = choice(crate::features::Features::none(), &kept, Some("ui=off"));
         assert!(!off.gpui);
         assert_eq!(off.remember, Some(false));
-        assert!(!choice(&cookie("oa_chat_ui=html"), None).gpui);
+        assert!(
+            !choice(
+                crate::features::Features::none(),
+                &cookie("oa_chat_ui=html"),
+                None
+            )
+            .gpui
+        );
+    }
+
+    #[test]
+    fn the_default_is_gpui_only_when_turned_on_and_not_on_a_phone() {
+        use crate::features::{Feature, Features};
+        let (on, _) = Features::parse(Feature::GpuiDefault.name());
+        let none = HeaderMap::new();
+        assert!(!choice(Features::none(), &none, None).gpui);
+        assert!(choice(on, &none, None).gpui);
+        // A choice the browser made wins over the default.
+        assert!(!choice(on, &cookie("oa_chat_ui=html"), None).gpui);
+        assert!(!choice(on, &none, Some("ui=html")).gpui);
+        let off = choice(on, &none, Some("ui=off"));
+        assert!(!off.gpui);
+        assert_eq!(off.remember, Some(false));
+        // Phones keep the HTML chat unless they ask.
+        let mut phone = HeaderMap::new();
+        phone.insert(
+            header::USER_AGENT,
+            HeaderValue::from_static(
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148",
+            ),
+        );
+        assert!(!choice(on, &phone, None).gpui);
+        assert!(choice(on, &phone, Some("ui=gpui")).gpui);
+    }
+
+    #[test]
+    fn ui_off_remembers_the_html_chat() {
+        let root = tempfile::tempdir().unwrap();
+        let config = crate::Config::development(root.path().join("store"));
+        let app = crate::App(std::sync::Arc::new(crate::Inner { config }));
+        let mut response = axum::response::Response::new(axum::body::Body::empty());
+        choice(
+            crate::features::Features::none(),
+            &HeaderMap::new(),
+            Some("ui=off"),
+        )
+        .remember(&app, &mut response);
+        let set = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(set.starts_with("oa_chat_ui=html;"), "{set}");
     }
 
     #[test]
@@ -798,9 +886,9 @@ mod tests {
         let config = crate::Config::development(root.path().join("store"));
         let app = crate::App(std::sync::Arc::new(crate::Inner { config }));
         // No build here, so nothing is served either way.
-        assert!(!choice(&headers, None).serves(&app, &headers));
+        assert!(!choice(crate::features::Features::none(), &headers, None).serves(&app, &headers));
         headers.insert("hx-request", HeaderValue::from_static("true"));
-        assert!(!choice(&headers, None).serves(&app, &headers));
+        assert!(!choice(crate::features::Features::none(), &headers, None).serves(&app, &headers));
     }
 
     #[test]

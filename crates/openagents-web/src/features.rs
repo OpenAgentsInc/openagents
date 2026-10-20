@@ -62,10 +62,14 @@ pub enum Feature {
     /// Moving a computer's chat to a cloud computer from the GPUI chat
     /// (#12282). Bringing one back stays.
     MoveToCloud,
+    /// The GPUI chat at `/`, `/new`, and `/chat/{id}` for anyone who didn't
+    /// choose (#12226): no `?ui=` and no `oa_chat_ui` cookie. Phones and
+    /// HTMX swaps keep the HTML chat; `?ui=off` keeps it for a browser.
+    GpuiDefault,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 9] = [
+    pub const ALL: [Feature; 10] = [
         Feature::Wallet,
         Feature::Earn,
         Feature::Billing,
@@ -75,6 +79,7 @@ impl Feature {
         Feature::AgentReplies,
         Feature::VerseHands,
         Feature::MoveToCloud,
+        Feature::GpuiDefault,
     ];
 
     /// The feature's name in [`ENV`] and in the meta tag.
@@ -90,6 +95,7 @@ impl Feature {
             Feature::AgentReplies => "agent_replies",
             Feature::VerseHands => "verse_hands",
             Feature::MoveToCloud => "move_to_cloud",
+            Feature::GpuiDefault => "gpui_default",
         }
     }
 
@@ -123,9 +129,11 @@ impl Feature {
                         .is_some_and(|rest| rest.ends_with("/unlist"))
             }
             Feature::PaymentStats => path == "/live" || path == "/stats",
-            Feature::Earn | Feature::AgentReplies | Feature::VerseHands | Feature::MoveToCloud => {
-                false
-            }
+            Feature::Earn
+            | Feature::AgentReplies
+            | Feature::VerseHands
+            | Feature::MoveToCloud
+            | Feature::GpuiDefault => false,
         }
     }
 }

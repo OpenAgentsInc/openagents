@@ -86,7 +86,7 @@ async fn new_chat(
     RawQuery(raw): RawQuery,
     query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    let choice = super::gpui_chat::choice(&headers, raw.as_deref());
+    let choice = super::gpui_chat::choice(app.config.features, &headers, raw.as_deref());
     let mut response = if choice.serves(&app, &headers) {
         super::gpui_chat::page(&app, &headers, None, "").await
     } else {
@@ -109,7 +109,7 @@ async fn home(
 ) -> Response {
     // The GPUI chat's new chat, signed in or not, when the person turned
     // it on (#12222); it takes the landing page's place too.
-    let choice = super::gpui_chat::choice(&headers, raw.as_deref());
+    let choice = super::gpui_chat::choice(app.config.features, &headers, raw.as_deref());
     if choice.serves(&app, &headers) {
         let mut response = super::gpui_chat::page(&app, &headers, None, "").await;
         choice.remember(&app, &mut response);

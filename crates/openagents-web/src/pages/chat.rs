@@ -1207,7 +1207,7 @@ async fn show(
     axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Response {
     // The GPUI chat, when the person turned it on (#12221).
-    let choice = super::gpui_chat::choice(&headers, query.as_deref());
+    let choice = super::gpui_chat::choice(app.config.features, &headers, query.as_deref());
     let mut response = if choice.serves(&app, &headers) && valid_id(&id) {
         super::gpui_chat::page(&app, &headers, Some(id), "").await
     } else {
