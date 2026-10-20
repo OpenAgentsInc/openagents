@@ -5140,6 +5140,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-web-visuals"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "console_error_panic_hook",
+ "gpui",
+ "js-sys",
+ "openagents-brand",
+ "openagents-doc",
+ "openagents-gpui-web",
+ "openagents-web-chat-view",
+ "openagents-web-client",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "openagents-web-voice"
 version = "1.0.0"
 dependencies = [

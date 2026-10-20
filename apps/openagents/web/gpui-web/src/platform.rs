@@ -44,6 +44,7 @@ impl WebFonts {
 }
 
 pub struct WebPlatform {
+    mount: RefCell<Option<String>>,
     browser_window: web_sys::Window,
     background_executor: BackgroundExecutor,
     foreground_executor: ForegroundExecutor,
@@ -70,6 +71,11 @@ struct WebPlatformCallbacks {
 }
 
 impl WebPlatform {
+    /// Selects the DOM box for the next window opened by this platform.
+    pub fn mount_in(&self, id: &str) {
+        *self.mount.borrow_mut() = Some(id.to_owned());
+    }
+
     pub fn new(allow_multi_threading: bool, fonts: WebFonts) -> Self {
         let browser_window =
             web_sys::window().expect("must be running in a browser window context");
@@ -103,6 +109,7 @@ impl WebPlatform {
         );
 
         Self {
+            mount: RefCell::new(None),
             browser_window,
             background_executor,
             foreground_executor,
@@ -197,7 +204,14 @@ impl Platform for WebPlatform {
             anyhow::anyhow!("WebGPU context not initialized. Was Platform::run() called?")
         })?;
 
-        let window = WebWindow::new(handle, params, context, self.browser_window.clone())?;
+        let mount = self.mount.borrow_mut().take();
+        let window = WebWindow::new(
+            handle,
+            params,
+            context,
+            self.browser_window.clone(),
+            mount.as_deref(),
+        )?;
         *self.active_window.borrow_mut() = Some(handle);
         Ok(Box::new(window))
     }

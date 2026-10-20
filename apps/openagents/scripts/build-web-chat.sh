@@ -130,6 +130,7 @@ for page in traces agents projects agent-lab lab voice; do
       --enable-sign-ext --enable-mutable-globals --enable-reference-types \
       "$out/openagents_web_${page//-/_}_bg.wasm" -o "$out/openagents_web_${page//-/_}_bg.wasm"
 done
+"$app/scripts/build-web-visuals.sh" "$out/visuals"
 cp "$web/chat/start.js" "$out/start.js"
 # The faces start.js asks for, by the names in its FONTS list.
 fonts="$(sed -n 's/^  "\([A-Za-z-]*\.ttf\)",$/\1/p' "$web/chat/start.js")"

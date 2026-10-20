@@ -53,6 +53,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(GPUI_DEMO_PATH, get(page))
         .route("/demo/gpui/{file}", get(build_file))
+        .route("/demo/gpui/visuals/{file}", get(visual_file))
 }
 
 /// The build directory, when it holds the glue, the module and the start
@@ -114,6 +115,26 @@ async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
         HeaderValue::from_static(GPUI_DEMO_POLICY),
     );
     response
+}
+
+async fn visual_file(
+    State(app): State<App>,
+    UrlPath(file): UrlPath<String>,
+    request: HeaderMap,
+) -> Response {
+    let (Some(directory), Some(content_type)) =
+        (build(&app), super::gpui_build::content_type(&file))
+    else {
+        return crate::not_found().await;
+    };
+    super::gpui_build::serve(
+        &directory.join("visuals"),
+        &format!("{}/visuals", GPUI_DEMO_PATH),
+        &file,
+        content_type,
+        &request,
+    )
+    .await
 }
 
 async fn build_file(

@@ -1,3 +1,4 @@
+window.__oaVisualUrl = new URL("./visuals/start.js", import.meta.url).href;
 // Starts the chat demo: loads the wasm-bindgen glue beside this file, which
 // fetches the module next to it, and the shared font files the page names. GPUI then adds its canvas to the page, so
 // the page's own content (the loading line) steps out of its way.

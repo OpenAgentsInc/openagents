@@ -343,12 +343,37 @@ impl WebWindowInner {
                 current_state.modifiers = modifiers;
             }
 
-            this.dispatch_input(PlatformInput::ScrollWheel(ScrollWheelEvent {
+            let result = this.dispatch_input(PlatformInput::ScrollWheel(ScrollWheelEvent {
                 position,
                 delta,
                 modifiers,
                 touch_phase: TouchPhase::Moved,
             }));
+            // Let the transcript scroll when the inline visual did not use the wheel.
+            if result.is_none_or(|result| result.propagate)
+                && this.canvas.has_attribute("data-oa-visual")
+                && let Some(source) = this.browser_window.document().and_then(|document| {
+                    document
+                        .query_selector("canvas:not([data-oa-visual])")
+                        .ok()
+                        .flatten()
+                })
+            {
+                let init = web_sys::WheelEventInit::new();
+                init.set_client_x(event.client_x());
+                init.set_client_y(event.client_y());
+                init.set_delta_x(event.delta_x());
+                init.set_delta_y(event.delta_y());
+                init.set_delta_mode(event.delta_mode());
+                init.set_ctrl_key(event.ctrl_key());
+                init.set_shift_key(event.shift_key());
+                init.set_alt_key(event.alt_key());
+                init.set_meta_key(event.meta_key());
+                if let Ok(forwarded) = web_sys::WheelEvent::new_with_event_init_dict("wheel", &init)
+                {
+                    source.dispatch_event(&forwarded).ok();
+                }
+            }
         })
     }
 

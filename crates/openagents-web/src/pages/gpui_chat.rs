@@ -72,6 +72,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/gpui/chat/{id}", get(moved))
         .route(SHELL_CSS_PATH, get(shell_css))
         .route("/gpui/build/{file}", get(build_file))
+        .route("/gpui/build/visuals/{file}", get(visual_file))
         .route("/gpui/build/fonts/{file}", get(font_file))
         .route(SIDE_PATH, get(side))
         .route(FILES_PATH, get(files))
@@ -621,6 +622,26 @@ async fn shell_css() -> Response {
         HeaderValue::from_static("public, max-age=300"),
     );
     response
+}
+
+async fn visual_file(
+    State(app): State<App>,
+    UrlPath(file): UrlPath<String>,
+    request: HeaderMap,
+) -> Response {
+    let (Some(directory), Some(content_type)) =
+        (build(&app), super::gpui_build::content_type(&file))
+    else {
+        return crate::not_found().await;
+    };
+    super::gpui_build::serve(
+        &directory.join("visuals"),
+        &format!("{}/visuals", BUILD_PATH),
+        &file,
+        content_type,
+        &request,
+    )
+    .await
 }
 
 async fn build_file(

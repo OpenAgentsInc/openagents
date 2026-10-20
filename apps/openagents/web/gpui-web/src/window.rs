@@ -59,6 +59,8 @@ pub(crate) struct WebWindowInner {
     pub(crate) notify_scale: Cell<bool>,
     pub(crate) is_composing: Cell<bool>,
     mql_handle: RefCell<Option<MqlHandle>>,
+    raf_id: Cell<Option<i32>>,
+    global_listeners: RefCell<Vec<(web_sys::EventTarget, &'static str, js_sys::Function)>>,
     pending_physical_size: Cell<Option<(u32, u32)>>,
     /// Whether the first frame at the canvas's size has been drawn.
     presented: Cell<bool>,
@@ -82,12 +84,31 @@ pub struct WebWindow {
     _event_listeners: WebEventListeners,
 }
 
+impl Drop for WebWindow {
+    fn drop(&mut self) {
+        if let Some(id) = self.inner.raf_id.take() {
+            self.inner.browser_window.cancel_animation_frame(id).ok();
+        }
+        if let Some(observer) = &self._resize_observer {
+            observer.disconnect();
+        }
+        for (target, name, callback) in self.inner.global_listeners.borrow_mut().drain(..) {
+            target
+                .remove_event_listener_with_callback(name, &callback)
+                .ok();
+        }
+        self.inner.input_element.remove();
+        self.inner.canvas.remove();
+    }
+}
+
 impl WebWindow {
     pub fn new(
         handle: AnyWindowHandle,
         _params: WindowParams,
         context: &WgpuContext,
         browser_window: web_sys::Window,
+        mount_id: Option<&str>,
     ) -> anyhow::Result<Self> {
         let document = browser_window
             .document()
@@ -131,7 +152,7 @@ impl WebWindow {
         // A page that keeps its own content around the app names the box the
         // canvas goes in; otherwise the canvas is the page.
         let mount: web_sys::Element = document
-            .get_element_by_id(MOUNT_ID)
+            .get_element_by_id(mount_id.unwrap_or(MOUNT_ID))
             .unwrap_or_else(|| body.clone().into());
         mount
             .append_child(&canvas)
@@ -151,7 +172,9 @@ impl WebWindow {
         input_style.set_property("opacity", "0").ok();
         body.append_child(&input_element)
             .map_err(|e| anyhow::anyhow!("Failed to append input to body: {e:?}"))?;
-        input_element.focus().ok();
+        if mount_id.is_none() {
+            input_element.focus().ok();
+        }
 
         let device_size = Size {
             width: DevicePixels(0),
@@ -208,6 +231,8 @@ impl WebWindow {
             notify_scale: Cell::new(false),
             is_composing: Cell::new(false),
             mql_handle: RefCell::new(None),
+            raf_id: Cell::new(None),
+            global_listeners: RefCell::new(Vec::new()),
             pending_physical_size: Cell::new(None),
             presented: Cell::new(false),
             #[cfg(feature = "first-frame")]
@@ -355,7 +380,8 @@ impl WebWindowInner {
 
             // Re-schedule for the next frame
             if let Some(ref func) = *raf_handle_inner.borrow() {
-                this.browser_window.request_animation_frame(func).ok();
+                this.raf_id
+                    .set(this.browser_window.request_animation_frame(func).ok());
             }
         });
 
@@ -409,9 +435,11 @@ impl WebWindowInner {
     }
 
     fn schedule_raf(&self, closure: &Closure<dyn FnMut()>) {
-        self.browser_window
-            .request_animation_frame(closure.as_ref().unchecked_ref())
-            .ok();
+        self.raf_id.set(
+            self.browser_window
+                .request_animation_frame(closure.as_ref().unchecked_ref())
+                .ok(),
+        );
     }
 
     fn observe_canvas(&self, observer: &web_sys::ResizeObserver) {
@@ -484,6 +512,11 @@ impl WebWindowInner {
             .add_event_listener_with_callback("visibilitychange", closure.as_ref().unchecked_ref())
             .ok();
 
+        self.global_listeners.borrow_mut().push((
+            document.into(),
+            "visibilitychange",
+            closure.as_ref().unchecked_ref::<js_sys::Function>().clone(),
+        ));
         Some(closure)
     }
 
@@ -516,6 +549,11 @@ impl WebWindowInner {
         mql.add_event_listener_with_callback("change", closure.as_ref().unchecked_ref())
             .ok();
 
+        self.global_listeners.borrow_mut().push((
+            mql.into(),
+            "change",
+            closure.as_ref().unchecked_ref::<js_sys::Function>().clone(),
+        ));
         Some(closure)
     }
 }

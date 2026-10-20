@@ -81,6 +81,9 @@ wasm-bindgen --target web --no-typescript --out-dir "$out" \
 wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     --enable-sign-ext --enable-mutable-globals --enable-reference-types \
     "$out/${name}_bg.wasm" -o "$out/${name}_bg.wasm"
+if [ "$app_name" = demo ]; then
+  "$app/scripts/build-web-visuals.sh" "$out/visuals"
+fi
 cp "$crate/start.js" "$out/start.js"
 if [ "$app_name" = demo ]; then
   cp "$crate/assets/fonts/"*.otf "$crate/assets/fonts/"*.ttf "$out/"

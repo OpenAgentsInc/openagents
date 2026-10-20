@@ -603,6 +603,9 @@ impl ChatApp {
     /// does): its commands, skills, files, queue, and questions come from
     /// there (#12267, #12268).
     pub fn set_host_chat(&mut self, host: Option<HostChat>, cx: &mut Context<Self>) {
+        self.transcript.update(cx, |transcript, _| {
+            transcript.media.visual_device = host.as_ref().map(|host| host.device.clone());
+        });
         // The file panel follows the open chat (#12271).
         let detail = host
             .as_ref()

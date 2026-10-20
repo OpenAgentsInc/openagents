@@ -100,6 +100,7 @@ web-sys = { version = "0.3", features = [
     "RequestRedirect",
     "Response",
     "WheelEvent",
+    "WheelEventInit",
     "Window",
 ] }
 

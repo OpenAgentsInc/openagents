@@ -46,5 +46,7 @@ pub use gpui::svg;
 #[cfg(target_family = "wasm")]
 pub use icon::svg;
 
+#[cfg(all(target_family = "wasm", not(feature = "visuals")))]
+pub mod lazy_visuals;
 #[cfg(feature = "visuals")]
 pub mod visuals;

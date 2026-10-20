@@ -1,3 +1,4 @@
+window.__oaVisualUrl = new URL("./visuals/start.js", import.meta.url).href;
 // Starts the GPUI web chat (crates/openagents-web/src/pages/gpui_chat.rs).
 // It needs WebGPU; without it, the page goes to the regular
 // chat. Otherwise the module and the fonts download together,

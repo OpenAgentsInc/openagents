@@ -2,6 +2,9 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12344: draw web transcript visuals in a lazy Wasm module,
+  with inline bounds, clipping, controls, attachment reads, and window cleanup.
+
 - OpenAgents #12279: add the GPUI web command palette for actions, registry
   chats, and paired-computer file/content searches, with browser shortcuts
   and source-line opening in the existing file pane.

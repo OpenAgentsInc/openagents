@@ -182,6 +182,8 @@ pub type AfterEntry = Rc<dyn Fn(&str, &mut Window, &mut App) -> Option<AnyElemen
 /// serves by path, and the app's own content under an entry.
 #[derive(Default)]
 pub struct WebMedia {
+    /// Computer that owns the open transcript’s visual attachments.
+    pub visual_device: Option<String>,
     pub images: Images,
     /// The site an image's path is on, when the app loads images by URL.
     pub origin: Option<String>,
@@ -191,6 +193,8 @@ pub struct WebMedia {
     pub visual_reader: Option<crate::visuals::Read>,
     #[cfg(feature = "visuals")]
     pub(crate) visuals: crate::visuals::Frames,
+    #[cfg(all(target_family = "wasm", not(feature = "visuals")))]
+    pub(crate) lazy_visuals: crate::lazy_visuals::Frames,
 }
 
 impl WebMedia {
@@ -255,6 +259,8 @@ impl TranscriptMedia for WebMedia {
     fn chat_changed(_this: &mut Transcript, _cx: &mut Context<Transcript>) {
         #[cfg(feature = "visuals")]
         _this.media.visuals.clear();
+        #[cfg(all(target_family = "wasm", not(feature = "visuals")))]
+        _this.media.lazy_visuals.clear();
     }
 
     fn rows_built(_this: &mut Transcript, _rows: &[Row]) {}
@@ -328,7 +334,7 @@ impl TranscriptMedia for WebMedia {
             .unwrap_or_else(|| div().into_any_element())
     }
 
-    #[cfg(not(feature = "visuals"))]
+    #[cfg(all(not(target_family = "wasm"), not(feature = "visuals")))]
     fn visual(
         _this: &mut Transcript,
         _row_id: &SharedString,
@@ -349,6 +355,28 @@ impl TranscriptMedia for WebMedia {
             .text_color(crate::theme::text_faint())
             .child(format!("{title} (opens in the OpenAgents desktop app)"))
             .into_any_element()
+    }
+
+    #[cfg(all(target_family = "wasm", not(feature = "visuals")))]
+    fn visual(
+        this: &mut Transcript,
+        row_id: &SharedString,
+        _owner: &str,
+        path: &str,
+        title: &str,
+        cx: &mut Context<Transcript>,
+    ) -> AnyElement {
+        let row = row_id.clone();
+        this.media.lazy_visuals.render(
+            row_id.to_string(),
+            title,
+            path,
+            this.media.visual_device.clone(),
+            move |this: &mut Transcript, cx| {
+                this.diagram_layout_changed(std::slice::from_ref(&row), cx);
+            },
+            cx,
+        )
     }
 
     #[cfg(feature = "visuals")]
