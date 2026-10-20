@@ -303,7 +303,9 @@ d={dir}
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
 export CODEX_HOME="/tmp/oa-coder-{id}/codex"
 unset OA_CODEX_AUTH
-finish() {{ rc=$?; printf '%s' "$rc" > "$d/exit.writing"; mv "$d/exit.writing" "$d/exit"; touch "$HOME/.oa-pool/busy"; }}
+# The clone and the Codex home go when the flow ends: a 6 GB clone a job
+# filled the host's disk (#12199's runs ended without an outcome).
+finish() {{ rc=$?; printf '%s' "$rc" > "$d/exit.writing"; mv "$d/exit.writing" "$d/exit"; rm -rf "$d/workspace" "/tmp/oa-coder-{id}"; touch "$HOME/.oa-pool/busy"; }}
 trap finish EXIT
 expires=$(( $(date +%s) + {seconds} ))
 slot=''
@@ -485,6 +487,55 @@ mod tests {
             .write_all(script.as_bytes())
             .unwrap();
         assert!(child.wait().unwrap().success());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn a_finished_job_removes_its_clone() {
+        let request = request();
+        let record = Record::new(
+            "work-cleanup",
+            crate::Spec {
+                placement: crate::Placement::Gce,
+                mode: crate::Mode::Coder,
+                agent: request.agent.clone(),
+                task: serde_json::to_string(&request).unwrap(),
+                model: None,
+                reasoning: None,
+                cwd: "/fixture".into(),
+                timeout_seconds: 3600,
+                size: "default".into(),
+                template: None,
+                credential_names: vec![],
+            },
+        )
+        .unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let dir = home.path().join("run");
+        std::fs::create_dir_all(dir.join("workspace/repo/.git")).unwrap();
+        let bin = home.path().join(".oa-pool/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let fake = bin.join("openagents");
+        std::fs::write(&fake, "#!/bin/sh\necho '{\"event\":\"issue\"}'\n").unwrap();
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let body = issue_body(&record, &request, 1, Duration::from_secs(60))
+            .unwrap()
+            .replace(&gce_backend::directory(&record), &dir.display().to_string());
+        let status = std::process::Command::new("/bin/sh")
+            .args(["-c", &body])
+            .env("HOME", home.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        assert_eq!(std::fs::read_to_string(dir.join("exit")).unwrap(), "0");
+        assert!(
+            dir.join("out").exists(),
+            "the orchestrator still reads the output"
+        );
+        assert!(
+            !dir.join("workspace").exists(),
+            "the 6 GB clone stays behind"
+        );
     }
     #[test]
     fn an_unlanded_request_never_falls_back_to_repository_policy() {
