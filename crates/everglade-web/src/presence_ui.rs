@@ -44,6 +44,45 @@ impl Options {
     }
 }
 
+/// The most keys one profile-name question asks about.
+pub const NAMES_MAX: usize = 50;
+
+/// The site's names question for `keys` (#12261).
+#[must_use]
+pub fn names_url(keys: &[String]) -> String {
+    let keys: Vec<&str> = keys.iter().take(NAMES_MAX).map(String::as_str).collect();
+    format!("/verse/names?keys={}", keys.join(","))
+}
+
+/// The names in the site's answer, by key; a key with no profile is left
+/// out.
+#[must_use]
+pub fn read_names(json: &str) -> Vec<(String, String)> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    value["names"]
+        .as_object()
+        .map(|names| {
+            names
+                .iter()
+                .filter_map(|(key, entry)| {
+                    let name = entry["name"].as_str()?.trim();
+                    (!name.is_empty() && name.chars().count() <= 64)
+                        .then(|| (key.clone(), name.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The tag over a player: the name their own frames gave, else their
+/// profile's, else `fallback` (a short key).
+#[must_use]
+pub fn label(own: Option<&str>, profile: Option<&str>, fallback: String) -> String {
+    own.or(profile).map_or(fallback, str::to_owned)
+}
+
 /// Percent-decodes a query value, with `+` as a space; a malformed escape
 /// stays as written.
 fn decode(value: &str) -> String {
@@ -105,6 +144,21 @@ pub fn card_hit(size: [f32; 2], at: [f32; 2]) -> Option<Button> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profile_names_fill_tags_only_where_frames_gave_none() {
+        let keys: Vec<String> = (0..60).map(|i| format!("{i:064x}")).collect();
+        let url = names_url(&keys);
+        assert!(url.starts_with("/verse/names?keys="));
+        assert_eq!(url.matches(',').count(), NAMES_MAX - 1);
+        let read =
+            read_names(r#"{"names":{"aa":{"name":"Pat Verse"},"bb":{"name":"  "},"cc":{}}}"#);
+        assert_eq!(read, vec![("aa".to_string(), "Pat Verse".to_string())]);
+        assert!(read_names("not json").is_empty());
+        assert_eq!(label(Some("Own"), Some("Profile"), "k…".into()), "Own");
+        assert_eq!(label(None, Some("Profile"), "k…".into()), "Profile");
+        assert_eq!(label(None, None, "k…".into()), "k…");
+    }
 
     #[test]
     fn the_query_names_the_relay_and_the_player() {

@@ -152,7 +152,7 @@ const VERSE: Stage = Stage {
 
 /// The page is the canvas, filling the window, with the status line over its
 /// foot. The heading is for screen readers only.
-fn body(stage: &Stage, wasm_bytes: u64) -> String {
+fn body(stage: &Stage, wasm_bytes: u64, name: Option<&str>) -> String {
     let Stage {
         title,
         label,
@@ -162,11 +162,14 @@ fn body(stage: &Stage, wasm_bytes: u64) -> String {
     format!(
         "<h1 class=\"unseen\">{title}</h1>\
 <div class=\"glade\" id=\"everglade\" data-module=\"/everglade/{GLUE}\" \
-data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PACK_PATH}\">\
+data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PACK_PATH}\"{name}>\
 <canvas id=\"{CANVAS_ID}\" tabindex=\"0\" aria-label=\"{label}\"></canvas>\
 <p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading {loading}…</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to open {loading}.</p></noscript></div>\
-<script type=\"module\" src=\"/static/everglade.js\"></script>"
+<script type=\"module\" src=\"/static/everglade.js\"></script>",
+        name = name
+            .map(|n| format!(" data-name=\"{}\"", crate::layout::escape(n)))
+            .unwrap_or_default(),
     )
 }
 
@@ -227,12 +230,43 @@ async fn stage(app: &App, stage: &Stage, headers: &HeaderMap) -> Response {
             .map_or(0, |metadata| metadata.len()),
         None => 0,
     };
-    let mut response = fullscreen(stage.title, &body(stage, wasm_bytes));
+    // On /verse, a signed-in person's avatar carries their profile name.
+    let name = if stage.path == VERSE.path {
+        viewer_name(app, headers).await
+    } else {
+        None
+    };
+    let mut response = fullscreen(stage.title, &body(stage, wasm_bytes, name.as_deref()));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(stage.policy),
     );
     response
+}
+
+/// The signed-in viewer's profile name: their kind 0's shown name, else
+/// their `name@openagents.com` name.
+async fn viewer_name(app: &App, headers: &HeaderMap) -> Option<String> {
+    let service = app.config.cloud.as_deref()?;
+    service.authenticate(headers).await.ok()?;
+    let token = service.browser_token(headers).ok()?;
+    let answer = service
+        .nostr_call(
+            reqwest::Method::GET,
+            "/v1/account/name",
+            Some(&format!("Bearer {token}")),
+            None,
+        )
+        .await
+        .ok()?;
+    let name = answer.body["name"].as_str().map(str::to_string);
+    let key = answer.body["pubkey"].as_str()?.to_string();
+    let loaded = crate::profiles::load(&app.config.profile_relays, &key).await;
+    loaded
+        .metadata
+        .as_ref()
+        .and_then(|m| m.shown_name().map(str::to_string))
+        .or(name)
 }
 
 /// Whether `name` is one plain file name: no separator, no leading dot, and

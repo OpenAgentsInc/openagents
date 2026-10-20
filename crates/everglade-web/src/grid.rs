@@ -56,6 +56,11 @@ pub struct Presence {
     timing: Timing,
     /// Whose card is open.
     card: Option<String>,
+    /// Profile names from the site (`/verse/names`), by key; `None` while
+    /// asked or when the key has no profile (#12261).
+    profiles: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, Option<String>>>>,
+    /// When the site was last asked for names.
+    asked: Option<Instant>,
 }
 
 impl Presence {
@@ -94,7 +99,20 @@ impl Presence {
         if let Some(name) = &options.name {
             set(NAME_KEY, name);
         }
-        session.set_display_name(options.name.clone().or_else(|| get(NAME_KEY)).as_deref());
+        // A signed-in person's profile name, from the page (/verse).
+        let profile_name = window
+            .document()
+            .and_then(|d| d.get_element_by_id("everglade"))
+            .and_then(|e| e.get_attribute("data-name"))
+            .filter(|n| !n.trim().is_empty());
+        session.set_display_name(
+            options
+                .name
+                .clone()
+                .or_else(|| get(NAME_KEY))
+                .or(profile_name)
+                .as_deref(),
+        );
         let intervals = PublishIntervals::mobile();
         session.set_publish_intervals(intervals)?;
         session.crowd.set_delay(intervals.moving + PRESENCE_MARGIN);
@@ -117,6 +135,8 @@ impl Presence {
             spawn_pending: true,
             timing: Timing::start(Instant::now()),
             card: None,
+            profiles: Default::default(),
+            asked: None,
         }))
     }
 
@@ -140,6 +160,7 @@ impl Presence {
             self.spawn_pending = false;
         }
         self.session.tick_world(now, runtime);
+        self.ask_names(now);
         // Other players' avatars are solid, as on the phone.
         runtime.set_avatars(
             self.session
@@ -161,6 +182,76 @@ impl Presence {
             return;
         };
         log_frames(&times, players, &self.session);
+    }
+
+    /// The tag over `pubkey`: its own frames' name, else its profile's.
+    fn label(&self, pubkey: &str) -> String {
+        let profiles = self.profiles.borrow();
+        crate::presence_ui::label(
+            self.session.shown_name(pubkey),
+            profiles.get(pubkey).and_then(Option::as_deref),
+            self.session.name_of(pubkey),
+        )
+    }
+
+    /// Ask the site, at most every two seconds, for the profile names of
+    /// players whose frames gave none.
+    fn ask_names(&mut self, now: Instant) {
+        if self
+            .asked
+            .is_some_and(|at| now.duration_since(at) < Duration::from_secs(2))
+        {
+            return;
+        }
+        let wanted: Vec<String> = {
+            let profiles = self.profiles.borrow();
+            self.session
+                .crowd
+                .shown(now)
+                .into_iter()
+                .filter(|shown| shown.role == "avatar")
+                .map(|shown| shown.pubkey)
+                .filter(|key| self.session.shown_name(key).is_none() && !profiles.contains_key(key))
+                .take(crate::presence_ui::NAMES_MAX)
+                .collect()
+        };
+        if wanted.is_empty() {
+            return;
+        }
+        self.asked = Some(now);
+        {
+            let mut profiles = self.profiles.borrow_mut();
+            for key in &wanted {
+                profiles.insert(key.clone(), None);
+            }
+        }
+        let url = crate::presence_ui::names_url(&wanted);
+        let profiles = self.profiles.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            use wasm_bindgen::JsCast;
+            let Some(window) = web_sys::window() else {
+                return;
+            };
+            let Ok(answer) =
+                wasm_bindgen_futures::JsFuture::from(window.fetch_with_str(&url)).await
+            else {
+                return;
+            };
+            let Ok(response) = answer.dyn_into::<web_sys::Response>() else {
+                return;
+            };
+            let Ok(text) = response.text() else {
+                return;
+            };
+            let Ok(text) = wasm_bindgen_futures::JsFuture::from(text).await else {
+                return;
+            };
+            let names = crate::presence_ui::read_names(&text.as_string().unwrap_or_default());
+            let mut profiles = profiles.borrow_mut();
+            for (key, name) in names {
+                profiles.insert(key, Some(name));
+            }
+        });
     }
 
     /// The remote players whose tags show, with where their heads are.
@@ -200,7 +291,7 @@ impl Presence {
             let Some([x, y]) = verse::hud::project(view_proj, size, head) else {
                 continue;
             };
-            let name = self.session.name_of(&pubkey);
+            let name = self.label(&pubkey);
             let width = atlas.measure(&name);
             ui.text(
                 atlas,
@@ -327,7 +418,7 @@ impl Presence {
             1.0,
             crate::theme::linear(coder_ui::coder_noir::STROKE, 1.0),
         );
-        let name = self.session.name_of(pubkey);
+        let name = self.label(pubkey);
         ui.text(
             atlas,
             x + CARD_PAD,

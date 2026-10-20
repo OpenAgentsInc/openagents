@@ -9,7 +9,11 @@ description = "Everglade in a browser: the Verse zone over WebGPU or WebGL2, fro
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Everything is browser-only; a native build of this crate is empty.
+# The plain data the native tests cover (presence_ui's names answer).
+[dependencies]
+serde_json = "1"
+
+# Everything else is browser-only; a native build of this crate holds only that data.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 coder-browser = { path = "../coder-browser" }
 coder-ui = { path = "../coder-ui" }
@@ -85,8 +89,6 @@ web-sys = { version = "0.3", features = [
 
 [lints]
 workspace = true
-
-[dependencies]
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }

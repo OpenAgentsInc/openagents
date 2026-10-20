@@ -1323,6 +1323,15 @@ impl Session {
         true
     }
 
+    /// The name `pubkey`'s own frames gave, when they gave one.
+    #[must_use]
+    pub fn shown_name(&self, pubkey: &str) -> Option<&str> {
+        if pubkey == self.pubkey() {
+            return self.display_name.as_deref();
+        }
+        self.names.get(pubkey).map(String::as_str)
+    }
+
     /// A display name for `pubkey`: its profile or state name, or a short
     /// key while the name is unknown.
     #[must_use]
