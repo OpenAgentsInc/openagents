@@ -1,9 +1,9 @@
 use crate::state::EngineHandle;
+use openagents_proto::voice::{remote::Sdp, *};
+use openagents_voice_session::VoiceMediaEndpoint;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
-use openagents_proto::voice::{remote::Sdp, *};
-use openagents_voice_session::VoiceMediaEndpoint;
 
 struct Media(openagents_voice_media::DesktopMedia);
 #[async_trait::async_trait]

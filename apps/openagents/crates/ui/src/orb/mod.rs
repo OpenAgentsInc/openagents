@@ -15,5 +15,5 @@
 mod orb;
 mod paint;
 
-pub use orb::{DEFAULT_TARGET_FPS, Orb, orb_element};
 pub use openagents_orb::{ModeKey, OrbSize, OrbState, OrbTheme, Resolved, engine, resolve_preset};
+pub use orb::{DEFAULT_TARGET_FPS, Orb, orb_element};

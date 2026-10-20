@@ -15,8 +15,8 @@ use std::hash::{Hash, Hasher};
 
 use chrono::{DateTime, Utc};
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, Context, EntityId, ScrollHandle,
-    SharedString, div, prelude::*, px,
+    Animation, AnimationExt as _, AnyElement, Context, EntityId, ScrollHandle, SharedString, div,
+    prelude::*, px,
 };
 use openagents_doc::{MessagePart, SubagentStatus};
 use openagents_proto::ChatIndicator;
@@ -725,7 +725,6 @@ impl FilesSurface {
         }))
         .into_any_element()
     }
-
 }
 
 fn collapse_animation() -> Animation {

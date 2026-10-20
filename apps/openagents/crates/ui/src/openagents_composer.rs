@@ -3,9 +3,9 @@ use crate::{
     composer::{ComposerInput, ComposerInputEvent},
     theme::Theme,
 };
-use openagents_account::{openagents::ChatSource, reader::Reader, turns::Turns};
 use gpui::{prelude::*, *};
 use gpui_tokio::Tokio;
+use openagents_account::{openagents::ChatSource, reader::Reader, turns::Turns};
 use std::{future::Future, sync::Arc};
 
 pub struct AccountComposer {
