@@ -19,7 +19,7 @@ mod everglade;
 mod first_frame;
 pub(crate) mod foreman;
 mod gpui_build;
-mod gpui_chat;
+pub(crate) mod gpui_chat;
 mod gpui_demo;
 pub(crate) mod gpui_fonts;
 pub(crate) mod home;

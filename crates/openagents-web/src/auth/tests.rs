@@ -174,6 +174,14 @@ async fn world_tweaked(
     std::fs::write(everglade.join("everglade_web.js"), "").unwrap();
     std::fs::write(everglade.join("everglade_web_bg.wasm"), "").unwrap();
     config.everglade = Some(everglade);
+    // A stand-in GPUI chat build, so a browser that shows it gets the
+    // GPUI account pages (#12329).
+    let gpui = root.path().join("gpui-chat");
+    std::fs::create_dir(&gpui).unwrap();
+    for file in ["openagents_web_chat.js", "openagents_web_chat_bg.wasm", "start.js"] {
+        std::fs::write(gpui.join(file), "").unwrap();
+    }
+    config.gpui_chat = Some(gpui);
     config.xp_referees = vec![xp_ledger::eval::fixture::pubkey("referee")];
     config.public_hosts.push("api.openagents.com".into());
     config.inference = Some(Arc::new(

@@ -137,6 +137,7 @@ function start() {
       });
   }, { once: true });
   loadedFonts = fonts;
+  openAddressedPage();
   Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
     .then(function (loaded) {
       launch(loaded[1]);
@@ -493,6 +494,91 @@ function openSettings(event) {
     });
 }
 window.addEventListener("oa-settings-open", openSettings);
+
+// The account's pages (#12329, #12330, #12331): Traces, Agents, and
+// Projects, each its own module, loaded the first time the address asks for
+// it (`?page=traces/ID`) or something opens it (`oa-page-open`, with the
+// path). Its box covers the chat; its Back to chat (`oa-page-close`) hides
+// the box, and moving within the page (`oa-page-path`) keeps the address.
+var PAGES = {
+  traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
+};
+var pageBoxes = {};
+var pageModules = {};
+function pageParam(path) {
+  var url = new URL(window.location.href);
+  if (path) {
+    url.searchParams.set("page", path);
+  } else {
+    url.searchParams.delete("page");
+  }
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+}
+function openPage(path) {
+  var name = (path || "").split("/")[0];
+  var files = PAGES[name];
+  if (!files) {
+    return;
+  }
+  var rest = path.slice(name.length + 1);
+  pageParam(path);
+  Object.keys(pageBoxes).forEach(function (other) {
+    if (other !== name && pageBoxes[other]) {
+      pageBoxes[other].hidden = true;
+    }
+  });
+  if (pageBoxes[name]) {
+    pageBoxes[name].hidden = false;
+    if (pageModules[name]) {
+      pageModules[name].show(rest);
+    }
+    return;
+  }
+  var box = document.createElement("div");
+  box.id = box.dataset.box = "gpui-page-" + name;
+  box.setAttribute("aria-label", name);
+  box.style.cssText = "position:fixed;inset:0;z-index:7;";
+  document.body.appendChild(box);
+  pageBoxes[name] = box;
+  Promise.all([import(new URL(files[0], import.meta.url).href), loadedFonts])
+    .then(function (loaded) {
+      var module = loaded[0];
+      return module.default({
+        module_or_path: WebAssembly.compileStreaming(fetch(new URL(files[1], import.meta.url))),
+      }).then(function () {
+        pageModules[name] = module;
+        mountIn(box, function () {
+          module.mount(loaded[1], rest);
+        });
+      });
+    })
+    .catch(function (error) {
+      console.error("the page couldn't start", error);
+      box.remove();
+      delete pageBoxes[name];
+      pageParam("");
+    });
+}
+window.addEventListener("oa-page-open", function (event) {
+  openPage(event.detail || "");
+});
+window.addEventListener("oa-page-path", function (event) {
+  pageParam(event.detail || "");
+});
+window.addEventListener("oa-page-close", function (event) {
+  var box = pageBoxes[event.detail || ""];
+  if (box) {
+    box.hidden = true;
+  }
+  pageParam("");
+});
+function openAddressedPage() {
+  var path = new URL(window.location.href).searchParams.get("page");
+  if (path) {
+    openPage(path);
+  }
+}
+
 window.addEventListener("oa-settings-hide", function () {
   if (settingsBox) {
     settingsBox.hidden = true;

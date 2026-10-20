@@ -597,3 +597,69 @@ fn collect(value: &serde_json::Value, out: &mut Vec<Intent>) {
         _ => {}
     }
 }
+
+/// A view the adapter draws, in plain words.
+fn plain_view(root: &Node<Intent>) -> Vec<String> {
+    View::new_v3("page", 1, root.clone())
+        .validate()
+        .unwrap_or_else(|e: ViewError| panic!("{e}"));
+    let mut out = Vec::new();
+    words(root, &mut out);
+    let found = oa_copy::violations(&out.join("\n"), &[]);
+    assert!(found.is_empty(), "{found:?}");
+    out
+}
+
+#[test]
+fn traces_list_and_open_one_with_share_and_delete() {
+    use traces::{Action, AgentRow, Open, State, Summary, steps_of, view};
+    let answer = serde_json::json!({"traces": [{
+        "id": "t1", "title": "Fix the build", "agent": "coder", "model": "gpt-test",
+        "steps": 2, "bytes": 10, "uploaded_unix": 1, "shared": true,
+        "url": "/settings/traces/t1", "share_url": "https://openagents.com/trace/t1",
+    }]});
+    let mut state = State {
+        list: Load::Ready(Summary::list(&answer)),
+        ..State::default()
+    };
+    let out = plain_view(&view(&state, &Paints::default()));
+    assert!(out.iter().any(|w| w == "Fix the build"));
+    assert!(
+        out.iter()
+            .any(|w| w == "coder · gpt-test · 2 steps · Shared")
+    );
+    let document = serde_json::json!({"steps": [
+        {"source": "user", "message": "Fix the build"},
+        {"source": "agent", "message": [{"type": "text", "text": "Done."}],
+         "tool_calls": [{"function_name": "shell"}]},
+    ]});
+    state.open = Some(Open {
+        id: "t1".into(),
+        agent: None,
+        steps: Load::Ready(steps_of(&document)),
+        agents: Load::Ready(AgentRow::list(&serde_json::json!({"agents": [
+            {"id": "main", "parent": null, "title": "Fix the build", "steps": 2},
+            {"id": "a2", "parent": "main", "title": "Reviewer", "steps": 1},
+        ]}))),
+    });
+    state.confirm_delete = Some("t1".into());
+    let root = view(&state, &Paints::default());
+    let out = plain_view(&root);
+    for line in [
+        "Stop sharing",
+        "Copy link",
+        "Delete for good",
+        "Reviewer",
+        "Used shell",
+        "Done.\nUsed shell",
+    ] {
+        assert!(out.iter().any(|w| w.contains(line)), "{line} in {out:?}");
+    }
+    assert_eq!(
+        find(&root, "trace-agent-open-a2").map(|n| match &n.element {
+            Element::Button { intent, .. } => intent.clone(),
+            _ => panic!(),
+        }),
+        Some(Intent::Traces(Action::Open("t1".into(), Some("a2".into()))))
+    );
+}

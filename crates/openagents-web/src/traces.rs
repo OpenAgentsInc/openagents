@@ -1729,11 +1729,20 @@ fn target(viewer: &Viewer, id: &str, request: &str) -> String {
     format!("{}:{id}:{request}", viewer.account_id)
 }
 
-async fn list_page(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn list_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
     };
+    if let Some(gpui) =
+        crate::pages::gpui_chat::page_for(&app, &headers, query.as_deref(), "traces")
+    {
+        return gpui;
+    }
     let owner = account_owner(&viewer.account_id);
     match list(&app.config.chat_store, &owner).await {
         Ok(traces) => page(
@@ -1759,6 +1768,11 @@ async fn trace_page(
         Ok(value) => value,
         Err(response) => return response,
     };
+    if let Some(gpui) =
+        crate::pages::gpui_chat::page_for(&app, &headers, query.as_deref(), &format!("traces/{id}"))
+    {
+        return gpui;
+    }
     let owner = account_owner(&viewer.account_id);
     let (trace, document) = match load(&app.config.chat_store, &owner, &id).await {
         Ok(Some(found)) => found,
@@ -1802,6 +1816,14 @@ async fn agent_page(
         Ok(value) => value,
         Err(response) => return response,
     };
+    if let Some(gpui) = crate::pages::gpui_chat::page_for(
+        &app,
+        &headers,
+        query.as_deref(),
+        &format!("traces/{id}/{agent_id}"),
+    ) {
+        return gpui;
+    }
     let owner = account_owner(&viewer.account_id);
     let store = &app.config.chat_store;
     let found = async {

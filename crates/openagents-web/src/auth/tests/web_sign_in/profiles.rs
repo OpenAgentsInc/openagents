@@ -1629,3 +1629,25 @@ async fn explore_lists_the_skills_the_directory_signed() {
     )));
     assert!(!page.body.contains("forged-skill"));
 }
+
+/// With the GPUI chat on, the account's pages open in it (#12329); the
+/// HTML pages stay for every other browser and for `?ui=html`.
+#[tokio::test]
+async fn account_pages_open_in_the_gpui_app_when_it_is_on() {
+    let world = key_world().await;
+    let mut browser = Browser::default();
+    extension_sign_in(&world, &mut browser, &key(0x61)).await;
+    let html = browser.get(&world, "/settings/traces").await;
+    assert_eq!(html.status, StatusCode::OK, "{}", html.body);
+    browser.0.insert("oa_chat_ui".into(), "gpui".into());
+    for (page, gpui) in [
+        ("/settings/traces", "/gpui?page=traces"),
+        ("/settings/traces/abc", "/gpui?page=traces/abc"),
+    ] {
+        let moved = browser.get(&world, page).await;
+        assert!(moved.status.is_redirection(), "{page}: {}", moved.status);
+        assert_eq!(moved.location(), gpui);
+    }
+    let kept = browser.get(&world, "/settings/traces?ui=html").await;
+    assert_eq!(kept.status, StatusCode::OK);
+}

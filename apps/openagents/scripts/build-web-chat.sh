@@ -17,6 +17,8 @@
 #   openagents_web_work_bg.wasm   when it first opens (#12225)
 #   openagents_web_settings.js    Settings' glue and module, loaded the
 #   openagents_web_settings_bg.wasm  first time Settings opens (#12288)
+#   openagents_web_traces.js      Traces' glue and module, loaded at
+#   openagents_web_traces_bg.wasm  `?page=traces` (#12329)
 #   start.js                      the page's one script: checks, loads, launches
 #   fonts/*.ttf                   the Geist faces the chat draws, fetched apart
 #   *.gz, *.br                    gzip and brotli copies, sent when asked
@@ -106,6 +108,17 @@ wasm-bindgen --target web --no-typescript --out-dir "$out" \
 wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     --enable-sign-ext --enable-mutable-globals --enable-reference-types \
     "$out/openagents_web_settings_bg.wasm" -o "$out/openagents_web_settings_bg.wasm"
+# The account's pages (#12329, #12330, #12331): each its own module, which
+# start.js loads at `?page=NAME`.
+for page in traces; do
+  cargo build --locked --manifest-path "$web/Cargo.toml" -p "openagents-web-$page" \
+    --release --target "$target"
+  wasm-bindgen --target web --no-typescript --out-dir "$out" \
+    "$target_dir/$target/release/openagents_web_$page.wasm"
+  wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
+      --enable-sign-ext --enable-mutable-globals --enable-reference-types \
+      "$out/openagents_web_${page}_bg.wasm" -o "$out/openagents_web_${page}_bg.wasm"
+done
 cp "$web/chat/start.js" "$out/start.js"
 # The faces start.js asks for, by the names in its FONTS list.
 fonts="$(sed -n 's/^  "\([A-Za-z-]*\.ttf\)",$/\1/p' "$web/chat/start.js")"
@@ -121,7 +134,7 @@ compress() {
 # The first-frame painter: the page paints the frame this browser kept
 # from the last visit before the module loads (#12244).
 "$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
-python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings
+python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings openagents_web_traces
 for font in $fonts; do
   compress "$out/fonts/$font"
 done

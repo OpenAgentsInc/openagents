@@ -13,6 +13,8 @@ members = [
     "files",
     "room",
     "dictation",
+    "page-host",
+    "traces",
     "work",
     "settings",
     "demo",

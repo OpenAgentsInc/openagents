@@ -17,6 +17,8 @@ pub mod appearance;
 pub mod earn;
 pub mod providers;
 pub mod shortcuts;
+/// Traces (#12329).
+pub mod traces;
 
 use rust_native::style::{Color, Style, TextWeight};
 use rust_native::{Axis, Element, Node, TextRole};
@@ -326,6 +328,8 @@ pub enum Intent {
     Earn(earn::Action),
     /// Providers (#12283).
     Providers(providers::Action),
+    /// Traces (#12329).
+    Traces(traces::Action),
 }
 
 /// The theme's colors for the forms, which the host reads from its theme
@@ -1045,7 +1049,7 @@ pub(crate) fn node(key: &str, style: Style, element: Element<Intent>) -> Node<In
 }
 
 /// The page's column.
-fn column(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
+pub(crate) fn column(key: &str, children: Vec<Node<Intent>>) -> Node<Intent> {
     node(
         key,
         Style {

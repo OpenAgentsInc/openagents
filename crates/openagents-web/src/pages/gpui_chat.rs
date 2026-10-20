@@ -208,6 +208,35 @@ pub(crate) struct Choice {
 
 /// The view `query` (the request's query string) and the cookie ask for:
 /// the query first, then the cookie; the HTML chat when neither says.
+/// For an account page the GPUI app also draws (#12329, #12330, #12331):
+/// when this browser shows the GPUI chat, the GPUI page at `?page=PATH`
+/// over it; `None` keeps the HTML page, which stays for every other
+/// browser and for `?ui=html`.
+pub(crate) fn page_for(
+    app: &App,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    path: &str,
+) -> Option<Response> {
+    let choice = choice(headers, query);
+    if !choice.serves(app, headers) {
+        return None;
+    }
+    let encoded: String = path
+        .bytes()
+        .map(|b| match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'/' => {
+                char::from(b).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect();
+    let mut response =
+        axum::response::Redirect::to(&format!("{GPUI_CHAT_PATH}?page={encoded}")).into_response();
+    choice.remember(app, &mut response);
+    Some(response)
+}
+
 pub(crate) fn choice(headers: &HeaderMap, query: Option<&str>) -> Choice {
     let asked = query.and_then(|query| {
         query.split('&').find_map(|pair| {

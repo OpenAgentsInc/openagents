@@ -1,0 +1,27 @@
+# The host the GPUI web app's account pages share (#12329, #12330,
+# #12331): a window over the chat that draws one page of the shared Rust
+# Native forms (`openagents_chat_view::settings_forms`), with a Back to
+# chat, a notice line, and a text field when the page asks for one. Each
+# page is its own lazily loaded module (`web/traces`, `web/agents`,
+# `web/projects`) built over this library.
+[package]
+name = "openagents-web-page-host"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[dependencies]
+gpui.workspace = true
+anyhow.workspace = true
+openagents-web-chat-view.workspace = true
+openagents-chat-view.workspace = true
+openagents-web-client.workspace = true
+rust-native = { path = "../../../../crates/rust-native", default-features = false }
+serde_json = "1"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+openagents-gpui-web = { workspace = true, features = ["browser-text"] }
+wasm-bindgen.workspace = true
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["History", "Location", "Window"] }
