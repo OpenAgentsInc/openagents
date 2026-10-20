@@ -50,9 +50,9 @@
 //! handlers stay transport-agnostic. This includes the workspace file surface,
 //! whose checkout always lives on the routed target device.
 
+mod dictation;
 mod land;
 mod moves;
-mod dictation;
 mod pylon;
 mod run_commands;
 mod voice_chat;
