@@ -162,11 +162,6 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
         if let Some(template) = &lane.chat_template {
             command.arg("--chat-template-file").arg(template);
         }
-        if !lane.stop.is_empty() {
-            command
-                .arg("--reverse-prompt")
-                .arg(csv_arguments(&lane.stop));
-        }
         if !lane.metadata_overrides.is_empty() {
             command
                 .arg("--override-kv")
@@ -247,6 +242,18 @@ pub trait Engines: Send + Sync {
     ///
     /// When its client cannot be built.
     fn text(&self, url: &str, model: &str) -> Result<Arc<dyn Engine>, String>;
+    /// Text completions with per-model answer boundaries.
+    ///
+    /// # Errors
+    /// When the HTTP client cannot be built.
+    fn text_with_stops(
+        &self,
+        url: &str,
+        model: &str,
+        _stop: &[String],
+    ) -> Result<Arc<dyn Engine>, String> {
+        self.text(url, model)
+    }
     /// Whether `lane`'s engine answers yet (its warm-up is done).
     fn ready<'a>(&'a self, lane: &'a LaneSpec) -> Pending<'a, bool>;
     /// Self-check the decision lane unless this model already passed one;
@@ -322,6 +329,17 @@ impl Engines for PsionicEngines {
 
     fn text(&self, url: &str, model: &str) -> Result<Arc<dyn Engine>, String> {
         Ok(Arc::new(Psionic::new(url, model)?))
+    }
+
+    fn text_with_stops(
+        &self,
+        url: &str,
+        model: &str,
+        stop: &[String],
+    ) -> Result<Arc<dyn Engine>, String> {
+        Ok(Arc::new(
+            Psionic::new(url, model)?.with_stops(stop.to_vec()),
+        ))
     }
 
     fn ready<'a>(&'a self, lane: &'a LaneSpec) -> Pending<'a, bool> {
@@ -878,7 +896,13 @@ fn build(
     let text = settings
         .text
         .as_ref()
-        .map(|lane| engines.text(&format!("http://127.0.0.1:{}", lane.port), &lane.model))
+        .map(|lane| {
+            engines.text_with_stops(
+                &format!("http://127.0.0.1:{}", lane.port),
+                &lane.model,
+                &lane.stop,
+            )
+        })
         .transpose()?;
     if let Some(lane) = &settings.decide {
         let decider =

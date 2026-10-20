@@ -78,6 +78,7 @@ cpu|cuda|metal` selects its device independently of Clef's decision device.
 persist across restarts. The default is Psionic's general OpenAI server.
 For llama.cpp, `--text-chat-template FILE` overrides the GGUF's template,
 and repeatable `--text-stop TEXT` stops before another transcript turn.
+Stops are sent as an HTTP array; direct `serve` accepts repeatable `--stop`.
 Use `off` to clear a saved choice; selecting a different model or engine
 also clears saved template, stop, and metadata overrides.
 `--text-override-kv KEY=TYPE:VALUE` supplies repeatable llama.cpp metadata

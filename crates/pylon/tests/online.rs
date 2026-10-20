@@ -726,10 +726,6 @@ fn chat_template_override_persists_and_clears_when_switching_models() {
     );
     assert!(
         args.windows(2)
-            .any(|pair| pair == ["--reverse-prompt", "<extra_id_1>,\"next,turn\""])
-    );
-    assert!(
-        args.windows(2)
             .any(|pair| pair == ["--override-kv", "tokenizer.ggml.add_bos_token=bool:false"])
     );
     let next = dir.path().join("other.gguf");

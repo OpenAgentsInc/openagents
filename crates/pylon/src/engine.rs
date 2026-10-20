@@ -51,6 +51,7 @@ pub struct Psionic {
     /// The name the server knows the model by, read once from its
     /// `/v1/models` (see [`served_name`]).
     served: tokio::sync::OnceCell<String>,
+    stop: Vec<String>,
 }
 
 /// The id in a `/v1/models` body to request `model` by. Psionic lists a
@@ -92,7 +93,23 @@ impl Psionic {
             model: model.to_string(),
             client,
             served: tokio::sync::OnceCell::new(),
+            stop: Vec::new(),
         })
+    }
+
+    /// Stop before any configured transcript boundary.
+    #[must_use]
+    pub fn with_stops(mut self, stop: Vec<String>) -> Self {
+        self.stop = stop;
+        self
+    }
+
+    fn request_body(&self, model: &str, messages: Vec<Value>, max_tokens: u32) -> Value {
+        let mut body = json!({"model": model, "messages": messages, "max_tokens": max_tokens});
+        if !self.stop.is_empty() {
+            body["stop"] = json!(self.stop);
+        }
+        body
     }
 
     /// The name to request the model by: [`served_name`] over the
@@ -148,11 +165,7 @@ impl Engine for Psionic {
             let response = self
                 .client
                 .post(format!("{}/v1/chat/completions", self.base))
-                .json(&json!({
-                    "model": request,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                }))
+                .json(&self.request_body(&request, messages, max_tokens))
                 .send()
                 .await
                 .map_err(|e| format!("model server unreachable: {e}"))?;
@@ -219,6 +232,64 @@ impl Engine for Echo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn completion_sends_all_stops_as_an_array() {
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            for completion in [false, true] {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut reader = BufReader::new(stream);
+                let mut line = String::new();
+                reader.read_line(&mut line).await.unwrap();
+                assert!(line.starts_with(if completion {
+                    "POST /v1/chat/completions "
+                } else {
+                    "GET /v1/models "
+                }));
+                let mut length = 0;
+                loop {
+                    line.clear();
+                    reader.read_line(&mut line).await.unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse::<usize>().unwrap();
+                    }
+                }
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).await.unwrap();
+                let response = if completion {
+                    let request: Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!(request["stop"], json!(["<extra_id_1>", "next,turn"]));
+                    assert_eq!(request["model"], "actual.gguf");
+                    assert_eq!(request["max_tokens"], 32);
+                    json!({"choices":[{"message":{"content":"READY"}}],"usage":{"prompt_tokens":12,"completion_tokens":1}})
+                } else {
+                    json!({"data":[{"id":"actual.gguf"}]})
+                }.to_string();
+                reader.get_mut().write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).as_bytes()).await.unwrap();
+            }
+        });
+        let engine = Psionic::new(&address, "advertised")
+            .unwrap()
+            .with_stops(vec!["<extra_id_1>".into(), "next,turn".into()]);
+        let answer = engine
+            .generate(
+                &[Turn {
+                    role: "user".into(),
+                    content: "Reply READY".into(),
+                }],
+                32,
+            )
+            .await
+            .unwrap();
+        assert_eq!(answer.text, "READY");
+        server.await.unwrap();
+    }
 
     #[test]
     fn the_served_name_matches_the_beacon_name_by_file_name() {

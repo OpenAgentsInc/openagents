@@ -321,7 +321,7 @@ def qualify(row, args, output):
             if hashlib.sha256(template.read_bytes()).hexdigest() != row["chat_template_sha256"]:
                 raise ValueError("The chat template does not match its pinned SHA-256")
             command += ["--chat-template-file", str(template)]
-        for flag, key in [("--reverse-prompt", "stop_sequences"), ("--override-kv", "metadata_overrides")]:
+        for flag, key in [("--override-kv", "metadata_overrides")]:
             if row.get(key):
                 encoded = io.StringIO()
                 csv.writer(encoded, lineterminator="").writerow(row[key])
@@ -355,9 +355,11 @@ def qualify(row, args, output):
         result["inventory"] = inventory
         model = inventory["data"][0]["id"]
         print(json.dumps({"event": "model-ready", "model": row["id"], "startup_ms": result["startup_ms"]}), flush=True)
-        result["direct_smoke"] = read_json(api+"/v1/chat/completions", {"model":model, "messages":[{"role":"user","content":"Reply exactly READY."}], "max_tokens":min(max_tokens, 8)}, timeout=120)
+        result["direct_smoke"] = read_json(api+"/v1/chat/completions", {"model":model, "messages":[{"role":"user","content":"Reply exactly READY."}], "max_tokens":min(max_tokens, 8), "stop":row.get("stop_sequences", [])}, timeout=120)
         identity = cli(args.pylon_bin, home, ["whoami"])["response"]["data"]
         provider_command = [str(args.pylon_bin), "serve", "--engine", api, "--model", model, "--pylon", "qualification-"+re.sub(r"[^a-z0-9_-]", "-", row["id"]), "--label", row["id"]+" qualification", "--pool", "qualification", "--allow", identity["buyer"], "--rate", "600", "--slots", "2", "--max-tokens", str(max_tokens), "--dedicated", "--relay", args.relay, "--json"]
+        for stop in row.get("stop_sequences", []):
+            provider_command += ["--stop", stop]
         provider = subprocess.Popen(provider_command, env=dict(os.environ, OPENAGENTS_PYLON_HOME=str(home)), stdout=provider_log, stderr=subprocess.STDOUT, start_new_session=True)
         time.sleep(2)
         for attempt in range(3):
@@ -371,7 +373,7 @@ def qualify(row, args, output):
         if not warm["response"].get("ok"):
             raise RuntimeError("A warm-up request through Pylon failed")
         start = time.perf_counter()
-        direct = read_json(api+"/v1/chat/completions", {"model": model, "messages": [{"role": "user", "content": "Explain how a hash table works in clear English."}], "max_tokens": row.get("throughput_tokens", 128)}, timeout=120)
+        direct = read_json(api+"/v1/chat/completions", {"model": model, "messages": [{"role": "user", "content": "Explain how a hash table works in clear English."}], "max_tokens": row.get("throughput_tokens", 128), "stop":row.get("stop_sequences", [])}, timeout=120)
         direct_ms = (time.perf_counter()-start)*1000
         result["direct_generation"] = {"wall_ms": round(direct_ms, 3), "response": direct, "output_tokens_per_second_including_prefill": direct.get("usage",{}).get("completion_tokens",0)/(direct_ms/1000)}
         result["memory_after_generation"] = engine_memory(engine.pid)

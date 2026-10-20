@@ -207,6 +207,7 @@ Commands:
       --allow-any           Admit any key (rate limits still apply).
       --rate N              Jobs per buyer per minute (default 10).
       --max-tokens N        Output bound per job (default 512).
+      --stop TEXT           Stop the answer at TEXT (repeatable).
       --vram-gb N           GPU memory for the beacon's class (default 16).
       --pool SLUG           Pool to ask to join (default everglade).
       --dedicated           Ignore this computer's lease table (a box that
@@ -583,6 +584,7 @@ async fn serve(
     if args.flag("--attested") {
         return serve_attested(json_out, args, relay).await;
     }
+    let stops = args.values("--stop")?;
     let decide_url = args.value("--decide")?;
     let decide_model = args.value("--decide-model")?;
     let decide_model_file = args.value("--decide-model-file")?;
@@ -641,7 +643,7 @@ async fn serve(
         return Err(format!("unexpected argument `{extra}`"));
     }
     config.owner = load_owner(&home())?;
-    let engine = Arc::new(Psionic::new(&engine_url, &model)?);
+    let engine = Arc::new(Psionic::new(&engine_url, &model)?.with_stops(stops));
     let identity = key("provider")?;
     let provider = if let Some(url) = &decide_url {
         if price_msat > 0 {
