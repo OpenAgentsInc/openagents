@@ -2761,6 +2761,7 @@ impl Panel {
         for button in [&mut cancel, &mut save] {
             button.style.text_size = Some(13);
             button.style.line_height = Some(21);
+            button.style.min_height = Some(33);
             button.style.button_padding = Some([12, 6]);
             button.style.radius = Some(8);
             button.style.intrinsic_width = Some(true);

@@ -3609,7 +3609,7 @@ mod command_fixtures {
             let mut fonts = Fonts::new();
             let mut retained = paint::Retained::default();
             app.viewport(760.0, 540.0, scale);
-            for step in 0..24 {
+            for step in 0..28 {
                 match step {
                     1 | 14 => key(&mut app, now, "k", true, false),
                     3 | 5 | 15 => {
@@ -3634,6 +3634,17 @@ mod command_fixtures {
                         app.text_input(TextInput::Commit("ignored profile text"), now);
                     }
                     23 => key(&mut app, now, "Escape", false, false),
+                    24 => app.activate(
+                        Intent::Chat {
+                            action: ChatAction::Rename,
+                        },
+                        now,
+                    ),
+                    25 => {
+                        key(&mut app, now, "a", true, false);
+                        app.text_input(TextInput::Commit("A renamed conversation"), now);
+                    }
+                    27 => key(&mut app, now, "Escape", false, false),
                     _ => {}
                 }
                 let interaction = layout::Interaction {
