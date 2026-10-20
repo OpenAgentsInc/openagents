@@ -196,6 +196,11 @@ pub(crate) async fn delete(
     if let Err(refusal) = accounts.delete_account(&account) {
         return accounts_refusal(refusal);
     }
+    if let Some(book) = &state.public_receipts {
+        if book.lock().await.forget_account(&account).is_err() {
+            return unavailable();
+        }
+    }
     record(&state, &principal, "account-delete", None, None);
     answered(
         StatusCode::OK,

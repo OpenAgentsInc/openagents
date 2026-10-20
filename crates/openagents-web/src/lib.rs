@@ -91,6 +91,7 @@ pub mod features;
 mod issue_claims;
 mod issue_claims_openapi;
 mod owner_notifications;
+mod profile_earnings;
 mod profiles;
 #[doc(hidden)]
 pub mod promises;
@@ -179,6 +180,7 @@ pub mod vault;
 mod verse_key;
 mod visitor_api;
 mod wallet_browser;
+mod wallet_restore;
 mod web_sign_in;
 mod wellknown;
 #[doc(hidden)]
@@ -820,7 +822,9 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .merge(published_agents::routes())
         .merge(profiles::routes())
         .merge(wallet_browser::routes())
+        .merge(wallet_restore::routes())
         .merge(lightning_address::routes())
+        .merge(profile_earnings::routes())
         .merge(verse_key::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())

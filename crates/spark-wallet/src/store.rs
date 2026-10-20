@@ -36,7 +36,7 @@ const VERSION: &str = "openagents-spark.store.v1";
 
 /// Breez's records for one wallet, kept in one JSON file.
 pub struct FileStorage {
-    path: PathBuf,
+    path: Option<PathBuf>,
     state: Mutex<State>,
 }
 
@@ -82,14 +82,14 @@ impl FileStorage {
             Err(error) => return Err(format!("cannot read {}: {error}", path.display())),
         };
         Ok(Self {
-            path: path.to_path_buf(),
+            path: Some(path.to_path_buf()),
             state: Mutex::new(state),
         })
     }
 
     /// Where the store lives.
     pub fn path(&self) -> &Path {
-        &self.path
+        self.path.as_deref().unwrap_or_else(|| Path::new(""))
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -107,12 +107,14 @@ impl FileStorage {
         let mut state = self.lock();
         let before = state.clone();
         let result = change(&mut state)?;
-        if let Err(error) = write_private(&self.path, &state) {
-            *state = before;
-            return Err(StorageError::Implementation(format!(
-                "cannot write {}: {error}",
-                self.path.display()
-            )));
+        if let Some(path) = &self.path {
+            if let Err(error) = write_private(path, &state) {
+                *state = before;
+                return Err(StorageError::Implementation(format!(
+                    "cannot write {}: {error}",
+                    path.display()
+                )));
+            }
         }
         Ok(result)
     }
@@ -670,7 +672,8 @@ impl State {
     }
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(target_arch="wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl Storage for FileStorage {
     async fn delete_cached_item(&self, key: String) -> Result<(), StorageError> {
         self.change(|state| {
@@ -1158,5 +1161,38 @@ impl Storage for FileStorage {
             state.upsert_state(&record);
             Ok(())
         })
+    }
+}
+
+/// A browser session keeps SDK records only in memory; closing it stores no seed or history.
+pub fn memory_backend() -> Arc<dyn StorageBackend> {
+    breez_sdk_spark::custom_storage(Arc::new(FileStorage {
+        path: None,
+        state: Mutex::new(State::default()),
+    }))
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+    #[test]
+    fn memory_storage_has_no_file_and_does_not_survive_a_new_session() {
+        let storage = FileStorage {
+            path: None,
+            state: Mutex::new(State::default()),
+        };
+        storage
+            .change(|state| {
+                state.next_row = 42;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(storage.lock().next_row, 42);
+        assert!(storage.path.is_none());
+        let fresh = FileStorage {
+            path: None,
+            state: Mutex::new(State::default()),
+        };
+        assert_ne!(fresh.lock().next_row, 42);
     }
 }

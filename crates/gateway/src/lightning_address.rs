@@ -95,6 +95,7 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/.well-known/lnurlp/{name}", get(lookup)),
         ("/lnurlp/{name}", get(lookup)),
         ("/lnurlp/{name}/invoice", get(invoice)),
+        ("/lnurlp/{name}/tip", get(tip_invoice)),
         ("/lnurlp/verify/{hash}", get(verify)),
         ("/lnurlpay/{key}", post(register)),
         ("/lnurlpay/{key}/recover", post(recover)),
@@ -497,6 +498,23 @@ async fn invoice(
     headers: HeaderMap,
     uri: Uri,
 ) -> Response {
+    invoice_inner(state, name, headers, uri, false).await
+}
+async fn tip_invoice(
+    State(state): State<Arc<ServeState>>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> Response {
+    invoice_inner(state, name, headers, uri, true).await
+}
+async fn invoice_inner(
+    state: Arc<ServeState>,
+    name: String,
+    headers: HeaderMap,
+    uri: Uri,
+    tip: bool,
+) -> Response {
     let config = match configured() {
         Ok(c) => c,
         Err(e) => return e,
@@ -512,10 +530,15 @@ async fn invoice(
     if !admit(&headers, &name) {
         return failure(StatusCode::TOO_MANY_REQUESTS, "Try again in a minute.");
     }
-    let pairs = match query(&uri) {
+    let mut pairs = match query(&uri) {
         Ok(p) => p,
         Err(e) => return e,
     };
+    if tip && let Some(index) = pairs.iter().position(|(key, _)| key == "recipient") {
+        if pairs.remove(index).1 != recipient.nostr_pubkey {
+            return problem(Problem::NotFound);
+        }
+    }
     let terms = match terms(&config, &name).await {
         Ok(t) => t,
         Err(e) => return e,
@@ -559,13 +582,34 @@ async fn invoice(
         .and_then(|invoice| nostr::x402::decode_invoice(invoice).ok());
     let now = crate::accounts::unix_now();
     let expected: [u8; 32] = Sha256::digest(description.as_bytes()).into();
-    if !parsed.is_some_and(|i| {
+    let Some(parsed) = parsed.filter(|i| {
         i.currency() == "bc"
             && i.amount_msat() == amount
             && i.description_hash() == expected
             && i.created_at().saturating_add(i.expiry_seconds()) > now
-    }) {
+    }) else {
         return unavailable();
+    };
+    if tip || pairs.iter().any(|(key, _)| key == "nostr") {
+        let Some(book) = &state.public_receipts else {
+            return unavailable();
+        };
+        let invoice = pay_ledger::public_earnings::Invoice {
+            payment_hash: hex::encode(parsed.payment_hash()),
+            account: recipient.account.clone(),
+            party: recipient.nostr_pubkey.clone(),
+            wallet: recipient.spark_pubkey.clone(),
+            name: name.clone(),
+            revision: recipient.revision,
+            amount_msat: amount,
+            issued_at: parsed.created_at(),
+            expires_at: parsed.created_at().saturating_add(parsed.expiry_seconds()),
+            tip: true,
+            paid_at: None,
+        };
+        if book.lock().await.remember(&invoice).is_err() {
+            return unavailable();
+        }
     }
     // Recheck the revision after the provider call, so a concurrent disable wins.
     if !enabled(&accounts, &name).is_ok_and(|current| {
@@ -870,16 +914,12 @@ async fn management(
 async fn available(Path(_name): Path<String>) -> Response {
     response(StatusCode::OK, json!({"available":false}))
 }
-async fn verify(State(state): State<Arc<ServeState>>, Path(hash): Path<String>) -> Response {
-    let _ = state;
+pub(crate) async fn verification(hash: &str) -> Result<Value, Response> {
     if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return problem(Problem::NotFound);
+        return Err(problem(Problem::NotFound));
     }
-    let config = match configured() {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    match upstream(
+    let config = configured()?;
+    upstream(
         &config,
         Method::GET,
         &format!("/lnurlp/verify/{hash}"),
@@ -888,9 +928,11 @@ async fn verify(State(state): State<Arc<ServeState>>, Path(hash): Path<String>) 
         None,
     )
     .await
-    {
-        Ok(v) => response(StatusCode::OK, v),
-        Err(e) => e,
+}
+async fn verify(State(_state): State<Arc<ServeState>>, Path(hash): Path<String>) -> Response {
+    match verification(&hash).await {
+        Ok(value) => response(StatusCode::OK, value),
+        Err(error) => error,
     }
 }
 

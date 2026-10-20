@@ -459,10 +459,13 @@ pub async fn renew_due(
 
 /// The profile form's intent: the node it came from.
 pub type Intent = String;
+mod earnings;
 
 #[derive(Default)]
 struct FormState {
     revision: u64,
+    earnings: Vec<openagents::profile_earnings::Earning>,
+    earnings_generation: Option<u64>,
     edit: ProfileEdit,
     shown: Option<YourProfile>,
     notice: Option<String>,
@@ -628,6 +631,11 @@ impl ProfileForm {
                 },
             });
         }
+        earnings::append(
+            &mut children,
+            &state,
+            self.controller.lease().map(|l| l.generation),
+        );
         View::new_v3(
             &self.instance,
             state.revision,
@@ -692,11 +700,23 @@ impl ProfileForm {
                 .ok()
                 .flatten()
                 .filter(|key| key.auth.is_none());
-            Ok::<_, String>((shown, verse))
+            let earnings = lease
+                .client()
+                .profile_earnings(lease.session(), &identity.pubkey_hex())
+                .await
+                .ok()
+                .map(|r| r.rows)
+                .unwrap_or_default();
+            if !lease.is_current() {
+                return Err(copy::NOT_READY.to_owned());
+            }
+            Ok::<_, String>((shown, verse, earnings, lease.generation))
         }
         .await;
         let mut state = self.state.lock().unwrap();
-        let result = result.map(|(shown, verse)| {
+        let result = result.map(|(shown, verse, earnings, generation)| {
+            state.earnings = earnings;
+            state.earnings_generation = Some(generation);
             state.verse = verse;
             shown
         });
@@ -730,6 +750,9 @@ impl ProfileForm {
             .activate(event)
             .map_err(|_| "This view changed. Try that again.".to_owned())?
             .clone();
+        if let Some(source) = intent.strip_prefix("earning:") {
+            return self.set_earning(source).await;
+        }
         if intent == "verse-link" {
             return self.link_verse().await;
         }

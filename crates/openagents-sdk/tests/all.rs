@@ -43,3 +43,5 @@ fn every_test_file_is_built() {
         );
     }
 }
+
+mod profile_earnings;

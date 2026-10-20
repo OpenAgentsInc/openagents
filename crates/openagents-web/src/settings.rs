@@ -516,6 +516,13 @@ pub fn settings_content(
                     div class="oa-settings-control" { (action_link("Manage", crate::profiles::SETTINGS_PAGE)) }
                 }
             }
+            @if crate::wallet_restore::available() {
+                section class="oa-settings-group" aria-labelledby="settings-wallet" {
+                    h2 #settings-wallet { "Wallet" }
+                    p { "Browser payments use your phone by default." }
+                    (action_link("Restore a wallet in this browser", "/wallet/restore"))
+                }
+            }
             section class="oa-settings-group" aria-labelledby="settings-appearance" {
                 h2 #settings-appearance { "Appearance" }
                 div class="oa-settings-row" {

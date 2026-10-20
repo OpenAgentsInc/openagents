@@ -485,6 +485,16 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12307: deploy the self-hosted LNURL backend, gateway, website, and native
+  wallet/profile integration following `docs/payments/lightning-address-operations.md`.
+  With the dedicated test account and a separately funded test wallet, receive
+  an explicit profile tip, verify one Pylon/plugin receipt, publish and hide it,
+  and confirm that a payout deposit is not counted again as a tip. Check address
+  disable/rename, wallet transfer, and optional NIP-57 delivery. Verify an opt-in
+  browser restore, receive, quoted send, refresh, and forget/reload. Infrastructure
+  activation and funded wallet steps are in `NEEDS_OWNER.md`; never use the owner's
+  words or leave test accounts or wallet data on the owner's devices.
+
 - #12339: On macOS, run the stock transcript and sidebar PNG captures; Linux has no headless PNG renderer in the pinned GPUI. The dark/light transcript and sidebar native drawing data, including glyph pixels and transforms, matched byte-for-byte before and after the extraction. After the web deploy, check the shared input and sidebar at `/gpui` and `/demo/gpui` with the dedicated test account.
 
 - #12358/#12360/#12364: DS0 and the [serial Pylon llama.cpp GPU flow](../psionic/deepseek-support-plan.md#serial-pylon-gpu-qualification-12360) pass 27 checks; the [managed recovery flow](../psionic/deepseek-support-plan.md#automatic-serial-pylon-recovery-12364) passes 13 more, including automatic crash/frozen-worker replacement and subsequent answers. Clef/network Pylon stayed unchanged. Native Psionic's real HTTP-disconnect check and hard recovery, default `pylon up` serial selection, and cloud deployment remain separate work in the [personal serving plan](../psionic/deepseek-support-plan.md#personal-serving-first-one-generation-at-a-time).

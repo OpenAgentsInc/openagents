@@ -3882,6 +3882,50 @@
               "calls": []
             },
             {
+              "name": "profile_earnings",
+              "doc": "Read private Pylon, plugin, and confirmed tip credits for your profile.",
+              "declaration": "pub async fn profile_earnings(\n    &self,\n    session: &Session,\n    party: &str,\n) -> Result<ProfileEarnings, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/device/earnings/*"
+                }
+              ]
+            },
+            {
+              "name": "publish_earning",
+              "doc": "Choose a verified credit to show publicly; the service resolves its exact amount.",
+              "declaration": "pub async fn publish_earning(\n    &self,\n    session: &Session,\n    party: &str,\n    source: &EarningsSource,\n) -> Result<PublishedReceipt, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/device/earnings/*/receipts"
+                }
+              ]
+            },
+            {
+              "name": "hide_earning",
+              "doc": "Hide a selected credit and its earlier receipt links from your public profile.",
+              "declaration": "pub async fn hide_earning(\n    &self,\n    session: &Session,\n    party: &str,\n    source: &str,\n) -> Result<HiddenReceipt, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/device/earnings/*/receipts/*"
+                }
+              ]
+            },
+            {
+              "name": "published_earnings",
+              "doc": "Read a profile's selected public receipts without sending account credentials.",
+              "declaration": "pub async fn published_earnings(&self, party: &str) -> Result<PublishedEarnings, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/earnings/public/*"
+                }
+              ]
+            },
+            {
               "name": "account_name",
               "doc": "The signed-in account's `name@openagents.com` name.",
               "declaration": "pub async fn account_name(&self, session: &Session) -> Result<AccountName, Error>",
@@ -4558,6 +4602,49 @@
           "doc": "Return the chat ID from an OpenAgents chat link. Refuse other destinations.",
           "declaration": "pub fn chat_from_deep_link(link: &str) -> Option<&str>",
           "calls": []
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "profile_earnings",
+      "doc": "Private earnings previews and explicit publication of individual receipts.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Earning",
+          "doc": "A private preview of one verified credit and its publication choice.",
+          "declaration": "pub struct Earning {\n    pub source: EarningsSource,\n    pub receipt: Receipt,\n    pub published: bool,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "EarningsSource",
+          "doc": "The private credit identity selected for publication; never include it in public copy.",
+          "declaration": "pub enum EarningsSource {\n    Ledger { sequence: i64, role: String },\n    Tip { payment_hash: String },\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "HiddenReceipt",
+          "doc": "Confirmation that a credit is hidden from the public profile.",
+          "declaration": "pub struct HiddenReceipt {\n    pub hidden: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ProfileEarnings",
+          "doc": "Private earnings for an account's verified Nostr identity.",
+          "declaration": "pub struct ProfileEarnings {\n    pub rows: Vec<Earning>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "PublishedEarnings",
+          "doc": "Selected public receipts and the service issuers trusted for this response.",
+          "declaration": "pub struct PublishedEarnings {\n    pub events: Vec<Event>,\n    pub issuers: BTreeSet<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "PublishedReceipt",
+          "doc": "One service-signed earnings receipt.",
+          "declaration": "pub struct PublishedReceipt {\n    pub event: Event,\n}"
         }
       ],
       "reexports": []

@@ -1,0 +1,73 @@
+--- a/crates/breez-sdk/lnurl/src/routes.rs
++++ b/crates/breez-sdk/lnurl/src/routes.rs
+@@ -677,8 +677,8 @@
+             None => None,
+         };
+ 
+-        let desc_hash = if let Some(event) = &zap_request {
+-            sha256::Hash::hash(event.as_json().as_bytes())
++        let desc_hash = if let Some(raw) = params.nostr.as_ref().filter(|_| zap_request.is_some()) {
++            sha256::Hash::hash(raw.as_bytes())
+         } else {
+             let metadata = get_metadata(&user.domain, &user);
+             sha256::Hash::hash(metadata.as_bytes())
+@@ -731,12 +731,11 @@
+         })?;
+ 
+         // save to zap event to db
+-        if let Some(event) = zap_request {
++        if zap_request.is_some() {
+             let zap = Zap {
+                 payment_hash: payment_hash.clone(),
+-                // Canonical form, matching the description hash the invoice
+-                // commits to and the receipt's description tag.
+-                zap_request: event.as_json(),
++                // NIP-57 commits to the received JSON string, including its formatting.
++                zap_request: params.nostr.clone().expect("validated zap request"),
+                 zap_event: None,
+                 user_pubkey: user.pubkey.clone(),
+                 invoice_expiry,
+--- a/crates/breez-sdk/lnurl/src/zap.rs
++++ b/crates/breez-sdk/lnurl/src/zap.rs
+@@ -302,9 +302,7 @@
+     let signing_keys = derive_user_nostr_keys(nostr_keys, &zap.user_pubkey)?;
+ 
+     // Build the zap receipt
+-    let zap_event =
+-        nostr::EventBuilder::zap_receipt(bolt11, Some(preimage.to_string()), &zap_request)
+-            .sign_with_keys(&signing_keys)?;
++    let zap_event = raw_zap_receipt(bolt11, preimage, &zap.zap_request, &zap_request, &signing_keys)?;
+ 
+     let relays: Vec<_> = zap_request
+         .tags
+@@ -545,3 +543,30 @@
+         shared_tests::take_pending_zap_receipts_respects_limit(&db).await;
+     }
+ }
++
++// Keep the description exactly as it was hashed when the invoice was issued.
++fn raw_zap_receipt(bolt11: &str, preimage: &str, raw: &str, request: &nostr::Event, keys: &nostr::Keys) -> Result<nostr::Event, anyhow::Error> {
++    let mut receipt=nostr::EventBuilder::zap_receipt(bolt11,Some(preimage.to_owned()),request).build(keys.public_key());
++    receipt.id=None;
++    receipt.tags.retain(|tag| tag.as_slice().first().map(String::as_str)!=Some("description"));
++    receipt.tags.push(nostr::Tag::parse(vec!["description".to_owned(),raw.to_owned()])?);
++    Ok(receipt.sign_with_keys(keys)?)
++}
++
++#[cfg(test)]
++mod raw_zap_tests {
++    use super::*;
++    use nostr::{EventBuilder,JsonUtil,Keys,Kind};
++    #[test]
++    fn raw_zap_receipt_keeps_the_invoice_description_with_its_original_formatting() {
++        let keys=Keys::generate();
++        let request=EventBuilder::new(Kind::ZapRequest,"").sign_with_keys(&keys).unwrap();
++        let raw=serde_json::to_string_pretty(&request).unwrap();
++        assert_ne!(raw,request.as_json());
++        let receipt=raw_zap_receipt("lnbc1","fixture",&raw,&request,&keys).unwrap();
++        receipt.verify().unwrap();
++        let descriptions:Vec<_>=receipt.tags.iter().filter(|tag|tag.as_slice().first().map(String::as_str)==Some("description")).collect();
++        assert_eq!(descriptions.len(),1);
++        assert_eq!(descriptions[0].as_slice()[1],raw);
++    }
++}

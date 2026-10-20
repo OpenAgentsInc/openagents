@@ -2152,6 +2152,7 @@ dependencies = [
  "rand_core 0.6.4",
  "serde",
  "unicode-normalization",
+ "zeroize",
 ]
 
 [[package]]
@@ -13281,7 +13282,9 @@ dependencies = [
  "bip39",
  "bitcoin-amount",
  "breez-sdk-spark",
+ "getrandom 0.2.17",
  "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "nostr",
  "openagents-workspace-hack",
  "rustls",
@@ -13394,6 +13397,7 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "bitcoin",
+ "bitcoin-amount",
  "boat",
  "brotli",
  "cad",
@@ -18162,6 +18166,18 @@ dependencies = [
  "tonic-types",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "spark-wallet-web"
+version = "1.0.0"
+dependencies = [
+ "bitcoin-amount",
+ "openagents-spark",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "zeroize",
 ]
 
 [[package]]

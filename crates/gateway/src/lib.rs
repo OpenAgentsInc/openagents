@@ -83,6 +83,7 @@ pub mod open_quota;
 pub mod play_integrity;
 #[allow(clippy::result_large_err)]
 pub mod playground;
+mod public_earnings;
 mod referrals;
 pub mod relay_worker;
 pub mod serve;

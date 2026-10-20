@@ -147,6 +147,11 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && test -s /build/cloud/coder_browser_web.js \
     && test -s /build/cloud/coder_browser_web_bg.wasm
 
+# The opt-in browser wallet: Rust SDK, Rust UI, and generated Wasm loader only.
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    --mount=type=cache,target=/var/cache/openagents-wallet-cargo,sharing=locked \
+    CARGO_TARGET_DIR=/var/cache/openagents-wallet-cargo oa-kache run scripts/build-spark-wallet-web.sh /build/wallet
+
 # Grow Little Bunny, which /games/grow-little-bunny serves: the glue, the
 # module, the start script, and gzip copies of each.
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-bunny-web.sh /build/bunny \
@@ -329,6 +334,8 @@ COPY --from=everglade /build/everglade /srv/everglade
 COPY --from=everglade /build/components /srv/components
 COPY --from=everglade /build/cloud /srv/cloud
 COPY --from=everglade /build/chat /srv/chat
+COPY --from=everglade /build/wallet /srv/wallet
+ENV OPENAGENTS_WALLET_WEB=/srv/wallet
 COPY --from=everglade /build/bunny /srv/bunny
 COPY --from=everglade /build/icecream /srv/icecream
 COPY --from=everglade /build/snap /srv/snap

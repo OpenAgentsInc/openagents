@@ -13,6 +13,14 @@ restore, production service activation, or DNS change was performed during
 source development. Enable Nostr zaps only after its service signing key and
 receipt delivery have been checked.
 
+For profile earnings, configure the qualified money gateway through
+`OPENAGENTS_EARNINGS_SERVICE` if it differs from the account service. Share the
+account Postgres database and back up its receipt signing key. Check a funded
+tip and one selected Pylon/plugin credit with the dedicated test account.
+Verify the opt-in `/wallet/restore` page with a separately funded test wallet:
+receive a small invoice, review and send one payment, reload/forget, and restore
+again. Do not use the owner's recovery words for this check.
+
 ## WorkOS sign-in: the steps only you can take (#12320 to #12323) (2026-10-20)
 
 WorkOS sign-in is built and switched off in production. The switch is
@@ -3195,13 +3203,6 @@ visitors only with `OPENAGENTS_WEB_FRONT_DOOR=on` on the `web` container. It
 is off in production. Open `/lander10` and `/home` on staging; if `/lander10`
 is the front door you want, say so and the deploy lane turns the flag on (the
 older landers then redirect to `/`). Until then `/` doesn't change.
-
-## Decide how name@openagents.com Lightning addresses are hosted (#12307)
-
-Decision 3 in `docs/audits/2026-10-17-spark-wallet.md`: Breez-hosted
-`name@openagents.com` through a CNAME (fast; Breez's server issues our users'
-invoices), or our own LNURL server (more work; we hold that trust). The
-Lightning address part of #12307 waits on this.
 
 ## Try hand input on /verse with a real camera (#12309)
 

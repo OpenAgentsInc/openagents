@@ -1,6 +1,6 @@
 //! The browser's wallet, phone-approved and spend-limited (#12258).
 //!
-//! The browser holds no wallet and no key. It asks; the person's phone,
+//! The default browser flow holds no wallet and no key. It asks; the person's phone,
 //! which holds the Spark wallet from their 12 words, decides and pays. This
 //! is the agent spend protocol (`docs/breez/spend-protocol.md`) with the
 //! website as the asking side: the same `openagents.spend-grant.v1`,

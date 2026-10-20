@@ -25,6 +25,7 @@ pub mod control;
 pub mod coordination;
 pub mod decision;
 pub mod domain;
+pub mod earnings;
 pub mod engram;
 pub mod environment;
 pub mod eval_ext;

@@ -302,26 +302,47 @@ pub(super) async fn event_page(
     }
     let ours: Vec<String> = app.config.profile_relays.iter().take(3).cloned().collect();
     let (found, _) = read_all(&ours, &json!({"ids": [id]})).await;
-    let Some(event) = found.into_iter().find(|e| e.id == id) else {
+    let (mut event, from_book) = if let Some(event) = found.into_iter().find(|event| event.id == id)
+    {
+        (event, false)
+    } else if let Some(event) = crate::profile_earnings::event(&app, &id).await {
+        (event, true)
+    } else {
         return missing();
     };
+    // A relay copy cannot restore visibility after the owner hides a service receipt.
+    if !from_book && nostr::earnings::read(&event).is_ok() {
+        let Some(selected) = crate::profile_earnings::event(&app, &id).await else {
+            return missing();
+        };
+        event = selected;
+    }
     let pretty = serde_json::to_string_pretty(&event).unwrap_or_default();
-    let content = html! {
-        section.oa-card aria-labelledby="event-title" {
-            (MarkdownRoot::new(html! {
-                h1 id="event-title" { "Signed event" }
-                p {
-                    "Kind " (event.kind) ", signed by "
-                    a href=(super::href(&event.pubkey, None)) { (super::short_npub(&event.pubkey)) }
-                    ". Its signature checks out."
-                }
-                pre { code { (pretty) } }
-            }))
+    let content = if let Some(receipt) = crate::profile_earnings::receipt_card(&event) {
+        receipt
+    } else {
+        html! {
+            section.oa-card aria-labelledby="event-title" {
+                (MarkdownRoot::new(html! {
+                    h1 id="event-title" { "Signed event" }
+                    p {
+                        "Kind " (event.kind) ", signed by "
+                        a href=(super::href(&event.pubkey, None)) { (super::short_npub(&event.pubkey)) }
+                        ". Its signature checks out."
+                    }
+                    pre { code { (pretty) } }
+                }))
+            }
         }
     };
-    UiPage::new("Signed event")
+    let mut response = UiPage::new("Signed event")
         .path(format!("/event/{id}"))
         .scriptless()
         .content(PageColumn::new(content))
-        .respond(&headers)
+        .respond(&headers);
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        "no-store, private".parse().unwrap(),
+    );
+    response
 }

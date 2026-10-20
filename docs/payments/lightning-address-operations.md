@@ -115,3 +115,28 @@ To publish the address on your profile, edit **Lightning address** under
 fields written by other clients and displays a **Send a tip** link. Disabling an
 address stops new invoices; remove it from the profile separately if you no
 longer want to display it.
+
+## Profile earnings
+
+Migration 5 adds the shared `money.named_invoices`, `published_earnings`,
+`published_earning_versions`, and `receipt_service_key` tables. Back up the
+receipt signing key with this database. It signs service claims and cannot
+spend from customer wallets. Restrict database access to the gateway.
+
+When the qualified Pylon/plugin pay ledger runs on a separate native gateway,
+set `OPENAGENTS_EARNINGS_SERVICE` on the website to that gateway's root origin.
+Give it the same account Postgres attachment and Lightning backend as the
+account gateway. Without the qualified ledger, only confirmed explicit tips
+appear; never substitute a wallet balance for earnings.
+
+With the dedicated test account, publish and hide one receipt in the public
+profile form. Check the public page and old receipt link after hiding, account
+key revocation, and account deletion. Verify a funded explicit tip once, and
+verify a Pylon payout to that same address does not appear again as a tip.
+
+The pinned backend build applies `deploy/lightning-address/nip57-raw-request.patch`
+to its public Rust source, then removes the patch from the scratch checkout.
+It preserves the received zap JSON string in both the invoice description hash
+and receipt description; reserializing a signed event changes that hash even
+when its Nostr signature remains valid. This is a local public-source patch,
+not a change to customer signatures or the payment validation rules.

@@ -1,6 +1,7 @@
 # Self-hosted OpenAgents Lightning addresses
 
-Status: accepted for implementation. Owner decision: 2026-10-20.
+Status: source implementation complete; production activation and funded checks
+are tracked in `NEEDS_OWNER.md`. Owner decision: 2026-10-20.
 Issue: [#12307](https://github.com/OpenAgentsInc/openagents/issues/12307).
 
 ## Decision and scope
@@ -319,3 +320,93 @@ when its requested code is on main and its own checks pass.
 The [operations runbook](lightning-address-operations.md) covers the pinned
 backend build, private network, service configuration, backups, activation
 checks, and rollback. Deployment templates live in `deploy/lightning-address/`.
+
+## Implemented profile earnings contract
+
+`GET /v1/device/earnings/{party}` returns private previews for the current
+account's verified Nostr key. A Pylon provider credit must reference the
+ledger's Pylon job. A plugin credit uses that party's exact revenue share,
+not the whole sale. Pending, earned, paid, and reversed remain distinct; a
+sent payout needs a wallet reference before it is shown as paid.
+
+A normal Lightning-address deposit is not automatically a tip. The public
+`/tip/{profile}` page requests `/lnurlp/{name}/tip` with the intended Nostr
+recipient, which the gateway checks against the frozen address record. NIP-57
+payments also qualify as explicit tips. Only invoices issued by this gateway
+are eligible, and a settled LUD-21 response must supply a preimage matching
+the known hash. The preimage is checked in memory and discarded. The original
+recipient and exact amount survive name changes and wallet rotation. Polling
+rotates through unconfirmed invoices so an abandoned request cannot starve
+older payments. Ordinary income deposits cannot become duplicate tip income.
+
+The native public-profile form uses `publish_earning` and `hide_earning` in
+the Rust SDK. Publication selects a server-resolved source; the client cannot
+choose its amount. Each selected credit becomes a signed kind-30078 NIP-78
+event with `d=openagents.earnings.v1:<source>`, the schema `t` tag, and the
+beneficiary `p` tag. Its content is `openagents.earnings.v1`: recipient, opaque
+source hash, category, state, exact millisatoshis, Bitcoin network, timestamp,
+and optional public Pylon receipt or plugin/release reference. Private hashes,
+preimages, account IDs, payer details, and payout references are excluded.
+
+Public profiles read `/v1/earnings/public/{party}`, validate signatures and
+issuer selection, and show the latest 20 selected credits with receipt links.
+This bounded list makes no lifetime-total claim. Selected ledger receipts
+follow state changes; previous signed versions remain readable at
+`/event/{id}` until the owner hides that credit. Publication is an attributable
+service ledger statement, not independent proof of all of a person's income.
+No wallet balance or history is published automatically.
+
+`OPENAGENTS_EARNINGS_SERVICE` optionally directs the website's receipt bridge
+to the native money gateway that opens the qualified Pylon/plugin ledger. It
+defaults to the account service. Use the same account Postgres database and
+Lightning backend configuration on that gateway, so account sessions, issued
+tip invoices, publication choices, and the service signing key agree across
+replicas. The bridge passes only the current bearer authorization to private
+routes and none to public reads; it never forwards browser cookies or wallet
+secrets. Public reads use no-store responses so a hidden credit disappears.
+
+## Implemented opt-in browser wallet
+
+`/wallet/restore` serves a separate page with no analytics, third-party scripts,
+or HTML form submission. The app never gives its account bearer token to the SDK. Settings links to
+it only when `OPENAGENTS_WALLET_WEB` points at a complete Wasm build. The Rust
+UI in `spark-wallet-web` calls `spark-wallet::browser::BrowserWallet`; generated
+JavaScript loads the module. The default phone-approved browser API remains
+unchanged.
+
+A checkbox explicitly opts this tab into wallet control. Rust validates the
+12-word BIP39 checksum locally, clears the text field before opening Breez's
+pinned Rust/Wasm SDK, and uses the same mainnet configuration and API validation
+certificate as native wallets. The SDK's records, wallet keys, and temporary
+words stay in memory. There is no localStorage, sessionStorage, IndexedDB,
+seed upload, server restore endpoint, or automatic profile publication. The
+page can refresh balance and recent payments, receive an amount-specific
+Lightning invoice, and review a Bitcoin Lightning send before confirming its
+amount and fee. Native and browser quotes choose the same lower-cost Spark or
+Lightning route. An uncertain send retains its idempotency key; it cannot be
+replaced with another quote until its outcome is known. Editing an unsent
+invoice invalidates its quote.
+
+Forget replaces the document and ends its Wasm instance, including a pending
+network call. Returning through the back/forward cache reloads the page. A
+restored tab is independent of the site's account session; close or forget
+that tab to remove its wallet. A trusted browser, device, extensions, and
+first-party deployment remain part of browser custody's security boundary.
+Memory-only storage does not promise protection against a compromised device.
+
+Build with `scripts/build-spark-wallet-web.sh OUTDIR`; the website Dockerfile
+includes this artifact. Run the committed outgoing-request test with:
+
+```sh
+openagents browser run -- node scripts/smoke/browser-wallet-privacy.mjs OUTDIR
+```
+
+The test uses a public BIP39 vector and the actual compiled SDK. Chrome pauses
+provider requests before they leave the machine, permits preflights locally,
+and records actual request payloads. It checks URL, headers, body, binary and
+Base64 forms against the words, entropy, BIP39 seed, BIP32 private roots, Spark
+mainnet identity/deposit roots, and NIP-06 identity derivation. It also checks
+local refusal of invalid words, no provider contact before consent, empty
+browser storage, and forget/back-navigation reset. It does not fund a wallet
+or prove a real-money receive/send; those checks use the dedicated test account
+after deployment and remain in the owner checklist.

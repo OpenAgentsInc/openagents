@@ -7,6 +7,7 @@ publish.workspace = true
 description = "The OpenAgents website: public pages, legal documents, the install and pairing pages, and the local read-only task browser."
 
 [dependencies]
+bitcoin-amount = { path = "../bitcoin-amount" }
 # The machine-talk guard, under `test-support` (see [features]).
 oa-copy = { path = "../oa-copy", optional = true }
 cad = { path = "../cad" }

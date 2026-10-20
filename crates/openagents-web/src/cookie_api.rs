@@ -63,6 +63,7 @@ pub(crate) const ACCOUNT: &[&str] = &[
     // shows (#12290).
     "/v1/device/name",
     "/v1/device/lightning-address",
+    "/v1/device/earnings",
     "/v1/attention",
     "/v1/notify",
     "/v1/land",

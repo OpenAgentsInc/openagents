@@ -4,7 +4,8 @@ Keep fork-specific changes here so upstream updates can review each integration.
 
 - OpenAgents #12307: mount the shared Rust Native Lightning address sheet in
   the iOS and Android wallets, and edit signed `lud16` metadata in the shared
-  public profile form.
+  public profile form, with explicit publish/hide controls for verified Pylon,
+  plugin, and tip earnings and account-generation checks for private rows.
 
 - OpenAgents #12339: share the desktop composer's editing and chip renderer,
   sidebar rows, and scrolling list with `/gpui` and `/demo/gpui`. Keep native

@@ -35,6 +35,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use serde_json::Value;
+pub use tokio_postgres::Row as PgRow;
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{Client, NoTls, Row};
 
@@ -60,6 +61,11 @@ pub const MIGRATIONS: &[(i32, &str, &str)] = &[
         4,
         "workos_links",
         include_str!("../migrations/0004_workos_links.sql"),
+    ),
+    (
+        5,
+        "profile_earnings",
+        include_str!("../migrations/0005_profile_earnings.sql"),
     ),
 ];
 

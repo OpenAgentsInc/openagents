@@ -145,6 +145,7 @@ pub fn document() -> Value {
     crate::projects::files::openapi::extend(&mut document);
     crate::connections::openapi::extend(&mut document);
     crate::lightning_address::extend_contract(&mut document);
+    crate::profile_earnings::extend_contract(&mut document);
     document
 }
 

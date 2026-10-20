@@ -26812,6 +26812,299 @@
           }
         }
       }
+    },
+    "/v1/device/earnings/{party}": {
+      "get": {
+        "operationId": "profileEarnings",
+        "tags": [
+          "Earnings"
+        ],
+        "summary": "Read or choose profile earnings receipts",
+        "description": "Private previews require the account session and an attached Nostr key. Publication is explicit. Public receipts omit account IDs, payment hashes, preimages, and payout destinations.",
+        "responses": {
+          "200": {
+            "description": "Earnings or the selected receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Log in again"
+          },
+          "403": {
+            "description": "Choose your own profile"
+          },
+          "503": {
+            "description": "Earnings are unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "party",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/device/earnings/{party}/receipts": {
+      "post": {
+        "operationId": "publishEarning",
+        "tags": [
+          "Earnings"
+        ],
+        "summary": "Read or choose profile earnings receipts",
+        "description": "Private previews require the account session and an attached Nostr key. Publication is explicit. Public receipts omit account IDs, payment hashes, preimages, and payout destinations.",
+        "responses": {
+          "200": {
+            "description": "Earnings or the selected receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Log in again"
+          },
+          "403": {
+            "description": "Choose your own profile"
+          },
+          "503": {
+            "description": "Earnings are unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "party",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "source": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "sequence",
+                          "role"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "ledger"
+                          },
+                          "sequence": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "role": {
+                            "type": "string",
+                            "maxLength": 64
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "payment_hash"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "tip"
+                          },
+                          "payment_hash": {
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{64}$"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/device/earnings/{party}/receipts/{source}": {
+      "delete": {
+        "operationId": "hideEarning",
+        "tags": [
+          "Earnings"
+        ],
+        "summary": "Read or choose profile earnings receipts",
+        "description": "Private previews require the account session and an attached Nostr key. Publication is explicit. Public receipts omit account IDs, payment hashes, preimages, and payout destinations.",
+        "responses": {
+          "200": {
+            "description": "Earnings or the selected receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Log in again"
+          },
+          "403": {
+            "description": "Choose your own profile"
+          },
+          "503": {
+            "description": "Earnings are unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "party",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          {
+            "name": "source",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/earnings/public/{party}": {
+      "get": {
+        "operationId": "publishedEarnings",
+        "tags": [
+          "Earnings"
+        ],
+        "summary": "Read or choose profile earnings receipts",
+        "description": "Private previews require the account session and an attached Nostr key. Publication is explicit. Public receipts omit account IDs, payment hashes, preimages, and payout destinations.",
+        "responses": {
+          "200": {
+            "description": "Earnings or the selected receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Log in again"
+          },
+          "403": {
+            "description": "Choose your own profile"
+          },
+          "503": {
+            "description": "Earnings are unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "party",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "security": []
+      }
+    },
+    "/v1/earnings/public/receipts/{id}": {
+      "get": {
+        "operationId": "publishedEarningReceipt",
+        "tags": [
+          "Earnings"
+        ],
+        "summary": "Read or choose profile earnings receipts",
+        "description": "Private previews require the account session and an attached Nostr key. Publication is explicit. Public receipts omit account IDs, payment hashes, preimages, and payout destinations.",
+        "responses": {
+          "200": {
+            "description": "Earnings or the selected receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Log in again"
+          },
+          "403": {
+            "description": "Choose your own profile"
+          },
+          "503": {
+            "description": "Earnings are unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "security": []
+      }
     }
   },
   "components": {

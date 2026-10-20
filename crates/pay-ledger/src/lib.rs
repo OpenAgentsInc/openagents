@@ -25,6 +25,7 @@ pub mod earnings;
 pub mod markets;
 pub mod payee;
 pub mod payout;
+pub mod public_earnings;
 pub mod pylon;
 pub mod reconcile;
 pub mod session;

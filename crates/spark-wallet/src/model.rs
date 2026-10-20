@@ -502,3 +502,30 @@ pub struct WalletSignature {
     pub pubkey: String,
     pub signature: String,
 }
+
+use breez_sdk_spark::{Payment, PaymentMethod, PaymentStatus, PaymentType};
+/// A payment as the history shows it.
+pub(crate) fn sdk_payment_row(payment: &Payment) -> PaymentRow {
+    PaymentRow {
+        id: payment.id.clone(),
+        received: payment.payment_type == PaymentType::Receive,
+        amount_sats: u64::try_from(payment.amount).unwrap_or(u64::MAX),
+        fee_sats: u64::try_from(payment.fees).unwrap_or(u64::MAX),
+        method: match payment.method {
+            PaymentMethod::Lightning => "Lightning",
+            PaymentMethod::Spark => "Spark",
+            PaymentMethod::Token => "Token",
+            PaymentMethod::Deposit => "Bitcoin deposit",
+            PaymentMethod::Withdraw => "Bitcoin withdrawal",
+            PaymentMethod::Unknown => "Payment",
+        }
+        .to_owned(),
+        status: match payment.status {
+            PaymentStatus::Completed => "completed",
+            PaymentStatus::Pending => "pending",
+            PaymentStatus::Failed => "failed",
+        }
+        .to_owned(),
+        at: payment.timestamp,
+    }
+}

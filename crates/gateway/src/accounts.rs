@@ -137,6 +137,7 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
     ));
     routes.extend(crate::nostr_sign_in::routes());
     routes.extend(crate::lightning_address::routes());
+    routes.extend(crate::public_earnings::routes());
     routes.extend(crate::referrals::routes());
     routes.extend(crate::lab_workers::routes());
     routes.extend(crate::affiliates::routes());

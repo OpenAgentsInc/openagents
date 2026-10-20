@@ -2054,6 +2054,7 @@ dependencies = [
  "bitcoin_hashes",
  "serde",
  "unicode-normalization",
+ "zeroize",
 ]
 
 [[package]]
@@ -11285,6 +11286,7 @@ dependencies = [
  "agent-lab",
  "axum 0.8.9",
  "base64 0.22.1",
+ "bitcoin-amount",
  "core-foundation 0.10.1",
  "futures",
  "getrandom 0.3.4",
@@ -11804,6 +11806,7 @@ dependencies = [
  "getrandom 0.4.3",
  "httpdate",
  "lab-kit",
+ "nostr",
  "oa-copy",
  "openagents-dashboard",
  "openagents-login",
@@ -11825,7 +11828,9 @@ dependencies = [
  "bip39",
  "bitcoin-amount",
  "breez-sdk-spark",
+ "getrandom 0.2.17",
  "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "nostr",
  "openagents-workspace-hack",
  "rustls",

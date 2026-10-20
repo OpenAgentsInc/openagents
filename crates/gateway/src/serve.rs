@@ -176,6 +176,8 @@ pub struct ServeState {
     /// lifetime when it is.
     money: Option<Mutex<tenancy::money::Ledger>>,
     pub(crate) earnings: Option<Mutex<pay_ledger::Ledger>>,
+    pub(crate) public_receipts: Option<Mutex<pay_ledger::public_earnings::Store>>,
+    pub(crate) receipt_signer: Option<nostr::domain::RelaySigner>,
     pub(crate) funding: Option<std::sync::Mutex<crate::funding::Store>>,
     pub(crate) funding_slots: Arc<Semaphore>,
     pub(crate) card_billing: Option<tenancy::billing::Billing>,
@@ -351,6 +353,13 @@ impl ServeState {
                 .map_err(Trouble::Accounts)?;
             }
         }
+        let (public_receipts, receipt_signer) = if config.accounts.is_some() {
+            let (book, signer) =
+                crate::public_earnings::open(&config.registry).map_err(Trouble::Money)?;
+            (Some(Mutex::new(book)), Some(signer))
+        } else {
+            (None, None)
+        };
         // Billing keeps its own store beside the registry — an empty
         // genesis on first open, never a guessed subscription.
         if config.billing.is_some() && tenancy::billing::Billing::open(&config.registry).is_err() {
@@ -450,8 +459,9 @@ impl ServeState {
             .as_ref()
             .and_then(|accounts| accounts.workos.as_ref())
         {
-            Some(settings) => crate::workos_auth::WorkosState::open(settings)
-                .map_err(|error| Trouble::Io(std::io::Error::other(format!("accounts.workos: {error}"))))?,
+            Some(settings) => crate::workos_auth::WorkosState::open(settings).map_err(|error| {
+                Trouble::Io(std::io::Error::other(format!("accounts.workos: {error}")))
+            })?,
             None => None,
         };
         let inference_book = inference_book.map(Mutex::new);
@@ -530,6 +540,8 @@ impl ServeState {
             ledger: Mutex::new(ledger),
             money,
             earnings,
+            public_receipts,
+            receipt_signer,
             funding,
             card_billing,
             card_lock: Mutex::new(()),

@@ -16,10 +16,16 @@
 //! - [`link`]: the sealed envelope that carries the seed from the phone to a
 //!   computer the owner approved.
 
+#[cfg(target_arch = "wasm32")]
+pub mod browser;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod computer;
+pub mod config;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod link;
 pub mod model;
 pub mod seed;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod spark;
 pub mod store;
 

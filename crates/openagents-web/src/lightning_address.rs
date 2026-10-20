@@ -15,6 +15,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/.well-known/lnurlp/{name}", any(public))
         .route("/lnurlp/{name}", any(public))
         .route("/lnurlp/{name}/invoice", any(public))
+        .route("/lnurlp/{name}/tip", any(public))
         .route("/lnurlp/verify/{hash}", any(public))
         .route("/lnurlpay/{*path}", any(public))
         .route("/v1/device/lightning-address", any(management))

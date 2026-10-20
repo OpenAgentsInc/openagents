@@ -9,6 +9,7 @@
 //! and neither the app nor the command installs a subscriber, so nothing it
 //! traces is written anywhere.
 
+use crate::model::sdk_payment_row as row;
 use crate::model::{
     AgentPayFailure, Ask, ClaimQuote, Contact, DepositProblem, DepositRow, Destination, FeeRates,
     InvoicePayment, LnurlTerms, Node, Paid, PayFailure, PaymentRow, Provider, Quote, QuoteFailure,
@@ -19,45 +20,18 @@ use breez_sdk_spark::{
     DepositClaimError, EventListener, Fee, FetchClaimDepositQuoteRequest, GetInfoRequest,
     InputType, ListContactsRequest, ListPaymentsRequest, ListUnclaimedDepositsRequest,
     LnurlPayRequest, MaxFee, Network, OnchainConfirmationSpeed, Payment, PaymentDetails,
-    PaymentMethod, PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
-    PrepareLnurlPayResponse, PrepareSendPaymentRequest, PrepareSendPaymentResponse,
-    ReceivePaymentMethod, ReceivePaymentRequest, RefundDepositRequest, SdkBuilder, SdkError,
-    SdkEvent, Seed, SendPaymentMethod, SendPaymentOptions, SendPaymentRequest, StorageBackend,
-    SuccessActionProcessed, SyncWalletRequest, default_config,
+    PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest, PrepareLnurlPayResponse,
+    PrepareSendPaymentRequest, PrepareSendPaymentResponse, ReceivePaymentMethod,
+    ReceivePaymentRequest, RefundDepositRequest, SdkBuilder, SdkError, SdkEvent, Seed,
+    SendPaymentMethod, SendPaymentOptions, SendPaymentRequest, StorageBackend,
+    SuccessActionProcessed, SyncWalletRequest,
 };
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-/// OpenAgents' Breez API key. The owner confirmed with the Breez team that it
-/// is a basic validation key, which every shipped app carries and none can
-/// hide, so it is committed here plainly (2026-09-28). It is a Base64 X.509
-/// certificate that Breez's services check; it is not a spending credential.
-pub const BREEZ_API_KEY: &str = "MIIBfjCCATCgAwIBAgIHPYzgGw0A+zAFBgMrZXAwEDEOMAwGA1UEAxMFQnJlZXowHhcNMjQxMTI0MjIxOTMzWhcNMzQxMTIyMjIxOTMzWjA3MRkwFwYDVQQKExBPcGVuQWdlbnRzLCBJbmMuMRowGAYDVQQDExFDaHJpc3RvcGhlciBEYXZpZDAqMAUGAytlcAMhANCD9cvfIDwcoiDKKYdT9BunHLS2/OuKzV8NS0SzqV13o4GBMH8wDgYDVR0PAQH/BAQDAgWgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFNo5o+5ea0sNMlW/75VgGJCv2AcJMB8GA1UdIwQYMBaAFN6q1pJW843ndJIW/Ey2ILJrKJhrMB8GA1UdEQQYMBaBFGNocmlzQG9wZW5hZ2VudHMuY29tMAUGAytlcANBABvQIfNsop0kGIk0bgO/2kPum5B5lv6pYaSBXz73G1RV+eZj/wuW88lNQoGwVER+rA9+kWWTaR/dpdi8AFwjxw0=";
-
-/// How long a Lightning or Spark send waits for the payment to settle
-/// before it returns as pending.
+pub use crate::config::{BREEZ_API_KEY, sdk_config};
 const SEND_WAIT_SECS: u32 = 30;
-
-/// The SDK configuration every device uses: the given network, OpenAgents'
-/// API key, and no real-time sync server.
-pub fn sdk_config(network: Network) -> breez_sdk_spark::Config {
-    let mut config = default_config(network);
-    config.api_key = Some(BREEZ_API_KEY.to_owned());
-    // Encrypted sync to Breez's server is for several devices on one
-    // wallet, which the app does not offer.
-    config.real_time_sync_server_url = None;
-    config.lnurl_domain = Some("openagents.com".into());
-    // Claim on-chain deposits (a MoonPay purchase, or bitcoin sent to the
-    // deposit address) at maturity for up to the network's fastest
-    // recommended rate plus 1 sat/vB, so ordinary deposits credit without a
-    // tap. The default, 1 sat/vB, leaves them waiting whenever fees rise;
-    // the screen offers a quoted claim for any deposit still waiting.
-    config.max_deposit_claim_fee = Some(MaxFee::NetworkRecommended {
-        leeway_sat_per_vbyte: 1,
-    });
-    config
-}
 
 /// The MoonPay page for buying `amount_sats` into `address`, built as Breez's
 /// SDK builds it (`breez_sdk_common::buy::moonpay`, tag 0.26.0: the same
@@ -301,10 +275,8 @@ impl SparkNode {
                 lightning_fee_sats,
             } => {
                 // A payee on Spark is paid directly, which costs less.
-                let (fee, prefer_spark) = match spark_transfer_fee_sats {
-                    Some(fee) if fee <= lightning_fee_sats => (*fee, true),
-                    _ => (*lightning_fee_sats, false),
-                };
+                let (fee, prefer_spark) =
+                    crate::config::lightning_route(*lightning_fee_sats, *spark_transfer_fee_sats);
                 (
                     Destination::Lightning(invoice_details.invoice.bolt11.clone()),
                     fee,
@@ -1014,32 +986,6 @@ fn success_message(action: &SuccessActionProcessed) -> Option<String> {
         },
     };
     crate::model::plain_text(&text, 300)
-}
-
-/// A payment as the history shows it.
-fn row(payment: &Payment) -> PaymentRow {
-    PaymentRow {
-        id: payment.id.clone(),
-        received: payment.payment_type == PaymentType::Receive,
-        amount_sats: u64::try_from(payment.amount).unwrap_or(u64::MAX),
-        fee_sats: u64::try_from(payment.fees).unwrap_or(u64::MAX),
-        method: match payment.method {
-            PaymentMethod::Lightning => "Lightning",
-            PaymentMethod::Spark => "Spark",
-            PaymentMethod::Token => "Token",
-            PaymentMethod::Deposit => "Bitcoin deposit",
-            PaymentMethod::Withdraw => "Bitcoin withdrawal",
-            PaymentMethod::Unknown => "Payment",
-        }
-        .to_owned(),
-        status: match payment.status {
-            PaymentStatus::Completed => "completed",
-            PaymentStatus::Pending => "pending",
-            PaymentStatus::Failed => "failed",
-        }
-        .to_owned(),
-        at: payment.timestamp,
-    }
 }
 
 #[cfg(test)]

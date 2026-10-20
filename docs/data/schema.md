@@ -8,10 +8,9 @@ it is, how long it is kept, and whether its table exists yet. Names follow the
 [glossary](../glossary.md); a term this page needed and the glossary lacked was
 added there in the same change.
 
-Only the first two migrations exist today: the `identity` and `workspace` tables
-sign-in needs, plus the `audit` revision table they write. Everything else on
-this page is the design that each feature's migration follows when that
-feature needs it.
+Migrations 1–5 implement identity, workspace membership and projects, WorkOS links,
+audit revisions, and the profile earnings tables below. Other tables on this
+page remain designs until their feature adds a migration.
 
 ## Decisions
 
@@ -182,6 +181,20 @@ Never stored: the chats of a device with sync off. They stay on that device.
 | `eval_runs` | One run of a test set against a plugin version, model and computer | Account, Public when published | Forever |
 | `eval_results` | Per-case results of a run | Same as its run | Same as its run |
 | `promises` | A promise from the ledger: area, wording, status, evidence links, episodes | Public | Forever; status changes are new rows in `audit.events` |
+
+## Profile earnings (implemented in migration 5)
+
+| Table in `money` | Contents | Visibility and retention |
+| --- | --- | --- |
+| `named_invoices` | Explicit tip invoice hash, original account, Nostr and Spark recipient, name revision, exact amount, expiry, verification times | Private. No preimage, payer, or comment. Unpaid invoices are removed after the provider confirms they remain unpaid seven days after expiry. Account deletion removes these rows. |
+| `published_earnings` | One current, owner-selected, service-signed receipt per credit | Public while selected and the account still holds its recipient key. Hide or account deletion removes it. No wallet balance, payment hash, payout destination, or account ID in the event. |
+| `published_earning_versions` | Earlier signed versions for stable receipt links | Same visibility as the current selection; deleted with it. |
+| `receipt_service_key` | One server-owned receipt signing key | Private to the service and backups; never a customer wallet key. Replicas agree on the first atomically inserted key. |
+
+The receipt book uses the account service's bound Postgres database. Native local
+services and tests use a private SQLite file instead. Pylon and plugin credits
+come from the existing qualified pay ledger; this migration does not move that
+ledger or turn account servers without it into a second money authority.
 
 ## money (later; owners `crates/tenancy` money and billing, `crates/pay-ledger`, `crates/x402`)
 

@@ -442,10 +442,9 @@ Each step is sized as one issue. Estimates are working days for one agent.
 2. **x402 receive on Spark.** Keep receiving on `ldk-node` (recommended),
    or write a Spark receiver profile that proves payment by the receiver's
    own records instead of an exclusive payee key.
-3. **Lightning address.** Breez-hosted `name@openagents.com` through a CNAME
-   or path forward (fast; Breez's server issues our users' invoices), or a
-   self-hosted LNURL server on our infrastructure (more work; we hold that
-   trust instead).
+3. **Lightning address: decided 2026-10-20.** Self-host the LNURL service on
+   OpenAgents infrastructure. See the accepted [specification](../payments/self-hosted-lightning-addresses.md)
+   and [operations guide](../payments/lightning-address-operations.md).
 4. **Dollars.** Turn on USDB and stable balance for people and agent
    grants, or keep the wallet bitcoin-only. The 2026-09-28 position kept
    USDC and USDT receive off.

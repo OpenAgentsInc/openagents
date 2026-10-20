@@ -12,6 +12,10 @@ git -C "$checkout" fetch origin "$revision"
 git -C "$checkout" checkout --detach "$revision"
 [[ "$(git -C "$checkout" rev-parse HEAD)" == "$revision" ]]
 [[ -z "$(git -C "$checkout" status --porcelain)" ]]
+patch="$repo/deploy/lightning-address/nip57-raw-request.patch"
+git -C "$checkout" apply --check "$patch"
+git -C "$checkout" apply "$patch"
+trap 'git -C "$checkout" apply -R "$patch"' EXIT
 docker build --label "org.opencontainers.image.revision=$revision" \
   -t "openagents-lnurl-core:$revision" -f "$checkout/crates/breez-sdk/lnurl/Dockerfile" "$checkout"
 docker build --label "org.opencontainers.image.revision=$revision" \

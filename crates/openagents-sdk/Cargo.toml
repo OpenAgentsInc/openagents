@@ -14,6 +14,7 @@ default = ["transport"]
 # API's values and rules (`chats::wire`), which the website's GPUI chat
 # reads in a browser build (apps/openagents/web/client).
 transport = [
+    "dep:nostr",
     "dep:oa-copy",
     "dep:agent-lab",
     "dep:chat-home",
@@ -34,6 +35,7 @@ schema = ["transport", "dep:schemars", "openagents-dashboard/schema"]
 labs-cad = ["transport", "dep:cad"]
 
 [dependencies]
+nostr = { path = "../nostr", optional = true }
 oa-copy = { path = "../oa-copy", optional = true }
 agent-lab = { path = "../agent-lab", optional = true }
 chat-home = { path = "../chat-home", optional = true }

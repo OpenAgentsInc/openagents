@@ -36,6 +36,7 @@ mod picture;
 pub(crate) mod relays;
 #[cfg(test)]
 mod tests;
+mod tip;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
@@ -84,6 +85,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(WELL_KNOWN, get(nostr_json))
         .route(PAGE, get(page))
+        .route("/tip/{handle}", get(tip::page))
         .route(PICTURE, get(picture::serve))
         .route("/event/{id}", get(evidence::event_page))
         .route(explore::PAGE, get(explore::page))
@@ -98,6 +100,7 @@ pub(crate) fn owns(path: &str) -> bool {
     path == WELL_KNOWN
         || path.starts_with("/@")
         || path.starts_with("/event/")
+        || path.starts_with("/tip/")
         || path == explore::PAGE
         || path == NAMES
         || path == PLACES
@@ -445,7 +448,8 @@ async fn page(State(app): State<App>, Path(text): Path<String>, headers: HeaderM
         &who.pubkey,
     )
     .await;
-    render(&headers, &who, &loaded, &evidence)
+    let earnings = crate::profile_earnings::load(&app, &who.pubkey).await;
+    render(&headers, &who, &loaded, &evidence, &earnings)
 }
 
 fn render(
@@ -453,6 +457,7 @@ fn render(
     who: &Who,
     loaded: &Loaded,
     evidence: &evidence::Evidence,
+    earnings: &crate::profile_earnings::Published,
 ) -> Response {
     let metadata = loaded.metadata.clone().unwrap_or_default();
     let npub_full = npub(&who.pubkey);
@@ -496,7 +501,7 @@ fn render(
             div.oa-page-actions {
                 (action_link("Follow", &format!("{path}/follow")))
                 @if let Some(address) = &metadata.lud16 {
-                    a class="oa-button" href=(format!("lightning:{address}")) { "Send a tip" }
+                    a class="oa-button" href=(if address.ends_with("@openagents.com") { format!("/tip/{}", npub(&who.pubkey)) } else { format!("lightning:{address}") }) { "Send a tip" }
                     span.oa-page-meta { (address) }
                 }
                 @if let Some(website) = &metadata.website {
@@ -516,6 +521,7 @@ fn render(
                 }))
             }
         }
+        (crate::profile_earnings::section(earnings,&who.pubkey,crate::cloud::session::now()))
         (evidence::sections(evidence))
         (feed_section(loaded))
         (follows_section(loaded))
