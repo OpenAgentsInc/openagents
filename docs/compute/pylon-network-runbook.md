@@ -32,12 +32,11 @@ the [Pylon 1.0 specification](pylon-1.0.md).
 
 ## The three pylons
 
-The Mac and CoderOS run `openagents` built from `8d36ad76f9` (2026-10-19)
-with a Psionic engine built from the same tree; `678a76aa46`, a checker fix,
-came after and matters only to a computer that runs `check decide`. The L4
-VM runs `2b279549b6`, which includes both, and `b281ee839c` (#12234), which
-names the model by its tensor digest. The CPU VM row is the pylon the L4 VM
-replaced.
+The Mac and CoderOS run `openagents` built from `0d41c90c38` (2026-10-19)
+with the Psionic engines built earlier from `8d36ad76f9` (Psionic has not
+changed since). The L4 VM runs `2b279549b6`. All three name the model by
+its tensor digest (`b281ee839c`, #12234), so their checkers accept each
+other. The CPU VM row is the pylon the L4 VM replaced.
 
 | Pylon | Computer | Engine | Lanes | Pylon key | Buyer key |
 | --- | --- | --- | --- | --- | --- |
@@ -571,9 +570,8 @@ answers were slower than CoderOS's because the Mac was running heavy builds
 A second run of the script from the Mac sent its checker rounds right after
 the other six jobs, ran into the pylon's rate limit, and published a
 `check-fail` against CoderOS that was not CoderOS's fault. That bug is fixed,
-but the label stands, so the Mac's own `ask` skips CoderOS until 24 hours
-after it (about 20:00 on 2026-10-20); CoderOS's other buyers are not
-affected.
+but the label stands, so the Mac's own `ask` skipped CoderOS until the Mac's checker withdrew it
+([Withdraw a wrong verdict](#withdraw-a-wrong-verdict)).
 
 Earlier in the run, before the decision command existed, the Mac checked
 the cloud pylon and the cloud pylon checked the Mac with `check decide`;
@@ -615,32 +613,70 @@ the L4 is about 50 times as fast as the 16-vCPU CPU VM. A second
 second: it repeats the same 64 items, which the engine answers from cache,
 so don't read it as a speed.
 
-### Jobs with the L4 pylon
+### Jobs with the L4 pylon, all on one build
 
-Latencies are from the buyer's side, as above.
+Since `b281ee839c` (#12234) a pylon names its model by its tensor digest
+(`clef-flash@gguf-tensors:sha256:2e417b22…`), so a checker built before it
+refuses a pylon built after it, and the other way round. At about 23:00 on
+2026-10-19 the Mac and CoderOS were stopped with `openagents pylon down`
+(each published an offline beacon), rebuilt from `0d41c90c38`, and started
+again with the same homes and keys. The L4 VM kept `2b279549b6`, which names
+the model the same way. Then each machine ran [`matrix.sh`](#the-matrix-script)
+against the other two.
+
+Latencies are from the buyer's side, as above; ranges cover three jobs, and
+every text receipt was published and accepted.
 
 | Buyer → pylon | Text answer | Decision answer | Checker round (8 items) |
 | --- | --- | --- | --- |
-| Mac → L4 | 3,575–3,593 ms (discovery 494–583 ms) | 386–431 ms (discovery 291–371 ms) | refused: the Mac's `8d36ad76f9` build names the model by file digest, the L4 pylon by tensor digest |
-| CoderOS → L4 | 3,550–3,754 ms (discovery 454–1,023 ms) | 387–427 ms (discovery 272–299 ms) | pass, mean 1.6e-7, worst 4.2e-7, 453–547 ms an item (label `47c55b54…`) |
-| L4 → Mac | skipped (see below) | 157–418 ms (discovery 51–54 ms) | not run |
-| L4 → CoderOS | skipped (see below) | 188–214 ms (discovery 57–67 ms) | not run |
+| Mac → CoderOS | 297–492 ms | 491–535 ms | pass, mean 0.0012, worst 0.0037, 441–645 ms an item |
+| Mac → L4 | 3,508–3,603 ms | 396–496 ms | pass, mean 0.0010, worst 0.0035, 453–510 ms an item |
+| CoderOS → Mac | 2,352–5,864 ms | 412–981 ms | pass, mean 0.0022, worst 0.0047, 570–874 ms an item |
+| CoderOS → L4 | 3,498–3,531 ms | 351–369 ms | pass, mean 0, worst 0, 438–577 ms an item |
+| L4 → Mac | 750–800 ms (discovery 85–93 ms) | 150–172 ms | pass, mean 0.0015, worst 0.0066, 266–644 ms an item |
+| L4 → CoderOS | 236–302 ms | 164–214 ms | pass, mean 0, worst 0, 203–333 ms an item |
 
-- Every decision gave `team` = `billing`, `urgent` p = 0.806, as on the
-  other pylons.
-- Each text answer ran to the 512-token limit, because the 0.8B model
-  keeps going on this prompt: about 145 tokens a second on the L4. The
-  first run didn't record its answers' token counts, so its text times
-  don't compare directly with these.
-- Checker items are fresh decisions, so they show the real speed: 0.45 to
-  0.55 s an item on the L4, against 5.9 to 7.8 s on the CPU VM. The
-  CoderOS round used a checker built from `cff0a8da08`, because a checker
-  must name the model the same way the pylon does.
-- `ask` from the L4 VM skipped the Mac and CoderOS: the checker key that
-  moved over from the CPU VM had published `check-fail` verdicts against
-  both on a build before `678a76aa46`, and `ask` skips a pylon with a
-  trusted `check-fail` for 24 hours. Decisions don't use that filter.
-  The skip ends on its own by 2026-10-20 evening.
+- Every decision gave `team` = `billing`, `urgent` p = 0.806 on all three.
+- The two CUDA pylons (RTX 4080 on CUDA 13, L4 on CUDA 12.9, both `sm_89`)
+  agree exactly: their checker rounds against each other measured a
+  distance of 0.
+- Text is not checked against a reference, and it differs by machine: the
+  Mac and CoderOS answer "Mercury, Venus, and Earth." and stop, while the
+  L4 answers "Jupiter, Saturn, and Uranus." and keeps writing to the
+  512-token limit (about 145 tokens a second), which is why its text jobs
+  take about 3.5 seconds.
+- The Mac's own text answers were slow from CoderOS (2.4 to 5.9 s) because
+  the Mac was under heavy build load at the time.
+- The L4 VM's `ask` reached both other pylons. Before this run, it skipped
+  them: its checker key, moved over from the CPU VM, had published
+  `check-fail` verdicts against both on a build before `678a76aa46`. Those
+  verdicts were withdrawn first; see
+  [Withdraw a wrong verdict](#withdraw-a-wrong-verdict).
+
+### Withdraw a wrong verdict
+
+A trusted `check-fail` keeps `ask`, `route`, and `pool --checked` away from
+a pylon for 24 hours, even after later passing checks. The rate-limit bug
+fixed in `678a76aa46` published such verdicts against honest pylons. The
+checker that published one can withdraw it (since `0d41c90c38`):
+
+```sh
+openagents pylon check retract --pylon NPUB            # every check-fail it made about NPUB in the last day
+openagents pylon check retract --pylon NPUB --label ID # just one
+```
+
+This signs a NIP-09 deletion request (kind `5`) with this computer's
+checker key, naming its own `check-fail` labels; the relay drops them and
+every reader stops counting them at once. It can't touch another checker's
+verdicts, and passing verdicts stay. Run it in the pylon home that holds
+the checker key that made the verdict. On 2026-10-19 four were withdrawn:
+
+| Checker | About | Label withdrawn |
+| --- | --- | --- |
+| Mac | CoderOS | `329537e3…` |
+| CoderOS | Mac | `9d2c1d58…` |
+| L4 VM (the CPU VM's key) | Mac | `b018abdc…` |
+| L4 VM (the CPU VM's key) | CoderOS | `23af7af3…` |
 
 ## Community lane, MCP, and the desktop Earn switch
 
@@ -709,16 +745,16 @@ Each of these happened during the run. The fixed ones are on `main`.
 | `decide --wait 120`: `relay connection lifetime must be within 120 seconds` | The decision client asked the transport for up to 300 s | Fixed in `ec2ab7e47c`; `--wait` is at most 118 |
 | `verify`: `the engine does not answer at http://127.0.0.1:18096/health` while serving | `verify` and `doctor` ignored `up --port` | Fixed in `8d36ad76f9` |
 | Every beacon says `Gpu/Medium` | The class came from a 16 GB default | Fixed in `6677c531c1` |
-| A check from a machine with the pinned file refuses: `the reference serves clef-flash@sha256:36261166…, but the pylon serves clef-flash@sha256:fd3e9060…` | Same tensors, different file bytes | Download the pinned file ([#12234](https://github.com/OpenAgentsInc/openagents/issues/12234)) |
+| A check from a machine with the pinned file refuses: `the reference serves clef-flash@sha256:36261166…, but the pylon serves clef-flash@sha256:fd3e9060…` | Same tensors, different file bytes | Fixed in `b281ee839c` (#12234): checks compare the tensor digest. Every machine needs a build from it or later, because older checkers name the model by file digest |
 | `ask` returns `not_admitted` right after you change the allowlist | The old provider is still draining with the old list (up to 90 s), and a settings change restarts the engines | Wait for `status` to say `serving` again |
-| A checker round prints no verdict, or (before the fix) `ask` later says `no fresh online pylon with a free slot that passes its checks` for an honest pylon | The buyer hit the pylon's rate limit (10 jobs a minute). Builds before `678a76aa46` counted the refused items as misses and published a `check-fail`, and `ask` skips a pylon with a trusted `check-fail` from the last 24 hours | Fixed: a rate-limited round now publishes nothing. Wait a minute between other jobs and a round, or raise `--rate` on the pylon. A wrong `check-fail` already published keeps that buyer's `ask` away for 24 hours; use another computer's buyer meanwhile |
+| A checker round prints no verdict, or (before the fix) `ask` later says `no fresh online pylon with a free slot that passes its checks` for an honest pylon | The buyer hit the pylon's rate limit (10 jobs a minute). Builds before `678a76aa46` counted the refused items as misses and published a `check-fail`, and `ask` skips a pylon with a trusted `check-fail` from the last 24 hours | Fixed: a rate-limited round now publishes nothing. Wait a minute between other jobs and a round, or raise `--rate` on the pylon. The checker that published a wrong `check-fail` withdraws it with `openagents pylon check retract --pylon NPUB` ([Withdraw a wrong verdict](#withdraw-a-wrong-verdict)) |
 | `pylon earnings`: `the OpenAgents API refused the request (HTTP 404)` | The earnings route was not answering for these parties | Not investigated in this run |
 | `systemctl --user stop` logs `engine exited (signal: 15); restarting` | systemd's default `KillMode` signals the engines too | Start the unit with `-p KillMode=mixed` |
 | `doctor` and `setup` print `next: openagents pylon start --allow-any` | The next-step text predates `up` | Use `up` |
 | On Ubuntu 22.04, the `openagents` build fails in `spark-primitives`: `This file contains proto3 optional fields, but --experimental_allow_proto3_optional was not set` | The distribution's `protoc` is 3.12 | Install an upstream `protoc` (25.1) and set `PROTOC` |
 | With CUDA 12, the Psionic build fails: `cccl/cub/block/block_radix_sort.cuh: No such file or directory` | The kernels use CUDA 13's `include/cccl` layout | Put a folder with a `cccl` link to `/usr/local/cuda/include` on `NVCC_PREPEND_FLAGS`, or use CUDA 13 |
 | A check refuses: `the reference serves clef-flash@sha256:36261166…, but the pylon serves clef-flash@gguf-tensors:sha256:2e417b22…` | Builds since `b281ee839c` (#12234) name the model by its tensor digest; older checkers name it by file digest | Run the checker from a build at or after `b281ee839c`; the pylons on older builds need the same update before newer checkers can check them |
-| After moving a pylon's keys to a new computer, `ask` from it skips pylons that serve fine | The moved checker key brought its earlier `check-fail` verdicts with it, and the buyer trusts its own checker key | Wait out the 24 hours, or start the new home without `checker.key` |
+| After moving a pylon's keys to a new computer, `ask` from it skips pylons that serve fine | The moved checker key brought its earlier `check-fail` verdicts with it, and the buyer trusts its own checker key | If those verdicts were wrong, withdraw them from the new computer with `openagents pylon check retract --pylon NPUB`; otherwise start the new home without `checker.key` |
 | `pylon selfcheck` on a running pylon reports over 1,000 decisions a second | It repeats the start-up self-check's items, which the engine answers from cache | Read the speed from the self-check `up` runs at start (`selfcheck.json` in the pylon's home) |
 
 ## Stop each pylon
