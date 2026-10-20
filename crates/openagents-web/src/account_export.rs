@@ -54,7 +54,23 @@ pub(crate) const MAX_TRACE_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(PATH, get(download))
-        .route("/v1/account/export", get(download))
+        .route("/v1/account/export", get(api_download))
+}
+
+/// The cookie bridge supplies a bearer for a signed-in browser. Keep
+/// missing and expired sign-ins in the API's JSON shape.
+async fn api_download(State(app): State<App>, headers: HeaderMap) -> Response {
+    if app_token(&headers).is_some() {
+        let response = download(State(app), headers).await;
+        if response.status() != StatusCode::UNAUTHORIZED {
+            return response;
+        }
+    }
+    crate::coder_sync::refused(
+        StatusCode::UNAUTHORIZED,
+        "signed_out",
+        "Sign in to download your export.",
+    )
 }
 
 /// Who asks for the file: the browser's own session (Settings' Download

@@ -279,13 +279,10 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 response.status(),
-                if path == "/v1/account/export" {
-                    StatusCode::SERVICE_UNAVAILABLE
-                } else {
-                    StatusCode::UNAUTHORIZED
-                },
+                StatusCode::UNAUTHORIZED,
                 "{method} {path}"
             );
+            assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
             let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
             assert!(!String::from_utf8_lossy(&body).contains("private-test-key"));
         }
