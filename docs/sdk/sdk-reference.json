@@ -3225,39 +3225,6 @@
               "calls": []
             },
             {
-              "name": "browser_wallet",
-              "doc": "The browser's grantee key, the grant, and the requests.",
-              "declaration": "pub async fn browser_wallet(&self, session: &Session) -> Result<BrowserWallet, Error>",
-              "calls": [
-                {
-                  "method": "GET",
-                  "path": "/v1/wallet/browser"
-                }
-              ]
-            },
-            {
-              "name": "grant_browser_wallet",
-              "doc": "Give the browser the bounds it may ask within.",
-              "declaration": "pub async fn grant_browser_wallet(\n    &self,\n    session: &Session,\n    grant: Value,\n) -> Result<Value, Error>",
-              "calls": [
-                {
-                  "method": "PUT",
-                  "path": "/v1/wallet/browser/grant"
-                }
-              ]
-            },
-            {
-              "name": "settle_browser_request",
-              "doc": "Answer one of the browser's requests.",
-              "declaration": "pub async fn settle_browser_request(\n    &self,\n    session: &Session,\n    request: &str,\n    receipt: Value,\n) -> Result<Value, Error>",
-              "calls": [
-                {
-                  "method": "POST",
-                  "path": "/v1/wallet/browser/requests/*/receipt"
-                }
-              ]
-            },
-            {
               "name": "scanned_login",
               "doc": "Which browser `scanned` signs in, to show before approving.",
               "declaration": "pub async fn scanned_login(\n    &self,\n    scanned: &ScannedLogin,\n) -> Result<ScannedLoginAbout, Error>",
@@ -3418,6 +3385,39 @@
                 {
                   "method": "POST",
                   "path": "/v1/device/sign-out"
+                }
+              ]
+            },
+            {
+              "name": "browser_wallet",
+              "doc": "The browser's grantee key, the grant, and the requests.",
+              "declaration": "pub async fn browser_wallet(&self, session: &Session) -> Result<BrowserWallet, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/wallet/browser"
+                }
+              ]
+            },
+            {
+              "name": "grant_browser_wallet",
+              "doc": "Give the browser the bounds it may ask within.",
+              "declaration": "pub async fn grant_browser_wallet(\n    &self,\n    session: &Session,\n    grant: Value,\n) -> Result<Value, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/wallet/browser/grant"
+                }
+              ]
+            },
+            {
+              "name": "settle_browser_request",
+              "doc": "Answer one of the browser's requests.",
+              "declaration": "pub async fn settle_browser_request(\n    &self,\n    session: &Session,\n    request: &str,\n    receipt: Value,\n) -> Result<Value, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/wallet/browser/requests/*/receipt"
                 }
               ]
             },
@@ -3824,6 +3824,50 @@
               "doc": "Returns the landing client for `session` on this deployment.",
               "declaration": "pub fn land<'a>(&'a self, session: &'a Session) -> Result<Land<'a>, Error>",
               "calls": []
+            },
+            {
+              "name": "lightning_addresses",
+              "doc": "Read the signed-in account's Lightning addresses and receiving availability.",
+              "declaration": "pub async fn lightning_addresses(\n    &self,\n    session: &Session,\n) -> Result<LightningAddresses, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/device/lightning-address"
+                }
+              ]
+            },
+            {
+              "name": "lightning_challenge",
+              "doc": "Request a challenge to link a wallet at the expected address revision.",
+              "declaration": "pub async fn lightning_challenge(\n    &self,\n    session: &Session,\n    expected_revision: u64,\n) -> Result<LightningChallenge, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/device/lightning-address/challenge"
+                }
+              ]
+            },
+            {
+              "name": "enroll_lightning_address",
+              "doc": "Link a wallet to a Lightning address using its locally signed challenge.",
+              "declaration": "pub async fn enroll_lightning_address(\n    &self,\n    session: &Session,\n    challenge: &str,\n    pubkey: &str,\n    signature: &str,\n) -> Result<LightningAddress, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/device/lightning-address"
+                }
+              ]
+            },
+            {
+              "name": "disable_lightning_address",
+              "doc": "Stop receiving at a Lightning address if its revision still matches.",
+              "declaration": "pub async fn disable_lightning_address(\n    &self,\n    session: &Session,\n    name: &str,\n    expected_revision: u64,\n) -> Result<LightningAddress, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/device/lightning-address"
+                }
+              ]
             },
             {
               "name": "notify_owner",
@@ -4437,6 +4481,37 @@
           "name": "LandSubmit",
           "doc": "A branch already pushed to its repository's `origin`, ready to land.",
           "declaration": "pub struct LandSubmit {\n    pub repo: String,\n    pub branch: String,\n    pub issue: Option<u64>,\n    pub summary: Option<String>,\n}"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "lightning_address",
+      "doc": "Account-owned Lightning addresses. Wallet proofs are signed on the device.",
+      "items": [
+        {
+          "kind": "enum",
+          "name": "AddressState",
+          "doc": "Whether a Lightning address is waiting for proof, active, disabled, or retired.",
+          "declaration": "pub enum AddressState {\n    Pending,\n    Active,\n    Disabled,\n    Retired,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LightningAddress",
+          "doc": "An account's Lightning address and the wallet linked to it.",
+          "declaration": "pub struct LightningAddress {\n    pub name: String,\n    pub account: String,\n    pub nostr_pubkey: String,\n    pub spark_pubkey: String,\n    pub domain: String,\n    pub revision: u64,\n    pub state: AddressState,\n    pub created: u64,\n    pub updated: u64,\n    pub last_challenge: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LightningAddresses",
+          "doc": "Whether receiving is configured and the account's Lightning addresses.",
+          "declaration": "pub struct LightningAddresses {\n    pub configured: bool,\n    pub addresses: Vec<LightningAddress>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LightningChallenge",
+          "doc": "A message for the wallet to sign before linking it to a Lightning address.",
+          "declaration": "pub struct LightningChallenge {\n    pub id: String,\n    pub account: String,\n    pub name: String,\n    pub domain: String,\n    pub operation: String,\n    pub expected_revision: u64,\n    pub expires_at: u64,\n    pub message: String,\n}"
         }
       ],
       "reexports": []

@@ -113,6 +113,12 @@ pub(crate) const AREAS: &[Area] = &[
         tags: &["Account keys"],
     },
     Area {
+        slug: "wallet",
+        title: "Wallet",
+        lead: "Read your Lightning addresses, link your wallet, and stop receiving at an address.",
+        tags: &["Wallet"],
+    },
+    Area {
         slug: "chats",
         title: "Chats",
         lead: "Start chats, send messages, follow answers as they arrive, share chats, and sync \

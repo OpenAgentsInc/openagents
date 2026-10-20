@@ -26599,7 +26599,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The current address state or enrollment challenge.",
+            "description": "The current address state or a challenge to link your wallet.",
             "content": {
               "application/json": {
                 "schema": {
@@ -26636,7 +26636,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The current address state or enrollment challenge.",
+            "description": "The current address state or a challenge to link your wallet.",
             "content": {
               "application/json": {
                 "schema": {
@@ -26705,7 +26705,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The current address state or enrollment challenge.",
+            "description": "The current address state or a challenge to link your wallet.",
             "content": {
               "application/json": {
                 "schema": {
@@ -26760,7 +26760,7 @@
         "tags": [
           "Wallet"
         ],
-        "summary": "Request a wallet enrollment challenge",
+        "summary": "Request a challenge to link your wallet",
         "description": "Uses your current account session. Wallet signatures are made locally; never send recovery words or private keys. Responses are not cached.",
         "security": [
           {
@@ -26769,7 +26769,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The current address state or enrollment challenge.",
+            "description": "The current address state or a challenge to link your wallet.",
             "content": {
               "application/json": {
                 "schema": {

@@ -182,7 +182,10 @@ pub fn computers_document() -> Value {
             (path.starts_with("/v1/computers")
                 && path != "/v1/computers/check-in"
                 && path != "/v1/computers/{name}/sync")
-                || path.starts_with("/v1/device/")
+                || matches!(
+                    path.as_str(),
+                    "/v1/device/code" | "/v1/device/token" | "/v1/device/sign-out"
+                )
                 || path == "/v1/account"
         });
     let mut needed = BTreeSet::new();

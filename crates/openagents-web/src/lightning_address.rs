@@ -159,7 +159,7 @@ pub(crate) fn extend_contract(document: &mut serde_json::Value) {
             "post",
             "/v1/device/lightning-address/challenge",
             "challengeDeviceLightningAddress",
-            "Request a wallet enrollment challenge",
+            "Request a challenge to link your wallet",
             json!({"expected_revision":{"type":"integer","minimum":0}}),
         ),
         (
@@ -182,7 +182,7 @@ pub(crate) fn extend_contract(document: &mut serde_json::Value) {
             "description":"Uses your current account session. Wallet signatures are made locally; never send recovery words or private keys. Responses are not cached.",
             "security":[{"appBearer":[]}],
             "responses":{
-                "200":{"description":"The current address state or enrollment challenge.","content":{"application/json":{"schema":{"type":"object"}}}},
+                "200":{"description":"The current address state or a challenge to link your wallet.","content":{"application/json":{"schema":{"type":"object"}}}},
                 "400":{"description":"Check the request and wallet signature."},
                 "401":{"description":"Log in again to continue."},
                 "409":{"description":"Refresh the address revision and try again."},
