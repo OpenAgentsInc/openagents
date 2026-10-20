@@ -111,6 +111,25 @@ We left out:
   unit and fills the panel, and dragging a unit moves it with its children.
   No console errors.
 
+## Drawing and editing in the desktop app
+
+The desktop's Agent Lab has a Graph tab (#12231) that draws the draft the
+form edits, with the same GPUI view as the web
+(`apps/openagents/crates/agent-graph-view`). Select a part, then use the
+panel's changes: turn check-ins on or off and change how often, ask for
+standing authority or stop, change the stall window, add or remove a tool,
+a place it reads, or a skill.
+
+Each change is an `agent_graph::edit::Edit`. `edit::plan` turns it into the
+form's own steps, a field change or an action by its key, and the desktop
+sends them through the same `Lab` the form uses, so the change passes the
+same checks and the form shows it at once. Because tools and places are read
+from the agent's text, adding a tool names it on a "Tools I use:" line at
+the end of the instructions, and removing one takes the code formatting off
+every mention, so the agent no longer names it. The Agent Lab form gained
+the controls these need: check-ins, minutes between them, standing
+authority, and the stall window.
+
 ## Add a graph for a new agent
 
 1. Publish the agent as an Agent Lab template: add it to
