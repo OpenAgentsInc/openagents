@@ -41,6 +41,20 @@ pub fn mount(spec: &str, still: bool, chat: Option<String>) -> Result<(), JsValu
     console_error_panic_hook::set_once();
     openagents_gpui_web::init_logging();
     let spec = parse(spec).map_err(|e| JsValue::from_str(&e))?;
+    let document = web_sys::window().unwrap().document().unwrap();
+    if let Some(mount) = document.get_element_by_id("gpui-mount") {
+        let button = document.create_element("button")?;
+        button.set_text_content(Some("Scroll past graph"));
+        button.set_attribute("type", "button")?;
+        mount.insert_adjacent_element("beforebegin", &button)?;
+        let skip = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+            if let Some(window) = web_sys::window() {
+                window.scroll_by_with_x_and_y(0.0, mount.get_bounding_client_rect().bottom());
+            }
+        });
+        button.add_event_listener_with_callback("click", skip.as_ref().unchecked_ref())?;
+        skip.forget();
+    }
     let events = chat
         .as_deref()
         .map(agent_graph::events::from_chat)

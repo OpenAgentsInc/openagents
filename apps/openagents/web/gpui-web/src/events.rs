@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
     Capslock, DispatchEventResult, ExternalPaths, FileDropEvent, KeyDownEvent, KeyUpEvent,
@@ -52,7 +52,8 @@ impl ClickState {
 
 impl WebWindowInner {
     pub fn register_event_listeners(self: &Rc<Self>) -> WebEventListeners {
-        let mut closures = vec![
+        let mut closures = self.register_touch_pinch();
+        closures.extend(vec![
             self.register_pointer_down(),
             self.register_pointer_up(),
             self.register_pointer_move(),
@@ -72,7 +73,7 @@ impl WebWindowInner {
             self.register_blur(),
             self.register_pointer_enter(),
             self.register_pointer_leave_hover(),
-        ];
+        ]);
         closures.extend(self.register_visibility_change());
         closures.extend(self.register_appearance_change());
 
@@ -128,6 +129,87 @@ impl WebWindowInner {
     fn dispatch_input(&self, input: PlatformInput) -> Option<DispatchEventResult> {
         let mut borrowed = self.callbacks.borrow_mut();
         borrowed.input.as_mut().map(|callback| callback(input))
+    }
+
+    fn register_touch_pinch(self: &Rc<Self>) -> Vec<Closure<dyn FnMut(JsValue)>> {
+        let touches = Rc::new(RefCell::new(Vec::<(i32, Point<Pixels>)>::new()));
+        let pinching = Rc::new(std::cell::Cell::new(false));
+        ["pointerdown", "pointermove", "pointerup", "pointercancel"]
+            .into_iter()
+            .map(|name| {
+                let this = Rc::clone(self);
+                let touches = Rc::clone(&touches);
+                let pinching = Rc::clone(&pinching);
+                let closure = Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
+                    let event: web_sys::PointerEvent = event.unchecked_into();
+                    if event.pointer_type() != "touch" {
+                        return;
+                    }
+                    let mut touches = touches.borrow_mut();
+                    let old_distance = touch_distance(&touches);
+                    let position = pointer_position_in_element(&event);
+                    match name {
+                        "pointerdown" => {
+                            touches.push((event.pointer_id(), position));
+                            this.canvas.set_pointer_capture(event.pointer_id()).ok();
+                        }
+                        "pointermove" => {
+                            if let Some(touch) =
+                                touches.iter_mut().find(|t| t.0 == event.pointer_id())
+                            {
+                                touch.1 = position;
+                            }
+                        }
+                        _ => touches.retain(|t| t.0 != event.pointer_id()),
+                    }
+                    if touches.len() >= 2 && !pinching.get() {
+                        pinching.set(true);
+                        if let Some(button) = this.pressed_button.take() {
+                            this.dispatch_input(PlatformInput::MouseUp(MouseUpEvent {
+                                button,
+                                position,
+                                modifiers: Modifiers::default(),
+                                click_count: 0,
+                            }));
+                        }
+                    }
+                    if pinching.get() || name == "pointercancel" {
+                        event.prevent_default();
+                        event.stop_immediate_propagation();
+                        if name == "pointermove" {
+                            if let (Some(old), Some(new)) = (old_distance, touch_distance(&touches))
+                            {
+                                let center = (touches[0].1 + touches[1].1) / 2.0;
+                                this.dispatch_input(PlatformInput::ScrollWheel(ScrollWheelEvent {
+                                    position: center,
+                                    delta: ScrollDelta::Pixels(point(
+                                        px(0.0),
+                                        px(pinch_scroll_delta(old, new)),
+                                    )),
+                                    modifiers: Modifiers {
+                                        control: true,
+                                        ..Modifiers::default()
+                                    },
+                                    touch_phase: TouchPhase::Moved,
+                                }));
+                            }
+                        }
+                        if touches.is_empty() {
+                            pinching.set(false);
+                            this.pressed_button.set(None);
+                        }
+                    }
+                });
+                self.canvas
+                    .add_event_listener_with_callback_and_bool(
+                        name,
+                        closure.as_ref().unchecked_ref(),
+                        true,
+                    )
+                    .ok();
+                closure
+            })
+            .collect()
     }
 
     fn register_pointer_down(self: &Rc<Self>) -> Closure<dyn FnMut(JsValue)> {
@@ -714,4 +796,28 @@ fn extract_file_paths_from_drag(
         }
     }
     paths
+}
+
+fn touch_distance(touches: &[(i32, Point<Pixels>)]) -> Option<f32> {
+    let [a, b, ..] = touches else { return None };
+    let delta = a.1 - b.1;
+    Some(f32::from(delta.x).hypot(f32::from(delta.y)))
+}
+
+fn pinch_scroll_delta(old: f32, new: f32) -> f32 {
+    if old > 0.0 && new > 0.0 {
+        (new / old).ln() / 0.0025
+    } else {
+        0.0
+    }
+}
+
+#[cfg(test)]
+mod touch_tests {
+    #[test]
+    fn pinch_scroll_matches_distance_ratio() {
+        assert!(((super::pinch_scroll_delta(100.0, 150.0) * 0.0025).exp() - 1.5).abs() < 0.0001);
+        assert!(super::pinch_scroll_delta(150.0, 100.0) < 0.0);
+        assert_eq!(super::pinch_scroll_delta(0.0, 100.0), 0.0);
+    }
 }
