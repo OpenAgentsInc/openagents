@@ -8,11 +8,11 @@ use serde_json::json;
 struct Engine;
 #[async_trait]
 impl RpcService for Engine {
-    async fn handle(&self, method: &str, _: serde_json::Value) -> Result<RpcReply, RpcError> {
+    async fn handle(&self, method: &str, params: serde_json::Value) -> Result<RpcReply, RpcError> {
         match method {
             methods::LIST_HARNESSES => RpcReply::value(&json!([{"id": "claude"}])),
             methods::LIST_WORKSPACE_DIRECTORY => RpcReply::value(&json!({"entries": ["src"]})),
-            other => RpcReply::value(&json!({ "ran": other })),
+            other => RpcReply::value(&json!({ "ran": other, "params": params })),
         }
     }
 }
@@ -143,10 +143,7 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
         methods::QUEUE_COMMAND,
         methods::WRITE_WORKSPACE_FILE,
     ] {
-        assert_eq!(
-            value(tab.handle(method, json!({})).await),
-            json!({ "ran": method })
-        );
+        assert_eq!(value(tab.handle(method, json!({})).await)["ran"], method);
     }
     for method in ["OpenTerminal", methods::MUTATE, "StopEngine"] {
         assert!(
@@ -154,6 +151,37 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
             "{method}"
         );
     }
+    // A new session's pickers and a chat's runs reach the engine (#12266),
+    // without what only this computer's app may set.
+    for method in [
+        methods::LIST_REFS,
+        methods::LIST_FOLDERS,
+        methods::WATCH_DOC_MESSAGES,
+        methods::SWITCH_REF,
+    ] {
+        assert_eq!(value(tab.handle(method, json!({})).await)["ran"], method);
+    }
+    let queued = value(
+        tab.handle(
+            methods::QUEUE_COMMAND,
+            json!({
+                "chatId": "c1",
+                "targetDeviceId": "other-mac",
+                "originChatId": "agent-chat",
+                "transfers": [{"uploadId": "u1"}],
+                "command": {"kind": "run", "messageId": "m1", "request": {
+                    "prompt": "Hi", "cwd": "~", "mcp": {"command": "x"},
+                    "attachments": ["/etc/passwd"],
+                }},
+            }),
+        )
+        .await,
+    );
+    assert_eq!(
+        queued["params"],
+        json!({"chatId": "c1", "command": {"kind": "run", "messageId": "m1",
+            "request": {"prompt": "Hi", "cwd": "~"}}})
+    );
     // Another tab of the same browser needs its own hello.
     let other = gate.service("web-tab2");
     assert_eq!(

@@ -344,6 +344,8 @@ the canvas itself through `rust_native_gpui` is the next step now that
 | New chat at `/` and the sidebar, signed in and signed out | Done; the sidebar polls every 5 s instead of a JSON `/chats/events` |
 | Multi-line composer, IME, paste | Done (Chrome checked) |
 | Coder chats | Read-only, as before; live rooms wait on #12224 |
+| Chats on the account's computers | Done (#12265): the sidebar reads the account's registry room, so every computer's chats list with their computer, project, and live status. Pin, reorder pins, rename, archive, delete, and sections write to the registry and show on the desktop. Group, sort, compact, and archived are this browser's own view choices, as the desktop keeps its own |
+| Start a session on a computer | Done (#12266): a new chat picks a computer, project, branch, project folder or new worktree, agent, model, and reasoning. The chat's row goes to the registry, the first message to the computer (`QueueCommand`), and the transcript streams back from it (`WatchDocMessages`) through the device room once the computer allows this browser |
 | Cards | A card in the canvas opens the text view at the newest card, where the HTML chat's live card draws (Play, notes) |
 | Approvals, agents panel, computer asks | The side panel over the canvas (`/gpui/side`): the HTML chat's own Approve or Deny card, Agents panel, and asks, posting and refreshing as there |
 | File uploads | The side panel's "Send with files": the HTML chat's composer; the canvas then follows the answer |

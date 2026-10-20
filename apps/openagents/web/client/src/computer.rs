@@ -34,6 +34,15 @@ pub const BROWSER_REQUEST: &str = "BrowserRequest";
 pub const BROWSER_REQUEST_STATUS: &str = "BrowserRequestStatus";
 pub const BROWSER_HELLO: &str = "BrowserHello";
 pub const BROWSER_FORGET: &str = "BrowserForget";
+/// The engine's methods a browser calls for a chat on the computer and a
+/// new session there (`openagents_rpc::methods`, #12266).
+pub const WATCH_DOC_MESSAGES: &str = "WatchDocMessages";
+pub const QUEUE_COMMAND: &str = "QueueCommand";
+pub const QUEUE_MESSAGE: &str = "QueueMessage";
+pub const LIST_HARNESSES: &str = "ListHarnesses";
+pub const LIST_MODELS: &str = "ListModels";
+pub const LIST_REFS: &str = "ListRefs";
+pub const SWITCH_REF: &str = "SwitchRef";
 /// `coder_access::browser::HELLO_KIND`.
 const HELLO_KIND: u64 = 27_237;
 /// `coder_access::browser::CONN_PREFIX`.
@@ -55,7 +64,7 @@ fn js(value: JsValue) -> anyhow::Error {
 
 use crate::event::hex;
 
-fn random<const N: usize>() -> Result<[u8; N]> {
+pub(crate) fn random<const N: usize>() -> Result<[u8; N]> {
     let mut bytes = [0u8; N];
     web_sys::window()
         .ok_or_else(|| anyhow!("no window"))?

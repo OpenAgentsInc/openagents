@@ -17,21 +17,25 @@ license = "MIT"
 # without its native transport.
 openagents-sdk = { path = "../../../../crates/openagents-sdk", default-features = false }
 anyhow.workspace = true
+log.workspace = true
 futures.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The browser's own NIP-HOST key (#12264): BIP-340 Schnorr, pure Rust.
 k256 = { version = "0.13", default-features = false, features = ["schnorr", "arithmetic"] }
 sha2 = { version = "0.10", default-features = false }
+# The workspace registry (#12265): its rows, merge, and pending writes, and
+# the values a new session writes, as the desktop and phone apps keep them.
+openagents-doc = { path = "../../crates/doc" }
+openagents-proto = { path = "../../crates/proto" }
+chat-home = { path = "../../../../crates/chat-home" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "wasmbind"] }
 
 [dev-dependencies]
 # The computer checks a browser's hello with this crate.
 nostr = { path = "../../../../crates/nostr" }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-# The browser as a client of a computer (#12264): the device room's frame
-# codec.
-openagents-proto = { path = "../../crates/proto" }
 # The workspace's uuid turns on its browser randomness for proto.
 uuid.workspace = true
 js-sys = "0.3"
@@ -66,4 +70,6 @@ web-sys = { version = "0.3", features = [
     "IdbTransactionMode",
     "Navigator",
     "WebSocket",
+    "CloseEvent",
+    "Storage",
 ] }

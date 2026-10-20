@@ -29,8 +29,13 @@ use openagents_web_client::{Change, Event, MessageRole as SentBy, Project, Refus
 use web_time::Instant;
 
 use crate::compose::{Compose, HostChat};
-use crate::model::{self, Group, Msg};
+use crate::model::{self, Msg};
 use crate::route;
+
+/// Every computer's chats from the registry (#12265).
+mod computers;
+/// A new session on a computer (#12266).
+mod new_session;
 
 /// How often the sidebar re-reads the account's chats.
 const REFRESH: Duration = Duration::from_secs(5);
@@ -58,6 +63,10 @@ enum Menu {
     Actions(String),
     Move(String),
     Delete(String),
+    /// A computer chat's section choices (#12265).
+    Section(String),
+    /// The sidebar's view choices (#12265).
+    View,
 }
 
 pub struct ChatApp {
@@ -67,9 +76,25 @@ pub struct ChatApp {
     /// `openagents-signed-in`).
     signed_in: bool,
     origin: String,
+    /// The sidebar's chats: the site's and every computer's.
     threads: Vec<Thread>,
+    /// The site's own chats, as `/v1/threads` last answered.
+    web_threads: Vec<Thread>,
     projects: Vec<Project>,
     loaded: bool,
+    /// The account's registry: every computer's chats (#12265).
+    registry: Option<openagents_web_client::registry::Registry>,
+    /// What the registry says about each computer chat.
+    meta: HashMap<String, model::Meta>,
+    /// The sidebar's view choices, kept in this browser.
+    view: openagents_web_client::workspace::View,
+    /// The registry's rows have arrived (or it isn't served here).
+    computers_loaded: bool,
+    /// The open computer chat's transcript stream.
+    watching: Option<Task<()>>,
+    /// A new session's computer, project, branch, and agent (#12266).
+    target: new_session::Target,
+    _registry: Task<()>,
     /// The open chat; `None` is a new chat.
     current: Option<String>,
     /// The open chat's finished entries.
@@ -153,7 +178,8 @@ impl ChatApp {
                     .update(cx, |this, cx| match threads {
                         Ok(list) => {
                             this.loaded = true;
-                            this.threads = list.threads;
+                            this.web_threads = list.threads;
+                            this.merge_threads();
                             cx.notify();
                         }
                         Err(error) => this.refused(&error, cx),
@@ -200,8 +226,16 @@ impl ChatApp {
             signed_in: route::signed_in(),
             origin,
             threads: Vec::new(),
+            web_threads: Vec::new(),
             projects: Vec::new(),
             loaded: false,
+            registry: None,
+            meta: HashMap::new(),
+            view: computers::load_view(),
+            computers_loaded: false,
+            watching: None,
+            target: new_session::Target::default(),
+            _registry: Task::ready(()),
             current: None,
             entries: Vec::new(),
             loading_chat: false,
@@ -238,6 +272,7 @@ impl ChatApp {
                 });
             });
         }
+        this.open_registry(cx);
         this.load_projects(cx);
         this.load(route::current(), cx);
         window.focus(&this.composer.focus_handle(cx), cx);
@@ -317,6 +352,7 @@ impl ChatApp {
             self.live = None;
         }
         self.current = chat.clone();
+        self.watching = None;
         self.entries.clear();
         self.expanded.clear();
         self.list_state.reset(0);
@@ -335,14 +371,22 @@ impl ChatApp {
             return;
         };
         // A chat on one of the account's computers: its composer, queue,
-        // and questions go to that computer (#12267, #12268).
-        let host = route::computer().map(|(device, harness)| HostChat {
-            device,
-            chat: id.clone(),
-            harness,
-        });
+        // and questions go to that computer (#12267, #12268). A chat in the
+        // account's registry streams its transcript from there (#12265).
+        let host = route::computer()
+            .map(|(device, harness)| HostChat {
+                device,
+                chat: id.clone(),
+                harness,
+            })
+            .or_else(|| self.host_chat_of(&id));
         let on_computer = host.is_some();
         self.set_host_chat(host, cx);
+        if self.is_computer(&id) {
+            self.load_computer(id, generation, cx);
+            cx.notify();
+            return;
+        }
         if on_computer {
             self.loading_chat = false;
             cx.notify();
@@ -367,10 +411,11 @@ impl ChatApp {
                     Ok((detail, rows)) => {
                         let thread = detail.thread.clone();
                         route::set_title(&thread.title);
-                        match this.threads.iter_mut().find(|t| t.id == thread.id) {
+                        match this.web_threads.iter_mut().find(|t| t.id == thread.id) {
                             Some(row) => *row = thread.clone(),
-                            None => this.threads.insert(0, thread.clone()),
+                            None => this.web_threads.insert(0, thread.clone()),
                         }
+                        this.merge_threads();
                         let messages = model::messages(&id, &rows, &detail.messages);
                         let pending = thread.pending() && !thread.synced();
                         let (kept, live) = model::split_pending(messages, pending);
@@ -565,6 +610,10 @@ impl ChatApp {
         if self.sending || self.live.is_some() {
             return;
         }
+        if self.current.is_none() && self.target.computer.is_some() {
+            self.start_session(text, window, cx);
+            return;
+        }
         if text.chars().count() > MAX_CHARS {
             self.notice = Some("Messages can be at most 4,000 characters.".into());
             cx.notify();
@@ -618,7 +667,7 @@ impl ChatApp {
                             this.generation += 1;
                             this.composer
                                 .update(cx, |composer, _| composer.set_placeholder("Ask anything"));
-                            this.threads.insert(
+                            this.web_threads.insert(
                                 0,
                                 Thread {
                                     id: id.clone(),
@@ -630,7 +679,13 @@ impl ChatApp {
                                     ..Default::default()
                                 },
                             );
+                            this.merge_threads();
                             this.new_project = None;
+                        }
+                        if let Some(thread) = this.web_threads.iter_mut().find(|t| t.id == id) {
+                            thread.working = true;
+                            thread.request_id = Some(request.clone());
+                            thread.outcome = Some("pending".into());
                         }
                         if let Some(thread) = this.threads.iter_mut().find(|t| t.id == id) {
                             thread.working = true;
@@ -663,6 +718,10 @@ impl ChatApp {
     }
 
     fn stop(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.current.clone().filter(|id| self.is_computer(id)) {
+            self.stop_computer(id, cx);
+            return;
+        }
         let Some(live) = &mut self.live else {
             return;
         };
@@ -690,6 +749,10 @@ impl ChatApp {
     /// Saves a change to a chat, showing it at once and reading the list
     /// again after.
     fn change(&mut self, id: String, change: Change, cx: &mut Context<Self>) {
+        if self.is_computer(&id) {
+            self.computer_change(id, change, cx);
+            return;
+        }
         if let Some(thread) = self.threads.iter_mut().find(|t| t.id == id) {
             if let Some(title) = &change.title {
                 thread.title = title.clone();
@@ -703,6 +766,7 @@ impl ChatApp {
         }
         if change.archived == Some(true) {
             self.threads.retain(|t| t.id != id);
+            self.web_threads.retain(|t| t.id != id);
         }
         self.menu = None;
         let leaving = change.archived == Some(true) && self.current.as_deref() == Some(&id);
@@ -715,7 +779,8 @@ impl ChatApp {
                     this.refused(&error, cx);
                 }
                 if let Ok(list) = list {
-                    this.threads = list.threads;
+                    this.web_threads = list.threads;
+                    this.merge_threads();
                 }
                 cx.notify();
             })
@@ -730,8 +795,13 @@ impl ChatApp {
     }
 
     fn delete(&mut self, id: String, cx: &mut Context<Self>) {
+        if self.is_computer(&id) {
+            self.computer_delete(id, cx);
+            return;
+        }
         self.menu = None;
         self.threads.retain(|t| t.id != id);
+        self.web_threads.retain(|t| t.id != id);
         if self.current.as_deref() == Some(&id) {
             route::push(None);
             self.load(None, cx);
@@ -794,7 +864,13 @@ impl ChatApp {
     // -----------------------------------------------------------------
 
     fn render_sidebar(&self, full: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let groups = model::groups(&self.threads, &self.projects, &self.filter);
+        let groups = model::groups(
+            &self.threads,
+            &self.projects,
+            &self.filter,
+            &self.meta,
+            self.view,
+        );
         let empty_line = if !self.loaded {
             Some("Loading your chats…")
         } else if self.threads.is_empty() {
@@ -834,6 +910,9 @@ impl ChatApp {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child("OpenAgents"),
                     )
+                    .when(self.registry.is_some(), |row| {
+                        row.child(self.render_view_button(cx))
+                    })
                     .when(full, |row| {
                         row.child(icon_button("close-sidebar", "icons/close.svg").on_click(
                             cx.listener(|this, _: &ClickEvent, _, cx| {
@@ -843,6 +922,7 @@ impl ChatApp {
                         ))
                     }),
             )
+            .children(matches!(self.menu, Some(Menu::View)).then(|| self.render_view_menu(cx)))
             .child(
                 div()
                     .id("new-chat")
@@ -919,31 +999,15 @@ impl ChatApp {
                             .child(line)
                     }))
                     .children(groups.into_iter().map(|(group, members)| {
+                        let folded = Self::folded(&group);
                         div()
                             .flex()
                             .flex_col()
-                            .pt(px(14.))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .gap(px(6.))
-                                    .px(px(8.))
-                                    .pb(px(4.))
-                                    .text_size(px(12.5))
-                                    .text_color(theme::text_faint())
-                                    .when(matches!(group, Group::Project(..)), |row| {
-                                        row.child(
-                                            svg()
-                                                .path("icons/folder.svg")
-                                                .size(px(13.))
-                                                .text_color(theme::text_faint()),
-                                        )
-                                    })
-                                    .child(group.label()),
-                            )
-                            .children(members.into_iter().map(|ix| self.render_row(ix, cx)))
+                            .pt(px(if self.view.compact { 10. } else { 14. }))
+                            .child(self.render_group_header(&group, cx))
+                            .when(!folded, |col| {
+                                col.children(members.into_iter().map(|ix| self.render_row(ix, cx)))
+                            })
                     })),
             )
             .when(!self.signed_in, |side| {
@@ -993,13 +1057,16 @@ impl ChatApp {
         } else {
             None
         };
-        let menu_open = matches!(&self.menu, Some(Menu::Actions(m) | Menu::Move(m) | Menu::Delete(m)) if *m == id);
+        let menu_open = matches!(&self.menu, Some(Menu::Actions(m) | Menu::Move(m) | Menu::Delete(m) | Menu::Section(m)) if *m == id);
+        let compact = self.view.compact;
         let renaming = self
             .rename
             .as_ref()
             .filter(|(r, _)| *r == id)
             .map(|(_, f)| f.clone());
-        let subtitle = if thread.line.is_empty() {
+        let subtitle = if compact {
+            String::new()
+        } else if thread.line.is_empty() {
             match thread.surface.as_str() {
                 "terminal" => thread.computer.clone().unwrap_or_else(|| "Computer".into()),
                 "phone" => "Phone".into(),
@@ -1018,7 +1085,7 @@ impl ChatApp {
             .flex_row()
             .gap(px(8.))
             .px(px(8.))
-            .py(px(7.))
+            .py(px(if compact { 4. } else { 7. }))
             .rounded(px(9.))
             .cursor_pointer()
             .when(selected, |row| row.bg(theme::element_active()))
@@ -1110,7 +1177,10 @@ impl ChatApp {
                                         cx.stop_propagation();
                                         this.menu = match &this.menu {
                                             Some(
-                                                Menu::Actions(m) | Menu::Move(m) | Menu::Delete(m),
+                                                Menu::Actions(m)
+                                                | Menu::Move(m)
+                                                | Menu::Delete(m)
+                                                | Menu::Section(m),
                                             ) if *m == menu_id => None,
                                             _ => Some(Menu::Actions(menu_id.clone())),
                                         };
@@ -1178,6 +1248,7 @@ impl ChatApp {
                     }))
                     .into_any_element(),
                 );
+                items.extend(self.computer_menu_items(thread, cx));
                 if !self.projects.is_empty() && !thread.synced() {
                     let moving = id.clone();
                     items.push(
@@ -1190,20 +1261,22 @@ impl ChatApp {
                     );
                 }
                 let archive = id.clone();
-                items.push(
-                    menu_item("menu-archive", "icons/archive-minimalistic.svg", "Archive")
-                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                            this.change(
-                                archive.clone(),
-                                Change {
-                                    archived: Some(true),
-                                    ..Default::default()
-                                },
-                                cx,
-                            )
-                        }))
-                        .into_any_element(),
-                );
+                if !self.meta.get(&id).is_some_and(|m| m.archived) {
+                    items.push(
+                        menu_item("menu-archive", "icons/archive-minimalistic.svg", "Archive")
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                this.change(
+                                    archive.clone(),
+                                    Change {
+                                        archived: Some(true),
+                                        ..Default::default()
+                                    },
+                                    cx,
+                                )
+                            }))
+                            .into_any_element(),
+                    );
+                }
                 let delete = id.clone();
                 items.push(
                     menu_item("menu-delete", "icons/trash-bin-minimalistic.svg", "Delete")
@@ -1257,6 +1330,8 @@ impl ChatApp {
                     );
                 }
             }
+            Menu::Section(_) => items.extend(self.section_menu_items(&id, cx)),
+            Menu::View => {}
             Menu::Delete(_) => {
                 let delete = id.clone();
                 items.push(
@@ -1386,9 +1461,11 @@ impl ChatApp {
                 .child(wizard)
                 .into_any_element();
         }
-        let live = self.live.is_some();
-        let busy = live || self.sending;
         let empty = self.composer.read(cx).is_empty();
+        // A working computer chat takes more messages; Stop shows while the
+        // composer is empty.
+        let live = self.live.is_some() || (self.computer_working() && empty);
+        let busy = live || self.sending;
         let blocked = self
             .current
             .as_deref()
@@ -1409,7 +1486,9 @@ impl ChatApp {
                 b.opacity(0.35)
             })
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                if this.live.is_some() {
+                if this.live.is_some()
+                    || (this.computer_working() && this.composer.read(cx).is_empty())
+                {
                     this.stop(cx);
                 } else {
                     let text = this.composer.update(cx, |composer, cx| composer.take(cx));
@@ -1513,18 +1592,22 @@ impl ChatApp {
                     .font_weight(FontWeight::MEDIUM)
                     .child("What should we work on?"),
             )
-            .when(!choices.is_empty(), |col| {
-                col.child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .flex_wrap()
-                        .justify_center()
-                        .gap(px(8.))
-                        .max_w(px(CONTENT_WIDTH))
-                        .children(choices),
-                )
-            })
+            .children(self.render_targets(cx))
+            .when(
+                !choices.is_empty() && self.target.computer.is_none(),
+                |col| {
+                    col.child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .flex_wrap()
+                            .justify_center()
+                            .gap(px(8.))
+                            .max_w(px(CONTENT_WIDTH))
+                            .children(choices),
+                    )
+                },
+            )
             .into_any_element()
     }
 
@@ -1849,6 +1932,7 @@ fn reply_refusal(thread: &Thread) -> &'static str {
         "phone" => "This chat is on your phone. Reply there.",
         "terminal" if !thread.online => "This chat's computer is offline. Reply when it's back.",
         "terminal" => "Continue this chat on its computer.",
+        model::COMPUTER => "This chat's computer is offline. Reply when it's back.",
         _ if thread.pending() => "We're still answering the last message.",
         _ => "This chat can't take replies here.",
     }

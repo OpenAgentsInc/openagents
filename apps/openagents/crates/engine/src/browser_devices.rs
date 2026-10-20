@@ -13,8 +13,11 @@
 //! What a browser may call is [`ALLOWED`], reads of the computer's
 //! harnesses, models, skills, commands, and workspace files under the
 //! grant's observe right, and [`OPERATE`], the changes its run right
-//! covers: the chat queue, answers to an agent's questions, and edits to
-//! workspace files. Later work widens them method by method.
+//! covers: the chat queue, answers to an agent's questions, edits to
+//! workspace files, and a new session's checkout (#12266). A chat's
+//! transcript and the new-session pickers' repository reads are reads.
+//! [`sanitize`] strips what only this computer's own app may set before a
+//! call reaches the engine. Later work widens them method by method.
 
 use async_trait::async_trait;
 use coder_access::protocol::DeviceState;
@@ -53,6 +56,15 @@ pub const ALLOWED: &[&str] = &[
     methods::READ_CHAT_WINDOW,
     // The file panel follows changes on the computer (#12272).
     methods::WATCH_WORKSPACE_FILES,
+    // A new session's pickers (#12266).
+    methods::LIST_REPOS,
+    methods::LIST_BRANCHES,
+    methods::LIST_REFS,
+    methods::LIST_FOLDERS,
+    methods::GET_WORKTREE_SETTINGS,
+    // A chat on this computer: its transcript (#12266).
+    methods::WATCH_DOC_MESSAGES,
+    methods::READ_CHAT_WINDOW,
 ];
 
 /// The engine methods a browser may call under its grant's run right
@@ -70,7 +82,37 @@ pub const OPERATE: &[&str] = &[
     methods::WRITE_WORKSPACE_FILE,
     methods::MOVE_WORKSPACE_ENTRY,
     methods::DELETE_WORKSPACE_ENTRY,
+    // A new session's checkout (#12266).
+    methods::SWITCH_REF,
+    methods::CREATE_WORKTREE,
 ];
+
+/// Parameters a browser never sets: forwarding to another computer under
+/// this one's authority (`targetDeviceId`), an agent's grants
+/// (`originChatId`), attachments staged on this computer (`transfers`,
+/// `attachments`), and the run's OpenAgents tools, which this engine
+/// injects itself (`command.request.mcp`).
+pub fn sanitize(method: &str, mut params: serde_json::Value) -> serde_json::Value {
+    if let Some(map) = params.as_object_mut() {
+        map.remove("targetDeviceId");
+        map.remove("originChatId");
+        if method == methods::QUEUE_COMMAND {
+            map.remove("transfers");
+            if let Some(request) = map
+                .get_mut("command")
+                .and_then(|command| command.get_mut("request"))
+                .and_then(serde_json::Value::as_object_mut)
+            {
+                request.remove("mcp");
+                request.remove("attachments");
+            }
+        }
+        if method == methods::QUEUE_MESSAGE {
+            map.remove("attachments");
+        }
+    }
+    params
+}
 
 /// The right `method` needs, or `None` when a browser can't call it.
 pub fn required_right(method: &str) -> Option<Right> {
@@ -432,7 +474,7 @@ impl RpcService for Connection {
                         "A browser can't do that on this computer yet.".into(),
                     ));
                 }
-                browsers.inner.handle(method, value).await
+                browsers.inner.handle(method, sanitize(method, value)).await
             }
         }
     }
