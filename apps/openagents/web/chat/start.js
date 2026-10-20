@@ -81,6 +81,8 @@ function start() {
     })
   );
   document.addEventListener("gpui-first-frame", function () {
+    // run_embedded opens its window after launch returns.
+    chatInput = document.activeElement;
     var shell = document.getElementById("gpui-shell");
     if (shell) {
       shell.style.display = "none";
@@ -141,7 +143,6 @@ function start() {
   Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
     .then(function (loaded) {
       launch(loaded[1]);
-      chatInput = document.activeElement;
     })
     .catch(function (error) {
       say("The chat couldn't start. Reload the page to try again.");
