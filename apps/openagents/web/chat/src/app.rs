@@ -45,6 +45,7 @@ mod dictation;
 mod move_sheet;
 /// A new session on a computer (#12266).
 mod new_session;
+mod palette;
 /// Settings (#12288, #12289, #12290).
 mod settings;
 
@@ -157,6 +158,7 @@ pub struct ChatApp {
     selection_drag: selection::DragScroll,
     /// Settings: the open page and this browser's choices (#12288).
     settings: settings::Settings,
+    palette: Option<palette::Palette>,
 }
 
 impl ChatApp {
@@ -360,6 +362,7 @@ impl ChatApp {
             _history: history,
             selection_drag: selection::DragScroll::default(),
             settings: settings::Settings::load(),
+            palette: None,
         };
         this.start_settings(cx);
         if this.signed_in {
@@ -1639,6 +1642,11 @@ impl ChatApp {
             )
             .children(project.map(|p| chip("icons/folder.svg", p, theme::text_muted())))
             .children(computer.map(|c| chip("icons/laptop.svg", c, theme::text_muted())))
+            .child(
+                icon_button("header-palette", "icons/magnifer.svg").on_click(
+                    cx.listener(|this, _: &ClickEvent, window, cx| this.toggle_palette(window, cx)),
+                ),
+            )
             // The work panel: work runs, environments, and Mac jobs (#12225).
             .when(self.signed_in, |row| {
                 row.child(icon_button("header-work", "icons/document.svg").on_click(
@@ -2105,14 +2113,18 @@ impl Render for ChatApp {
             .text_size(px(theme::BODY));
         root.text_style().font_fallbacks = Some(theme::fallbacks());
         let root = self.shortcut_actions(root, cx);
+        let overlay = self.render_palette(window, cx);
+        let root = root.relative();
         if wide && self.settings.sidebar_hidden {
-            root.child(main)
+            root.child(main).children(overlay)
         } else if wide {
-            root.child(self.render_sidebar(false, cx)).child(main)
+            root.child(self.render_sidebar(false, cx))
+                .child(main)
+                .children(overlay)
         } else if self.sidebar_open {
-            root.child(self.render_sidebar(true, cx))
+            root.child(self.render_sidebar(true, cx)).children(overlay)
         } else {
-            root.child(main)
+            root.child(main).children(overlay)
         }
     }
 }

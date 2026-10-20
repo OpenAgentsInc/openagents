@@ -20,6 +20,7 @@ use super::{Intent, Paints, Prefs, Remote, button, header, node, row, section, t
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Shortcut {
+    CommandPalette,
     ToggleSidebar,
     ToggleFiles,
     NewSession,
@@ -29,7 +30,8 @@ pub enum Shortcut {
 }
 
 impl Shortcut {
-    pub const ALL: [Shortcut; 6] = [
+    pub const ALL: [Shortcut; 7] = [
+        Shortcut::CommandPalette,
         Shortcut::ToggleSidebar,
         Shortcut::ToggleFiles,
         Shortcut::NewSession,
@@ -41,6 +43,7 @@ impl Shortcut {
     /// The desktop's row label.
     pub fn label(self) -> &'static str {
         match self {
+            Shortcut::CommandPalette => "Command palette",
             Shortcut::ToggleSidebar => "Toggle left sidebar",
             Shortcut::ToggleFiles => "Toggle files panel",
             Shortcut::NewSession => "New session",
@@ -53,7 +56,7 @@ impl Shortcut {
     /// The desktop's section for the row.
     pub fn group(self) -> &'static str {
         match self {
-            Shortcut::ToggleSidebar | Shortcut::ToggleFiles => "Panels",
+            Shortcut::CommandPalette | Shortcut::ToggleSidebar | Shortcut::ToggleFiles => "Panels",
             _ => "Sessions",
         }
     }
@@ -63,17 +66,19 @@ impl Shortcut {
     /// keeps `mod-n` and Ctrl+Tab.
     pub fn default_combo(self) -> &'static str {
         match self {
+            Shortcut::CommandPalette => "mod-k",
             Shortcut::ToggleSidebar => "mod-b",
             Shortcut::ToggleFiles => "mod-e",
             Shortcut::NewSession => "mod-alt-n",
             Shortcut::NextSession => "alt-down",
             Shortcut::PrevSession => "alt-up",
-            Shortcut::ArchiveSession => "mod-shift-a",
+            Shortcut::ArchiveSession => "mod-alt-a",
         }
     }
 
     fn slug(self) -> &'static str {
         match self {
+            Shortcut::CommandPalette => "command-palette",
             Shortcut::ToggleSidebar => "toggle-sidebar",
             Shortcut::ToggleFiles => "toggle-files",
             Shortcut::NewSession => "new-session",
@@ -95,6 +100,7 @@ impl Keymap {
         self.0
             .get(&shortcut)
             .map(String::as_str)
+            .filter(|combo| !browser_keeps(combo))
             .unwrap_or(shortcut.default_combo())
     }
 
@@ -183,6 +189,13 @@ pub fn browser_keeps(combo: &str) -> bool {
         "mod-l",
         "mod-r",
         "mod-shift-r",
+        "mod-shift-a",
+        "mod-shift-b",
+        "mod-shift-o",
+        "mod-shift-j",
+        "mod-shift-i",
+        "mod-alt-i",
+        "mod-alt-j",
     ];
     KEPT.contains(&combo)
         || combo
