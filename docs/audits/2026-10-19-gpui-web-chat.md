@@ -347,14 +347,14 @@ the canvas itself through `rust_native_gpui` is the next step now that
 | --- | --- |
 | Transcript, streaming, Stop, reload during an answer | Done |
 | Rename, pin, archive, move, delete | Done (move needs an account) |
-| New chat at `/` and the sidebar, signed in and signed out | Done; the sidebar polls every 5 s instead of a JSON `/chats/events` |
+| New chat at `/` and the sidebar, signed in and signed out | Done; the sidebar reads the list again on `/chats/events?format=json` |
 | Multi-line composer, IME, paste | Done (Chrome checked) |
-| Coder chats | Read-only, as before; live rooms wait on #12224 |
+| Coder chats | A Coder chat's waiting question draws in the canvas with the shared decision panel through `rust_native_gpui`, and its background agents with Stop (`/v1/agents`, #12316). A computer chat's transcript streams from its chat2 room, in a module loaded on demand (`openagents-web-room`, #12224) |
 | Chats on the account's computers | Done (#12265): the sidebar reads the account's registry room, so every computer's chats list with their computer, project, and live status. Pin, reorder pins, rename, archive, delete, and sections write to the registry and show on the desktop. Group, sort, compact, and archived are this browser's own view choices, as the desktop keeps its own |
 | Start a session on a computer | Done (#12266): a new chat picks a computer, project, branch, project folder or new worktree, agent, model, and reasoning. The chat's row goes to the registry, the first message to the computer (`QueueCommand`), and the transcript streams back from it (`WatchDocMessages`) through the device room once the computer allows this browser |
 | Environments, work runs, and Mac jobs | Done (#12225): the header's work button loads the work panel, its own module (1.10 MB brotli, loaded on first open). Work: the landing queue at a glance, work an issue (`owner/repo#123`), and each run's progress live by long poll, with Stop. Environments: each setup log and Claude Code run every two seconds, a message to the setup agent, Stop, and a paused run's choices. Mac jobs: each job's lines live by long poll, Approve or Deny its question, and Stop |
 | Cards | A card in the canvas opens the text view at the newest card, where the HTML chat's live card draws (Play, notes) |
-| Approvals, agents panel, computer asks | The side panel over the canvas (`/gpui/side`): the HTML chat's own Approve or Deny card, Agents panel, and asks, posting and refreshing as there |
+| Approvals, agents panel, computer asks | A Coder chat's approval and agents in the canvas (above); a web chat's Claude Code agents and a Coder chat's asks in the side panel (`/gpui/side`) |
 | File uploads | The side panel's "Send with files": the HTML chat's composer; the canvas then follows the answer |
 | Find in page, screen-reader mirror, links | The text view (`/gpui/text`): the HTML transcript, live through its event stream; Cmd+F or Ctrl+F shows it for the browser's find; hidden, it stays in the accessibility tree |
 | Zoom | Browser zoom changes the device pixel ratio, which the canvas follows; the browser's text-size setting doesn't scale the canvas |
