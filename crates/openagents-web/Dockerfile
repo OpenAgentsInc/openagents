@@ -235,8 +235,20 @@ RUN --mount=type=bind,target=/context \
 FROM rust:1.98.1-slim-trixie AS gpuiweb-base
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        --no-install-recommends build-essential pkg-config clang llvm binaryen brotli curl python3 \
+        --no-install-recommends build-essential pkg-config clang llvm brotli ca-certificates curl python3 \
     && rm -rf /var/lib/apt/lists/*
+# wasm-opt from Binaryen's own release, the version the budget is measured
+# with on our machines: trixie's binaryen (120) leaves the chat module about
+# 2.5 KB larger with brotli, over package-web-build.py's budget.
+ARG BINARYEN_VERSION=132
+ARG BINARYEN_SHA256=195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572
+RUN curl -fsSLo /tmp/binaryen.tar.gz \
+        "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz" \
+    && echo "${BINARYEN_SHA256}  /tmp/binaryen.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/binaryen.tar.gz -C /tmp \
+    && install -m 0755 "/tmp/binaryen-version_${BINARYEN_VERSION}/bin/wasm-opt" /usr/local/bin/wasm-opt \
+    && rm -rf /tmp/binaryen.tar.gz "/tmp/binaryen-version_${BINARYEN_VERSION}" \
+    && wasm-opt --version
 COPY scripts/deploy/oa-kache.sh /usr/local/bin/oa-kache
 RUN oa-kache install
 WORKDIR /build
