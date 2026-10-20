@@ -5,8 +5,8 @@
 //! The constants mirror `crates/lander5-web/shaders/grid.glsl` (a test
 //! reads them there): the camera sits `CAMERA_HEIGHT` m over the floor,
 //! looks down the -z axis tilted so the horizon sits `HORIZON_UV` above
-//! the middle, with focal length `FOCAL`, and at time 0 it is at
-//! `x = 9 + 3 sin 0 = 9`, `z = 0`.
+//! the middle, with focal length `FOCAL`, straight down the axis over the
+//! major line at `x = 0`; at time 0 it is at `z = 0`.
 
 /// The scene time the page holds the camera at.
 pub const CAMERA_TIME: f32 = 0.0;
@@ -14,7 +14,7 @@ pub const CAMERA_HEIGHT: f64 = 3.2;
 pub const HORIZON_UV: f64 = 0.16;
 pub const FOCAL: f64 = 1.75;
 /// The camera's `x` at [`CAMERA_TIME`].
-pub const CAMERA_X: f64 = 9.0;
+pub const CAMERA_X: f64 = 0.0;
 /// The Grid's minor line spacing, m: pylons stand where lines cross.
 pub const CELL: f64 = 4.0;
 
@@ -114,11 +114,11 @@ fn overlaps(a: Keep, b: Keep) -> bool {
 pub fn spots(count: usize, width: f64, height: f64, top: f64, keep: &[Keep]) -> Vec<Placed> {
     let mut candidates: Vec<(f64, Placed)> = Vec::new();
     // The floor's middle, ahead of the camera: where the first pylon stands.
-    let (middle_x, middle_z) = (CAMERA_X - 1.0, -26.0);
+    let (middle_x, middle_z) = (CAMERA_X, -26.0);
     for row in 2..48 {
         let z = -CELL * f64::from(row);
         for column in -24..=24 {
-            let x = CAMERA_X - 1.0 + CELL * f64::from(column);
+            let x = CAMERA_X + CELL * f64::from(column);
             let Some(placed) = place(x, z, width, height) else {
                 continue;
             };
@@ -175,8 +175,8 @@ mod tests {
             "const float CAMERA_HEIGHT = 3.2;",
             "const float HORIZON_UV = 0.16;",
             "const float FOCAL = 1.75;",
-            "vec3 ro = vec3(9.0 + 3.0 * sin(camTime * 0.045), CAMERA_HEIGHT, z);",
-            "vec3 ta = ro + vec3(0.12 * sin(camTime * 0.03), -HORIZON_UV / FOCAL, -1.0);",
+            "vec3 ro = vec3(0.0, CAMERA_HEIGHT, z);",
+            "vec3 ta = ro + vec3(0.0, -HORIZON_UV / FOCAL, -1.0);",
         ] {
             assert!(grid.contains(line), "{line}");
         }

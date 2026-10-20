@@ -95,12 +95,14 @@ float stars(vec3 rd, float pixelAngle) {
 vec3 render(vec2 fragCoord) {
     vec2 uv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;
 
-    // camera: low over the floor, drifting forward with a slow sway
-    // (CAMERA_TIME holds it still where a page defines it)
+    // camera: low over a major line, facing straight down the grid's axis
+    // (no yaw, so the vanishing point is centered and that line stands
+    // vertical), drifting forward (CAMERA_TIME holds it still where a page
+    // defines it)
     float camTime = CAMERA_TIME;
     float z = -mod(camTime * CAMERA_SPEED, CELL * MAJOR * 128.0);
-    vec3 ro = vec3(9.0 + 3.0 * sin(camTime * 0.045), CAMERA_HEIGHT, z);
-    vec3 ta = ro + vec3(0.12 * sin(camTime * 0.03), -HORIZON_UV / FOCAL, -1.0);
+    vec3 ro = vec3(0.0, CAMERA_HEIGHT, z);
+    vec3 ta = ro + vec3(0.0, -HORIZON_UV / FOCAL, -1.0);
     mat3 cam = cameraMatrix(ro, ta, 0.0);
     vec3 rd = cameraRay(cam, uv, FOCAL);
     float pixelAngle = 2.0 / (iResolution.y * FOCAL);

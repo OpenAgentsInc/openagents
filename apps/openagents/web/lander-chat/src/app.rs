@@ -17,7 +17,7 @@ use openagents_web_chat_view::composer::{Submitted, TextInput};
 use openagents_web_chat_view::markdown::{Veil, visible_chars};
 use openagents_web_chat_view::theme;
 use openagents_web_chat_view::transcript::{
-    self, OnClick, TurnView, VEIL_FADE_MS, button, truncate, veil_alpha, working_label,
+    self, OnClick, TurnView, VEIL_FADE_MS, button, veil_alpha, working_label,
 };
 use openagents_web_client::web::{Client, Follow};
 use openagents_web_client::{Refusal, StreamEvent};
@@ -577,39 +577,6 @@ impl LanderChat {
         if self.sending {
             rows.push(working_label().into_any_element());
         }
-        let busy = self.live.is_some() || self.sending;
-        let header_right: AnyElement = if busy {
-            working_label().into_any_element()
-        } else if self.current.is_some() {
-            div()
-                .id("new-chat")
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(6.))
-                .px(px(8.))
-                .h(px(26.))
-                .rounded(px(7.))
-                .cursor_pointer()
-                .text_size(px(12.5))
-                .text_color(theme::text_muted())
-                .hover(|style| style.bg(theme::element_hover()).text_color(theme::text()))
-                .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                    this.new_chat(cx);
-                    window.focus(&this.composer.focus_handle(cx), cx);
-                }))
-                .child(
-                    svg()
-                        .path("icons/pen-new-square.svg")
-                        .size(px(14.))
-                        .text_color(theme::text_muted()),
-                )
-                .child(model::NEW_CHAT)
-                .into_any_element()
-        } else {
-            div().into_any_element()
-        };
-        let title: SharedString = truncate(&self.title, 80).into();
         if self.following {
             self.scroll.scroll_to_bottom();
         }
@@ -624,30 +591,6 @@ impl LanderChat {
             .bg(gpui::hsla(0., 0., 0.035, 0.92))
             .border_1()
             .border_color(theme::border_strong())
-            .child(
-                div()
-                    .flex_none()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(8.))
-                    .pl(px(pad))
-                    .pr(px(10.))
-                    .h(px(42.))
-                    .border_b_1()
-                    .border_color(theme::border())
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(theme::text_muted())
-                            .child(title),
-                    )
-                    .child(header_right),
-            )
             .child(
                 div()
                     .id("lander8-transcript")
@@ -667,6 +610,52 @@ impl LanderChat {
                     .children(rows),
             )
             .into_any_element()
+    }
+
+    /// "New chat", over the card's right edge: there once a chat is open,
+    /// and dimmed while an answer is being written.
+    fn render_new_chat(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.current.as_ref()?;
+        let busy = self.live.is_some() || self.sending;
+        Some(
+            div()
+                .flex_none()
+                .flex()
+                .flex_row()
+                .justify_end()
+                .child(
+                    div()
+                        .id("new-chat")
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.))
+                        .px(px(10.))
+                        .h(px(28.))
+                        .rounded(px(14.))
+                        .text_size(px(12.5))
+                        .text_color(theme::text_muted())
+                        .bg(gpui::hsla(0., 0., 0.035, 0.7))
+                        .when(busy, |b| b.opacity(0.4))
+                        .when(!busy, |b| {
+                            b.cursor_pointer().hover(|style| {
+                                style.bg(theme::element_hover()).text_color(theme::text())
+                            })
+                        })
+                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                            this.new_chat(cx);
+                            window.focus(&this.composer.focus_handle(cx), cx);
+                        }))
+                        .child(
+                            svg()
+                                .path("icons/pen-new-square.svg")
+                                .size(px(14.))
+                                .text_color(theme::text_muted()),
+                        )
+                        .child(model::NEW_CHAT),
+                )
+                .into_any_element(),
+        )
     }
 
     fn render_composer(&self, layout: &Layout, cx: &mut Context<Self>) -> AnyElement {
@@ -769,6 +758,9 @@ impl Render for LanderChat {
             .justify_end()
             .gap(px(if layout.narrow { 10. } else { 14. }));
         if shows_card {
+            if let Some(new_chat) = self.render_new_chat(cx) {
+                column = column.child(new_chat);
+            }
             column = column.child(self.render_card(&layout, cx));
         } else if !self.loading {
             column = column.child(
